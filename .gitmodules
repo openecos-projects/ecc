@@ -1,0 +1,3 @@
+[submodule "chipcompiler/thirdparty/iEDA"]
+	path = chipcompiler/thirdparty/iEDA
+	url = git@gitee.com:ieda-ipd/iEDA.git
