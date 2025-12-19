@@ -8,8 +8,11 @@ current_dir = os.path.split(os.path.abspath(__file__))[0]
 root = current_dir.rsplit('/', 1)[0]
 sys.path.append(root)
     
-from chipcompiler.workspaces import Workspace
-from chipcompiler.tools import create_step, create_workspace
+from chipcompiler.tools import (
+    create_workspace, 
+    create_step, 
+    run_step
+)
 
 from pdk import get_pdk
 from parameters import get_parameters
@@ -35,13 +38,18 @@ def test_sky130_gcd():
         pdk=pdk,
         parameters=parameters
     )
-      
+    
+    # after create workspace, copy origin files to workspace origin folder
+    # use the origin def and verilog in workspace for the first step.   
     # create eda tool instance
     eda_step = create_step(workspace=workspace,
                           step="floorplan",
                           eda="iEDA",
-                          input_def="",
-                          input_verilog=input_verilog)
+                          input_def=workspace.design.origin_def,
+                          input_verilog=workspace.design.origin_verilog)
+    
+    run_step(workspace, eda_step)
+    
     
     eda_step = create_step(workspace=workspace,
                           step="place",

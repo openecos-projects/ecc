@@ -273,3 +273,17 @@ def build_step_config(workspace: Workspace,
     _update_hold()
     _update_setup()
     _update_router()
+
+def run_step(workspace: Workspace,
+             step: WorkspaceStep) -> bool:
+    if not is_eda_exist():
+        return False
+    
+    from chipcompiler.tools.iEDA.engine import IEDAEngine
+    eda_inst = IEDAEngine(workspace, step)
+    
+    return True
+
+def get_eda(workspace: Workspace,
+            step: WorkspaceStep) -> None:
+    pass
