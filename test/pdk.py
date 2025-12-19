@@ -62,9 +62,7 @@ def PDK_SKY130() -> PDK:
             "{}/lib/sky130_sram_1rw1r_44x64_8_TT_1p8V_25C.lib".format(foundry_dir),
             "{}/lib/sky130_sram_1rw1r_64x256_8_TT_1p8V_25C.lib".format(foundry_dir),
             "{}/lib/sky130_sram_1rw1r_80x64_8_TT_1p8V_25C.lib".format(foundry_dir),
-        ],
-        sdc="{}/sdc/gcd.sdc".format(foundry_dir),
-        spef="{}/spef/gcd.spef".format(foundry_dir)    
+        ]   
     )
     
     return pdk

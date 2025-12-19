@@ -1,6 +1,7 @@
 from .builder import (
     build_step, 
     build_step_space,
+    build_step_config,
     is_eda_exist
 )
 
@@ -8,5 +9,6 @@ from .builder import (
 __all__ = [
     'build_step',
     'build_step_space',
+    'build_step_config',
     'is_eda_exist'
 ]

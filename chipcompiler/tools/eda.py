@@ -4,8 +4,6 @@ from chipcompiler.workspaces import Workspace, PDK, Parameters
 import logging
 
 def create_workspace(directory : str,
-                     design_name : str,
-                     top_module : str,
                      origin_def : str,
                      origin_verilog : str,
                      pdk : PDK,
@@ -21,12 +19,18 @@ def create_workspace(directory : str,
         shutil.copy(origin_def, f"{directory}/origin/{os.path.basename(origin_def)}")
     if os.path.exists(origin_verilog):
         shutil.copy(origin_verilog, f"{directory}/origin/{os.path.basename(origin_verilog)}")
+    if os.path.exists(pdk.sdc):
+        shutil.copy(pdk.sdc, f"{directory}/origin/{os.path.basename(pdk.sdc)}")
+        pdk.sdc = f"{directory}/origin/{os.path.basename(pdk.sdc)}"
+    if os.path.exists(pdk.spef):
+        shutil.copy(pdk.spef, f"{directory}/origin/{os.path.basename(pdk.spef)}")
+        pdk.spef = f"{directory}/origin/{os.path.basename(pdk.spef)}"
     
     # create workspace instance
     workspace = Workspace()
     workspace.directory = directory
-    workspace.design.name = design_name
-    workspace.design.top_module = top_module
+    workspace.design.name = parameters.data["Design"]
+    workspace.design.top_module = parameters.data["Top module"]
     workspace.design.origin_def = f"{directory}/origin/{os.path.basename(origin_def)}"
     workspace.design.origin_verilog = f"{directory}/origin/{os.path.basename(origin_verilog)}"
     workspace.pdk = pdk
@@ -65,5 +69,8 @@ def create_step(workspace : Workspace,
     
     # build step space
     eda_module.build_step_space(step)
+    
+    # update config
+    eda_module.build_step_config(workspace, step, workspace.parameters)
     
     return step
