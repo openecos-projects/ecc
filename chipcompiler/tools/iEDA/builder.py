@@ -1,24 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-import sys
 import os
-    
-current_dir = os.path.dirname(os.path.abspath(__file__))
-    
 from chipcompiler.workspaces import WorkspaceStep, Workspace, Parameters
-
-def is_eda_exist() -> bool:
-    """
-    Check if the iEDA tool is installed and accessible.
-    """
-    ieda_bin_dir = os.path.abspath(os.path.join(current_dir, '../../thirdparty/iEDA/bin'))
-    sys.path.insert(0, ieda_bin_dir)
-    
-    try:
-        import ieda_py
-        return True
-    except ImportError:
-        return False
 
 def build_step(workspace: Workspace, 
                step_name: str,
@@ -84,8 +67,8 @@ def build_step(workspace: Workspace,
     # build feature paths
     step.feature = {
         "dir": f"{step.directory}/feature",
-        "db": f"{step.directory}/feature/{step.name}.db.json",
-        "step": f"{step.directory}/feature/{step.name}.step.json"
+        "db": f"{step.directory}/report/{step.name}.db.json",
+        "step": f"{step.directory}/report/{step.name}.step.json"
     }
     
     # build report paths
@@ -129,7 +112,7 @@ def build_step_space(step: WorkspaceStep) -> None:
     os.makedirs(step.log.get("dir", f"{step.directory}/log"), exist_ok=True)
     os.makedirs(step.script.get("dir", f"{step.directory}/script"), exist_ok=True)
     os.makedirs(step.analysis.get("dir", f"{step.directory}/analysis"), exist_ok=True)
-    
+
 def build_step_config(workspace: Workspace,
                       step: WorkspaceStep, 
                       parameters: Parameters):
@@ -261,6 +244,8 @@ def build_step_config(workspace: Workspace,
         
     # copy files to origin folder
     import shutil
+    # Get the directory of the current script
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     default_dir = os.path.abspath(os.path.join(current_dir, 'configs'))
     shutil.copytree(default_dir, step.config["dir"], dirs_exist_ok=True)
     
@@ -273,17 +258,3 @@ def build_step_config(workspace: Workspace,
     _update_hold()
     _update_setup()
     _update_router()
-
-def run_step(workspace: Workspace,
-             step: WorkspaceStep) -> bool:
-    if not is_eda_exist():
-        return False
-    
-    from chipcompiler.tools.iEDA.engine import IEDAEngine
-    eda_inst = IEDAEngine(workspace, step)
-    
-    return True
-
-def get_eda(workspace: Workspace,
-            step: WorkspaceStep) -> None:
-    pass

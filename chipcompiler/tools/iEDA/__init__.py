@@ -1,12 +1,18 @@
 from .builder import (
-    is_eda_exist,
     build_step, 
     build_step_space,
-    build_step_config,
+    build_step_config
+)
+
+from .runner import (
     run_step
 )
 
 from .engine import IEDAEngine
+
+from .utility import (
+    is_eda_exist
+)
 
 
 __all__ = [
