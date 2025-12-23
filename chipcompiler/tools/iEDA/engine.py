@@ -10,7 +10,7 @@ class IEDAEngine:
         try:
             from chipcompiler.tools.iEDA.utility import is_eda_exist
             if is_eda_exist():
-                from .bin import ieda_py as ieda
+                from chipcompiler.tools.iEDA.bin import ieda_py as ieda
         except ImportError:
             raise ImportError("iEDA tool is not installed or not found.")
     
