@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.workspaces import Workspace, WorkspaceStep, PDK, Parameters
+from chipcompiler.data import Workspace, WorkspaceStep, PDK, Parameters
 import logging
 
 def load_eda_module(eda_tool: str):

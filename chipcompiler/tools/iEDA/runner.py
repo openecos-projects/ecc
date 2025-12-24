@@ -3,7 +3,7 @@
 import sys
 import os
        
-from chipcompiler.workspaces import WorkspaceStep, Workspace, Parameters
+from chipcompiler.data import WorkspaceStep, Workspace, Parameters
 from chipcompiler.tools.iEDA.engine import IEDAEngine
 from chipcompiler.tools.iEDA.utility import is_eda_exist
 

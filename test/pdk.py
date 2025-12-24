@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.workspaces import PDK
+from chipcompiler.data import PDK
 
 def get_pdk(pdk_name : str) -> PDK:
     """

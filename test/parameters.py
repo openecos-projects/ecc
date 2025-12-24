@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.workspaces import Parameters
+from chipcompiler.data import Parameters
 
 def get_parameters(pdk_name : str, design : str, path : str = "") -> Parameters:
     """

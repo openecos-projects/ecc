@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
-from chipcompiler.workspaces import WorkspaceStep, Workspace, Parameters
+from chipcompiler.data import WorkspaceStep, Workspace, Parameters
 
 def build_step(workspace: Workspace, 
                step_name: str,
