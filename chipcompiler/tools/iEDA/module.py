@@ -320,7 +320,7 @@ class IEDAModule:
     # placement api
     ########################################################################
     def run_placement(self, config: str):
-        self.ieda.run_placer(self.config)
+        self.ieda.run_placer(config)
         
     def run_legalize(self, config: str):
         self.ieda.run_incremental_flow(config)
@@ -469,4 +469,7 @@ class IEDAModule:
         self.ieda.read_vectors_nets_patterns(path=path)
     
     ########################################################################
+    # net optimization
     ########################################################################
+    def run_net_opt(self, config : str):
+        return self.ieda.run_no_fixfanout(config)

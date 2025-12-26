@@ -11,6 +11,10 @@ class EngineDB:
     def __init__(self, workspace : Workspace, eda : IEDAModule= None):
         self.workspace = workspace
         self.eda = eda
+    
+    @property
+    def engine(self):
+        return self.eda
 
     def create_db_engine(self, step: WorkspaceStep) -> bool:
         """

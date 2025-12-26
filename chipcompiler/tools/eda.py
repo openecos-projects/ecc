@@ -68,7 +68,8 @@ def create_step(workspace : Workspace,
     return step
 
 def run_step(workspace: Workspace,
-             step: WorkspaceStep) -> bool:
+             step: WorkspaceStep,
+             module = None) -> bool:
     """
     Run the given step using the provided EDA engine.
     """
@@ -77,4 +78,6 @@ def run_step(workspace: Workspace,
     if eda_module is None:
         return False
     
-    return eda_module.run_step(workspace, step)
+    return eda_module.run_step(workspace=workspace, 
+                               step=step,
+                               module=module)

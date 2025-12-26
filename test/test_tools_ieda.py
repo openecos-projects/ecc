@@ -23,8 +23,9 @@ from parameters import get_parameters
 def test_sky130_gcd():
     gcd_dir="{}/test/examples/sky130_test".format(root)
     
-    input_def = ""
-    input_verilog = "{}/chipcompiler/thirdparty/iEDA/scripts/design/sky130_gcd/result/verilog/gcd.v".format(root)
+    input_def = "/nfs/home/huangzengrong/ecos/aieda_fork/example/sky130_test/output/iEDA/result/gcd_fixFanout.def.gz"
+    input_verilog = "/nfs/home/huangzengrong/ecos/aieda_fork/example/sky130_test/output/iEDA/result/gcd_fixFanout.v.gz"
+    # input_verilog = "{}/chipcompiler/thirdparty/iEDA/scripts/design/sky130_gcd/result/verilog/gcd.v".format(root)
 
     sdc="{}/chipcompiler/thirdparty/iEDA/scripts/foundry/sky130/sdc/gcd.sdc".format(root)
     spef="{}/chipcompiler/thirdparty/iEDA/scripts/foundry/sky130/spef/gcd.spef".format(root)
@@ -48,6 +49,9 @@ def test_sky130_gcd():
     engine_flow = EngineFlow(workspace=workspace)
     engine_flow.build_default_steps()
     engine_flow.create_step_workspaces()
+
+    engine_flow.init_db_engine()
+    engine_flow.run_steps()
     
     # engine = EngineDB()
     # engine.create_db_engine(workspace, eda_step)

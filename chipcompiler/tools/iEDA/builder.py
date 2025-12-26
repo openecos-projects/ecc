@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
-from chipcompiler.data import WorkspaceStep, Workspace, Parameters
+from chipcompiler.data import WorkspaceStep, Workspace, Parameters, StepEnum
 
 def build_step(workspace: Workspace, 
                step_name: str,
@@ -24,19 +24,19 @@ def build_step(workspace: Workspace,
     
     # build config paths    
     step.config = {
-        'dir': f"{step.directory}/config",
-        "cts": f"{step.directory}/config/cts_default_config.json",
-        "db": f"{step.directory}/config/db_default_config.json",
-        "drc": f"{step.directory}/config/drc_default_config.json",
+        "dir": f"{step.directory}/config",
         "flow": f"{step.directory}/config/flow_config.json",
-        "fp": f"{step.directory}/config/fp_default_config.json",
-        "fixfanout": f"{step.directory}/config/no_default_config_fixfanout.json",
-        "place": f"{step.directory}/config/pl_default_config.json",
-        "pnp": f"{step.directory}/config/pnp_default_config.json",
-        "route": f"{step.directory}/config/rt_default_config.json",
-        "drv": f"{step.directory}/config/to_default_config_drv.json",
-        "hold": f"{step.directory}/config/to_default_config_hold.json",
-        "setup": f"{step.directory}/config/to_default_config_setup.json"
+        "db": f"{step.directory}/config/db_default_config.json",
+        f"{StepEnum.CTS.value}": f"{step.directory}/config/cts_default_config.json",
+        f"{StepEnum.DRC.value}": f"{step.directory}/config/drc_default_config.json",
+        f"{StepEnum.FLOORPLAN.value}": f"{step.directory}/config/fp_default_config.json",
+        f"{StepEnum.NETLIST_OPT.value}": f"{step.directory}/config/no_default_config_fixfanout.json",
+        f"{StepEnum.PLACEMENT.value}": f"{step.directory}/config/pl_default_config.json",
+        f"{StepEnum.PNP.value}": f"{step.directory}/config/pnp_default_config.json",
+        f"{StepEnum.ROUTING.value}": f"{step.directory}/config/rt_default_config.json",
+        f"{StepEnum.TIMING_OPT_DRV.value}": f"{step.directory}/config/to_default_config_drv.json",
+        f"{StepEnum.TIMING_OPT_HOLD.value}": f"{step.directory}/config/to_default_config_hold.json",
+        f"{StepEnum.TIMING_OPT_SETUP.value}": f"{step.directory}/config/to_default_config_setup.json"
     }
     
     # build input paths
@@ -128,13 +128,13 @@ def build_step_config(workspace: Workspace,
         
         # parameters
         config["ConfigPath"]["idb_path"] = step.config["db"]
-        config["ConfigPath"]["ifp_path"] = step.config["fp"]
-        config["ConfigPath"]["ipl_path"] = step.config["place"]
-        config["ConfigPath"]["irt_path"] = step.config["route"]
-        config["ConfigPath"]["idrc_path"] = step.config["drc"]
-        config["ConfigPath"]["icts_path"] = step.config["cts"]
-        config["ConfigPath"]["ito_path"] = step.config["drv"]
-        config["ConfigPath"]["ipnp_path"] = step.config["pnp"]
+        config["ConfigPath"]["ifp_path"] = step.config[f"{StepEnum.FLOORPLAN.value}"]
+        config["ConfigPath"]["ipl_path"] = step.config[f"{StepEnum.PLACEMENT.value}"]
+        config["ConfigPath"]["irt_path"] = step.config[f"{StepEnum.ROUTING.value}"]
+        config["ConfigPath"]["idrc_path"] = step.config[f"{StepEnum.DRC.value}"]
+        config["ConfigPath"]["icts_path"] = step.config[f"{StepEnum.CTS.value}"]
+        config["ConfigPath"]["ito_path"] = step.config[f"{StepEnum.TIMING_OPT_DRV.value}"]
+        config["ConfigPath"]["ipnp_path"] = step.config[f"{StepEnum.PNP.value}"]
         
         # write back
         json_write(step.config["flow"], config)
@@ -159,7 +159,7 @@ def build_step_config(workspace: Workspace,
     
     def _update_fixfanout():
         # read config
-        config = json_read(step.config["fixfanout"])
+        config = json_read(step.config[f"{StepEnum.NETLIST_OPT.value}"])
         
         # parameters
         buffers = parameters.data.get("Buffers", [])
@@ -171,11 +171,11 @@ def build_step_config(workspace: Workspace,
         config["max_fanout"] = parameters.data.get("Max fanout", 32)
         
         # write back
-        json_write(step.config["fixfanout"], config)
+        json_write(step.config[f"{StepEnum.NETLIST_OPT.value}"], config)
         
     def _update_placement():
         # read config
-        config = json_read(step.config["place"])
+        config = json_read(step.config[f"{StepEnum.PLACEMENT.value}"])
         
         # parameters
         config["PL"]["BUFFER"]["buffer_type"] = parameters.data.get("Buffers", [])
@@ -183,11 +183,11 @@ def build_step_config(workspace: Workspace,
         config["PL"]["Filler"]["second_iter"] = parameters.data.get("Fillers", [])
         
         # write back
-        json_write(step.config["place"], config)
+        json_write(step.config[f"{StepEnum.PLACEMENT.value}"], config)
         
     def _update_cts():
         # read config
-        config = json_read(step.config["cts"])
+        config = json_read(step.config[f"{StepEnum.CTS.value}"])
         
         # parameters
         buffers = parameters.data.get("Buffers", [])
@@ -199,48 +199,48 @@ def build_step_config(workspace: Workspace,
         config["buffer_type"] = parameters.data.get("Buffers", [])
         
         # write back
-        json_write(step.config["cts"], config)
+        json_write(step.config[f"{StepEnum.CTS.value}"], config)
         
     def _update_drv():
         # read config
-        config = json_read(step.config["drv"])
+        config = json_read(step.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
         
         # parameters
         config["DRV_insert_buffers"] = parameters.data.get("Buffers", [])
         
         # write back
-        json_write(step.config["drv"], config)
+        json_write(step.config[f"{StepEnum.TIMING_OPT_DRV.value}"], config)
         
     def _update_hold():
         # read config
-        config = json_read(step.config["hold"])
+        config = json_read(step.config[f"{StepEnum.TIMING_OPT_HOLD.value}"])
         
         # parameters
         config["hold_insert_buffers"] = parameters.data.get("Buffers", [])
         
         # write back
-        json_write(step.config["hold"], config)
+        json_write(step.config[f"{StepEnum.TIMING_OPT_HOLD.value}"], config)
         
     def _update_setup():
         # read config
-        config = json_read(step.config["setup"])
+        config = json_read(step.config[f"{StepEnum.TIMING_OPT_SETUP.value}"])
         
         # parameters
         config["setup_insert_buffers"] = parameters.data.get("Buffers", [])
         
         # write back
-        json_write(step.config["setup"], config)
+        json_write(step.config[f"{StepEnum.TIMING_OPT_SETUP.value}"], config)
         
     def _update_router():
         # read config
-        config = json_read(step.config["route"])
+        config = json_read(step.config[f"{StepEnum.ROUTING.value}"])
         
         # parameters
         config["RT"]["-bottom_routing_layer"] = parameters.data.get("Bottom layer", "")
         config["RT"]["-top_routing_layer"] = parameters.data.get("Top layer", "")
         
         # write back
-        json_write(step.config["route"], config)
+        json_write(step.config[f"{StepEnum.ROUTING.value}"], config)
         
     # copy files to origin folder
     import shutil
