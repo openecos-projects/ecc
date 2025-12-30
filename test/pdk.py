@@ -18,7 +18,7 @@ def PDK_ICS55() -> PDK:
     current_dir = os.path.split(os.path.abspath(__file__))[0]
     root = current_dir.rsplit('/', 1)[0]
 
-    pdk_root = "{}/icsprout55-pdk".format(root)
+    pdk_root = "{}/chipcompiler/thirdparty/icsprout55-pdk".format(root)
     stdcell_dir = "{}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100".format(pdk_root)
 
     stdcell_corner = "{}/ics55_LLSC_H7CR".format(stdcell_dir)
