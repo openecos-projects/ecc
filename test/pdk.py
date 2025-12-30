@@ -8,11 +8,37 @@ def get_pdk(pdk_name : str) -> PDK:
     """
     if pdk_name.lower() == "sky130":
         return PDK_SKY130()
+    elif pdk_name.lower() == "ics55":
+        return PDK_ICS55()
     else:
         return PDK()
 
+def PDK_ICS55() -> PDK:
+    import os
+    current_dir = os.path.split(os.path.abspath(__file__))[0]
+    root = current_dir.rsplit('/', 1)[0]
+
+    pdk_root = "{}/icsprout55-pdk".format(root)
+    stdcell_dir = "{}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100".format(pdk_root)
+
+    stdcell_corner = "{}/ics55_LLSC_H7CR".format(stdcell_dir)
+
+    pdk = PDK(
+        name="ics55",
+        version="V1p10C100",
+        tech="{}/prtech/techLEF/N551P6M.lef".format(pdk_root),
+        lefs = [
+            "{}/prtech/techLEF/N551P6M.lef".format(pdk_root),
+            "{}/lef/ics55_LLSC_H7CR_ecos.lef".format(stdcell_corner),
+        ],
+        libs = [
+            "{}/liberty/ics55_LLSC_H7CR_typ_tt_1p2_25_nldm.lib".format(stdcell_corner),
+        ]
+    )
+
+    return pdk
+
 def PDK_SKY130() -> PDK:
-    import sys
     import os
     current_dir = os.path.split(os.path.abspath(__file__))[0]
     root = current_dir.rsplit('/', 1)[0]
