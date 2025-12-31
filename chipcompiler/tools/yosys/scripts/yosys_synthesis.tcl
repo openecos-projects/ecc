@@ -8,18 +8,21 @@
 # This flows assumes it is beign executed in the yosys/ directory
 # but just to be sure, we go there
 if {[info script] ne ""} {
-    cd "[file dirname [info script]]/../"
+    cd "[file dirname [info script]]"
 }
 source global_var.tcl
 
 # process ABC script and write to temporary directory
 proc processAbcScript {abc_script} {
     global tmp_dir
-    set src_dir [file join [file dirname [info script]] ../src]
+    # AIG file is located in tmp_dir/
+    set aig_file [file join $tmp_dir lazy_man_synth_library.aig]
+
     set abc_out_path $tmp_dir/[file tail $abc_script]
 
     set raw [read -nonewline [open $abc_script r]]
-    set abc_script_recaig [string map -nocase [list "{REC_AIG}" [subst "$src_dir/lazy_man_synth_library.aig"]] $raw]
+    # Replace {REC_AIG} placeholder with absolute path to AIG file
+    set abc_script_recaig [string map -nocase [list "{REC_AIG}" $aig_file] $raw]
     set abc_out [open $abc_out_path w]
     puts -nonewline $abc_out $abc_script_recaig
 
@@ -29,7 +32,7 @@ proc processAbcScript {abc_script} {
 }
 
 # read liberty files and prepare some variables
-source scripts/init_tech.tcl
+source init_tech.tcl
 
 yosys plugin -i slang
 
@@ -139,7 +142,7 @@ foreach cell $dont_use_cells {
 
 # then perform bit-level optimization and mapping on all combinational clouds in ABC
 # pre-process abc file (written to tmp directory)
-set abc_comb_script   [processAbcScript scripts/abc-opt.script]
+set abc_comb_script   [processAbcScript abc-opt.script]
 
 # Generate abc.constr file dynamically
 set abc_constr_path "${tmp_dir}/abc.constr"
@@ -150,7 +153,7 @@ puts $abc_constr_file "set_load 0.015"
 close $abc_constr_file
 
 # call ABC
-yosys abc {*}$tech_cells_args -D $clk_period_ps -script $abc_comb_script -constr src/abc.constr -showtmp {*}$abc_dont_use_cells
+yosys abc {*}$tech_cells_args -D $clk_period_ps -script $abc_comb_script -constr ${abc_constr_path} -showtmp {*}$abc_dont_use_cells
 
 yosys clean -purge
 
