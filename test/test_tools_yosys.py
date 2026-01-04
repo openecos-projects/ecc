@@ -25,22 +25,22 @@ from parameters import get_parameters
 def test_ics55_gcd():
     gcd_dir="{}/test/examples/ics55_test".format(root)
 
-    input_verilog = "gcd.v"
+    input_def = ""
+    input_verilog = "/nfs/home/huangzengrong/ecos/testcase/gcd/gcd.v"
 
     parameters=get_parameters("ics55", "gcd")
     pdk = get_pdk("ics55")
 
     workspace = create_workspace(
         directory=gcd_dir,
-        origin_def=input_verilog,
+        origin_def=input_def,
         origin_verilog=input_verilog,
         pdk=pdk,
         parameters=parameters
     )
 
     engine_flow = EngineFlow(workspace=workspace)
-
-    engine_flow.add_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart)
+    engine_flow.build_default_steps()
 
     engine_flow.create_step_workspaces()
     engine_flow.run_steps()
