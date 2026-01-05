@@ -83,6 +83,10 @@ def run_step(workspace: Workspace,
         
     state = False
     match(step.name):
+        case StepEnum.FLOORPLAN.value:
+            state = run_floorplan(workspace=workspace, 
+                                  step=step, 
+                                  module=module)
         case StepEnum.NETLIST_OPT.value:
             state = run_net_opt(workspace=workspace, 
                                 step=step, 
@@ -289,14 +293,15 @@ def run_floorplan(workspace: Workspace,
                 core_util=util,
                 x_margin=margin[0],
                 y_margin=margin[1],
-                xy_ratio=aspect_ratio,
+                aspect_ratio=aspect_ratio,
             )
+        
         
         json_floorplan = workspace.parameters.data.get("Floorplan", {})
         
         # create tracks
         json_track = json_floorplan.get("Tracks", [])
-        for item in json_track.items():
+        for item in json_track:
             eda_inst.gern_track(layer=item.get("layer", ""),
                                 x_start=item.get("x start", 0),
                                 x_step=item.get("x step", 0),
@@ -307,8 +312,9 @@ def run_floorplan(workspace: Workspace,
         # auto place io pins
         json_iopin_place = json_floorplan.get("Auto place pin", {})
         eda_inst.auto_place_pins(layer=json_iopin_place.get("layer", ""),
-                                 width=json_iopin_place.get("width", ""),
-                                 height=json_iopin_place.get("height", ""))
+                                 width=json_iopin_place.get("width", 0),
+                                 height=json_iopin_place.get("height", 0),
+                                 sides=json_iopin_place.get("sides", []))
         
         # tap cell
         eda_inst.tapcell(tapcell=workspace.pdk.tap_cell,
@@ -320,7 +326,7 @@ def run_floorplan(workspace: Workspace,
         
         # IO placement
         json_io_pins = json_PDN.get("IO", {})
-        for item in json_io_pins.items():
+        for item in json_io_pins:
             net_name = item.get("net name", "")
             direction = item.get("direction", "")
             is_power = item.get("is power", 1)
@@ -330,7 +336,7 @@ def run_floorplan(workspace: Workspace,
         
         # PDN global connect
         json_global_connect = json_PDN.get("Global connect", {})
-        for item in json_global_connect.items():
+        for item in json_global_connect:
             net_name = item.get("net name", "")
             instance_pin_name = item.get("instance pin name", "")
             is_power = item.get("is power", 1)
@@ -354,7 +360,7 @@ def run_floorplan(workspace: Workspace,
         
         # PDN stripe
         json_pdn_stripe = json_PDN.get("Stripe", {})
-        for item in json_pdn_stripe.items():
+        for item in json_pdn_stripe:
             layer = item.get("layer", "")
             power_net = item.get("power net", "")
             ground_net = item.get("ground net", "")
@@ -362,8 +368,8 @@ def run_floorplan(workspace: Workspace,
             pitch = item.get("pitch", 0)
             offset = item.get("offset", 0)
             eda_inst.create_pdn_stripe(layer=layer,
-                                       power_net=power_net,
-                                       ground_net=ground_net,
+                                       net_power=power_net,
+                                       net_ground=ground_net,
                                        width=width,
                                        pitch=pitch,
                                        offset=offset)

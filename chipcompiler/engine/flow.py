@@ -16,8 +16,8 @@ class EngineFlow:
         # Flow step sequences
         steps = []
 
-        steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "iEDA", StateEnum.Unstart))
+        # steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+        # steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "iEDA", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.NETLIST_OPT, "iEDA", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "iEDA", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "iEDA", StateEnum.Unstart))
@@ -32,6 +32,9 @@ class EngineFlow:
         self.workspace.flow.data = {"steps" : steps}
         
         self.save()
+    
+    def has_init(self):
+        return True if len(self.workspace.flow.data.get("steps", [])) > 0 else False
     
     def init_flow_step(self,
                   step : StepEnum | str,
@@ -136,6 +139,17 @@ class EngineFlow:
                 return False
             
         return True
+    
+    def check_step_result(self,
+                          workspace_step : WorkspaceStep):
+        """
+        check step output exist
+        """
+        import os
+        if os.path.exists(workspace_step.output.get("def", "")) and \
+            os.path.exists(workspace_step.output.get("verilog", "")):
+                return True
+        return False
     
     def create_step_workspaces(self):
         """
@@ -243,13 +257,15 @@ class EngineFlow:
         p.start()
         p.join()
         
-        state =True
+        state = self.check_step_result(workspace_step=workspace_step)
         # end time
         end_time = time.time()
         elapsed_time = end_time - start_time
         runtime = "{}:{}:{}".format(int(elapsed_time // 3600), 
                                     int((elapsed_time % 3600) // 60), 
                                     int(elapsed_time % 60))
+        
+        
         
         # save state
         self.set_state(name=workspace_step.name,

@@ -44,7 +44,8 @@ def parameter_ics55(design : str, path : str) -> Parameters:
                 "Auto place pin" : {
                   "layer" : "MET3",
                   "width" : 300,
-                  "height" : 600  
+                  "height" : 600,
+                  "sides" : []  
                 },
                 "Tracks" :[
                     {
@@ -233,12 +234,13 @@ def parameter_sky130(design : str, path : str) -> Parameters:
             "Frequency max [MHz]" : 100,
             "Bottom layer" : "met1",
             "Top layer" : "met4",
-            "floorplan" : {
+            "Floorplan" : {
                 "Tap distance" : 14,
                 "Auto place pin" : {
                   "layer" : "met5",
                   "width" : 2000,
-                  "height" : 2000  
+                  "height" : 2000,
+                  "sides" : []  
                 },
                 "Tracks" :[
                     {

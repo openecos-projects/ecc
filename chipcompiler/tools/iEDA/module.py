@@ -10,7 +10,8 @@ class IEDAModule:
         try:
             from chipcompiler.tools.iEDA.utility import is_eda_exist
             if is_eda_exist():
-                from chipcompiler.tools.iEDA.bin import ieda_py as ieda
+                # from chipcompiler.tools.iEDA.bin import ieda_py as ieda
+                from chipcompiler.thirdparty.iEDA.bin import ieda_py as ieda
         except ImportError:
             raise ImportError("iEDA tool is not installed or not found.")
     
@@ -191,11 +192,11 @@ class IEDAModule:
                        core_site: str,
                        io_site: str,
                        corner_site: str,
-                       core_util: double=0.4,
-                       x_margin: double=0,
-                       y_margin: double=0,
-                       aspect_ratio: double=1,
-                       cell_area: double=0):
+                       core_util: double,
+                       x_margin: double,
+                       y_margin: double,
+                       aspect_ratio: double,
+                       cell_area: double):
         """
         init floorplan
         Example:
@@ -233,7 +234,7 @@ class IEDAModule:
             core_util=0,
             x_margin=0,
             y_margin=0,
-            xy_ratio=0,
+            aspect_ratio=0,
             cell_area=0)
 
     def init_floorplan_by_core_utilization(
@@ -258,7 +259,7 @@ class IEDAModule:
             core_util=core_util,
             x_margin=x_margin,
             y_margin=y_margin,
-            xy_ratio=aspect_ratio,
+            aspect_ratio=aspect_ratio,
             cell_area=cell_area)
 
     def gern_track(self, 

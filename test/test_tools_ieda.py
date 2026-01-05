@@ -25,7 +25,7 @@ def test_sky130_gcd():
     gcd_dir="{}/test/examples/sky130_test".format(root)
     
     input_def = "/nfs/home/huangzengrong/ecos/aieda_fork/example/sky130_test/output/iEDA/result/gcd_floorplan.def.gz"
-    input_verilog = "/nfs/home/huangzengrong/ecos/aieda_fork/example/sky130_test/output/iEDA/result/gcd_floorplan.v.gz"
+    input_verilog = "/nfs/home/huangzengrong/ecos/aieda_fork/example/sky130_test/output/iEDA/result/gcd_floorplan.v"
     # input_verilog = "{}/chipcompiler/thirdparty/iEDA/scripts/design/sky130_gcd/result/verilog/gcd.v".format(root)
 
     sdc="{}/chipcompiler/thirdparty/iEDA/scripts/foundry/sky130/sdc/gcd.sdc".format(root)
@@ -88,8 +88,8 @@ def test_ics55_gcd():
     engine_flow.run_steps()
     
 if __name__ == "__main__":
-    # test_sky130_gcd()
+    test_sky130_gcd()
     
-    test_ics55_gcd()
+    # test_ics55_gcd()
 
     exit(0)
