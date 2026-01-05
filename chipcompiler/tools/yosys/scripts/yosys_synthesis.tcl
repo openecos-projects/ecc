@@ -5,22 +5,33 @@
 # Authors:
 # - Philippe Sauter <phsauter@iis.ee.ethz.ch>
 
-# This flows assumes it is beign executed in the yosys/ directory
-# but just to be sure, we go there
 if {[info script] ne ""} {
-    cd "[file dirname [info script]]"
+    set script_dir "[file dirname [info script]]"
+    set data_dir "[file normalize [file join $script_dir ../data]]"
+    set global_var_path "[file join $data_dir global_var.tcl]"
+
+    # source global variables
+    # The global_var.tcl file is expected to be generated in the workspace/data/ directory
+    if {[file exists $global_var_path]} {
+        source $global_var_path
+    } else {
+        return -code error "global_var.tcl not found at $global_var_path"
+    }
+} else {
+    return -code error "Unable to determine script directory"
 }
-source global_var.tcl
 
 # process ABC script and write to temporary directory
 proc processAbcScript {abc_script} {
     global tmp_dir
-    # AIG file is located in tmp_dir/
-    set aig_file [file join $tmp_dir lazy_man_synth_library.aig]
+    # AIG file and abc-opt.script are located in script directory alongside the TCL scripts
+    set script_dir "[file dirname [info script]]"
+    set aig_file [file join $script_dir lazy_man_synth_library.aig]
+    set abc_script_path [file join $script_dir $abc_script]
 
     set abc_out_path $tmp_dir/[file tail $abc_script]
 
-    set raw [read -nonewline [open $abc_script r]]
+    set raw [read -nonewline [open $abc_script_path r]]
     # Replace {REC_AIG} placeholder with absolute path to AIG file
     set abc_script_recaig [string map -nocase [list "{REC_AIG}" $aig_file] $raw]
     set abc_out [open $abc_out_path w]

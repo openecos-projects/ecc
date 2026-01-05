@@ -26,7 +26,7 @@ set tie_high_port           "$::env(CELL_TIE_HIGH_PORT)"
 set lib_stdcell_list        [split "$::env(LIB_STDCELL)"]
 set lib_list                [split "$::env(LIB_ALL)"]
 
-set tmp_dir                 "$::env(RESULT_DIR)/tmp"
+set tmp_dir                 "$::env(DATA_DIR)/tmp"
 
 ###############
 

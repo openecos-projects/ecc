@@ -15,7 +15,7 @@ def get_yosys_command() -> list[str]:
         result = subprocess.run(
             ["nix", "run", "github:Emin017/ieda-infra#yosysWithSlang", "--", "--version"],
             capture_output=True,
-            timeout=10
+            timeout=600
         )
         if result.returncode == 0:
             return ["nix", "run", "github:Emin017/ieda-infra#yosysWithSlang", "--"]
