@@ -6,6 +6,6 @@
         "-thread_number": "50",
         "-enable_timing": "0",
         "-output_csv": "0",
-        "-output_inter_result": "0"
+        "-output_inter_result": "1"
     }
 }

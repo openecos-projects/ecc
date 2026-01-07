@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from numpy import double
+import os
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
 
 class KlayoutModule:
@@ -19,7 +19,7 @@ class KlayoutModule:
         gds_file = self.step.output.get("gds", None)
         img_file = self.step.output.get("image", None)
         
-        if gds_file is None or img_file is None:
+        if gds_file is None or img_file is None or not os.path.exists(gds_file):
             return False
         
         self.save_snapshot_image(gds_file=gds_file,

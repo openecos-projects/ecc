@@ -23,13 +23,13 @@ def parameter_ics55(design : str, path : str) -> Parameters:
             "Top module":"gcd",
             "Die" : {
                 "Size": [],
-                "Bounding box": []
+                "Bounding box": ""
             },
             "Core" : {
                 "Size": [],
-                "Bounding box": [],
+                "Bounding box": "",
                 "Utilitization": 0.4,
-                "Margin" : [0, 0],
+                "Margin" : [10, 10],
                 "Aspect ratio" : 1
             },
             "Max fanout" : 20,
@@ -212,13 +212,13 @@ def parameter_ics55(design : str, path : str) -> Parameters:
             "Top module":"s713",
             "Die" : {
                 "Size": [],
-                "Bounding box": []
+                "Bounding box": ""
             },
             "Core" : {
                 "Size": [],
-                "Bounding box": [],
+                "Bounding box": "",
                 "Utilitization": 0.2,
-                "Margin" : [0, 0],
+                "Margin" : [100, 100],
                 "Aspect ratio" : 1
             },
             "Max fanout" : 20,
@@ -413,7 +413,7 @@ def parameter_sky130(design : str, path : str) -> Parameters:
                 "Size": [],
                 "Bounding box": "",
                 "Utilitization": 0.2,
-                "Margin" : [0, 0],
+                "Margin" : [100, 100],
                 "Aspect ratio" : 1
             },
             "Max fanout" : 20,

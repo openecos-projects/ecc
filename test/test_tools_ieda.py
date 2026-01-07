@@ -24,10 +24,10 @@ from pdk import get_pdk
 from parameters import get_parameters
 
 def test_sky130_gcd():
-    gcd_dir="{}/test/examples/sky130_test".format(root)
+    workspace_dir="{}/test/examples/sky130_gcd".format(root)
     
     input_def = ""
-    input_verilog = "{}/chipcompiler/thirdparty/iEDA/scripts/design/sky130_gcd/result/verilog/gcd.v".format(root)
+    input_verilog = "{}/chipcompiler/thirdparty/iEDA/scripts/design/sky130_gcd/result/verilog/gcd.v".format(root) # verilog file
 
     # sdc="{}/chipcompiler/thirdparty/iEDA/scripts/foundry/sky130/sdc/gcd.sdc".format(root)
     spef="{}/chipcompiler/thirdparty/iEDA/scripts/foundry/sky130/spef/gcd.spef".format(root)
@@ -37,7 +37,7 @@ def test_sky130_gcd():
     pdk.spef = spef
 
     workspace = create_workspace(
-        directory=gcd_dir,
+        directory=workspace_dir,
         origin_def=input_def,
         origin_verilog=input_verilog,
         pdk=pdk,
@@ -69,10 +69,10 @@ def test_sky130_gcd():
   
 
 def test_ics55_gcd():
-    gcd_dir="{}/test/examples/ics55_test".format(root)
+    workspace_dir="{}/test/examples/ics55_gcd".format(root)
 
     input_def = ""
-    input_verilog = "/nfs/home/huangzengrong/ecos/testcase/gcd/gcd.v"
+    input_verilog = "/nfs/home/huangzengrong/ecos/testcase/gcd/gcd.v" # RTL file
     # sdc="/nfs/home/huangzengrong/ecos/testcase/gcd/default.sdc"
     # sdc="{}/chipcompiler/thirdparty/iEDA/scripts/foundry/sky130/sdc/gcd.sdc".format(root)
     spef="{}/chipcompiler/thirdparty/iEDA/scripts/foundry/sky130/spef/gcd.spef".format(root)
@@ -83,7 +83,7 @@ def test_ics55_gcd():
     pdk.spef = spef
 
     workspace = create_workspace(
-        directory=gcd_dir,
+        directory=workspace_dir,
         origin_def=input_def,
         origin_verilog=input_verilog,
         pdk=pdk,
@@ -92,7 +92,15 @@ def test_ics55_gcd():
 
     engine_flow = EngineFlow(workspace=workspace)
     if not engine_flow.has_init():
-        engine_flow.build_default_steps()
+        engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="yosys", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.PLACEMENT, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.CTS, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.ROUTING, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.DRC, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.FILLER, tool="iEDA", state=StateEnum.Unstart)
     engine_flow.create_step_workspaces()
     
     log_workspace(workspace=workspace)
@@ -100,12 +108,13 @@ def test_ics55_gcd():
     engine_flow.run_steps()
     
 def test_ics55_s713():
-    gcd_dir="{}/test/examples/ics55_test".format(root)
+    workspace_dir="{}/test/examples/ics55_s713".format(root)
 
-    input_def = "/nfs/share/home/zhaoxueyan/dataset_cx55/20251120/task_100701/04_floorplan/s713_floorplan.def"
-    input_verilog = "/nfs/share/home/zhaoxueyan/dataset_cx55/20251120/task_100701/04_floorplan/s713_floorplan.v"
+    # input_def = "/nfs/share/home/zhaoxueyan/dataset_cx55/20251120/task_100701/04_floorplan/s713_floorplan.def"
+    input_def = ""
+    input_verilog = "/nfs/share/home/zhaoxueyan/dataset_cx55/20251120/task_100701/04_floorplan/s713_floorplan.v" # verilog file
 
-    spef="{}/chipcompiler/thirdparty/iEDA/scripts/foundry/sky130/spef/gcd.spef".format(root)
+    spef=""
 
     parameters=get_parameters("ics55", "s713")
     # use special different pdk setting for yosys
@@ -113,7 +122,7 @@ def test_ics55_s713():
     pdk.spef = spef
 
     workspace = create_workspace(
-        directory=gcd_dir,
+        directory=workspace_dir,
         origin_def=input_def,
         origin_verilog=input_verilog,
         pdk=pdk,
@@ -122,7 +131,15 @@ def test_ics55_s713():
 
     engine_flow = EngineFlow(workspace=workspace)
     if not engine_flow.has_init():
-        engine_flow.build_default_steps()
+        engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="yosys", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.PLACEMENT, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.CTS, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.ROUTING, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.DRC, tool="iEDA", state=StateEnum.Unstart)
+        engine_flow.add_step(step=StepEnum.FILLER, tool="iEDA", state=StateEnum.Unstart)
     engine_flow.create_step_workspaces()
     
     log_workspace(workspace=workspace)
@@ -130,9 +147,9 @@ def test_ics55_s713():
     engine_flow.run_steps()
     
 if __name__ == "__main__":
-    test_sky130_gcd()
+    # test_sky130_gcd()
     
-    # test_ics55_gcd()
+    test_ics55_gcd()
     
     # test_ics55_s713()
 
