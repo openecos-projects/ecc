@@ -1,0 +1,68 @@
+{
+  "build": {
+    "beforeDevCommand": "pnpm run dev",
+    "beforeBuildCommand": "pnpm run build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist",
+    "withGlobalTauri": false
+  },
+  "package": {
+    "productName": "ECC",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "window": {
+        "all": false,
+        "close": true,
+        "hide": true,
+        "show": true,
+        "maximize": true,
+        "minimize": true,
+        "unmaximize": true,
+        "unminimize": true,
+        "startDragging": true,
+        "setResizable": true,
+        "setTitle": true
+      },
+      "protocol": {
+        "asset": true,
+        "assetScope": ["**"]
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.ecc.client"
+    },
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "resizable": true,
+        "title": "ECC",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1280,
+        "minHeight": 800,
+        "maxWidth": 2560,
+        "maxHeight": 1600,
+        "decorations": true,
+        "transparent": false,
+        "center": true,
+        "visible": false,
+        "fileDropEnabled": false,
+        "alwaysOnTop": false,
+        "focus": true
+      }
+    ]
+  }
+}
+
