@@ -38,7 +38,10 @@
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "com.ecc.client"
+      "identifier": "com.ecc.client",
+      "icon": [
+        "icons/icon.png"
+      ]
     },
     "security": {
       "csp": null
