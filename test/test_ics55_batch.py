@@ -15,6 +15,6 @@ if __name__ == "__main__":
     
     run_benchmark(benchmark_json=benchmark_json,
                   target_dir="/nfs/home/huangzengrong/benchmark",
-                  batch_name="ics55_batch_1")
+                  batch_name="ics55_batch_front")
 
     exit(0)

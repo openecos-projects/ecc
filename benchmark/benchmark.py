@@ -49,6 +49,12 @@ def run_benchmark(benchmark_json : str,
     os.makedirs(task_dir, exist_ok=True)
     
     designs = benchmarks.get("designs", [])
+    
+    # Prepare tasks
+    import multiprocessing
+    
+    # Create a list to hold all design tasks
+    design_tasks = []
     for design_info in designs:
         if design != "" and design != design_info.get("Design", ""):
             continue
@@ -64,11 +70,38 @@ def run_benchmark(benchmark_json : str,
         if not value_is_ok:
             raise ValueError(f"Invalid design info for {design_info.get('id', '')}, missing required fields")
         
-        run_single_design(workspace_dir=f"{task_dir}/{design_info.get('id', '')}",
-                          pdk_name=benchmarks.get("pdk", ""),
-                          design_info=design_info)
-
-
+        # Collect task parameters
+        design_tasks.append((f"{task_dir}/{design_info.get('id', '')}", 
+                           benchmarks.get("pdk", ""),
+                           design_info,))
+    
+    # Run tasks with manual process management (max 10 concurrent processes)
+    max_processes = 10
+    running_processes = []
+    
+    for task_args in design_tasks:
+        # If we've reached max processes, wait for any to complete
+        if len(running_processes) >= max_processes:
+            # Check for completed processes
+            for i, p in enumerate(running_processes):
+                if not p.is_alive():
+                    del running_processes[i]
+                    break
+            else:
+                # No completed processes, wait briefly
+                import time
+                time.sleep(0.1)
+                continue
+        
+        # Create a new non-daemon process
+        p = multiprocessing.Process(target=run_single_design, args=task_args)
+        p.daemon = False  # Ensure process is not daemon so it can create children
+        p.start()
+        running_processes.append(p)
+    
+    # Wait for all remaining processes to complete
+    for p in running_processes:
+        p.join()
   
 def run_single_design(workspace_dir : str,
                       pdk_name : str,
