@@ -75,17 +75,23 @@ def run_single_design(workspace_dir : str,
     parameters.data["Frequency max [MHz]"] = design_info.get("Frequency max [MHz]", 100)
     
     pdk = get_pdk(pdk_name=pdk_name)
-    
+
     input_rtl = design_info.get("rtl", "")
     input_verilog = design_info.get("netlist", "")
-    
+    input_filelist = design_info.get("filelist", "")
+
+    # Determine the input file for the first step:
+    # - If RTL/filelist exists: use RTL as input, add SYNTHESIS step
+    # - Otherwise: use pre-synthesized netlist, skip SYNTHESIS
+    # Note: origin_verilog can be either RTL or netlist depending on the flow
     steps = []
-    if os.path.exists(input_rtl):
+    input_netlist = ""
+    if os.path.exists(input_rtl) or os.path.exists(input_filelist):
         input_netlist = input_rtl
         steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    else:
-        if os.path.exists(input_verilog):    
-            input_netlist = input_verilog
+    elif os.path.exists(input_verilog):
+        input_netlist = input_verilog
+        input_filelist = ""
             
     steps.append((StepEnum.FLOORPLAN, "iEDA", StateEnum.Unstart))
     steps.append((StepEnum.NETLIST_OPT, "iEDA", StateEnum.Unstart))
@@ -96,13 +102,14 @@ def run_single_design(workspace_dir : str,
     steps.append((StepEnum.DRC, "iEDA", StateEnum.Unstart))
     steps.append((StepEnum.FILLER, "iEDA", StateEnum.Unstart))
             
-    # create workspace        
+    # create workspace
     workspace = create_workspace(
         directory=workspace_dir,
         origin_def="",
         origin_verilog=input_netlist,
         pdk=pdk,
-        parameters=parameters
+        parameters=parameters,
+        input_filelist=input_filelist
     )
     
     engine_flow = EngineFlow(workspace=workspace)

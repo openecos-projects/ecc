@@ -40,6 +40,7 @@ class OriginDesign:
     top_module : str = "" # top module name
     origin_def : str = "" # original def file path
     origin_verilog : str = "" # original verilog file path
+    input_filelist : str = "" # input filelist for synthesis
     
 @dataclass
 class Flow:
@@ -94,7 +95,28 @@ def create_workspace(directory : str,
                      origin_def : str,
                      origin_verilog : str,
                      pdk : PDK,
-                     parameters : Parameters) -> Workspace:
+                     parameters : Parameters,
+                     input_filelist : str = "") -> Workspace:
+    """
+    Create a workspace for chip design flow.
+
+    Args:
+        directory: Workspace directory path
+        origin_def: Original DEF file path (for physical design)
+        origin_verilog: Original verilog file path (RTL or synthesized netlist)
+        pdk: PDK information (LEF, Liberty, SDC, etc.)
+        parameters: Design parameters (clock, frequency, etc.)
+        input_filelist: Optional filelist for synthesis (SystemVerilog sources)
+
+    Returns:
+        Workspace instance with all paths configured
+
+    Note:
+        - origin_verilog can be either RTL (requires SYNTHESIS step) or
+          pre-synthesized netlist (skips SYNTHESIS)
+        - input_filelist takes priority over origin_verilog for synthesis when both exist
+        - All input files are copied to workspace/origin/ directory
+    """
     # create workspace directory
     import os
     os.makedirs(directory, exist_ok=True)
@@ -119,10 +141,14 @@ def create_workspace(directory : str,
     if os.path.exists(origin_def):
         shutil.copy(origin_def, f"{directory}/origin/{os.path.basename(origin_def)}")
         workspace.design.origin_def = f"{directory}/origin/{os.path.basename(origin_def)}"
-        
+
     if os.path.exists(origin_verilog):
         shutil.copy(origin_verilog, f"{directory}/origin/{os.path.basename(origin_verilog)}")
         workspace.design.origin_verilog = f"{directory}/origin/{os.path.basename(origin_verilog)}"
+
+    if os.path.exists(input_filelist):
+        shutil.copy(input_filelist, f"{directory}/origin/{os.path.basename(input_filelist)}")
+        workspace.design.input_filelist = f"{directory}/origin/{os.path.basename(input_filelist)}"
         
     if os.path.exists(pdk.sdc):
         shutil.copy(pdk.sdc, f"{directory}/origin/{os.path.basename(pdk.sdc)}")
@@ -158,6 +184,7 @@ def log_workspace(workspace : Workspace):
     workspace.logger.info("top module     : %s", workspace.design.top_module)
     workspace.logger.info("origin def     : %s", workspace.design.origin_def)
     workspace.logger.info("origin verilog : %s", workspace.design.origin_verilog)
+    workspace.logger.info("input filelist : %s", workspace.design.input_filelist)
     workspace.logger.info("sdc            : %s", workspace.pdk.sdc)
     workspace.logger.info("spef           : %s", workspace.pdk.spef)
     workspace.logger.info("######################################################################")
