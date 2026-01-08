@@ -13,16 +13,16 @@
         <button @click="activeTab = 'chat'" :class="[
           'p-1.5 rounded transition-all',
           activeTab === 'chat'
-            ? 'text-(--accent-color) bg-(--bg-secondary)'
-            : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-secondary)'
+            ? 'text-(--accent-color) bg-(--accent-color)/20 border-(--accent-color)/50' : 'text-(--text-secondary) border-transparent hover:bg-(--bg-hover)',
+          'h-8 px-2 flex items-center gap-1.5 rounded border transition-all'
         ]" title="AI Chat">
           <i class="ri-chat-3-line text-base"></i>
         </button>
         <button @click="activeTab = 'inspector'" :class="[
           'p-1.5 rounded transition-all',
           activeTab === 'inspector'
-            ? 'text-(--accent-color) bg-(--bg-secondary)'
-            : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-secondary)'
+            ? 'text-(--accent-color) bg-(--accent-color)/20 border-(--accent-color)/50' : 'text-(--text-secondary) border-transparent hover:bg-(--bg-hover)',
+          'h-8 px-2 flex items-center gap-1.5 rounded border transition-all'
         ]" title="Inspector">
           <i class="ri-file-list-3-line text-base"></i>
         </button>
