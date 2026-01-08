@@ -21,11 +21,22 @@ custom-protocol = ["tauri/custom-protocol"]
 
 # 性能优化配置
 [profile.dev]
-opt-level = 1  # 开发时启用基本优化
+opt-level = 2  # 开发时启用更多优化
+debug = 0     # 减少调试信息
 
 [profile.release]
 codegen-units = 1
 lto = true
-opt-level = 'z'  # 优化二进制大小和性能
+opt-level = 3  # 最高级别的性能优化
 strip = true     # 移除调试符号
+panic = 'abort'  # 发生panic时直接终止，减少运行时开销
+incremental = false
+rpath = false
+overflow-checks = false  # 禁用整数溢出检查，提升性能
+[profile.release.package.tauri]
+overflow-checks = false
+[profile.release.package.tauri-runtime-wry]
+opt-level = 3
+[profile.release.package.wry]
+opt-level = 3
 

@@ -1,0 +1,28 @@
+{
+    "benchmark_dir" : "/nfs/share/home/qiming/benchmark/dataset",
+    "target_dir" : "/nfs/home/huangzengrong/benchmark",
+    "batch_name" : "ics55_batch_2",
+    "pdk" : "ics55",
+    "designs" : [
+        {
+            "id" : "ics55_00001",
+            "rtl" : "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/gcd/rtl/gcd.v",
+            "netlist" : "/nfs/share/home/qiming/benchmark/dataset/netlist/ics55/gcd/rtl/gcd.v",
+            "Design" : "gcd",
+            "Top module":"gcd",
+            "Clock" : "clk",
+            "Frequency max [MHz]" : 100,
+            "info" : ""
+        },
+        {
+            "id" : "ics55_00002",
+            "rtl" : "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/s713/rtl/s713.v",
+            "netlist" : "/nfs/share/home/qiming/benchmark/dataset/netlist/ics55/s713/rtl/s713.v",
+            "Design" : "s713",
+            "Top module":"s713",
+            "Clock" : "CK",
+            "Frequency max [MHz]" : 100,
+            "info" : ""
+        }
+    ]
+}
