@@ -30,25 +30,22 @@ app.use(router)
 app.mount('#app')
 
 // 在 Tauri 环境中，通知后端应用已准备就绪
-if ('__TAURI_IPC__' in window) {
-  // 打印调试信息
-  console.log('=== Frontend Debug Info ===')
-  console.log('window.innerWidth:', window.innerWidth)
-  console.log('window.innerHeight:', window.innerHeight)
-  console.log('window.devicePixelRatio:', window.devicePixelRatio)
-  console.log('document.body.clientWidth:', document.body.clientWidth)
-  console.log('document.body.clientHeight:', document.body.clientHeight)
-  
-  // 等待路由和渲染完成
-  router.isReady().then(() => {
-    // 再等待一帧确保渲染完成
-    requestAnimationFrame(() => {
+const isTauri = !!(window as any).__TAURI_IPC__ || !!(window as any).__TAURI_METADATA__;
+
+if (isTauri) {
+  // 异步触发窗口显示，不阻塞主流程
+  (async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await router.isReady();
+      // 等待 DOM 渲染
       requestAnimationFrame(() => {
-        console.log('Application ready')
-        console.log('After render - window.innerWidth:', window.innerWidth)
-        console.log('After render - window.innerHeight:', window.innerHeight)
-      })
-    })
-  })
+        invoke('show_main_window').catch(console.error);
+        console.log('ECC Window show signal sent');
+      });
+    } catch (e) {
+      console.error('Failed to signal window show:', e);
+    }
+  })();
 }
 
