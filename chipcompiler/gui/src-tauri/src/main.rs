@@ -3,6 +3,7 @@
 use std::thread;
 use std::time::Duration;
 use tauri::Manager;
+use tauri_plugin_fs::FsExt;
 
 #[derive(serde::Serialize)]
 struct PyResult {
@@ -46,18 +47,44 @@ fn show_main_window(window: tauri::Window) {
     println!("Window shown via frontend signal");
 }
 
+/// 动态授予文件系统访问权限
+/// 
+/// 此命令允许前端在运行时请求访问特定目录的权限，
+/// 实现了最小权限原则：应用启动时无全盘访问，仅在用户明确操作后动态授予。
+#[tauri::command]
+async fn request_project_permission(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use std::path::PathBuf;
+    
+    // 获取文件系统作用域管理器
+    let scope = app.fs_scope();
+    let path_buf = PathBuf::from(&path);
+    
+    // 递归允许访问该目录及其子目录
+    scope
+        .allow_directory(&path_buf, true)
+        .map_err(|e| format!("无法授予访问权限 {}: {}", path_buf.display(), e))?;
+    
+    println!("✅ 已授予文件系统访问权限: {}", path);
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
+
 
             let window_clone = window.clone();
             thread::spawn(move || {
                 thread::sleep(Duration::from_secs(1));
                 if let Ok(false) = window_clone.is_visible() {
                     let _ = window_clone.show();
+                    // #[cfg(debug_assertions)] 
+                    // window_clone.open_devtools();
                     println!("Window shown via safety timeout");
                 }
             });
@@ -76,7 +103,12 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![run_python, show_main_window])
+
+        .invoke_handler(tauri::generate_handler![
+            run_python,
+            show_main_window,
+            request_project_permission
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -10,6 +10,7 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import TopBar from '../components/TopBar.vue'
 import WelcomePage from '../components/WelcomePage.vue'
@@ -17,7 +18,7 @@ import { useProject } from '../composables/useProject'
 import type { Project } from '../types'
 
 const router = useRouter()
-const { recentProjects, openProject, newProject, importProject } = useProject()
+const { recentProjects, openProject, newProject, importProject, loadRecentProjects } = useProject()
 
 const handleOpenProject = async () => {
   const success = await openProject()
@@ -38,4 +39,8 @@ const handleOpenRecent = async (project: Project) => {
   const success = await openProject(project)
   if (success) router.push('/workspace')
 }
+
+onMounted(async () => {
+  await loadRecentProjects();
+})
 </script>
