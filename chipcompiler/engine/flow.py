@@ -1,8 +1,13 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, log_workspace
-from chipcompiler.data import StateEnum, StepEnum
+
+import os
+import time
+from multiprocessing import Process
+        
+from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
 from chipcompiler.engine import EngineDB
+from chipcompiler.utility import track_process_memory
 
 class EngineFlow:
     def __init__(self, workspace : Workspace):
@@ -47,6 +52,7 @@ class EngineFlow:
             "tool" : tool, # eda tool name
             "state" : state_value, # step state
             "runtime" : "", # step run time
+            "peak memory (mb)" : 0, # step peak memory
             "info" : {} # step additional infomation
         }
         
@@ -108,14 +114,17 @@ class EngineFlow:
                  name : str,
                  tool : str,
                  state : str | StateEnum,
-                 runtime : str=None) -> bool:
+                 runtime : str=None,
+                 peak_memory : float=None) -> bool:
         state_value = state.value if isinstance(state, StateEnum) else state
         for step in self.workspace.flow.data.get("steps", []):
             if step.get("name") == name and step.get("tool") == tool:
                 step["state"] = state_value
                 if runtime is not None:
                     step["runtime"] = runtime
-                
+                if peak_memory is not None:
+                    step["peak memory (mb)"] = peak_memory
+
                 self.save()
                 return True
             
@@ -126,6 +135,7 @@ class EngineFlow:
         for step in self.workspace.flow.data.get("steps", []):
             step["state"] = StateEnum.Unstart.value
             step["runtime"] = ""
+            step["peak memory (mb)"] = 0
             
         self.save()
         
@@ -253,7 +263,6 @@ class EngineFlow:
             return StateEnum.Success
                         
         from chipcompiler.tools import create_step, run_step
-        import time
         
         #set timer
         start_time = time.time()
@@ -263,11 +272,27 @@ class EngineFlow:
                        tool=workspace_step.tool,
                        state=StateEnum.Ongoing)
         
-        # run steps
-        from multiprocessing import Process
-        p = Process(target=run_step, args=(self.workspace, workspace_step, ))
+        # run step in a separate process
+        p = Process(target=run_step, args=(self.workspace, workspace_step))
         p.start()
+        
+        # track memory usage in another thread
+        from threading import Thread
+        
+        # track memory usage
+        peak_memory_result = [0]
+        def memory_tracker_wrapper():
+            peak_memory_result[0] = track_process_memory(p.pid)
+        
+        tracker_thread = Thread(target=memory_tracker_wrapper, daemon=True)
+        tracker_thread.start()
+        # wait for step process to finish
         p.join()
+        # get peak memory usage
+        tracker_thread.join(timeout=1.0)
+        
+        # get peak memory in mb
+        peak_memory_mb = peak_memory_result[0] / 1024.0
         
         # end time
         end_time = time.time()
@@ -276,18 +301,17 @@ class EngineFlow:
                                     int((elapsed_time % 3600) // 60), 
                                     int(elapsed_time % 60))
         
-        
-        
         # save state
         state=StateEnum.Success if self.check_step_result(workspace_step=workspace_step) else StateEnum.Imcomplete
         self.set_state(name=workspace_step.name,
                        tool=workspace_step.tool,
                        state=state,
-                       runtime=runtime)
+                       runtime=runtime,
+                       peak_memory=peak_memory_mb)
         
         if state == StateEnum.Success:
             from chipcompiler.tools import save_layout_image
             save_layout_image(workspace=self.workspace,
-                           step=workspace_step)
+                              step=workspace_step)
         
         return state
