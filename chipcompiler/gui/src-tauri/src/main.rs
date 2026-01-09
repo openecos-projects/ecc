@@ -41,6 +41,43 @@ async fn run_python(script: String, args: Option<Vec<String>>) -> Result<PyResul
 }
 
 #[tauri::command]
+async fn call_python_func(
+    script_path: String,
+    func_name: String,
+    args: Option<serde_json::Value>,
+) -> Result<PyResult, String> {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    let mut bridge_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    bridge_path.push("..");
+    bridge_path.push("python");
+    bridge_path.push("bridge.py");
+
+    let mut resolved_script_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    resolved_script_path.push("..");
+    resolved_script_path.push("python");
+    resolved_script_path.push(&script_path);
+
+    let interpreter = if cfg!(windows) { "python" } else { "python3" };
+    let args_json = args.unwrap_or(serde_json::json!({})).to_string();
+
+    let output = Command::new(interpreter)
+        .arg(&bridge_path)
+        .arg(&resolved_script_path)
+        .arg(&func_name)
+        .arg(args_json)
+        .output()
+        .map_err(|e| format!("Failed to execute python bridge: {}", e))?;
+
+    Ok(PyResult {
+        code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+    })
+}
+
+#[tauri::command]
 fn show_main_window(window: tauri::Window) {
     window.show().unwrap();
     window.set_focus().unwrap();
@@ -59,16 +96,19 @@ async fn request_project_permission(app: tauri::AppHandle, path: String) -> Resu
     let scope = app.fs_scope();
     let path_buf = PathBuf::from(&path);
     
-    // 递归允许访问该目录及其子目录
+    // 递归允许访问该目录及其子目录 (文件系统)
     scope
         .allow_directory(&path_buf, true)
-        .map_err(|e| format!("无法授予访问权限 {}: {}", path_buf.display(), e))?;
-    
+        .map_err(|e| format!("无法授予文件系统访问权限 {}: {}", path_buf.display(), e))?;
+
+    // 在 Tauri v2 中，convertFileSrc 自动使用 fs scope，不需要单独的 asset protocol scope
     println!("✅ 已授予文件系统访问权限: {}", path);
     Ok(())
 }
 
 fn main() {
+    use std::path::PathBuf;
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
@@ -77,6 +117,20 @@ fn main() {
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
 
+            // 自动授予内置 data 目录的访问权限，以便加载演示数据
+            let mut data_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            data_path.push("..");
+            data_path.push("data");
+            
+            if data_path.exists() {
+                let final_path = data_path.canonicalize().unwrap_or(data_path.clone());
+                let scope = app.fs_scope();
+                if let Err(e) = scope.allow_directory(&final_path, true) {
+                    eprintln!("❌ 授予 fs scope 失败: {}", e);
+                } else {
+                    println!("✅ 已授予 fs scope 访问权限: {:?}", final_path);
+                }
+            }
 
             let window_clone = window.clone();
             thread::spawn(move || {
@@ -106,6 +160,7 @@ fn main() {
 
         .invoke_handler(tauri::generate_handler![
             run_python,
+            call_python_func,
             show_main_window,
             request_project_permission
         ])

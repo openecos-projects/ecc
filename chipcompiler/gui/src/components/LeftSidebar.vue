@@ -190,6 +190,9 @@
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
+import { useTauri } from '@/composables/useTauri'
+
+const { isInTauri, ensureTauri } = useTauri()
 
 const route = useRoute()
 const isLoading = ref(false)
@@ -210,7 +213,7 @@ const flowStages = [
   { label: 'Config', path: 'configure', icon: 'ri-settings-3-line', group: 'setup', completed: false, available: true },
   { label: 'Synth', path: 'synthesis', icon: 'ri-node-tree', group: 'run', completed: true, available: true },
   { label: 'Floor', path: 'floorplan', icon: 'ri-layout-4-line', group: 'run', completed: true, available: true },
-  { label: 'Place', path: 'place', icon: 'ri-focus-2-line', group: 'run', completed: false, available: false },
+  { label: 'Place', path: 'place', icon: 'ri-focus-2-line', group: 'run', completed: true, available: true },
   { label: 'CTS', path: 'cts', icon: 'ri-git-merge-line', group: 'run', completed: false, available: false },
   { label: 'Route', path: 'route', icon: 'ri-route-line', group: 'run', completed: false, available: false },
   { label: 'Signoff', path: 'signoff', icon: 'ri-checkbox-circle-line', group: 'run', completed: false, available: false }
@@ -230,35 +233,46 @@ const toggleNode = (nodeId: string) => {
 }
 
 const handleRunFlow = async () => {
-  // 增加环境检查：检查是否存在 Tauri 环境
-  const isTauriEnv = (window as any).__TAURI_IPC__;
-  if (!isTauriEnv) {
+  // 检查是否在 Tauri 环境中
+  if (!isInTauri) {
     console.warn('当前不在 Tauri 环境中，无法执行 Python 脚本');
-    alert('请在桌面应用模式下运行以执行此功能');
+    ensureTauri(true) // 显示警告弹窗
     return;
   }
 
   if (isLoading.value) return
 
   isLoading.value = true
-  console.log('Starting Python flow...')
+
+  // 获取当前路由名称
+  const routeName = route.name || route.path || 'unknown'
+  console.log('Starting Python flow for route:', routeName)
 
   try {
-    const result = await invoke('run_python', {
-      script: 'test.py',
-      args: ['--from-gui']
+    // 使用 call_python_func 调用 flow.py 的 run_flow 方法
+    const result = await invoke('call_python_func', {
+      scriptPath: 'flow.py',
+      funcName: 'run_flow',
+      args: {
+        route_name: routeName
+      }
     }) as { code: number, stdout: string, stderr: string }
 
-    console.log('Python Flow Result:', result)
+    console.log('Python 返回的原始数据:', result)
 
     if (result.code === 0) {
-      const data = JSON.parse(result.stdout)
-      console.log(`Success: ${data.message}`)
+      try {
+        const data = JSON.parse(result.stdout)
+        console.log('✅ Python 返回的 JSON 数据:', data)
+      } catch (parseError) {
+        console.error('❌ JSON 解析失败:', parseError)
+        console.log('原始输出:', result.stdout)
+      }
     } else {
-      console.error(`Error (Code ${result.code}): ${result.stderr}`)
+      console.error(`❌ Python 执行失败 (Code ${result.code}):`, result.stderr)
     }
   } catch (error) {
-    console.error('Failed to run Python flow:', error)
+    console.error('❌ 调用 Python 失败:', error)
   } finally {
     isLoading.value = false
   }
