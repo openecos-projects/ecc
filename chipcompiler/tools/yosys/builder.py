@@ -27,10 +27,14 @@ def generate_global_var_tcl(workspace: Workspace,
         raise ValueError(f"CLK_FREQ_MHZ must be positive number, got {freq_mhz}")
 
     rtl_file = step.input.get("verilog", "")
-    if not rtl_file:
-        raise ValueError("RTL_FILE (step.input.verilog) not set")
-    if not os.path.exists(rtl_file):
-        raise ValueError(f"RTL_FILE does not exist: {rtl_file}")
+    filelist = workspace.design.input_filelist if workspace.design.input_filelist else workspace.parameters.data.get("File list", "")
+
+    # Prefer filelist if available, otherwise use rtl_file --- IGNORE ---
+    has_valid_filelist = filelist and os.path.exists(filelist)
+    has_valid_rtl = rtl_file and os.path.exists(rtl_file)
+
+    if not has_valid_filelist and not has_valid_rtl:
+        raise ValueError(f"Neither RTL_FILE ({rtl_file}) nor filelist ({filelist}) exists")
 
     top_design = workspace.design.top_module
     clk_freq_mhz = int(freq_mhz) if isinstance(freq_mhz, float) and freq_mhz.is_integer() else freq_mhz

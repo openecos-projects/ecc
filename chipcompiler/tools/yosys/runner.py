@@ -27,8 +27,14 @@ def run_step(workspace: Workspace,
         return False
 
     input_verilog = step.input.get("verilog", "")
-    if not input_verilog or not os.path.exists(input_verilog):
-        print(f"Error: RTL file not found: {input_verilog}")
+    input_filelist = workspace.design.input_filelist if workspace.design.input_filelist else ""
+
+    # Validate that at least one of input_verilog or filelist is valid
+    has_valid_verilog = input_verilog and os.path.exists(input_verilog)
+    has_valid_filelist = input_filelist and os.path.exists(input_filelist)
+
+    if not has_valid_verilog and not has_valid_filelist:
+        print(f"Error: Neither RTL file ({input_verilog}) nor filelist ({input_filelist}) found")
         return False
 
     try:

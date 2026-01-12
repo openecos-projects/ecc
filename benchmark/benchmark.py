@@ -61,8 +61,11 @@ def run_benchmark(benchmark_json : str,
         
         value_is_ok = True
         value_is_ok = value_is_ok & has_value(design_info.get("id", ""))
-        value_is_ok = value_is_ok & has_value(design_info.get("rtl", ""))
-        value_is_ok = value_is_ok & has_value(design_info.get("netlist", ""))
+        # Input source: one of rtl, filelist, netlist must be provided
+        has_rtl = has_value(design_info.get("rtl", ""))
+        has_filelist = has_value(design_info.get("filelist", ""))
+        has_netlist = has_value(design_info.get("netlist", ""))
+        value_is_ok = value_is_ok & (has_rtl or has_filelist or has_netlist)
         value_is_ok = value_is_ok & has_value(design_info.get("Design", ""))
         value_is_ok = value_is_ok & has_value(design_info.get("Top module", ""))
         value_is_ok = value_is_ok & has_value(design_info.get("Clock", ""))
@@ -121,20 +124,23 @@ def run_single_design(workspace_dir : str,
     input_verilog = design_info.get("netlist", "")
     input_filelist = design_info.get("filelist", "")
 
-    # Determine the input file for the first step:
-    # - If RTL/filelist exists: use RTL as input, add SYNTHESIS step
-    # NOTE: filelist has higher priority than RTL
-    # - Otherwise: use pre-synthesized netlist, skip SYNTHESIS
-    # NOTE: origin_verilog can be either RTL or netlist depending on the flow
+    # Priority: filelist > rtl > netlist
     steps = []
     input_netlist = ""
-    if os.path.exists(input_rtl) or os.path.exists(input_filelist):
-        input_netlist = input_rtl
-        # Filelist Already passed in create_workspace parameter
+    if input_filelist and os.path.exists(input_filelist):
+        # Use filelist for synthesis (input_netlist optional)
+        input_netlist = input_rtl if input_rtl and os.path.exists(input_rtl) else ""
         steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    elif os.path.exists(input_verilog):
+    elif input_rtl and os.path.exists(input_rtl):
+        # Use RTL for synthesis
+        input_netlist = input_rtl
+        steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+    elif input_verilog and os.path.exists(input_verilog):
+        # Use pre-synthesized netlist, skip synthesis
         input_netlist = input_verilog
         input_filelist = ""
+    else:
+        raise ValueError(f"No valid input file found for design {design_info.get('Design', '')}")
             
     steps.append((StepEnum.FLOORPLAN, "iEDA", StateEnum.Unstart))
     steps.append((StepEnum.NETLIST_OPT, "iEDA", StateEnum.Unstart))
