@@ -18,6 +18,7 @@
     "@tauri-apps/plugin-fs": "~2.4.2",
     "@tauri-apps/plugin-shell": "~2.3.3",
     "@tauri-apps/plugin-store": "~2.4.2",
+    "markdown-it": "^14.1.0",
     "pinia": "^3.0.4",
     "pixi-viewport": "^6.0.3",
     "pixi.js": "^8.15.0",
@@ -30,6 +31,8 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/cli": "^2.9.6",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^25.0.6",
     "@vitejs/plugin-vue": "^6.0.3",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.0",

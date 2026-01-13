@@ -1,45 +1,19 @@
 <template>
   <div class="h-full flex flex-col">
     <!-- 消息列表 -->
-    <ScrollPanel class="flex-1 min-h-0 px-4">
-      <div ref="messagesContainerRef">
-        <div v-if="messages.length === 0" class="flex flex-col items-center justify-center h-full text-center py-12">
-          <div class="w-16 h-16 rounded-full bg-(--bg-secondary) flex items-center justify-center mb-4">
-            <i class="ri-robot-2-line text-4xl text-(--text-secondary) opacity-50"></i>
-          </div>
-          <p class="text-[13px] text-(--text-secondary) leading-relaxed">
-            暂无消息，请输入指令开始与 AI Agent 交互
-          </p>
+    <div ref="scrollContainerRef" class="flex-1 min-h-0 overflow-y-auto px-4 custom-scrollbar">
+      <div v-if="messages.length === 0" class="flex flex-col items-center justify-center h-full text-center py-12">
+        <div class="w-16 h-16 rounded-full bg-(--bg-secondary) flex items-center justify-center mb-4">
+          <i class="ri-robot-2-line text-4xl text-(--text-secondary) opacity-50"></i>
         </div>
-        <div v-else class="py-4 space-y-4">
-          <div v-for="(msg, index) in messages" :key="index" :class="[
-            'flex',
-            msg.role === 'user' ? 'justify-end' : 'justify-start'
-          ]">
-            <div :class="[
-              'max-w-[85%] rounded-lg text-sm',
-              msg.role === 'user'
-                ? 'bg-(--accent-color) text-(--accent-text)'
-                : 'bg-(--bg-secondary) text-(--text-primary) border border-(--border-color)'
-            ]">
-              <!-- 图片消息 -->
-              <div v-if="msg.type === 'image' && msg.image" class="p-2">
-                <div class="rounded-lg overflow-hidden mb-2">
-                  <img :src="msg.image.url" :alt="msg.image.label" class="w-full h-auto object-contain max-h-[400px]"
-                    loading="lazy" />
-                </div>
-                <p class="text-xs opacity-90">{{ msg.image.label }}</p>
-                <p v-if="msg.image.dimensions" class="text-[10px] opacity-70 mt-1">{{ msg.image.dimensions }}</p>
-              </div>
-              <!-- 文本消息 -->
-              <div v-else class="px-4 py-2">
-                {{ msg.content }}
-              </div>
-            </div>
-          </div>
-        </div>
+        <p class="text-[13px] text-(--text-secondary) leading-relaxed">
+          暂无消息，请输入指令开始与 AI Agent 交互
+        </p>
       </div>
-    </ScrollPanel>
+      <div v-else class="py-4 space-y-4">
+        <MessageItem v-for="msg in messages" :key="msg.id" :message="msg" @img-load="onImageLoad" />
+      </div>
+    </div>
 
     <!-- 输入区域 -->
     <div class="shrink-0 p-4 bg-(--bg-primary) border-t border-(--border-color)">
@@ -77,28 +51,73 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
-import ScrollPanel from 'primevue/scrollpanel'
+import MessageItem from './MessageItem.vue'
 import { useMessageStore } from '../stores/messageStore'
 
 const messageStore = useMessageStore()
 const { messages } = messageStore
 
 const inputValue = ref('')
-const messagesContainerRef = ref<HTMLDivElement | null>(null)
+const scrollContainerRef = ref<HTMLDivElement | null>(null)
 
-// 滚动到底部的函数
-const scrollToBottom = () => {
+// Near-bottom 阈值（像素）
+const NEAR_BOTTOM_THRESHOLD = 32
+
+/**
+ * 判断当前滚动位置是否接近底部
+ */
+const isNearBottom = (): boolean => {
+  const el = scrollContainerRef.value
+  if (!el) return true
+  return el.scrollHeight - (el.scrollTop + el.clientHeight) <= NEAR_BOTTOM_THRESHOLD
+}
+
+/**
+ * 直接滚动到底部（使用 scrollTop）
+ */
+const scrollToBottom = (smooth = true) => {
+  const el = scrollContainerRef.value
+  if (!el) return
+
+  if (smooth) {
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: 'smooth'
+    })
+  } else {
+    el.scrollTop = el.scrollHeight
+  }
+}
+
+/**
+ * 智能滚动到底部
+ * @param force 是否强制滚动（忽略 near-bottom 判定）
+ */
+const scrollToBottomIfNeeded = (force = false) => {
   nextTick(() => {
-    if (messagesContainerRef.value) {
-      // 滚动到消息容器的底部
-      messagesContainerRef.value.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    if (force || isNearBottom()) {
+      scrollToBottom()
+    }
+  })
+}
+
+/**
+ * 图片加载完成回调
+ * 图片加载后高度变化，需要重新滚动到底部
+ */
+const onImageLoad = () => {
+  // 使用 requestAnimationFrame 确保在渲染完成后滚动
+  requestAnimationFrame(() => {
+    if (isNearBottom()) {
+      scrollToBottom()
     }
   })
 }
 
 // 监听消息变化，自动滚动到底部
 watch(() => messages.length, () => {
-  scrollToBottom()
+  // 新消息到来时强制滚动到底部
+  scrollToBottomIfNeeded(true)
 })
 
 const handleSubmit = () => {
@@ -116,3 +135,27 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 }
 </script>
+
+<style scoped>
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+</style>

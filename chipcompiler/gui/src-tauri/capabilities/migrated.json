@@ -30,6 +30,8 @@
     "fs:allow-exists",
     "fs:allow-read-dir",
     "fs:allow-read-file",
-    "fs:allow-write-file"
+    "fs:allow-write-file",
+    "fs:scope",
+    "core:image:default"
   ]
 }

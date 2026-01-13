@@ -9,6 +9,9 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost blob: data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' asset: https://asset.localhost"
+    },
     "windows": [
       {
         "fullscreen": false,

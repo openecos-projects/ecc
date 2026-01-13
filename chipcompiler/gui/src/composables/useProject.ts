@@ -15,7 +15,12 @@ interface SerializedProject {
 
 // 共享的状态实例（单例模式）
 const store = new LazyStore('settings.json')
-const currentProject = ref<Project | null>(null)
+const currentProject = ref<Project | null>({
+  id: '1',
+  name: 'ics55_00001',
+  path: '/Users/ekko/Desktop/ics55_00001',
+  lastOpened: new Date()
+})
 const recentProjects = ref<Project[]>([])
 
 export function useProject() {
