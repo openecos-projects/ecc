@@ -1,7 +1,9 @@
 export interface Message {
-  role: string
+  id: string
+  role: 'user' | 'assistant'
   content: string
   type?: 'text' | 'image'
+  status?: 'loading' | 'done' | 'error'
   image?: {
     url: string
     label?: string
