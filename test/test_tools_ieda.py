@@ -106,16 +106,19 @@ def test_ics55_gcd():
     
     engine_flow.run_steps()
     
-def test_ics55_s713():
-    workspace_dir="{}/test/examples/ics55_s713".format(root)
+def test_ics55(design_name: str, target_dir: str = "", design_dir_alias=""):   
+    workspace_dir = f"{target_dir}/{design_name}" if target_dir != "" else f"{root}/test/examples/{design_name}"
 
-    # input_def = "/nfs/share/home/zhaoxueyan/dataset_cx55/20251120/task_100701/04_floorplan/s713_floorplan.def"
+    # benchmark path
+    benchmark_dir = "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55"
+    
     input_def = ""
-    input_verilog = "/nfs/share/home/zhaoxueyan/dataset_cx55/20251120/task_100701/04_floorplan/s713_floorplan.v" # verilog file
+    design_dir = design_dir_alias if design_dir_alias != "" else design_name
+    input_verilog = f"{benchmark_dir}/{design_dir}/rtl/{design_name}.v" # verilog file
 
     spef=""
 
-    parameters=get_parameters("ics55", "s713")
+    parameters=get_parameters("ics55", design_name)
     # use special different pdk setting for yosys
     pdk = get_pdk("ics55")
     pdk.spef = spef
@@ -146,10 +149,12 @@ def test_ics55_s713():
     engine_flow.run_steps()
     
 if __name__ == "__main__":
-    test_sky130_gcd()
+    # test_sky130_gcd()
     
     # test_ics55_gcd()
     
-    # test_ics55_s713()
+    test_ics55(design_name="ysyx_23060170", 
+               target_dir="/nfs/home/huangzengrong/benchmark/test",
+               design_dir_alias="stage_b_ysyx_23060170")
 
     exit(0)

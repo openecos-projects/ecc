@@ -502,7 +502,7 @@
         {
             "id": "ics55_00059",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_23060170/filelist",
-            "Design": "stage_b_ysyx_23060170",
+            "Design": "ysyx_23060170",
             "Top module": "ysyx_23060170",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -511,7 +511,7 @@
         {
             "id": "ics55_00060",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_23060203/filelist",
-            "Design": "stage_b_ysyx_23060203",
+            "Design": "ysyx_23060203",
             "Top module": "ysyx_23060203",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -520,7 +520,7 @@
         {
             "id": "ics55_00061",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_23060229/filelist",
-            "Design": "stage_b_ysyx_23060229",
+            "Design": "ysyx_23060229",
             "Top module": "ysyx_23060229",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -529,7 +529,7 @@
         {
             "id": "ics55_00062",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_23060246/filelist",
-            "Design": "stage_b_ysyx_23060246",
+            "Design": "ysyx_23060246",
             "Top module": "ysyx_23060246",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -538,7 +538,7 @@
         {
             "id": "ics55_00063",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_24070003/filelist",
-            "Design": "stage_b_ysyx_24070003",
+            "Design": "ysyx_24070003",
             "Top module": "ysyx_24070003",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -547,7 +547,7 @@
         {
             "id": "ics55_00065",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_24100012/filelist",
-            "Design": "stage_b_ysyx_24100012",
+            "Design": "ysyx_24100012",
             "Top module": "ysyx_24100012",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -556,7 +556,7 @@
         {
             "id": "ics55_00066",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_24110017/filelist",
-            "Design": "stage_b_ysyx_24110017",
+            "Design": "ysyx_24110017",
             "Top module": "ysyx_24110017",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -565,7 +565,7 @@
         {
             "id": "ics55_00067",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_25010008/filelist",
-            "Design": "stage_b_ysyx_25010008",
+            "Design": "ysyx_25010008",
             "Top module": "ysyx_25010008",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -574,7 +574,7 @@
         {
             "id": "ics55_00068",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_25010030/filelist",
-            "Design": "stage_b_ysyx_25010030",
+            "Design": "ysyx_25010030",
             "Top module": "ysyx_25010030",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -583,7 +583,7 @@
         {
             "id": "ics55_00069",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_25020037/filelist",
-            "Design": "stage_b_ysyx_25020037",
+            "Design": "ysyx_25020037",
             "Top module": "ysyx_25020037",
             "Clock": "clock",
             "Frequency max [MHz]": 100,
@@ -592,7 +592,7 @@
         {
             "id": "ics55_00070",
             "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_25040129/filelist",
-            "Design": "stage_b_ysyx_25040129",
+            "Design": "ysyx_25040129",
             "Top module": "ysyx_25040129",
             "Clock": "clock",
             "Frequency max [MHz]": 100,

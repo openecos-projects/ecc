@@ -28,17 +28,16 @@ def parameter_ics55(design : str, path : str) -> Parameters:
     parameters.path = path
     parameters.data = json_read(path)
     
-    match design.lower():
-        case "gcd":
-            parameters.data["Design"] = "gcd"
-            parameters.data["Top module"] = "gcd"
-            parameters.data["Clock"] = "clk"
-            parameters.data["Frequency max [MHz]"] = 100
-        case "s713":
-            parameters.data["Design"] = "s713"
-            parameters.data["Top module"] = "s713"
-            parameters.data["Clock"] = "CK"
-            parameters.data["Frequency max [MHz]"] = 100
+    from chipcompiler.utility import json_read
+    benchmark_json = f"{current_dir}/ics55_benchmark.json"
+    benchmarks = json_read(benchmark_json)
+    designs = benchmarks.get("designs", [])
+    for design_info in designs:
+        if design == design_info.get("Design", ""):
+            parameters.data["Design"] = design_info.get("Design", "")
+            parameters.data["Top module"] = design_info.get("Top module", "")
+            parameters.data["Clock"] = design_info.get("Clock", "")
+            parameters.data["Frequency max [MHz]"] = design_info.get("Frequency max [MHz]", 100)
 
     return parameters
 
