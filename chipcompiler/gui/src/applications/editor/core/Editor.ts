@@ -1,4 +1,4 @@
-import { Application, Container } from 'pixi.js'
+import { Application, Container, Sprite, Assets, Texture } from 'pixi.js'
 import { Viewport } from 'pixi-viewport'
 import type { IPlugin, ViewportTransform } from '../plugins/IPlugin'
 import { themes, darkTheme, type EditorTheme, type ThemeName } from './Theme'
@@ -32,6 +32,12 @@ export class Editor {
 
   /** 用于插件添加固定在屏幕坐标的 UI 元素 */
   private overlayContainer: Container | null = null
+
+  /** 用于显示 EDA 生成的底图/热力图的容器 */
+  private backgroundContainer: Container | null = null
+
+  /** 当前背景图的 blob URL，用于清理 */
+  private currentBlobUrl: string | null = null
 
   /** 防抖延迟时间 (ms) */
   private static readonly RESIZE_DEBOUNCE_DELAY = 16 // ~60fps
@@ -118,6 +124,10 @@ export class Editor {
       .clampZoom({ minScale: 0.1, maxScale: 10 })
 
     this.app.stage.addChild(this.viewport)
+
+    // 创建背景容器 (在世界坐标系中，位于底层)
+    this.backgroundContainer = new Container()
+    this.viewport.addChildAt(this.backgroundContainer, 0)
 
     // 创建 Overlay 容器 (固定在屏幕坐标)
     this.overlayContainer = new Container()
@@ -278,6 +288,69 @@ export class Editor {
     return this
   }
 
+  /** 
+   * 适应当前背景图片，使其在编辑器中居中显示
+   * @param padding 四周留白（像素）
+   */
+  public fit(padding = 40): this {
+    if (!this.viewport || !this.app || !this.backgroundContainer) return this
+
+    // 获取背景容器中的第一个子元素（背景图片 Sprite）
+    const backgroundSprite = this.backgroundContainer.children[0] as Sprite
+    if (!backgroundSprite) {
+      console.warn('No background image to fit')
+      return this
+    }
+
+    // 获取图片的原始尺寸（从纹理获取，不受transform影响）
+    const texture = backgroundSprite.texture
+    const imgWidth = texture.width
+    const imgHeight = texture.height
+
+    if (imgWidth === 0 || imgHeight === 0) {
+      console.warn('Background image has zero dimensions')
+      return this
+    }
+
+    // 获取屏幕尺寸（减去边距）
+    const screenWidth = this.app.screen.width - padding * 2
+    const screenHeight = this.app.screen.height - padding * 2
+
+    // 计算缩放比例：选择能完整显示图片的最大缩放比例
+    const scale = Math.min(
+      screenWidth / imgWidth,
+      screenHeight / imgHeight
+    )
+
+    console.log('Fitting image:', {
+      imageSize: { width: imgWidth, height: imgHeight },
+      screenSize: {
+        width: this.app.screen.width,
+        height: this.app.screen.height,
+        withPadding: { width: screenWidth, height: screenHeight }
+      },
+      padding,
+      calculatedScale: scale,
+      currentScale: this.viewport.scale.x
+    })
+
+    // 重置视图位置和缩放
+    this.viewport.scale.set(scale)
+    this.viewport.position.set(0, 0)
+
+    // 将视图中心移动到图片中心
+    this.viewport.moveCenter(imgWidth / 2, imgHeight / 2)
+
+    console.log('After fit:', {
+      viewportScale: this.viewport.scale.x,
+      viewportPosition: { x: this.viewport.x, y: this.viewport.y },
+      viewportCenter: this.viewport.center
+    })
+
+    this.notifyViewportChange()
+    return this
+  }
+
   /** 设置主题 */
   setTheme(themeName: ThemeName): this {
     const newTheme = themes[themeName]
@@ -297,6 +370,94 @@ export class Editor {
     this.notifyThemeChange()
 
     return this
+  }
+
+  /**
+   * 设置编辑器背景图（如 EDA 生成的布局图）
+   * @param url 图片的 Web URL (blob URL 或 asset protocol URL)
+   */
+  public async setBackgroundImage(url: string): Promise<void> {
+    if (!this.backgroundContainer) return
+    try {
+      // 1. 释放旧的 blob URL
+      if (this.currentBlobUrl && this.currentBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this.currentBlobUrl)
+        console.log('Revoked old blob URL:', this.currentBlobUrl)
+      }
+
+      // 2. 清除旧背景
+      this.backgroundContainer.removeChildren().forEach(child => child.destroy())
+      console.log('Removed old background children');
+
+      // 3. 加载新纹理
+      let texture: Texture
+      if (url.startsWith('blob:')) {
+        // 对于 blob URL，手动加载图片并创建纹理
+        console.log('Loading blob URL...');
+        const img = new Image()
+
+        // 等待图片加载完成
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => {
+            console.log('Image loaded, dimensions:', img.width, 'x', img.height);
+            resolve()
+          }
+          img.onerror = (err) => {
+            console.error('Image load error:', err);
+            reject(new Error('Failed to load image from blob URL'))
+          }
+          img.src = url
+        })
+
+        // 从 Image 元素创建纹理
+        texture = Texture.from(img)
+        console.log('Created texture from blob URL:', texture);
+      } else {
+        // 对于其他 URL，使用 Assets.load
+        texture = await Assets.load(url)
+        console.log('Loaded texture from asset URL:', texture);
+      }
+
+      // 4. 创建 sprite
+      const sprite = new Sprite(texture)
+      sprite.position.set(0, 0) // 设置位置为原点
+      console.log('Created sprite, size:', sprite.width, 'x', sprite.height);
+
+      // 5. 添加到容器
+      this.backgroundContainer.addChild(sprite)
+
+      // 6. 保存当前 blob URL
+      if (url.startsWith('blob:')) {
+        this.currentBlobUrl = url
+      } else {
+        this.currentBlobUrl = null
+      }
+
+      console.log('Background image updated successfully')
+
+      // 7. 等待下一帧，确保 sprite 已经完全渲染
+      await new Promise(resolve => requestAnimationFrame(resolve))
+
+      // 8. 自动适应图片尺寸，使其居中显示
+      this.fit()
+    } catch (error) {
+      console.error('Failed to set background image:', error)
+      throw error
+    }
+  }
+
+  /** 清除背景图 */
+  public clearBackground(): void {
+    if (this.backgroundContainer) {
+      this.backgroundContainer.removeChildren().forEach(child => child.destroy())
+    }
+
+    // 释放 blob URL
+    if (this.currentBlobUrl && this.currentBlobUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(this.currentBlobUrl)
+      console.log('Revoked blob URL on clear:', this.currentBlobUrl)
+      this.currentBlobUrl = null
+    }
   }
 
   /** 销毁编辑器 */
