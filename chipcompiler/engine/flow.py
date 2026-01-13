@@ -32,7 +32,7 @@ class EngineFlow:
         steps.append(self.init_flow_step(StepEnum.ROUTING, "iEDA", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FILLER, "iEDA", StateEnum.Unstart))
         # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
-        # steps.append(self.init_flow_step(StepEnum.SIGNOFF, "innovus", StateEnum.Unstart))
+        # steps.append(self.init_flow_step(StepEnum.SIGNOFF, "iEDA", StateEnum.Unstart))
         
         self.workspace.flow.data = {"steps" : steps}
         
