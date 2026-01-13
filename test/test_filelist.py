@@ -98,12 +98,36 @@ class TestParseFilelist:
 
         assert parse_filelist(str(filelist)) == ["path with spaces/file.v", "another path/file.v"]
 
-    def test_skip_compiler_directives(self, tmp_path):
-        """Skip compiler directives like +incdir, -y."""
+    def test_skip_incdir_directives(self, tmp_path):
+        """Skip +incdir directives (supported)."""
         filelist = tmp_path / "design.f"
-        filelist.write_text("rtl/top.v\n+incdir+rtl/include\n-y rtl/lib\nrtl/sub.v\n")
+        filelist.write_text("rtl/top.v\n+incdir+rtl/include\nrtl/sub.v\n")
 
         assert parse_filelist(str(filelist)) == ["rtl/top.v", "rtl/sub.v"]
+
+    def test_error_on_y_directive(self, tmp_path):
+        """Raise error for -y library search directive."""
+        filelist = tmp_path / "design.f"
+        filelist.write_text("rtl/top.v\n-y rtl/lib\nrtl/sub.v\n")
+
+        with pytest.raises(ValueError, match="Unsupported filelist option.*-y"):
+            parse_filelist(str(filelist))
+
+    def test_error_on_v_directive(self, tmp_path):
+        """Raise error for -v library file directive."""
+        filelist = tmp_path / "design.f"
+        filelist.write_text("rtl/top.v\n-v rtl/lib.v\nrtl/sub.v\n")
+
+        with pytest.raises(ValueError, match="Unsupported filelist option.*-v"):
+            parse_filelist(str(filelist))
+
+    def test_error_on_f_directive(self, tmp_path):
+        """Raise error for -f recursive filelist directive."""
+        filelist = tmp_path / "design.f"
+        filelist.write_text("rtl/top.v\n-f sub.f\nrtl/sub.v\n")
+
+        with pytest.raises(ValueError, match="Unsupported filelist option.*-f"):
+            parse_filelist(str(filelist))
 
     def test_skip_backtick_includes(self, tmp_path):
         """Skip backtick includes like `include."""

@@ -27,6 +27,13 @@ import os
 from typing import List
 
 
+UNSUPPORTED_OPTIONS = {
+    '-f': 'Recursive filelist files',
+    '-v': 'Library files',
+    '-y': 'Library search directories',
+}
+
+
 def parse_filelist(filelist_path: str) -> List[str]:
     """
     Parse a filelist file and extract all file paths.
@@ -52,18 +59,47 @@ def parse_filelist(filelist_path: str) -> List[str]:
     file_paths = []
 
     with open(filelist_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-
-            if not line or line.startswith(('#', '//', '+', '-', '`')):
-                continue
-
-            line = _remove_inline_comment(line)
-            line = line.strip('"\'')
-
-            file_paths.append(line)
+        for line_num, line in enumerate(f, 1):
+            path = _parse_line(line, line_num)
+            if path:
+                file_paths.append(path)
 
     return file_paths
+
+
+def _parse_line(line: str, line_num: int) -> str | None:
+    """
+    Parse a single line from the filelist.
+
+    Returns the file path if the line contains one, or None if the line should be skipped.
+    Raises ValueError for unsupported options (-f, -v, -y).
+    """
+    line = line.strip()
+
+    # Skip empty lines and comment lines
+    if not line or line.startswith(('#', '//', '`')):
+        return None
+
+    # Skip +incdir and other + options
+    if line.startswith('+'):
+        return None
+
+    # Handle - options
+    if line.startswith('-'):
+        option = line.split()[0]
+        if option in UNSUPPORTED_OPTIONS:
+            descriptions = '\n'.join(f"  {opt}: {desc}" for opt, desc in UNSUPPORTED_OPTIONS.items())
+            raise ValueError(
+                f"Unsupported filelist option at line {line_num}: '{option}'\n"
+                f"The parser does not support:\n"
+                f"{descriptions}\n"
+                f"Please expand these manually or use a filelist with only direct file paths."
+            )
+        return None
+
+    # Remove inline comments and quotes
+    line = _remove_inline_comment(line)
+    return line.strip('"\'') or None
 
 
 def _remove_inline_comment(line: str) -> str:
