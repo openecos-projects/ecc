@@ -4,6 +4,7 @@
 from dataclasses import dataclass, field
 from .parameter import Parameters, save_parameter
 from chipcompiler.utility import Logger, create_logger, dict_to_str
+from chipcompiler.utility.filelist import parse_filelist, resolve_path
     
 @dataclass
 class PDK:
@@ -72,11 +73,11 @@ class WorkspaceStep:
     # step basic info
     name : str = "" # step name
     directory : str = "" # step working directory
-    
+
     # eda tool info
     tool : str = "" # eda tool name
     version : str = "" # eda tool version
-    
+
     # Paths for this step
     config : dict = field(default_factory=dict) # config path about this step
     input : dict = field(default_factory=dict) # input path about this step
@@ -87,9 +88,92 @@ class WorkspaceStep:
     log : dict = field(default_factory=dict) # log path about this step
     script : dict = field(default_factory=dict) # script path about this step
     analysis : dict = field(default_factory=dict) # analysis path about this step
-    
+
     # step result info
     result : dict = field(default_factory=dict) # result info about this step
+
+def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=None) -> str:
+    """
+    Copy filelist and all referenced source files to workspace/origin/ directory.
+
+    Maintains the original directory structure of source files relative to the filelist location.
+
+    Args:
+        input_filelist: Path to the filelist file
+        workspace_dir: Target workspace directory
+        logger: Optional logger instance for logging operations
+
+    Returns:
+        Path to the copied filelist in workspace/origin/
+
+    Raises:
+        FileNotFoundError: If filelist file doesn't exist
+        IOError: If file copy operations fail
+
+    Example:
+        >>> new_filelist_path = copy_filelist_with_sources(
+        ...     "/project/design.f",
+        ...     "/workspace/gcd"
+        ... )
+        >>> print(new_filelist_path)
+        '/workspace/gcd/origin/design.f'
+    """
+    import os
+    import shutil
+
+    origin_dir = os.path.join(workspace_dir, "origin")
+    os.makedirs(origin_dir, exist_ok=True)
+
+    filelist_dir = os.path.dirname(os.path.abspath(input_filelist))
+
+    try:
+        source_files = parse_filelist(input_filelist)
+    except Exception as e:
+        if logger:
+            logger.error(f"Failed to parse filelist {input_filelist}: {e}")
+        raise
+
+    copied_count = 0
+    skipped_count = 0
+
+    for src_path in source_files:
+        abs_src = resolve_path(src_path, filelist_dir)
+
+        if not os.path.exists(abs_src):
+            if logger:
+                logger.warning(f"File not found (skipping): {abs_src}")
+            skipped_count += 1
+            continue
+
+        # Absolute paths: use filename only; relative paths: preserve structure
+        rel_path = os.path.basename(src_path) if os.path.isabs(src_path) else src_path
+        dst_path = os.path.join(origin_dir, rel_path)
+
+        try:
+            os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+            shutil.copy2(abs_src, dst_path)
+            if logger:
+                logger.debug(f"Copied: {abs_src} -> {dst_path}")
+            copied_count += 1
+        except Exception as e:
+            if logger:
+                logger.error(f"Error copying {src_path}: {e}")
+
+    new_filelist = os.path.join(origin_dir, os.path.basename(input_filelist))
+    try:
+        shutil.copy2(input_filelist, new_filelist)
+    except Exception as e:
+        if logger:
+            logger.error(f"Failed to copy filelist: {e}")
+        raise
+
+    if logger:
+        logger.info(
+            f"Copied filelist and sources: {copied_count} files copied, "
+            f"{skipped_count} files skipped"
+        )
+
+    return new_filelist
 
 def create_workspace(directory : str,
                      origin_def : str,
@@ -135,6 +219,11 @@ def create_workspace(directory : str,
     workspace.parameters.path = f"{directory}/parameters.json"
     workspace.flow.path = f"{directory}/flow.json"
     
+    # create logger first (needed for copy operations)
+    os.makedirs(f"{directory}/log", exist_ok=True)
+    workspace.logger = create_logger(name=parameters.data["Design"],
+                                     log_dir=f"{directory}/log")
+
     # update orign files to workspace origin folder
     import shutil
     os.makedirs(f"{directory}/origin", exist_ok=True)
@@ -146,10 +235,22 @@ def create_workspace(directory : str,
         shutil.copy(origin_verilog, f"{directory}/origin/{os.path.basename(origin_verilog)}")
         workspace.design.origin_verilog = f"{directory}/origin/{os.path.basename(origin_verilog)}"
 
+    # Copy filelist and all referenced source files
     if os.path.exists(input_filelist):
-        shutil.copy(input_filelist, f"{directory}/origin/{os.path.basename(input_filelist)}")
-        workspace.design.input_filelist = f"{directory}/origin/{os.path.basename(input_filelist)}"
-        
+        try:
+            # Use new copy_filelist_with_sources to copy filelist + all RTL files
+            workspace.design.input_filelist = copy_filelist_with_sources(
+                input_filelist=input_filelist,
+                workspace_dir=directory,
+                logger=workspace.logger
+            )
+        except Exception as e:
+            workspace.logger.error(f"Failed to copy filelist sources: {e}")
+            workspace.logger.warning("Falling back to copying only filelist file")
+            # Fallback: copy only filelist file (backward compatibility)
+            shutil.copy(input_filelist, f"{directory}/origin/{os.path.basename(input_filelist)}")
+            workspace.design.input_filelist = f"{directory}/origin/{os.path.basename(input_filelist)}"
+
     if os.path.exists(pdk.sdc):
         shutil.copy(pdk.sdc, f"{directory}/origin/{os.path.basename(pdk.sdc)}")
         workspace.pdk.sdc = f"{directory}/origin/{os.path.basename(pdk.sdc)}"
@@ -162,12 +263,7 @@ def create_workspace(directory : str,
     if os.path.exists(pdk.spef):
         shutil.copy(pdk.spef, f"{directory}/origin/{os.path.basename(pdk.spef)}")
         workspace.pdk.spef = f"{directory}/origin/{os.path.basename(pdk.spef)}"
-        
-    # create logger
-    os.makedirs(f"{directory}/log", exist_ok=True)
-    workspace.logger = create_logger(name=workspace.design.name,
-                                     log_dir=f"{directory}/log")
-    
+
     # save parameter
     save_parameter(workspace.parameters)
      

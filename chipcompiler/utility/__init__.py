@@ -1,7 +1,7 @@
 from .file import chmod_folder
 from .json import (
-    json_read, 
-    json_write, 
+    json_read,
+    json_write,
     dict_to_str
 )
 
@@ -16,6 +16,13 @@ from .plot import (
     plot_metrics
 )
 
+from .filelist import (
+    parse_filelist,
+    resolve_path,
+    validate_filelist,
+    get_filelist_info
+)
+
 __all__ = [
     'chmod_folder',
     'json_read',
@@ -25,5 +32,9 @@ __all__ = [
     'create_logger',
     'track_process_memory',
     'plot_csv_map',
-    'plot_metrics'
+    'plot_metrics',
+    'parse_filelist',
+    'resolve_path',
+    'validate_filelist',
+    'get_filelist_info'
 ]

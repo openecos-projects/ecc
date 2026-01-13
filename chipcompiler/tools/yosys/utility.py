@@ -32,7 +32,7 @@ def is_eda_exist() -> bool:
     """
     Check if yosys with slang plugin is available.
 
-    First tries 'nix run github:Emin017/ieda-infra#yosysWithSlang --version',
+    First tries 'nix run github:Emin017/ieda-infra#yosysWithSlang -- --version',
     falls back to checking if yosys is in PATH.
     """
     return bool(get_yosys_command())
