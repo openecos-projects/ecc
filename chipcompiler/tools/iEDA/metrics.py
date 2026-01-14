@@ -76,14 +76,15 @@ def build_metrics_net_opt(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         metrics["Max fanout"] = workspace.parameters.data.get("Max fanout", 0)
     
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
+    image_path = json_path.replace(".csv", ".png")
     plot_metrics(metrics=step_metrics.data, output_path=image_path)
     
     report = f"{step.name} step metrics:\n"

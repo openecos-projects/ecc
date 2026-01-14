@@ -5,8 +5,7 @@ import os
 import concurrent.futures
 from tqdm import tqdm
 from chipcompiler.data import WorkspaceStep, Workspace, Parameters, StepEnum
-from chipcompiler.utility import json_read
-from chipcompiler.utility.plot import plot_csv_map
+from chipcompiler.utility import json_read, plot_csv_map, plot_csv_table
 
 class IEDAPlot:
     def __init__(self, workspace: Workspace, step: WorkspaceStep):
@@ -14,17 +13,20 @@ class IEDAPlot:
         self.step = step
     
     def plot(self) -> bool:
+        state = True
         match self.step.name:
             case StepEnum.PLACEMENT.value | StepEnum.CTS.value:
-                return self.plot_placement_heatmap()
+                state = state & self.plot_placement_heatmap()
             case StepEnum.ROUTING.value:
-                return self.plot_routing_heatmap()
+                state = state & self.plot_routing_heatmap()
+            case StepEnum.DRC.value:
+                state = state & self.plot_drc_statis()
                 
             case default:
                 self.workspace.logger.warning(f"Step {self.step.name} not supported for plotting.")
         
         self.workspace.logger.info(f"Plotting completed for step {self.step.name}")
-        return True
+        return state
     
     def plot_placement_heatmap(self):
         json_map_path = self.step.feature.get("map", "")
@@ -111,3 +113,78 @@ class IEDAPlot:
         failed = len(results) - successful
         
         self.workspace.logger.info(f"Plotting completed: {successful} successful, {failed} failed.")
+    
+    def plot_drc_statis(self) -> bool:
+        # build layer header
+        layers = []
+        layer_dict = {} # layer drc number distribution
+        db_json = json_read(self.step.feature.get("db", ""))
+        
+        # Get cut layers
+        for item in db_json.get("Layers", {}).get("cut_layers", []):
+            layer_dict[item.get("layer_name")] = 0
+            layers.append(item)
+            
+        # Get routing layers
+        for item in db_json.get("Layers", {}).get("routing_layers", []):
+            layer_dict[item.get("layer_name")] = 0
+            layers.append(item)
+        
+        # Sort layers by layer_order
+        def cmp_layer(item):
+            return item.get("layer_order", 0)    
+        sorted_layers = sorted(layers, key=cmp_layer)
+        
+        # Get layer names in order
+        layer_names = [layer.get("layer_name") for layer in sorted_layers]
+        layer_names.append("total")
+        
+        # build drc statis
+        drc_json = json_read(self.step.feature.get("step", ""))
+        if len(drc_json) == 0:
+            return False
+        
+        # Get DRC distribution data
+        drc_distribution = drc_json.get("drc", {}).get("distribution", {})
+        
+        # Build drc_statis dictionary
+        drc_statis = {}
+        import copy
+        drc_total_dict= copy.deepcopy(layer_dict)
+        for drc_type, drc_data in drc_distribution.items():
+            drc_statis[drc_type] = copy.deepcopy(layer_dict)
+            
+            for layer, layer_data in drc_data.get("layers", {}).items():
+                drc_statis[drc_type][layer] = drc_statis[drc_type][layer] + layer_data.get("number", 0)
+                drc_total_dict[layer] = drc_total_dict.get(layer, 0) + + layer_data.get("number", 0)
+        
+        drc_total_dict["total"] = drc_json.get("drc", {}).get("number", 0)
+        drc_statis["total"] = drc_total_dict
+        
+        # Save drc_statis to CSV file
+        import csv
+        statis_csv = self.step.analysis.get("statis_csv", "")
+        # Write to CSV file
+        with open(statis_csv, 'w', newline='') as csvfile:
+            # Define headers: first column is "Type", followed by layer names
+            csv_headers = ["Type"] + layer_names
+            writer = csv.DictWriter(csvfile, fieldnames=csv_headers)
+            
+            # Write headers
+            writer.writeheader()
+            
+            # Write data rows
+            for drc_type, layer_counts in drc_statis.items():
+                row = {"Type": drc_type}
+                # Add counts for each layer, defaulting to 0 if not present
+                for layer in layer_names:
+                    row[layer] = layer_counts.get(layer, 0)
+                writer.writerow(row)
+        
+        # Log the CSV creation
+        self.workspace.logger.info(f"DRC statistics saved to {statis_csv}")
+        
+        # Plot the CSV table
+        plot_csv_table(input_path=statis_csv)
+        
+        return True

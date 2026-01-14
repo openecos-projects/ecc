@@ -169,7 +169,7 @@ class IEDAModule:
         
     def run_drc(self, 
                 config: str, 
-                report_path : str) -> bool:
+                report_path : str="") -> bool:
         """
         run drc check
         """

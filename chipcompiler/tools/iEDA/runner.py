@@ -270,10 +270,13 @@ def run_drc(workspace: Workspace,
     if eda_inst is not None:
         eda_inst.init_drc(output_dir=step.data[f"{StepEnum.DRC.value}"])
         eda_inst.run_drc(config=step.config[f"{StepEnum.DRC.value}"],
-                         report_path=step.report[f"{StepEnum.DRC.value}"])
-        eda_inst.save_drc(feature_path=step.feature[f"{StepEnum.DRC.value}"])
+                         report_path=step.report["step"])
         
-        return save_data(step=step, module=eda_inst)
+        save_data(step=step, module=eda_inst)
+        
+        eda_inst.save_drc(feature_path=step.feature[f"step"])
+        
+        return True
     
     return False
 
@@ -407,27 +410,27 @@ def run_floorplan(workspace: Workspace,
                                      offset=offset)
         
         # PDN stripe
-        json_pdn_stripe = json_PDN.get("Stripe", {})
-        for item in json_pdn_stripe:
-            layer = item.get("layer", "")
-            power_net = item.get("power net", "")
-            ground_net = item.get("ground net", "")
-            width = item.get("width", 0)
-            pitch = item.get("pitch", 0)
-            offset = item.get("offset", 0)
-            eda_inst.create_pdn_stripe(layer=layer,
-                                       net_power=power_net,
-                                       net_ground=ground_net,
-                                       width=width,
-                                       pitch=pitch,
-                                       offset=offset)
+        # json_pdn_stripe = json_PDN.get("Stripe", {})
+        # for item in json_pdn_stripe:
+        #     layer = item.get("layer", "")
+        #     power_net = item.get("power net", "")
+        #     ground_net = item.get("ground net", "")
+        #     width = item.get("width", 0)
+        #     pitch = item.get("pitch", 0)
+        #     offset = item.get("offset", 0)
+        #     eda_inst.create_pdn_stripe(layer=layer,
+        #                                net_power=power_net,
+        #                                net_ground=ground_net,
+        #                                width=width,
+        #                                pitch=pitch,
+        #                                offset=offset)
             
-        # PDN connect layers
-        json_pdn_connect_layers= json_PDN.get("Connect layers", [])
-        for item in json_pdn_connect_layers:
-            layers = item.get("layers", [])
-            if len(layers) >= 2:
-                eda_inst.connect_pdn_layers(layers)
+        # # PDN connect layers
+        # json_pdn_connect_layers= json_PDN.get("Connect layers", [])
+        # for item in json_pdn_connect_layers:
+        #     layers = item.get("layers", [])
+        #     if len(layers) >= 2:
+        #         eda_inst.connect_pdn_layers(layers)
         
         # set clock net
         clock_name = workspace.parameters.data.get("Clock", "")

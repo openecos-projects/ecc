@@ -86,7 +86,6 @@ def build_step(workspace: Workspace,
         "dir": f"{step.directory}/feature",
         "db": f"{step.directory}/feature/{step.name}.db.json",
         "step": f"{step.directory}/feature/{step.name}.step.json",
-        f"{StepEnum.DRC.value}": f"{step.directory}/feature/drc.json",
         "map": f"{step.directory}/feature/{step.name}.map.json",
     }
     
@@ -94,7 +93,7 @@ def build_step(workspace: Workspace,
     step.report = {
         "dir": f"{step.directory}/report",
         "db": f"{step.directory}/report/{step.name}.db.rpt",
-        f"{StepEnum.DRC.value}": f"{step.directory}/report/drc.rpt"
+        "step": f"{step.directory}/report/{step.name}.rpt"
     }
     
     # build log paths
@@ -112,7 +111,8 @@ def build_step(workspace: Workspace,
     # build analysis paths
     step.analysis = {
         "dir": f"{step.directory}/analysis",
-        "metrics": f"{step.directory}/analysis/{step.name}_metrics.json"
+        "metrics": f"{step.directory}/analysis/{step.name}_metrics.json",
+        "statis_csv": f"{step.directory}/analysis/{step.name}_statis.csv"
     }    
     
     return step

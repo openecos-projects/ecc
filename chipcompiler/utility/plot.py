@@ -65,7 +65,50 @@ def plot_csv_map(input_path : str, output_path : str=None) -> bool:
         plt.close('all')
         return False
     
-def plot_metrics(metrics: dict, output_path: str, col=4) -> bool:
+def plot_csv_table(input_path: str, output_path: str=None) -> bool:
+    """
+    Plot CSV data as a table and save to output path.
+    
+    Args:
+        input_path (str): Path to the input CSV file.
+        output_path (str, optional): Path to save the output PNG file. Defaults to None.
+    
+    Returns:
+        bool: True if the plot is successful, False otherwise.
+    """
+    if not os.path.exists(input_path) or not input_path.lower().endswith(".csv"):
+        return False
+    
+    if not output_path:
+        output_path = input_path.replace(".csv", ".png")
+    
+    try:
+        # Read CSV data
+        df = pd.read_csv(input_path)
+        
+        # Create figure and axis
+        fig, ax = plt.subplots(figsize=(len(df.columns) * 2, len(df) * 0.5))
+        ax.axis('tight')
+        ax.axis('off')
+        
+        # Create table
+        table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
+        
+        # Set table style
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.1, 1.5)
+        
+        # Save the plot
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        
+        return True
+    except Exception as e:
+        plt.close('all')
+        return False
+    
+def plot_metrics(metrics: dict, output_path: str=None, col=4) -> bool:
     """
     Plot metrics as a table and save to output path.
     
@@ -76,7 +119,7 @@ def plot_metrics(metrics: dict, output_path: str, col=4) -> bool:
     
     Returns:
         bool: True if the plot is successful, False otherwise.
-    """
+    """       
     try:
         import math
         

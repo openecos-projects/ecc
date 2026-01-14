@@ -13,7 +13,8 @@ from .util import (
 
 from .plot import (
     plot_csv_map,
-    plot_metrics
+    plot_metrics,
+    plot_csv_table
 )
 
 from .filelist import (
@@ -33,6 +34,7 @@ __all__ = [
     'track_process_memory',
     'plot_csv_map',
     'plot_metrics',
+    'plot_csv_table',
     'parse_filelist',
     'resolve_path',
     'validate_filelist',
