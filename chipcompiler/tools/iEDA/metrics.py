@@ -7,7 +7,7 @@ from chipcompiler.data import (
     save_metrics,
     StepEnum
 )
-from chipcompiler.utility import json_read, plot_metrics
+from chipcompiler.utility import json_read
 
 
 def build_step_metrics(workspace: Workspace, 
@@ -52,15 +52,15 @@ def build_metrics_db(workspace: Workspace,
         metrics["Die height [um]"] = f"{data.get('Design Layout', {}).get('die_bounding_height', 0.0)}"
         metrics["Die util"] = f"{round(data.get('Design Layout', {}).get('die_usage', 0.0), 2)}"
         metrics["Core util"] = f"{round(data.get('Design Layout', {}).get('core_usage', 0.0), 2)}"
-        metrics["Total instances"] = data.get('Design Statis', {}).get('num_instances', 0)
         metrics["Total io pins"] = data.get('Design Statis', {}).get('num_iopins', 0)
+        metrics["Total instances"] = data.get('Design Statis', {}).get('num_instances', 0)
         metrics["Total nets"] = data.get('Design Statis', {}).get('num_nets', 0)
 
     return metrics
 
 
 def build_metrics_net_opt(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                          step: WorkspaceStep) -> StepMetrics:
     """
     Build and return net operation metrics dictionary.
     """
@@ -80,13 +80,20 @@ def build_metrics_net_opt(workspace: Workspace,
     data = json_read(json_path)
     if len(data) > 0:
         metrics["Max fanout"] = workspace.parameters.data.get("Max fanout", 0)
+
+        for clk_item in data.get("fixFanout", {}).get("clocks_timing", []):
+            metrics["delta_hold_tns"] = clk_item.get("delta_hold_tns", 0)
+            metrics["delta_hold_wns"] = clk_item.get("delta_hold_wns", 0)
+            metrics["delta_setup_tns"] = clk_item.get("delta_setup_tns", 0)
+            metrics["delta_setup_wns"] = clk_item.get("delta_setup_wns", 0)
+            metrics["delta_suggest_freq"] = clk_item.get("delta_suggest_freq", 0)
+            
+            break
     
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".csv", ".png")
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -98,7 +105,7 @@ def build_metrics_net_opt(workspace: Workspace,
 
 
 def build_metrics_filler(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                         step: WorkspaceStep) -> StepMetrics:
     """
     Build and return filler metrics dictionary.
     """
@@ -114,7 +121,8 @@ def build_metrics_filler(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         # Add filler specific metrics here
         pass
@@ -122,9 +130,7 @@ def build_metrics_filler(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png") 
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -136,7 +142,7 @@ def build_metrics_filler(workspace: Workspace,
 
 
 def build_metrics_drc(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                      step: WorkspaceStep) -> StepMetrics:
     """
     Build and return DRC metrics dictionary.
     """
@@ -152,7 +158,8 @@ def build_metrics_drc(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         # Add DRC specific metrics here
         pass
@@ -160,9 +167,7 @@ def build_metrics_drc(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -174,7 +179,7 @@ def build_metrics_drc(workspace: Workspace,
 
 
 def build_metrics_routing(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                          step: WorkspaceStep) -> StepMetrics:
     """
     Build and return routing metrics dictionary.
     """
@@ -190,7 +195,8 @@ def build_metrics_routing(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         # Add routing specific metrics here
         pass
@@ -198,9 +204,7 @@ def build_metrics_routing(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -212,7 +216,7 @@ def build_metrics_routing(workspace: Workspace,
 
 
 def build_metrics_legalization(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                               step: WorkspaceStep) -> StepMetrics:
     """
     Build and return legalization metrics dictionary.
     """
@@ -228,7 +232,8 @@ def build_metrics_legalization(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         # Add legalization specific metrics here
         pass
@@ -236,9 +241,7 @@ def build_metrics_legalization(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -250,7 +253,7 @@ def build_metrics_legalization(workspace: Workspace,
 
 
 def build_metrics_timing_opt_hold(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                                  step: WorkspaceStep) -> StepMetrics:
     """
     Build and return timing optimization (hold) metrics dictionary.
     """
@@ -266,7 +269,8 @@ def build_metrics_timing_opt_hold(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         # Add timing optimization (hold) specific metrics here
         pass
@@ -274,9 +278,7 @@ def build_metrics_timing_opt_hold(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -288,7 +290,7 @@ def build_metrics_timing_opt_hold(workspace: Workspace,
 
 
 def build_metrics_timing_opt_drv(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                                 step: WorkspaceStep) -> StepMetrics:
     """
     Build and return timing optimization (driver) metrics dictionary.
     """
@@ -304,7 +306,8 @@ def build_metrics_timing_opt_drv(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         # Add timing optimization (driver) specific metrics here
         pass
@@ -312,9 +315,7 @@ def build_metrics_timing_opt_drv(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -324,9 +325,8 @@ def build_metrics_timing_opt_drv(workspace: Workspace,
     else:
         return None 
 
-
 def build_metrics_cts(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                      step: WorkspaceStep) -> StepMetrics:
     """
     Build and return CTS metrics dictionary.
     """
@@ -342,7 +342,8 @@ def build_metrics_cts(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         # Add CTS specific metrics here
         pass
@@ -350,9 +351,7 @@ def build_metrics_cts(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -364,7 +363,7 @@ def build_metrics_cts(workspace: Workspace,
 
 
 def build_metrics_placement(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                            step: WorkspaceStep) -> StepMetrics:
     """
     Build and return placement metrics dictionary.
     """
@@ -380,7 +379,8 @@ def build_metrics_placement(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         # Add placement specific metrics here
         pass
@@ -388,9 +388,7 @@ def build_metrics_placement(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -402,7 +400,7 @@ def build_metrics_placement(workspace: Workspace,
 
 
 def build_metrics_floorplan(workspace: Workspace, 
-                           step: WorkspaceStep) -> StepMetrics:
+                            step: WorkspaceStep) -> StepMetrics:
     """
     Build and return floorplan metrics dictionary.
     """
@@ -418,7 +416,8 @@ def build_metrics_floorplan(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    data = json_read(step.feature.get('step', ""))
+    json_path = step.feature.get('step', "")
+    data = json_read(json_path)
     if len(data) > 0:
         # Add floorplan specific metrics here
         pass
@@ -426,9 +425,7 @@ def build_metrics_floorplan(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = f"{step.analysis.get('dir', '')}/statis.png"
-    plot_metrics(metrics=step_metrics.data, output_path=image_path)
-    
+    image_path = json_path.replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))

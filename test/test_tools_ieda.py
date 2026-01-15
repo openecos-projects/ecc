@@ -149,12 +149,12 @@ def test_ics55(design_name: str, target_dir: str = "", design_dir_alias=""):
     engine_flow.run_steps()
     
 if __name__ == "__main__":
-    # test_sky130_gcd()
+    test_sky130_gcd()
     
     # test_ics55_gcd()
     
-    test_ics55(design_name="ysyx_23060170", 
-               target_dir="/nfs/home/huangzengrong/benchmark/test",
-               design_dir_alias="stage_b_ysyx_23060170")
+    # test_ics55(design_name="ysyx_23060170", 
+    #            target_dir="/nfs/home/huangzengrong/benchmark/test",
+    #            design_dir_alias="stage_b_ysyx_23060170")
 
     exit(0)

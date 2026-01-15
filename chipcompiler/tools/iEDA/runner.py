@@ -128,14 +128,14 @@ def run_step(workspace: Workspace,
                                module=module)
             
     if state:
+        # save metrics
+        build_step_metrics(workspace=workspace, 
+                           step=step)
+        
         # plot layout image
         ploter = IEDAPlot(workspace=workspace, 
                           step=step)
         ploter.plot()   
-        
-        # save metrics
-        build_step_metrics(workspace=workspace, 
-                           step=step)
             
     return state
 

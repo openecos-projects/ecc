@@ -24,6 +24,10 @@ from .filelist import (
     get_filelist_info
 )
 
+from .csv import (
+    csv_write
+)
+
 __all__ = [
     'chmod_folder',
     'json_read',
@@ -38,5 +42,6 @@ __all__ = [
     'parse_filelist',
     'resolve_path',
     'validate_filelist',
-    'get_filelist_info'
+    'get_filelist_info',
+    'csv_write'
 ]

@@ -20,6 +20,8 @@ from chipcompiler.engine import (
     EngineFlow
 )
 
+from chipcompiler.utility import json_read, csv_write
+
 from .pdk import get_pdk
 from .parameters import get_parameters
 
@@ -29,7 +31,8 @@ def has_value(value):
 def run_benchmark(benchmark_json : str,
                   target_dir: str = "",
                   batch_name: str = "",
-                  design:str = ""):
+                  design:str = "",
+                  max_processes = 10):
     from chipcompiler.utility import json_read
     
     benchmarks = json_read(benchmark_json)
@@ -82,7 +85,6 @@ def run_benchmark(benchmark_json : str,
                            design_info,))
     
     # Run tasks with manual process management (max 10 concurrent processes)
-    max_processes = 1
     running_processes = []
     
     for task_args in design_tasks:
@@ -92,11 +94,11 @@ def run_benchmark(benchmark_json : str,
                 if not p.is_alive():
                     del running_processes[i]
                     break
-            else:
-                # No completed processes, wait briefly
-                import time
-                time.sleep(0.1)
-                continue
+                else:
+                    # No completed processes, wait briefly
+                    import time
+                    time.sleep(5)
+                    continue
         
         # Create a new non-daemon process
         p = multiprocessing.Process(target=run_single_design, args=task_args)
@@ -172,10 +174,177 @@ def run_single_design(workspace_dir : str,
     log_workspace(workspace=workspace)
     
     engine_flow.run_steps()
-    
-if __name__ == "__main__":
-    benchmark_json = f"{root}/test/ics55_benchmark.json"
-    
-    run_benchmark(benchmark_json=benchmark_json)
 
-    exit(0)
+def benchmark_result(benchmark_dir : str):
+    statis_csv = f"{benchmark_dir}/benchmark.csv"
+    
+    header = [
+        "Workspace",
+        "Design",
+        f"{StepEnum.SYNTHESIS.value}",
+        f"{StepEnum.FLOORPLAN.value}",
+        f"{StepEnum.NETLIST_OPT.value}",
+        f"{StepEnum.PLACEMENT.value}",
+        f"{StepEnum.CTS.value}",
+        f"{StepEnum.LEGALIZATION.value}",
+        f"{StepEnum.ROUTING.value}",
+        f"{StepEnum.DRC.value}",
+        f"{StepEnum.FILLER.value}",
+    ]
+    
+    total = 0
+    success_num = 0
+    results = []
+
+    for root, dirs, files in os.walk(benchmark_dir):
+        if root != benchmark_dir:
+            break
+        
+        for dir in dirs:
+            workspace_result = []
+            
+            # workspace name
+            workspace_result.append(dir)
+            
+            workspace_dir = os.path.join(root, dir)
+            
+            # design name
+            parameter_json = f"{workspace_dir}/parameters.json"
+            parameter_dict = json_read(file_path=parameter_json)
+            design_name = parameter_dict.get("Design", "")
+            workspace_result.append(design_name)
+            
+            flow_json = f"{workspace_dir}/flow.json"
+            flow_dict = json_read(file_path=flow_json)
+            
+            step_result = []
+            peak_memory = 0
+            is_success = True
+            fp_inst_num = 0
+            for step in flow_dict.get("steps", {}):
+                state = step.get("state", "")
+                step_name = step.get("name", "")
+                step_result.append(state)
+                if "Success" != state:
+                    is_success = False
+            
+            success_num = success_num + 1 if is_success else success_num   
+            
+            workspace_result.extend(step_result)
+            total += 1
+            
+            results.append(workspace_result)
+            
+            print(f"process {dir} - {design_name} : {is_success}")
+    
+    results.append([f"success", f"{success_num} / {total}"])
+    print(f"benchmark success {success_num} / {total}")
+    
+    csv_write(file_path=statis_csv,
+              header=header,
+              data=results)
+        
+def benchmark_statis(benchmark_dir : str):
+    statis_csv = f"{benchmark_dir}/benchmark.csv"
+    
+    header = [
+        "Workspace",
+        "Design",
+        "peak memory (mb)",
+        f"{StepEnum.SYNTHESIS.value}",
+        f"{StepEnum.FLOORPLAN.value}",
+        f"{StepEnum.NETLIST_OPT.value}",
+        f"{StepEnum.PLACEMENT.value}",
+        f"{StepEnum.CTS.value}",
+        f"{StepEnum.LEGALIZATION.value}",
+        f"{StepEnum.ROUTING.value}",
+        f"{StepEnum.DRC.value}",
+        f"{StepEnum.FILLER.value}",
+    ]
+    
+    total = 0
+    success_num = 0
+    results = []
+
+    for root, dirs, files in os.walk(benchmark_dir):
+        if root != benchmark_dir:
+            break
+        
+        for dir in dirs:
+            workspace_result = []
+            
+            # workspace name
+            workspace_result.append(dir)
+            
+            workspace_dir = os.path.join(root, dir)
+            
+            # design name
+            parameter_json = f"{workspace_dir}/parameters.json"
+            parameter_dict = json_read(file_path=parameter_json)
+            design_name = parameter_dict.get("Design", "")
+            workspace_result.append(design_name)
+            
+            flow_json = f"{workspace_dir}/flow.json"
+            flow_dict = json_read(file_path=flow_json)
+            
+            step_result = []
+            peak_memory = 0
+            is_success = True
+            fp_inst_num = 0
+            for step in flow_dict.get("steps", {}):
+                state = step.get("state", "")
+                step_name = step.get("name", "")
+                if "Success" == state:
+                    match step_name:
+                        case StepEnum.FLOORPLAN.value:
+                            json_path = f"{workspace_dir}/{step_name}_iEDA/feature/{step_name}.db.json"
+                            db_dict = json_read(file_path=json_path)
+                            fp_inst_num = db_dict.get("Design Statis", {}).get("num_instances", 0)
+                            step_result.append(fp_inst_num)
+                        case StepEnum.NETLIST_OPT.value:
+                            json_path = f"{workspace_dir}/{step_name}_iEDA/feature/{step_name}.db.json"
+                            db_dict = json_read(file_path=json_path)
+                            inst_num = db_dict.get("Design Statis", {}).get("num_instances", 0)
+                            step_result.append(inst_num-fp_inst_num)
+                        case StepEnum.PLACEMENT.value:
+                            json_path = f"{workspace_dir}/{step_name}_iEDA/feature/{step_name}.step.json"
+                            db_dict = json_read(file_path=json_path)
+                            overflow = db_dict.get("place", {}).get("overflow", 0)
+                            step_result.append(overflow)
+                        case StepEnum.ROUTING.value:
+                            json_path = f"{workspace_dir}/{step_name}_iEDA/feature/{step_name}.db.json"
+                            db_dict = json_read(file_path=json_path)
+                            wire_len = db_dict.get("Nets", {}).get("wire_len", 0)
+                            step_result.append(wire_len)
+                        case StepEnum.DRC.value:
+                            json_path = f"{workspace_dir}/{step_name}_iEDA/feature/{step_name}.step.json"
+                            db_dict = json_read(file_path=json_path)
+                            drc_num = db_dict.get("drc", {}).get("number", 0)
+                            step_result.append(drc_num)
+                        case default:
+                            step_result.append(state)
+                                
+                else:
+                    step_result.append(state)
+                    is_success = False
+                # step_result.append(step.get("state", ""))
+                memory = step.get("peak memory (mb)", 0)
+                peak_memory = memory if memory>peak_memory else peak_memory
+                
+            
+            success_num = success_num + 1 if is_success else success_num   
+            # peak memory
+            workspace_result.append(peak_memory)
+            
+            workspace_result.extend(step_result)
+            total += 1
+            
+            results.append(workspace_result)
+            
+            print(f"process {dir} - {design_name} : {is_success}")
+    
+    csv_write(file_path=statis_csv,
+              header=header,
+              data=results)
+            
+    print(f"benchmark success {success_num} / {total}")

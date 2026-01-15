@@ -5,7 +5,12 @@ import os
 import concurrent.futures
 from tqdm import tqdm
 from chipcompiler.data import WorkspaceStep, Workspace, Parameters, StepEnum
-from chipcompiler.utility import json_read, plot_csv_map, plot_csv_table
+from chipcompiler.utility import (
+    json_read, 
+    plot_csv_map, 
+    plot_csv_table, 
+    plot_metrics
+)
 
 class IEDAPlot:
     def __init__(self, workspace: Workspace, step: WorkspaceStep):
@@ -15,12 +20,26 @@ class IEDAPlot:
     def plot(self) -> bool:
         state = True
         match self.step.name:
-            case StepEnum.PLACEMENT.value | StepEnum.CTS.value:
-                state = state & self.plot_placement_heatmap()
+            case StepEnum.FLOORPLAN.value:
+                state = state & self.plot_step_metrics()
+            case StepEnum.NETLIST_OPT.value:
+                state = state & self.plot_step_metrics() 
+            case StepEnum.PLACEMENT.value:
+                state = state & self.plot_step_metrics() & self.plot_placement_heatmap()
+            case StepEnum.CTS.value:
+                state = state & self.plot_step_metrics() & self.plot_placement_heatmap()
+            case StepEnum.TIMING_OPT_DRV.value:
+                state = state & self.plot_step_metrics()
+            case StepEnum.TIMING_OPT_HOLD.value:
+                state = state & self.plot_step_metrics()
+            case StepEnum.LEGALIZATION.value:
+                state = state & self.plot_step_metrics()
             case StepEnum.ROUTING.value:
-                state = state & self.plot_routing_heatmap()
+                state = state & self.plot_step_metrics() & self.plot_routing_heatmap()
             case StepEnum.DRC.value:
-                state = state & self.plot_drc_statis()
+                state = state & self.plot_step_metrics() & self.plot_drc_statis()
+            case StepEnum.FILLER.value:
+                state = state & self.plot_step_metrics() 
                 
             case default:
                 self.workspace.logger.warning(f"Step {self.step.name} not supported for plotting.")
@@ -28,7 +47,14 @@ class IEDAPlot:
         self.workspace.logger.info(f"Plotting completed for step {self.step.name}")
         return state
     
-    def plot_placement_heatmap(self):
+    def plot_step_metrics(self) -> bool:
+        # generate report image and dscription
+        json_path = self.step.analysis.get('metrics', "")
+        image_path = json_path.replace(".json", ".png")
+        metrics = json_read(json_path)
+        return plot_metrics(metrics=metrics, output_path=image_path)
+
+    def plot_placement_heatmap(self) -> bool:
         json_map_path = self.step.feature.get("map", "")
         json_map = json_read(json_map_path)
         if not json_map:
