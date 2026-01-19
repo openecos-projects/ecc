@@ -18,6 +18,8 @@ if __name__ == "__main__":
                   batch_name="ics55_batch_0")
     
     benchmark_result(benchmark_dir="/nfs/home/huangzengrong/benchmark/ics55_batch_0")
-    benchmark_statis(benchmark_dir="/nfs/home/huangzengrong/benchmark/ics55_batch_0")
+    benchmark_statis(benchmark_json=benchmark_json,
+                     target_dir="/nfs/home/huangzengrong/benchmark",
+                     batch_name="ics55_batch_0")
 
     exit(0)
