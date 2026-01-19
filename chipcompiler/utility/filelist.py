@@ -207,3 +207,48 @@ def _compute_file_sizes(file_paths: List[str], base_dir: str) -> dict:
         except OSError:
             file_sizes[file_path] = 0
     return file_sizes
+
+
+def parse_incdir_directives(filelist_path: str) -> List[str]:
+    """
+    Parse +incdir directives from a filelist file.
+
+    Args:
+        filelist_path: Path to the filelist file
+
+    Returns:
+        List of include directory paths (relative or absolute) extracted from +incdir directives
+
+    Raises:
+        FileNotFoundError: If filelist file doesn't exist
+
+    Example:
+        >>> dirs = parse_incdir_directives("design.f")
+        >>> print(dirs)
+        ['./', './include', '../common/headers']
+    """
+    if not os.path.exists(filelist_path):
+        raise FileNotFoundError(f"Filelist not found: {filelist_path}")
+
+    incdir_paths = []
+
+    with open(filelist_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+
+            if not line or line.startswith(('#', '//', '`')):
+                continue
+
+            if line.startswith('+incdir+'):
+                path = _extract_incdir_path(line)
+                if path:
+                    incdir_paths.append(path)
+
+    return incdir_paths
+
+
+def _extract_incdir_path(line: str) -> str:
+    """Extract path from +incdir+ directive, handling comments and quotes."""
+    path = line.removeprefix('+incdir+')
+    path = _remove_inline_comment(path).strip()
+    return path.strip('"\'') or ""

@@ -21,7 +21,8 @@ from .filelist import (
     parse_filelist,
     resolve_path,
     validate_filelist,
-    get_filelist_info
+    get_filelist_info,
+    parse_incdir_directives
 )
 
 __all__ = [
@@ -38,5 +39,6 @@ __all__ = [
     'parse_filelist',
     'resolve_path',
     'validate_filelist',
-    'get_filelist_info'
+    'get_filelist_info',
+    'parse_incdir_directives'
 ]

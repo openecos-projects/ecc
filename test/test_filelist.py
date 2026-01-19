@@ -23,7 +23,8 @@ from chipcompiler.utility.filelist import (
     parse_filelist,
     resolve_path,
     validate_filelist,
-    get_filelist_info
+    get_filelist_info,
+    parse_incdir_directives
 )
 from chipcompiler.data.workspace import copy_filelist_with_sources
 from chipcompiler.data import create_workspace
@@ -57,9 +58,31 @@ def write_rtl_file(path, module_name):
     path.write_text(f"module {module_name}(); endmodule")
 
 
+def write_header_file(path, content):
+    """Helper to write a header file."""
+    path.write_text(content)
+
+
 def create_filelist(path, *entries):
     """Helper to create a filelist with given entries."""
     path.write_text("\n".join(entries) + "\n")
+
+
+def create_filelist_with_content(path, content):
+    """Helper to create a filelist with raw content."""
+    path.write_text(content)
+
+
+def setup_project_with_incdir(project_dir, incdir_name="include", rtl_dir="rtl"):
+    """
+    Helper to set up project structure with RTL and include directories.
+    Returns tuple of (rtl_dir_path, include_dir_path).
+    """
+    rtl_path = project_dir / rtl_dir
+    include_path = project_dir / incdir_name
+    rtl_path.mkdir(parents=True)
+    include_path.mkdir(parents=True)
+    return rtl_path, include_path
 
 
 class TestParseFilelist:
@@ -363,6 +386,178 @@ class TestCreateWorkspaceIntegration:
         origin_dir = workspace_dir / "origin"
         assert (origin_dir / "rtl" / "core" / "alu.v").exists()
         assert (origin_dir / "rtl" / "core" / "ctrl.v").exists()
+
+
+class TestParseIncdirDirectives:
+    """Test suite for parse_incdir_directives function."""
+
+    def _parse_incdir(self, tmp_path, content):
+        """Helper to create filelist and parse incdir directives."""
+        filelist = tmp_path / "design.f"
+        create_filelist_with_content(filelist, content)
+        return parse_incdir_directives(str(filelist))
+
+    def test_parse_single_incdir(self, tmp_path):
+        """Parse filelist with single +incdir directive."""
+        dirs = self._parse_incdir(tmp_path, "+incdir+./include\nrtl/top.v\n")
+        assert dirs == ["./include"]
+
+    def test_parse_multiple_incdir(self, tmp_path):
+        """Parse filelist with multiple +incdir directives."""
+        content = (
+            "+incdir+./include\n"
+            "+incdir+./rtl/common\n"
+            "+incdir+../shared/headers\n"
+            "rtl/top.v\n"
+        )
+        dirs = self._parse_incdir(tmp_path, content)
+        assert dirs == ["./include", "./rtl/common", "../shared/headers"]
+
+    def test_parse_incdir_current_dir(self, tmp_path):
+        """Parse filelist with +incdir+./ directive."""
+        dirs = self._parse_incdir(tmp_path, "+incdir+./\nrtl/top.v\n")
+        assert dirs == ["./"]
+
+    def test_parse_incdir_with_comments(self, tmp_path):
+        """Parse +incdir directives with inline comments."""
+        content = (
+            "+incdir+./include  # Main headers\n"
+            "+incdir+./rtl/common // Common headers\n"
+            "rtl/top.v\n"
+        )
+        dirs = self._parse_incdir(tmp_path, content)
+        assert dirs == ["./include", "./rtl/common"]
+
+    def test_parse_incdir_with_quotes(self, tmp_path):
+        """Parse +incdir directives with quoted paths."""
+        dirs = self._parse_incdir(tmp_path, '+incdir+"./include"\nrtl/top.v\n')
+        assert dirs == ["./include"]
+
+    def test_parse_incdir_empty_filelist(self, tmp_path):
+        """Parse filelist with no +incdir directives."""
+        dirs = self._parse_incdir(tmp_path, "rtl/top.v\nrtl/sub.v\n")
+        assert dirs == []
+
+    def test_parse_incdir_skip_comments(self, tmp_path):
+        """Ensure comments are skipped when parsing +incdir."""
+        content = (
+            "# +incdir+./should_skip\n"
+            "// +incdir+./also_skip\n"
+            "+incdir+./valid\n"
+        )
+        dirs = self._parse_incdir(tmp_path, content)
+        assert dirs == ["./valid"]
+
+    def test_parse_incdir_with_spaces(self, tmp_path):
+        """Parse +incdir directives with surrounding spaces."""
+        content = (
+            "+incdir+ ./include\n"           # Space after prefix
+            "+incdir+  ./rtl/common  \n"     # Multiple spaces
+            "+incdir+ \"./quoted\"  # comment\n"  # Spaces with quotes
+            "  +incdir+./leading\n"          # Leading spaces on line
+            "\t+incdir+./tab\n"              # Leading tab
+        )
+        dirs = self._parse_incdir(tmp_path, content)
+        assert dirs == ["./include", "./rtl/common", "./quoted", "./leading", "./tab"]
+
+
+class TestCopyFilelistWithIncdir:
+    """Test suite for copy_filelist_with_sources with +incdir support."""
+
+    def _copy_and_get_origin(self, tmp_path, project_dir, filelist_content):
+        """Helper to create filelist, copy sources, and return origin directory."""
+        filelist = project_dir / "design.f"
+        create_filelist_with_content(filelist, filelist_content)
+
+        workspace_dir = tmp_path / "workspace"
+        copy_filelist_with_sources(str(filelist), str(workspace_dir))
+        return workspace_dir / "origin"
+
+    def test_copy_with_incdir_basic(self, tmp_path):
+        """Copy filelist with basic +incdir directive."""
+        project_dir = tmp_path / "project"
+        rtl_dir, include_dir = setup_project_with_incdir(project_dir)
+
+        write_rtl_file(rtl_dir / "top.v", "top")
+        write_header_file(include_dir / "defines.vh", "`define WIDTH 32")
+
+        origin_dir = self._copy_and_get_origin(
+            tmp_path, project_dir, "+incdir+./include\nrtl/top.v\n"
+        )
+
+        assert (origin_dir / "rtl" / "top.v").exists()
+        assert (origin_dir / "include" / "defines.vh").exists()
+
+    def test_copy_with_incdir_deduplication(self, tmp_path):
+        """Verify deduplication when file appears in both filelist and +incdir."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        write_rtl_file(project_dir / "top.v", "top")
+        write_header_file(project_dir / "types.vh", "`define TYPES")
+
+        origin_dir = self._copy_and_get_origin(
+            tmp_path, project_dir, "top.v\n+incdir+./\n"
+        )
+
+        assert (origin_dir / "top.v").exists()
+        assert (origin_dir / "types.vh").exists()
+
+        # Verify file count: top.v and types.vh only
+        verilog_files = list(origin_dir.glob("*.v")) + list(origin_dir.glob("*.vh"))
+        assert len(verilog_files) == 2
+
+    def test_copy_with_incdir_nested_structure(self, tmp_path):
+        """Copy +incdir with nested directory structure."""
+        project_dir = tmp_path / "project"
+        rtl_dir, include_dir = setup_project_with_incdir(project_dir)
+        (include_dir / "subdir").mkdir()
+
+        write_rtl_file(rtl_dir / "top.v", "top")
+        write_header_file(include_dir / "defines.vh", "`define A")
+        write_header_file(include_dir / "subdir" / "params.vh", "`define B")
+
+        origin_dir = self._copy_and_get_origin(
+            tmp_path, project_dir, "+incdir+./include\nrtl/top.v\n"
+        )
+
+        assert (origin_dir / "rtl" / "top.v").exists()
+        assert (origin_dir / "include" / "defines.vh").exists()
+        assert (origin_dir / "include" / "subdir" / "params.vh").exists()
+
+    def test_copy_with_incdir_missing_directory(self, tmp_path):
+        """Handle missing +incdir directory gracefully."""
+        project_dir = tmp_path / "project"
+        (project_dir / "rtl").mkdir(parents=True)
+
+        write_rtl_file(project_dir / "rtl" / "top.v", "top")
+
+        origin_dir = self._copy_and_get_origin(
+            tmp_path, project_dir, "+incdir+./missing_include\nrtl/top.v\n"
+        )
+
+        assert (origin_dir / "rtl" / "top.v").exists()
+
+    def test_copy_with_multiple_incdir(self, tmp_path):
+        """Copy filelist with multiple +incdir directives."""
+        project_dir = tmp_path / "project"
+        (project_dir / "rtl").mkdir(parents=True)
+        (project_dir / "include1").mkdir(parents=True)
+        (project_dir / "include2").mkdir(parents=True)
+
+        write_rtl_file(project_dir / "rtl" / "top.v", "top")
+        write_header_file(project_dir / "include1" / "defs1.vh", "`define A")
+        write_header_file(project_dir / "include2" / "defs2.vh", "`define B")
+
+        origin_dir = self._copy_and_get_origin(
+            tmp_path,
+            project_dir,
+            "+incdir+./include1\n+incdir+./include2\nrtl/top.v\n",
+        )
+
+        assert (origin_dir / "rtl" / "top.v").exists()
+        assert (origin_dir / "include1" / "defs1.vh").exists()
+        assert (origin_dir / "include2" / "defs2.vh").exists()
 
 
 if __name__ == "__main__":

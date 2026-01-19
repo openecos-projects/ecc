@@ -4,7 +4,7 @@
 from dataclasses import dataclass, field
 from .parameter import Parameters, save_parameter
 from chipcompiler.utility import Logger, create_logger, dict_to_str
-from chipcompiler.utility.filelist import parse_filelist, resolve_path
+from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
     
 @dataclass
 class PDK:
@@ -94,9 +94,10 @@ class WorkspaceStep:
 
 def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=None) -> str:
     """
-    Copy filelist and all referenced source files to workspace/origin/ directory.
+    Copy filelist and all referenced source files + include directories to workspace/origin/.
 
     Maintains the original directory structure of source files relative to the filelist location.
+    Supports +incdir directives with smart deduplication.
 
     Args:
         input_filelist: Path to the filelist file
@@ -125,7 +126,10 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
     os.makedirs(origin_dir, exist_ok=True)
 
     filelist_dir = os.path.dirname(os.path.abspath(input_filelist))
+    copied_files = set()
+    stats = {'copied': 0, 'missing': 0, 'incdir_copied': 0, 'incdir_skipped': 0}
 
+    # Copy files listed in filelist
     try:
         source_files = parse_filelist(input_filelist)
     except Exception as e:
@@ -133,32 +137,64 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
             logger.error(f"Failed to parse filelist {input_filelist}: {e}")
         raise
 
-    copied_count = 0
-    skipped_count = 0
-
     for src_path in source_files:
         abs_src = resolve_path(src_path, filelist_dir)
 
         if not os.path.exists(abs_src):
             if logger:
                 logger.warning(f"File not found (skipping): {abs_src}")
-            skipped_count += 1
+            stats['missing'] += 1
             continue
 
-        # Absolute paths: use filename only; relative paths: preserve structure
         rel_path = os.path.basename(src_path) if os.path.isabs(src_path) else src_path
-        dst_path = os.path.join(origin_dir, rel_path)
 
-        try:
-            os.makedirs(os.path.dirname(dst_path), exist_ok=True)
-            shutil.copy2(abs_src, dst_path)
+        if rel_path in copied_files:
             if logger:
-                logger.debug(f"Copied: {abs_src} -> {dst_path}")
-            copied_count += 1
-        except Exception as e:
-            if logger:
-                logger.error(f"Error copying {src_path}: {e}")
+                logger.debug(f"Skipping duplicate: {rel_path}")
+            continue
 
+        if _copy_file_safely(abs_src, os.path.join(origin_dir, rel_path), logger, src_path):
+            copied_files.add(rel_path)
+            stats['copied'] += 1
+
+    # Copy +incdir directories
+    try:
+        incdir_paths = parse_incdir_directives(input_filelist)
+    except Exception as e:
+        if logger:
+            logger.warning(f"Failed to parse +incdir directives: {e}")
+        incdir_paths = []
+
+    for incdir_path in incdir_paths:
+        abs_incdir = resolve_path(incdir_path, filelist_dir)
+
+        if not os.path.exists(abs_incdir):
+            if logger:
+                logger.warning(f"Include directory not found: {abs_incdir}")
+            continue
+
+        if not os.path.isdir(abs_incdir):
+            if logger:
+                logger.warning(f"Include path is not a directory: {abs_incdir}")
+            continue
+
+        for root, dirs, files in os.walk(abs_incdir):
+            for filename in files:
+                src_file = os.path.join(root, filename)
+                rel_from_filelist = os.path.relpath(src_file, filelist_dir)
+
+                if rel_from_filelist in copied_files:
+                    stats['incdir_skipped'] += 1
+                    if logger:
+                        logger.debug(f"Skipping duplicate from +incdir: {rel_from_filelist}")
+                    continue
+
+                dst_file = os.path.join(origin_dir, rel_from_filelist)
+                if _copy_file_safely(src_file, dst_file, logger, f"+incdir/{src_file}"):
+                    copied_files.add(rel_from_filelist)
+                    stats['incdir_copied'] += 1
+
+    # Copy filelist file itself
     new_filelist = os.path.join(origin_dir, os.path.basename(input_filelist))
     try:
         shutil.copy2(input_filelist, new_filelist)
@@ -169,11 +205,31 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
 
     if logger:
         logger.info(
-            f"Copied filelist and sources: {copied_count} files copied, "
-            f"{skipped_count} files skipped"
+            f"Copied filelist and sources: "
+            f"{stats['copied']} files from filelist, "
+            f"{stats['incdir_copied']} files from +incdir, "
+            f"{stats['missing']} missing, "
+            f"{stats['incdir_skipped']} duplicates skipped"
         )
 
     return new_filelist
+
+
+def _copy_file_safely(src: str, dst: str, logger, context: str) -> bool:
+    """Copy a file with error handling and logging."""
+    import os
+    import shutil
+
+    try:
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(src, dst)
+        if logger:
+            logger.debug(f"Copied: {src} -> {dst}")
+        return True
+    except Exception as e:
+        if logger:
+            logger.error(f"Error copying {context}: {e}")
+        return False
 
 def create_workspace(directory : str,
                      origin_def : str,
