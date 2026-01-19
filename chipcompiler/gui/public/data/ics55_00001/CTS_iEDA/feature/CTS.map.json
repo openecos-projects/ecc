@@ -1,0 +1,93 @@
+{
+    "Congestion": {
+        "map": {
+            "egr": {
+                "horizontal": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/egr_congestion_map/cts_egr_horizontal_overflow.csv",
+                "union": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/egr_congestion_map/cts_egr_union_overflow.csv",
+                "vertical": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/egr_congestion_map/cts_egr_vertical_overflow.csv"
+            },
+            "lutrudy": {
+                "horizontal": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/RUDY_map/cts_lut_rudy_horizontal.csv",
+                "union": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/RUDY_map/cts_lut_rudy_union.csv",
+                "vertical": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/RUDY_map/cts_lut_rudy_vertical.csv"
+            },
+            "rudy": {
+                "horizontal": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/RUDY_map/cts_rudy_horizontal.csv",
+                "union": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/RUDY_map/cts_rudy_union.csv",
+                "vertical": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/RUDY_map/cts_rudy_vertical.csv"
+            }
+        },
+        "overflow": {
+            "max": {
+                "horizontal": 2,
+                "union": 6,
+                "vertical": 6
+            },
+            "top_average": {
+                "horizontal": 1.5000001192092896,
+                "union": 11.40000057220459,
+                "vertical": 10.550000190734863
+            },
+            "total": {
+                "horizontal": 6,
+                "union": 53,
+                "vertical": 47
+            }
+        },
+        "utilization": {
+            "lutrudy": {
+                "max": {
+                    "horizontal": 0.003444999922066927,
+                    "union": 0.0073640001937747,
+                    "vertical": 0.004118999931961298
+                },
+                "top_average": {
+                    "horizontal": 0.021826600655913353,
+                    "union": 0.04612130671739578,
+                    "vertical": 0.026508575305342674
+                }
+            },
+            "rudy": {
+                "max": {
+                    "horizontal": 0.0031109999399632215,
+                    "union": 0.006519999820739031,
+                    "vertical": 0.0037320000119507313
+                },
+                "top_average": {
+                    "horizontal": 0.019509075209498405,
+                    "union": 0.040769126266241074,
+                    "vertical": 0.023499978706240654
+                }
+            }
+        }
+    },
+    "Density": {
+        "cell": {
+            "allcell_density": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/density_map/cts_allcell_density.csv",
+            "macro_density": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/density_map/cts_macro_density.csv",
+            "stdcell_density": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/density_map/cts_stdcell_density.csv"
+        },
+        "margin": {
+            "horizontal": "",
+            "union": "",
+            "vertical": ""
+        },
+        "net": {
+            "allnet_density": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/density_map/cts_allnet_density.csv",
+            "global_net_density": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/density_map/cts_global_net_density.csv",
+            "local_net_density": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/density_map/cts_local_net_density.csv"
+        },
+        "pin": {
+            "allcell_pin_density": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/density_map/cts_allcell_pin_density.csv",
+            "macro_pin_density": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/density_map/cts_macro_pin_density.csv",
+            "stdcell_pin_density": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/CTS_iEDA/feature/density_map/cts_stdcell_pin_density.csv"
+        }
+    },
+    "Wirelength": {
+        "FLUTE": 4560957,
+        "GRWL": 4430000,
+        "HPWL": 4069652,
+        "HTree": 5706599,
+        "VTree": 5660152
+    }
+}

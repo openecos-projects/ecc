@@ -1,0 +1,73 @@
+{
+    "PL": {
+        "is_max_length_opt": 0,
+        "max_length_constraint": 1000000,
+        "is_timing_effort": 0,
+        "is_congestion_effort": 0,
+        "ignore_net_degree": 100,
+        "num_threads": 1,
+        "info_iter_num": 10,
+        "GP": {
+            "Wirelength": {
+                "init_wirelength_coef": 0.25,
+                "reference_hpwl": 446000000,
+                "min_wirelength_force_bar": -300
+            },
+            "Density": {
+                "target_density": 0.8,
+                "is_adaptive_bin": 1,
+                "bin_cnt_x": 128,
+                "bin_cnt_y": 128
+            },
+            "Nesterov": {
+                "max_iter": 2000,
+                "max_backtrack": 10,
+                "init_density_penalty": 8e-05,
+                "target_overflow": 0.1,
+                "initial_prev_coordi_update_coef": 100,
+                "min_precondition": 1.0,
+                "min_phi_coef": 0.95,
+                "max_phi_coef": 1.05
+            }
+        },
+        "BUFFER": {
+            "max_buffer_num": 10000,
+            "buffer_type": [
+                "BUFX8H7L",
+                "BUFX12H7L",
+                "BUFX16H7L",
+                "BUFX20H7L"
+            ]
+        },
+        "LG": {
+            "max_displacement": 1000000,
+            "global_right_padding": 0
+        },
+        "DP": {
+            "max_displacement": 1000000,
+            "global_right_padding": 0,
+            "enable_networkflow": 0
+        },
+        "Filler": {
+            "first_iter": [
+                "FILLER64H7R",
+                "FILLER32H7R",
+                "FILLER16H7R",
+                "FILLER8H7R",
+                "FILLER4H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ],
+            "second_iter": [
+                "FILLER64H7R",
+                "FILLER32H7R",
+                "FILLER16H7R",
+                "FILLER8H7R",
+                "FILLER4H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ],
+            "min_filler_width": 1
+        }
+    }
+}

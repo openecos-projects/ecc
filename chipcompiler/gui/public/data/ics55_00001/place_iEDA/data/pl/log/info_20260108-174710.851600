@@ -1,0 +1,96 @@
+Log file created at: 2026/01/08 17:47:10
+Running on machine: gpu05.edacluster.com
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I0108 17:47:10.853304 851600 PlacerDB.cc:442] Design name : gcd
+I0108 17:47:10.855250 851600 PlacerDB.cc:443] Database unit : 1000
+I0108 17:47:10.855255 851600 PlacerDB.cc:444] Die rectangle : 0,0 64461,64461
+I0108 17:47:10.855264 851600 PlacerDB.cc:446] Core rectangle : 10000,9800 54400,53200
+I0108 17:47:10.855268 851600 PlacerDB.cc:448] Row height : 1400
+I0108 17:47:10.855271 851600 PlacerDB.cc:449] Site width : 200
+I0108 17:47:10.855368 851600 PlacerDB.cc:496] Core area : 1926960000
+I0108 17:47:10.855373 851600 PlacerDB.cc:497] Non place instance area : 164640000
+I0108 17:47:10.855376 851600 PlacerDB.cc:498] Place instance area : 799120000
+I0108 17:47:10.855381 851600 PlacerDB.cc:501] Uitization(%) : 45.3448
+I0108 17:47:10.855402 851600 PlacerDB.cc:648] Instances Num : 621
+I0108 17:47:10.855407 851600 PlacerDB.cc:649] 1. Macro Num : 0
+I0108 17:47:10.855410 851600 PlacerDB.cc:650] 2. Stdcell Num : 621
+I0108 17:47:10.855415 851600 PlacerDB.cc:651] 2.1 Logic Instances : 293
+I0108 17:47:10.855418 851600 PlacerDB.cc:652] 2.2 Flipflops : 34
+I0108 17:47:10.855422 851600 PlacerDB.cc:653] 2.3 Clock Buffers : 0
+I0108 17:47:10.855427 851600 PlacerDB.cc:654] 2.4 Logic Buffers : 0
+I0108 17:47:10.855430 851600 PlacerDB.cc:655] 2.5 IO Cells : 0
+I0108 17:47:10.855435 851600 PlacerDB.cc:656] 2.6 Physical Instances : 294
+I0108 17:47:10.855439 851600 PlacerDB.cc:657] Core Outside Instances : 0
+I0108 17:47:10.855443 851600 PlacerDB.cc:658] Fake Instances : 0
+I0108 17:47:10.855448 851600 PlacerDB.cc:659] Unplaced Instances Num : 327
+I0108 17:47:10.855453 851600 PlacerDB.cc:660] Placed Instances Num : 0
+I0108 17:47:10.855458 851600 PlacerDB.cc:661] Fixed Instances Num : 294
+I0108 17:47:10.855461 851600 PlacerDB.cc:662] Optional CellMaster Num : 1570
+I0108 17:47:10.855468 851600 PlacerDB.cc:709] Nets Num : 363
+I0108 17:47:10.855472 851600 PlacerDB.cc:710] 1. ClockNets Num : 1
+I0108 17:47:10.855475 851600 PlacerDB.cc:711] 2. ResetNets Num : 0
+I0108 17:47:10.855480 851600 PlacerDB.cc:712] 3. SignalNets Num : 362
+I0108 17:47:10.855484 851600 PlacerDB.cc:713] 4. FakeNets Num : 0
+I0108 17:47:10.855489 851600 PlacerDB.cc:714] Don't Care Net Num : 0
+I0108 17:47:10.855496 851600 PlacerDB.cc:749] Pins Num : 1246
+I0108 17:47:10.855500 851600 PlacerDB.cc:750] 1. IO Ports Num : 54
+I0108 17:47:10.855504 851600 PlacerDB.cc:751] 2. Instance Ports Num : 1192
+I0108 17:47:10.855508 851600 PlacerDB.cc:752] 3. Fake Pins Num : 0
+I0108 17:47:10.855512 851600 PlacerDB.cc:762] Regions Num : 0
+I0108 17:47:10.855618 851600 RandomPlace.cc:41] Finish Random Initialize Insts Coordinates!
+I0108 17:47:10.856431 851600 NesterovPlace.cc:86] Change to Adaptive Bin: (32,32)
+I0108 17:47:10.857452 851600 NesterovPlace.cc:1878] NesInstances Num : 889
+I0108 17:47:10.857460 851600 NesterovPlace.cc:1879] 1. Macro Num : 0
+I0108 17:47:10.857463 851600 NesterovPlace.cc:1880] 2. Stdcell Num : 889
+I0108 17:47:10.857467 851600 NesterovPlace.cc:1881] 2.1 Filler Num : 268
+I0108 17:47:10.857472 851600 NesterovPlace.cc:1882] Fixed NesInstances Num : 294
+I0108 17:47:10.857478 851600 NesterovPlace.cc:1898] NesNets Num : 363
+I0108 17:47:10.857483 851600 NesterovPlace.cc:1899] Dont Care Num : 0
+I0108 17:47:10.857488 851600 NesterovPlace.cc:1900] Set NetWeight Num : 0
+I0108 17:47:10.857493 851600 NesterovPlace.cc:1902] NesPins Num : 1246
+I0108 17:47:10.857497 851600 NesterovPlace.cc:1906] BinGrid Info
+I0108 17:47:10.857501 851600 NesterovPlace.cc:1907] BinCnt(x * y) : 32 * 32
+I0108 17:47:10.857506 851600 NesterovPlace.cc:1908] BinSize(width , height) : 1388 , 1357
+I0108 17:47:10.857510 851600 NesterovPlace.cc:1909] Target Density : 0.8
+I0108 17:47:10.857519 851600 NesterovPlace.cc:672] -----------------Start Global Placement-----------------
+I0108 17:47:10.861963 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 1 overflow: 0.837036 HPWL: 3353741
+I0108 17:47:10.872010 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 10 overflow: 0.692833 HPWL: 3561993
+I0108 17:47:10.883152 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 20 overflow: 0.690102 HPWL: 3516624
+I0108 17:47:10.894265 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 30 overflow: 0.697722 HPWL: 3503142
+I0108 17:47:10.905359 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 40 overflow: 0.697154 HPWL: 3503347
+I0108 17:47:10.916481 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 50 overflow: 0.695813 HPWL: 3507000
+I0108 17:47:10.927579 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 60 overflow: 0.694638 HPWL: 3503153
+I0108 17:47:10.938656 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 70 overflow: 0.694568 HPWL: 3503296
+I0108 17:47:10.949729 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 80 overflow: 0.6953 HPWL: 3503705
+I0108 17:47:10.960798 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 90 overflow: 0.695581 HPWL: 3504834
+I0108 17:47:10.971889 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 100 overflow: 0.694476 HPWL: 3503933
+I0108 17:47:10.983012 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 110 overflow: 0.693362 HPWL: 3502553
+I0108 17:47:10.994171 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 120 overflow: 0.692773 HPWL: 3502475
+I0108 17:47:11.005318 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 130 overflow: 0.691484 HPWL: 3503094
+I0108 17:47:11.016469 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 140 overflow: 0.689883 HPWL: 3503937
+I0108 17:47:11.027613 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 150 overflow: 0.68772 HPWL: 3505551
+I0108 17:47:11.038777 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 160 overflow: 0.684447 HPWL: 3504502
+I0108 17:47:11.049937 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 170 overflow: 0.680224 HPWL: 3506836
+I0108 17:47:11.061112 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 180 overflow: 0.673444 HPWL: 3509691
+I0108 17:47:11.072306 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 190 overflow: 0.665124 HPWL: 3503587
+I0108 17:47:11.083460 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 200 overflow: 0.656026 HPWL: 3500173
+I0108 17:47:11.094642 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 210 overflow: 0.642384 HPWL: 3500765
+I0108 17:47:11.105815 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 220 overflow: 0.623252 HPWL: 3483432
+I0108 17:47:11.116997 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 230 overflow: 0.599709 HPWL: 3467897
+I0108 17:47:11.128189 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 240 overflow: 0.572175 HPWL: 3442227
+I0108 17:47:11.139376 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 250 overflow: 0.542109 HPWL: 3447764
+I0108 17:47:11.150619 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 260 overflow: 0.50817 HPWL: 3461241
+I0108 17:47:11.161834 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 270 overflow: 0.468122 HPWL: 3495091
+I0108 17:47:11.173053 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 280 overflow: 0.421865 HPWL: 3539085
+I0108 17:47:11.184284 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 290 overflow: 0.367465 HPWL: 3578289
+I0108 17:47:11.198331 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 300 overflow: 0.32766 HPWL: 3614728
+I0108 17:47:11.210119 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 310 overflow: 0.304231 HPWL: 3630541
+I0108 17:47:11.221789 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 320 overflow: 0.271649 HPWL: 3663766
+I0108 17:47:11.233089 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 330 overflow: 0.246991 HPWL: 3691855
+I0108 17:47:11.244707 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 340 overflow: 0.231263 HPWL: 3696725
+I0108 17:47:11.256556 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 350 overflow: 0.217544 HPWL: 3713785
+I0108 17:47:11.268097 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 360 overflow: 0.200719 HPWL: 3724211
+I0108 17:47:11.279373 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 370 overflow: 0.188441 HPWL: 3732967
+I0108 17:47:11.291060 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 380 overflow: 0.171302 HPWL: 3750411
+I0108 17:47:11.302587 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 390 overflow: 0.162012 HPWL: 3761822
+I0108 17:47:11.314121 851600 NesterovPlace.cc:1462] [NesterovSolve] Iter: 400 overflow: 0.150966

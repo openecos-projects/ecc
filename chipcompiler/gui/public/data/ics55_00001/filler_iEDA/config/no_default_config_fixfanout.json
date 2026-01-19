@@ -1,0 +1,14 @@
+{
+    "file_path": {
+        "design_work_space": "",
+        "sdc_file": "",
+        "lib_files": [],
+        "lef_files": [],
+        "def_file": "",
+        "output_def": "",
+        "report_file": "",
+        "gds_file": ""
+    },
+    "insert_buffer": "BUFX8H7L",
+    "max_fanout": 20
+}

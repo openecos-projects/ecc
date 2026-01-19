@@ -1,0 +1,12 @@
+{
+    "ConfigPath": {
+        "idb_path": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/route_iEDA/config/db_default_config.json",
+        "ifp_path": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/route_iEDA/config/fp_default_config.json",
+        "ipl_path": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/route_iEDA/config/pl_default_config.json",
+        "irt_path": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/route_iEDA/config/rt_default_config.json",
+        "idrc_path": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/route_iEDA/config/drc_default_config.json",
+        "icts_path": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/route_iEDA/config/cts_default_config.json",
+        "ito_path": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/route_iEDA/config/to_default_config_drv.json",
+        "ipnp_path": "/nfs/home/huangzengrong/benchmark/ics55_batch_front/ics55_00001/route_iEDA/config/pnp_default_config.json"
+    }
+}

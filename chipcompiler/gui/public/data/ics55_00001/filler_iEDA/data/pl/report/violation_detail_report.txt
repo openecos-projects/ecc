@@ -1,0 +1,167 @@
+Generate the report at 2026-01-08T17:48:52
+Illegal Alignment Instances Count : 2
+Illegal Location Instance clk_0_buf Location : 23774,28905 25774,30305
+Illegal Location Instance clk_1_buf Location : 23775,28905 28175,30305
+
+Illegal Power Orient Instances Count : 2
+Illegal Power Orient Instance clk_0_buf Location : 23774,28905 25774,30305
+Illegal Power Orient Instance clk_1_buf Location : 23775,28905 28175,30305
+
+Overlap Violation
+Regions In the Layout : 
+
+Illegal Overlap Instance Cliques Count : 44
+Overlap Clique : 0
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 1
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 2
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 3
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 4
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 5
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 6
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 7
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 8
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 9
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 10
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 11
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 12
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 13
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 14
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 15
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 16
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 17
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 18
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 19
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 20
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_9__reg_p Coordinate : 23400,28000 27800,29400
+Overlap Clique : 21
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _490_ Coordinate : 27800,28000 29200,29400
+Overlap Clique : 22
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _490_ Coordinate : 27800,28000 29200,29400
+Overlap Clique : 23
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 24
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 25
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 26
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 27
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 28
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 29
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 30
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 31
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 32
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 33
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst clk_0_buf Coordinate : 23774,28905 25774,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 34
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 35
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst dpath.a_lt_b$in1_8__reg_p Coordinate : 21800,29400 26200,30800
+Overlap Clique : 36
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _273_ Coordinate : 26200,29400 26800,30800
+Overlap Clique : 37
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _273_ Coordinate : 26200,29400 26800,30800
+Overlap Clique : 38
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _273_ Coordinate : 26200,29400 26800,30800
+Overlap Clique : 39
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _489_ Coordinate : 27200,29400 29000,30800
+Overlap Clique : 40
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _489_ Coordinate : 27200,29400 29000,30800
+Overlap Clique : 41
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _489_ Coordinate : 27200,29400 29000,30800
+Overlap Clique : 42
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _489_ Coordinate : 27200,29400 29000,30800
+Overlap Clique : 43
+Inst clk_1_buf Coordinate : 23775,28905 28175,30305
+Inst _489_ Coordinate : 27200,29400 29000,30800

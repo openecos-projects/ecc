@@ -1,0 +1,48 @@
+{
+    "timing": {
+        "design_workspace": ""
+    },
+    "power": {
+        "power_net_name": ""
+    },
+    "egr": {
+        "map_path": ""
+    },
+    "grid": {
+        "power_layers": [],
+        "follow_pin_layers": [],
+        "follow_pin_width": 480.0,
+        "power_port_layer": "",
+        "ho_region_num": 1,
+        "ver_region_num": 1
+    },
+    "simulated_annealing": {
+        "initial_temp": 100.0,
+        "cooling_rate": 0.95,
+        "min_temp": 0.1,
+        "iterations_per_temp": 10,
+        "ir_drop_weight": 0.6,
+        "overflow_weight": 0.4,
+        "modifiable_layer_min": "",
+        "modifiable_layer_max": ""
+    },
+    "templates": {
+        "horizontal": [
+            {
+                "width": 1600.0,
+                "pg_offset": 6800.0,
+                "space": 13600.0,
+                "offset": 1200.0
+            }
+        ],
+        "vertical": [
+            {
+                "width": 1600.0,
+                "pg_offset": 6800.0,
+                "space": 13600.0,
+                "offset": 1200.0
+            }
+        ],
+        "layer_specific": {}
+    }
+}

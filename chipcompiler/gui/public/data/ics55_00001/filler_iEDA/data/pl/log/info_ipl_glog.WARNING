@@ -1,0 +1,7 @@
+Log file created at: 2026/01/08 17:48:52
+Running on machine: gpu05.edacluster.com
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+W0108 17:48:52.639052 867885 PLReporter.cc:1130] Cannot open file for evaluation report ! 
+E0108 17:48:52.642865 867885 PLReporter.cc:121] Illegal Alignment Instances Count : 2
+E0108 17:48:52.644491 867885 PLReporter.cc:135] Illegal Power Orient Instances Count : 2
+E0108 17:48:52.647127 867885 PLReporter.cc:148] Overlap Exist
