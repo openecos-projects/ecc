@@ -1,4 +1,0 @@
-Log file created at: 2026/01/08 17:48:52
-Running on machine: gpu05.edacluster.com
-Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
-I0108 17:48:52.636037 867885 PlacerDB.cc:442] Design name : gcd
