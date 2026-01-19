@@ -40,7 +40,7 @@ import TopBar from '../components/TopBar.vue'
 import LeftSidebar from '../components/LeftSidebar.vue'
 import DrawingArea from '../components/DrawingArea.vue'
 import ChatInspectorPanel from '../components/ChatInspectorPanel.vue'
-import RightSidebar from '../components/RightSidebar.vue'
+// import RightSidebar from '../components/RightSidebar.vue'
 import ThumbnailGallery from '../components/ThumbnailGallery.vue'
 import { useProject } from '../composables/useProject'
 

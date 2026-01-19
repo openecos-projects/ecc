@@ -4,6 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { LazyStore } from '@tauri-apps/plugin-store'
 import { exists } from '@tauri-apps/plugin-fs'
+import { openProjectApi, createProjectApi } from '../api'
 
 // 序列化对象（将 Date 转换为 ISO 字符串）
 interface SerializedProject {
@@ -161,7 +162,7 @@ export function useProject() {
       if (project) {
         selectedPath = project.path
       } else {
-        // 1. 【收信】弹出文件夹选择对话框
+        // 1. 弹出文件夹选择对话框
         const result = await open({
           directory: true,
           multiple: false,
@@ -171,42 +172,17 @@ export function useProject() {
         selectedPath = result as string
       }
 
-      // 1.5 【授权】请求 Rust 端动态授予该路径的访问权限
+      // 2. 请求 Rust 端动态授予该路径的访问权限（用于本地文件操作）
       try {
         await invoke('request_project_permission', { path: selectedPath })
       } catch (permError) {
         console.error('请求访问权限失败:', permError)
-        return false
+        // 权限请求失败不阻止继续，API 服务端有独立的文件访问权限
       }
 
-      // 2. 【发信】让 Python 加载项目状态
-      const pyResult = await invoke('run_python', {
-        script: 'test.py',
-        args: ['--action', 'load', '--path', selectedPath]
-      }) as { code: number, stdout: string, stderr: string }
-
-      // 检查 Python 执行结果
-      if (!pyResult.stdout || pyResult.stdout.trim() === '') {
-        console.error('Python 脚本无输出:', {
-          code: pyResult.code,
-          stderr: pyResult.stderr
-        })
-        return false
-      }
-
-      let response
-      try {
-        response = JSON.parse(pyResult.stdout)
-      } catch (parseError) {
-        console.error('JSON 解析失败:', {
-          stdout: pyResult.stdout,
-          stderr: pyResult.stderr,
-          error: parseError
-        })
-        return false
-      }
-
-      if (pyResult.code === 0 && response.status === 'success') {
+      // 3. 通过 HTTP API 加载项目状态
+      const response = await openProjectApi(selectedPath)
+      if (response.status === 'success' && response.project) {
         const loadedProject: Project = {
           id: response.project.path,
           name: response.project.name,
@@ -221,7 +197,7 @@ export function useProject() {
 
         return true
       } else {
-        console.error('加载项目失败:', response.message || pyResult.stderr)
+        console.error('加载项目失败:', response.message)
         return false
       }
     } catch (error) {
@@ -232,7 +208,7 @@ export function useProject() {
 
   const newProject = async () => {
     try {
-      // 1. 【收信】选择新项目存放的位置
+      // 1. 选择新项目存放的位置
       const selectedPath = await open({
         directory: true,
         multiple: false,
@@ -241,43 +217,19 @@ export function useProject() {
 
       if (!selectedPath) return
 
-      // 1.5 【授权】请求 Rust 端动态授予该路径的访问权限
+      // 2. 请求 Rust 端动态授予该路径的访问权限（用于本地文件操作）
       try {
         await invoke('request_project_permission', { path: selectedPath as string })
       } catch (permError) {
         console.error('请求访问权限失败:', permError)
-        return false
+        // 权限请求失败不阻止继续，API 服务端有独立的文件访问权限
       }
 
-      // 2. 【发信】初始化磁盘结构
+      // 3. 通过 HTTP API 创建项目
       const projectName = 'New_Chip_Design'
-      const pyResult = await invoke('run_python', {
-        script: 'test.py',
-        args: ['--action', 'init', '--path', selectedPath as string, '--name', projectName]
-      }) as { code: number, stdout: string, stderr: string }
+      const response = await createProjectApi(selectedPath as string, projectName)
 
-      // 检查 Python 执行结果
-      if (!pyResult.stdout || pyResult.stdout.trim() === '') {
-        console.error('Python 脚本无输出:', {
-          code: pyResult.code,
-          stderr: pyResult.stderr
-        })
-        return false
-      }
-
-      let response
-      try {
-        response = JSON.parse(pyResult.stdout)
-      } catch (parseError) {
-        console.error('JSON 解析失败:', {
-          stdout: pyResult.stdout,
-          stderr: pyResult.stderr,
-          error: parseError
-        })
-        return false
-      }
-
-      if (pyResult.code === 0 && response.status === 'success') {
+      if (response.status === 'success' && response.project) {
         const createdProject: Project = {
           id: response.project.path,
           name: response.project.name,

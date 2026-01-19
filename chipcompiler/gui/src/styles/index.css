@@ -1,13 +1,11 @@
-@layer tailwind-base, primevue, tailwind-utilities;
+/* Tailwind CSS v4 with PrimeVue CSS Layer Integration */
+@import "tailwindcss";
 
-@layer tailwind-base {
-  @import 'tailwindcss/theme' layer(theme);
-  @import 'tailwindcss/preflight' layer(preflight);
-}
-
-@layer tailwind-utilities {
-  @import 'tailwindcss/utilities' layer(utilities);
-}
+/* 指定 Tailwind 扫描的内容路径 (v4 语法) */
+@source "../**/*.vue";
+@source "../**/*.ts";
+@source "../**/*.tsx";
+@source "../../index.html";
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
