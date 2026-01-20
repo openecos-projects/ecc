@@ -93,6 +93,18 @@ echo ""
 echo "=== Step 5: Building Tauri application ==="
 pnpm run tauri build
 
+# Step 6: Copy API Server binary to release directory (for direct execution)
+echo "=== Step 6: Copying API Server to release directory ==="
+RELEASE_DIR="$TAURI_DIR/target/release"
+if [ -d "$RELEASE_DIR" ]; then
+    cp "$BINARIES_DIR/$BINARY_NAME" "$RELEASE_DIR/$BINARY_NAME"
+    chmod +x "$RELEASE_DIR/$BINARY_NAME"
+    echo "Copied: $RELEASE_DIR/$BINARY_NAME"
+else
+    echo "Warning: Release directory not found, skipping copy"
+fi
+echo ""
+
 echo ""
 echo "=========================================="
 echo "Build Complete!"

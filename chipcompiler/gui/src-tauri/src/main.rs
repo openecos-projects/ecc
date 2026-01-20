@@ -11,14 +11,18 @@ use tauri_plugin_fs::FsExt;
 type ApiServerProcess = Arc<Mutex<Option<Child>>>;
 
 /// Get the binary name for api-server based on the current platform
-fn get_api_server_binary_name() -> &'static str {
+/// Tauri's externalBin requires the target triple suffix
+fn get_api_server_binary_name() -> String {
+    // Get the target triple from build environment
+    let target = env!("TARGET");
+    
     #[cfg(target_os = "windows")]
     {
-        "api-server.exe"
+        format!("api-server-{}.exe", target)
     }
     #[cfg(not(target_os = "windows"))]
     {
-        "api-server"
+        format!("api-server-{}", target)
     }
 }
 
@@ -90,7 +94,7 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
         let binary_name = get_api_server_binary_name();
         
         // Try multiple possible locations for the binary
-        let possible_paths = get_possible_binary_paths(app_handle, binary_name);
+        let possible_paths = get_possible_binary_paths(app_handle, &binary_name);
         
         let mut server_binary: Option<PathBuf> = None;
         for path in &possible_paths {
@@ -138,14 +142,25 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
 /// Get possible paths where the api-server binary might be located
 /// This handles differences between macOS, Linux, and Windows
 #[cfg(not(debug_assertions))]
-fn get_possible_binary_paths(app_handle: &tauri::AppHandle, binary_name: &str) -> Vec<std::path::PathBuf> {
-    
+fn get_possible_binary_paths(app_handle: &tauri::AppHandle, binary_name: &str) -> Vec<std::path::PathBuf> {    
     let mut paths = Vec::new();
     
-    // Method 1: Next to the current executable (works for Linux and Windows)
+    // Method 1: Next to the current executable (works for bundled apps on Linux and Windows)
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             paths.push(exe_dir.join(binary_name));
+            
+            // Also check in binaries subdirectory next to executable
+            paths.push(exe_dir.join("binaries").join(binary_name));
+            
+            // Method 1b: For running directly from target/release, look in src-tauri/binaries
+            // exe is at: src-tauri/target/release/ecc-client
+            // binary is at: src-tauri/binaries/api-server-xxx
+            if let Some(target_dir) = exe_dir.parent() {  // target
+                if let Some(src_tauri_dir) = target_dir.parent() {  // src-tauri
+                    paths.push(src_tauri_dir.join("binaries").join(binary_name));
+                }
+            }
         }
     }
     
@@ -162,7 +177,7 @@ fn get_possible_binary_paths(app_handle: &tauri::AppHandle, binary_name: &str) -
     {
         if let Ok(exe_path) = std::env::current_exe() {
             // exe_path is typically: ECC.app/Contents/MacOS/ECC
-            // Binary should be at: ECC.app/Contents/MacOS/api-server
+            // Binary should be at: ECC.app/Contents/MacOS/api-server-xxx
             if let Some(macos_dir) = exe_path.parent() {
                 paths.push(macos_dir.join(binary_name));
                 
@@ -174,6 +189,10 @@ fn get_possible_binary_paths(app_handle: &tauri::AppHandle, binary_name: &str) -
             }
         }
     }
+    
+    // Remove duplicates while preserving order
+    let mut seen = std::collections::HashSet::new();
+    paths.retain(|p| seen.insert(p.clone()));
     
     paths
 }
