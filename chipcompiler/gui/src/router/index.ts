@@ -17,14 +17,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/WorkspaceView.vue'),
     redirect: '/workspace/home',
     children: [
-      { path: 'home', name: 'Home', component: () => import('../views/WorkspaceView.vue') },
-      { path: 'configure', name: 'Configure', component: () => import('../views/WorkspaceView.vue') },
-      { path: 'synthesis', name: 'Synthesis', component: () => import('../views/WorkspaceView.vue') },
-      { path: 'floorplan', name: 'Floorplan', component: () => import('../views/WorkspaceView.vue') },
-      { path: 'place', name: 'Place', component: () => import('../views/WorkspaceView.vue') },
-      { path: 'cts', name: 'CTS', component: () => import('../views/WorkspaceView.vue') },
-      { path: 'route', name: 'Route', component: () => import('../views/WorkspaceView.vue') },
-      { path: 'signoff', name: 'Signoff', component: () => import('../views/WorkspaceView.vue') }
+      { path: 'home', name: 'Home', component: () => import('../views/EditorView.vue') },
+      { path: 'configure', name: 'Configure', component: () => import('../views/ConfigureView.vue') },
+      { path: 'synthesis', name: 'Synthesis', component: () => import('../views/EditorView.vue') },
+      { path: 'floorplan', name: 'Floorplan', component: () => import('../views/EditorView.vue') },
+      { path: 'place', name: 'Place', component: () => import('../views/EditorView.vue') },
+      { path: 'cts', name: 'CTS', component: () => import('../views/EditorView.vue') },
+      { path: 'route', name: 'Route', component: () => import('../views/EditorView.vue') },
+      { path: 'signoff', name: 'Signoff', component: () => import('../views/EditorView.vue') }
     ],
     meta: {
       title: '工作区',
