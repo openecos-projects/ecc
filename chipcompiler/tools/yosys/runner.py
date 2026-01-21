@@ -4,6 +4,7 @@ import subprocess
 import os
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
 from chipcompiler.tools.yosys.utility import is_eda_exist, get_yosys_command
+from chipcompiler.tools.yosys.metrics import build_step_metrics
 
 
 def run_step(workspace: Workspace,
@@ -58,6 +59,7 @@ def run_step(workspace: Workspace,
             )
 
         if os.path.exists(step.output["verilog"]):
+            build_step_metrics(workspace=workspace, step=step)
             return True
         else:
             print(f"Error: Output netlist not generated at {step.output['verilog']}")

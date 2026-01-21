@@ -43,7 +43,7 @@ def generate_global_var_tcl(workspace: Workspace,
     timing_cell_stat_rpt = step.report.get("stat", "")
     timing_cell_count_rpt = step.report.get("check", "")
     generic_stat_json = step.report.get("stat", "")
-    synth_stat_json = step.report.get("stat", "")
+    synth_stat_json = step.feature.get("stat", "")
     synth_check_rpt = step.report.get("check", "")
 
     keep_hierarchy = "false"
@@ -170,6 +170,12 @@ def build_step(workspace: Workspace,
         "tmp": f"{step.directory}/data/tmp",
     }
 
+    step.feature = {
+        "dir": f"{step.directory}/feature",
+        "generic_stat": f"{step.directory}/feature/{step.name}_generic_stat.json",
+        "stat": f"{step.directory}/feature/{step.name}_stat.json",
+    }
+
     step.report = {
         "dir": f"{step.directory}/report",
         "stat": f"{step.directory}/report/{step.name}_stat.json",
@@ -206,6 +212,8 @@ def build_step_space(step: WorkspaceStep) -> None:
     os.makedirs(step.report.get("dir", f"{step.directory}/report"), exist_ok=True)
     os.makedirs(step.log.get("dir", f"{step.directory}/log"), exist_ok=True)
     os.makedirs(step.script.get("dir", f"{step.directory}/script"), exist_ok=True)
+    os.makedirs(step.feature.get("dir", f"{step.directory}/feature"), exist_ok=True)
+    os.makedirs(step.analysis.get("dir", f"{step.directory}/analysis"), exist_ok=True)
 
 
 def build_step_config(workspace: Workspace,
