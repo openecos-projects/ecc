@@ -3,11 +3,9 @@ import { shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { EditorContainer, type Editor } from '@/applications/editor'
 import DrawingToolbar from './DrawingToolbar.vue'
-import { useEDA } from '@/composables/useEDA'
 import { useProject } from '@/composables/useProject'
 
 const route = useRoute()
-const { callEdaFunc, getResourceUrl } = useEDA()
 const { currentProject } = useProject()
 
 const editor = shallowRef<Editor | null>(null)
@@ -46,21 +44,19 @@ const handleStageChange = async (stage: string) => {
   console.log(`Loading EDA results for stage: ${stage} (${edaStep})`)
 
   try {
-    // 1. 调用适配器获取数据
-    const res = await callEdaFunc('eda_logic.py', 'get_step_result', {
-      project_path: currentProject.value.path || '/Users/ekko/Desktop/ics55_00001',
-      step: edaStep
-    })
-    console.log('res:', res)
-    if (res.status === 'success' && res.payload?.exists) {
-      // 2. 转换为可访问的 URL (现在是异步的)
-      const imgUrl = await getResourceUrl(res.payload.image_path, currentProject.value.path)
-      // 3. 更新编辑器背景（会自动调用fit进行适应）
-      await editor.value.setBackgroundImage(imgUrl)
-    } else {
-      console.warn('No visual result for this stage:', res.message || 'File not found')
-      editor.value.clearBackground()
-    }
+    // 1.调用接口获取数据
+    const res = null; // TODO: 调用接口获取数据
+
+
+    // if (res.status === 'success' && res.payload?.exists) {
+    //   // 2. 转换为可访问的 URL (现在是异步的)
+    //   const imgUrl = await getResourceUrl(res.payload.image_path, currentProject.value.path)
+    //   // 3. 更新编辑器背景（会自动调用fit进行适应）
+    //   await editor.value.setBackgroundImage(imgUrl)
+    // } else {
+    //   console.warn('No visual result for this stage:', res.message || 'File not found')
+    //   editor.value.clearBackground()
+    // }
   } catch (error) {
     console.error('Failed to load stage results:', error)
   }
