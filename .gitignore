@@ -141,3 +141,6 @@ dmypy.json
 cython_debug/
 
 test/examples/
+
+.cursor/
+.cursor-user/
