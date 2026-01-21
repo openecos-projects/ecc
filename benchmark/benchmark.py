@@ -13,7 +13,8 @@ from chipcompiler.data import (
     log_workspace,
     StepEnum,
     StateEnum,
-    load_paramter
+    load_paramter,
+    get_pdk
 )
 
 from chipcompiler.engine import (
@@ -25,7 +26,6 @@ from chipcompiler.tools import build_step_metrics
 
 from chipcompiler.utility import json_read, csv_write
 
-from .pdk import get_pdk
 from .parameters import get_parameters
 
 def has_value(value):

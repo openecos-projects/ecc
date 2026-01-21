@@ -2,36 +2,11 @@
 # -*- encoding: utf-8 -*-
 
 from dataclasses import dataclass, field
-from .parameter import Parameters, save_parameter
-from chipcompiler.utility import Logger, create_logger, dict_to_str
+from .parameter import Parameters, save_parameter, load_paramter
+from .pdk import get_pdk, PDK
+from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
     
-@dataclass
-class PDK:
-    """
-    Dataclass for PDK information
-    """
-    name : str = "" # pdk name
-    version : str = "" # pdk version
-    tech : str = "" # pdk tech lef file
-    lefs : list = field(default_factory=list) # pdk lef files
-    libs : list = field(default_factory=list) # pdk liberty files
-    sdc : str = "" # pdk sdc file
-    spef : str = "" # pdk spef file
-    site_core : str = "" # core site
-    site_io : str = "" # io site
-    site_corner : str = "" # corner site
-    tap_cell : str = "" # tap cell
-    end_cap : str = "" # end cap
-    buffers : list = field(default_factory=list) # buffers
-    fillers : list = field(default_factory=list) # fillers
-    tie_high_cell : str = ""
-    tie_high_port : str = ""
-    tie_low_cell : str = ""
-    tie_low_port : str = ""
-    dont_use : list = field(default_factory=list) # don't use cell list
-    
-
 @dataclass
 class OriginDesign:
     """
@@ -235,8 +210,8 @@ def _copy_file_safely(src: str, dst: str, logger, context: str) -> bool:
 def create_workspace(directory : str,
                      origin_def : str,
                      origin_verilog : str,
-                     pdk : PDK,
-                     parameters : Parameters,
+                     pdk : PDK | str,
+                     parameters : Parameters | dict,
                      input_filelist : str = "") -> Workspace:
     """
     Create a workspace for chip design flow.
@@ -260,16 +235,31 @@ def create_workspace(directory : str,
     """
     # create workspace directory
     import os
-    os.makedirs(directory, exist_ok=True)
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except OSError as error:
+        return None
     
     # create workspace instance
     workspace = Workspace()
     
+    # pdk 
+    if isinstance(pdk, PDK):
+        workspace.pdk = pdk
+        
+    if isinstance(pdk, str):
+        workspace.pdk = get_pdk(pdk)    
+    
     #update config
-    workspace.design.name = parameters.data["Design"]
-    workspace.design.top_module = parameters.data["Top module"]         
-    workspace.pdk = pdk
-    workspace.parameters = parameters
+    if isinstance(parameters, Parameters):
+        workspace.design.name = parameters.data["Design"]
+        workspace.design.top_module = parameters.data["Top module"]         
+        workspace.parameters = parameters
+    
+    if isinstance(parameters, dict):
+        workspace.design.name = parameters["Design"]
+        workspace.design.top_module = parameters["Top module"]         
+        workspace.parameters.data = parameters
     
     # update path
     workspace.directory = directory
@@ -278,7 +268,7 @@ def create_workspace(directory : str,
     
     # create logger first (needed for copy operations)
     os.makedirs(f"{directory}/log", exist_ok=True)
-    workspace.logger = create_logger(name=parameters.data["Design"],
+    workspace.logger = create_logger(name=workspace.parameters.data["Design"],
                                      log_dir=f"{directory}/log")
 
     # update orign files to workspace origin folder
@@ -312,22 +302,74 @@ def create_workspace(directory : str,
             shutil.copy(input_filelist, f"{directory}/origin/{os.path.basename(input_filelist)}")
             workspace.design.input_filelist = f"{directory}/origin/{os.path.basename(input_filelist)}"
 
-    if os.path.exists(pdk.sdc):
-        shutil.copy(pdk.sdc, f"{directory}/origin/{os.path.basename(pdk.sdc)}")
-        workspace.pdk.sdc = f"{directory}/origin/{os.path.basename(pdk.sdc)}"
+    if os.path.exists(workspace.pdk.sdc):
+        shutil.copy(workspace.pdk.sdc, f"{directory}/origin/{os.path.basename(workspace.pdk.sdc)}")
+        workspace.pdk.sdc = f"{directory}/origin/{os.path.basename(workspace.pdk.sdc)}"
     else:
         # create default sdc file
         from .workspace import create_default_sdc
         workspace.pdk.sdc = f"{directory}/origin/{workspace.design.name}.sdc"
         create_default_sdc(workspace)
         
-    if os.path.exists(pdk.spef):
-        shutil.copy(pdk.spef, f"{directory}/origin/{os.path.basename(pdk.spef)}")
-        workspace.pdk.spef = f"{directory}/origin/{os.path.basename(pdk.spef)}"
+    if os.path.exists(workspace.pdk.spef):
+        shutil.copy(workspace.pdk.spef, f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}")
+        workspace.pdk.spef = f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}"
 
     # save parameter
     save_parameter(workspace.parameters)
      
+    return workspace
+
+def load_workspace(directory : str) -> Workspace:
+    import os
+    if not os.path.exists(directory):
+        return None
+    
+    # create workspace instance
+    workspace = Workspace()
+    workspace.directory = directory
+
+    parameters = load_paramter(f"{directory}/parameters.json")
+    workspace.parameters = parameters
+    
+    pdk = get_pdk(pdk_name=parameters.data.get("PDK", ""))
+    sdc_path = find_files(f"{directory}/origin", ".sdc")
+    if len(sdc_path) > 0:
+        pdk.sdc = sdc_path
+    spef_path = find_files(f"{directory}/origin", ".spef")
+    if len(spef_path) > 0:
+        pdk.spef = spef_path
+        
+    workspace.pdk = pdk
+    
+    #update config
+    workspace.design.name = parameters.data.get("Design", "")
+    workspace.design.top_module = parameters.data.get("Top module", "")  
+    def_path = find_files(f"{directory}/origin", ".def")
+    def_gz_path = find_files(f"{directory}/origin", ".def.gz")
+    if len(def_path) > 0:
+        workspace.design.origin_def = def_path
+    if len(def_gz_path) > 0:
+        workspace.design.origin_def = def_gz_path
+        
+    verilog_path = find_files(f"{directory}/origin", ".v")
+    verilog_gz_path = find_files(f"{directory}/origin", ".v.gz")
+    if len(verilog_path) > 0:
+        workspace.design.origin_verilog = verilog_path
+    if len(verilog_gz_path) > 0:
+        workspace.design.origin_verilog = verilog_gz_path
+    
+    filelist_path = f"{directory}/origin/filelist"
+    if os.path.exists(filelist_path):
+        workspace.design.input_filelist = filelist_path
+        
+    # update path
+    workspace.flow.path = f"{directory}/flow.json"
+    
+    # create logger first (needed for copy operations)
+    workspace.logger = create_logger(name=parameters.data["Design"],
+                                     log_dir=f"{directory}/log")
+
     return workspace
 
 def log_workspace(workspace : Workspace):

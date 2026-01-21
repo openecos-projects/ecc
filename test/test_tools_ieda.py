@@ -12,7 +12,8 @@ from chipcompiler.data import (
     create_workspace,
     log_workspace,
     StepEnum,
-    StateEnum
+    StateEnum,
+    get_pdk
 )
 
 from chipcompiler.engine import (
@@ -20,10 +21,10 @@ from chipcompiler.engine import (
     EngineFlow
 )
 
-from benchmark import get_pdk, get_parameters
+from benchmark import get_parameters
 
 def test_sky130_gcd():
-    workspace_dir="{}/test/examples/sky130_gcd".format(root)
+    workspace_dir="{}/test/examples/sky130_gcd2".format(root)
     
     input_def = ""
     input_verilog = "{}/chipcompiler/thirdparty/iEDA/scripts/design/sky130_gcd/result/verilog/gcd.v".format(root) # verilog file

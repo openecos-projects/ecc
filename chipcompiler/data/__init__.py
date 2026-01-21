@@ -1,9 +1,9 @@
 from .workspace import (
     create_workspace,
+    load_workspace,
     create_default_sdc,
     Workspace, 
     WorkspaceStep, 
-    PDK,
     OriginDesign,
     log_workspace
 )
@@ -22,8 +22,14 @@ from .step import (
     save_metrics
 )
 
+from .pdk import (
+    get_pdk,
+    PDK
+)
+
 __all__ = [
     'create_workspace',
+    'load_workspace',
     'create_default_sdc',
     'Workspace', 
     'WorkspaceStep', 

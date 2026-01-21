@@ -27,9 +27,8 @@ from chipcompiler.utility.filelist import (
     parse_incdir_directives
 )
 from chipcompiler.data.workspace import copy_filelist_with_sources
-from chipcompiler.data import create_workspace
+from chipcompiler.data import create_workspace, get_pdk
 from chipcompiler.data.parameter import Parameters
-from benchmark.pdk import get_pdk
 
 
 @pytest.fixture

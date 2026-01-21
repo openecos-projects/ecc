@@ -1,4 +1,8 @@
-from .file import chmod_folder
+from .file import (
+    chmod_folder,
+    find_files
+)
+
 from .json import (
     json_read,
     json_write,

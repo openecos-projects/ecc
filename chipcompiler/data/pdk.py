@@ -1,6 +1,33 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.data import PDK
+
+from dataclasses import dataclass, field
+
+@dataclass
+class PDK:
+    """
+    Dataclass for PDK information
+    """
+    name : str = "" # pdk name
+    version : str = "" # pdk version
+    tech : str = "" # pdk tech lef file
+    lefs : list = field(default_factory=list) # pdk lef files
+    libs : list = field(default_factory=list) # pdk liberty files
+    sdc : str = "" # pdk sdc file
+    spef : str = "" # pdk spef file
+    site_core : str = "" # core site
+    site_io : str = "" # io site
+    site_corner : str = "" # corner site
+    tap_cell : str = "" # tap cell
+    end_cap : str = "" # end cap
+    buffers : list = field(default_factory=list) # buffers
+    fillers : list = field(default_factory=list) # fillers
+    tie_high_cell : str = ""
+    tie_high_port : str = ""
+    tie_low_cell : str = ""
+    tie_low_port : str = ""
+    dont_use : list = field(default_factory=list) # don't use cell list
+    
 
 def get_pdk(pdk_name : str) -> PDK:
     """
@@ -16,7 +43,7 @@ def get_pdk(pdk_name : str) -> PDK:
 def PDK_ICS55() -> PDK:
     import os
     current_dir = os.path.split(os.path.abspath(__file__))[0]
-    root = current_dir.rsplit('/', 1)[0]
+    root = current_dir.rsplit('/', 2)[0]
 
     pdk_root = "{}/chipcompiler/thirdparty/icsprout55-pdk".format(root)
     stdcell_dir = "{}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100".format(pdk_root)
@@ -77,7 +104,7 @@ def PDK_ICS55() -> PDK:
 def PDK_SKY130() -> PDK:
     import os
     current_dir = os.path.split(os.path.abspath(__file__))[0]
-    root = current_dir.rsplit('/', 1)[0]
+    root = current_dir.rsplit('/', 2)[0]
 
     foundry_dir = "{}/chipcompiler/thirdparty/iEDA/scripts/foundry/sky130".format(root)
     

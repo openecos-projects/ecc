@@ -8,14 +8,10 @@ from .parameters import (
     get_parameters
 )
 
-from .pdk import (
-    get_pdk
-)
 
 __all__ = [
     'run_benchmark',
     'benchmark_statis',
     'benchmark_metrics',
-    'get_parameters',
-    'get_pdk'
+    'get_parameters'
 ]
