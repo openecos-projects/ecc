@@ -1,32 +1,39 @@
 <template>
   <div class="flex h-full">
     <!-- 第一栏：流程步骤导航 (优化版) -->
-    <div class="w-[52px] shrink-0 bg-(--bg-sidebar) border-r border-(--border-color) flex flex-col py-3">
-      <router-link v-for="stage in flowStages" :key="stage.path"
-        :to="stage.available !== false ? '/workspace/' + stage.path : route.path"
-        @click="stage.available === false && $event.preventDefault()"
-        class="flex flex-col items-center justify-center py-4 transition-all group relative mb-1" :class="[
-          currentStage === stage.path ? 'text-(--accent-color)' : 'text-(--text-secondary)',
-          stage.available === false ? 'opacity-40 grayscale cursor-not-allowed' : 'hover:bg-white/5'
-        ]">
-        <!-- 选中状态的指示条 -->
-        <div v-if="currentStage === stage.path"
-          class="absolute left-0 top-2 bottom-2 w-1 bg-(--accent-color) rounded-r-full shadow-[0_0_10px_var(--accent-color)]">
-        </div>
+    <div
+      class="w-[52px] shrink-0 bg-(--bg-sidebar) border-r border-(--border-color) flex flex-col justify-between py-3">
+      <div>
+        <router-link v-for="stage in flowStages" :key="stage.path"
+          :to="stage.available !== false ? '/workspace/' + stage.path : route.path"
+          @click="stage.available === false && $event.preventDefault()"
+          class="flex flex-col items-center justify-center py-4 transition-all group relative mb-1" :class="[
+            currentStage === stage.path ? 'text-(--accent-color)' : 'text-(--text-secondary)',
+            stage.available === false ? 'opacity-40 grayscale cursor-not-allowed' : 'hover:bg-white/5'
+          ]">
+          <!-- 选中状态的指示条 -->
+          <div v-if="currentStage === stage.path"
+            class="absolute left-0 top-2 bottom-2 w-1 bg-(--accent-color) rounded-r-full shadow-[0_0_10px_var(--accent-color)]">
+          </div>
 
-        <!-- 图标容器 -->
-        <div class="relative transition-transform group-hover:-translate-y-0.5">
-          <i :class="stage.icon" class="text-xl mb-1.5 inline-block"></i>
+          <!-- 图标容器 -->
+          <div class="relative transition-transform group-hover:-translate-y-0.5">
+            <i :class="stage.icon" class="text-xl mb-1.5 inline-block"></i>
 
-          <!-- 完成状态指示点 -->
-          <i v-if="stage.completed"
-            class="ri-checkbox-circle-fill absolute -top-1 -right-1 text-[10px] text-green-500 bg-(--bg-sidebar) rounded-full"></i>
-        </div>
+            <!-- 完成状态指示点 -->
+            <i v-if="stage.completed"
+              class="ri-checkbox-circle-fill absolute -top-1 -right-1 text-[10px] text-green-500 bg-(--bg-sidebar) rounded-full"></i>
+          </div>
 
-        <span class="text-[9px] font-bold text-center leading-tight uppercase tracking-tighter scale-90">
-          {{ stage.label }}
-        </span>
-      </router-link>
+          <span class="text-[9px] font-bold text-center leading-tight uppercase tracking-tighter scale-90">
+            {{ stage.label }}
+          </span>
+        </router-link>
+      </div>
+      <button @click="toggleTheme" class="p-2 text-(--text-secondary) hover:text-(--text-primary) transition-colors"
+        title="切换主题">
+        <i :class="isDark ? 'ri-sun-line' : 'ri-moon-line'" class="text-lg"></i>
+      </button>
     </div>
 
     <!-- 第二栏：流程进度面板 (Configure 页面不显示) -->
@@ -50,7 +57,7 @@
         <div class="flex items-center justify-between mb-2">
           <span class="text-[10px] text-(--text-secondary) uppercase tracking-wider">Progress</span>
           <span class="text-[11px] font-bold text-(--accent-color)">{{ completedSteps }}/{{ placementSteps.length
-          }}</span>
+            }}</span>
         </div>
         <div class="h-1.5 bg-(--bg-secondary) rounded-full overflow-hidden">
           <div class="h-full bg-(--accent-color) rounded-full transition-all duration-500"
@@ -168,12 +175,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { invoke } from '@tauri-apps/api/core'
 import { useTauri } from '@/composables/useTauri'
-
+import { useThemeStore } from '@/stores/themeStore'
 const { isInTauri, ensureTauri } = useTauri()
-
+const themeStore = useThemeStore()
 const route = useRoute()
+const isDark = computed(() => themeStore.themeName === 'dark')
 const isLoading = ref(false)
 
 // Placement 流程步骤定义
@@ -234,7 +241,9 @@ const placementSteps = ref<PlacementStep[]>([
 const completedSteps = computed(() => {
   return placementSteps.value.filter(s => s.status === 'completed').length
 })
-
+const toggleTheme = () => {
+  themeStore.toggleTheme()
+}
 const totalTime = computed(() => {
   const times = placementSteps.value
     .filter(s => s.duration)
@@ -287,31 +296,9 @@ const handleRunFlow = async () => {
 
   // 获取当前路由名称
   const routeName = route.name || route.path || 'unknown'
-  console.log('Starting Python flow for route:', routeName)
 
   try {
-    // 使用 call_python_func 调用 flow.py 的 run_flow 方法
-    const result = await invoke('call_python_func', {
-      scriptPath: 'flow.py',
-      funcName: 'run_flow',
-      args: {
-        route_name: routeName
-      }
-    }) as { code: number, stdout: string, stderr: string }
-
-    console.log('Python 返回的原始数据:', result)
-
-    if (result.code === 0) {
-      try {
-        const data = JSON.parse(result.stdout)
-        console.log('✅ Python 返回的 JSON 数据:', data)
-      } catch (parseError) {
-        console.error('❌ JSON 解析失败:', parseError)
-        console.log('原始输出:', result.stdout)
-      }
-    } else {
-      console.error(`❌ Python 执行失败 (Code ${result.code}):`, result.stderr)
-    }
+    console.log('handleRunFlow', routeName)
   } catch (error) {
     console.error('❌ 调用 Python 失败:', error)
   } finally {

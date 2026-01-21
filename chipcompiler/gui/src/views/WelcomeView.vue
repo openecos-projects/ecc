@@ -1,8 +1,5 @@
 <template>
   <div class="flex flex-col h-full overflow-hidden">
-    <!-- 自定义顶部栏 -->
-    <TopBar />
-
     <!-- 欢迎页面内容 -->
     <WelcomePage :recent-projects="recentProjects" @open-project="handleOpenProject" @new-project="handleNewProject"
       @import-project="handleImportProject" @open-recent="handleOpenRecent" />
@@ -12,10 +9,9 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import TopBar from '../components/TopBar.vue'
 import WelcomePage from '../components/WelcomePage.vue'
 import { useProject } from '../composables/useProject'
-import type { Project } from '../types'
+import type { Project, ProjectConfig } from '../types'
 
 const router = useRouter()
 const { recentProjects, openProject, newProject, importProject, loadRecentProjects } = useProject()
@@ -25,8 +21,8 @@ const handleOpenProject = async () => {
   if (success) router.push('/workspace')
 }
 
-const handleNewProject = async () => {
-  const success = await newProject()
+const handleNewProject = async (config?: ProjectConfig) => {
+  const success = await newProject(config)
   if (success) router.push('/workspace')
 }
 

@@ -1,8 +1,5 @@
 <template>
   <div class="workspace-view">
-    <!-- 自定义顶部栏 -->
-    <TopBar :project-name="currentProject?.name" />
-
     <!-- 主内容区域 -->
     <main class="workspace-main">
       <!-- 最左侧工具栏  -->
@@ -12,15 +9,33 @@
       <!-- <RightSidebar /> -->
     </main>
   </div>
+  <NewProjectWizard v-if="showWizard" @close="showWizard = false" @create="handleWizardCreate" />
 </template>
 
 <script setup lang="ts">
-import TopBar from '../components/TopBar.vue'
+import { ref } from 'vue'
 import LeftSidebar from '../components/LeftSidebar.vue'
 // import RightSidebar from '../components/RightSidebar.vue'
 import { useProject } from '../composables/useProject'
-
+import { useMenuEvents } from '../composables/useMenuEvents'
+import NewProjectWizard from '../components/NewProjectWizard.vue'
+import type { ProjectConfig } from '../types'
 const { currentProject } = useProject()
+
+const showWizard = ref(false)
+
+const handleNewProject = () => {
+  console.log('new_project');
+  showWizard.value = true
+}
+
+const handleWizardCreate = (config: ProjectConfig) => {
+  console.log('handleWizardCreate', config);
+}
+
+useMenuEvents({
+  new_project: handleNewProject
+})
 </script>
 
 <style scoped>
