@@ -57,7 +57,7 @@
         <div class="flex items-center justify-between mb-2">
           <span class="text-[10px] text-(--text-secondary) uppercase tracking-wider">Progress</span>
           <span class="text-[11px] font-bold text-(--accent-color)">{{ completedSteps }}/{{ placementSteps.length
-            }}</span>
+          }}</span>
         </div>
         <div class="h-1.5 bg-(--bg-secondary) rounded-full overflow-hidden">
           <div class="h-full bg-(--accent-color) rounded-full transition-all duration-500"
@@ -279,7 +279,7 @@ const currentStage = computed(() => {
 
 // 是否显示进度面板 (Configure 页面不显示)
 const showProgressPanel = computed(() => {
-  return currentStage.value !== 'configure'
+  return currentStage.value !== 'configure' && currentStage.value !== 'home'
 })
 
 const handleRunFlow = async () => {

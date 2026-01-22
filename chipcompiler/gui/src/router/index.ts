@@ -17,7 +17,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/WorkspaceView.vue'),
     redirect: '/workspace/home',
     children: [
-      { path: 'home', name: 'Home', component: () => import('../views/EditorView.vue') },
+      { path: 'home', name: 'Home', component: () => import('../views/HomeView.vue') },
       { path: 'configure', name: 'Configure', component: () => import('../views/ConfigureView.vue') },
       { path: 'synthesis', name: 'Synthesis', component: () => import('../views/EditorView.vue') },
       { path: 'floorplan', name: 'Floorplan', component: () => import('../views/EditorView.vue') },
