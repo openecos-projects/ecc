@@ -1,0 +1,125 @@
+{
+    "benchmark_dir": "/nfs/share/home/qiming/benchmark/dataset",
+    "target_dir": "/nfs/home/huangzengrong/benchmark",
+    "batch_name": "ics55_batch_all",
+    "pdk": "ics55",
+    "designs": [
+        {
+            "id": "ics55_tapeout_00001",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/DigiMCU/filelist.f",
+            "Design": "DigiMCU",
+            "Top module": "ip0_digi_top",
+            "Clock": "sys_clk_i",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00002",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/SimpleEdgeAiSoC/filelist",
+            "Design": "SimpleEdgeAiSoC",
+            "Top module": "ip1_SimpleEdgeAiSoC",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00003",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/TJUT_TOP/filelist",
+            "Design": "TJUT_TOP",
+            "Top module": "ip2_TJUT_TOP",
+            "Clock": "clk",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00004",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/ysyxSoCTest/filelist",
+            "Design": "ysyxSoC",
+            "Top module": "ysyxSoCASIC",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00005",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/ysyx_25080207/filelist.f",
+            "Design": "ysyx_25080207",
+            "Top module": "ysyx_25080207",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": "ysyxD"
+        },
+        {
+            "id": "ics55_tapeout_00006",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/ysyx_25040129/filelist.f",
+            "Design": "ysyx_25040129",
+            "Top module": "ysyx_25040129",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": "ysyxB"
+        },
+        {
+            "id": "ics55_tapeout_00007",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_23060170/filelist",
+            "Design": "stage_b_ysyx_23060170",
+            "Top module": "ysyx_23060170",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00008",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_23060203/filelist",
+            "Design": "stage_b_ysyx_23060203",
+            "Top module": "ysyx_23060203",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00009",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_b_ysyx_23060229/filelist",
+            "Design": "stage_b_ysyx_23060229",
+            "Top module": "ysyx_23060229",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00010",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_d_ysyx_24080018/filelist",
+            "Design": "stage_d_ysyx_24080018",
+            "Top module": "ysyx_24080018",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00011",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_d_ysyx_24090003/filelist",
+            "Design": "stage_d_ysyx_24090003",
+            "Top module": "ysyx_24090003",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00012",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_d_ysyx_24090010/filelist",
+            "Design": "stage_d_ysyx_24090010",
+            "Top module": "ysyx_24090010_exu",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        },
+        {
+            "id": "ics55_tapeout_00013",
+            "filelist": "/nfs/share/home/qiming/benchmark/dataset/rtl/ics55/stage_d_ysyx_24090015/filelist",
+            "Design": "stage_d_ysyx_24090015",
+            "Top module": "ysyx_24090015",
+            "Clock": "clock",
+            "Frequency max [MHz]": 100,
+            "info": ""
+        }
+    ]
+}
