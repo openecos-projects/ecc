@@ -12,6 +12,7 @@ set tech_cell_tiehi "$tie_high_cell $tie_high_port"
 set tech_cell_tielo "$tie_low_cell $tie_low_port"
 
 # pre-formated for easier use in yosys commands
+# TODO: Distinguish between stdcell and other libraries?
 set liberty_args_list [lmap lib $lib_list {concat "-liberty" $lib}]
 set liberty_args [concat {*}$liberty_args_list]
 # only the standard cells

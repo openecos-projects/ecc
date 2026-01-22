@@ -67,8 +67,10 @@ def generate_global_var_tcl(workspace: Workspace,
     tie_high_port = pdk.tie_high_port if pdk.tie_high_port else ""
 
     lib_files = workspace.pdk.libs if workspace.pdk.libs else []
-    lib_stdcell = lib_files[0] if lib_files else ""
-    lib_all = " ".join(lib_files) if lib_files else ""
+    lib_files_all = " ".join(lib_files) if lib_files else ""
+
+    lib_stdcell = lib_files.copy() #TODO: Distinguish between stdcell and other libraries?
+    lib_stdcell_all = " ".join(lib_stdcell) if lib_stdcell else ""
 
     filelist = workspace.design.input_filelist if workspace.design.input_filelist else workspace.parameters.data.get("File list", "")
 
@@ -111,8 +113,8 @@ set tie_high_cell           {_tcl_quote(tie_high_cell) if tie_high_cell else '""
 set tie_high_port           {_tcl_quote(tie_high_port) if tie_high_port else '""'}
 
 # Library files
-set lib_stdcell_list        [split {_tcl_quote(lib_stdcell) if lib_stdcell else '""'}]
-set lib_list                [split {_tcl_quote(lib_all) if lib_all else '""'}]
+set lib_stdcell_list        [split {_tcl_quote(lib_stdcell_all) if lib_stdcell_all else '""'}]
+set lib_list                [split {_tcl_quote(lib_files_all) if lib_files_all else '""'}]
 
 # Working directories
 set tmp_dir                 {_tcl_quote(os.path.join(data_dir, 'tmp'))}
