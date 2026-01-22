@@ -3,10 +3,10 @@ import { shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { EditorContainer, type Editor } from '@/applications/editor'
 import DrawingToolbar from './DrawingToolbar.vue'
-import { useProject } from '@/composables/useProject'
+import { useWorkspace } from '@/composables/useWorkspace'
 
 const route = useRoute()
-const { currentProject } = useProject()
+const { currentProject } = useWorkspace()
 
 const editor = shallowRef<Editor | null>(null)
 

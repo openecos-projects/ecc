@@ -108,7 +108,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { Project, ProjectConfig } from '../types'
+import type { Project, WorkspaceConfig } from '../types'
 import NewProjectWizard from './NewProjectWizard.vue'
 
 interface Props {
@@ -117,7 +117,7 @@ interface Props {
 
 interface Emits {
   (e: 'open-project'): void
-  (e: 'new-project', config?: ProjectConfig): void
+  (e: 'new-project', config?: WorkspaceConfig): void
   (e: 'import-project'): void
   (e: 'open-recent', project: Project): void
 }
@@ -130,7 +130,7 @@ const emit = defineEmits<Emits>()
 
 const showWizard = ref(false)
 
-const handleWizardCreate = (config: ProjectConfig) => {
+const handleWizardCreate = (config: WorkspaceConfig) => {
   showWizard.value = false
   emit('new-project', config)
 }

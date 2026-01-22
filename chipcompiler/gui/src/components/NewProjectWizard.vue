@@ -59,7 +59,7 @@
                 <label class="block text-sm font-medium text-(--text-primary) mb-2">
                   项目名称 <span class="text-red-500">*</span>
                 </label>
-                <input v-model="config.name" type="text" placeholder="例如: my_chip_design"
+                <input v-model="config.parameters.design" type="text" placeholder="例如: my_chip_design"
                   class="w-full px-4 py-3 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:border-(--accent-color) focus:ring-2 focus:ring-(--accent-color)/20 transition-all" />
                 <p class="mt-1 text-xs text-(--text-secondary)">项目名称只能包含字母、数字和下划线</p>
               </div>
@@ -69,7 +69,7 @@
                 <label class="block text-sm font-medium text-(--text-primary) mb-2">
                   项目描述
                 </label>
-                <textarea v-model="config.description" rows="3" placeholder="简要描述您的芯片设计项目..."
+                <textarea v-model="config.parameters.description" rows="3" placeholder="简要描述您的芯片设计项目..."
                   class="w-full px-4 py-3 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:border-(--accent-color) focus:ring-2 focus:ring-(--accent-color)/20 transition-all resize-none"></textarea>
               </div>
 
@@ -79,7 +79,7 @@
                   保存位置 <span class="text-red-500">*</span>
                 </label>
                 <div class="flex gap-3">
-                  <input v-model="config.location" type="text" readonly placeholder="点击选择文件夹..."
+                  <input v-model="config.directory" type="text" readonly placeholder="点击选择文件夹..."
                     class="flex-1 px-4 py-3 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-(--text-primary) placeholder:text-(--text-secondary) cursor-pointer" />
                   <button @click="selectLocation"
                     class="px-6 py-3 bg-(--accent-color) text-white rounded-lg hover:opacity-90 transition-opacity font-medium cursor-pointer flex items-center gap-2">
@@ -124,27 +124,27 @@
             </div>
 
             <!-- File List -->
-            <div v-if="config.designFiles.length > 0" class="mt-6 space-y-2">
-              <h4 class="text-sm font-medium text-(--text-primary) mb-3">已添加的文件 ({{ config.designFiles.length }})
+            <div v-if="config.rtl_list.length > 0" class="mt-6 space-y-2">
+              <h4 class="text-sm font-medium text-(--text-primary) mb-3">
+                已添加的文件 ({{config.rtl_list.split('\n').filter(f => f.trim()).length}})
               </h4>
               <TransitionGroup name="list">
-                <div v-for="file in config.designFiles" :key="file.id"
+                <div v-for="file in config.rtl_list.split('\n').filter(f => f.trim())" :key="file"
                   class="flex items-center justify-between px-4 py-3 bg-(--bg-secondary) rounded-lg border border-(--border-color) group">
                   <div class="flex items-center gap-3 min-w-0">
                     <i :class="[
                       'text-xl',
-                      file.type === 'verilog' || file.type === 'systemverilog'
+                      file.endsWith('.v') || file.endsWith('.sv')
                         ? 'ri-file-code-line text-blue-500'
-                        : file.type === 'vhdl'
+                        : file.endsWith('.vhd')
                           ? 'ri-file-code-line text-purple-500'
                           : 'ri-file-line text-(--text-secondary)'
                     ]"></i>
                     <div class="min-w-0">
-                      <p class="font-medium text-(--text-primary) truncate">{{ file.name }}</p>
-                      <p class="text-xs text-(--text-secondary) truncate">{{ file.path }}</p>
+                      <p class="font-medium text-(--text-primary) truncate">{{ file }}</p>
                     </div>
                   </div>
-                  <button @click.stop="removeFile(file.id)"
+                  <button @click.stop="removeFile(file)"
                     class="p-2 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-(--bg-primary) transition-all cursor-pointer">
                     <i class="ri-delete-bin-line text-(--text-secondary) hover:text-red-500"></i>
                   </button>
@@ -152,13 +152,23 @@
               </TransitionGroup>
             </div>
 
-            <!-- Top Module Selection -->
-            <div v-if="config.designFiles.length > 0" class="mt-6">
-              <label class="block text-sm font-medium text-(--text-primary) mb-2">
-                顶层模块名称 <span class="text-red-500">*</span>
-              </label>
-              <input v-model="config.topModule" type="text" placeholder="例如: top_module"
-                class="w-full px-4 py-3 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:border-(--accent-color) focus:ring-2 focus:ring-(--accent-color)/20 transition-all" />
+            <!-- Top Module and Clock Selection -->
+            <div v-if="config.rtl_list.split('\n').filter(f => f.trim()).length > 0" class="mt-6 space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-(--text-primary) mb-2">
+                  顶层模块名称 <span class="text-red-500">*</span>
+                </label>
+                <input v-model="config.parameters.top_module" type="text" placeholder="例如: top_module"
+                  class="w-full px-4 py-3 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:border-(--accent-color) focus:ring-2 focus:ring-(--accent-color)/20 transition-all" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-(--text-primary) mb-2">
+                  时钟信号名称 <span class="text-red-500">*</span>
+                </label>
+                <input v-model="config.parameters.clock" type="text" placeholder="例如: clk"
+                  class="w-full px-4 py-3 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:border-(--accent-color) focus:ring-2 focus:ring-(--accent-color)/20 transition-all" />
+                <p class="mt-1 text-xs text-(--text-secondary)">设计中主时钟信号的名称，用于时序约束</p>
+              </div>
             </div>
           </div>
 
@@ -185,7 +195,7 @@
                   ]">
                     <div :class="[
                       'w-10 h-10 rounded-lg flex items-center justify-center',
-                      config.pdk === pdk.id ? 'bg-(--accent-color) text-white' : 'bg-(--bg-primary) text-(--text-secondary)'
+                      config.parameters.pdk === pdk.id ? 'bg-(--accent-color) text-white' : 'bg-(--bg-primary) text-(--text-secondary)'
                     ]">
                       <i :class="pdk.icon"></i>
                     </div>
@@ -197,32 +207,70 @@
                 </div>
               </div>
 
-              <!-- Technology Node -->
-              <div>
-                <label class="block text-sm font-medium text-(--text-primary) mb-2">
-                  工艺节点
-                </label>
-                <select v-model="config.technologyNode"
-                  class="w-full px-4 py-3 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-(--text-primary) focus:outline-none focus:border-(--accent-color) focus:ring-2 focus:ring-(--accent-color)/20 transition-all cursor-pointer">
-                  <option value="">选择工艺节点</option>
-                  <option value="sky130">SkyWater 130nm</option>
-                  <option value="gf180">GlobalFoundries 180nm</option>
-                  <option value="asap7">ASAP 7nm (学术)</option>
-                  <option value="nangate45">NanGate 45nm (学术)</option>
-                </select>
-              </div>
-
               <!-- Target Frequency -->
               <div>
                 <label class="block text-sm font-medium text-(--text-primary) mb-2">
                   目标频率 (MHz)
                 </label>
                 <div class="flex items-center gap-4">
-                  <input v-model.number="config.targetFrequency" type="range" min="10" max="1000" step="10"
+                  <input v-model.number="config.parameters.frequency_max" type="range" min="10" max="1000" step="10"
                     class="flex-1 h-2 bg-(--bg-secondary) rounded-lg appearance-none cursor-pointer accent-(--accent-color)" />
                   <div
                     class="w-24 px-3 py-2 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-center text-(--text-primary) font-mono">
-                    {{ config.targetFrequency }}
+                    {{ config.parameters.frequency_max }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Advanced Settings -->
+              <div class="pt-4 border-t border-(--border-color)">
+                <h3 class="text-sm font-semibold text-(--text-primary) mb-4 flex items-center gap-2">
+                  <i class="ri-settings-4-line text-(--accent-color)"></i>
+                  高级设置
+                </h3>
+                <div class="grid grid-cols-2 gap-6">
+                  <!-- Core Utilization -->
+                  <div>
+                    <label class="block text-sm font-medium text-(--text-primary) mb-2">
+                      核心利用率
+                    </label>
+                    <div class="flex items-center gap-3">
+                      <input v-model.number="config.parameters.core_utilization" type="range" min="0.1" max="0.9"
+                        step="0.05"
+                        class="flex-1 h-2 bg-(--bg-secondary) rounded-lg appearance-none cursor-pointer accent-(--accent-color)" />
+                      <div
+                        class="w-16 px-2 py-1.5 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-center text-(--text-primary) font-mono text-sm">
+                        {{ ((config.parameters.core_utilization as number || 0.5) * 100).toFixed(0) }}%
+                      </div>
+                    </div>
+                    <p class="mt-1 text-xs text-(--text-secondary)">芯片核心区域的面积利用率</p>
+                  </div>
+
+                  <!-- Target Density -->
+                  <div>
+                    <label class="block text-sm font-medium text-(--text-primary) mb-2">
+                      目标密度
+                    </label>
+                    <div class="flex items-center gap-3">
+                      <input v-model.number="config.parameters.target_density" type="range" min="0.1" max="0.9"
+                        step="0.05"
+                        class="flex-1 h-2 bg-(--bg-secondary) rounded-lg appearance-none cursor-pointer accent-(--accent-color)" />
+                      <div
+                        class="w-16 px-2 py-1.5 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-center text-(--text-primary) font-mono text-sm">
+                        {{ ((config.parameters.target_density as number || 0.6) * 100).toFixed(0) }}%
+                      </div>
+                    </div>
+                    <p class="mt-1 text-xs text-(--text-secondary)">布局布线的目标密度</p>
+                  </div>
+
+                  <!-- Max Fanout -->
+                  <div>
+                    <label class="block text-sm font-medium text-(--text-primary) mb-2">
+                      最大扇出
+                    </label>
+                    <input v-model.number="config.parameters.max_fanout" type="number" min="1" max="100"
+                      class="w-full px-4 py-2.5 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-(--text-primary) focus:outline-none focus:border-(--accent-color) focus:ring-2 focus:ring-(--accent-color)/20 transition-all" />
+                    <p class="mt-1 text-xs text-(--text-secondary)">单个驱动的最大负载数</p>
                   </div>
                 </div>
               </div>
@@ -259,23 +307,22 @@
                     <i class="ri-information-line text-(--accent-color)"></i>
                     基本信息
                   </h3>
-                  <button @click="currentStep = 1"
-                    class="text-sm text-(--accent-color) hover:underline cursor-pointer">
+                  <button @click="currentStep = 1" class="text-sm text-(--accent-color) hover:underline cursor-pointer">
                     编辑
                   </button>
                 </div>
                 <div class="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span class="text-(--text-secondary)">项目名称</span>
-                    <p class="font-medium text-(--text-primary) mt-1">{{ config.name || '-' }}</p>
+                    <p class="font-medium text-(--text-primary) mt-1">{{ config.parameters.design || '-' }}</p>
                   </div>
                   <div>
                     <span class="text-(--text-secondary)">保存位置</span>
-                    <p class="font-medium text-(--text-primary) mt-1 truncate">{{ config.location || '-' }}</p>
+                    <p class="font-medium text-(--text-primary) mt-1 truncate">{{ config.directory || '-' }}</p>
                   </div>
                   <div class="col-span-2">
                     <span class="text-(--text-secondary)">项目描述</span>
-                    <p class="font-medium text-(--text-primary) mt-1">{{ config.description || '无描述' }}</p>
+                    <p class="font-medium text-(--text-primary) mt-1">{{ config.parameters.description || '无描述' }}</p>
                   </div>
                 </div>
               </div>
@@ -287,19 +334,23 @@
                     <i class="ri-file-code-line text-(--accent-color)"></i>
                     设计文件
                   </h3>
-                  <button @click="currentStep = 2"
-                    class="text-sm text-(--accent-color) hover:underline cursor-pointer">
+                  <button @click="currentStep = 2" class="text-sm text-(--accent-color) hover:underline cursor-pointer">
                     编辑
                   </button>
                 </div>
-                <div class="text-sm">
-                  <div class="flex items-center justify-between mb-2">
+                <div class="text-sm space-y-2">
+                  <div class="flex items-center justify-between">
                     <span class="text-(--text-secondary)">文件数量</span>
-                    <span class="font-medium text-(--text-primary)">{{ config.designFiles.length }} 个文件</span>
+                    <span class="font-medium text-(--text-primary)">{{config.rtl_list.split('\n').filter(f =>
+                      f.trim()).length}} 个文件</span>
                   </div>
                   <div class="flex items-center justify-between">
                     <span class="text-(--text-secondary)">顶层模块</span>
-                    <span class="font-medium text-(--text-primary)">{{ config.topModule || '-' }}</span>
+                    <span class="font-medium text-(--text-primary)">{{ config.parameters.top_module || '-' }}</span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-(--text-secondary)">时钟信号</span>
+                    <span class="font-medium text-(--text-primary)">{{ config.parameters.clock || '-' }}</span>
                   </div>
                 </div>
               </div>
@@ -311,8 +362,7 @@
                     <i class="ri-cpu-line text-(--accent-color)"></i>
                     工艺配置
                   </h3>
-                  <button @click="currentStep = 3"
-                    class="text-sm text-(--accent-color) hover:underline cursor-pointer">
+                  <button @click="currentStep = 3" class="text-sm text-(--accent-color) hover:underline cursor-pointer">
                     编辑
                   </button>
                 </div>
@@ -322,12 +372,24 @@
                     <p class="font-medium text-(--text-primary) mt-1">{{ getPdkName(config.pdk) }}</p>
                   </div>
                   <div>
-                    <span class="text-(--text-secondary)">工艺节点</span>
-                    <p class="font-medium text-(--text-primary) mt-1">{{ getNodeName(config.technologyNode) }}</p>
+                    <span class="text-(--text-secondary)">目标频率</span>
+                    <p class="font-medium text-(--text-primary) mt-1">{{ config.parameters.frequency_max }} MHz</p>
                   </div>
                   <div>
-                    <span class="text-(--text-secondary)">目标频率</span>
-                    <p class="font-medium text-(--text-primary) mt-1">{{ config.targetFrequency }} MHz</p>
+                    <span class="text-(--text-secondary)">核心利用率</span>
+                    <p class="font-medium text-(--text-primary) mt-1">{{ ((config.parameters.core_utilization as number
+                      ||
+                      0.5) * 100).toFixed(0) }}%</p>
+                  </div>
+                  <div>
+                    <span class="text-(--text-secondary)">目标密度</span>
+                    <p class="font-medium text-(--text-primary) mt-1">{{ ((config.parameters.target_density as number ||
+                      0.6)
+                      * 100).toFixed(0) }}%</p>
+                  </div>
+                  <div>
+                    <span class="text-(--text-secondary)">最大扇出</span>
+                    <p class="font-medium text-(--text-primary) mt-1">{{ config.parameters.max_fanout }}</p>
                   </div>
                 </div>
               </div>
@@ -384,11 +446,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { ProjectConfig, DesignFile } from '../types'
+import type { WorkspaceConfig } from '../types'
 
 interface Emits {
   (e: 'close'): void
-  (e: 'create', config: ProjectConfig): void
+  (e: 'create', config: WorkspaceConfig): void
 }
 
 const emit = defineEmits<Emits>()
@@ -406,31 +468,51 @@ const steps = [
 
 const pdkOptions = [
   {
-    id: 'CS55_PDK',
-    name: 'CS55 PDK',
-    description: 'CS55 PDK for ICSPROUT 55',
+    id: 'ics55',
+    name: 'ICS55 PDK',
+    description: 'ICSPROUT 55nm 工艺库',
+    icon: 'ri-settings-3-line text-xl'
+  },
+  {
+    id: 'sky130',
+    name: 'SkyWater 130nm',
+    description: 'SkyWater 开源 130nm 工艺库',
     icon: 'ri-settings-3-line text-xl'
   }
 ]
 
-const config = ref<ProjectConfig>({
-  name: '',
-  description: '',
-  location: '',
-  designFiles: [],
-  topModule: '',
-  pdk: 'CS55_PDK',
-  technologyNode: 'CS55',
-  targetFrequency: 100,
-  constraintFiles: []
+const config = ref<WorkspaceConfig>({
+  directory: '',
+  pdk: '',
+  parameters: {
+    // 基本信息
+    design: '',           // 项目/设计名称 -> "Design"
+    description: '',      // 项目描述
+    // 设计参数
+    top_module: '',       // 顶层模块名 -> "Top module"
+    clock: '',            // 时钟信号名 -> "Clock"
+    // 工艺参数
+    frequency_max: 100,   // 目标频率 -> "Frequency max [MHz]"
+    core_utilization: 0.5, // 核心利用率 -> "Core.Utilitization"
+    target_density: 0.6,  // 目标密度 -> "Target density"
+    max_fanout: 20        // 最大扇出 -> "Max fanout"
+  },
+  origin_def: '',
+  origin_verilog: '',
+  rtl_list: ''
 })
 
 const canProceed = computed(() => {
   switch (currentStep.value) {
     case 1:
-      return config.value.name.trim() !== '' && config.value.location.trim() !== ''
+      // 项目名称和保存位置都是必需的
+      return config.value.directory.trim() !== '' &&
+        (config.value.parameters.design as string)?.trim() !== ''
     case 2:
-      return config.value.designFiles.length > 0 && config.value.topModule.trim() !== ''
+      // RTL 文件、顶层模块和时钟信号都是必需的
+      return config.value.rtl_list.trim() !== '' &&
+        (config.value.parameters.top_module as string)?.trim() !== '' &&
+        (config.value.parameters.clock as string)?.trim() !== ''
     case 3:
       return config.value.pdk !== ''
     default:
@@ -445,7 +527,7 @@ const selectLocation = async () => {
     title: '选择项目保存位置'
   })
   if (result) {
-    config.value.location = result as string
+    config.value.directory = result as string
   }
 }
 
@@ -475,43 +557,31 @@ const handleFileDrop = (event: DragEvent) => {
 }
 
 const addFiles = (paths: string[]) => {
+  // 获取现有文件列表
+  const existingFiles = config.value.rtl_list
+    .split('\n')
+    .filter(f => f.trim())
+
   for (const path of paths) {
-    const name = path.split('/').pop() || path
-    const ext = name.split('.').pop()?.toLowerCase()
-    let type: DesignFile['type'] = 'other'
-
-    if (ext === 'v') type = 'verilog'
-    else if (ext === 'sv') type = 'systemverilog'
-    else if (ext === 'vhd' || ext === 'vhdl') type = 'vhdl'
-
-    // Avoid duplicates
-    if (!config.value.designFiles.find(f => f.path === path)) {
-      config.value.designFiles.push({
-        id: crypto.randomUUID(),
-        name,
-        path,
-        type
-      })
+    // 避免重复
+    if (!existingFiles.includes(path)) {
+      existingFiles.push(path)
     }
   }
+
+  // 用换行符连接，不加尾部换行
+  config.value.rtl_list = existingFiles.join('\n')
 }
 
-const removeFile = (id: string) => {
-  config.value.designFiles = config.value.designFiles.filter(f => f.id !== id)
+const removeFile = (path: string) => {
+  const files = config.value.rtl_list
+    .split('\n')
+    .filter(f => f.trim() && f !== path)
+  config.value.rtl_list = files.join('\n')
 }
 
 const getPdkName = (id: string) => {
   return pdkOptions.find(p => p.id === id)?.name || id
-}
-
-const getNodeName = (node: string) => {
-  const nodes: Record<string, string> = {
-    'sky130': 'SkyWater 130nm',
-    'gf180': 'GlobalFoundries 180nm',
-    'asap7': 'ASAP 7nm',
-    'nangate45': 'NanGate 45nm'
-  }
-  return nodes[node] || node || '-'
 }
 
 const nextStep = () => {

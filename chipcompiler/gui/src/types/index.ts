@@ -32,23 +32,27 @@ export interface Project {
 }
 
 // New Project Wizard Types
-export interface ProjectConfig {
-  // Step 1: Basic Info
-  name: string
-  description: string
-  location: string
-  
-  // Step 2: Design Files
-  designFiles: DesignFile[]
-  topModule: string
-  
-  // Step 3: Technology Config
-  pdk: string
-  technologyNode: string
-  targetFrequency: number
-  
-  // Step 4: Constraints (optional)
-  constraintFiles: DesignFile[]
+export interface WorkspaceParameters {
+  // 基本信息
+  design: string;           // 项目/设计名称
+  description?: string;     // 项目描述
+  // 设计参数
+  top_module: string;       // 顶层模块名
+  clock: string;            // 时钟信号名
+  // 工艺参数
+  frequency_max: number;    // 目标频率 (MHz)
+  core_utilization: number; // 核心利用率 (0-1)
+  target_density: number;   // 目标密度 (0-1)
+  max_fanout: number;       // 最大扇出
+}
+
+export interface WorkspaceConfig {
+  directory: string;
+  pdk: string;
+  parameters: Partial<WorkspaceParameters> & Record<string, unknown>;
+  origin_def: string;
+  origin_verilog: string;
+  rtl_list: string;
 }
 
 export interface DesignFile {

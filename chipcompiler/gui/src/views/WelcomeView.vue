@@ -10,18 +10,18 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import WelcomePage from '../components/WelcomePage.vue'
-import { useProject } from '../composables/useProject'
-import type { Project, ProjectConfig } from '../types'
+import { useWorkspace } from '../composables/useWorkspace'
+import type { Project, WorkspaceConfig } from '../types'
 
 const router = useRouter()
-const { recentProjects, openProject, newProject, importProject, loadRecentProjects } = useProject()
+const { recentProjects, openProject, newProject, importProject, loadRecentProjects } = useWorkspace()
 
 const handleOpenProject = async () => {
   const success = await openProject()
   if (success) router.push('/workspace')
 }
 
-const handleNewProject = async (config?: ProjectConfig) => {
+const handleNewProject = async (config?: WorkspaceConfig) => {
   const success = await newProject(config)
   if (success) router.push('/workspace')
 }

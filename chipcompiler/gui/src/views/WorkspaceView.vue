@@ -16,11 +16,9 @@
 import { ref } from 'vue'
 import LeftSidebar from '../components/LeftSidebar.vue'
 // import RightSidebar from '../components/RightSidebar.vue'
-import { useProject } from '../composables/useProject'
 import { useMenuEvents } from '../composables/useMenuEvents'
 import NewProjectWizard from '../components/NewProjectWizard.vue'
-import type { ProjectConfig } from '../types'
-const { currentProject } = useProject()
+import type { WorkspaceConfig } from '../types'
 
 const showWizard = ref(false)
 
@@ -29,7 +27,7 @@ const handleNewProject = () => {
   showWizard.value = true
 }
 
-const handleWizardCreate = (config: ProjectConfig) => {
+const handleWizardCreate = (config: WorkspaceConfig) => {
   console.log('handleWizardCreate', config);
 }
 

@@ -1,11 +1,11 @@
 import { ref } from 'vue'
-import type { Project } from '../types'
+import type { Project, WorkspaceConfig } from '../types'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { LazyStore } from '@tauri-apps/plugin-store'
 import { exists } from '@tauri-apps/plugin-fs'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { openProjectApi, createProjectApi } from '../api'
+import { loadWorkspaceApi, createWorkspaceApi } from '../api'
 import { isTauri } from './useTauri'
 
 // 序列化对象（将 Date 转换为 ISO 字符串）
@@ -45,7 +45,7 @@ async function updateWindowTitle(projectName?: string) {
   }
 }
 
-export function useProject() {
+export function useWorkspace() {
 
 
   /**
@@ -202,12 +202,13 @@ export function useProject() {
       }
 
       // 3. 通过 HTTP API 加载项目状态
-      const response = await openProjectApi(selectedPath)
-      if (response.status === 'success' && response.project) {
+      const response = await loadWorkspaceApi(selectedPath)
+      console.log(response)
+      if (response.response === 'success') {
         const loadedProject: Project = {
-          id: response.project.path,
-          name: response.project.name,
-          path: response.project.path,
+          id: response.data.directory,
+          name: response.data.directory,
+          path: response.data.directory,
           lastOpened: new Date()
         }
 
@@ -234,24 +235,13 @@ export function useProject() {
    * 新建项目 - 支持 Wizard 配置
    * @param config 项目配置（来自向导）
    */
-  const newProject = async (config?: {
-    name: string
-    description?: string
-    location: string
-    designFiles?: { path: string }[]
-    topModule?: string
-    pdk?: string
-    technologyNode?: string
-    targetFrequency?: number
-  }) => {
+  const newProject = async (config?: WorkspaceConfig) => {
     try {
       let selectedPath: string
-      let projectName: string
 
       if (config) {
         // 使用向导提供的配置
-        selectedPath = config.location
-        projectName = config.name
+        selectedPath = config.directory
       } else {
         // 回退到旧的文件选择方式
         const result = await open({
@@ -262,7 +252,6 @@ export function useProject() {
 
         if (!result) return false
         selectedPath = result as string
-        projectName = 'New_Chip_Design'
       }
 
       // 2. 请求 Rust 端动态授予该路径的访问权限（用于本地文件操作）
@@ -274,20 +263,40 @@ export function useProject() {
       }
 
       // 3. 通过 HTTP API 创建项目（传递更多配置信息）
-      const response = await createProjectApi(selectedPath, projectName, {
-        description: config?.description,
-        designFiles: config?.designFiles?.map(f => f.path),
-        topModule: config?.topModule,
-        pdk: config?.pdk,
-        technologyNode: config?.technologyNode,
-        targetFrequency: config?.targetFrequency
-      })
+      // 将前端参数映射为后端期望的格式 (参考 sky130_parameter.json)
+      const frontendParams = config?.parameters || {}
+      const pdkName = config?.pdk || 'sky130'
+      const backendParameters = {
+        // 基本设计信息 (必需)
+        'Design': frontendParams.design || selectedPath.split('/').pop() || 'New_Chip_Design',
+        'Top module': frontendParams.top_module || 'top',
+        'Clock': frontendParams.clock || 'clk',
+        'Frequency max [MHz]': frontendParams.frequency_max || 100,
+        // PDK 信息
+        'PDK': pdkName,
+        // 核心配置
+        'Core': {
+          'Utilitization': frontendParams.core_utilization || 0.5
+        },
+        // 布局参数
+        'Target density': frontendParams.target_density || 0.6,
+        'Max fanout': frontendParams.max_fanout || 20
+      }
 
-      if (response.status === 'success' && response.project) {
+      const response = await createWorkspaceApi({
+        directory: selectedPath,
+        pdk: pdkName,
+        parameters: backendParameters,
+        origin_def: config?.origin_def,
+        origin_verilog: config?.origin_verilog,
+        rtl_list: config?.rtl_list || ''
+      })
+      console.log(response)
+      if (response.response === 'success') {
         const createdProject: Project = {
-          id: response.project.path,
-          name: response.project.name,
-          path: response.project.path,
+          id: response.data.directory,
+          name: backendParameters['Design'] as string,
+          path: response.data.directory,
           lastOpened: new Date()
         }
 
