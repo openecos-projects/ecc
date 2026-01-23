@@ -5,7 +5,7 @@ set -e
 # Setup Project Variables
 PROJECT_ROOT=$(cd "$(dirname "$0")";pwd)
 CHIPCOMPILER_ROOT="${PROJECT_ROOT}/chipcompiler"
-IEDA_ROOT="${CHIPCOMPILER_ROOT}/thirdparty/iEDA"
+ECC_TOOLS_ROOT="${CHIPCOMPILER_ROOT}/thirdparty/ecc-tools"
 VENV_DIR="${PROJECT_ROOT}/.venv"
 PYTHON_VERSION="3.10"
 ENABLE_OSS_CAD_SUITE=${ENABLE_OSS_CAD_SUITE:-true}
@@ -52,10 +52,10 @@ fi
 
 git submodule update --init --recursive
 
-# Build ieda_py
-echo "Building ieda_py..."
+# Build ecc_py
+echo "Building ecc_py..."
 
-BUILD_DIR="${IEDA_ROOT}/build"
+BUILD_DIR="${ECC_TOOLS_ROOT}/build"
 if [ ! -d "${BUILD_DIR}" ]; then
     echo "Creating build directory at ${BUILD_DIR}..."
     mkdir -p "${BUILD_DIR}"
@@ -71,7 +71,7 @@ if command -v cmake &> /dev/null; then
     echo "CMake found: $(cmake --version | head -n 1)"
 else
     echo "Error: CMake is not installed or not in PATH"
-    bash "${IEDA_ROOT}/build.sh" -i apt
+    bash "${ECC_TOOLS_ROOT}/build.sh" -i apt
 fi
 
 # Prefer Ninja if available
@@ -90,17 +90,17 @@ fi
 echo "Building project..."
 if command -v ninja &> /dev/null; then
     echo "Using ninja build system..."
-    ninja ieda_py
+    ninja ecc_py
 else
     echo "Using make build system..."
-    make -j$(nproc) ieda_py
+    make -j$(nproc) ecc_py
 fi
 if [ $? -ne 0 ]; then
     echo "Error: Build failed"
     exit 1
 fi
 
-echo "ieda_py build completed successfully!"
+echo "ecc_py build completed successfully!"
 echo "Environment setup completed successfully!"
 echo "To activate the virtual environment in future sessions, run:"
 echo "source ${VENV_DIR}/bin/activate"
