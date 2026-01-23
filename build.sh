@@ -101,6 +101,26 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "ecc_py build completed successfully!"
+
+# Copy ecc_py.so to tools/ecc/bin directory
+echo "Copying ecc_py.so to tools/ecc/bin directory..."
+ECC_PY_BIN_DIR="${CHIPCOMPILER_ROOT}/tools/ecc/bin"
+ECC_TOOLS_BIN_DIR="${ECC_TOOLS_ROOT}/bin"
+
+# Ensure the target directory exists
+mkdir -p "${ECC_PY_BIN_DIR}"
+
+# Find the ecc_py.so file (considering version and platform suffixes)
+ECC_PY_FILE=$(find "${ECC_TOOLS_BIN_DIR}" -name "ecc_py*.so" | head -1)
+
+if [ -f "${ECC_PY_FILE}" ]; then
+    echo "Found ecc_py file: ${ECC_PY_FILE}"
+    cp "${ECC_PY_FILE}" "${ECC_PY_BIN_DIR}/"
+    echo "Successfully copied ecc_py.so to ${ECC_PY_BIN_DIR}/"
+else
+    echo "Warning: ecc_py.so file not found in ${ECC_TOOLS_BIN_DIR}"
+fi
+
 echo "Environment setup completed successfully!"
 echo "To activate the virtual environment in future sessions, run:"
 echo "source ${VENV_DIR}/bin/activate"
