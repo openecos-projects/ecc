@@ -4,4 +4,4 @@
 	url = https://github.com/openecos-projects/icsprout55-pdk.git
 [submodule "chipcompiler/thirdparty/ecc-tools"]
 	path = chipcompiler/thirdparty/ecc-tools
-	url = https://github.com/openecos-projects/ecc-tools.git
+	url = git@github.com:openecos-projects/ecc-tools.git
