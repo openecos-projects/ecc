@@ -144,3 +144,6 @@ test/examples/
 
 .cursor/
 .cursor-user/
+
+# OSS CAD Suite
+chipcompiler/thirdparty/oss-cad-suite/
