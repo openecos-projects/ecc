@@ -16,7 +16,7 @@ parameters = get_parameters("ics55", "gcd")
 # gcd_workspace/
 # ├── flow.json       # Flow state file
 # ├── parameters.json # Design parameters file
-# ├── CTS_iEDA        # CTS step workspace
+# ├── CTS_ecc         # CTS step workspace
 # │   ├── analysis    # Analysis files extract from metrics
 # │   ├── config      # Configuration files
 # │   ├── data        # Data files that generated during the step
@@ -25,19 +25,19 @@ parameters = get_parameters("ics55", "gcd")
 # │   ├── output      # Output artifacts
 # │   ├── report      # Reports generated during the step
 # │   └── script      # Step scripts
-# ├── drc_iEDA
+# ├── drc_ecc
 # │   ...             # Similar structure as above
 # │   └── script
-# ├── filler_iEDA
+# ├── filler_ecc
 # │   ...
 # │   └── script
-# ├── fixFanout_iEDA
+# ├── fixFanout_ecc
 # │   ...
 # │   └── script
-# ├── Floorplan_iEDA
+# ├── Floorplan_ecc
 # │   ...
 # │   └── script
-# ├── legalization_iEDA
+# ├── legalization_ecc
 # │   ...
 # │   └── script
 # ├── log
@@ -46,10 +46,10 @@ parameters = get_parameters("ics55", "gcd")
 # │   ├── gcd.sdc
 # │   ├── filelist.f
 # │   └── rtl
-# ├── place_iEDA
+# ├── place_ecc
 # │   ...
 # │   └── script
-# ├── route_iEDA
+# ├── route_ecc
 # │   ...
 # │   └── script
 # └── Synthesis_yosys
@@ -70,13 +70,13 @@ engine_flow = EngineFlow(workspace=workspace)
 if not engine_flow.has_init():
     # Use `add_step` to add steps to the flow
     engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="Yosys", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="iEDA", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="iEDA", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="iEDA", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.CTS, tool="iEDA", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="iEDA", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.ROUTING, tool="iEDA", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.FILLER, tool="iEDA", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.ROUTING, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.FILLER, tool="ecc", state=StateEnum.Unstart)
 
 # Create step workspaces and run
 engine_flow.create_step_workspaces()
