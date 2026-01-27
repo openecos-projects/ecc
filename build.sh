@@ -6,6 +6,7 @@ set -e
 PROJECT_ROOT=$(cd "$(dirname "$0")";pwd)
 CHIPCOMPILER_ROOT="${PROJECT_ROOT}/chipcompiler"
 ECC_TOOLS_ROOT="${CHIPCOMPILER_ROOT}/thirdparty/ecc-tools"
+ICS55_PDK_ROOT="${CHIPCOMPILER_ROOT}/thirdparty/icsprout55-pdk"
 VENV_DIR="${PROJECT_ROOT}/.venv"
 PYTHON_VERSION="3.10"
 ENABLE_OSS_CAD_SUITE=${ENABLE_OSS_CAD_SUITE:-true}
@@ -46,11 +47,11 @@ if [ "$ENABLE_OSS_CAD_SUITE" == "true" ]; then
     echo "==============================="
     echo " "
     echo "export PATH=\"${OSS_CAD_DIR}/bin:\$PATH\"" >> "${VENV_DIR}/bin/activate"
-
-    exit 0
 fi
 
+echo "Setting up third-party submodules..."
 git submodule update --init --recursive
+cd ${ICS55_PDK_ROOT} && make unzip && cd -
 
 # Build ecc_py
 echo "Building ecc_py..."
