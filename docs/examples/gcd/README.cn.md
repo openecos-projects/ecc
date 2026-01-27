@@ -11,7 +11,7 @@
 我们可以直接运行示例：
 
 ```bash
-python docs/examples/gcd/ics55flow.py
+python3 docs/examples/gcd/ics55flow.py
 ```
 
 ## 详细解释

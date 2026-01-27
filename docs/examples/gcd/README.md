@@ -11,7 +11,7 @@ Refer to the complete example script: **[ics55flow.py](ics55flow.py)**.
 You can run the example directly:
 
 ```bash
-python docs/examples/gcd/ics55flow.py
+python3 docs/examples/gcd/ics55flow.py
 ```
 
 ## Detailed Explanation
