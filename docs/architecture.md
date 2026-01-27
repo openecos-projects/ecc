@@ -26,7 +26,7 @@ This document describes ECOS Chip Compiler's software architecture in detail.
 ├────────────────────────────────────────────────────┤
 │  Tool Layer (chipcompiler/tools/)                   │
 │  ├─ yosys/ - RTL synthesis                           │
-│  ├─ iEDA/ - Placement and routing                    │
+│  ├─ ecc/ - Placement and routing (ECC-Tools)        │
 │  ├─ klayout/ - Layout viewer                         │
 │  ├─ openroad/ - Open source backend                  │
 │  └─ magic/ - Layout tool                             │
@@ -152,10 +152,10 @@ Step 3 (Routing)
    │     └─ Record runtime
 
 4. Initialize DB engine (optional)
-   └─ Load iEDA using the last successful step
+   └─ Load ECC-Tools engine using the last successful step
 
 5. Analysis (optional)
-   └─ Use the iEDA Python bindings for circuit analysis
+   └─ Use the ECC-Tools Python bindings for circuit analysis
 ```
 
 ## Module Details
@@ -176,7 +176,7 @@ Step 3 (Routing)
 | Module | Description |
 |---|---|
 | `EngineFlow` | Flow orchestration: load/save configs, manage steps, run flow |
-| `EngineDB` | Database engine: wraps iEDA C++ engine lifecycle |
+| `EngineDB` | Database engine: wraps ECC-Tools C++ engine lifecycle |
 
 ### Tool Layer (chipcompiler/tools/)
 
@@ -190,7 +190,7 @@ tool_name/
 ├── utility.py    # Helper functions
 ├── configs/      # Config templates
 ├── scripts/      # Tool scripts
-└── bin/          # Tool binaries (iEDA only)
+└── bin/          # Tool binaries (ecc only)
 ```
 
 ### Service Layer (chipcompiler/services/)
