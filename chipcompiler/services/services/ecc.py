@@ -56,6 +56,8 @@ class ECCService:
             steps = build_rtl2gds_flow()
             for step, tool, state in steps:
                 engine_flow.add_step(step=step, tool=tool, state=state)
+        else:
+            engine_flow.create_step_workspaces()
         
         self.engine_flow = engine_flow
         
@@ -80,7 +82,7 @@ class ECCService:
                                      parameters=data.get("parameters", {}),
                                      origin_def=data.get("origin_def", ""),
                                      origin_verilog=data.get("origin_verilog", ""),
-                                     input_filelist=data.get("rtl_list", ""))
+                                     input_filelist=data.get("filelist", ""))
         
         if workspace is None:
             return ECCResponse(
@@ -210,19 +212,48 @@ class ECCService:
             )
             
         # process cmd
+        failed_step = None
         try:
             if data.get("rerun", False):
                 self.engine_flow.clear_states()
-            self.engine_flow.run_steps()
-        except Exception as e:
-            pass
             
-        return ECCResponse(
-            cmd=request.cmd,
-            response=ResponseEnum.success.value,
-            data=response_data,
-            message = [f"run rtl2gds success : {self.workspace.directory}"]
-        )
+            for workspace_step in self.engine_flow.workspace_steps:
+                ecc_req = ECCRequest(
+                cmd = "run_step",
+                data = {
+                        "step" : workspace_step.name,
+                        "rerun" : data.get("rerun", False)
+                    }
+                )
+                # get response for each step
+                # TBD, need to send response back to gui
+                step_response = self.run_step(ecc_req)
+                if step_response.response != ResponseEnum.success.value:
+                    failed_step = workspace_step.name
+                    break
+            # self.engine_flow.run_steps()
+        except Exception as e:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.error.value,
+                data=response_data,
+                message = [f"run rtl2gds failed : {e}"]
+            )
+        
+        if failed_step is None:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.success.value,
+                data=response_data,
+                message = [f"run rtl2gds success : {self.workspace.directory}"]
+            )
+        else:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.failed.value,
+                data=response_data,
+                message = [f"run rtl2gds failed in step : {failed_step}"]
+            )
         
     def run_step(self, request: ECCRequest) -> ECCResponse:
         # check cmd
@@ -233,9 +264,11 @@ class ECCService:
         # get data
         data = request.data
         step = data.get("step", "")
+        rerun = data.get("rerun", "")
         
         response_data = {
-            "step" : step
+            "step" : step,
+            "state" : "Unstart"
         }
  
         # check data
@@ -251,7 +284,7 @@ class ECCService:
         # process cmd
         state = StateEnum.Unstart
         try:
-            state = self.engine_flow.run_step(step)
+            state = self.engine_flow.run_step(step, rerun)
         except Exception as e:
             state = StateEnum.Imcomplete
             pass
@@ -271,6 +304,66 @@ class ECCService:
                 response=ResponseEnum.failed.value,
                 data=response_data,
                 message = [f"run step {step} failed with state {state.value} : {self.workspace.directory}"]
+            )
+            
+    def get_info(self, request: ECCRequest) -> ECCResponse:
+        # check cmd
+        state, response = self.check_cmd(request, CMDEnum.get_info)
+        if not state:
+            return response 
+        
+        # get data
+        data = request.data
+        step = data.get("step", "")
+        id = data.get("id", "")
+        
+        
+        response_data = {
+            "step" : step,
+            "id" : id,
+            "info" : {}
+        }
+ 
+        # check data
+        if self.workspace is None \
+            or not os.path.exists(self.workspace.directory):
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.error.value,
+                data=response_data,
+                message = [f"workspace not exist : {self.workspace.directory}"]
+            )
+            
+        # process cmd
+        try:
+            # build information
+            from .info import get_step_info
+            info = get_step_info(workspace=self.workspace,
+                                 step=self.engine_flow.get_workspace_step(step),
+                                 id=id)
+            
+            if len(info) == 0:
+                return ECCResponse(
+                    cmd=request.cmd,
+                    response=ResponseEnum.warning.value,
+                    data=response_data,
+                    message = [f"no information for step {step} : {self.workspace.directory}"]
+                )
+            else:
+                response_data["info"] = info
+        except Exception as e:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.error.value,
+                data=response_data,
+                message = [f"get information error for step {step} : {e}"]
+            )
+        
+        return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.success.value,
+                data=response_data,
+                message = [f"get information success : {step} - {id}"]
             )
             
             

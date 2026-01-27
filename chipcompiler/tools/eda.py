@@ -107,3 +107,17 @@ def build_step_metrics(workspace: Workspace,
 
     return eda_module.build_step_metrics(workspace=workspace,
                                          step=step)
+    
+def get_step_info(workspace: Workspace, 
+                  step: WorkspaceStep,
+                  id : str) -> dict:
+    """
+    get step info by step and command id, return dict as resource definition
+    """
+    eda_module = load_eda_module(step.tool)
+    if eda_module is None:
+        return None
+
+    return eda_module.get_step_info(workspace=workspace,
+                                    step=step,
+                                    id=id)

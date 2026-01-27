@@ -15,7 +15,7 @@ from .plot import ECCToolsPlot
 
 from .metrics import (
     build_step_metrics,
-    build_metrics_net_opt
+    get_step_info
 )
 
 from .utility import ( 
@@ -32,5 +32,6 @@ __all__ = [
     'create_db_engine',
     'ECCToolsModule',
     'ECCToolsPlot',
-    'build_step_metrics'
+    'build_step_metrics',
+    'get_step_info'
 ]

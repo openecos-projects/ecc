@@ -3,7 +3,8 @@ from .eda import (
     create_step,
     run_step,
     save_layout_image,
-    build_step_metrics
+    build_step_metrics,
+    get_step_info
 )
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     'create_step',
     'run_step',
     'save_layout_image',
-    "build_step_metrics"
+    'build_step_metrics',
+    'get_step_info'
 ]

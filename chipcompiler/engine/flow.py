@@ -230,17 +230,12 @@ class EngineFlow:
             return False
         
     
-    def run_steps(self) -> bool:
+    def run_steps(self, rerun=False) -> bool:
         """
         run all flow steps
         """
         for workspace_step in self.workspace_steps: 
-            if self.check_state(name=workspace_step.name,
-                                tool=workspace_step.tool,
-                                state=StateEnum.Success):
-                continue
-
-            state = self.run_step(workspace_step)
+            state = self.run_step(workspace_step, rerun)
             
             match(state):
                 case StateEnum.Success:
@@ -259,7 +254,8 @@ class EngineFlow:
         return True
             
     def run_step(self,
-                 workspace_step : WorkspaceStep | str) -> StateEnum:
+                 workspace_step : WorkspaceStep | str,
+                 rerun : bool = False) -> StateEnum:
         """
         run single step
         """
@@ -268,7 +264,7 @@ class EngineFlow:
         if workspace_step is None:
             return StateEnum.Invalid
             
-        if self.check_state(name=workspace_step.name,
+        if not rerun and self.check_state(name=workspace_step.name,
                             tool=workspace_step.tool,
                             state=StateEnum.Success):
             return StateEnum.Success

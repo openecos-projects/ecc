@@ -5,7 +5,8 @@ from .schemas import (
     ResponseEnum,
     DATA_TEMPLATE,
     ECCRequest,
-    ECCResponse
+    ECCResponse,
+    InfoEnum
 )
 from .services import (
     ECCService,
@@ -20,6 +21,7 @@ __all__ = [
     'DATA_TEMPLATE',
     'ECCRequest',
     'ECCResponse',
+    'InfoEnum',
     'ECCService',
     'ecc_service'
 ]

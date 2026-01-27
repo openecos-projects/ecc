@@ -6,10 +6,15 @@ from .ecc import (
     ECCResponse
 )
 
+from .info import (
+    InfoEnum
+)
+
 __all__ = [
     'CMDEnum',
     'ResponseEnum',
     'DATA_TEMPLATE',
     'ECCRequest',
-    'ECCResponse'
+    'ECCResponse',
+    'InfoEnum'
 ]

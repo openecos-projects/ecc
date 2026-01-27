@@ -45,3 +45,17 @@ async def rtl2gds(request: ECCRequest):
     run rtl2gds flow for current workspace.
     """
     return ecc_serv.rtl2gds(request)
+
+@router.post("/run_step", response_model=ECCResponse)
+async def run_step(request: ECCRequest):
+    """
+    run step for current workspace.
+    """
+    return ecc_serv.run_step(request)
+
+@router.post("/get_info", response_model=ECCResponse)
+async def get_info(request: ECCRequest):
+    """
+    get information by step and id.
+    """
+    return ecc_serv.get_info(request)

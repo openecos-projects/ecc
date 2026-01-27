@@ -45,3 +45,48 @@ def build_step_metrics(workspace: Workspace,
     if save_metrics(step_metrics):
         return step_metrics
     return None
+
+def get_step_info(workspace: Workspace, 
+                  step: WorkspaceStep,
+                  id : str) -> dict:
+    """
+    get step info by step and command id, return dict as resource definition
+    """
+    def build_metrics() -> dict:
+        metrics = build_step_metrics(workspace=workspace,
+                                     step=step)
+        info = {
+            "metrics" : metrics.path
+        }
+        
+        return info
+    
+    def build_layout() -> dict:
+        info = {
+            "image" : step.output.get("image", ""),
+        }
+        
+        info.update(build_metrics())
+        
+        return info
+    
+    def build_views() -> dict:
+        info = {}
+        
+        info.update(build_layout())
+        
+        info["information"] = {}
+        
+        return info
+    
+    step_info = {}
+    
+    match id:
+        case "views":
+            step_info = build_views()
+        case "layout":
+            step_info = build_layout()
+        case "metrics":
+            step_info = build_metrics()
+
+    return step_info
