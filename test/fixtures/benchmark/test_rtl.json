@@ -6,7 +6,7 @@
     "designs": [
         {
             "id": "test_rtl_only",
-            "rtl": "test/fixtures/benchmark/dummy/gcd.v",
+            "rtl": "test/fixtures/benchmark/dummy/dummy.v",
             "Design": "gcd",
             "Top module": "gcd",
             "Clock": "clk",

@@ -6,8 +6,8 @@
     "designs": [
         {
             "id": "test_rtl_netlist",
-            "rtl": "test/fixtures/benchmark/dummy/gcd.v",
-            "netlist": "test/fixtures/benchmark/dummy/gcd_netlist.v",
+            "rtl": "test/fixtures/benchmark/dummy/dummy.v",
+            "netlist": "test/fixtures/benchmark/dummy/dummy_netlist.v",
             "Design": "gcd",
             "Top module": "gcd",
             "Clock": "clk",
