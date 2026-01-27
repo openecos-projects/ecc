@@ -37,7 +37,7 @@ If yosys is already installed on your system, you can skip the OSS CAD Suite dow
 ENABLE_OSS_CAD_SUITE=false ./build.sh
 ```
 
-### Build iEDA C++ bindings
+### Build ECC-Tools C++ bindings
 
 ```bash
 mkdir -p build && cd build
@@ -203,7 +203,7 @@ def test_run_step():
 uv build
 ```
 
-### Standalone executable
+### Standalone executable (Run-Server mode)
 
 ```bash
 ./build.sh --release

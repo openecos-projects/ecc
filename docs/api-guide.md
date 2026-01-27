@@ -40,9 +40,9 @@ flow = EngineFlow(workspace)
 
 # Manually add steps
 flow.add_step(StepEnum.SYNTHESIS, "yosys")
-flow.add_step(StepEnum.PLACEMENT, "iEDA")
-flow.add_step(StepEnum.CTS, "iEDA")
-flow.add_step(StepEnum.ROUTING, "iEDA")
+flow.add_step(StepEnum.PLACEMENT, "ecc")
+flow.add_step(StepEnum.CTS, "ecc")
+flow.add_step(StepEnum.ROUTING, "ecc")
 
 flow.create_step_workspaces()
 flow.run_steps()
@@ -102,11 +102,11 @@ flow.run_steps()
 ### Database Engine
 
 ```python
-# Initialize the iEDA database engine
+# Initialize the database engine (uses ECC-Tools engine internally)
 db_engine = flow.init_db_engine()
 
-# Use the iEDA Python bindings for analysis
-# db_engine provides access to circuit data
+# Use the ECC-Tools Python bindings for post-flow analysis
+# db_engine provides access to circuit data for analysis and optimization
 ```
 
 ## Related Documentation

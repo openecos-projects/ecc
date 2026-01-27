@@ -7,7 +7,7 @@
         {
             "id": "test_filelist_netlist",
             "filelist": "test/fixtures/benchmark/dummy/filelist",
-            "netlist": "test/fixtures/benchmark/dummy/gcd_netlist.v",
+            "netlist": "test/fixtures/benchmark/dummy/dummy_netlist.v",
             "Design": "gcd",
             "Top module": "gcd",
             "Clock": "clk",
