@@ -203,7 +203,7 @@ def test_run_step():
 uv build
 ```
 
-### Standalone executable
+### Standalone executable (Run-Server mode)
 
 ```bash
 ./build.sh --release
