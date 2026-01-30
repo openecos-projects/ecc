@@ -1,0 +1,46 @@
+import { alovaInstance } from './client'
+import { RequestData, ResponseData, StepEnum, InfoEnum } from './type';
+
+export interface GetInfoRequest {
+  step: StepEnum;
+  id: InfoEnum;
+}
+
+export interface GetInfoResponse {
+  step: string;
+  id: InfoEnum;
+  info: any;
+}
+
+export function getInfoApi(request: RequestData<GetInfoRequest>) {
+  return alovaInstance.Post<ResponseData<GetInfoResponse>>('/api/workspace/get_info', request as unknown as RequestData<GetInfoRequest>)
+}
+
+
+
+export interface RTL2GDSRequest {
+  rerun: boolean;
+}
+
+export interface RTL2GDSResponse {
+  rerun: boolean;
+}
+
+export function rtl2gdsApi(request: RequestData<RTL2GDSRequest>) {
+  return alovaInstance.Post<ResponseData<RTL2GDSResponse>>('/api/workspace/rtl2gds', request as unknown as RequestData<RTL2GDSRequest>)
+}
+
+export interface RunStepRequest {
+  step: string;
+  rerun: boolean;
+}
+
+export interface RunStepResponse {
+  step: string;
+  state: string;
+}
+
+export function runStepApi(request: RequestData<RunStepRequest>) {
+  return alovaInstance.Post<ResponseData<RunStepResponse>>('/api/workspace/run_step', request as unknown as RequestData<RunStepRequest>)
+}
+
