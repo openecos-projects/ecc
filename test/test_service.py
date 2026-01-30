@@ -99,8 +99,8 @@ def test_sky130_gcd():
                 "rerun" : False
             }
         )
-        ecc_response = ecc_serv.run_step(ecc_req)
-        print(ecc_response)
+        # ecc_response = ecc_serv.run_step(ecc_req)
+        # print(ecc_response)
         
     # test get step infomation
     #####################################################

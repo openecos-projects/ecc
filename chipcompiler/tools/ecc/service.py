@@ -253,7 +253,7 @@ def build_maps_density(workspace: Workspace,
 def build_checklist(workspace: Workspace, 
                     step: WorkspaceStep) -> dict:          
     info = {
-        
+        "path" : step.checklist.get("path", "")
     }
     
     return info
