@@ -24,6 +24,8 @@ def get_step_info(workspace: Workspace,
             step_info = build_analysis(workspace=workspace, step=step)
         case "maps":
             step_info = build_maps(workspace=workspace, step=step)
+        case "checklist":
+            step_info = build_checklist(workspace=workspace, step=step)
 
     return step_info
 
@@ -73,6 +75,14 @@ def build_analysis(workspace: Workspace,
 
 def build_maps(workspace: Workspace, 
                    step: WorkspaceStep) -> dict:          
+    info = {
+        
+    }
+    
+    return info
+
+def build_checklist(workspace: Workspace, 
+                    step: WorkspaceStep) -> dict:          
     info = {
         
     }
