@@ -29,12 +29,14 @@ def get_parameters(pdk_name : str, design : str = "", path : str = "", current_d
     """
     Return the Parameters instance based on the given pdk name.
     """
+    # Check path
     if path == "":
         if current_dir == "":
             raise FileNotFoundError("current_dir or path must be provided to locate parameters")
         if not os.path.isdir(current_dir):
             raise FileNotFoundError(f"current_dir does not exist: {current_dir}")
         path = f"{current_dir}/{pdk_name.lower()}_parameter.json"
+
     if pdk_name.lower() == "sky130":
         return parameter_sky130(design, path)
     elif pdk_name.lower() == "ics55":
