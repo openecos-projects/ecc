@@ -9,9 +9,7 @@ from chipcompiler.tools.yosys.subflow import YosysSubFlow
 from chipcompiler.tools.yosys.utility import get_yosys_command, is_eda_exist
 
 
-def run_step(workspace: Workspace,
-             step: WorkspaceStep,
-             module=None) -> bool:
+def run_step(workspace: Workspace, step: WorkspaceStep, module=None) -> bool:
     """
     Run the synthesis step using yosys.
 
@@ -28,7 +26,7 @@ def run_step(workspace: Workspace,
     """
     if not is_eda_exist():
         return False
-    
+
     sub_flow = YosysSubFlow(workspace=workspace, workspace_step=step)
 
     input_verilog = step.input.get("verilog", "")
@@ -53,28 +51,28 @@ def run_step(workspace: Workspace,
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 
         with open(step.log["file"], "w") as log_file:
-            result = subprocess.run(
+            subprocess.run(
                 cmd,
                 cwd=cwd_dir,
                 env=os.environ.copy(),
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                timeout=600
+                timeout=600,
             )
 
         if os.path.exists(step.output["verilog"]):
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Success)
-            
+
             build_step_metrics(workspace=workspace, step=step)
-            
+
             sub_flow.update_step(step_name="analysis", state=StateEnum.Success)
-            
+
             checklist = YosysChecklist(workspace=workspace, workspace_step=step)
             checklist.check()
             return True
         else:
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
-            
+
             print(f"Error: Output netlist not generated at {step.output['verilog']}")
             return False
 

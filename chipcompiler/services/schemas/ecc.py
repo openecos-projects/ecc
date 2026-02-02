@@ -13,88 +13,51 @@ class CMDEnum(Enum):
     run_step = "run_step"
     get_info = "get_info"
 
+
 class ResponseEnum(Enum):
     success = "success"
     failed = "failed"
     error = "error"
     warning = "warning"
 
+
 DATA_TEMPLATE = {
-    "create_workspace" : {
-        "requeset" : {
-            "directory" : "",
-            "pdk" : "",
-            "parameters" : {},
-            "origin_def" : "",
-            "origin_verilog" : "",
-            "filelist" : ""
+    "create_workspace": {
+        "requeset": {
+            "directory": "",
+            "pdk": "",
+            "parameters": {},
+            "origin_def": "",
+            "origin_verilog": "",
+            "filelist": "",
         },
-        "response" : {
-            "directory" : ""
-        }
+        "response": {"directory": ""},
     },
-    
-    "load_workspace" : {
-        "requeset" : {
-            "directory" : ""
-        },
-        "response" : {
-            "directory" : ""
-        }
+    "load_workspace": {"requeset": {"directory": ""}, "response": {"directory": ""}},
+    "delete_workspace": {"requeset": {"directory": ""}, "response": {"directory": ""}},
+    "rtl2gds": {"requeset": {"rerun": False}, "response": {"rerun": False}},
+    "run_step": {
+        "requeset": {"step": "", "rerun": False},
+        "response": {"step": "", "state": "Unstart"},
     },
-    
-    "delete_workspace" : {
-        "requeset" : {
-            "directory" : ""
-        },
-        "response" : {
-            "directory" : ""
-        }
-    },
-    
-    "rtl2gds" : {
-        "requeset" : {
-            "rerun" : False
-        },
-        "response" : {
-            "rerun" : False
-        }
-    },
-    
-    "run_step" : {
-        "requeset" : {
-            "step" : "",
-            "rerun" : False
-        },
-        "response" : {
-            "step" : "",
-            "state" : "Unstart"
-        }
-    },
-    
-    "get_info" : {
-        "requeset" : {
-            "step" : "",
-            "id" : ""
-        },
-        "response" : {
-            "step" : "",
-            "id" : "",
-            "info" : {}
-        }
+    "get_info": {
+        "requeset": {"step": "", "id": ""},
+        "response": {"step": "", "id": "", "info": {}},
     },
 }
 
+
 class ECCRequest(BaseModel):
-    """
-    """
-    cmd : str
-    data : dict
-    
+    """ """
+
+    cmd: str
+    data: dict
+
+
 class ECCResponse(BaseModel):
-    """
-    """
-    cmd : str
-    response : str
-    data : dict
-    message : list
+    """ """
+
+    cmd: str
+    response: str
+    data: dict
+    message: list

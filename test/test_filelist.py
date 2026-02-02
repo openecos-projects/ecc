@@ -19,10 +19,10 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(current_dir)
 sys.path.insert(0, root)
 
-from chipcompiler.data import create_workspace, get_pdk
-from chipcompiler.data.parameter import Parameters
-from chipcompiler.data.workspace import copy_filelist_with_sources
-from chipcompiler.utility.filelist import (
+from chipcompiler.data import create_workspace, get_pdk  # noqa: E402
+from chipcompiler.data.parameter import Parameters  # noqa: E402
+from chipcompiler.data.workspace import copy_filelist_with_sources  # noqa: E402
+from chipcompiler.utility.filelist import (  # noqa: E402
     get_filelist_info,
     parse_filelist,
     parse_incdir_directives,
@@ -47,7 +47,7 @@ def test_parameters():
         "Design": "test",
         "Top module": "top",
         "Clock": "clk",
-        "Frequency max [MHz]": 100
+        "Frequency max [MHz]": 100,
     }
     return parameters
 
@@ -98,10 +98,7 @@ class TestParseFilelist:
         """Parse filelist with comments."""
         filelist = tmp_path / "design.f"
         filelist.write_text(
-            "# This is a comment\n"
-            "rtl/top.v\n"
-            "// Another comment\n"
-            "rtl/sub.v  # inline comment\n"
+            "# This is a comment\nrtl/top.v\n// Another comment\nrtl/sub.v  # inline comment\n"
         )
 
         assert parse_filelist(str(filelist)) == ["rtl/top.v", "rtl/sub.v"]
@@ -116,7 +113,7 @@ class TestParseFilelist:
     def test_parse_with_quotes(self, tmp_path):
         """Parse filelist with quoted paths."""
         filelist = tmp_path / "design.f"
-        filelist.write_text('"path with spaces/file.v"\n' "'another path/file.v'\n")
+        filelist.write_text("\"path with spaces/file.v\"\n'another path/file.v'\n")
 
         assert parse_filelist(str(filelist)) == ["path with spaces/file.v", "another path/file.v"]
 
@@ -239,13 +236,13 @@ class TestGetFilelistInfo:
 
         info = get_filelist_info(str(filelist))
 
-        assert info['filelist'] == os.path.abspath(str(filelist))
-        assert info['base_dir'] == str(tmp_path)
-        assert info['total_files'] == 2
-        assert info['existing_files'] == ["rtl/gcd.v"]
-        assert info['missing_files'] == ["rtl/missing.v"]
-        assert "rtl/gcd.v" in info['file_sizes']
-        assert info['file_sizes']["rtl/gcd.v"] > 0
+        assert info["filelist"] == os.path.abspath(str(filelist))
+        assert info["base_dir"] == str(tmp_path)
+        assert info["total_files"] == 2
+        assert info["existing_files"] == ["rtl/gcd.v"]
+        assert info["missing_files"] == ["rtl/missing.v"]
+        assert "rtl/gcd.v" in info["file_sizes"]
+        assert info["file_sizes"]["rtl/gcd.v"] > 0
 
 
 class TestCopyFilelistWithSources:
@@ -351,7 +348,7 @@ class TestCreateWorkspaceIntegration:
             origin_verilog="",
             pdk=pdk,
             parameters=test_parameters,
-            input_filelist=str(filelist)
+            input_filelist=str(filelist),
         )
 
         assert os.path.exists(workspace_dir)
@@ -379,7 +376,7 @@ class TestCreateWorkspaceIntegration:
             origin_verilog="",
             pdk=pdk,
             parameters=test_parameters,
-            input_filelist=str(filelist)
+            input_filelist=str(filelist),
         )
 
         origin_dir = workspace_dir / "origin"
@@ -403,12 +400,7 @@ class TestParseIncdirDirectives:
 
     def test_parse_multiple_incdir(self, tmp_path):
         """Parse filelist with multiple +incdir directives."""
-        content = (
-            "+incdir+./include\n"
-            "+incdir+./rtl/common\n"
-            "+incdir+../shared/headers\n"
-            "rtl/top.v\n"
-        )
+        content = "+incdir+./include\n+incdir+./rtl/common\n+incdir+../shared/headers\nrtl/top.v\n"
         dirs = self._parse_incdir(tmp_path, content)
         assert dirs == ["./include", "./rtl/common", "../shared/headers"]
 
@@ -420,9 +412,7 @@ class TestParseIncdirDirectives:
     def test_parse_incdir_with_comments(self, tmp_path):
         """Parse +incdir directives with inline comments."""
         content = (
-            "+incdir+./include  # Main headers\n"
-            "+incdir+./rtl/common // Common headers\n"
-            "rtl/top.v\n"
+            "+incdir+./include  # Main headers\n+incdir+./rtl/common // Common headers\nrtl/top.v\n"
         )
         dirs = self._parse_incdir(tmp_path, content)
         assert dirs == ["./include", "./rtl/common"]
@@ -439,22 +429,18 @@ class TestParseIncdirDirectives:
 
     def test_parse_incdir_skip_comments(self, tmp_path):
         """Ensure comments are skipped when parsing +incdir."""
-        content = (
-            "# +incdir+./should_skip\n"
-            "// +incdir+./also_skip\n"
-            "+incdir+./valid\n"
-        )
+        content = "# +incdir+./should_skip\n// +incdir+./also_skip\n+incdir+./valid\n"
         dirs = self._parse_incdir(tmp_path, content)
         assert dirs == ["./valid"]
 
     def test_parse_incdir_with_spaces(self, tmp_path):
         """Parse +incdir directives with surrounding spaces."""
         content = (
-            "+incdir+ ./include\n"           # Space after prefix
-            "+incdir+  ./rtl/common  \n"     # Multiple spaces
-            "+incdir+ \"./quoted\"  # comment\n"  # Spaces with quotes
-            "  +incdir+./leading\n"          # Leading spaces on line
-            "\t+incdir+./tab\n"              # Leading tab
+            "+incdir+ ./include\n"  # Space after prefix
+            "+incdir+  ./rtl/common  \n"  # Multiple spaces
+            '+incdir+ "./quoted"  # comment\n'  # Spaces with quotes
+            "  +incdir+./leading\n"  # Leading spaces on line
+            "\t+incdir+./tab\n"  # Leading tab
         )
         dirs = self._parse_incdir(tmp_path, content)
         assert dirs == ["./include", "./rtl/common", "./quoted", "./leading", "./tab"]
@@ -495,9 +481,7 @@ class TestCopyFilelistWithIncdir:
         write_rtl_file(project_dir / "top.v", "top")
         write_header_file(project_dir / "types.vh", "`define TYPES")
 
-        origin_dir = self._copy_and_get_origin(
-            tmp_path, project_dir, "top.v\n+incdir+./\n"
-        )
+        origin_dir = self._copy_and_get_origin(tmp_path, project_dir, "top.v\n+incdir+./\n")
 
         assert (origin_dir / "top.v").exists()
         assert (origin_dir / "types.vh").exists()

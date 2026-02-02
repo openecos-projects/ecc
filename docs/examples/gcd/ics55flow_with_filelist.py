@@ -84,7 +84,7 @@ workspace = create_workspace(
     origin_verilog="",  # Not needed when using filelist
     pdk=pdk,
     parameters=parameters,
-    input_filelist=input_filelist  # Provide filelist path here
+    input_filelist=input_filelist,  # Provide filelist path here
 )
 # Use load_workspace to resume from existing workspace
 # workspace = load_workspace(directory=workspace_dir)

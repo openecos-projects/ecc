@@ -60,7 +60,7 @@ workspace = create_workspace(
     origin_def="",
     origin_verilog=input_verilog,
     pdk=pdk,
-    parameters=parameters
+    parameters=parameters,
 )
 # Use load_workspace to resume from existing workspace
 # workspace = load_workspace(directory=workspace_dir)

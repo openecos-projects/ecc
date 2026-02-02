@@ -3,8 +3,7 @@ from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, save_metric
 from chipcompiler.utility import json_read
 
 
-def build_step_metrics(workspace: Workspace,
-                       step: WorkspaceStep) -> StepMetrics:
+def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
     """
     Build and persist synthesis metrics from Yosys stat JSON.
     Args:
@@ -14,14 +13,14 @@ def build_step_metrics(workspace: Workspace,
         StepMetrics: The populated step metrics object, or None if not available.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.get('metrics', '')
+    step_metrics.path = step.analysis.get("metrics", "")
 
-    stat_json_path = step.feature.get('stat')
+    stat_json_path = step.feature.get("stat")
     data = json_read(stat_json_path)
     if not data:
         return None
 
-    design_data = data.get('design', {})
+    design_data = data.get("design", {})
 
     metrics = {
         "Step": step.name,

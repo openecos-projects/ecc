@@ -17,8 +17,8 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(current_dir)
 sys.path.insert(0, root)
 
-from benchmark.benchmark import run_benchmark, run_single_design
-from chipcompiler.data import StepEnum
+from benchmark.benchmark import run_benchmark, run_single_design  # noqa: E402
+from chipcompiler.data import StepEnum  # noqa: E402
 
 FIXTURES_DIR = os.path.join(current_dir, "fixtures", "benchmark")
 
@@ -41,9 +41,11 @@ def mock_engine_flow():
     def capture_step(step, tool, state):
         captured_steps.append((step, tool, state))
 
-    with patch("benchmark.benchmark.EngineFlow.run_steps"):
-        with patch("benchmark.benchmark.EngineFlow.add_step", side_effect=capture_step):
-            yield captured_steps
+    with (
+        patch("benchmark.benchmark.EngineFlow.run_steps"),
+        patch("benchmark.benchmark.EngineFlow.add_step", side_effect=capture_step),
+    ):
+        yield captured_steps
 
 
 # Valid input files that should pass validation
@@ -96,10 +98,10 @@ class TestPriority:
         data = json_read(json_path)
         workspace_dir = f"/tmp/test_{json_file.replace('.json', '')}"
 
-        try:
+        from contextlib import suppress
+
+        with suppress(Exception):
             run_single_design(workspace_dir, data["pdk"], data["designs"][0])
-        except Exception:
-            pass  # Ignore file operation errors
 
         return mock_engine_flow
 

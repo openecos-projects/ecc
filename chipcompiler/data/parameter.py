@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import os
-
 from dataclasses import dataclass, field
 
 
@@ -10,22 +9,29 @@ class Parameters:
     """
     Dataclass for design parameters
     """
-    path : str = "" # parameters file path
-    data : dict = field(default_factory=dict) # parameters data
 
-def load_parameter(path : str) -> Parameters:
+    path: str = ""  # parameters file path
+    data: dict = field(default_factory=dict)  # parameters data
+
+
+def load_parameter(path: str) -> Parameters:
     from chipcompiler.utility import json_read
+
     parameter = Parameters()
     parameter.path = path
     parameter.data = json_read(path)
     return parameter
-    
-def save_parameter(parameter : Parameters) -> bool:
-    from chipcompiler.utility import json_write
-    return json_write(file_path=parameter.path,
-                      data=parameter.data)
 
-def get_parameters(pdk_name : str, design : str = "", path : str = "", current_dir : str = "") -> Parameters:
+
+def save_parameter(parameter: Parameters) -> bool:
+    from chipcompiler.utility import json_write
+
+    return json_write(file_path=parameter.path, data=parameter.data)
+
+
+def get_parameters(
+    pdk_name: str, design: str = "", path: str = "", current_dir: str = ""
+) -> Parameters:
     """
     Return the Parameters instance based on the given pdk name.
     """
@@ -45,14 +51,17 @@ def get_parameters(pdk_name : str, design : str = "", path : str = "", current_d
     else:
         return Parameters()
 
-def parameter_ics55(design : str, path : str, benchmark_json : str) -> Parameters:
+
+def parameter_ics55(design: str, path: str, benchmark_json: str) -> Parameters:
     parameters = Parameters()
-    
+
     from chipcompiler.utility import json_read
+
     parameters.path = path
     parameters.data = json_read(path)
-    
+
     from chipcompiler.utility import json_read
+
     if not os.path.isfile(benchmark_json):
         raise FileNotFoundError(f"ics55_benchmark.json not found: {benchmark_json}")
     benchmarks = json_read(benchmark_json)
@@ -66,18 +75,20 @@ def parameter_ics55(design : str, path : str, benchmark_json : str) -> Parameter
 
     return parameters
 
-def parameter_sky130(design : str, path : str) -> Parameters:
+
+def parameter_sky130(design: str, path: str) -> Parameters:
     parameters = Parameters()
-    
+
     from chipcompiler.utility import json_read
+
     parameters.path = path
     parameters.data = json_read(path)
-    
+
     match design.lower():
         case "gcd":
             parameters.data["Design"] = "gcd"
             parameters.data["Top module"] = "gcd"
             parameters.data["Clock"] = "clk"
             parameters.data["Frequency max [MHz]"] = 100
-        
+
     return parameters
