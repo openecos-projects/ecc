@@ -49,8 +49,13 @@ def parameter_ics55(design : str, path : str, current_dir : str) -> Parameters:
     parameters.path = path
     parameters.data = json_read(path)
     
+    if current_dir == "":
+        raise FileNotFoundError("current_dir is empty; cannot locate ics55_benchmark.json")
+
     from chipcompiler.utility import json_read
     benchmark_json = f"{current_dir}/ics55_benchmark.json"
+    if not os.path.isfile(benchmark_json):
+        raise FileNotFoundError(f"ics55_benchmark.json not found: {benchmark_json}")
     benchmarks = json_read(benchmark_json)
     designs = benchmarks.get("designs", [])
     for design_info in designs:
