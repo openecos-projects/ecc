@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-from enum import Enum
 from dataclasses import dataclass, field
+from enum import Enum
+
 
 class StepEnum(Enum):
     """RTL2GDS flow step names"""

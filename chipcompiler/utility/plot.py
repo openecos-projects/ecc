@@ -1,10 +1,12 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import os
-import pandas as pd
+
 import matplotlib
+import pandas as pd
+
 matplotlib.use('Agg')  # Use non-interactive backend for multi-threading
 import matplotlib.pyplot as plt
+
 
 def plot_csv_map(input_path : str, output_path : str=None) -> bool:
     """
@@ -61,7 +63,7 @@ def plot_csv_map(input_path : str, output_path : str=None) -> bool:
         plt.close(fig)
         
         return True
-    except Exception as e:
+    except Exception:
         plt.close('all')
         return False
     
@@ -104,7 +106,7 @@ def plot_csv_table(input_path: str, output_path: str=None) -> bool:
         plt.close(fig)
         
         return True
-    except Exception as e:
+    except Exception:
         plt.close('all')
         return False
     

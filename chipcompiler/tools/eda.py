@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics
 import logging
+
+from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep
+
 
 def load_eda_module(eda_tool: str):
     """
@@ -22,7 +23,7 @@ def load_eda_module(eda_tool: str):
     
     eda_module = None
     try:
-        import importlib    
+        import importlib
         eda_module = importlib.import_module(f"chipcompiler.tools.{eda_tool}")
         # check eda tool exist
         if not check_module(eda_module) or not eda_module.is_eda_exist():

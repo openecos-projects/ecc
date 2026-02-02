@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 """
 Test filelist parsing and copying functionality.
 
@@ -13,22 +12,23 @@ Tests:
 
 import os
 import sys
+
 import pytest
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(current_dir)
 sys.path.insert(0, root)
 
-from chipcompiler.utility.filelist import (
-    parse_filelist,
-    resolve_path,
-    validate_filelist,
-    get_filelist_info,
-    parse_incdir_directives
-)
-from chipcompiler.data.workspace import copy_filelist_with_sources
 from chipcompiler.data import create_workspace, get_pdk
 from chipcompiler.data.parameter import Parameters
+from chipcompiler.data.workspace import copy_filelist_with_sources
+from chipcompiler.utility.filelist import (
+    get_filelist_info,
+    parse_filelist,
+    parse_incdir_directives,
+    resolve_path,
+    validate_filelist,
+)
 
 
 @pytest.fixture

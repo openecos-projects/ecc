@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
+from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
+
 
 class YosysSubFlow:
     def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):

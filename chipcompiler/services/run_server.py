@@ -1,13 +1,12 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 """
 Standalone script to run the FastAPI server.
 This script is intended to be spawned by Tauri at application startup.
 """
 
-import sys
 import os
+import sys
 
 # Add project root to path for imports
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,6 +15,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 import argparse
+
 import uvicorn
 
 

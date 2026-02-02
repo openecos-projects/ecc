@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, save_metrics
+from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, save_metrics
 from chipcompiler.utility import json_read
 
 

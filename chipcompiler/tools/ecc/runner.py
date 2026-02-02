@@ -1,15 +1,14 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-import sys
 import os
-       
-from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
-from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.tools.ecc.utility import is_eda_exist
-from chipcompiler.tools.ecc.plot import ECCToolsPlot
-from chipcompiler.tools.ecc.metrics import build_step_metrics 
-from chipcompiler.tools.ecc.subflow import EccSubFlow
+
+from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.checklist import EccChecklist
+from chipcompiler.tools.ecc.metrics import build_step_metrics
+from chipcompiler.tools.ecc.module import ECCToolsModule
+from chipcompiler.tools.ecc.plot import ECCToolsPlot
+from chipcompiler.tools.ecc.subflow import EccSubFlow
+from chipcompiler.tools.ecc.utility import is_eda_exist
+
 
 def create_db_engine(workspace: Workspace,
                      step: WorkspaceStep) -> ECCToolsModule:
@@ -351,7 +350,7 @@ def run_drc(workspace: Workspace,
         
         reslut = save_data(step=step, module=eda_inst)
         
-        eda_inst.save_drc(feature_path=step.feature[f"step"])
+        eda_inst.save_drc(feature_path=step.feature["step"])
         
         sub_flow.update_step(step_name="save data", state=StateEnum.Success)
     

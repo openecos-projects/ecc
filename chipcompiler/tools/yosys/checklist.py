@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StepEnum, CheckState
+from chipcompiler.data import CheckState, Workspace, WorkspaceStep
+
 
 class YosysChecklist:
     def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):

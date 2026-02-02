@@ -1,16 +1,14 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 from chipcompiler.data import (
-    Workspace, 
-    WorkspaceStep, 
-    StepMetrics, 
-    save_metrics,
+    StateEnum,
     StepEnum,
-    StateEnum
+    StepMetrics,
+    Workspace,
+    WorkspaceStep,
+    save_metrics,
 )
-from chipcompiler.utility import json_read
-
 from chipcompiler.tools.ecc.subflow import EccSubFlow
+from chipcompiler.utility import json_read
 
 
 def build_step_metrics(workspace: Workspace, 

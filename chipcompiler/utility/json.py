@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import os
 import json
+import os
+
 
 def json_read(file_path: str) -> dict:
     """
@@ -18,9 +18,9 @@ def json_read(file_path: str) -> dict:
             with gzip.open(file_path, 'rt') as f:
                 data = json.load(f)
         else:
-            with open(file_path, 'r') as f:
+            with open(file_path) as f:
                 data = json.load(f)
-    except Exception as e:
+    except Exception:
         return data
             
     return data
@@ -38,7 +38,7 @@ def json_write(file_path: str, data: dict={}, indent=4) -> bool:
             with open(file_path, 'w') as f:
                 json.dump(data, f, indent=indent)
         return True
-    except Exception as e:
+    except Exception:
         return False
     
 def dict_to_str(d, indent=0):

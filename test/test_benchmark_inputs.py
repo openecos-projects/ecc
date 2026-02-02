@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 """
 Test benchmark input validation and priority logic.
 
@@ -10,15 +9,16 @@ Tests 8 input combinations (filelist/rtl/netlist):
 
 import os
 import sys
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(current_dir)
 sys.path.insert(0, root)
 
-from chipcompiler.data import StepEnum
 from benchmark.benchmark import run_benchmark, run_single_design
+from chipcompiler.data import StepEnum
 
 FIXTURES_DIR = os.path.join(current_dir, "fixtures", "benchmark")
 

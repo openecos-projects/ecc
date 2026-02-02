@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-import subprocess
 import os
-from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
-from chipcompiler.tools.yosys.utility import is_eda_exist, get_yosys_command
+import subprocess
+
+from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
+from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
-from chipcompiler.tools.yosys.checklist import YosysChecklist
+from chipcompiler.tools.yosys.utility import get_yosys_command, is_eda_exist
 
 
 def run_step(workspace: Workspace,

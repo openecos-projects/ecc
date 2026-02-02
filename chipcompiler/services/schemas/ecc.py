@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
+
+from enum import Enum
 
 from pydantic import BaseModel
-from enum import Enum
-from typing import List
+
 
 class CMDEnum(Enum):
     create_workspace = "create_workspace"

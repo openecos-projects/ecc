@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum, CheckState
+from chipcompiler.data import CheckState, StepEnum, Workspace, WorkspaceStep
+
 
 class EccChecklist:
     def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):

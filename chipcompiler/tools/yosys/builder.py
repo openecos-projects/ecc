@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import os
-from chipcompiler.data import WorkspaceStep, Workspace
+
+from chipcompiler.data import Workspace, WorkspaceStep
 
 
 def _tcl_quote(value: str) -> str:
@@ -271,7 +271,7 @@ def build_step_config(workspace: Workspace,
         global_var_path = os.path.join(step.data['dir'], 'global_var.tcl')
         with open(global_var_path, 'w') as f:
             f.write(tcl_content)
-    except (ValueError, IOError) as e:
+    except (OSError, ValueError) as e:
         print(f"Error generating global_var.tcl: {e}")
         raise
     

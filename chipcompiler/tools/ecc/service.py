@@ -1,15 +1,9 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-from chipcompiler.data import (
-    Workspace, 
-    WorkspaceStep, 
-    StepEnum
-)
-
+from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.metrics import build_step_metrics
-
 from chipcompiler.utility import json_read
-    
+
+
 def get_step_info(workspace: Workspace, 
                   step: WorkspaceStep,
                   id : str) -> dict:

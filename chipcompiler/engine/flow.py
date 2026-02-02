@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 import os
 import time
 from multiprocessing import Process
-        
-from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
+
+from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.engine import EngineDB
 from chipcompiler.utility import track_process_memory
+
 
 class EngineFlow:
     def __init__(self, workspace : Workspace):
@@ -163,7 +163,6 @@ class EngineFlow:
         """
         check step output exist
         """
-        import os
         success = False
         match workspace_step.name:
             case StepEnum.SYNTHESIS.value:
@@ -191,7 +190,7 @@ class EngineFlow:
                 input_def = pre_step.output["def"]
                 input_verilog = pre_step.output["verilog"]
                 
-            from chipcompiler.tools import create_step, run_step
+            from chipcompiler.tools import create_step
             # create workspace step
             eda_step = create_step(workspace=self.workspace,
                                    step=step["name"],
@@ -269,7 +268,7 @@ class EngineFlow:
                             state=StateEnum.Success):
             return StateEnum.Success
                         
-        from chipcompiler.tools import create_step, run_step
+        from chipcompiler.tools import run_step
         
         #set timer
         start_time = time.time()
@@ -304,9 +303,7 @@ class EngineFlow:
         # end time
         end_time = time.time()
         elapsed_time = end_time - start_time
-        runtime = "{}:{}:{}".format(int(elapsed_time // 3600), 
-                                    int((elapsed_time % 3600) // 60), 
-                                    int(elapsed_time % 60))
+        runtime = f"{int(elapsed_time // 3600)}:{int((elapsed_time % 3600) // 60)}:{int(elapsed_time % 60)}"
         
         # save state
         state=StateEnum.Success if self.check_step_result(workspace_step=workspace_step) else StateEnum.Imcomplete

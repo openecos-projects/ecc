@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 from numpy import double
+
 
 class ECCToolsModule:
     """
@@ -428,10 +428,10 @@ class ECCToolsModule:
         self.ecc.feature_route(path=json_path)  
         
     def is_rt_timing_enable(self, config : str):
-        import os
         import json
+        import os
         if os.path.exists(config):
-            with open(config, "r", encoding="utf-8") as f_reader:  
+            with open(config, encoding="utf-8") as f_reader:  
                 json_data = json.load(f_reader)
                 # check if time enable
                 if json_data is not None and json_data.get("RT", {}).get("-enable_timing", "0") == "1":

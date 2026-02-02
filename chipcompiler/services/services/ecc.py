@@ -1,32 +1,11 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import os
 
-from chipcompiler.data import (
-    create_workspace,
-    load_workspace,
-    StepEnum,
-    StateEnum,
-    PDK,
-    get_pdk
-)
-
-from chipcompiler.engine import (
-    EngineDB,
-    EngineFlow
-)
-
+from chipcompiler.data import StateEnum, create_workspace, load_workspace
+from chipcompiler.engine import EngineFlow
 from chipcompiler.rtl2gds import build_rtl2gds_flow
+from chipcompiler.services.schemas import CMDEnum, ECCRequest, ECCResponse, ResponseEnum
 
-from benchmark import  get_parameters
-
-from chipcompiler.services.schemas import (
-    CMDEnum,
-    ECCRequest, 
-    ECCResponse, 
-    ResponseEnum,
-    DATA_TEMPLATE
-    )
 
 class ECCService:
     def __init__(self):
@@ -167,7 +146,7 @@ class ECCService:
         try:
             import shutil
             shutil.rmtree(directory)
-        except Exception as e:
+        except Exception:
             pass
             
         response_data = {
@@ -285,7 +264,7 @@ class ECCService:
         state = StateEnum.Unstart
         try:
             state = self.engine_flow.run_step(step, rerun)
-        except Exception as e:
+        except Exception:
             state = StateEnum.Imcomplete
             pass
         

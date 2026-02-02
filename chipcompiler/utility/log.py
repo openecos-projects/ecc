@@ -1,20 +1,18 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import os
 import logging
-from logging.handlers import RotatingFileHandler
+import os
 import sys
-from typing import Optional
 import time
+from logging.handlers import RotatingFileHandler
 
 
 class Logger:
     def __init__(
         self,
         name: str = "ecc",
-        log_file: Optional[str] = None,
-        log_dir: Optional[str] = None,
+        log_file: str | None = None,
+        log_dir: str | None = None,
         max_bytes: int = 10 * 1024 * 1024,  # 10MB
         backup_count: int = 5,
         level: int = logging.INFO,
@@ -56,8 +54,8 @@ class Logger:
 
 def create_logger(
     name: str = "ecc",
-    log_file: Optional[str] = None,
-    log_dir: Optional[str] = None,
+    log_file: str | None = None,
+    log_dir: str | None = None,
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
     level: int = logging.INFO,

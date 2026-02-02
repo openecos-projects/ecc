@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 from dataclasses import dataclass, field
+
 
 @dataclass
 class PDK:
@@ -45,20 +45,20 @@ def PDK_ICS55() -> PDK:
     current_dir = os.path.split(os.path.abspath(__file__))[0]
     root = current_dir.rsplit('/', 2)[0]
 
-    pdk_root = "{}/chipcompiler/thirdparty/icsprout55-pdk".format(root)
-    stdcell_dir = "{}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100".format(pdk_root)
+    pdk_root = f"{root}/chipcompiler/thirdparty/icsprout55-pdk"
+    stdcell_dir = f"{pdk_root}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100"
 
     pdk = PDK(
         name="ics55",
         version="V1p10C100",
-        tech="{}/prtech/techLEF/N551P6M.lef".format(pdk_root),
+        tech=f"{pdk_root}/prtech/techLEF/N551P6M.lef",
         lefs = [
-            "{}/ics55_LLSC_H7CR/lef/ics55_LLSC_H7CR_ecos.lef".format(stdcell_dir),
-            "{}/ics55_LLSC_H7CL/lef/ics55_LLSC_H7CL_ecos.lef".format(stdcell_dir)
+            f"{stdcell_dir}/ics55_LLSC_H7CR/lef/ics55_LLSC_H7CR_ecos.lef",
+            f"{stdcell_dir}/ics55_LLSC_H7CL/lef/ics55_LLSC_H7CL_ecos.lef"
         ],
         libs = [
-            "{}/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir),
-            "{}/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir)
+            f"{stdcell_dir}/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib",
+            f"{stdcell_dir}/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib"
         ],
         site_core = "core7",
         site_io = "core7",
@@ -106,51 +106,49 @@ def PDK_SKY130() -> PDK:
     current_dir = os.path.split(os.path.abspath(__file__))[0]
     root = current_dir.rsplit('/', 2)[0]
 
-    foundry_dir = "{}/chipcompiler/thirdparty/ecc-tools/scripts/foundry/sky130".format(root)
+    foundry_dir = f"{root}/chipcompiler/thirdparty/ecc-tools/scripts/foundry/sky130"
     
     pdk = PDK(
         name="sky130",
         version="v0.1",
-        tech="{}/lef/sky130_fd_sc_hs.tlef".format(foundry_dir),
+        tech=f"{foundry_dir}/lef/sky130_fd_sc_hs.tlef",
         lefs = [
-            "{}/lef/sky130_fd_sc_hs_merged.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__com_bus_slice_10um.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__com_bus_slice_1um.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__com_bus_slice_20um.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__com_bus_slice_5um.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__connect_vcchib_vccd_and_vswitch_vddio_slice_20um.lef".format(
-                foundry_dir
-            ),
-            "{}/lef/sky130_ef_io__corner_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__disconnect_vccd_slice_5um.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__disconnect_vdda_slice_5um.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__gpiov2_pad_wrapped.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vccd_hvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vccd_lvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vdda_hvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vdda_lvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vddio_hvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vddio_lvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vssa_hvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vssa_lvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vssd_hvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vssd_lvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vssio_hvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_ef_io__vssio_lvc_pad.lef".format(foundry_dir),
-            "{}/lef/sky130_fd_io__top_xres4v2.lef".format(foundry_dir),
-            "{}/lef/sky130io_fill.lef".format(foundry_dir),
-            "{}/lef/sky130_sram_1rw1r_128x256_8.lef".format(foundry_dir),
-            "{}/lef/sky130_sram_1rw1r_44x64_8.lef".format(foundry_dir),
-            "{}/lef/sky130_sram_1rw1r_64x256_8.lef".format(foundry_dir),
-            "{}/lef/sky130_sram_1rw1r_80x64_8.lef".format(foundry_dir),
+            f"{foundry_dir}/lef/sky130_fd_sc_hs_merged.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__com_bus_slice_10um.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__com_bus_slice_1um.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__com_bus_slice_20um.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__com_bus_slice_5um.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__connect_vcchib_vccd_and_vswitch_vddio_slice_20um.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__corner_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__disconnect_vccd_slice_5um.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__disconnect_vdda_slice_5um.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__gpiov2_pad_wrapped.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vccd_hvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vccd_lvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vdda_hvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vdda_lvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vddio_hvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vddio_lvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vssa_hvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vssa_lvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vssd_hvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vssd_lvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vssio_hvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_ef_io__vssio_lvc_pad.lef",
+            f"{foundry_dir}/lef/sky130_fd_io__top_xres4v2.lef",
+            f"{foundry_dir}/lef/sky130io_fill.lef",
+            f"{foundry_dir}/lef/sky130_sram_1rw1r_128x256_8.lef",
+            f"{foundry_dir}/lef/sky130_sram_1rw1r_44x64_8.lef",
+            f"{foundry_dir}/lef/sky130_sram_1rw1r_64x256_8.lef",
+            f"{foundry_dir}/lef/sky130_sram_1rw1r_80x64_8.lef",
         ],
         libs = [
-            "{}/lib/sky130_fd_sc_hs__tt_025C_1v80.lib".format(foundry_dir),
-            "{}/lib/sky130_dummy_io.lib".format(foundry_dir),
-            "{}/lib/sky130_sram_1rw1r_128x256_8_TT_1p8V_25C.lib".format(foundry_dir),
-            "{}/lib/sky130_sram_1rw1r_44x64_8_TT_1p8V_25C.lib".format(foundry_dir),
-            "{}/lib/sky130_sram_1rw1r_64x256_8_TT_1p8V_25C.lib".format(foundry_dir),
-            "{}/lib/sky130_sram_1rw1r_80x64_8_TT_1p8V_25C.lib".format(foundry_dir),
+            f"{foundry_dir}/lib/sky130_fd_sc_hs__tt_025C_1v80.lib",
+            f"{foundry_dir}/lib/sky130_dummy_io.lib",
+            f"{foundry_dir}/lib/sky130_sram_1rw1r_128x256_8_TT_1p8V_25C.lib",
+            f"{foundry_dir}/lib/sky130_sram_1rw1r_44x64_8_TT_1p8V_25C.lib",
+            f"{foundry_dir}/lib/sky130_sram_1rw1r_64x256_8_TT_1p8V_25C.lib",
+            f"{foundry_dir}/lib/sky130_sram_1rw1r_80x64_8_TT_1p8V_25C.lib",
         ],
         site_core = "unit",
         site_io = "unit",

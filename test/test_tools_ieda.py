@@ -1,36 +1,25 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import sys
 import os
+import sys
 
 current_dir = os.path.split(os.path.abspath(__file__))[0]
 root = current_dir.rsplit('/', 1)[0]
 sys.path.append(root)
 
-from chipcompiler.data import (
-    create_workspace,
-    log_workspace,
-    StepEnum,
-    StateEnum,
-    get_pdk
-)
-
-from chipcompiler.engine import (
-    EngineDB,
-    EngineFlow
-)
-
 from benchmark import get_parameters
+from chipcompiler.data import StateEnum, StepEnum, create_workspace, get_pdk, log_workspace
+from chipcompiler.engine import EngineFlow
+
 
 def test_sky130_gcd():
-    workspace_dir="{}/test/examples/sky130_gcd".format(root)
+    workspace_dir=f"{root}/test/examples/sky130_gcd"
     
     input_def = ""
     # input_verilog = "{}/chipcompiler/thirdparty/ecc-tools/scripts/design/sky130_gcd/result/verilog/gcd.v".format(root) # verilog file
     input_verilog = ""
-    input_filelist = "{}/test/fixtures/gcd/filelist.f".format(root) # file list
-    spef="{}/chipcompiler/thirdparty/ecc-tools/scripts/foundry/sky130/spef/gcd.spef".format(root)
+    input_filelist = f"{root}/test/fixtures/gcd/filelist.f" # file list
+    spef=f"{root}/chipcompiler/thirdparty/ecc-tools/scripts/foundry/sky130/spef/gcd.spef"
     parameters=get_parameters("sky130", "gcd")
     pdk = get_pdk("sky130")
     pdk.spef = spef
@@ -69,11 +58,11 @@ def test_sky130_gcd():
   
 
 def test_ics55_gcd():
-    workspace_dir="{}/test/examples/ics55_gcd".format(root)
+    workspace_dir=f"{root}/test/examples/ics55_gcd"
 
     input_def = ""
-    input_verilog = "{}/test/fixtures/benchmark/dummy/gcd.v".format(root) # RTL file
-    spef="{}/chipcompiler/thirdparty/ecc-tools/scripts/foundry/sky130/spef/gcd.spef".format(root)
+    input_verilog = f"{root}/test/fixtures/benchmark/dummy/gcd.v" # RTL file
+    spef=f"{root}/chipcompiler/thirdparty/ecc-tools/scripts/foundry/sky130/spef/gcd.spef"
     parameters=get_parameters("ics55", "gcd")
     pdk = get_pdk("ics55")
     pdk.spef = spef

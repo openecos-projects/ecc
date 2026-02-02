@@ -1,12 +1,14 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 from dataclasses import dataclass, field
-from .parameter import Parameters, save_parameter, load_parameter
-from .pdk import get_pdk, PDK
+
 from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
-from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
-    
+from chipcompiler.utility.filelist import parse_filelist, parse_incdir_directives, resolve_path
+
+from .parameter import Parameters, load_paramter, save_parameter
+from .pdk import PDK, get_pdk
+
+
 @dataclass
 class OriginDesign:
     """
@@ -239,7 +241,7 @@ def create_workspace(directory : str,
     import os
     try:
         os.makedirs(directory, exist_ok=True)
-    except OSError as error:
+    except OSError:
         return None
     
     # create workspace instance

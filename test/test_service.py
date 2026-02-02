@@ -1,41 +1,24 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import sys
 import os
+import sys
 
 current_dir = os.path.split(os.path.abspath(__file__))[0]
 root = current_dir.rsplit('/', 1)[0]
 sys.path.append(root)
 
-from chipcompiler.data import (
-    create_workspace,
-    log_workspace,
-    StepEnum,
-    StateEnum,
-    get_pdk
-)
 
-from chipcompiler.engine import (
-    EngineDB,
-    EngineFlow
-)
-
-from chipcompiler.services import (
-    ECCService,
-    ecc_service,
-    ECCRequest,
-    ECCResponse
-)
 
 from benchmark import get_parameters
+from chipcompiler.services import ECCRequest, ecc_service
+
 
 def test_sky130_gcd():
-    workspace_dir="{}/test/examples/sky130_gcd".format(root)
+    workspace_dir=f"{root}/test/examples/sky130_gcd"
 
     input_def = ""
     input_verilog = ""
-    input_filelist = "{}/test/fixtures/gcd/filelist.f".format(root)
+    input_filelist = f"{root}/test/fixtures/gcd/filelist.f"
     ecc_serv = ecc_service()
     
     parameters=get_parameters("sky130", "gcd")

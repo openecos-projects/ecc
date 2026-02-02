@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 """
 Filelist parsing utilities for handling EDA tool filelist files.
@@ -24,8 +23,6 @@ Example filelist content:
 """
 
 import os
-from typing import List
-
 
 UNSUPPORTED_OPTIONS = {
     '-f': 'Recursive filelist files',
@@ -34,7 +31,7 @@ UNSUPPORTED_OPTIONS = {
 }
 
 
-def parse_filelist(filelist_path: str) -> List[str]:
+def parse_filelist(filelist_path: str) -> list[str]:
     """
     Parse a filelist file and extract all file paths.
 
@@ -58,7 +55,7 @@ def parse_filelist(filelist_path: str) -> List[str]:
 
     file_paths = []
 
-    with open(filelist_path, 'r', encoding='utf-8') as f:
+    with open(filelist_path, encoding='utf-8') as f:
         for line_num, line in enumerate(f, 1):
             path = _parse_line(line, line_num)
             if path:
@@ -132,7 +129,7 @@ def resolve_path(path: str, base_dir: str) -> str:
     return os.path.abspath(os.path.join(base_dir, path))
 
 
-def validate_filelist(filelist_path: str) -> tuple[List[str], List[str]]:
+def validate_filelist(filelist_path: str) -> tuple[list[str], list[str]]:
     """
     Validate a filelist by checking if all referenced files exist.
 
@@ -197,7 +194,7 @@ def get_filelist_info(filelist_path: str) -> dict:
     }
 
 
-def _compute_file_sizes(file_paths: List[str], base_dir: str) -> dict:
+def _compute_file_sizes(file_paths: list[str], base_dir: str) -> dict:
     """Compute file sizes for a list of file paths."""
     file_sizes = {}
     for file_path in file_paths:
@@ -209,7 +206,7 @@ def _compute_file_sizes(file_paths: List[str], base_dir: str) -> dict:
     return file_sizes
 
 
-def parse_incdir_directives(filelist_path: str) -> List[str]:
+def parse_incdir_directives(filelist_path: str) -> list[str]:
     """
     Parse +incdir directives from a filelist file.
 
@@ -232,7 +229,7 @@ def parse_incdir_directives(filelist_path: str) -> List[str]:
 
     incdir_paths = []
 
-    with open(filelist_path, 'r', encoding='utf-8') as f:
+    with open(filelist_path, encoding='utf-8') as f:
         for line in f:
             line = line.strip()
 

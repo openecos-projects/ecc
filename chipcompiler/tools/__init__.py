@@ -1,10 +1,10 @@
 from .eda import (
-    load_eda_module,
+    build_step_metrics,
     create_step,
+    get_step_info,
+    load_eda_module,
     run_step,
     save_layout_image,
-    build_step_metrics,
-    get_step_info
 )
 
 __all__ = [

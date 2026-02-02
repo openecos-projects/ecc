@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import os
-from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
+
+from chipcompiler.data import Workspace, WorkspaceStep
+
 
 class KlayoutModule:
     def __init__(self, workspace : Workspace, step : WorkspaceStep):

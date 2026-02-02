@@ -1,7 +1,6 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, save_metrics
-from chipcompiler.tools.yosys.metrics import build_step_metrics
+from chipcompiler.data import Workspace, WorkspaceStep
+
 
 def get_step_info(workspace: Workspace, 
                   step: WorkspaceStep,

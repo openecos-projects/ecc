@@ -1,32 +1,19 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import sys
 import os
+import sys
 
 current_dir = os.path.split(os.path.abspath(__file__))[0]
 root = current_dir.rsplit('/', 1)[0]
 sys.path.append(root)
 
-from chipcompiler.data import (
-    create_workspace,
-    log_workspace,
-    StepEnum,
-    StateEnum,
-    load_parameter,
-    get_pdk
-)
-
-from chipcompiler.engine import (
-    EngineDB,
-    EngineFlow
-)
-
+from chipcompiler.data import StateEnum, StepEnum, create_workspace, get_pdk, log_workspace
+from chipcompiler.engine import EngineFlow
 from chipcompiler.tools import build_step_metrics
-
-from chipcompiler.utility import json_read, csv_write
+from chipcompiler.utility import csv_write, json_read
 
 from .get_parameters import get_parameters
+
 
 def has_value(value):
     return value is not None and value!=""
@@ -233,7 +220,7 @@ def benchmark_statis(benchmark_dir : str):
             for step in flow_dict.get("steps", {}):
                 state = step.get("state", "")
                 step_result.append(state)
-                if "Success" != state:
+                if state != "Success":
                     is_success = False
             
             success_num = success_num + 1 if is_success else success_num   
@@ -245,7 +232,7 @@ def benchmark_statis(benchmark_dir : str):
             
             print(f"process {dir} - {design_name} : {is_success}")
     
-    results.append([f"success", f"{success_num} / {total}"])
+    results.append(["success", f"{success_num} / {total}"])
     print(f"benchmark success {success_num} / {total}")
     
     csv_write(file_path=statis_csv,
