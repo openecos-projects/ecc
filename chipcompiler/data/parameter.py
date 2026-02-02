@@ -29,31 +29,28 @@ def get_parameters(pdk_name : str, design : str = "", path : str = "", current_d
     """
     Return the Parameters instance based on the given pdk name.
     """
-    if current_dir != "" and not os.path.isdir(current_dir):
-        current_dir = ""
     if path == "":
         if current_dir == "":
-            return Parameters()
+            raise FileNotFoundError("current_dir or path must be provided to locate parameters")
+        if not os.path.isdir(current_dir):
+            raise FileNotFoundError(f"current_dir does not exist: {current_dir}")
         path = f"{current_dir}/{pdk_name.lower()}_parameter.json"
     if pdk_name.lower() == "sky130":
-        return parameter_sky130(design, path, current_dir)
+        return parameter_sky130(design, path)
     elif pdk_name.lower() == "ics55":
-        return parameter_ics55(design, path, current_dir)
+        benchmark_json = os.path.join(current_dir, "ics55_benchmark.json")
+        return parameter_ics55(design, path, benchmark_json)
     else:
         return Parameters()
 
-def parameter_ics55(design : str, path : str, current_dir : str) -> Parameters:
+def parameter_ics55(design : str, path : str, benchmark_json : str) -> Parameters:
     parameters = Parameters()
     
     from chipcompiler.utility import json_read
     parameters.path = path
     parameters.data = json_read(path)
     
-    if current_dir == "":
-        raise FileNotFoundError("current_dir is empty; cannot locate ics55_benchmark.json")
-
     from chipcompiler.utility import json_read
-    benchmark_json = f"{current_dir}/ics55_benchmark.json"
     if not os.path.isfile(benchmark_json):
         raise FileNotFoundError(f"ics55_benchmark.json not found: {benchmark_json}")
     benchmarks = json_read(benchmark_json)
@@ -67,7 +64,7 @@ def parameter_ics55(design : str, path : str, current_dir : str) -> Parameters:
 
     return parameters
 
-def parameter_sky130(design : str, path : str, current_dir : str) -> Parameters:
+def parameter_sky130(design : str, path : str) -> Parameters:
     parameters = Parameters()
     
     from chipcompiler.utility import json_read
