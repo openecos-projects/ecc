@@ -26,7 +26,7 @@ from chipcompiler.tools import build_step_metrics
 
 from chipcompiler.utility import json_read, csv_write
 
-from .parameters import get_parameters
+from .get_parameters import get_parameters
 
 def has_value(value):
     return value is not None and value!=""

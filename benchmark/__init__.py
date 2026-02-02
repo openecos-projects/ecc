@@ -4,7 +4,7 @@ from .benchmark import (
     benchmark_metrics
 )
 
-from .parameters import (
+from .get_parameters import (
     get_parameters
 )
 
