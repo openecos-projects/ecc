@@ -13,7 +13,7 @@ from chipcompiler.data import (
     log_workspace,
     StepEnum,
     StateEnum,
-    load_paramter,
+    load_parameter,
     get_pdk
 )
 

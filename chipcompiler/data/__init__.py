@@ -10,7 +10,7 @@ from .workspace import (
 
 from .parameter import (
     Parameters,
-    load_paramter,
+    load_parameter,
     save_parameter
 )
 

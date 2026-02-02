@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 from dataclasses import dataclass, field
-from .parameter import Parameters, save_parameter, load_paramter
+from .parameter import Parameters, save_parameter, load_parameter
 from .pdk import get_pdk, PDK
 from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
@@ -331,7 +331,7 @@ def load_workspace(directory : str) -> Workspace:
     workspace = Workspace()
     workspace.directory = directory
 
-    parameters = load_paramter(f"{directory}/parameters.json")
+    parameters = load_parameter(f"{directory}/parameters.json")
     workspace.parameters = parameters
     
     pdk = get_pdk(pdk_name=parameters.data.get("PDK", ""))

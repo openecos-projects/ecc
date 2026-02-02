@@ -11,7 +11,7 @@ class Parameters:
     path : str = "" # parameters file path
     data : dict = field(default_factory=dict) # parameters data
 
-def load_paramter(path : str) -> Parameters:
+def load_parameter(path : str) -> Parameters:
     from chipcompiler.utility import json_read
     parameter = Parameters()
     parameter.path = path
