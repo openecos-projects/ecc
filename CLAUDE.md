@@ -31,6 +31,11 @@ source .venv/bin/activate
 ```
 Uses `uv` to create Python 3.10 environment, syncs dependencies from pyproject.toml, and builds ECC-Tools C++ bindings. The script also downloads OSS CAD Suite by default (set `ENABLE_OSS_CAD_SUITE=false` to skip).
 
+**Tip:** If `python` is not found in your shell, activate the project virtualenv first:
+```bash
+source .venv/bin/activate
+```
+
 **Submodule initialization (first-time setup):**
 ```bash
 git submodule update --init --recursive
@@ -425,4 +430,3 @@ Extend tests by adding new designs in benchmark/parameters.py and benchmark/ics5
 3. Create router in `chipcompiler/services/routers/`
 4. Register router in `chipcompiler/services/main.py`
 5. Test via Swagger UI at `http://localhost:8765/docs`
-
