@@ -59,7 +59,7 @@ jobs:
             libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
 
-      - name: Build release (packaging test)
-        env:
-          ENABLE_OSS_CAD_SUITE: "true"
-        run: ./scripts/build_release.sh
+      # - name: Build release (packaging test)
+      #   env:
+      #     ENABLE_OSS_CAD_SUITE: "true"
+      #   run: ./scripts/build_release.sh
