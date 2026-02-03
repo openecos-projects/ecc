@@ -1,6 +1,6 @@
-from chipcompiler.data import create_workspace, get_pdk, StepEnum, StateEnum
-from chipcompiler.engine import EngineFlow
 from benchmark import get_parameters
+from chipcompiler.data import StateEnum, StepEnum, create_workspace, get_pdk
+from chipcompiler.engine import EngineFlow
 
 # Setup paths
 workspace_dir = "./gcd_workspace"
@@ -60,7 +60,7 @@ workspace = create_workspace(
     origin_def="",
     origin_verilog=input_verilog,
     pdk=pdk,
-    parameters=parameters
+    parameters=parameters,
 )
 # Use load_workspace to resume from existing workspace
 # workspace = load_workspace(directory=workspace_dir)

@@ -1,11 +1,12 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-from enum import Enum
 from dataclasses import dataclass, field
+from enum import Enum
+
 
 class StepEnum(Enum):
     """RTL2GDS flow step names"""
+
     RTL2GDS = "RTL2GDS"
     INIT = "Init"
     SOC = "SOC"
@@ -23,7 +24,7 @@ class StepEnum(Enum):
     LEGALIZATION = "legalization"
     ROUTING = "route"
     FILLER = "filler"
-    GDS = "GDS"    
+    GDS = "GDS"
     SIGNOFF = "Signoff"
     STA = "sta"
     DRC = "drc"
@@ -31,23 +32,27 @@ class StepEnum(Enum):
     ABSTRACT_LEF = "Abstract lef"
     MERGE = "GDS merge"
 
+
 class StateEnum(Enum):
     """flow running state"""
-    Invalid = "Invalid" # ecc tools or config invalid
-    Unstart = "Unstart" # step unstart
-    Success = "Success" # step run success
-    Ongoing = "Ongoing" # step is running
-    Pending = "Pending" # step is pending
-    Imcomplete = "Incomplete" # step is failed
+
+    Invalid = "Invalid"  # ecc tools or config invalid
+    Unstart = "Unstart"  # step unstart
+    Success = "Success"  # step run success
+    Ongoing = "Ongoing"  # step is running
+    Pending = "Pending"  # step is pending
+    Imcomplete = "Incomplete"  # step is failed
     # Ignored = "Ignored" # step result do not affect flow step
-    
+
+
 class CheckState(Enum):
     """checklist state"""
-    Unstart = "Unstart" # checked unstart
-    Success = "Success" # checked success
-    Failed = "Failed" # checked Failed
-    Warning = "Warning" # checked Warning
-    
+
+    Unstart = "Unstart"  # checked unstart
+    Success = "Success"  # checked success
+    Failed = "Failed"  # checked Failed
+    Warning = "Warning"  # checked Warning
+
 
 ###########################################################################
 # step definition for chip design flow in json format
@@ -61,14 +66,17 @@ class CheckState(Enum):
 # }
 ###########################################################################
 
+
 @dataclass
 class StepMetrics:
     """
     Dataclass for step metrics
     """
-    path : str = "" # metrics file path
-    data : dict = field(default_factory=dict) # metrics data
-    report : list = field(default_factory=list) # metrics report
+
+    path: str = ""  # metrics file path
+    data: dict = field(default_factory=dict)  # metrics data
+    report: list = field(default_factory=list)  # metrics report
+
 
 ###########################################################################
 # step metrics definition in json format
@@ -79,14 +87,17 @@ class StepMetrics:
 # }
 ###########################################################################
 
-def load_metrics(path : str) -> StepMetrics:
+
+def load_metrics(path: str) -> StepMetrics:
     from chipcompiler.utility import json_read
-    metrics = StepMetrics() 
+
+    metrics = StepMetrics()
     metrics.path = path
     metrics.data = json_read(path)
     return metrics
 
-def save_metrics(metrics : StepMetrics) -> bool:
+
+def save_metrics(metrics: StepMetrics) -> bool:
     from chipcompiler.utility import json_write
-    return json_write(file_path=metrics.path,
-                      data=metrics.data)
+
+    return json_write(file_path=metrics.path, data=metrics.data)

@@ -1,22 +1,20 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
-from ..schemas import (
-    ECCRequest,
-    ECCResponse
-)
+from ..schemas import ECCRequest, ECCResponse
 from ..services import ecc_service
 
 ecc_serv = ecc_service()
 
 router = APIRouter(prefix="/api/workspace", tags=["workspace"])
 
+
 @router.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "ok"}
+
 
 @router.post("/create_workspace", response_model=ECCResponse)
 async def create_workspace(request: ECCRequest):
@@ -25,12 +23,14 @@ async def create_workspace(request: ECCRequest):
     """
     return ecc_serv.create_workspace(request)
 
+
 @router.post("/load_workspace", response_model=ECCResponse)
 async def load_workspace(request: ECCRequest):
     """
     Open an existing ECC project.
     """
     return ecc_serv.load_workspace(request)
+
 
 @router.post("/delete_workspace", response_model=ECCResponse)
 async def delete_workspace(request: ECCRequest):
@@ -39,6 +39,7 @@ async def delete_workspace(request: ECCRequest):
     """
     return ecc_serv.delete_workspace(request)
 
+
 @router.post("/rtl2gds", response_model=ECCResponse)
 async def rtl2gds(request: ECCRequest):
     """
@@ -46,12 +47,14 @@ async def rtl2gds(request: ECCRequest):
     """
     return ecc_serv.rtl2gds(request)
 
+
 @router.post("/run_step", response_model=ECCResponse)
 async def run_step(request: ECCRequest):
     """
     run step for current workspace.
     """
     return ecc_serv.run_step(request)
+
 
 @router.post("/get_info", response_model=ECCResponse)
 async def get_info(request: ECCRequest):

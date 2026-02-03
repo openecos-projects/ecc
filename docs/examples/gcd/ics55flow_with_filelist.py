@@ -13,9 +13,9 @@ For more information on filelist syntax, see:
 docs/specification/filelist-grammar.md
 """
 
-from chipcompiler.data import create_workspace, get_pdk, StepEnum, StateEnum
-from chipcompiler.engine import EngineFlow
 from benchmark import get_parameters
+from chipcompiler.data import StateEnum, StepEnum, create_workspace, get_pdk
+from chipcompiler.engine import EngineFlow
 
 # Setup paths
 workspace_dir = "./gcd_workspace_with_filelist"
@@ -84,7 +84,7 @@ workspace = create_workspace(
     origin_verilog="",  # Not needed when using filelist
     pdk=pdk,
     parameters=parameters,
-    input_filelist=input_filelist  # Provide filelist path here
+    input_filelist=input_filelist,  # Provide filelist path here
 )
 # Use load_workspace to resume from existing workspace
 # workspace = load_workspace(directory=workspace_dir)

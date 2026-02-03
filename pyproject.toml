@@ -45,6 +45,7 @@ chipcompiler = "chipcompiler.services.run_server:main"
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["chipcompiler/thirdparty/iEDA/**"]
 
 [tool.ruff.lint]
 select = [

@@ -1,20 +1,18 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import os
 import logging
-from logging.handlers import RotatingFileHandler
+import os
 import sys
-from typing import Optional
 import time
+from logging.handlers import RotatingFileHandler
 
 
 class Logger:
     def __init__(
         self,
         name: str = "ecc",
-        log_file: Optional[str] = None,
-        log_dir: Optional[str] = None,
+        log_file: str | None = None,
+        log_dir: str | None = None,
         max_bytes: int = 10 * 1024 * 1024,  # 10MB
         backup_count: int = 5,
         level: int = logging.INFO,
@@ -29,9 +27,13 @@ class Logger:
             console_handler = logging.StreamHandler(sys.stdout)
             console_handler.setFormatter(formatter)
             self.logger.addHandler(console_handler)
-            
+
             if log_file or log_dir:
-                file = log_file if log_file else f"{log_dir}/{name}.{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+                file = (
+                    log_file
+                    if log_file
+                    else f"{log_dir}/{name}.{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+                )
                 file_handler = RotatingFileHandler(
                     file, maxBytes=max_bytes, backupCount=backup_count
                 )
@@ -56,8 +58,8 @@ class Logger:
 
 def create_logger(
     name: str = "ecc",
-    log_file: Optional[str] = None,
-    log_dir: Optional[str] = None,
+    log_file: str | None = None,
+    log_dir: str | None = None,
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
     level: int = logging.INFO,
@@ -80,7 +82,7 @@ def create_logger(
             backup_count=backup_count,
             level=level,
             fmt=fmt,
-        ) 
+        )
     else:
         return Logger(
             name=name,
