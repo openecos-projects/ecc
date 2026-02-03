@@ -68,7 +68,7 @@ pytest test/ --cov=chipcompiler --cov-report=term-missing
 ```
 
 Key test files:
-- **test_tools_ieda.py** - Tests ECC-Tools (ecc) place-and-route with sky130 PDK and GCD design
+- **test_tools_ieda.py** - Tests ECC-Tools (ecc) place-and-route with ICS55 PDK and GCD design
 - **test_ics55_batch.py** - Batch synthesis tests on ICS55 PDK
 - **test_benchmark_inputs.py** - Benchmark design input tests
 - **test_filelist.py** - Filelist parsing tests
@@ -304,7 +304,7 @@ Provides batch testing infrastructure and design parameter management:
 
 - **parameters.py** - Factory for design parameters:
   - `get_parameters(pdk_name, design)` - Returns Parameters instance for specific PDK/design
-  - Loads from JSON files (ics55_parameter.json, sky130_parameter.json)
+  - Loads from JSON files (ics55_parameter.json)
   - Merges design-specific info from benchmark JSON files
 
 - **Benchmark JSON files** (ics55_benchmark.json, ics55_tapeout.json):
@@ -391,7 +391,6 @@ Key test files:
 
 Test designs:
 - **ics55_gcd** - GCD on ICS55 technology
-- **sky130_gcd** - GCD on Sky130 technology (full flow with ECC-Tools)
 - **Batch designs** - Multiple designs defined in benchmark/ics55_benchmark.json for regression testing
 
 Extend tests by adding new designs in benchmark/parameters.py and benchmark/ics55_parameter.json.
