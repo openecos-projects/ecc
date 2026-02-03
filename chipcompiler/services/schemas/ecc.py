@@ -27,7 +27,8 @@ DATA_TEMPLATE = {
             "parameters" : {},
             "origin_def" : "",
             "origin_verilog" : "",
-            "filelist" : ""
+            "filelist" : "",
+            "rtl_list" : ""
         },
         "response" : {
             "directory" : ""
