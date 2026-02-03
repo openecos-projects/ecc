@@ -30,15 +30,15 @@ from chipcompiler.services import (
 
 from benchmark import get_parameters
 
-def test_sky130_gcd():
-    workspace_dir="{}/test/examples/sky130_gcd".format(root)
+def test_ics55_gcd():
+    workspace_dir="{}/test/examples/ics55_gcd".format(root)
 
     input_def = ""
     input_verilog = ""
     input_filelist = "{}/test/fixtures/gcd/filelist.f".format(root)
     ecc_serv = ecc_service()
     
-    parameters=get_parameters("sky130", "gcd")
+    parameters=get_parameters("ics55", "gcd")
     
     # create workspace
     #####################################################
@@ -46,7 +46,7 @@ def test_sky130_gcd():
         cmd = "create_workspace",
         data = {
             "directory" : workspace_dir,
-            "pdk" : "sky130",
+            "pdk" : "ics55",
             "parameters" : parameters.data,
             "origin_def" : input_def,
             "origin_verilog" : input_verilog,
@@ -121,6 +121,6 @@ def test_sky130_gcd():
 
 
 if __name__ == "__main__":
-    test_sky130_gcd()
+    test_ics55_gcd()
 
     exit(0)

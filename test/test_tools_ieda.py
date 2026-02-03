@@ -28,10 +28,8 @@ def test_ics55_gcd():
 
     input_def = ""
     input_verilog = "{}/test/fixtures/benchmark/dummy/gcd.v".format(root) # RTL file
-    spef="{}/chipcompiler/thirdparty/ecc-tools/scripts/foundry/sky130/spef/gcd.spef".format(root)
     parameters=get_parameters("ics55", "gcd")
     pdk = get_pdk("ics55")
-    pdk.spef = spef
 
     workspace = create_workspace(
         directory=workspace_dir,
