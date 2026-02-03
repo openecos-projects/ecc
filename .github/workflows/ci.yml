@@ -6,6 +6,9 @@ on:
       - 'main'
   pull_request:
 
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
 jobs:
   build-package:
     name: Build Package
@@ -14,7 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          token: ${{ env.GH_TOKEN }}
+
+      - name: Convert SSH to HTTPS in gitmodules
+        run: sed -i 's/git@github.com:/https:\/\/github.com\//' .gitmodules
+
+      - name: Checkout submodules
+        run: git submodule update --init --recursive
 
       - name: Setup Python
         uses: actions/setup-python@v5
