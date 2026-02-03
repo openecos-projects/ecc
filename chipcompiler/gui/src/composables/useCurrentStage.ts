@@ -16,8 +16,18 @@ export function useCurrentStage() {
     return pathParts[pathParts.length - 1] || 'home'
   })
 
-  /** 是否显示进度面板 (Configure 和 Home 页面不显示) */
+  /** 是否显示进度面板 (Configure 页面不显示) */
   const showProgressPanel = computed(() => {
+    return currentStage.value !== 'configure'
+  })
+
+  /** 是否显示概览面板 (Home 页面显示概览) */
+  const showOverviewPanel = computed(() => {
+    return currentStage.value === 'home'
+  })
+
+  /** 是否显示子流程面板 (非 Home 和非 Configure 页面显示) */
+  const showSubflowPanel = computed(() => {
     return currentStage.value !== 'configure' && currentStage.value !== 'home'
   })
 
@@ -50,6 +60,8 @@ export function useCurrentStage() {
     // 状态
     currentStage,
     showProgressPanel,
+    showOverviewPanel,
+    showSubflowPanel,
     isHome,
     isConfigure,
     isFlowStep,

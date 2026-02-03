@@ -43,20 +43,46 @@
 
       <!-- Info Keys 列表 -->
       <div v-else class="p-3 w-full">
-        <div class="flex flex-wrap items-center gap-x-1 gap-y-0.5 w-full">
-          <template v-if="activeTab === InfoEnum.analysis" v-for="(value, key) in currentTabInfo" :key="key">
-            <a @click="handleKeyClick(key as string, value)" :class="[
-              'text-[12px] cursor-pointer transition-colors duration-150 mr-2',
+        <!-- Analysis 网格布局 -->
+        <div v-if="activeTab === InfoEnum.analysis" class="grid grid-cols-2 gap-2">
+          <a v-for="(value, key) in currentTabInfo" :key="key" @click="handleKeyClick(key as string, value)" :class="[
+            'group flex items-center gap-2.5 p-2.5 rounded-lg cursor-pointer',
+            'transition-all duration-200 ease-out',
+            'border',
+            loadingKey === key
+              ? 'bg-(--bg-secondary) border-(--border-color) opacity-60 pointer-events-none'
+              : [
+                'bg-(--bg-secondary)/50 border-(--border-color)/50',
+                'hover:bg-(--bg-secondary) hover:border-(--border-color)',
+                'hover:shadow-sm'
+              ]
+          ]">
+            <!-- 图标 -->
+            <div :class="[
+              'flex items-center justify-center w-7 h-7 rounded-md shrink-0',
+              'transition-colors duration-200',
               loadingKey === key
-                ? 'text-(--text-secondary) opacity-50 pointer-events-none'
-                : 'text-(--accent-color) hover:text-(--accent-color)/80 hover:underline'
-            ]">{{ key }}</a>
-          </template>
+                ? 'bg-(--bg-tertiary) text-(--text-secondary)'
+                : 'bg-(--accent-color)/10 text-(--accent-color) group-hover:bg-(--accent-color)/15'
+            ]">
+              <i v-if="loadingKey === key" class="ri-loader-4-line animate-spin text-sm"></i>
+              <i v-else :class="[getAnalysisIcon(key as string), 'text-sm']"></i>
+            </div>
+            <!-- 文本 -->
+            <span :class="[
+              'text-[11px] font-medium truncate',
+              'transition-colors duration-200',
+              loadingKey === key
+                ? 'text-(--text-secondary)'
+                : 'text-(--text-primary) group-hover:text-(--accent-color)'
+            ]">{{ key }}</span>
+          </a>
+        </div>
 
-          <template v-if="activeTab === InfoEnum.maps">
-            <pre
-              class="text-[11px] text-(--text-secondary) whitespace-pre-wrap break-all w-full overflow-hidden">{{ JSON.stringify(currentTabInfo, null, 2) }}</pre>
-          </template>
+        <!-- Maps 展示 -->
+        <div v-else-if="activeTab === InfoEnum.maps" class="w-full">
+          <pre
+            class="text-[11px] text-(--text-secondary) whitespace-pre-wrap break-all w-full overflow-hidden">{{ JSON.stringify(currentTabInfo, null, 2) }}</pre>
         </div>
       </div>
 
@@ -95,6 +121,63 @@ const tabs = [
 const activeTab = ref<InfoEnum>(InfoEnum.analysis)
 const isLoadingTab = ref(false)
 const loadingKey = ref<string | null>(null)
+
+// 分析项图标映射
+const analysisIconMap: Record<string, string> = {
+  // 时序相关
+  timing: 'ri-timer-line',
+  clock: 'ri-time-line',
+  setup: 'ri-arrow-up-line',
+  hold: 'ri-arrow-down-line',
+  slack: 'ri-speed-line',
+  delay: 'ri-hourglass-line',
+  // 功耗相关
+  power: 'ri-flashlight-line',
+  leakage: 'ri-drop-line',
+  dynamic: 'ri-pulse-line',
+  // 面积相关
+  area: 'ri-layout-grid-line',
+  utilization: 'ri-pie-chart-line',
+  density: 'ri-apps-line',
+  cell: 'ri-checkbox-blank-line',
+  // 布线相关
+  wire: 'ri-route-line',
+  route: 'ri-git-branch-line',
+  congestion: 'ri-traffic-light-line',
+  drc: 'ri-shield-check-line',
+  // 网表相关
+  netlist: 'ri-share-line',
+  instance: 'ri-instance-line',
+  net: 'ri-links-line',
+  pin: 'ri-pushpin-line',
+  // 统计相关
+  summary: 'ri-file-list-3-line',
+  report: 'ri-file-chart-line',
+  stats: 'ri-bar-chart-line',
+  histogram: 'ri-bar-chart-grouped-line',
+  // 其他
+  design: 'ri-draft-line',
+  floorplan: 'ri-layout-4-line',
+  placement: 'ri-grid-line',
+  cts: 'ri-tree-line'
+}
+
+// 根据 key 获取图标
+function getAnalysisIcon(key: string): string {
+  const lowerKey = key.toLowerCase()
+  // 精确匹配
+  if (analysisIconMap[lowerKey]) {
+    return analysisIconMap[lowerKey]
+  }
+  // 模糊匹配
+  for (const [keyword, icon] of Object.entries(analysisIconMap)) {
+    if (lowerKey.includes(keyword)) {
+      return icon
+    }
+  }
+  // 默认图标
+  return 'ri-file-text-line'
+}
 
 // 存储每个 tab 的 info 数据（值可能是字符串路径或对象）
 const tabInfoCache = ref<Record<string, Record<string, unknown>>>({})
