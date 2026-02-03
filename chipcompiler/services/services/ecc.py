@@ -32,6 +32,39 @@ class ECCService:
     def __init__(self):
         self.workspace = None
         self.engine_flow = None
+
+    @staticmethod
+    def _normalize_rtl_list(rtl_list) -> list[str]:
+        if not rtl_list:
+            return []
+        if isinstance(rtl_list, list):
+            items = rtl_list
+        elif isinstance(rtl_list, str):
+            items = rtl_list.splitlines()
+        else:
+            items = [rtl_list]
+
+        result = []
+        seen = set()
+        for item in items:
+            path = str(item).strip()
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            result.append(path)
+        return result
+
+    @staticmethod
+    def _write_filelist(directory: str, rtl_paths: list[str]) -> str:
+        os.makedirs(directory, exist_ok=True)
+        filelist_path = os.path.join(directory, "filelist")
+        with open(filelist_path, "w", encoding="utf-8") as f:
+            for path in rtl_paths:
+                if any(ch.isspace() for ch in path):
+                    f.write(f"\"{path}\"\n")
+                else:
+                    f.write(f"{path}\n")
+        return filelist_path
         
     def check_cmd(self, request: ECCRequest, cmd : CMDEnum):
         # print cmd
@@ -77,12 +110,30 @@ class ECCService:
         # check data
         
         # process cmd
+        input_filelist = data.get("filelist", "")
+        if not input_filelist:
+            rtl_list = data.get("rtl_list", "")
+            rtl_paths = self._normalize_rtl_list(rtl_list)
+            if rtl_paths:
+                try:
+                    input_filelist = self._write_filelist(
+                        directory=data.get("directory", ""),
+                        rtl_paths=rtl_paths
+                    )
+                except Exception as e:
+                    return ECCResponse(
+                        cmd=request.cmd,
+                        response=ResponseEnum.error.value,
+                        data={},
+                        message=[f"failed to create filelist from rtl_list: {e}"]
+                    )
+
         workspace = create_workspace(directory=data.get("directory", ""),
                                      pdk=data.get("pdk", ""),
                                      parameters=data.get("parameters", {}),
                                      origin_def=data.get("origin_def", ""),
                                      origin_verilog=data.get("origin_verilog", ""),
-                                     input_filelist=data.get("filelist", ""))
+                                     input_filelist=input_filelist)
         
         if workspace is None:
             return ECCResponse(
