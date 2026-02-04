@@ -17,9 +17,9 @@ set CLKGATE_MAP_FILE        "$PDK_DIR/verilog/cells_clkgate.v"
 set LATCH_MAP_FILE          "$PDK_DIR/verilog/cells_latch.v" 
 set BLACKBOX_MAP_TCL        "$PDK_DIR/blackbox_map.tcl" 
 
-set TIEHI_CELL_AND_PORT     "sky130_fd_sc_hs__conb_1 HI" 
-set TIELO_CELL_AND_PORT     "sky130_fd_sc_hs__conb_1 LO" 
-set MIN_BUF_CELL_AND_PORTS  "sky130_fd_sc_hs__buf_1 A X" 
+set TIEHI_CELL_AND_PORT     "" 
+set TIELO_CELL_AND_PORT     "" 
+set MIN_BUF_CELL_AND_PORTS  "" 
 
 
 #===========================================================

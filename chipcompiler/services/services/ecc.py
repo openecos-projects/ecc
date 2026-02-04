@@ -18,8 +18,6 @@ from chipcompiler.engine import (
 
 from chipcompiler.rtl2gds import build_rtl2gds_flow
 
-from benchmark import  get_parameters
-
 from chipcompiler.services.schemas import (
     CMDEnum,
     ECCRequest, 
@@ -127,13 +125,21 @@ class ECCService:
                         data={},
                         message=[f"failed to create filelist from rtl_list: {e}"]
                     )
-
-        workspace = create_workspace(directory=data.get("directory", ""),
-                                     pdk=data.get("pdk", ""),
-                                     parameters=data.get("parameters", {}),
-                                     origin_def=data.get("origin_def", ""),
-                                     origin_verilog=data.get("origin_verilog", ""),
-                                     input_filelist=input_filelist)
+        
+        try:
+            workspace = create_workspace(directory=data.get("directory", ""),
+                                         pdk=data.get("pdk", ""),
+                                         parameters=data.get("parameters", {}),
+                                         origin_def=data.get("origin_def", ""),
+                                         origin_verilog=data.get("origin_verilog", ""),
+                                         input_filelist=input_filelist)
+        except Exception as e:
+            return ECCResponse(
+                        cmd=request.cmd,
+                        response=ResponseEnum.error.value,
+                        data={},
+                        message=[f"create workspace failed : {data.get('directory', '')}, error info is {e}"]
+                    )
         
         if workspace is None:
             return ECCResponse(
@@ -168,7 +174,15 @@ class ECCService:
         # check data
         
         # process cmd
-        workspace = load_workspace(directory=data.get("directory", ""))
+        try:
+            workspace = load_workspace(directory=data.get("directory", ""))
+        except Exception as e:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.failed.value,
+                data={},
+                message = [f"load workspace failed : {data.get('directory', '')}, error info is {e}"]
+            )
         
         if workspace is None:
             return ECCResponse(

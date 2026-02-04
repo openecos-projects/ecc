@@ -1,6 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
-import { STEP_METADATA } from '@/api/type'
 
 // 使用 Hash 模式，因为 Tauri 应用使用本地文件系统
 const routes: RouteRecordRaw[] = [

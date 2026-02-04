@@ -18,6 +18,9 @@ class EccChecklist:
             self.build_checklist()
 
     def build_checklist(self) -> list:
+        if len(self.workspace_step.checklist.get("checklist", [])) > 0:
+            return self.workspace_step.checklist["checklist"]
+        
         def checklist_template(check_item : str,
                                description : str):
             return {

@@ -28,17 +28,17 @@ from chipcompiler.services import (
     ECCResponse
 )
 
-from benchmark import get_parameters
+from benchmark import benchmark_parameters
 
-def test_sky130_gcd():
-    workspace_dir="{}/test/examples/sky130_gcd".format(root)
+def test_ics55_gcd():
+    workspace_dir="{}/test/examples/ics55_gcd_service".format(root)
 
     input_def = ""
     input_verilog = ""
     input_filelist = "{}/test/fixtures/gcd/filelist.f".format(root)
     ecc_serv = ecc_service()
     
-    parameters=get_parameters("sky130", "gcd")
+    parameters=benchmark_parameters("ics55", "gcd")
     
     # create workspace
     #####################################################
@@ -46,7 +46,7 @@ def test_sky130_gcd():
         cmd = "create_workspace",
         data = {
             "directory" : workspace_dir,
-            "pdk" : "sky130",
+            "pdk" : "ics55",
             "parameters" : parameters.data,
             "origin_def" : input_def,
             "origin_verilog" : input_verilog,
@@ -78,49 +78,47 @@ def test_sky130_gcd():
     
     # run rtl2gds
     #####################################################
-    # ecc_req = ECCRequest(
-    #     cmd = "rtl2gds",
-    #     data = {
-    #         "rerun" : True
-    #     }
-    # )
-    # ecc_response = ecc_serv.rtl2gds(ecc_req)
+    ecc_req = ECCRequest(
+        cmd = "rtl2gds",
+        data = {
+            "rerun" : True
+        }
+    )
+    ecc_response = ecc_serv.rtl2gds(ecc_req)
     
     
     # test run single step
     #####################################################    
-    from chipcompiler.rtl2gds import build_rtl2gds_flow
-    steps = build_rtl2gds_flow()
-    for step, tool, state in steps:
-        ecc_req = ECCRequest(
-            cmd = "run_step",
-            data = {
-                "step" : step.value,
-                "rerun" : False
-            }
-        )
-        # ecc_response = ecc_serv.run_step(ecc_req)
-        # print(ecc_response)
+    # from chipcompiler.rtl2gds import build_rtl2gds_flow
+    # steps = build_rtl2gds_flow()
+    # for step, tool, state in steps:
+    #     ecc_req = ECCRequest(
+    #         cmd = "run_step",
+    #         data = {
+    #             "step" : step.value,
+    #             "rerun" : False
+    #         }
+    #     )
+    #     ecc_response = ecc_serv.run_step(ecc_req)
+    #     print(ecc_response)
         
     # test get step infomation
     #####################################################
-    from chipcompiler.services import InfoEnum
-    for step, tool, state in steps:
-        for info_enum in InfoEnum:           
-            ecc_req = ECCRequest(
-                cmd = "get_info",
-                data = {
-                    "step" : step.value,
-                    "id" : info_enum.value
-                }
-            )
-            ecc_response = ecc_serv.get_info(ecc_req)
-            print(ecc_response)
-    
-    print(1)
+    # from chipcompiler.services import InfoEnum
+    # for step, tool, state in steps:
+    #     for info_enum in InfoEnum:           
+    #         ecc_req = ECCRequest(
+    #             cmd = "get_info",
+    #             data = {
+    #                 "step" : step.value,
+    #                 "id" : info_enum.value
+    #             }
+    #         )
+    #         ecc_response = ecc_serv.get_info(ecc_req)
+    #         print(ecc_response)
 
 
 if __name__ == "__main__":
-    test_sky130_gcd()
+    test_ics55_gcd()
 
     exit(0)

@@ -8,7 +8,7 @@ from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.tools.ecc.plot import ECCToolsPlot
 from chipcompiler.tools.ecc.metrics import build_step_metrics 
-from chipcompiler.tools.ecc.subflow import EccSubFlow
+from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.checklist import EccChecklist
 
 def create_db_engine(workspace: Workspace,
@@ -157,15 +157,15 @@ def run_net_opt(workspace: Workspace,
                                 step=step,
                                 instance=module)
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.run_net_opt(config=step.config[f"{StepEnum.NETLIST_OPT.value}"])
         
-        sub_flow.update_step(step_name="run net optimization", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_net_optimization.value, state=StateEnum.Success)
         
         reslut = save_data(step=step, module=eda_inst)
         
-        sub_flow.update_step(step_name="save data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
     
     return reslut
     
@@ -184,16 +184,16 @@ def run_placement(workspace: Workspace,
                                 instance=module)
     
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.run_placement(config=step.config[f"{StepEnum.PLACEMENT.value}"])
         eda_inst.feature_placement_map(json_path=step.feature["map"])
         
-        sub_flow.update_step(step_name="run placement", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
         
         reslut = save_data(step=step, module=eda_inst)
         
-        sub_flow.update_step(step_name="save data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
     
     return reslut
 
@@ -212,7 +212,7 @@ def run_cts(workspace: Workspace,
                                 instance=module)
     
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.run_cts(config=step.config[f"{StepEnum.CTS.value}"],
                          output=step.data[f"{StepEnum.CTS.value}"])
@@ -223,11 +223,11 @@ def run_cts(workspace: Workspace,
         
         eda_inst.feature_cts_map(json_path=step.feature["map"])
         
-        sub_flow.update_step(step_name="run CTS", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Success)
         
         reslut = save_data(step=step, module=eda_inst)
         
-        sub_flow.update_step(step_name="save data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
     
     return reslut
 
@@ -250,15 +250,15 @@ def run_timing_opt_drv(workspace: Workspace,
                                 instance=module)
     
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.run_timing_opt_drv(config=step.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
         
-        sub_flow.update_step(step_name="run timing opt drv", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_drv.value, state=StateEnum.Success)
         
         reslut = save_data(step=step, module=eda_inst)
         
-        sub_flow.update_step(step_name="save data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
     
     return reslut
 
@@ -277,15 +277,15 @@ def run_timing_opt_hold(workspace: Workspace,
                                 instance=module)
     
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.run_timing_opt_hold(config=step.config[f"{StepEnum.TIMING_OPT_HOLD.value}"])
         
-        sub_flow.update_step(step_name="run timing opt hold", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_hold.value, state=StateEnum.Success)
         
         reslut = save_data(step=step, module=eda_inst)
         
-        sub_flow.update_step(step_name="save data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
     
     return reslut
 
@@ -305,7 +305,7 @@ def run_routing(workspace: Workspace,
     
     
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         if eda_inst.is_rt_timing_enable(config=step.config[f"{StepEnum.ROUTING.value}"]):
             eda_inst.init_sta(output_dir=step.data["sta"],
@@ -315,11 +315,11 @@ def run_routing(workspace: Workspace,
             
         eda_inst.run_routing(config=step.config[f"{StepEnum.ROUTING.value}"])
         
-        sub_flow.update_step(step_name="run routing", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_routing.value, state=StateEnum.Success)
         
         reslut = save_data(step=step, module=eda_inst)
         
-        sub_flow.update_step(step_name="save data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
     
     return reslut
 
@@ -341,19 +341,19 @@ def run_drc(workspace: Workspace,
     
     
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.init_drc(output_dir=step.data[f"{StepEnum.DRC.value}"])
         eda_inst.run_drc(config=step.config[f"{StepEnum.DRC.value}"],
                          report_path=step.report["step"])
         
-        sub_flow.update_step(step_name="run DRC", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
         
         reslut = save_data(step=step, module=eda_inst)
         
         eda_inst.save_drc(feature_path=step.feature[f"step"])
         
-        sub_flow.update_step(step_name="save data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
     
     return reslut
 
@@ -373,15 +373,15 @@ def run_legalization(workspace: Workspace,
                                 instance=module)
     
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.run_legalize(config=step.config[f"{StepEnum.LEGALIZATION.value}"])
         
-        sub_flow.update_step(step_name="run routing", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_legalization.value, state=StateEnum.Success)
         
         reslut = save_data(step=step, module=eda_inst)
         
-        sub_flow.update_step(step_name="save data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
     
     return reslut
 
@@ -401,15 +401,15 @@ def run_filler(workspace: Workspace,
                                 instance=module)
     
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.run_filler(config=step.config[f"{StepEnum.FILLER.value}"])
         
-        sub_flow.update_step(step_name="run filler", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
         
         reslut = save_data(step=step, module=eda_inst)
         
-        sub_flow.update_step(step_name="save data", state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
     
     return reslut
 
@@ -428,7 +428,7 @@ def run_floorplan(workspace: Workspace,
                                 instance=module)
     
     if eda_inst is not None:
-        sub_flow.update_step(step_name="load data",
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value,
                              state=StateEnum.Success)
         
         # init floorplan
@@ -455,7 +455,7 @@ def run_floorplan(workspace: Workspace,
         #                                 io_site=workspace.pdk.site_io,
         #                                 corner_site=workspace.pdk.site_corner)
         
-        sub_flow.update_step(step_name="init floorplan",
+        sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value,
                              state=StateEnum.Success)
         
         json_floorplan = workspace.parameters.data.get("Floorplan", {})
@@ -468,7 +468,7 @@ def run_floorplan(workspace: Workspace,
                                 x_step=item.get("x step", 0),
                                 y_start=item.get("y start", 0),
                                 y_step=item.get("y step", 0))
-        sub_flow.update_step(step_name="create tracks",
+        sub_flow.update_step(step_name=EccSubFlowEnum.create_tracks.value,
                              state=StateEnum.Success)
         
         # PDN
@@ -500,14 +500,14 @@ def run_floorplan(workspace: Workspace,
                                  width=json_iopin_place.get("width", 0),
                                  height=json_iopin_place.get("height", 0),
                                  sides=json_iopin_place.get("sides", []))
-        sub_flow.update_step(step_name="place io pins",
+        sub_flow.update_step(step_name=EccSubFlowEnum.place_io_pins.value,
                              state=StateEnum.Success)
         
         # tap cell
         eda_inst.tapcell(tapcell=workspace.pdk.tap_cell,
                          distance=json_floorplan.get("Tap distance", 0),
                          endcap=workspace.pdk.end_cap)
-        sub_flow.update_step(step_name="tap cell",
+        sub_flow.update_step(step_name=EccSubFlowEnum.tap_cell.value,
                              state=StateEnum.Success)
         
         # PDN grid
@@ -547,14 +547,14 @@ def run_floorplan(workspace: Workspace,
         #     if len(layers) >= 2:
         #         eda_inst.connect_pdn_layers(layers)
         
-        sub_flow.update_step(step_name="PDN",
+        sub_flow.update_step(step_name=EccSubFlowEnum.PDN.value,
                              state=StateEnum.Success)
         
         # set clock net
         clock_name = workspace.parameters.data.get("Clock", "")
         eda_inst.set_net(net_name=clock_name,
                          net_type="CLOCK")
-        sub_flow.update_step(step_name="set clock net",
+        sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value,
                              state=StateEnum.Success)
                 
         # return save_data(step=step, module=eda_inst)
@@ -566,7 +566,7 @@ def run_floorplan(workspace: Workspace,
         
         eda_inst.report_summary(path=step.report["db"])  
         
-        sub_flow.update_step(step_name="save data",
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success)  
         return True
     

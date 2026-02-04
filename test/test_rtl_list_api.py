@@ -20,7 +20,7 @@ def _default_parameters():
         "Top module": "top",
         "Clock": "clk",
         "Frequency max [MHz]": 100,
-        "PDK": "sky130",
+        "PDK": "ics55",
     }
 
 
@@ -43,7 +43,7 @@ def test_create_workspace_from_rtl_list_string(tmp_path):
         cmd="create_workspace",
         data={
             "directory": str(workspace_dir),
-            "pdk": "sky130",
+            "pdk": "ics55",
             "parameters": _default_parameters(),
             "origin_def": "",
             "origin_verilog": "",
@@ -82,7 +82,7 @@ def test_create_workspace_from_rtl_list_array(tmp_path):
         cmd="create_workspace",
         data={
             "directory": str(workspace_dir),
-            "pdk": "sky130",
+            "pdk": "ics55",
             "parameters": _default_parameters(),
             "origin_def": "",
             "origin_verilog": "",

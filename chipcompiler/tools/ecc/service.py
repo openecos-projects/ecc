@@ -117,6 +117,9 @@ def build_maps(workspace: Workspace,
     
     return info
 
+def csv2png(csv : str) -> str:
+    return csv.replace(".csv", ".png")
+    
 def build_maps_congestion(workspace: Workspace, 
                           step: WorkspaceStep) -> dict:     
     info = {}
@@ -130,21 +133,21 @@ def build_maps_congestion(workspace: Workspace,
         
         # egr maps
         info["egr-horizontal" ] = {
-            "path" : json_map.get("egr", {}).get("horizontal", ""),
+            "path" : csv2png(json_map.get("egr", {}).get("horizontal", "")),
             "info" : [
                 ""
             ]
         }
         
         info["egr-vertical" ] = {
-            "path" : json_map.get("egr", {}).get("vertical", ""),
+            "path" : csv2png(json_map.get("egr", {}).get("vertical", "")),
             "info" : [
                 ""
             ]
         }
         
         info["egr-union" ] = {
-            "path" : json_map.get("egr", {}).get("union", ""),
+            "path" : csv2png(json_map.get("egr", {}).get("union", "")),
             "info" : [
                 ""
             ]
@@ -152,7 +155,7 @@ def build_maps_congestion(workspace: Workspace,
         
         # lut rudy map
         info["lutrudy-horizontal" ] = {
-            "path" : json_map.get("lutrudy", {}).get("horizontal", ""),
+            "path" : csv2png(json_map.get("lutrudy", {}).get("horizontal", "")),
             "info" : [
                 f"max utilization : {json_util.get('lutrudy', {}).get('max', {}).get('horizontal', 0)}",
                 f"top average : {json_util.get('lutrudy', {}).get('top_average', {}).get('horizontal', 0)}"
@@ -160,7 +163,7 @@ def build_maps_congestion(workspace: Workspace,
         }
         
         info["lutrudy-vertical" ] = {
-            "path" : json_map.get("lutrudy", {}).get("vertical", ""),
+            "path" : csv2png(json_map.get("lutrudy", {}).get("vertical", "")),
             "info" : [
                 f"max utilization : {json_util.get('lutrudy', {}).get('max', {}).get('vertical', 0)}",
                 f"top average : {json_util.get('lutrudy', {}).get('top_average', {}).get('vertical', 0)}"
@@ -168,7 +171,7 @@ def build_maps_congestion(workspace: Workspace,
         }
         
         info["lutrudy-union" ] = {
-            "path" : json_map.get("lutrudy", {}).get("union", ""),
+            "path" : csv2png(json_map.get("lutrudy", {}).get("union", "")),
             "info" : [
                 f"max utilization : {json_util.get('lutrudy', {}).get('max', {}).get('union', 0)}",
                 f"top average : {json_util.get('lutrudy', {}).get('top_average', {}).get('union', 0)}"
@@ -177,7 +180,7 @@ def build_maps_congestion(workspace: Workspace,
         
         # rudy map
         info["rudy-horizontal" ] = {
-            "path" : json_map.get("rudy", {}).get("horizontal", ""),
+            "path" : csv2png(json_map.get("rudy", {}).get("horizontal", "")),
             "info" : [
                 f"max utilization : {json_util.get('rudy', {}).get('max', {}).get('horizontal', 0)}",
                 f"top average : {json_util.get('rudy', {}).get('top_average', {}).get('horizontal', 0)}"
@@ -185,7 +188,7 @@ def build_maps_congestion(workspace: Workspace,
         }
         
         info["rudy-vertical" ] = {
-            "path" : json_map.get("rudy", {}).get("vertical", ""),
+            "path" : csv2png(json_map.get("rudy", {}).get("vertical", "")),
             "info" : [
                 f"max utilization : {json_util.get('rudy', {}).get('max', {}).get('vertical', 0)}",
                 f"top average : {json_util.get('rudy', {}).get('top_average', {}).get('vertical', 0)}"
@@ -193,7 +196,7 @@ def build_maps_congestion(workspace: Workspace,
         }
         
         info["rudy-union" ] = {
-            "path" : json_map.get("rudy", {}).get("union", ""),
+            "path" : csv2png(json_map.get("rudy", {}).get("union", "")),
             "info" : [
                 f"max utilization : {json_util.get('rudy', {}).get('max', {}).get('union', 0)}",
                 f"top average : {json_util.get('rudy', {}).get('top_average', {}).get('union', 0)}"
@@ -214,37 +217,37 @@ def build_maps_density(workspace: Workspace,
         
         # cell
         info["cell density" ] = {
-            "path" : json_density.get("cell", {}).get("allcell_density", ""),
+            "path" : csv2png(json_density.get("cell", {}).get("allcell_density", "")),
             "info" : []
         }
         
         info["macro density" ] = {
-            "path" : json_density.get("cell", {}).get("macro_density", ""),
+            "path" : csv2png(json_density.get("cell", {}).get("macro_density", "")),
             "info" : []
         }
         
         info["stdcell density" ] = {
-            "path" : json_density.get("cell", {}).get("stdcell_density", ""),
+            "path" : csv2png(json_density.get("cell", {}).get("stdcell_density", "")),
             "info" : []
         }
         
         info["net density" ] = {
-            "path" : json_density.get("net", {}).get("allnet_density", ""),
+            "path" : csv2png(json_density.get("net", {}).get("allnet_density", "")),
             "info" : []
         }
         
         info["global net density" ] = {
-            "path" : json_density.get("net", {}).get("global_net_density", ""),
+            "path" : csv2png(json_density.get("net", {}).get("global_net_density", "")),
             "info" : []
         }
         
         info["local net density" ] = {
-            "path" : json_density.get("net", {}).get("local_net_density", ""),
+            "path" : csv2png(json_density.get("net", {}).get("local_net_density", "")),
             "info" : []
         }
         
         info["pin density" ] = {
-            "path" : json_density.get("pin", {}).get("allcell_pin_density", ""),
+            "path" : csv2png(json_density.get("pin", {}).get("allcell_pin_density", "")),
             "info" : []
         }
     

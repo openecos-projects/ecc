@@ -4,8 +4,8 @@ from .benchmark import (
     benchmark_metrics
 )
 
-from .get_parameters import (
-    get_parameters
+from .parameters import (
+    benchmark_parameters
 )
 
 
@@ -13,5 +13,5 @@ __all__ = [
     'run_benchmark',
     'benchmark_statis',
     'benchmark_metrics',
-    'get_parameters'
+    'benchmark_parameters'
 ]

@@ -2,7 +2,14 @@
 # -*- encoding: utf-8 -*-
 
 from dataclasses import dataclass, field
-from .parameter import Parameters, save_parameter, load_parameter
+from .parameter import (
+    Parameters,
+    get_parameters, 
+    save_parameter, 
+    load_parameter,
+    update_parameters
+)
+
 from .pdk import get_pdk, PDK
 from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
@@ -259,9 +266,13 @@ def create_workspace(directory : str,
         workspace.parameters = parameters
     
     if isinstance(parameters, dict):
-        workspace.design.name = parameters["Design"]
-        workspace.design.top_module = parameters["Top module"]         
-        workspace.parameters.data = parameters
+        # format parameters
+        workspace.parameters = get_parameters(pdk)
+        update_parameters(parameters_src=parameters,
+                          parameters_target=workspace.parameters.data)
+        
+        workspace.design.name = workspace.parameters.data["Design"]
+        workspace.design.top_module = workspace.parameters.data["Top module"]         
     
     # update path
     workspace.directory = directory

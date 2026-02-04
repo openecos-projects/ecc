@@ -5,6 +5,195 @@ import os
 
 from dataclasses import dataclass, field
 
+isc55_parameters_template = {
+    "PDK":"ICS55",
+    "Design":"",
+    "Top module":"",
+    "Die" : {
+        "Size": [],
+        "Bounding box": ""
+    },
+    "Core" : {
+        "Size": [],
+        "Bounding box": "",
+        "Utilitization": 0.4,
+        "Margin" : [2, 2],
+        "Aspect ratio" : 1
+    },
+    "Max fanout" : 20,
+    "Target density" : 0.3,
+    "Target overflow" : 0.1,
+    "Clock" : "",
+    "Frequency max [MHz]" : 100,
+    "Bottom layer" : "MET1",
+    "Top layer" : "MET5",
+    "Floorplan" : {
+        "Tap distance" : 58,
+        "Auto place pin" : {
+          "layer" : "MET3",
+          "width" : 300,
+          "height" : 600,
+          "sides" : []  
+        },
+        "Tracks" :[
+            {
+                "layer" : "MET1",
+                "x start" : 0,
+                "x step" : 200,
+                "y start" : 0,
+                "y step" : 200
+            },
+            {
+                "layer" : "MET2",
+                "x start" : 0,
+                "x step" : 200,
+                "y start" : 0,
+                "y step" : 200
+            },
+            {
+                "layer" : "MET3",
+                "x start" : 0,
+                "x step" : 200,
+                "y start" : 0,
+                "y step" : 200
+            },
+            {
+                "layer" : "MET4",
+                "x start" : 0,
+                "x step" : 200,
+                "y start" : 0,
+                "y step" : 200
+            },
+            {
+                "layer" : "MET5",
+                "x start" : 0,
+                "x step" : 200,
+                "y start" : 0,
+                "y step" : 200
+            },
+            {
+                "layer" : "T4M2",
+                "x start" : 0,
+                "x step" : 800,
+                "y start" : 0,
+                "y step" : 800
+            },
+            {
+                "layer" : "RDL",
+                "x start" : 0,
+                "x step" : 5000,
+                "y start" : 0,
+                "y step" : 5000
+            }
+        ]
+    },
+    "PDN" : {
+        "IO" : [
+            {
+                "net name" : "VDD",
+                "direction" : "INOUT",
+                "is power" : True
+            },
+            {
+                "net name" : "VDDIO",
+                "direction" : "INOUT",
+                "is power" : True
+            },
+            {
+                "net name" : "VSS",
+                "direction" : "INOUT",
+                "is power" : False
+            },
+            {
+                "net name" : "VSSIO",
+                "direction" : "INOUT",
+                "is power" : False
+            }
+        ],
+        "Global connect" : [
+            {
+                "net name" : "VDD",
+                "instance pin name" : "VDD",
+                "is power" : True
+            },
+            {
+                "net name" : "VDD",
+                "instance pin name" : "VDD1",
+                "is power" : True
+            },
+            {
+                "net name" : "VDD",
+                "instance pin name" : "VNW",
+                "is power" : True
+            },
+            {
+                "net name" : "VDDIO",
+                "instance pin name" : "VDDIO",
+                "is power" : True
+            },
+            {
+                "net name" : "VSS",
+                "instance pin name" : "VSS",
+                "is power" : False
+            },
+            {
+                "net name" : "VSS",
+                "instance pin name" : "VSS1",
+                "is power" : False
+            },
+            {
+                "net name" : "VSS",
+                "instance pin name" : "VPW",
+                "is power" : False
+            },
+            {
+                "net name" : "VSSIO",
+                "instance pin name" : "VSSIO",
+                "is power" : False
+            }
+        ],
+        "grid" : {
+            "layer" : "MET1",
+            "power net" : "VDD",
+            "power ground" : "VSS",
+            "width" : 0.16,
+            "offset" : 0
+        },
+        "Stripe" : [
+            {
+                "layer" : "MET4",
+                "power net" : "VDD",
+                "ground net" : "VSS",
+                "width" : 1,
+                "pitch" : 16,
+                "offset" : 0.5                        
+            },
+            {
+                "layer" : "MET5",
+                "power net" : "VDD",
+                "ground net" : "VSS",
+                "width" : 1,
+                "pitch" : 16,
+                "offset" : 0.5                        
+            }
+        ],
+        "Connect layers" : [
+            {
+                "layers" : [
+                    "MET1",
+                    "MET5"
+                ]
+            },
+            {
+                "layers" : [
+                    "MET4",
+                    "MET5"
+                ]
+            }
+        ]
+    } 
+}
+
 @dataclass
 class Parameters:
     """
@@ -25,59 +214,42 @@ def save_parameter(parameter : Parameters) -> bool:
     return json_write(file_path=parameter.path,
                       data=parameter.data)
 
-def get_parameters(pdk_name : str, design : str = "", path : str = "", current_dir : str = "") -> Parameters:
+def get_parameters(pdk_name : str = "", path : str = "") -> Parameters:
     """
     Return the Parameters instance based on the given pdk name.
     """
-    # Check path
-    if path == "":
-        if current_dir == "":
-            raise FileNotFoundError("current_dir or path must be provided to locate parameters")
-        if not os.path.isdir(current_dir):
-            raise FileNotFoundError(f"current_dir does not exist: {current_dir}")
-        path = f"{current_dir}/{pdk_name.lower()}_parameter.json"
-
-    if pdk_name.lower() == "sky130":
-        return parameter_sky130(design, path)
-    elif pdk_name.lower() == "ics55":
-        benchmark_json = os.path.join(current_dir, "ics55_benchmark.json")
-        return parameter_ics55(design, path, benchmark_json)
-    else:
-        return Parameters()
-
-def parameter_ics55(design : str, path : str, benchmark_json : str) -> Parameters:
+    if os.path.isfile(path):
+        return load_parameter(path)
+    
     parameters = Parameters()
-    
-    from chipcompiler.utility import json_read
     parameters.path = path
-    parameters.data = json_read(path)
     
-    from chipcompiler.utility import json_read
-    if not os.path.isfile(benchmark_json):
-        raise FileNotFoundError(f"ics55_benchmark.json not found: {benchmark_json}")
-    benchmarks = json_read(benchmark_json)
-    designs = benchmarks.get("designs", [])
-    for design_info in designs:
-        if design == design_info.get("Design", ""):
-            parameters.data["Design"] = design_info.get("Design", "")
-            parameters.data["Top module"] = design_info.get("Top module", "")
-            parameters.data["Clock"] = design_info.get("Clock", "")
-            parameters.data["Frequency max [MHz]"] = design_info.get("Frequency max [MHz]", 100)
-
+    match pdk_name.lower():
+        case "ics55":
+            parameters.data = isc55_parameters_template
+            
     return parameters
 
-def parameter_sky130(design : str, path : str) -> Parameters:
-    parameters = Parameters()
-    
-    from chipcompiler.utility import json_read
-    parameters.path = path
-    parameters.data = json_read(path)
-    
-    match design.lower():
-        case "gcd":
-            parameters.data["Design"] = "gcd"
-            parameters.data["Top module"] = "gcd"
-            parameters.data["Clock"] = "clk"
-            parameters.data["Frequency max [MHz]"] = 100
-        
-    return parameters
+def update_parameters(parameters_src : dict, parameters_target : dict) -> dict:
+    """
+    Update parameters_target with data from parameters_src.
+    If a value is a list, it will be replaced entirely.
+    If a value is a dict, it will be updated recursively.
+    Otherwise, the value will be replaced.
+    """
+    for key, value in parameters_src.items():
+        if key in parameters_target:
+            if isinstance(value, list):
+                # If it's a list, replace entirely
+                parameters_target[key] = value
+            elif isinstance(value, dict) and isinstance(parameters_target[key], dict):
+                # If it's a dict, update recursively
+                update_parameters(value, parameters_target[key])
+            else:
+                # For other types, replace
+                parameters_target[key] = value
+        else:
+            # If key doesn't exist, add it
+            parameters_target[key] = value
+
+    return parameters_target

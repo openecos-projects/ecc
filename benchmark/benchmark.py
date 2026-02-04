@@ -26,7 +26,7 @@ from chipcompiler.tools import build_step_metrics
 
 from chipcompiler.utility import json_read, csv_write
 
-from .get_parameters import get_parameters
+from .parameters import benchmark_parameters
 
 def has_value(value):
     return value is not None and value!=""
@@ -124,7 +124,7 @@ def run_single_design(workspace_dir : str,
                       design_info : dict):
     os.makedirs(workspace_dir, exist_ok=True)
     
-    parameters = get_parameters(pdk_name=pdk_name)
+    parameters = benchmark_parameters(pdk_name=pdk_name)
     
     parameters.data["Design"] = design_info.get("Design", "")
     parameters.data["Top module"] = design_info.get("Top module", "")
@@ -277,7 +277,7 @@ def benchmark_metrics(benchmark_json : str,
         if pdk is None:
             pdk = get_pdk(pdk_name=pdk_name)
             
-        parameters = get_parameters(pdk_name=pdk_name)
+        parameters = benchmark_parameters(pdk_name=pdk_name)
     
         parameters.data["Design"] = design_info.get("Design", "")
         parameters.data["Top module"] = design_info.get("Top module", "")

@@ -10,7 +10,7 @@ from chipcompiler.data import (
 )
 from chipcompiler.utility import json_read
 
-from chipcompiler.tools.ecc.subflow import EccSubFlow
+from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 
 
 def build_step_metrics(workspace: Workspace, 
@@ -45,7 +45,7 @@ def build_step_metrics(workspace: Workspace,
     # update sub flow metrics state
     sub_flow = EccSubFlow(workspace=workspace,
                           workspace_step=step)
-    sub_flow.update_step(step_name="analysis",
+    sub_flow.update_step(step_name=EccSubFlowEnum.analysis.value,
                          state=StateEnum.Invalid if metrics is None else StateEnum.Success)
     
     return metrics
