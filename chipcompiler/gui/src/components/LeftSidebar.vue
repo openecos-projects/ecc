@@ -359,6 +359,7 @@ const {
 const {
   isRunning,
   runFlow,
+  runAllFlow,
 } = useFlowRunner()
 
 // 当前阶段
@@ -393,7 +394,13 @@ const toggleTheme = () => {
 
 // ============ 事件处理 ============
 const handleRunFlow = async () => {
-  await runFlow()
+  // 如果当前在 Home 页面，运行所有步骤
+  if (currentStage.value === 'home') {
+    await runAllFlow()
+  } else {
+    // 否则运行当前步骤
+    await runFlow()
+  }
 }
 </script>
 

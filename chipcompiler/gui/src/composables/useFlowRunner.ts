@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTauri } from './useTauri'
 import { CMDEnum, StateEnum, StepEnum } from '@/api/type'
-import { runStepApi, type RunStepResponse } from '@/api/flow'
+import { runStepApi, rtl2gdsApi, type RunStepResponse } from '@/api/flow'
 
 // ============ Composable ============
 
@@ -32,7 +32,7 @@ export function useFlowRunner() {
   }
 
   /**
-   * 运行当前流程
+   * 运行当前步骤
    */
   async function runFlow(): Promise<RunStepResponse | null> {
     // 从动态路由参数获取当前步骤
@@ -71,6 +71,43 @@ export function useFlowRunner() {
       return result.data
     } catch (err) {
       console.error('❌ 单步运行失败:', err)
+    } finally {
+      isRunning.value = false
+    }
+    return null
+  }
+
+  /**
+   * 运行所有步骤
+   */
+  async function runAllFlow(): Promise<any | null> {
+    // 检查是否在 Tauri 环境中
+    if (!isInTauri) {
+      console.warn('当前不在 Tauri 环境中，无法执行 Python 脚本')
+      ensureTauri(true) // 显示警告弹窗
+      return null
+    }
+
+    if (isRunning.value) {
+      return null
+    }
+
+    isRunning.value = true
+    state.value = StateEnum.Ongoing
+    error.value = null
+    try {
+      console.log('handleRunAllFlow')
+
+      const result = await rtl2gdsApi({
+        cmd: CMDEnum.rtl2gds,
+        data: {
+          rerun: false
+        }
+      })
+      console.log('run all flow result', result)
+      return result.data
+    } catch (err) {
+      console.error('❌ 运行所有步骤失败:', err)
     } finally {
       isRunning.value = false
     }
@@ -136,6 +173,7 @@ export function useFlowRunner() {
 
     // 方法
     runFlow,
+    runAllFlow,
     // stopFlow,
     // resetFlow,
     clearError
