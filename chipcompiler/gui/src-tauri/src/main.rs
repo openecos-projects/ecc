@@ -4,8 +4,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{Emitter, Manager};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::Manager;
 use tauri_plugin_fs::FsExt;
 
 // Global reference to the FastAPI server process
@@ -220,6 +219,28 @@ fn show_main_window(window: tauri::Window) {
     println!("Window shown via frontend signal");
 }
 
+/// 窗口最小化
+#[tauri::command]
+fn window_minimize(window: tauri::Window) {
+    let _ = window.minimize();
+}
+
+/// 窗口最大化/还原
+#[tauri::command]
+fn window_maximize(window: tauri::Window) {
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    } else {
+        let _ = window.maximize();
+    }
+}
+
+/// 窗口关闭
+#[tauri::command]
+fn window_close(window: tauri::Window) {
+    let _ = window.close();
+}
+
 /// 动态授予文件系统访问权限
 /// 
 /// 此命令允许前端在运行时请求访问特定目录的权限，
@@ -242,127 +263,6 @@ async fn request_project_permission(app: tauri::AppHandle, path: String) -> Resu
     Ok(())
 }
 
-/// 构建应用原生菜单
-fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    // ===== macOS 应用菜单 (仅 macOS 显示在左上角) =====
-    let app_menu = Submenu::with_items(
-        app,
-        "ECC",
-        true,
-        &[
-            &PredefinedMenuItem::about(app, Some("About ECC"), None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::services(app, None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::hide(app, None)?,
-            &PredefinedMenuItem::hide_others(app, None)?,
-            &PredefinedMenuItem::show_all(app, None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, None)?,
-        ],
-    )?;
-
-    // ===== File 菜单 =====
-    let file_menu = Submenu::with_items(
-        app,
-        "File",
-        true,
-        &[
-            &MenuItem::with_id(app, "new_project", "New Project", true, Some("CmdOrCtrl+N"))?,
-            &MenuItem::with_id(app, "open_project", "Open Project...", true, Some("CmdOrCtrl+O"))?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "save", "Save", true, Some("CmdOrCtrl+S"))?,
-            &MenuItem::with_id(app, "save_as", "Save As...", true, Some("CmdOrCtrl+Shift+S"))?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, None)?,
-        ],
-    )?;
-
-    // // ===== Edit 菜单 =====
-    // let edit_menu = Submenu::with_items(
-    //     app,
-    //     "Edit",
-    //     true,
-    //     &[
-    //         &PredefinedMenuItem::undo(app, None)?,
-    //         &PredefinedMenuItem::redo(app, None)?,
-    //         &PredefinedMenuItem::separator(app)?,
-    //         &PredefinedMenuItem::cut(app, None)?,
-    //         &PredefinedMenuItem::copy(app, None)?,
-    //         &PredefinedMenuItem::paste(app, None)?,
-    //         &PredefinedMenuItem::select_all(app, None)?,
-    //     ],
-    // )?;
-
-    // // ===== View 菜单 =====
-    // let view_menu = Submenu::with_items(
-    //     app,
-    //     "View",
-    //     true,
-    //     &[
-    //         &MenuItem::with_id(app, "toggle_sidebar", "Toggle Sidebar", true, Some("CmdOrCtrl+B"))?,
-    //         &MenuItem::with_id(app, "toggle_inspector", "Toggle Inspector", true, Some("CmdOrCtrl+I"))?,
-    //         &PredefinedMenuItem::separator(app)?,
-    //         &MenuItem::with_id(app, "zoom_in", "Zoom In", true, Some("CmdOrCtrl+Plus"))?,
-    //         &MenuItem::with_id(app, "zoom_out", "Zoom Out", true, Some("CmdOrCtrl+Minus"))?,
-    //         &MenuItem::with_id(app, "zoom_reset", "Reset Zoom", true, Some("CmdOrCtrl+0"))?,
-    //         &PredefinedMenuItem::separator(app)?,
-    //         &PredefinedMenuItem::fullscreen(app, None)?,
-    //     ],
-    // )?;
-
-    // // ===== Window 菜单 =====
-    // let window_menu = Submenu::with_items(
-    //     app,
-    //     "Window",
-    //     true,
-    //     &[
-    //         &PredefinedMenuItem::minimize(app, None)?,
-    //         &PredefinedMenuItem::maximize(app, None)?,
-    //         &PredefinedMenuItem::separator(app)?,
-    //         &PredefinedMenuItem::close_window(app, None)?,
-    //     ],
-    // )?;
-
-    // ===== Help 菜单 =====
-    let help_menu = Submenu::with_items(
-        app,
-        "Help",
-        true,
-        &[
-            &MenuItem::with_id(app, "documentation", "Documentation", true, None::<&str>)?,
-            &MenuItem::with_id(app, "release_notes", "Release Notes", true, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "report_issue", "Report Issue...", true, None::<&str>)?,
-        ],
-    )?;
-
-    // 组装完整菜单
-    Menu::with_items(
-        app,
-        &[
-            &app_menu,
-            &file_menu,
-            // &edit_menu,
-            // &view_menu,
-            // &window_menu,
-            &help_menu,
-        ],
-    )
-}
-
-/// 处理菜单事件
-fn handle_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
-    let id = event.id();
-    
-    println!("Menu clicked: {}", id.as_ref());
-    
-    // 向前端发送菜单事件，前端可以监听 "menu:xxx" 事件
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.emit(&format!("menu:{}", id.as_ref()), ());
-    }
-}
-
 fn main() {
     use std::path::PathBuf;
     
@@ -377,16 +277,6 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
-
-            // 构建并设置原生菜单
-            let menu = build_menu(&app.handle())?;
-            app.set_menu(menu)?;
-
-            // 注册菜单事件处理器
-            let app_handle = app.handle().clone();
-            app.on_menu_event(move |_app, event| {
-                handle_menu_event(&app_handle, event);
-            });
 
             // Start the FastAPI server
             {
@@ -446,7 +336,10 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             show_main_window,
-            request_project_permission
+            request_project_permission,
+            window_minimize,
+            window_maximize,
+            window_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

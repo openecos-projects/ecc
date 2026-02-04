@@ -41,12 +41,13 @@
   --topbar-text: #cccccc;
 }
 
-body {
+html, body {
   margin: 0;
-  display: block;
+  padding: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: var(--bg-primary);
+  /* 透明背景支持窗口圆角 */
+  background: transparent;
   color: var(--text-primary);
 }
 
@@ -58,6 +59,8 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  /* 透明背景 */
+  background: transparent;
   /* 使用 flex 布局确保内容填充 */
   display: flex;
   flex-direction: column;
@@ -136,3 +139,9 @@ body.splitter-resizing-vertical * {
   cursor: row-resize !important;
 }
 
+/* 调整窗口大小时禁用全局文本选择 */
+body.window-resizing,
+body.window-resizing * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}

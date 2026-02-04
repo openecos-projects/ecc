@@ -61,7 +61,7 @@
         </div>
 
         <!-- 状态统计卡片 -->
-        <div class="px-3 py-3 border-b border-(--border-color) bg-(--bg-secondary)/30">
+        <div class="px-4 py-3 border-b border-(--border-color) bg-(--bg-secondary)/30">
           <div class="grid grid-cols-4 gap-2">
             <!-- 成功 -->
             <div
@@ -113,12 +113,12 @@
             </div>
           </div>
 
-          <div v-else class="p-3 space-y-0.5">
+          <div v-else class="p-3 space-y-1">
             <router-link v-for="(stage, index) in runStages" :key="stage.path" :to="'/workspace/' + stage.path"
-              class="group relative flex items-center gap-3 p-2 rounded-lg transition-all hover:bg-(--bg-secondary)/50 cursor-pointer"
+              class="group relative flex items-start gap-3 p-2 rounded-lg transition-all hover:bg-(--bg-secondary)/50 cursor-pointer"
               :class="{ 'bg-(--bg-secondary)/30': stage.state === 'Ongoing' }">
               <!-- 连接线 -->
-              <div v-if="index < runStages.length - 1" class="absolute left-[18px] top-[36px] w-0.5 h-[calc(100%-20px)]"
+              <div v-if="index < runStages.length - 1" class="absolute left-[22px] top-[42px] w-0.5 h-[calc(100%-34px)]"
                 :class="[
                   stage.state === 'Success' ? 'bg-green-500/50' :
                     stage.state === 'Ongoing' ? 'bg-linear-to-b from-blue-400/50 to-(--border-color)' :
@@ -126,44 +126,45 @@
                 ]"></div>
 
               <!-- 状态图标 -->
-              <div class="relative shrink-0 z-10">
+              <div class="relative shrink-0 mt-0.5">
                 <!-- 成功 -->
                 <div v-if="stage.state === 'Success'"
-                  class="w-[26px] h-[26px] rounded-full bg-green-500/20 border-2 border-green-500 flex items-center justify-center">
-                  <i class="ri-check-line text-green-500 text-xs"></i>
+                  class="w-[30px] h-[30px] rounded-full bg-green-500/20 border-2 border-green-500 flex items-center justify-center">
+                  <i class="ri-check-line text-green-500 text-sm"></i>
                 </div>
                 <!-- 进行中 -->
                 <div v-else-if="stage.state === 'Ongoing'"
-                  class="w-[26px] h-[26px] rounded-full bg-blue-500/20 border-2 border-blue-400 flex items-center justify-center">
-                  <i class="ri-loader-4-line text-blue-400 text-xs animate-spin"></i>
+                  class="w-[30px] h-[30px] rounded-full bg-blue-500/20 border-2 border-blue-400 flex items-center justify-center">
+                  <i class="ri-loader-4-line text-blue-400 text-sm animate-spin"></i>
                 </div>
                 <!-- 失败/无效 -->
                 <div v-else-if="stage.state === 'Invalid' || stage.state === 'Imcomplete'"
-                  class="w-[26px] h-[26px] rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center">
-                  <i class="ri-close-line text-red-500 text-xs"></i>
+                  class="w-[30px] h-[30px] rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center">
+                  <i class="ri-close-line text-red-500 text-sm"></i>
                 </div>
                 <!-- 待处理 -->
                 <div v-else
-                  class="w-[26px] h-[26px] rounded-full bg-(--bg-secondary) border-2 border-(--border-color) flex items-center justify-center">
+                  class="w-[30px] h-[30px] rounded-full bg-(--bg-secondary) border-2 border-(--border-color) flex items-center justify-center">
                   <i :class="stage.icon" class="text-[10px] text-(--text-secondary)"></i>
                 </div>
               </div>
 
               <!-- 步骤信息 -->
               <div class="flex-1 min-w-0">
-                <span class="text-[11px] font-semibold truncate block" :class="[
-                  stage.state === 'Success' ? 'text-green-500' :
-                    stage.state === 'Ongoing' ? 'text-blue-400' :
-                      stage.state === 'Invalid' || stage.state === 'Imcomplete' ? 'text-red-500' :
-                        'text-(--text-primary)'
-                ]">
-                  {{ stage.label }}
-                </span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[12px] font-semibold truncate" :class="[
+                    stage.state === 'Success' ? 'text-green-500' :
+                      stage.state === 'Ongoing' ? 'text-blue-400' :
+                        stage.state === 'Invalid' || stage.state === 'Imcomplete' ? 'text-red-500' :
+                          'text-(--text-primary)'
+                  ]">
+                    {{ stage.label }}
+                  </span>
+                  <!-- 运行中的脉冲动画 -->
+                  <span v-if="stage.state === 'Ongoing'"
+                    class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                </div>
               </div>
-
-              <!-- 状态脉冲 -->
-              <span v-if="stage.state === 'Ongoing'"
-                class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0"></span>
 
               <!-- 箭头 -->
               <i
