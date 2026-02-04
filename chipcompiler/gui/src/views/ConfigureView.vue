@@ -15,46 +15,41 @@ const {
   hasChanges,
   saveParameters,
   resetParameters,
-  refreshParameters
+  refreshParameters,
+  // 动态选项
+  layerOptions,
+  directionOptions,
+  layersList,
+  // 默认值工厂函数
+  getDefaultTrack,
+  getDefaultPdnIO,
+  getDefaultGlobalConnect,
+  getDefaultStripe,
+  getDefaultConnectLayers
 } = useParameters()
-
-const layerOptions = [
-  { label: 'li1', value: 'li1' },
-  { label: 'met1', value: 'met1' },
-  { label: 'met2', value: 'met2' },
-  { label: 'met3', value: 'met3' },
-  { label: 'met4', value: 'met4' },
-  { label: 'met5', value: 'met5' }
-]
-
-const directionOptions = [
-  { label: 'INOUT', value: 'INOUT' },
-  { label: 'INPUT', value: 'INPUT' },
-  { label: 'OUTPUT', value: 'OUTPUT' }
-]
 
 const utilizationPercent = computed(() => Math.round(config.core.utilization * 100))
 const densityPercent = computed(() => Math.round(config.targetDensity * 100))
 const overflowPercent = computed(() => Math.round(config.targetOverflow * 100))
 
-const layersList = ['met1', 'met2', 'met3', 'met4', 'met5']
 const isLayerInRange = (layer: string): boolean => {
-  const bottomIndex = layersList.indexOf(config.bottomLayer)
-  const topIndex = layersList.indexOf(config.topLayer)
-  const currentIndex = layersList.indexOf(layer)
+  const layers = layersList.value
+  const bottomIndex = layers.indexOf(config.bottomLayer)
+  const topIndex = layers.indexOf(config.topLayer)
+  const currentIndex = layers.indexOf(layer)
   return currentIndex >= bottomIndex && currentIndex <= topIndex
 }
 
 // CRUD
-const addTrack = () => config.floorplan.tracks.push({ layer: "met1", xStart: 0, xStep: 200, yStart: 0, yStep: 200 })
+const addTrack = () => config.floorplan.tracks.push(getDefaultTrack())
 const removeTrack = (i: number) => config.floorplan.tracks.splice(i, 1)
-const addPdnIO = () => config.pdn.io.push({ netName: "", direction: "INOUT", isPower: true })
+const addPdnIO = () => config.pdn.io.push(getDefaultPdnIO())
 const removePdnIO = (i: number) => config.pdn.io.splice(i, 1)
-const addGlobalConnect = () => config.pdn.globalConnect.push({ netName: "", instancePinName: "", isPower: true })
+const addGlobalConnect = () => config.pdn.globalConnect.push(getDefaultGlobalConnect())
 const removeGlobalConnect = (i: number) => config.pdn.globalConnect.splice(i, 1)
-const addStripe = () => config.pdn.stripe.push({ layer: "met1", powerNet: "VDD", groundNet: "VSS", width: 1, pitch: 16, offset: 0.5 })
+const addStripe = () => config.pdn.stripe.push(getDefaultStripe())
 const removeStripe = (i: number) => config.pdn.stripe.splice(i, 1)
-const addConnectLayer = () => config.pdn.connectLayers.push({ layers: ["met1", "met2"] })
+const addConnectLayer = () => config.pdn.connectLayers.push(getDefaultConnectLayers())
 const removeConnectLayer = (i: number) => config.pdn.connectLayers.splice(i, 1)
 
 const saveConfig = async () => {

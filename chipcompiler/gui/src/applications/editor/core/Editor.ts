@@ -410,16 +410,26 @@ export class Editor {
           img.src = url
         })
 
-        // 从 Image 元素创建纹理，使用 NEAREST 缩放模式保持像素清晰
+        // 从 Image 元素创建纹理
         texture = Texture.from(img)
-        // 设置纹理缩放模式为最近邻插值，避免版图失真
-        texture.source.scaleMode = 'nearest'
+        // 配置纹理采样模式：
+        // - minFilter: linear + mipmap，缩小时平滑混合，避免细节丢失
+        // - magFilter: nearest，放大时保持像素锐利，不模糊
+        texture.source.autoGenerateMipmaps = true
+        texture.source.style.minFilter = 'linear'
+        texture.source.style.mipmapFilter = 'linear'
+        texture.source.style.magFilter = 'nearest'
         console.log('Created texture from blob URL:', texture);
       } else {
         // 对于其他 URL，使用 Assets.load
         texture = await Assets.load(url)
-        // 设置纹理缩放模式为最近邻插值，避免版图失真
-        texture.source.scaleMode = 'nearest'
+        // 配置纹理采样模式：
+        // - minFilter: linear + mipmap，缩小时平滑混合，避免细节丢失
+        // - magFilter: nearest，放大时保持像素锐利，不模糊
+        texture.source.autoGenerateMipmaps = true
+        texture.source.style.minFilter = 'linear'
+        texture.source.style.mipmapFilter = 'linear'
+        texture.source.style.magFilter = 'nearest'
         console.log('Loaded texture from asset URL:', texture);
       }
 

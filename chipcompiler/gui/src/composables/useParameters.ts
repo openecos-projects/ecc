@@ -1,4 +1,4 @@
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { invoke } from '@tauri-apps/api/core'
 import { useWorkspace } from './useWorkspace'
@@ -485,6 +485,85 @@ export function useParameters() {
     }
   })
 
+  // ============ 动态选项计算 ============
+
+  /** 从 Tracks 中提取所有 layer 选项 */
+  const layerOptions = computed(() => {
+    const layers = new Set<string>()
+    // 从 tracks 中提取
+    config.floorplan.tracks.forEach(t => layers.add(t.layer))
+    // 从 stripe 中提取
+    config.pdn.stripe.forEach(s => layers.add(s.layer))
+    // 从 connectLayers 中提取
+    config.pdn.connectLayers.forEach(cl => cl.layers.forEach(l => layers.add(l)))
+    // 添加当前使用的 layer
+    if (config.bottomLayer) layers.add(config.bottomLayer)
+    if (config.topLayer) layers.add(config.topLayer)
+    if (config.floorplan.autoPlacePin.layer) layers.add(config.floorplan.autoPlacePin.layer)
+    if (config.pdn.grid.layer) layers.add(config.pdn.grid.layer)
+
+    // 定义排序优先级（MET 层按数字排序，其他放后面）
+    const sortOrder = (layer: string): number => {
+      const metMatch = layer.match(/^MET(\d+)$/i)
+      if (metMatch) return parseInt(metMatch[1])
+      if (layer.toLowerCase() === 'li1') return 0
+      return 100 + layer.charCodeAt(0) // 其他 layer 按字母排序放后面
+    }
+
+    return Array.from(layers)
+      .sort((a, b) => sortOrder(a) - sortOrder(b))
+      .map(layer => ({ label: layer, value: layer }))
+  })
+
+  /** 从 PDN.IO 中提取所有 direction 选项 */
+  const directionOptions = computed(() => {
+    const directions = new Set<string>()
+    config.pdn.io.forEach(io => {
+      if (io.direction) directions.add(io.direction)
+    })
+    // 确保至少有基本选项
+    directions.add('INOUT')
+    directions.add('INPUT')
+    directions.add('OUTPUT')
+
+    return Array.from(directions).map(dir => ({ label: dir, value: dir }))
+  })
+
+  /** layer 列表（用于范围判断） */
+  const layersList = computed(() => {
+    return layerOptions.value.map(opt => opt.value)
+  })
+
+  /** 获取默认 Track 数据 */
+  const getDefaultTrack = () => {
+    const defaultLayer = layersList.value[0] || 'MET1'
+    return { layer: defaultLayer, xStart: 0, xStep: 200, yStart: 0, yStep: 200 }
+  }
+
+  /** 获取默认 PDN IO 数据 */
+  const getDefaultPdnIO = () => {
+    return { netName: '', direction: 'INOUT', isPower: true }
+  }
+
+  /** 获取默认 Global Connect 数据 */
+  const getDefaultGlobalConnect = () => {
+    return { netName: '', instancePinName: '', isPower: true }
+  }
+
+  /** 获取默认 Stripe 数据 */
+  const getDefaultStripe = () => {
+    const defaultLayer = layersList.value[0] || 'MET1'
+    return { layer: defaultLayer, powerNet: 'VDD', groundNet: 'VSS', width: 1, pitch: 16, offset: 0.5 }
+  }
+
+  /** 获取默认 Connect Layers 数据 */
+  const getDefaultConnectLayers = () => {
+    const layers = layersList.value
+    const layer1 = layers[0] || 'MET1'
+    const layer2 = layers[1] || 'MET2'
+    return { layers: [layer1, layer2] }
+  }
+
   return {
     // 状态
     config,
@@ -492,6 +571,18 @@ export function useParameters() {
     isSaving,
     error,
     hasChanges,
+
+    // 动态选项
+    layerOptions,
+    directionOptions,
+    layersList,
+
+    // 默认值工厂函数
+    getDefaultTrack,
+    getDefaultPdnIO,
+    getDefaultGlobalConnect,
+    getDefaultStripe,
+    getDefaultConnectLayers,
 
     // 方法
     loadParameters,

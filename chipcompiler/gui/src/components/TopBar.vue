@@ -1,7 +1,7 @@
 <template>
-  <div class="topbar" @dblclick="handleDoubleClick">
+  <div class="topbar" @dblclick="handleDoubleClick" @mousedown="handleMouseDown">
     <!-- 左侧：应用图标和菜单栏 -->
-    <div class="topbar-left">
+    <div class="topbar-left" @mousedown.stop>
       <!-- 应用图标 -->
       <div class="app-icon">
         <i class="ri-cpu-line"></i>
@@ -15,12 +15,12 @@
       </div>
     </div>
 
-    <div class="topbar-center" data-tauri-drag-region>
+    <div class="topbar-center">
       <span class="project-name">{{ props.projectName }}</span>
     </div>
 
     <!-- 右侧：窗口控制按钮 -->
-    <div class="topbar-right">
+    <div class="topbar-right" @mousedown.stop>
       <!-- 最小化 -->
       <button @click="handleMinimize" class="window-btn" title="最小化">
         <svg width="16" height="16" viewBox="0 0 16 16">
@@ -45,6 +45,7 @@
 
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const props = defineProps<{
   projectName?: string
@@ -80,6 +81,18 @@ const handleClose = () => {
   invoke('window_close')
 }
 
+// 拖拽窗口 - 阻止文字选择并启动拖拽
+const handleMouseDown = async (event: MouseEvent) => {
+  // 阻止默认的文字选择行为
+  event.preventDefault()
+  const target = event.target as HTMLElement
+  if (target.closest('button') || target.closest('input') || target.closest('textarea')) {
+    return
+  }
+  // 启动窗口拖拽
+  await getCurrentWindow().startDragging()
+}
+
 // 双击标题栏空白区域切换最大化/还原
 const handleDoubleClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement
@@ -99,12 +112,16 @@ const handleDoubleClick = (event: MouseEvent) => {
   align-items: center;
   justify-content: space-between;
   user-select: none;
+  -webkit-user-select: none;
   /* 圆角边框 */
   border-radius: 9px 9px 0 0;
   /* 底部分隔线 */
   border-bottom: 1px solid var(--border-color);
   /* 相对定位，用于中间区域的绝对定位 */
   position: relative;
+  /* 标记为可拖拽区域 */
+  -webkit-app-region: drag;
+  cursor: default;
 }
 
 /* 左侧区域 */
@@ -116,6 +133,8 @@ const handleDoubleClick = (event: MouseEvent) => {
   gap: 8px;
   z-index: 1;
   position: relative;
+  /* 排除拖拽区域，允许点击 */
+  -webkit-app-region: no-drag;
 }
 
 .app-icon {
@@ -186,6 +205,8 @@ const handleDoubleClick = (event: MouseEvent) => {
   height: 100%;
   z-index: 1;
   position: relative;
+  /* 排除拖拽区域，允许点击 */
+  -webkit-app-region: no-drag;
 }
 
 .window-btn {
