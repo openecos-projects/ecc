@@ -1,72 +1,64 @@
 <template>
-  <div
-    class="h-10 bg-(--topbar-bg) flex items-center justify-between select-none border-b border-(--border-color) px-4">
+  <div class="topbar" @dblclick="handleDoubleClick">
     <!-- 左侧：应用图标和菜单栏 -->
-    <div class="flex items-center h-full gap-6">
-      <!-- 应用名称/图标 -->
-      <div class="flex items-center gap-2">
-        <i class="ri-cpu-line text-(--accent-color) text-xl"></i>
-        <span class="font-bold text-sm text-(--topbar-text)">ECC</span>
+    <div class="topbar-left">
+      <!-- 应用图标 -->
+      <div class="app-icon">
+        <i class="ri-cpu-line"></i>
       </div>
 
       <!-- 菜单项 -->
-      <div class="flex items-center h-full gap-1">
-        <button v-for="menu in menus" :key="menu.label" @click="handleMenuClick(menu.action)"
-          class="h-full px-3 text-[13px] text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-secondary) transition-colors flex items-center justify-center rounded">
+      <div class="menu-items">
+        <button v-for="menu in menus" :key="menu.label" @click="handleMenuClick(menu.action)" class="menu-btn">
           {{ menu.label }}
         </button>
       </div>
     </div>
 
-    <!-- 中间：项目信息 (可选) -->
-    <div class="flex-1 flex items-center justify-center text-[13px] text-(--text-secondary)">
-      <!-- 可以放置搜索框或者项目名称 -->
-      {{ props.projectName }}
+    <div class="topbar-center" data-tauri-drag-region>
+      <span class="project-name">{{ props.projectName }}</span>
     </div>
 
-    <!-- 右侧：设置和窗口控制 -->
-    <div class="flex items-center h-full gap-2">
-      <!-- 主题切换 -->
-      <button @click="toggleTheme" class="p-2 text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-        title="切换主题">
-        <i :class="isDark ? 'ri-sun-line' : 'ri-moon-line'" class="text-lg"></i>
+    <!-- 右侧：窗口控制按钮 -->
+    <div class="topbar-right">
+      <!-- 最小化 -->
+      <button @click="handleMinimize" class="window-btn" title="最小化">
+        <svg width="16" height="16" viewBox="0 0 16 16">
+          <rect x="2" y="5.5" width="8" height="1" fill="currentColor" />
+        </svg>
       </button>
-      <!-- <button class="p-2 text-(--text-secondary) hover:text-(--text-primary) transition-colors">
-        <i class="ri-settings-4-line text-lg"></i>
+      <!-- 最大化/还原 -->
+      <button @click="handleMaximize" class="window-btn" title="最大化">
+        <svg width="16" height="16" viewBox="0 0 16 16">
+          <rect x="2" y="2" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1" />
+        </svg>
       </button>
-      <button class="p-2 text-(--text-secondary) hover:text-(--text-primary) transition-colors">
-        <div class="w-6 h-6 bg-(--accent-color) rounded-full flex items-center justify-center text-white text-xs">
-          U
-        </div>
-      </button> -->
+      <!-- 关闭 -->
+      <button @click="handleClose" class="window-btn window-btn-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16">
+          <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+        </svg>
+      </button>
     </div>
-
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
-import { useThemeStore } from '@/stores/themeStore'
+import { invoke } from '@tauri-apps/api/core'
 
 const props = defineProps<{
   projectName?: string
 }>()
 
-const themeStore = useThemeStore()
-const isDark = computed(() => themeStore.themeName === 'dark')
-
-
-// 切换主题
-const toggleTheme = () => {
-  themeStore.toggleTheme()
-}
-
 // 菜单项配置
 const menus = [
   { label: 'File', action: 'file' },
   { label: 'Edit', action: 'edit' },
+  { label: 'Selection', action: 'selection' },
   { label: 'View', action: 'view' },
+  { label: 'Go', action: 'go' },
   { label: 'Run', action: 'run' },
+  { label: 'Terminal', action: 'terminal' },
   { label: 'Help', action: 'help' }
 ]
 
@@ -75,27 +67,157 @@ const handleMenuClick = (action: string) => {
   console.log('Menu clicked:', action)
 }
 
-// 监听窗口大小变化
-onMounted(async () => {
-  themeStore.initTheme()
+// 窗口控制
+const handleMinimize = () => {
+  invoke('window_minimize')
+}
 
-})
+const handleMaximize = () => {
+  invoke('window_maximize')
+}
 
-// 组件卸载时清理监听
-onUnmounted(() => { })
+const handleClose = () => {
+  invoke('window_close')
+}
+
+// 双击标题栏空白区域切换最大化/还原
+const handleDoubleClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  // 如果双击的是按钮或按钮内部元素，则不触发
+  if (target.closest('button')) {
+    return
+  }
+  invoke('window_maximize')
+}
 </script>
 
 <style scoped>
-/* 确保按钮图标垂直居中 */
-button i {
+.topbar {
+  height: 40px;
+  background: var(--topbar-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  /* 圆角边框 */
+  border-radius: 9px 9px 0 0;
+  /* 底部分隔线 */
+  border-bottom: 1px solid var(--border-color);
+  /* 相对定位，用于中间区域的绝对定位 */
+  position: relative;
+}
+
+/* 左侧区域 */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 16px;
+  gap: 8px;
+  z-index: 1;
+  position: relative;
+}
+
+.app-icon {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--accent-color);
+  font-size: 18px;
+}
+
+.menu-items {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: 2px;
+}
+
+.menu-btn {
+  height: 100%;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background-color 0.15s;
+  border-radius: 4px;
+}
+
+.menu-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+/* 中间拖拽区域 - 始终居中 */
+.topbar-center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  /* 不阻挡左右两侧的点击 */
+  z-index: 0;
+}
+
+.project-name {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* 右侧窗口控制 */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  z-index: 1;
+  position: relative;
+}
+
+.window-btn {
+  width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.window-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.window-btn-close {
+  border-radius: 0 10px 0 0;
+}
+
+.window-btn-close:hover {
+  background: #e81163;
+  color: white;
 }
 
 /* 响应式：在小屏幕上隐藏中间的项目名称 */
-@media (max-width: 1630px) {
-  .flex-1 {
+@media (max-width: 900px) {
+  .project-name {
     display: none;
   }
 }

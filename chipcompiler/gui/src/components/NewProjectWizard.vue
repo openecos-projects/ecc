@@ -283,7 +283,7 @@
                 <div>
                   <h4 class="font-medium text-(--text-primary)">提示</h4>
                   <p class="text-sm text-(--text-secondary) mt-1">
-                    选择合适的工艺库对设计结果影响很大。SkyWater 130nm 是开源 PDK，适合学习和原型验证。
+                    选择合适的工艺库对设计结果影响很大。当前提供 ICS55 PDK，适合学习和原型验证。
                   </p>
                 </div>
               </div>
@@ -472,18 +472,12 @@ const pdkOptions = [
     name: 'ICS55 PDK',
     description: 'ICSPROUT 55nm 工艺库',
     icon: 'ri-settings-3-line text-xl'
-  },
-  {
-    id: 'sky130',
-    name: 'SkyWater 130nm',
-    description: 'SkyWater 开源 130nm 工艺库',
-    icon: 'ri-settings-3-line text-xl'
   }
 ]
 
 const config = ref<WorkspaceConfig>({
   directory: '',
-  pdk: '',
+  pdk: 'ics55',
   parameters: {
     // 基本信息
     design: '',           // 项目/设计名称 -> "Design"

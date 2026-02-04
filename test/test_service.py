@@ -31,14 +31,22 @@ from chipcompiler.services import (
 from benchmark import benchmark_parameters
 
 def test_ics55_gcd():
+<<<<<<< HEAD
     workspace_dir="{}/test/examples/ics55_gcd_service".format(root)
+=======
+    workspace_dir="{}/test/examples/ics55_gcd".format(root)
+>>>>>>> 0aac241e00e84aa3238faba9f1c8ffcad7019159
 
     input_def = ""
     input_verilog = ""
     input_filelist = "{}/test/fixtures/gcd/filelist.f".format(root)
     ecc_serv = ecc_service()
     
+<<<<<<< HEAD
     parameters=benchmark_parameters("ics55", "gcd")
+=======
+    parameters=get_parameters("ics55", "gcd")
+>>>>>>> 0aac241e00e84aa3238faba9f1c8ffcad7019159
     
     # create workspace
     #####################################################

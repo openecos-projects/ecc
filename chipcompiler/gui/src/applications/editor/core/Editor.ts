@@ -410,12 +410,16 @@ export class Editor {
           img.src = url
         })
 
-        // 从 Image 元素创建纹理
+        // 从 Image 元素创建纹理，使用 NEAREST 缩放模式保持像素清晰
         texture = Texture.from(img)
+        // 设置纹理缩放模式为最近邻插值，避免版图失真
+        texture.source.scaleMode = 'nearest'
         console.log('Created texture from blob URL:', texture);
       } else {
         // 对于其他 URL，使用 Assets.load
         texture = await Assets.load(url)
+        // 设置纹理缩放模式为最近邻插值，避免版图失真
+        texture.source.scaleMode = 'nearest'
         console.log('Loaded texture from asset URL:', texture);
       }
 

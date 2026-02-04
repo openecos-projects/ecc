@@ -265,9 +265,9 @@ export function useWorkspace() {
       }
 
       // 3. 通过 HTTP API 创建项目（传递更多配置信息）
-      // 将前端参数映射为后端期望的格式 (参考 sky130_parameter.json)
+      // 将前端参数映射为后端期望的格式 (参考 ics55_parameter.json)
       const frontendParams = config?.parameters || {}
-      const pdkName = config?.pdk || 'sky130'
+      const pdkName = config?.pdk || 'ics55'
       const backendParameters = {
         // 基本设计信息 (必需)
         'Design': frontendParams.design || selectedPath.split('/').pop() || 'New_Chip_Design',
@@ -343,4 +343,3 @@ export function useWorkspace() {
     updateWindowTitle
   }
 }
-

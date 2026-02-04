@@ -28,8 +28,7 @@ export interface FlowStage {
   path: string
   icon: string
   group: 'setup' | 'run'
-  completed: boolean
-  available: boolean
+  state: string
 }
 
 // ============ 常量配置 ============
@@ -42,8 +41,7 @@ const FIXED_SETUP_STAGES: FlowStage[] = Object.entries(STEP_METADATA)
     path: meta.path,
     icon: meta.icon,
     group: 'setup' as const,
-    completed: false,
-    available: true
+    state: 'pending',
   }))
 
 // ============ Composable ============
@@ -85,12 +83,9 @@ export function useFlowStages() {
    */
   function transformFlowData(flowData: FlowData): FlowStage[] {
     const stages: FlowStage[] = []
-    let previousCompleted = true // 第一个步骤默认可用
 
     for (const step of flowData.steps) {
       const metadata = getStepMetadata(step.name)
-      const isCompleted = step.state.toLowerCase() === 'success'
-      const isAvailable = previousCompleted
 
       // 如果有元数据配置则使用，否则使用默认配置
       // 所有 flow.json 中的步骤都会显示
@@ -99,11 +94,9 @@ export function useFlowStages() {
         path: metadata?.path ?? step.name,
         icon: metadata?.icon ?? 'ri-checkbox-blank-circle-line',
         group: 'run',
-        completed: isCompleted,
-        available: isAvailable
+        state: step.state,
       })
 
-      previousCompleted = isCompleted
     }
 
     return stages
