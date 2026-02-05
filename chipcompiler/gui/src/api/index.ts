@@ -15,5 +15,15 @@ export {
 
 
 export {
-  
+
 } from './flow'
+
+export {
+  createSSEClient,
+  type SSEClient,
+  type SSENotification,
+  type NotifyType,
+  type SSEEventHandler,
+  type SSEClientConfig,
+  type SSEClientState
+} from './sse'

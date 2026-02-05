@@ -371,7 +371,7 @@ fn get_api_server_status() -> serde_json::Value {
         ureq::get(&health_url)
             .timeout(Duration::from_secs(2))
             .call()
-            .map(|r| r.status() == 200)
+            .map(|r| r.status() == 200u16)
             .unwrap_or(false)
     } else {
         false
@@ -480,7 +480,7 @@ fn get_debug_info(app: tauri::AppHandle) -> serde_json::Value {
     let health_ok = ureq::get(&health_url)
         .timeout(Duration::from_secs(2))
         .call()
-        .map(|r| r.status() == 200)
+        .map(|r| r.status() == 200u16)
         .unwrap_or(false);
     info["health_ok"] = serde_json::json!(health_ok);
     
@@ -542,8 +542,16 @@ fn main() {
                 
                 // Try to connect to health endpoint
                 let addr = format!("127.0.0.1:{}", API_PORT);
+                let socket_addr: std::net::SocketAddr = match addr.parse() {
+                    Ok(addr) => addr,
+                    Err(e) => {
+                        eprintln!("❌ Failed to parse socket address '{}': {}", addr, e);
+                        continue;
+                    }
+                };
+                
                 match std::net::TcpStream::connect_timeout(
-                    &addr.parse().unwrap(),
+                    &socket_addr,
                     Duration::from_millis(200)
                 ) {
                     Ok(_) => {
@@ -553,7 +561,7 @@ fn main() {
                             .timeout(Duration::from_secs(2))
                             .call()
                         {
-                            if response.status() == 200 {
+                            if response.status() == 200u16 {
                                 println!("✅ FastAPI server ready after {} attempts ({:.1}s)", 
                                     attempt, attempt as f32 * 0.5);
                                 server_ready = true;

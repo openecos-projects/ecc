@@ -174,7 +174,33 @@
         </div>
 
         <!-- 底部操作栏 -->
-        <div class="p-3 border-t border-(--border-color) bg-(--bg-secondary)/30">
+        <div class="p-3 border-t border-(--border-color) bg-(--bg-secondary)/30 space-y-2">
+          <!-- SSE 消息显示区域 -->
+          <div v-if="sseMessages.length > 0"
+            class="max-h-32 overflow-y-auto bg-(--bg-secondary) rounded p-2 text-[10px] space-y-1">
+            <div v-for="(msg, idx) in sseMessages.slice(-5)" :key="idx" class="flex items-center gap-1" :class="{
+              'text-blue-400': msg.type === 'step_start',
+              'text-green-500': msg.type === 'step_complete' || msg.type === 'task_complete',
+              'text-amber-500': msg.type === 'data_ready',
+              'text-red-500': msg.type === 'error',
+              'text-(--text-secondary)': msg.type === 'message'
+            }">
+              <i :class="{
+                'ri-play-circle-line': msg.type === 'step_start',
+                'ri-checkbox-circle-line': msg.type === 'step_complete',
+                'ri-trophy-line': msg.type === 'task_complete',
+                'ri-database-2-line': msg.type === 'data_ready',
+                'ri-error-warning-line': msg.type === 'error',
+                'ri-chat-1-line': msg.type === 'message'
+              }" class="text-xs"></i>
+              <span class="truncate">
+                {{ msg.step || msg.message || msg.type }}
+                <span v-if="msg.id" class="opacity-70">({{ msg.id }})</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- RUN ALL 按钮 -->
           <button @click="handleRunFlow" :disabled="isRunning"
             class="w-full flex items-center justify-center gap-2 px-3 py-2 bg-(--accent-color) text-white text-[11px] font-bold rounded hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-(--accent-color)/20">
             <i :class="isRunning ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
@@ -360,6 +386,7 @@ const {
   isRunning,
   runFlow,
   runAllFlow,
+  sseMessages
 } = useFlowRunner()
 
 // 当前阶段

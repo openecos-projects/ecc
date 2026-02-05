@@ -3,6 +3,7 @@ import { useRoute } from 'vue-router'
 import { useTauri } from './useTauri'
 import { CMDEnum, StateEnum, StepEnum } from '@/api/type'
 import { runStepApi, rtl2gdsApi, type RunStepResponse } from '@/api/flow'
+import { createSSEClient, type SSEClient, type SSENotification } from '@/api/sse'
 
 // ============ Composable ============
 
@@ -79,6 +80,10 @@ export function useFlowRunner() {
 
   /**
    * 运行所有步骤
+   * 
+   * 1. 调用 rtl2gds API 获取 task_id
+   * 2. 建立 SSE 连接订阅事件
+   * 3. 实时接收进度通知
    */
   async function runAllFlow(): Promise<any | null> {
     // 检查是否在 Tauri 环境中
@@ -92,77 +97,131 @@ export function useFlowRunner() {
       return null
     }
 
+    // 如果已有 SSE 连接，先关闭
+    if (sseClient.value) {
+      sseClient.value.close()
+      sseClient.value = null
+    }
+
     isRunning.value = true
     state.value = StateEnum.Ongoing
     error.value = null
-    try {
-      console.log('handleRunAllFlow')
+    sseMessages.value = []
 
+    try {
+      console.log('🚀 Starting rtl2gds flow...')
+
+      // 1. 调用 rtl2gds API 获取 task_id
       const result = await rtl2gdsApi({
         cmd: CMDEnum.rtl2gds,
         data: {
           rerun: false
         }
       })
-      console.log('run all flow result', result)
+      console.log('rtl2gds API result:', result)
+
+      const taskId = result.data?.task_id
+      if (!taskId) {
+        console.warn('No task_id returned from rtl2gds API')
+        isRunning.value = false
+        return result.data
+      }
+
+      sseTaskId.value = taskId
+      console.log(`📡 Got task_id: ${taskId}`)
+
+      // 2. 创建 SSE 客户端并订阅事件
+      const client = createSSEClient(taskId)
+      sseClient.value = client
+
+      // 3. 注册事件处理器
+      client.onStepStart((step) => {
+        console.log(`▶️ Step started: ${step}`)
+        sseMessages.value.push({
+          type: 'step_start',
+          step,
+          timestamp: Date.now()
+        })
+      })
+
+      client.onDataReady((step, id) => {
+        console.log(`📦 Data ready: ${step}, id=${id}`)
+        sseMessages.value.push({
+          type: 'data_ready',
+          step,
+          id,
+          timestamp: Date.now()
+        })
+      })
+
+      client.onStepComplete((step) => {
+        console.log(`✅ Step completed: ${step}`)
+        sseMessages.value.push({
+          type: 'step_complete',
+          step,
+          timestamp: Date.now()
+        })
+      })
+
+      client.onMessage((message) => {
+        console.log(`💬 Message: ${message}`)
+        sseMessages.value.push({
+          type: 'message',
+          message,
+          timestamp: Date.now()
+        })
+      })
+
+      client.onComplete((message) => {
+        console.log(`🎉 Task completed: ${message}`)
+        sseMessages.value.push({
+          type: 'task_complete',
+          message,
+          timestamp: Date.now()
+        })
+        // 任务完成后关闭连接
+        isRunning.value = false
+        state.value = StateEnum.Success
+        client.close()
+        sseClient.value = null
+        sseTaskId.value = null
+      })
+
+      client.onError((step, message) => {
+        console.error(`❌ Error in ${step}: ${message}`)
+        sseMessages.value.push({
+          type: 'error',
+          step,
+          message,
+          timestamp: Date.now()
+        })
+        error.value = message
+        isRunning.value = false
+        state.value = StateEnum.Imcomplete
+      })
+
+      client.onHeartbeat(() => {
+        // 心跳消息，不需要显示
+      })
+
+      // 4. 连接 SSE
+      client.connect()
+      console.log('📡 SSE client connected')
+
       return result.data
     } catch (err) {
       console.error('❌ 运行所有步骤失败:', err)
-    } finally {
+      error.value = err instanceof Error ? err.message : String(err)
       isRunning.value = false
+      state.value = StateEnum.Imcomplete
     }
     return null
   }
 
-  /**
-   * 停止当前流程
-   */
-  // async function stopFlow(): Promise<RunStepResponse> {
-  //   if (!isRunning.value) {
-  //     return { step: "", state: StateEnum.Invalid }
-  //   }
-
-  //   try {
-  //     // TODO: 实现停止流程的逻辑
-  //     console.log('Stopping flow...')
-
-  //     isRunning.value = false
-  //     state.value = StateEnum.Invalid
-
-  //     return { step: "", state: StateEnum.Invalid }
-  //   } catch (err) {
-  //     console.error('❌ 单步运行停止失败:', err)
-  //     return { step: "", state: StateEnum.Invalid }
-  //   }
-  // }
-
-  /**
-   * 重置流程状态
-   */
-  // async function resetFlow(): Promise<RunStepResponse> {
-  //   try {
-  //     // TODO: 实现重置流程的逻辑
-  //     console.log('Resetting flow...')
-
-  //     isRunning.value = false
-  //     state.value = StateEnum.Invalid
-  //     error.value = null
-  //     lastRunResult.value = null
-
-  //     return { step: "", state: StateEnum.Invalid }
-  //   } catch (err) {
-  //     const errorMessage = err instanceof Error ? err.message : String(err)
-  //     error.value = errorMessage
-  //     return { step: "", state: StateEnum.Invalid }
-  //   }
-  // }
-
-  /**
-   * 清除错误状态
-   */
-  function clearError(): void {
-    error.value = null
-  }
+  // SSE 相关状态
+  const sseClient = ref<SSEClient | null>(null)
+  const sseMessages = ref<SSENotification[]>([])
+  const sseTaskId = ref<string | null>(null)
 
   return {
     // 状态
@@ -171,11 +230,11 @@ export function useFlowRunner() {
     error,
     lastRunResult,
 
+    // SSE 状态
+    sseMessages,
+
     // 方法
     runFlow,
-    runAllFlow,
-    // stopFlow,
-    // resetFlow,
-    clearError
+    runAllFlow
   }
 }
