@@ -152,3 +152,7 @@ chipcompiler.egg-info/
 
 # OSS CAD Suite
 chipcompiler/thirdparty/oss-cad-suite/
+chipcompiler/gui/src-tauri/resources/oss-cad-suite/
+
+# Tauri dev files
+.pnpm-store/
