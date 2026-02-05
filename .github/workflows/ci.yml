@@ -80,33 +80,18 @@ jobs:
         working-directory: chipcompiler/gui
         run: pnpm install
 
-      - name: Install LinuxDeploy # For AppImage packaging
-        id: install-linuxdeploy
-        uses: miurahr/install-linuxdeploy-action@v1.8.0
-        with:
-          plugins: appimage
-
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build build-essential unzip pkg-config \
             libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libfuse2 \
-            patchelf squashfs-tools desktop-file-utils
-          sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
+            patchelf squashfs-tools desktop-file-utils libwebkit2gtk-4.1-dev
 
           sudo apt-get install -y g++-10 \
             tcl-dev libgflags-dev libgoogle-glog-dev libboost-all-dev libgtest-dev \
             flex libeigen3-dev libunwind-dev libmetis-dev libgmp-dev bison \
             libhwloc-dev libcairo2-dev libcurl4-openssl-dev libtbb-dev git \
             libftdi1-2 libhidapi-hidraw0 librsvg2-dev
-
-      - name: Download OSS CAD Suite
-        env:
-          ENABLE_OSS_CAD_SUITE: "true"
-        run: |
-          source ./scripts/common.sh
-          setup_project_vars
-          setup_oss_cad_suite
 
       - name: Build release (packaging test)
         env:
