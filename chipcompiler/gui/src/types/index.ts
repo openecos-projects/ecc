@@ -12,11 +12,27 @@ export interface InfoData {
   items: InfoItem[]
 }
 
+// Map 信息数据结构
+export interface MapInfo {
+  path: string
+  info: string[]
+}
+
+// Map 消息的数据结构（用于在 chat 中展示热力图）
+export interface MapData {
+  title: string
+  step: string
+  imageUrl: string
+  localPath: string
+  info: string[]
+  category?: string
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  type?: 'text' | 'image' | 'info'
+  type?: 'text' | 'image' | 'info' | 'map'
   status?: 'loading' | 'done' | 'error'
   image?: {
     url: string
@@ -26,6 +42,7 @@ export interface Message {
     description?: string
   }
   infoData?: InfoData
+  mapData?: MapData
 }
 
 export interface Thumbnail {

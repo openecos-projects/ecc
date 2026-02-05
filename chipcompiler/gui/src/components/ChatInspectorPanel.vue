@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full bg-(--bg-primary)">
+  <div class="chat-inspector-panel flex flex-col h-full w-full min-w-0 max-w-full bg-(--bg-primary) overflow-hidden">
     <!-- <div class="h-10 flex items-center justify-between px-4 border-b border-(--border-color)">
       <div class="flex items-center gap-2">
         <button @click="activeTab = 'chat'" :class="[
@@ -43,3 +43,11 @@ import InspectorPanel from './InspectorPanel.vue'
 
 const activeTab = ref<'chat' | 'inspector'>('chat')
 </script>
+
+<style scoped>
+/* 确保面板不会被内容撑开 */
+.chat-inspector-panel {
+  contain: layout style size;
+  box-sizing: border-box;
+}
+</style>

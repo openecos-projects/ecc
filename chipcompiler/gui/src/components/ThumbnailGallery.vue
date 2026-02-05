@@ -81,8 +81,7 @@
 
         <!-- Maps 展示 -->
         <div v-else-if="activeTab === InfoEnum.maps" class="w-full">
-          <pre
-            class="text-[11px] text-(--text-secondary) whitespace-pre-wrap break-all w-full overflow-hidden">{{ JSON.stringify(currentTabInfo, null, 2) }}</pre>
+          <MapsGallery :maps-data="currentTabInfo as Record<string, MapInfoType>" @select="handleMapSelect" />
         </div>
       </div>
 
@@ -105,6 +104,8 @@ import { CMDEnum, InfoEnum, StepEnum, ResponseEnum } from '../api/type'
 import { useTauri } from '../composables/useTauri'
 import { useWorkspace } from '../composables/useWorkspace'
 import { readTextFile } from '@tauri-apps/plugin-fs'
+import MapsGallery from './MapsGallery.vue'
+import type { MapInfo as MapInfoType } from '../types'
 
 const route = useRoute()
 const messageStore = useMessageStore()
@@ -424,6 +425,40 @@ async function handleKeyClick(key: string, value: unknown) {
   } finally {
     loadingKey.value = null
   }
+}
+
+// 处理 Maps 选择 - 发送图片和信息到 chat
+function handleMapSelect(key: string, item: MapInfoType, blobUrl: string) {
+  if (!currentStep.value) return
+
+  // 转换路径用于显示
+  const localPath = convertToLocalPath(item.path)
+
+  // 使用传入的 blobUrl，如果没有则使用占位图
+  const imageUrl = blobUrl || `https://placehold.co/400x400/1a1a2e/16a085?text=${encodeURIComponent(key)}`
+
+  // 格式化标题
+  const formattedTitle = key
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+
+  // 确定分类
+  const lowerKey = key.toLowerCase()
+  let category = '其他'
+  if (lowerKey.includes('density')) category = '密度图'
+  else if (lowerKey.includes('rudy')) category = 'RUDY'
+  else if (lowerKey.includes('egr')) category = 'EGR拥塞'
+
+  // 发送到 chat
+  messageStore.addMapMessage({
+    title: formattedTitle,
+    step: currentStep.value,
+    imageUrl,
+    localPath,
+    info: item.info || [],
+    category
+  })
 }
 
 // 监听 step 变化，重新获取数据

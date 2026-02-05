@@ -11,9 +11,9 @@
           暂无消息，请输入指令开始与 Chat 交互
         </p>
       </div>
-      <div v-else class="py-4 space-y-4 min-w-0 w-full overflow-hidden">
+      <div v-else class="messages-container py-4 space-y-4 min-w-0 w-full max-w-full overflow-hidden">
         <MessageItem v-for="msg in messages" :key="msg.id" :message="msg" @img-load="onImageLoad"
-          class="w-full min-w-0" />
+          class="message-item w-full min-w-0 max-w-full" />
       </div>
     </div>
 
@@ -26,15 +26,34 @@
 
         <div class="flex items-center justify-between mt-2 px-1">
           <div class="flex items-center gap-3">
-            <button class="text-(--text-secondary) hover:text-(--accent-color) transition-colors">
-              <i class="ri-at-line text-lg"></i>
-            </button>
-            <button class="text-(--text-secondary) hover:text-(--accent-color) transition-colors">
-              <i class="ri-attachment-2 text-lg"></i>
-            </button>
-            <button class="text-(--text-secondary) hover:text-(--accent-color) transition-colors">
-              <i class="ri-emotion-happy-line text-lg"></i>
-            </button>
+            <!-- 模式选择器 - Cursor 风格 -->
+            <div class="relative" ref="modeSelectRef">
+              <button @click="toggleModeMenu"
+                class="mode-selector flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-(--border-color) bg-(--bg-primary) hover:border-(--text-secondary)/50 transition-all">
+                <i :class="[currentMode.icon, 'text-sm text-(--text-secondary)']"></i>
+                <i class="ri-arrow-down-s-line text-xs text-(--text-secondary) transition-transform duration-200"
+                  :class="{ 'rotate-180': showModeMenu }"></i>
+              </button>
+
+              <!-- 上拉菜单 -->
+              <Transition name="popup">
+                <div v-if="showModeMenu"
+                  class="absolute bottom-full left-0 mb-2 min-w-[140px] bg-(--bg-tertiary) border border-(--border-color)/50 rounded-xl shadow-xl overflow-hidden z-50 backdrop-blur-sm">
+                  <div class="py-1">
+                    <div v-for="mode in modes" :key="mode.id" @click="selectMode(mode.id)" :class="[
+                      'flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-all',
+                      currentModeId === mode.id
+                        ? 'text-(--text-primary) bg-(--bg-secondary)'
+                        : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-secondary)/50'
+                    ]">
+                      <i :class="[mode.icon, 'text-sm']"></i>
+                      <span class="text-xs font-medium flex-1">{{ mode.label }}</span>
+                      <i v-if="currentModeId === mode.id" class="ri-check-line text-xs text-(--accent-color)"></i>
+                    </div>
+                  </div>
+                </div>
+              </Transition>
+            </div>
           </div>
 
           <button @click="handleSubmit"
@@ -49,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import MessageItem from './MessageItem.vue'
 import { useMessageStore } from '../stores/messageStore'
 
@@ -58,6 +77,48 @@ const { messages } = messageStore
 
 const inputValue = ref('')
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
+
+// 模式选择器相关
+const modeSelectRef = ref<HTMLDivElement | null>(null)
+const showModeMenu = ref(false)
+const currentModeId = ref<'chat' | 'builder'>('chat')
+
+// 模式定义
+const modes = [
+  { id: 'chat' as const, label: 'Chat', icon: 'ri-chat-3-line' },
+  { id: 'builder' as const, label: 'Builder', icon: 'ri-infinity-line' },
+]
+
+// 当前选中的模式
+const currentMode = computed(() => {
+  return modes.find(m => m.id === currentModeId.value) || modes[0]
+})
+
+// 切换菜单显示
+const toggleModeMenu = () => {
+  showModeMenu.value = !showModeMenu.value
+}
+
+// 选择模式
+const selectMode = (modeId: 'chat' | 'builder') => {
+  currentModeId.value = modeId
+  showModeMenu.value = false
+}
+
+// 点击外部关闭菜单
+const handleClickOutside = (e: MouseEvent) => {
+  if (modeSelectRef.value && !modeSelectRef.value.contains(e.target as Node)) {
+    showModeMenu.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 // Near-bottom 阈值（像素）
 const NEAR_BOTTOM_THRESHOLD = 32
@@ -156,5 +217,28 @@ const handleKeyDown = (e: KeyboardEvent) => {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
+}
+
+/* 消息容器约束 - 防止内容撑开父容器 */
+.messages-container {
+  contain: layout style;
+  box-sizing: border-box;
+}
+
+.message-item {
+  contain: layout style paint;
+  box-sizing: border-box;
+}
+
+/* 上拉菜单动画 */
+.popup-enter-active,
+.popup-leave-active {
+  transition: all 0.15s ease-out;
+}
+
+.popup-enter-from,
+.popup-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 </style>

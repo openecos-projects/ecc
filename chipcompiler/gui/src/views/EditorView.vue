@@ -69,7 +69,7 @@ onUnmounted(() => {
         </Splitter>
       </SplitterPanel>
 
-      <SplitterPanel :size="35" :minSize="25" class="overflow-hidden min-w-0">
+      <SplitterPanel :size="35" :minSize="25" class="chat-panel overflow-hidden min-w-0 max-w-full">
         <!-- AI Chat + Inspector 切换面板 -->
         <ChatInspectorPanel />
       </SplitterPanel>
@@ -131,5 +131,16 @@ onUnmounted(() => {
 :deep(.p-splitter-panel) {
   min-width: 0;
   overflow: hidden;
+}
+
+/* Chat 面板严格约束 - 防止内容撑开 */
+.chat-panel {
+  contain: layout style size;
+  box-sizing: border-box;
+}
+
+:deep(.chat-panel > *) {
+  max-width: 100%;
+  min-width: 0;
 }
 </style>

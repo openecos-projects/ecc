@@ -3,8 +3,84 @@
     'flex w-full min-w-0',
     message.role === 'user' ? 'justify-end' : 'justify-start'
   ]">
+    <!-- Map 消息 - 热力图/密度图展示 -->
+    <div v-if="message.type === 'map' && message.mapData"
+      class="map-message-container w-full max-w-full min-w-0 rounded-xl text-sm bg-(--bg-secondary) text-(--text-primary) border border-(--border-color) overflow-hidden shadow-sm">
+      <!-- 标题栏 -->
+      <div
+        class="flex items-center gap-2 px-4 py-3 bg-linear-to-r from-(--accent-color)/10 to-transparent border-b border-(--border-color)">
+        <div class="w-8 h-8 rounded-lg bg-(--accent-color)/20 flex items-center justify-center shrink-0">
+          <i class="ri-map-2-line text-(--accent-color) text-base"></i>
+        </div>
+        <div class="flex-1 min-w-0 overflow-hidden">
+          <h3 class="font-semibold text-xs text-(--text-primary) truncate">{{ message.mapData.title }}</h3>
+          <span class="text-[10px] text-(--text-secondary)">{{ message.mapData.step }}</span>
+        </div>
+        <span v-if="message.mapData.category"
+          class="text-[10px] text-(--accent-color) bg-(--accent-color)/10 px-2 py-0.5 rounded-full shrink-0">
+          {{ message.mapData.category }}
+        </span>
+      </div>
+
+      <!-- 统计信息 -->
+      <div v-if="message.mapData.info && message.mapData.info.length > 0 && message.mapData.info[0] !== ''"
+        class="px-4 py-3 border-b border-(--border-color)/50 overflow-hidden">
+        <div class="flex items-center gap-2 mb-2">
+          <i class="ri-bar-chart-2-line text-(--accent-color) text-xs shrink-0"></i>
+          <span class="text-[10px] font-medium text-(--text-secondary) uppercase tracking-wide">统计信息</span>
+        </div>
+        <div class="grid grid-cols-1 gap-1.5">
+          <div v-for="(infoLine, idx) in message.mapData.info.filter(l => l)" :key="idx"
+            class="flex items-center justify-between py-1.5 px-3 rounded-lg bg-(--bg-primary)/50 min-w-0 overflow-hidden">
+            <span class="text-[11px] text-(--text-secondary) truncate mr-2">{{ parseInfoKey(infoLine) }}</span>
+            <span class="text-[11px] font-mono font-medium text-(--accent-color) shrink-0">{{ parseInfoValue(infoLine)
+            }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 图片展示 -->
+      <div class="p-3 overflow-hidden">
+        <div class="relative rounded-xl overflow-hidden bg-(--bg-tertiary) border border-(--border-color)/30">
+          <!-- 加载状态 -->
+          <div v-if="mapImageLoading"
+            class="absolute inset-0 flex items-center justify-center z-10 bg-(--bg-secondary)/80">
+            <div class="text-center">
+              <i class="ri-loader-4-line text-2xl text-(--accent-color) animate-spin"></i>
+              <p class="text-[10px] text-(--text-secondary) mt-2">加载中...</p>
+            </div>
+          </div>
+
+          <!-- 图片 -->
+          <img :src="message.mapData.imageUrl" :alt="message.mapData.title"
+            class="map-image w-full h-auto max-h-[400px] object-contain block" @load="handleMapImageLoad"
+            @error="handleMapImageError" />
+
+          <!-- 颜色条图例 -->
+          <div
+            class="absolute bottom-3 right-3 flex flex-col items-end gap-1 bg-(--bg-secondary)/90 backdrop-blur-sm rounded-lg p-2 border border-(--border-color)/50">
+            <div class="w-4 h-24 rounded overflow-hidden"
+              style="background: linear-gradient(to bottom, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff);"></div>
+            <div class="flex flex-col justify-between h-24 text-[8px] text-(--text-secondary) font-mono">
+              <span>1.0</span>
+              <span>0.8</span>
+              <span>0.6</span>
+              <span>0.4</span>
+              <span>0.2</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 文件路径 -->
+        <div class="mt-2 flex items-center gap-1.5 text-[9px] text-(--text-secondary)/60 min-w-0 overflow-hidden">
+          <i class="ri-folder-line shrink-0"></i>
+          <span class="truncate">{{ message.mapData.localPath }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Info 消息 -->
-    <div v-if="message.type === 'info' && message.infoData"
+    <div v-else-if="message.type === 'info' && message.infoData"
       class="w-full min-w-0 p-2 rounded-lg text-sm bg-(--bg-secondary) text-(--text-primary) border border-(--border-color) overflow-hidden">
       <!-- 标题栏 -->
       <div class="flex items-center gap-2 px-3 py-2 border-b border-(--border-color)">
@@ -114,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import MarkdownIt from 'markdown-it'
 import type { Message } from '../types'
 
@@ -138,6 +214,43 @@ const renderedContent = computed(() => {
 
 const handleImageLoad = () => {
   emit('img-load')
+}
+
+// Map 图片加载状态
+const mapImageLoading = ref(true)
+
+function handleMapImageLoad() {
+  mapImageLoading.value = false
+  emit('img-load')
+}
+
+function handleMapImageError() {
+  mapImageLoading.value = false
+}
+
+// 解析 info 行的 key（冒号前的部分）
+function parseInfoKey(line: string): string {
+  if (!line) return ''
+  const colonIndex = line.indexOf(':')
+  if (colonIndex === -1) return line
+  return line.slice(0, colonIndex).trim()
+}
+
+// 解析 info 行的 value（冒号后的部分）
+function parseInfoValue(line: string): string {
+  if (!line) return ''
+  const colonIndex = line.indexOf(':')
+  if (colonIndex === -1) return ''
+  const value = line.slice(colonIndex + 1).trim()
+  // 尝试格式化数字
+  const num = parseFloat(value)
+  if (!isNaN(num)) {
+    if (Math.abs(num) < 0.001 || Math.abs(num) > 10000) {
+      return num.toExponential(3)
+    }
+    return num.toFixed(4)
+  }
+  return value
 }
 
 // 检查是否为简单对象（一层嵌套，可以用表格展示）
@@ -302,6 +415,18 @@ function csvRows(content: string): string[][] {
 }
 
 .info-content pre code {
+  display: block;
+}
+
+/* Map 消息容器 - 严格限制宽度防止撑开父容器 */
+.map-message-container {
+  contain: layout style paint;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.map-image {
+  max-width: 100%;
   display: block;
 }
 
