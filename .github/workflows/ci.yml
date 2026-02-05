@@ -65,7 +65,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-
+          cache-dependency-path: chipcompiler/gui/pnpm-lock.yaml
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
