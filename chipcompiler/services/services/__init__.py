@@ -11,5 +11,5 @@ def ecc_service():
 __all__ = [
     'ECCService',
     'ecc_service',
-    'get_info'
+    'get_step_info'
 ]
