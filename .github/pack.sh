@@ -29,17 +29,6 @@ require_venv() {
     source "${VENV_DIR}/bin/activate"
 }
 
-require_yosys() {
-    if [[ -d "${OSS_CAD_DIR}/bin" ]]; then
-        export PATH="${OSS_CAD_DIR}/bin:$PATH"
-    fi
-    if ! command -v yosys &> /dev/null; then
-        echo "ERROR: yosys not found in PATH."
-        exit 1
-    fi
-}
-
-
 build_api_server() {
     cd "$PROJECT_ROOT"
     rm -rf build dist __pycache__
@@ -74,7 +63,7 @@ main() {
     log "Activating venv"
     require_venv
     log "Checking yosys"
-    require_yosys
+    ensure_yosys || exit 1
     log "Staging OSS CAD Suite"
     stage_oss_cad_suite "$TAURI_RESOURCES_DIR" "$OSS_CAD_BUNDLE_DIR" "$TARGET" || exit 1
 
