@@ -22,6 +22,11 @@ OSS_CAD_BUNDLE_DIR="$TAURI_RESOURCES_DIR/oss-cad-suite"
 # Initialize project variables
 setup_project_vars
 
+# Default to enabling OSS CAD Suite bundling unless explicitly disabled
+if [ -z "$ENABLE_OSS_CAD_SUITE" ]; then
+    ENABLE_OSS_CAD_SUITE="true"
+fi
+
 echo "=========================================="
 echo "ChipCompiler ECC Release Build"
 echo "=========================================="
@@ -45,15 +50,18 @@ echo ""
 
 # Step 3: Stage Yosys runtime for bundling
 echo "=== Step 3: Staging Yosys runtime ==="
+mkdir -p "$TAURI_RESOURCES_DIR"
 if [[ "$ENABLE_OSS_CAD_SUITE" != "true" ]]; then
     echo "Skipping yosys bundling (ENABLE_OSS_CAD_SUITE=$ENABLE_OSS_CAD_SUITE)"
+    # Ensure resources path exists so Tauri glob doesn't fail
+    mkdir -p "$OSS_CAD_BUNDLE_DIR"
     echo ""
 else
     # Ensure OSS CAD Suite is downloaded (even if system yosys exists)
     setup_oss_cad_suite
 
     rm -rf "$OSS_CAD_BUNDLE_DIR"
-    mkdir -p "$OSS_CAD_BUNDLE_DIR/bin" "$OSS_CAD_BUNDLE_DIR/share"
+    mkdir -p "$OSS_CAD_BUNDLE_DIR"
 
     YOSYS_BIN_SRC="$OSS_CAD_DIR/bin/yosys"
     if [[ "$TARGET" == *"windows"* ]]; then
@@ -71,15 +79,16 @@ else
         exit 1
     fi
 
-    cp "$YOSYS_BIN_SRC" "$OSS_CAD_BUNDLE_DIR/bin/"
-    if [ -f "$OSS_CAD_DIR/bin/abc" ]; then
-        cp "$OSS_CAD_DIR/bin/abc" "$OSS_CAD_BUNDLE_DIR/bin/"
+    echo "Syncing OSS CAD Suite into Tauri resources..."
+    cp -a "$OSS_CAD_DIR/." "$OSS_CAD_BUNDLE_DIR/"
+    chmod +x "$OSS_CAD_BUNDLE_DIR/bin/$(basename "$YOSYS_BIN_SRC")"
+    if [ -f "$OSS_CAD_BUNDLE_DIR/bin/abc" ]; then
         chmod +x "$OSS_CAD_BUNDLE_DIR/bin/abc"
     fi
-    cp -a "$OSS_CAD_DIR/share/yosys" "$OSS_CAD_BUNDLE_DIR/share/"
-    chmod +x "$OSS_CAD_BUNDLE_DIR/bin/$(basename "$YOSYS_BIN_SRC")"
     echo "Bundled yosys: $OSS_CAD_BUNDLE_DIR/bin/$(basename "$YOSYS_BIN_SRC")"
-    echo "Bundled share/yosys: $OSS_CAD_BUNDLE_DIR/share/yosys"
+    if [ -d "$OSS_CAD_BUNDLE_DIR/share/yosys" ]; then
+        echo "Bundled share/yosys: $OSS_CAD_BUNDLE_DIR/share/yosys"
+    fi
     if [ -f "$OSS_CAD_BUNDLE_DIR/bin/abc" ]; then
         echo "Bundled abc: $OSS_CAD_BUNDLE_DIR/bin/abc"
     fi
@@ -145,6 +154,10 @@ echo ""
 
 # Step 8: Build Tauri application
 echo "=== Step 8: Building Tauri application ==="
+if [ ! -d "$OSS_CAD_BUNDLE_DIR" ]; then
+    echo "ERROR: Tauri resources missing: $OSS_CAD_BUNDLE_DIR"
+    exit 1
+fi
 pnpm run tauri build
 
 # Step 9: Copy API Server binary to release directory (for direct execution)
