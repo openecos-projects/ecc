@@ -59,6 +59,67 @@ setup_oss_cad_suite() {
     echo "==============================="
 }
 
+# Stage OSS CAD Suite into Tauri resources
+stage_oss_cad_suite() {
+    local tauri_resources_dir="$1"
+    local oss_cad_bundle_dir="$2"
+    local target="$3"
+
+    mkdir -p "$tauri_resources_dir"
+    if [[ "$ENABLE_OSS_CAD_SUITE" != "true" ]]; then
+        mkdir -p "$oss_cad_bundle_dir"
+        return 0
+    fi
+
+    if [[ ! -d "${OSS_CAD_DIR}" || ! -f "${OSS_CAD_DIR}/bin/yosys" ]]; then
+        echo "ERROR: OSS CAD Suite not found at ${OSS_CAD_DIR}."
+        return 1
+    fi
+
+    rm -rf "$oss_cad_bundle_dir"
+    mkdir -p "$oss_cad_bundle_dir"
+
+    local yosys_bin_src="$OSS_CAD_DIR/bin/yosys"
+    if [[ "$target" == *"windows"* ]]; then
+        yosys_bin_src="$OSS_CAD_DIR/bin/yosys.exe"
+    fi
+
+    if [ ! -f "$yosys_bin_src" ]; then
+        echo "ERROR: yosys binary not found at $yosys_bin_src"
+        return 1
+    fi
+
+    local slang_src
+    slang_src=$(ls "$OSS_CAD_DIR/share/yosys/plugins"/slang.* 2>/dev/null | head -1)
+    if [ -z "$slang_src" ]; then
+        echo "ERROR: slang plugin not found under $OSS_CAD_DIR/share/yosys/plugins"
+        return 1
+    fi
+
+    cp -a "$OSS_CAD_DIR/." "$oss_cad_bundle_dir/"
+    if [ -d "$oss_cad_bundle_dir/bin" ]; then
+        find "$oss_cad_bundle_dir/bin" -maxdepth 1 -type f ! -name 'yosys' ! -name 'yosys*' ! -name 'abc' -print0 | xargs -0 -r rm -f
+    fi
+    if [ -d "$oss_cad_bundle_dir/libexec" ]; then
+        rm -rf "$oss_cad_bundle_dir/libexec"
+    fi
+    if [ -d "$oss_cad_bundle_dir/lib" ]; then
+        rm -rf "$oss_cad_bundle_dir/lib"
+    fi
+    if [ -d "$oss_cad_bundle_dir/share" ]; then
+        find "$oss_cad_bundle_dir/share" -mindepth 1 -maxdepth 1 -print0 | \
+            xargs -0 -r -I {} bash -c 'if [ "$(basename "{}")" != "yosys" ]; then rm -rf "{}"; fi'
+    fi
+    if [ -d "$oss_cad_bundle_dir/share/yosys" ]; then
+        find "$oss_cad_bundle_dir/share/yosys" -mindepth 1 -maxdepth 1 -print0 | \
+            xargs -0 -r -I {} bash -c 'name=$(basename "{}"); case "$name" in yosys*|plugins|techlibs|scripts) ;; *) rm -rf "{}" ;; esac'
+        if [ -d "$oss_cad_bundle_dir/share/yosys/plugins" ]; then
+            find "$oss_cad_bundle_dir/share/yosys/plugins" -type f ! -name 'slang.so' -print0 | xargs -0 -r rm -f
+        fi
+    fi
+    chmod +x "$oss_cad_bundle_dir/bin/$(basename "$yosys_bin_src")"
+}
+
 # Append OSS CAD path to venv activate script
 append_oss_cad_to_venv() {
     if [[ "$ENABLE_OSS_CAD_SUITE" == "true" ]]; then
@@ -208,21 +269,16 @@ build_tauri_bundle() {
         return 1
     fi
 
-    export APPIMAGE_EXTRACT_AND_RUN=1
-    if [ -z "${LINUXDEPLOY:-}" ] && command -v linuxdeploy &> /dev/null; then
-        export LINUXDEPLOY="$(command -v linuxdeploy)"
-    fi
-    if [ -z "${LINUXDEPLOY_PLUGIN_APPIMAGE:-}" ] && command -v linuxdeploy-plugin-appimage &> /dev/null; then
-        export LINUXDEPLOY_PLUGIN_APPIMAGE="$(command -v linuxdeploy-plugin-appimage)"
-    fi
-    if [ -z "${LINUXDEPLOY:-}" ]; then
-        echo "Warning: linuxdeploy not found in PATH. Set LINUXDEPLOY to its absolute path if AppImage bundling fails."
-    fi
-    if [ -z "${LINUXDEPLOY_PLUGIN_APPIMAGE:-}" ]; then
-        echo "Warning: linuxdeploy-plugin-appimage not found in PATH. Set LINUXDEPLOY_PLUGIN_APPIMAGE to its absolute path if AppImage bundling fails."
+    if [ -d "$HOME/.local/bin" ]; then
+        export PATH="$HOME/.local/bin:$PATH"
     fi
 
-    (cd "$gui_dir" && pnpm run tauri build)
+    export RUST_BACKTRACE=1
+
+    if ! (cd "$gui_dir" && pnpm run tauri build -- --verbose); then
+        echo "ERROR: Tauri build failed"
+        return 1
+    fi
 
     echo "=== Step 9: Copying API Server to release directory ==="
     local release_dir="$tauri_dir/target/release"

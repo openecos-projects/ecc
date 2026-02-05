@@ -97,7 +97,8 @@ jobs:
           sudo apt-get install -y g++-10 \
             tcl-dev libgflags-dev libgoogle-glog-dev libboost-all-dev libgtest-dev \
             flex libeigen3-dev libunwind-dev libmetis-dev libgmp-dev bison \
-            libhwloc-dev libcairo2-dev libcurl4-openssl-dev libtbb-dev git
+            libhwloc-dev libcairo2-dev libcurl4-openssl-dev libtbb-dev git \
+            libftdi1-2 libhidapi-hidraw0 librsvg2-dev
 
       - name: Download OSS CAD Suite
         env:
