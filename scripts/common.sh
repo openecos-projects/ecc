@@ -14,6 +14,7 @@ setup_project_vars() {
     export PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
     export ENABLE_OSS_CAD_SUITE="${ENABLE_OSS_CAD_SUITE:-true}"
     export ECC_PY_GLOB="${ECC_TOOLS_ROOT}/bin/ecc_py*.so"
+    export CMAKE_EXTRA_OPTIONS="${CMAKE_EXTRA_OPTIONS:-}"
 }
 
 # Check and setup uv environment
@@ -126,13 +127,21 @@ build_ecc_py() {
     fi
 
     echo "Configuring project with CMake..."
+    local cmake_opts=("-DBUILD_AIEDA=ON")
+    local cmake_gen=""
     if command -v ninja &> /dev/null; then
         echo "Using Ninja generator..."
-        cmake -G Ninja -DBUILD_AIEDA=ON ..
+        cmake_gen="-G Ninja"
     else
         echo "Using default generator..."
-        cmake -DBUILD_AIEDA=ON ..
     fi
+
+    local cmake_cmd="cmake ${cmake_gen} ${cmake_opts[*]}"
+    if [[ -n "${CMAKE_EXTRA_OPTIONS}" ]]; then
+        cmake_cmd+=" ${CMAKE_EXTRA_OPTIONS}"
+    fi
+    cmake_cmd+=" .."
+    eval "${cmake_cmd}"
 
     if [[ $? -ne 0 ]]; then
         echo "Error: CMake configuration failed"
