@@ -8,16 +8,16 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SERVICES_DIR="$PROJECT_ROOT/chipcompiler/services"
+SERVER_DIR="$PROJECT_ROOT/chipcompiler/server"
 TAURI_DIR="$PROJECT_ROOT/chipcompiler/gui/src-tauri"
 BINARIES_DIR="$TAURI_DIR/binaries"
 
 echo "=== Building ChipCompiler API Server ==="
 echo "Project root: $PROJECT_ROOT"
-echo "Services dir: $SERVICES_DIR"
+echo "Server dir: $SERVER_DIR"
 
-# Ensure we're in the services directory
-cd "$SERVICES_DIR"
+# Ensure we're in the server directory
+cd "$SERVER_DIR"
 
 # Clean previous builds
 echo "Cleaning previous builds..."
@@ -33,7 +33,7 @@ if [ ! -f "dist/api-server" ]; then
     exit 1
 fi
 
-echo "Build successful: $SERVICES_DIR/dist/api-server"
+echo "Build successful: $SERVER_DIR/dist/api-server"
 
 # Get the target triple for the current platform
 TARGET=$(rustc -vV | grep host | cut -d' ' -f2)

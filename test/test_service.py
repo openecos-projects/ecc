@@ -104,7 +104,7 @@ def test_ics55_gcd():
         
     # test get step infomation
     #####################################################
-    # from chipcompiler.services import InfoEnum
+    # from chipcompiler.server import InfoEnum
     # for step, tool, state in steps:
     #     for info_enum in InfoEnum:           
     #         ecc_req = ECCRequest(

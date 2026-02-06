@@ -41,7 +41,7 @@ module-root = ""
 source-exclude = ["scripts/*"]
 
 [project.scripts]
-chipcompiler = "chipcompiler.services.run_server:main"
+chipcompiler = "chipcompiler.server.run_server:main"
 
 [tool.ruff]
 line-length = 100

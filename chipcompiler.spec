@@ -79,11 +79,11 @@ hiddenimports = [
     'anyio._backends._asyncio',
     # ChipCompiler modules
     'chipcompiler',
-    'chipcompiler.services',
-    'chipcompiler.services.main',
-    'chipcompiler.services.routers',
-    'chipcompiler.services.schemas',
-    'chipcompiler.services.services',
+    'chipcompiler.server',
+    'chipcompiler.server.main',
+    'chipcompiler.server.routers',
+    'chipcompiler.server.schemas',
+    'chipcompiler.server.services',
     'chipcompiler.data',
     'chipcompiler.engine',
     'chipcompiler.tools',
@@ -97,7 +97,7 @@ hiddenimports = [
     'chipcompiler.tools.yosys.runner',
     'chipcompiler.tools.yosys.utility',
     'benchmark',
-    'benchmark.get_parameters',
+    'benchmark.parameters',
     'benchmark.benchmark',
     # Multiprocessing support
     'multiprocessing',
@@ -115,7 +115,7 @@ hiddenimports = [
 ]
 
 a = Analysis(
-    [str(PROJ_ROOT / 'chipcompiler' / 'services' / 'run_server.py')],
+    [str(PROJ_ROOT / 'chipcompiler' / 'server' / 'run_server.py')],
     pathex=[str(PROJ_ROOT)],
     binaries=binaries,
     datas=datas,
