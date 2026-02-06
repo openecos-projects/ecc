@@ -166,10 +166,37 @@ fn is_api_server_healthy(port: u16) -> bool {
 /// Start the FastAPI server process
 /// In debug mode: runs Python script directly
 /// In release mode: runs the bundled executable
-///
-/// If a healthy API server is already running on the port (e.g. started via
-/// VS Code debugger), the existing server is reused and no new process is spawned.
-fn start_api_server(app_handle: &tauri::AppHandle) -> ApiStartResult {
+#[cfg(not(debug_assertions))]
+fn get_possible_oss_cad_dirs(app_handle: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+
+    // 1) Honor pre-set env (useful for manual testing / overrides).
+    if let Ok(env_dir) = std::env::var("CHIPCOMPILER_OSS_CAD_DIR") {
+        paths.push(std::path::PathBuf::from(env_dir));
+    }
+
+    // 2) Tauri resource dir variants.
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        paths.push(resource_dir.join("oss-cad-suite"));
+        paths.push(resource_dir.join("resources").join("oss-cad-suite"));
+    }
+
+    // 3) Nearby executable layout variants (AppImage / bundle layouts).
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            paths.push(exe_dir.join("oss-cad-suite"));
+            paths.push(exe_dir.join("resources").join("oss-cad-suite"));
+            paths.push(exe_dir.join("..").join("lib").join("ECC").join("resources").join("oss-cad-suite"));
+        }
+    }
+
+    // Deduplicate while preserving order.
+    let mut seen = std::collections::HashSet::new();
+    paths.retain(|p| seen.insert(p.clone()));
+    paths
+}
+
+fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
     use std::path::PathBuf;
     
     // Check if a healthy API server is already running (e.g. started by debugger)
@@ -280,12 +307,21 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> ApiStartResult {
         println!("Starting FastAPI server (prod mode) from: {:?}", server_binary);
 
         let mut cmd = Command::new(&server_binary);
-        if let Ok(resource_dir) = app_handle.path().resource_dir() {
-            let oss_dir = resource_dir.join("oss-cad-suite");
-            if oss_dir.exists() {
-                println!("Setting CHIPCOMPILER_OSS_CAD_DIR to {:?}", oss_dir);
-                cmd.env("CHIPCOMPILER_OSS_CAD_DIR", &oss_dir);
+
+        let mut found_oss_dir: Option<PathBuf> = None;
+        for path in get_possible_oss_cad_dirs(app_handle) {
+            println!("Checking for oss-cad-suite at: {:?}", path);
+            if path.exists() {
+                found_oss_dir = Some(path);
+                break;
             }
+        }
+
+        if let Some(oss_dir) = found_oss_dir {
+            println!("Setting CHIPCOMPILER_OSS_CAD_DIR to {:?}", oss_dir);
+            cmd.env("CHIPCOMPILER_OSS_CAD_DIR", &oss_dir);
+        } else {
+            eprintln!("⚠️ oss-cad-suite resource directory not found; synthesis may fail if yosys is unavailable in PATH.");
         }
 
         match cmd
@@ -427,6 +463,28 @@ fn stop_api_server(process: &mut Option<Child>) {
         } else {
             eprintln!("❌ Port {} is still occupied after cleanup", API_PORT);
         }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn configure_linux_graphics_env() {
+    let is_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some()
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|v| v.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false);
+
+    if !is_wayland {
+        return;
+    }
+
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        println!("Set WEBKIT_DISABLE_DMABUF_RENDERER=1 for Wayland compatibility");
+    }
+
+    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+        println!("Set WEBKIT_DISABLE_COMPOSITING_MODE=1 to avoid EGL init failure");
     }
 }
 
@@ -629,7 +687,10 @@ async fn request_project_permission(app: tauri::AppHandle, path: String) -> Resu
 
 fn main() {
     use std::path::PathBuf;
-    
+
+    #[cfg(target_os = "linux")]
+    configure_linux_graphics_env();
+
     // Create a shared reference for the API server process
     let api_server: ApiServerProcess = Arc::new(Mutex::new(None));
     let api_server_clone = api_server.clone();

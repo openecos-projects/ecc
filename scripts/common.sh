@@ -59,6 +59,160 @@ setup_oss_cad_suite() {
     echo "==============================="
 }
 
+_oss_cad_keep_path() {
+    local root="$1"
+    local abs_path="$2"
+    local keep_file="$3"
+
+    if [[ ! -e "$abs_path" ]]; then
+        return 0
+    fi
+    if [[ "$abs_path" != "$root/"* ]]; then
+        return 0
+    fi
+
+    local rel_path="${abs_path#"$root"/}"
+    if ! grep -Fxq "$rel_path" "$keep_file"; then
+        echo "$rel_path" >> "$keep_file"
+    fi
+
+    if [[ -L "$abs_path" ]]; then
+        local real_path
+        real_path=$(readlink -f "$abs_path" 2>/dev/null || true)
+        if [[ -n "$real_path" && "$real_path" == "$root/"* ]]; then
+            local real_rel="${real_path#"$root"/}"
+            if ! grep -Fxq "$real_rel" "$keep_file"; then
+                echo "$real_rel" >> "$keep_file"
+            fi
+        fi
+    fi
+}
+
+_oss_cad_collect_elf_closure() {
+    local root="$1"
+    local seed="$2"
+    local keep_file="$3"
+    local seen_file="$4"
+
+    [[ -e "$seed" ]] || return 0
+
+    local queue=("$seed")
+    while ((${#queue[@]} > 0)); do
+        local current="${queue[0]}"
+        queue=("${queue[@]:1}")
+
+        _oss_cad_keep_path "$root" "$current" "$keep_file"
+
+        if grep -Fxq "$current" "$seen_file"; then
+            continue
+        fi
+        echo "$current" >> "$seen_file"
+
+        while IFS= read -r dep; do
+            [[ -n "$dep" ]] || continue
+            if [[ "$dep" == "$root/"* ]]; then
+                _oss_cad_keep_path "$root" "$dep" "$keep_file"
+                if ! grep -Fxq "$dep" "$seen_file"; then
+                    queue+=("$dep")
+                fi
+            fi
+        done < <(ldd "$current" 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i ~ /^\//) print $i}')
+    done
+}
+
+prune_oss_cad_runtime() {
+    local oss_cad_bundle_dir="$1"
+    local target="$2"
+
+    if [[ "$target" != *"linux"* ]]; then
+        return 0
+    fi
+    if ! command -v ldd >/dev/null 2>&1; then
+        echo "Warning: ldd not found, skipping OSS CAD runtime pruning."
+        return 0
+    fi
+
+    local keep_file
+    local seen_file
+    keep_file=$(mktemp)
+    seen_file=$(mktemp)
+
+    # Keep known runtime libs required by yosys launcher/executable in AppImage.
+    # ldd can resolve to host paths during build-time and miss bundled libs, so
+    # we keep a conservative minimal set explicitly.
+    local required_lib_patterns=(
+        "ld-linux*"
+        "libc.so*"
+        "libm.so*"
+        "libz.so*"
+        "libgcc_s.so*"
+        "libstdc++.so*"
+        "libffi.so*"
+        "libreadline.so*"
+        "libtcl8.6.so*"
+        "libtinfo.so*"
+    )
+    local pat
+    for pat in "${required_lib_patterns[@]}"; do
+        for f in "$oss_cad_bundle_dir/lib"/$pat; do
+            [[ -e "$f" ]] || continue
+            _oss_cad_keep_path "$oss_cad_bundle_dir" "$f" "$keep_file"
+        done
+    done
+
+    # Keep loader path used by bin/yosys wrapper.
+    for interp in "$oss_cad_bundle_dir"/lib/ld-linux* "$oss_cad_bundle_dir"/lib64/ld-linux*; do
+        [[ -e "$interp" ]] || continue
+        _oss_cad_keep_path "$oss_cad_bundle_dir" "$interp" "$keep_file"
+    done
+
+    # Yosys Tcl runtime scripts (set by wrapper env vars).
+    if [[ -d "$oss_cad_bundle_dir/lib/tcl8.6" ]]; then
+        find "$oss_cad_bundle_dir/lib/tcl8.6" \( -type f -o -type l \) | while IFS= read -r f; do
+            _oss_cad_keep_path "$oss_cad_bundle_dir" "$f" "$keep_file"
+        done
+    fi
+    if [[ -d "$oss_cad_bundle_dir/lib/tk8.6" ]]; then
+        find "$oss_cad_bundle_dir/lib/tk8.6" \( -type f -o -type l \) | while IFS= read -r f; do
+            _oss_cad_keep_path "$oss_cad_bundle_dir" "$f" "$keep_file"
+        done
+    fi
+
+    local elf_seeds=(
+        "$oss_cad_bundle_dir/libexec/yosys"
+        "$oss_cad_bundle_dir/bin/yosys-abc"
+        "$oss_cad_bundle_dir/bin/abc"
+        "$oss_cad_bundle_dir/share/yosys/plugins/slang.so"
+    )
+
+    local seed
+    for seed in "${elf_seeds[@]}"; do
+        _oss_cad_collect_elf_closure "$oss_cad_bundle_dir" "$seed" "$keep_file" "$seen_file"
+    done
+
+    if [[ -d "$oss_cad_bundle_dir/lib" ]]; then
+        find "$oss_cad_bundle_dir/lib" \( -type f -o -type l \) | while IFS= read -r f; do
+            local rel="${f#"$oss_cad_bundle_dir"/}"
+            if ! grep -Fxq "$rel" "$keep_file"; then
+                rm -f "$f"
+            fi
+        done
+        find "$oss_cad_bundle_dir/lib" -depth -type d -empty -delete
+    fi
+
+    if [[ -d "$oss_cad_bundle_dir/libexec" ]]; then
+        find "$oss_cad_bundle_dir/libexec" \( -type f -o -type l \) | while IFS= read -r f; do
+            local rel="${f#"$oss_cad_bundle_dir"/}"
+            if ! grep -Fxq "$rel" "$keep_file"; then
+                rm -f "$f"
+            fi
+        done
+        find "$oss_cad_bundle_dir/libexec" -depth -type d -empty -delete
+    fi
+
+    rm -f "$keep_file" "$seen_file"
+}
+
 # Stage OSS CAD Suite into Tauri resources
 stage_oss_cad_suite() {
     local tauri_resources_dir="$1"
@@ -100,12 +254,7 @@ stage_oss_cad_suite() {
     if [ -d "$oss_cad_bundle_dir/bin" ]; then
         find "$oss_cad_bundle_dir/bin" -maxdepth 1 -type f ! -name 'yosys' ! -name 'yosys*' ! -name 'abc' -print0 | xargs -0 -r rm -f
     fi
-    if [ -d "$oss_cad_bundle_dir/libexec" ]; then
-        rm -rf "$oss_cad_bundle_dir/libexec"
-    fi
-    if [ -d "$oss_cad_bundle_dir/lib" ]; then
-        rm -rf "$oss_cad_bundle_dir/lib"
-    fi
+    prune_oss_cad_runtime "$oss_cad_bundle_dir" "$target"
     if [ -d "$oss_cad_bundle_dir/examples" ]; then
         rm -rf "$oss_cad_bundle_dir/examples"
     fi
@@ -120,8 +269,10 @@ stage_oss_cad_suite() {
             xargs -0 -r -I {} bash -c 'if [ "$(basename "{}")" != "yosys" ]; then rm -rf "{}"; fi'
     fi
     if [ -d "$oss_cad_bundle_dir/share/yosys" ]; then
-        find "$oss_cad_bundle_dir/share/yosys" -mindepth 1 -maxdepth 1 -print0 | \
-            xargs -0 -r -I {} bash -c 'name=$(basename "{}"); case "$name" in yosys*|plugins|techlibs|scripts) ;; *) rm -rf "{}" ;; esac'
+        # Keep top-level files under share/yosys (e.g. techmap.v), and only prune
+        # unnecessary subdirectories.
+        find "$oss_cad_bundle_dir/share/yosys" -mindepth 1 -maxdepth 1 -type d -print0 | \
+            xargs -0 -r -I {} bash -c 'name=$(basename "{}"); case "$name" in plugins|techlibs|scripts) ;; *) rm -rf "{}" ;; esac'
         if [ -d "$oss_cad_bundle_dir/share/yosys/plugins" ]; then
             find "$oss_cad_bundle_dir/share/yosys/plugins" -type f ! -name 'slang.so' -print0 | xargs -0 -r rm -f
         fi

@@ -26,10 +26,18 @@ def run_step(workspace: Workspace,
     Returns:
         True if synthesis succeeded, False otherwise
     """
-    if not is_eda_exist():
-        return False
-    
     sub_flow = YosysSubFlow(workspace=workspace, workspace_step=step)
+
+    if not is_eda_exist():
+        sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
+        error_msg = "Error: yosys is not available (bundled runtime or PATH)."
+        try:
+            with open(step.log["file"], "w") as log_file:
+                log_file.write(error_msg + "\n")
+        except Exception:
+            pass
+        print(error_msg)
+        return False
 
     input_verilog = step.input.get("verilog", "")
     input_filelist = workspace.design.input_filelist if workspace.design.input_filelist else ""
@@ -39,6 +47,7 @@ def run_step(workspace: Workspace,
     has_valid_filelist = input_filelist and os.path.exists(input_filelist)
 
     if not has_valid_verilog and not has_valid_filelist:
+        sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
         print(f"Error: Neither RTL file ({input_verilog}) nor filelist ({input_filelist}) found")
         return False
 
@@ -75,7 +84,10 @@ def run_step(workspace: Workspace,
         else:
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
             
-            print(f"Error: Output netlist not generated at {step.output['verilog']}")
+            print(
+                f"Error: Output netlist not generated at {step.output['verilog']}. "
+                f"yosys exit code: {result.returncode}"
+            )
             return False
 
     except subprocess.TimeoutExpired:
