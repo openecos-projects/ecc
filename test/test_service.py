@@ -21,7 +21,7 @@ from chipcompiler.engine import (
     EngineFlow
 )
 
-from chipcompiler.services import (
+from chipcompiler.server import (
     ECCService,
     ecc_service,
     ECCRequest,

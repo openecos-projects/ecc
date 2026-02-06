@@ -3,7 +3,7 @@
 import os
 import sys
 
-from chipcompiler.services import ECCService, ECCRequest
+from chipcompiler.server import ECCService, ECCRequest
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(current_dir)

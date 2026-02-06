@@ -15,7 +15,7 @@ from pathlib import Path
 
 # Get the project root directory
 spec_dir = Path(SPECPATH)
-project_root = spec_dir.parent.parent  # chipcompiler/services -> project_root
+project_root = spec_dir.parent.parent  # chipcompiler/server -> project_root
 
 # Add project root to path for analysis
 sys.path.insert(0, str(project_root))
@@ -25,14 +25,14 @@ block_cipher = None
 # Collect all chipcompiler modules
 hidden_imports = [
     'chipcompiler',
-    'chipcompiler.services',
-    'chipcompiler.services.main',
-    'chipcompiler.services.routers',
-    'chipcompiler.services.routers.project',
-    'chipcompiler.services.schemas',
-    'chipcompiler.services.schemas.project',
-    'chipcompiler.services.services',
-    'chipcompiler.services.services.project_service',
+    'chipcompiler.server',
+    'chipcompiler.server.main',
+    'chipcompiler.server.routers',
+    'chipcompiler.server.routers.project',
+    'chipcompiler.server.schemas',
+    'chipcompiler.server.schemas.project',
+    'chipcompiler.server.services',
+    'chipcompiler.server.services.project_service',
     'chipcompiler.data',
     'chipcompiler.data.workspace',
     'chipcompiler.data.parameter',

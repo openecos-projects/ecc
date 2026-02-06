@@ -43,7 +43,7 @@ def main():
     print(f"Starting ChipCompiler API server on {args.host}:{args.port}")
     
     uvicorn.run(
-        "chipcompiler.services.main:app",
+        "chipcompiler.server.main:app",
         host=args.host,
         port=args.port,
         reload=args.reload,

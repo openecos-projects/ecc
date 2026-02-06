@@ -18,7 +18,7 @@ from chipcompiler.engine import (
 
 from chipcompiler.rtl2gds import build_rtl2gds_flow
 
-from chipcompiler.services.schemas import (
+from chipcompiler.server.schemas import (
     CMDEnum,
     ECCRequest, 
     ECCResponse, 
@@ -26,7 +26,7 @@ from chipcompiler.services.schemas import (
     DATA_TEMPLATE
     )
 
-from chipcompiler.services.sse import notify_service
+from chipcompiler.server.sse import notify_service
 
 class ECCService:
     def __init__(self):
