@@ -22,11 +22,11 @@ from chipcompiler.server.schemas import (
     CMDEnum,
     ECCRequest, 
     ECCResponse, 
-    ResponseEnum,
-    DATA_TEMPLATE
+    ResponseEnum
     )
 
-from chipcompiler.server.sse import notify_service
+from chipcompiler.server.sse import server_notify
+notify_service = server_notify()
 
 class ECCService:
     def __init__(self):
@@ -99,6 +99,20 @@ class ECCService:
         engine_flow.create_step_workspaces()
     
     def create_workspace(self, request: ECCRequest) -> ECCResponse:
+        """
+        "request" : {
+            "directory" : "",
+            "pdk" : "",
+            "parameters" : {},
+            "origin_def" : "",
+            "origin_verilog" : "",
+            "filelist" : "",
+            "rtl_list" : ""
+        },
+        "response" : {
+            "directory" : ""
+        }
+        """
         # check cmd
         state, response = self.check_cmd(request, CMDEnum.create_workspace)
         if not state:
@@ -169,6 +183,14 @@ class ECCService:
             )
     
     def load_workspace(self, request: ECCRequest) -> ECCResponse:
+        """
+        "request" : {
+            "directory" : ""
+        },
+        "response" : {
+            "directory" : ""
+        }
+        """
         # check cmd
         state, response = self.check_cmd(request, CMDEnum.load_workspace)
         if not state:
@@ -216,6 +238,14 @@ class ECCService:
             )
     
     def delete_workspace(self, request: ECCRequest) -> ECCResponse:
+        """
+        "request" : {
+            "directory" : ""
+        },
+        "response" : {
+            "directory" : ""
+        }
+        """
         # check cmd
         state, response = self.check_cmd(request, CMDEnum.delete_workspace)
         if not state:
@@ -260,6 +290,14 @@ class ECCService:
         )
 
     def rtl2gds(self, request: ECCRequest) -> ECCResponse:
+        """
+        "request" : {
+            "rerun" : False
+        },
+        "response" : {
+            "rerun" : False
+        }
+        """
         # check cmd
         state, response = self.check_cmd(request, CMDEnum.rtl2gds)
         if not state:
@@ -311,12 +349,8 @@ class ECCService:
                     failed_step = workspace_step.name
                     break
                 else: 
-                    notify_service.notify(ECCResponse(
-                        cmd=CMDEnum.notify.value,
-                        response=ResponseEnum.success.value,
-                        data={"type": "step_complete", "step": workspace_step.name},
-                        message=[f"step {workspace_step.name} completed"]
-                    ))
+                    notify_service.notify_step(step=workspace_step.name,
+                                               step_path=self.workspace.flow.path)
             # self.engine_flow.run_steps()
         except Exception as e:
             return ECCResponse(
@@ -342,6 +376,16 @@ class ECCService:
             )
 
     def run_step(self, request: ECCRequest) -> ECCResponse:
+        """
+        "request" : {
+            "step" : "",
+            "rerun" : False
+        },
+        "response" : {
+            "step" : "",
+            "state" : "Unstart"
+        }
+        """
         # check cmd
         state, response = self.check_cmd(request, CMDEnum.run_step)
         if not state:
@@ -393,6 +437,18 @@ class ECCService:
             )
             
     def get_info(self, request: ECCRequest) -> ECCResponse:
+        """
+        get information by step (defined by StepEnum) and id (defined by InfoEnum)
+        "request" : {
+            "step" : "",
+            "id" : ""
+        },
+        "response" : {
+            "step" : "",
+            "id" : "",
+            "info" : {}
+        }
+        """
         # check cmd
         state, response = self.check_cmd(request, CMDEnum.get_info)
         if not state:

@@ -3,7 +3,6 @@ from .routers import workspace_router
 from .schemas import (
     CMDEnum,
     ResponseEnum,
-    DATA_TEMPLATE,
     ECCRequest,
     ECCResponse,
     InfoEnum
@@ -18,7 +17,6 @@ __all__ = [
     'workspace_router',
     'CMDEnum',
     'ResponseEnum',
-    'DATA_TEMPLATE',
     'ECCRequest',
     'ECCResponse',
     'InfoEnum',

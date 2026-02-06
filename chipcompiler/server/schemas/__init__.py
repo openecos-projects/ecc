@@ -1,7 +1,6 @@
 from .ecc import (
     CMDEnum,
     ResponseEnum,
-    DATA_TEMPLATE,
     ECCRequest,
     ECCResponse
 )
@@ -13,7 +12,6 @@ from .info import (
 __all__ = [
     'CMDEnum',
     'ResponseEnum',
-    'DATA_TEMPLATE',
     'ECCRequest',
     'ECCResponse',
     'InfoEnum'

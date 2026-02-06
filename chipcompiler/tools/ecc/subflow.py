@@ -4,6 +4,8 @@ from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
 
 from enum import Enum
 
+from ..eda import SubFlowBase
+
 class EccSubFlowEnum(Enum):
     load_data = "load data"
     save_data = "save data"
@@ -25,7 +27,7 @@ class EccSubFlowEnum(Enum):
     run_filler = "run filler"
     run_DRC = "run DRC"
 
-class EccSubFlow:
+class EccSubFlow(SubFlowBase):
     def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):
         self.workspace = workspace
         self.workspace_step = workspace_step
@@ -143,4 +145,9 @@ class EccSubFlow:
                 step_dict["peak memory (mb)"] = memory
                 step_dict["info"] = info
                 
-        self.save()
+                self.save()
+                
+                self.notify_subflow(step = self.workspace_step.name,
+                                    subflow_path=self.workspace_step.subflow.get("path", ""))
+                
+                break

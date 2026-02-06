@@ -4,6 +4,7 @@
 from enum import Enum
 
 class InfoEnum(Enum):
+    home = "home" # home information
     views = "views" # information while switch web page
     layout = "layout" # step design layout
     metrics = "metrics" # step metrics
@@ -11,3 +12,7 @@ class InfoEnum(Enum):
     analysis = "analysis" # analysis metrics
     maps = "maps" # maps for this step such as density map
     checklist = "checklist" # step checklist
+    
+class NotifyEnum(Enum):
+    step = "step"
+    subflow = "subflow"

@@ -2,7 +2,9 @@
 # -*- encoding: utf-8 -*-
 from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
 
-class YosysSubFlow:
+from ..eda import SubFlowBase
+
+class YosysSubFlow(SubFlowBase):
     def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):
         self.workspace = workspace
         self.workspace_step = workspace_step
@@ -56,5 +58,10 @@ class YosysSubFlow:
                 step_dict["runtime"] = runtime
                 step_dict["peak memory (mb)"] = memory
                 step_dict["info"] = info
-        
-        self.save()
+                
+                self.save()
+                
+                self.notify_subflow(step = self.workspace_step.name,
+                                    subflow_path=self.workspace_step.subflow.get("path", ""))
+                
+                break

@@ -18,18 +18,15 @@ class NotifyService:
     
     基于 workspace_id 管理通知分发。当 ECCService 加载或创建 workspace 时，
     会设置当前的 workspace_id，之后任何函数都可以通过 notify() 发送通知。
+      
+    # 设置 workspace
+    set_workspace(workspace_id)
     
-    使用方式:
-        from chipcompiler.services.sse import notify_service
-        
-        # 设置 workspace
-        notify_service.set_workspace(workspace_id)
-        
-        # 发送通知（自动使用当前 workspace_id）
-        notify_service.notify(ECCResponse(...))
-        
-        # 清除 workspace
-        notify_service.clear_workspace()
+    # 发送通知（自动使用当前 workspace_id）
+    notify(ECCResponse(...))
+    
+    # 清除 workspace
+    clear_workspace()
     """
     
     def __init__(self):
@@ -87,7 +84,8 @@ class NotifyService:
         if target_id is None:
             return False
         
-        event_manager.notify(target_id, response)
+        event_manager.notify(workspace_id=target_id, 
+                             response=response)
         return True
     
     def notify_to(self, workspace_id: str, response: ECCResponse) -> None:
@@ -98,8 +96,65 @@ class NotifyService:
             workspace_id: 目标 workspace ID
             response: ECCResponse 通知对象
         """
-        event_manager.notify(workspace_id, response)
-
-
-# 全局单例
-notify_service = NotifyService()
+        event_manager.notify(workspace_id=workspace_id, 
+                             response=response)
+    
+    def notify_step(self, step : str, step_path : str):
+        """
+        update step status for home page
+        "response" : {
+            "step" : "",
+            "id" : "",
+            "info" : {
+                "step_path" : ""
+            }
+        }
+        """
+        from ..schemas.ecc import CMDEnum, ResponseEnum
+        from ..schemas.info import NotifyEnum
+        response = ECCResponse(
+            cmd=CMDEnum.notify.value,
+            response=ResponseEnum.success.value,
+            data={
+                "step": step, 
+                "id" : NotifyEnum.step.value,
+                "info": {
+                    "step_path" : step_path
+                }
+            },
+            
+            message=[f"update step {step} status."]
+        )
+        
+        self.notify(response=response)
+            
+    def notify_subflow(self, 
+                       step : str,
+                       subflow_path : str):
+        """
+        update subflow status for step page
+        "response" : {
+            "step" : "",
+            "id" : "",
+            "info" : {
+                "subflow_path" : ""
+            }
+        }
+        """
+        from ..schemas.ecc import CMDEnum, ResponseEnum
+        from ..schemas.info import NotifyEnum
+        response = ECCResponse(
+            cmd=CMDEnum.notify.value,
+            response=ResponseEnum.success.value,
+            data={
+                "step": step, 
+                "id" : NotifyEnum.subflow.value,
+                "info": {
+                    "subflow_path" : subflow_path
+                }
+            },
+            
+            message=[f"update step {step} status."]
+        )
+        
+        self.notify(response=response)

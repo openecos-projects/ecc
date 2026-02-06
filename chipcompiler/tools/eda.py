@@ -121,3 +121,10 @@ def get_step_info(workspace: Workspace,
     return eda_module.get_step_info(workspace=workspace,
                                     step=step,
                                     id=id)
+    
+class SubFlowBase:
+    def notify_subflow(self, step : str,  subflow_path : str):
+        from chipcompiler.server.sse import server_notify
+        notify_inst = server_notify()
+        notify_inst.notify_subflow(step, subflow_path)
+        
