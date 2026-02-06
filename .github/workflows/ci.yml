@@ -103,13 +103,29 @@ jobs:
           CMAKE_EXTRA_OPTIONS='-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache' \
             bash ./.github/pack.sh
 
-      - name: Upload build artifacts
+      - name: Upload ecc-client artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
+          name: ecc-client
           if-no-files-found: ignore
           path: |
             chipcompiler/gui/src-tauri/target/release/ecc-client
+
+      - name: Upload AppImage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          if-no-files-found: ignore
+          path: |
             chipcompiler/gui/src-tauri/target/release/bundle/**/*.AppImage
+
+      - name: Upload deb artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          if-no-files-found: ignore
+          path: |
             chipcompiler/gui/src-tauri/target/release/bundle/**/*.deb
