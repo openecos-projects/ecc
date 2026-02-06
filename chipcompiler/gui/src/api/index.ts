@@ -21,7 +21,7 @@ export {
 export {
   createSSEClient,
   type SSEClient,
-  type SSENotification,
+  type ECCResponse,
   type NotifyType,
   type SSEEventHandler,
   type SSEClientConfig,

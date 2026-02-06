@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
-import uuid
-import threading
 
 from chipcompiler.data import (
     create_workspace,
@@ -27,6 +25,8 @@ from chipcompiler.services.schemas import (
     ResponseEnum,
     DATA_TEMPLATE
     )
+
+from chipcompiler.services.sse import notify_service
 
 class ECCService:
     def __init__(self):
@@ -154,8 +154,12 @@ class ECCService:
             self.workspace = workspace
             self.__build_flow()
             
+            # 设置 notify_service 的 workspace_id
+            notify_service.set_workspace(workspace.directory)
+            
             response_data = {
-                "directory" : data.get("directory", "")
+                "directory" : data.get("directory", ""),
+                "workspace_id": workspace.directory  # 前端用于订阅 SSE
             }
             return ECCResponse(
                 cmd=request.cmd,
@@ -197,8 +201,12 @@ class ECCService:
             self.workspace = workspace
             self.__build_flow()
             
+            # 设置 notify_service 的 workspace_id
+            notify_service.set_workspace(workspace.directory)
+            
             response_data = {
-                "directory" : data.get("directory", "")
+                "directory" : data.get("directory", ""),
+                "workspace_id": workspace.directory  # 前端用于订阅 SSE
             }
             return ECCResponse(
                 cmd=request.cmd,
@@ -231,6 +239,10 @@ class ECCService:
         # process cmd
         self.engine_flow = None
         self.workspace = None
+        
+        # 清除 notify_service 的 workspace_id
+        notify_service.clear_workspace()
+        
         try:
             import shutil
             shutil.rmtree(directory)
@@ -246,14 +258,8 @@ class ECCService:
             data=response_data,
             message = [f"delete workspace success : {directory}"]
         )
-        
+
     def rtl2gds(self, request: ECCRequest) -> ECCResponse:
-        """
-        启动 rtl2gds 流程
-        
-        生成 task_id 并立即返回，前端可订阅 SSE 事件流获取实时进度。
-        流程在后台线程中执行。
-        """
         # check cmd
         state, response = self.check_cmd(request, CMDEnum.rtl2gds)
         if not state:
@@ -261,16 +267,11 @@ class ECCService:
         
         # get data
         data = request.data
-        rerun = data.get("rerun", False)
-        
-        # 生成 task_id
-        task_id = str(uuid.uuid4())
         
         response_data = {
-            "rerun": rerun,
-            "task_id": task_id
+            "rerun" : data.get("rerun", False)
         }
-
+ 
         # check data
         if self.workspace is None \
             or not os.path.exists(self.workspace.directory):
@@ -288,63 +289,58 @@ class ECCService:
                 data=response_data,
                 message = [f"rtl2gds flow not exist : {self.workspace.directory}"]
             )
-        
-        # 在后台线程中执行流程
-        def run_flow_async():
-            from ..sse import event_manager
             
-            try:
-                if rerun:
-                    self.engine_flow.clear_states()
-                
-                for workspace_step in self.engine_flow.workspace_steps:
-                    step_name = workspace_step.name
-                    
-                    # 发送步骤开始通知
-                    event_manager.notify_step_start(task_id, step_name)
-                    
-                    # 执行步骤
-                    ecc_req = ECCRequest(
-                        cmd="run_step",
-                        data={
-                            "step": step_name,
-                            "rerun": rerun
-                        }
-                    )
-                    step_response = self.run_step(ecc_req)
-                    
-                    if step_response.response == ResponseEnum.success.value:
-                        # 发送数据就绪通知
-                        event_manager.notify_data_ready(task_id, step_name, "info")
-                        # 发送步骤完成通知
-                        event_manager.notify_step_complete(task_id, step_name)
-                    else:
-                        # 发送错误通知
-                        error_msg = step_response.message[0] if step_response.message else f"Step {step_name} failed"
-                        event_manager.notify_error(task_id, step_name, error_msg)
-                        # 发送任务失败通知
-                        event_manager.notify_task_complete(task_id, f"Flow failed at step: {step_name}")
-                        return
-                
-                # 发送任务完成通知
-                event_manager.notify_task_complete(task_id, f"rtl2gds completed: {self.workspace.directory}")
-                
-            except Exception as e:
-                event_manager.notify_error(task_id, None, str(e))
-                event_manager.notify_task_complete(task_id, f"Flow failed with error: {e}")
+        # process cmd
+        failed_step = None
+        try:
+            if data.get("rerun", False):
+                self.engine_flow.clear_states()
+            
+            for workspace_step in self.engine_flow.workspace_steps:
+                ecc_req = ECCRequest(
+                cmd = "run_step",
+                data = {
+                        "step" : workspace_step.name,
+                        "rerun" : data.get("rerun", False)
+                    }
+                )
+                # get response for each step
+                # TBD, need to send response back to gui
+                step_response = self.run_step(ecc_req)
+                if step_response.response != ResponseEnum.success.value:
+                    failed_step = workspace_step.name
+                    break
+                else: 
+                    notify_service.notify(ECCResponse(
+                        cmd=CMDEnum.notify.value,
+                        response=ResponseEnum.success.value,
+                        data={"type": "step_complete", "step": workspace_step.name},
+                        message=[f"step {workspace_step.name} completed"]
+                    ))
+            # self.engine_flow.run_steps()
+        except Exception as e:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.error.value,
+                data=response_data,
+                message = [f"run rtl2gds failed : {e}"]
+            )
         
-        # 启动后台线程
-        thread = threading.Thread(target=run_flow_async, daemon=True)
-        thread.start()
-        
-        # 立即返回 task_id
-        return ECCResponse(
-            cmd=request.cmd,
-            response=ResponseEnum.success.value,
-            data=response_data,
-            message=[f"rtl2gds started, task_id: {task_id}"]
-        )
-        
+        if failed_step is None:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.success.value,
+                data=response_data,
+                message = [f"run rtl2gds success : {self.workspace.directory}"]
+            )
+        else:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.failed.value,
+                data=response_data,
+                message = [f"run rtl2gds failed in step : {failed_step}"]
+            )
+
     def run_step(self, request: ECCRequest) -> ECCResponse:
         # check cmd
         state, response = self.check_cmd(request, CMDEnum.run_step)

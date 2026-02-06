@@ -179,23 +179,23 @@
           <div v-if="sseMessages.length > 0"
             class="max-h-32 overflow-y-auto bg-(--bg-secondary) rounded p-2 text-[10px] space-y-1">
             <div v-for="(msg, idx) in sseMessages.slice(-5)" :key="idx" class="flex items-center gap-1" :class="{
-              'text-blue-400': msg.type === 'step_start',
-              'text-green-500': msg.type === 'step_complete' || msg.type === 'task_complete',
-              'text-amber-500': msg.type === 'data_ready',
-              'text-red-500': msg.type === 'flow_error',
-              'text-(--text-secondary)': msg.type === 'message'
+              'text-blue-400': msg.data?.type === 'step_start',
+              'text-green-500': msg.data?.type === 'step_complete' || msg.data?.type === 'task_complete',
+              'text-amber-500': msg.data?.type === 'data_ready',
+              'text-red-500': msg.data?.type === 'error',
+              'text-(--text-secondary)': msg.data?.type === 'message'
             }">
               <i :class="{
-                'ri-play-circle-line': msg.type === 'step_start',
-                'ri-checkbox-circle-line': msg.type === 'step_complete',
-                'ri-trophy-line': msg.type === 'task_complete',
-                'ri-database-2-line': msg.type === 'data_ready',
-                'ri-error-warning-line': msg.type === 'flow_error',
-                'ri-chat-1-line': msg.type === 'message'
+                'ri-play-circle-line': msg.data?.type === 'step_start',
+                'ri-checkbox-circle-line': msg.data?.type === 'step_complete',
+                'ri-trophy-line': msg.data?.type === 'task_complete',
+                'ri-database-2-line': msg.data?.type === 'data_ready',
+                'ri-error-warning-line': msg.data?.type === 'error',
+                'ri-chat-1-line': msg.data?.type === 'message'
               }" class="text-xs"></i>
               <span class="truncate">
-                {{ msg.step || msg.message || msg.type }}
-                <span v-if="msg.id" class="opacity-70">({{ msg.id }})</span>
+                {{ msg.data?.step || msg.message?.[0] || msg.data?.type }}
+                <span v-if="msg.data?.id" class="opacity-70">({{ msg.data.id }})</span>
               </span>
             </div>
           </div>
@@ -360,6 +360,7 @@ import { useFlowStages } from '@/composables/useFlowStages'
 import { useSubflow } from '@/composables/useSubflow'
 import { useFlowRunner } from '@/composables/useFlowRunner'
 import { useCurrentStage } from '@/composables/useCurrentStage'
+import { useWorkspace } from '@/composables/useWorkspace'
 
 // ============ Composables ============
 
@@ -386,8 +387,10 @@ const {
   isRunning,
   runFlow,
   runAllFlow,
-  sseMessages
 } = useFlowRunner()
+
+// Workspace SSE 消息
+const { sseMessages } = useWorkspace()
 
 // 当前阶段
 const { currentStage, showProgressPanel, showOverviewPanel, showSubflowPanel } = useCurrentStage()

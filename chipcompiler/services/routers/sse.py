@@ -8,20 +8,21 @@ import asyncio
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from ..sse import event_manager, SSENotification, NotifyType
+from ..sse import event_manager, to_sse_format
+from ..schemas import ECCResponse, CMDEnum, ResponseEnum
 
 router = APIRouter(prefix="/sse", tags=["sse"])
 
 
-@router.get("/stream/{task_id}")
-async def event_stream(task_id: str, request: Request):
+@router.get("/stream/{workspace_id:path}")
+async def event_stream(workspace_id: str, request: Request):
     """
     SSE 事件流端点
     
-    订阅指定任务的事件流，实时接收通知。
+    订阅指定 workspace 的事件流，实时接收通知。
     
     Args:
-        task_id: 任务 ID
+        workspace_id: Workspace ID（通常为 workspace 目录路径）
         request: FastAPI 请求对象
         
     Returns:
@@ -30,16 +31,16 @@ async def event_stream(task_id: str, request: Request):
     
     async def generate():
         # 启动心跳任务
-        heartbeat_task = asyncio.create_task(heartbeat_loop(task_id))
+        heartbeat_task = asyncio.create_task(heartbeat_loop(workspace_id))
         
         try:
-            async for notification in event_manager.subscribe(task_id):
+            async for response in event_manager.subscribe(workspace_id):
                 # 检查客户端是否断开
                 if await request.is_disconnected():
                     break
                 
                 # 发送 SSE 格式的消息
-                yield notification.to_sse_format()
+                yield to_sse_format(response)
                 
         finally:
             heartbeat_task.cancel()
@@ -59,16 +60,21 @@ async def event_stream(task_id: str, request: Request):
     )
 
 
-async def heartbeat_loop(task_id: str):
+async def heartbeat_loop(workspace_id: str):
     """
     心跳循环，定期发送心跳保持连接
     
     Args:
-        task_id: 任务 ID
+        workspace_id: Workspace ID
     """
     while True:
         await asyncio.sleep(15)  # 每 15 秒发送心跳
-        event_manager.publish(task_id, SSENotification(type=NotifyType.HEARTBEAT))
+        event_manager.notify(workspace_id, ECCResponse(
+            cmd=CMDEnum.notify.value,
+            response=ResponseEnum.success.value,
+            data={"type": "heartbeat"},
+            message=[]
+        ))
 
 
 @router.get("/health")

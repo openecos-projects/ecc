@@ -6,6 +6,7 @@ import { LazyStore } from '@tauri-apps/plugin-store'
 import { exists } from '@tauri-apps/plugin-fs'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { loadWorkspaceApi, createWorkspaceApi } from '../api'
+import { createSSEClient, type SSEClient, type ECCResponse } from '../api/sse'
 import { isTauri } from './useTauri'
 
 // 序列化对象（将 Date 转换为 ISO 字符串）
@@ -20,6 +21,10 @@ interface SerializedProject {
 const store = new LazyStore('settings.json')
 const currentProject = ref<Project | null>()
 const recentProjects = ref<Project[]>([])
+
+// SSE 连接（workspace 级别，跟随 workspace 生命周期）
+const sseClient = ref<SSEClient | null>(null)
+const sseMessages = ref<ECCResponse[]>([])
 
 // 应用名称常量
 const APP_NAME = 'ECC'
@@ -216,6 +221,10 @@ export function useWorkspace() {
 
         currentProject.value = loadedProject
 
+        // 建立 SSE 连接
+        const workspaceId = response.data.workspace_id || response.data.directory
+        connectSSE(workspaceId)
+
         // 更新窗口标题
         await updateWindowTitle(loadedProject.name)
 
@@ -304,6 +313,10 @@ export function useWorkspace() {
 
         currentProject.value = createdProject
 
+        // 建立 SSE 连接
+        const workspaceId = response.data.workspace_id || response.data.directory
+        connectSSE(workspaceId)
+
         // 更新窗口标题
         await updateWindowTitle(createdProject.name)
 
@@ -328,8 +341,42 @@ export function useWorkspace() {
 
   const closeProject = async () => {
     currentProject.value = null
+    disconnectSSE()
     // 重置窗口标题为默认
     await updateWindowTitle()
+  }
+
+  /**
+   * 建立 SSE 连接，订阅 workspace 的所有通知
+   */
+  function connectSSE(workspaceId: string) {
+    // 如果已有连接，先关闭
+    disconnectSSE()
+
+    const client = createSSEClient(workspaceId)
+
+    // 注册通用处理器，收集所有通知到 sseMessages
+    client.onAll((response) => {
+      // 过滤心跳消息，不记录到 messages
+      if (response.data?.type !== 'heartbeat') {
+        sseMessages.value.push(response)
+      }
+    })
+
+    client.connect()
+    sseClient.value = client
+    console.log(`SSE connected for workspace: ${workspaceId}`)
+  }
+
+  /**
+   * 断开 SSE 连接
+   */
+  function disconnectSSE() {
+    if (sseClient.value) {
+      sseClient.value.close()
+      sseClient.value = null
+    }
+    sseMessages.value = []
   }
 
   return {
@@ -340,6 +387,9 @@ export function useWorkspace() {
     newProject,
     importProject,
     closeProject,
-    updateWindowTitle
+    updateWindowTitle,
+    // SSE
+    sseClient,
+    sseMessages,
   }
 }

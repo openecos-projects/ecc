@@ -17,6 +17,7 @@ export interface WorkspaceResponse {
   response: string;
   data: {
     directory: string;
+    workspace_id?: string;  // 前端用于订阅 SSE
   };
   message: string[];
 }

@@ -12,7 +12,8 @@ class CMDEnum(Enum):
     rtl2gds = "rtl2gds"
     run_step = "run_step"
     get_info = "get_info"
-
+    notify = "notify"
+    
 class ResponseEnum(Enum):
     success = "success"
     failed = "failed"

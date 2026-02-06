@@ -3,13 +3,15 @@ import { useRoute } from 'vue-router'
 import { useTauri } from './useTauri'
 import { CMDEnum, StateEnum, StepEnum } from '@/api/type'
 import { runStepApi, rtl2gdsApi, type RunStepResponse } from '@/api/flow'
-import { createSSEClient, type SSEClient, type SSENotification } from '@/api/sse'
 
 // ============ Composable ============
 
 /**
  * 流程运行器 Hook
  * 负责处理流程的运行、停止、重置等操作
+ * 
+ * SSE 通知由 useWorkspace 管理（workspace 级别长连接），
+ * 本 Hook 只负责调用 API 并等待结果。
  */
 export function useFlowRunner() {
   const { isInTauri, ensureTauri } = useTauri()
@@ -71,7 +73,7 @@ export function useFlowRunner() {
       console.log('run step result', result)
       return result.data
     } catch (err) {
-      console.error('❌ 单步运行失败:', err)
+      console.error('单步运行失败:', err)
     } finally {
       isRunning.value = false
     }
@@ -81,9 +83,9 @@ export function useFlowRunner() {
   /**
    * 运行所有步骤
    * 
-   * 1. 调用 rtl2gds API 获取 task_id
-   * 2. 建立 SSE 连接订阅事件
-   * 3. 实时接收进度通知
+   * 调用 rtl2gds API（同步等待后端执行完成）。
+   * 执行过程中，后端通过 notify_service 发送 step_complete 等通知，
+   * 前端通过 useWorkspace 中已建立的 SSE 连接实时接收。
    */
   async function runAllFlow(): Promise<any | null> {
     // 检查是否在 Tauri 环境中
@@ -97,131 +99,38 @@ export function useFlowRunner() {
       return null
     }
 
-    // 如果已有 SSE 连接，先关闭
-    if (sseClient.value) {
-      sseClient.value.close()
-      sseClient.value = null
-    }
-
     isRunning.value = true
     state.value = StateEnum.Ongoing
     error.value = null
-    sseMessages.value = []
 
     try {
-      console.log('🚀 Starting rtl2gds flow...')
+      console.log('Starting rtl2gds flow...')
 
-      // 1. 调用 rtl2gds API 获取 task_id
       const result = await rtl2gdsApi({
         cmd: CMDEnum.rtl2gds,
         data: {
           rerun: false
         }
       })
-      console.log('rtl2gds API result:', result)
+      console.log('rtl2gds result:', result)
 
-      const taskId = result.data?.task_id
-      if (!taskId) {
-        console.warn('No task_id returned from rtl2gds API')
-        isRunning.value = false
-        return result.data
-      }
-
-      sseTaskId.value = taskId
-      console.log(`📡 Got task_id: ${taskId}`)
-
-      // 2. 创建 SSE 客户端并订阅事件
-      const client = createSSEClient(taskId)
-      sseClient.value = client
-
-      // 3. 注册事件处理器
-      client.onStepStart((step) => {
-        console.log(`▶️ Step started: ${step}`)
-        sseMessages.value.push({
-          type: 'step_start',
-          step,
-          timestamp: Date.now()
-        })
-      })
-
-      client.onDataReady((step, id) => {
-        console.log(`📦 Data ready: ${step}, id=${id}`)
-        sseMessages.value.push({
-          type: 'data_ready',
-          step,
-          id,
-          timestamp: Date.now()
-        })
-      })
-
-      client.onStepComplete((step) => {
-        console.log(`✅ Step completed: ${step}`)
-        sseMessages.value.push({
-          type: 'step_complete',
-          step,
-          timestamp: Date.now()
-        })
-      })
-
-      client.onMessage((message) => {
-        console.log(`💬 Message: ${message}`)
-        sseMessages.value.push({
-          type: 'message',
-          message,
-          timestamp: Date.now()
-        })
-      })
-
-      client.onComplete((message) => {
-        console.log(`🎉 Task completed: ${message}`)
-        sseMessages.value.push({
-          type: 'task_complete',
-          message,
-          timestamp: Date.now()
-        })
-        // 任务完成后关闭连接
-        isRunning.value = false
+      if (result.response === 'success') {
         state.value = StateEnum.Success
-        client.close()
-        sseClient.value = null
-        sseTaskId.value = null
-      })
-
-      client.onError((step, message) => {
-        console.error(`❌ FlowError: ${step}: ${message}`)
-        sseMessages.value.push({
-          type: 'flow_error',
-          step,
-          message,
-          timestamp: Date.now()
-        })
-        error.value = message
-        isRunning.value = false
+      } else {
         state.value = StateEnum.Imcomplete
-      })
-
-      client.onHeartbeat(() => {
-        // 心跳消息，不需要显示
-      })
-
-      // 4. 连接 SSE
-      client.connect()
-      console.log('📡 SSE client connected')
+        error.value = result.message?.[0] || 'rtl2gds failed'
+      }
 
       return result.data
     } catch (err) {
-      console.error('❌ 运行所有步骤失败:', err)
+      console.error('运行所有步骤失败:', err)
       error.value = err instanceof Error ? err.message : String(err)
-      isRunning.value = false
       state.value = StateEnum.Imcomplete
+    } finally {
+      isRunning.value = false
     }
     return null
   }
-
-  // SSE 相关状态
-  const sseClient = ref<SSEClient | null>(null)
-  const sseMessages = ref<SSENotification[]>([])
-  const sseTaskId = ref<string | null>(null)
 
   return {
     // 状态
@@ -229,9 +138,6 @@ export function useFlowRunner() {
     state,
     error,
     lastRunResult,
-
-    // SSE 状态
-    sseMessages,
 
     // 方法
     runFlow,

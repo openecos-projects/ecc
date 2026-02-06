@@ -24,7 +24,6 @@ export interface RTL2GDSRequest {
 
 export interface RTL2GDSResponse {
   rerun: boolean;
-  task_id: string;
 }
 
 export function rtl2gdsApi(request: RequestData<RTL2GDSRequest>) {
