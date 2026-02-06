@@ -106,6 +106,15 @@ stage_oss_cad_suite() {
     if [ -d "$oss_cad_bundle_dir/lib" ]; then
         rm -rf "$oss_cad_bundle_dir/lib"
     fi
+    if [ -d "$oss_cad_bundle_dir/examples" ]; then
+        rm -rf "$oss_cad_bundle_dir/examples"
+    fi
+    if [ -d "$oss_cad_bundle_dir/py3bin" ]; then
+        rm -rf "$oss_cad_bundle_dir/py3bin"
+    fi
+    if [ -d "$oss_cad_bundle_dir/super_prove" ]; then
+        rm -rf "$oss_cad_bundle_dir/super_prove"
+    fi
     if [ -d "$oss_cad_bundle_dir/share" ]; then
         find "$oss_cad_bundle_dir/share" -mindepth 1 -maxdepth 1 -print0 | \
             xargs -0 -r -I {} bash -c 'if [ "$(basename "{}")" != "yosys" ]; then rm -rf "{}"; fi'
