@@ -120,19 +120,24 @@ fn ensure_port_available(port: u16) -> bool {
     false
 }
 
-/// Get the binary name for api-server based on the current platform
-/// Tauri's externalBin requires the target triple suffix
-fn get_api_server_binary_name() -> String {
-    // Get the target triple from build environment
+/// Get candidate binary names for api-server.
+/// Prefer target-suffixed names, but also support unsuffixed names from bundled artifacts.
+fn get_api_server_binary_candidates() -> Vec<String> {
     let target = env!("TARGET");
-    
+
     #[cfg(target_os = "windows")]
     {
-        format!("api-server-{}.exe", target)
+        vec![
+            format!("api-server-{}.exe", target),
+            "api-server.exe".to_string(),
+        ]
     }
     #[cfg(not(target_os = "windows"))]
     {
-        format!("api-server-{}", target)
+        vec![
+            format!("api-server-{}", target),
+            "api-server".to_string(),
+        ]
     }
 }
 
@@ -208,16 +213,21 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
         // Production mode: use bundled executable
         // Tauri's externalBin places binaries in the same directory as the main executable
         
-        let binary_name = get_api_server_binary_name();
-        
-        // Try multiple possible locations for the binary
-        let possible_paths = get_possible_binary_paths(app_handle, &binary_name);
-        
+        let binary_candidates = get_api_server_binary_candidates();
+        let mut checked_paths: Vec<std::path::PathBuf> = Vec::new();
         let mut server_binary: Option<PathBuf> = None;
-        for path in &possible_paths {
-            println!("Checking for api-server at: {:?}", path);
-            if path.exists() {
-                server_binary = Some(path.clone());
+
+        for binary_name in &binary_candidates {
+            let possible_paths = get_possible_binary_paths(app_handle, binary_name);
+            for path in possible_paths {
+                println!("Checking for api-server at: {:?}", path);
+                checked_paths.push(path.clone());
+                if path.exists() {
+                    server_binary = Some(path);
+                    break;
+                }
+            }
+            if server_binary.is_some() {
                 break;
             }
         }
@@ -226,8 +236,11 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
             Some(path) => path,
             None => {
                 eprintln!("❌ API server binary not found. Checked locations:");
-                for path in &possible_paths {
-                    eprintln!("   - {:?}", path);
+                let mut seen = std::collections::HashSet::new();
+                for path in checked_paths {
+                    if seen.insert(path.clone()) {
+                        eprintln!("   - {:?}", path);
+                    }
                 }
                 return None;
             }
@@ -466,10 +479,16 @@ fn get_debug_info(app: tauri::AppHandle) -> serde_json::Value {
     // Check for API server binary in production mode
     #[cfg(not(debug_assertions))]
     {
-        let binary_name = get_api_server_binary_name();
-        info["api_binary_name"] = serde_json::json!(binary_name);
-        
-        let possible_paths = get_possible_binary_paths(&app, &binary_name);
+        let binary_candidates = get_api_server_binary_candidates();
+        info["api_binary_name"] = serde_json::json!(binary_candidates);
+
+        let possible_paths: Vec<std::path::PathBuf> = binary_candidates
+            .iter()
+            .flat_map(|binary_name| get_possible_binary_paths(&app, binary_name))
+            .collect();
+
+        let mut seen = std::collections::HashSet::new();
+        let possible_paths: Vec<std::path::PathBuf> = possible_paths.into_iter().filter(|p| seen.insert(p.clone())).collect();
         let path_status: Vec<serde_json::Value> = possible_paths
             .iter()
             .map(|p| {
