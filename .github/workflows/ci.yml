@@ -6,6 +6,10 @@ on:
       - 'main'
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
   SCCACHE_GHA_ENABLED: "true"
