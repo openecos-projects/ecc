@@ -21,8 +21,6 @@ fn is_port_available(port: u16) -> bool {
 
 /// Kill process using a specific port (platform-specific)
 fn kill_process_on_port(port: u16) -> bool {
-    return true;
-    
     #[cfg(target_os = "windows")]
     {
         // Windows: use netstat + taskkill

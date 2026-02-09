@@ -177,12 +177,16 @@ class ECCToolsPlot:
         drc_statis = {}
         import copy
         drc_total_dict= copy.deepcopy(layer_dict)
-        for drc_type, drc_data in drc_distribution.items():
-            drc_statis[drc_type] = copy.deepcopy(layer_dict)
-            
-            for layer, layer_data in drc_data.get("layers", {}).items():
-                drc_statis[drc_type][layer] = drc_statis[drc_type][layer] + layer_data.get("number", 0)
-                drc_total_dict[layer] = drc_total_dict.get(layer, 0) + + layer_data.get("number", 0)
+        
+        # Get DRC distribution data
+        drc_distribution = drc_json.get("drc", {}).get("distribution", {})
+        if isinstance(drc_distribution, dict):
+            for drc_type, drc_data in drc_distribution.items():
+                drc_statis[drc_type] = copy.deepcopy(layer_dict)
+                
+                for layer, layer_data in drc_data.get("layers", {}).items():
+                    drc_statis[drc_type][layer] = drc_statis[drc_type][layer] + layer_data.get("number", 0)
+                    drc_total_dict[layer] = drc_total_dict.get(layer, 0) + + layer_data.get("number", 0)
         
         drc_total_dict["total"] = drc_json.get("drc", {}).get("number", 0)
         drc_statis["total"] = drc_total_dict
