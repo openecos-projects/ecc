@@ -178,7 +178,7 @@ fn get_oss_cad_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> 
 fn start_api_server(
     #[cfg(debug_assertions)] _app_handle: &tauri::AppHandle,
     #[cfg(not(debug_assertions))] app_handle: &tauri::AppHandle,
-) -> Option<Child> {
+) -> ApiStartResult {
     use std::path::PathBuf;
     
     // Check if a healthy API server is already running (e.g. started by debugger)
