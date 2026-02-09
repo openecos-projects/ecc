@@ -31,8 +31,6 @@ fn is_port_available(port: u16) -> bool {
 
 /// Kill process using a specific port (platform-specific)
 fn kill_process_on_port(port: u16) -> bool {
-    return true;
-    
     #[cfg(target_os = "windows")]
     {
         // Windows: use netstat + taskkill
@@ -134,6 +132,7 @@ fn ensure_port_available(port: u16) -> bool {
 
 /// Get candidate binary names for api-server.
 /// Prefer target-suffixed names, but also support unsuffixed names from bundled artifacts.
+#[cfg(not(debug_assertions))]
 fn get_api_server_binary_candidates() -> Vec<String> {
     let target = env!("TARGET");
 
@@ -166,10 +165,20 @@ fn is_api_server_healthy(port: u16) -> bool {
 /// Start the FastAPI server process
 /// In debug mode: runs Python script directly
 /// In release mode: runs the bundled executable
-///
-/// If a healthy API server is already running on the port (e.g. started via
-/// VS Code debugger), the existing server is reused and no new process is spawned.
-fn start_api_server(app_handle: &tauri::AppHandle) -> ApiStartResult {
+#[cfg(not(debug_assertions))]
+fn get_oss_cad_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app_handle
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|resource_dir| resource_dir.join("resources").join("oss-cad-suite"))
+        .filter(|path| path.exists())
+}
+
+fn start_api_server(
+    #[cfg(debug_assertions)] _app_handle: &tauri::AppHandle,
+    #[cfg(not(debug_assertions))] app_handle: &tauri::AppHandle,
+) -> ApiStartResult {
     use std::path::PathBuf;
     
     // Check if a healthy API server is already running (e.g. started by debugger)
@@ -280,12 +289,13 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> ApiStartResult {
         println!("Starting FastAPI server (prod mode) from: {:?}", server_binary);
 
         let mut cmd = Command::new(&server_binary);
-        if let Ok(resource_dir) = app_handle.path().resource_dir() {
-            let oss_dir = resource_dir.join("oss-cad-suite");
-            if oss_dir.exists() {
-                println!("Setting CHIPCOMPILER_OSS_CAD_DIR to {:?}", oss_dir);
-                cmd.env("CHIPCOMPILER_OSS_CAD_DIR", &oss_dir);
-            }
+
+        if let Some(oss_dir) = get_oss_cad_dir(app_handle) {
+            println!("Setting CHIPCOMPILER_OSS_CAD_DIR to {:?}", oss_dir);
+            cmd.env("CHIPCOMPILER_OSS_CAD_DIR", &oss_dir);
+        } else {
+            eprintln!("⚠️ Expected oss-cad-suite at <resource_dir>/resources/oss-cad-suite, but it was not found.");
+            eprintln!("⚠️ Synthesis may fail if yosys is unavailable in PATH.");
         }
 
         match cmd
@@ -430,7 +440,6 @@ fn stop_api_server(process: &mut Option<Child>) {
     }
 }
 
-
 #[tauri::command]
 fn show_main_window(window: tauri::Window) {
     window.show().unwrap();
@@ -546,8 +555,6 @@ fn kill_port_process() -> Result<String, String> {
 /// 获取调试信息（用于诊断生产环境问题）
 #[tauri::command]
 fn get_debug_info(app: tauri::AppHandle) -> serde_json::Value {
-    use std::path::PathBuf;
-    
     let mut info = serde_json::json!({
         "api_port": API_PORT,
         "port_available": is_port_available(API_PORT),
@@ -629,7 +636,7 @@ async fn request_project_permission(app: tauri::AppHandle, path: String) -> Resu
 
 fn main() {
     use std::path::PathBuf;
-    
+
     // Create a shared reference for the API server process
     let api_server: ApiServerProcess = Arc::new(Mutex::new(None));
     let api_server_clone = api_server.clone();
