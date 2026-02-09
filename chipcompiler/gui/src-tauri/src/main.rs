@@ -167,33 +167,13 @@ fn is_api_server_healthy(port: u16) -> bool {
 /// In debug mode: runs Python script directly
 /// In release mode: runs the bundled executable
 #[cfg(not(debug_assertions))]
-fn get_possible_oss_cad_dirs(app_handle: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
-    let mut paths = Vec::new();
-
-    // 1) Honor pre-set env (useful for manual testing / overrides).
-    if let Ok(env_dir) = std::env::var("CHIPCOMPILER_OSS_CAD_DIR") {
-        paths.push(std::path::PathBuf::from(env_dir));
-    }
-
-    // 2) Tauri resource dir variants.
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        paths.push(resource_dir.join("oss-cad-suite"));
-        paths.push(resource_dir.join("resources").join("oss-cad-suite"));
-    }
-
-    // 3) Nearby executable layout variants (AppImage / bundle layouts).
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            paths.push(exe_dir.join("oss-cad-suite"));
-            paths.push(exe_dir.join("resources").join("oss-cad-suite"));
-            paths.push(exe_dir.join("..").join("lib").join("ECC").join("resources").join("oss-cad-suite"));
-        }
-    }
-
-    // Deduplicate while preserving order.
-    let mut seen = std::collections::HashSet::new();
-    paths.retain(|p| seen.insert(p.clone()));
-    paths
+fn get_oss_cad_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app_handle
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|resource_dir| resource_dir.join("oss-cad-suite"))
+        .filter(|path| path.exists())
 }
 
 fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
@@ -308,20 +288,12 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
 
         let mut cmd = Command::new(&server_binary);
 
-        let mut found_oss_dir: Option<PathBuf> = None;
-        for path in get_possible_oss_cad_dirs(app_handle) {
-            println!("Checking for oss-cad-suite at: {:?}", path);
-            if path.exists() {
-                found_oss_dir = Some(path);
-                break;
-            }
-        }
-
-        if let Some(oss_dir) = found_oss_dir {
+        if let Some(oss_dir) = get_oss_cad_dir(app_handle) {
             println!("Setting CHIPCOMPILER_OSS_CAD_DIR to {:?}", oss_dir);
             cmd.env("CHIPCOMPILER_OSS_CAD_DIR", &oss_dir);
         } else {
-            eprintln!("⚠️ oss-cad-suite resource directory not found; synthesis may fail if yosys is unavailable in PATH.");
+            eprintln!("⚠️ Expected oss-cad-suite at <resource_dir>/oss-cad-suite, but it was not found.");
+            eprintln!("⚠️ Synthesis may fail if yosys is unavailable in PATH.");
         }
 
         match cmd
