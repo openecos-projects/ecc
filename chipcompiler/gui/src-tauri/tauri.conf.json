@@ -38,10 +38,7 @@
     "icon": [
       "icons/icon.png"
     ],
-    "resources": [
-      "resources/oss-cad-suite/**/*",
-      "resources/oss-cad-suite/README"
-    ],
+    "resources": [],
     "externalBin": [
       "binaries/api-server"
     ]
