@@ -171,7 +171,7 @@ fn get_oss_cad_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> 
         .path()
         .resource_dir()
         .ok()
-        .map(|resource_dir| resource_dir.join("oss-cad-suite"))
+        .map(|resource_dir| resource_dir.join("resources").join("oss-cad-suite"))
         .filter(|path| path.exists())
 }
 
@@ -294,7 +294,7 @@ fn start_api_server(
             println!("Setting CHIPCOMPILER_OSS_CAD_DIR to {:?}", oss_dir);
             cmd.env("CHIPCOMPILER_OSS_CAD_DIR", &oss_dir);
         } else {
-            eprintln!("⚠️ Expected oss-cad-suite at <resource_dir>/oss-cad-suite, but it was not found.");
+            eprintln!("⚠️ Expected oss-cad-suite at <resource_dir>/resources/oss-cad-suite, but it was not found.");
             eprintln!("⚠️ Synthesis may fail if yosys is unavailable in PATH.");
         }
 
