@@ -14,6 +14,16 @@ type ApiServerProcess = Arc<Mutex<Option<Child>>>;
 /// API server port
 const API_PORT: u16 = 8765;
 
+/// Result of attempting to start the API server
+enum ApiStartResult {
+    /// A new child process was successfully spawned
+    Started(Child),
+    /// A healthy external server was detected on the port (e.g. VS Code debugger)
+    ExternalDetected,
+    /// Failed to start or detect a server
+    Failed,
+}
+
 /// Check if a port is available
 fn is_port_available(port: u16) -> bool {
     TcpListener::bind(format!("127.0.0.1:{}", port)).is_ok()
@@ -143,16 +153,35 @@ fn get_api_server_binary_candidates() -> Vec<String> {
     }
 }
 
+/// Check if a healthy FastAPI server is already running on the given port
+fn is_api_server_healthy(port: u16) -> bool {
+    let health_url = format!("http://127.0.0.1:{}/health", port);
+    ureq::get(&health_url)
+        .timeout(Duration::from_secs(2))
+        .call()
+        .map(|r| r.status() == 200u16)
+        .unwrap_or(false)
+}
+
 /// Start the FastAPI server process
 /// In debug mode: runs Python script directly
 /// In release mode: runs the bundled executable
-fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
+///
+/// If a healthy API server is already running on the port (e.g. started via
+/// VS Code debugger), the existing server is reused and no new process is spawned.
+fn start_api_server(app_handle: &tauri::AppHandle) -> ApiStartResult {
     use std::path::PathBuf;
     
-    // First, ensure the port is available
+    // Check if a healthy API server is already running (e.g. started by debugger)
+    if !is_port_available(API_PORT) && is_api_server_healthy(API_PORT) {
+        println!("✅ Healthy API server already running on port {}, reusing it (external/debugger mode)", API_PORT);
+        return ApiStartResult::ExternalDetected;
+    }
+    
+    // Port is occupied by a non-healthy process, or port is free — ensure it's available
     if !ensure_port_available(API_PORT) {
         eprintln!("❌ Cannot start API server: port {} is not available", API_PORT);
-        return None;
+        return ApiStartResult::Failed;
     }
     
     #[cfg(debug_assertions)]
@@ -201,11 +230,11 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
         {
             Ok(child) => {
                 println!("✅ FastAPI server started with PID: {} on port {}", child.id(), API_PORT);
-                return Some(child);
+                return ApiStartResult::Started(child);
             }
             Err(e) => {
                 eprintln!("❌ Failed to start FastAPI server: {}", e);
-                return None;
+                return ApiStartResult::Failed;
             }
         }
     }
@@ -244,7 +273,7 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
                         eprintln!("   - {:?}", path);
                     }
                 }
-                return None;
+                return ApiStartResult::Failed;
             }
         };
         
@@ -270,13 +299,13 @@ fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
         {
             Ok(child) => {
                 println!("✅ FastAPI server started with PID: {} on port {}", child.id(), API_PORT);
-                Some(child)
+                ApiStartResult::Started(child)
             }
             Err(e) => {
                 eprintln!("❌ Failed to start FastAPI server: {}", e);
                 eprintln!("   Binary path: {:?}", server_binary);
                 eprintln!("   Error details: {:?}", e.kind());
-                None
+                ApiStartResult::Failed
             }
         }
     }
@@ -340,15 +369,64 @@ fn get_possible_binary_paths(app_handle: &tauri::AppHandle, binary_name: &str) -
     paths
 }
 
-/// Stop the FastAPI server process
+/// Stop the FastAPI server process and clean up any orphaned children.
+///
+/// When `process` is `None` (external/debugger mode), this is a no-op —
+/// the external server is intentionally left running.
 fn stop_api_server(process: &mut Option<Child>) {
     if let Some(ref mut child) = process {
-        println!("Stopping FastAPI server (PID: {})...", child.id());
-        match child.kill() {
-            Ok(_) => println!("✅ FastAPI server stopped"),
-            Err(e) => eprintln!("❌ Failed to stop FastAPI server: {}", e),
+        let pid = child.id();
+        println!("Stopping FastAPI server (PID: {})...", pid);
+
+        // On Unix, kill the entire process group so that child workers
+        // (e.g. uvicorn reloader/workers spawned by `--reload`) are also
+        // terminated.  We send SIGTERM first for graceful shutdown.
+        #[cfg(unix)]
+        {
+            // Negative PID = kill the whole process group
+            let pgid_kill = Command::new("kill")
+                .args(["--", &format!("-{}", pid)])
+                .output();
+            match pgid_kill {
+                Ok(out) if out.status.success() => {
+                    println!("Sent SIGTERM to process group -{}", pid);
+                }
+                _ => {
+                    // Process group kill failed; fall back to single-process kill
+                    let _ = Command::new("kill").args([&pid.to_string()]).output();
+                }
+            }
+            // Brief grace period for graceful shutdown
+            thread::sleep(Duration::from_millis(500));
         }
+
+        // Force-kill the direct child (SIGKILL on Unix, TerminateProcess on Windows)
+        match child.kill() {
+            Ok(_) => println!("✅ FastAPI server process killed"),
+            Err(e) => {
+                // "InvalidInput" / "not running" is fine — process already exited
+                eprintln!("⚠️ child.kill(): {} (process may have already exited)", e);
+            }
+        }
+
+        // Reap the zombie so it doesn't linger in the process table
+        let _ = child.wait();
         *process = None;
+
+        // Safety net: if orphaned workers survived the group kill, clean them
+        // up via port-based lookup (lsof + kill) so the port is free on next start.
+        thread::sleep(Duration::from_millis(300));
+        if !is_port_available(API_PORT) {
+            println!("⚠️ Port {} still occupied after stopping server, cleaning up orphaned processes...", API_PORT);
+            kill_process_on_port(API_PORT);
+            thread::sleep(Duration::from_millis(300));
+        }
+
+        if is_port_available(API_PORT) {
+            println!("✅ Port {} is now free", API_PORT);
+        } else {
+            eprintln!("❌ Port {} is still occupied after cleanup", API_PORT);
+        }
     }
 }
 
@@ -411,7 +489,10 @@ fn get_api_server_status() -> serde_json::Value {
 /// 重启 API 服务器
 #[tauri::command]
 fn restart_api_server(app: tauri::AppHandle, state: tauri::State<'_, ApiServerProcess>) -> Result<String, String> {
-    // First, kill any existing process
+    // Stop our managed child process (if any).
+    // This only kills a process we spawned ourselves; it does NOT touch
+    // external servers (e.g. one started by a VS Code debugger), because
+    // those are represented as `None` in managed state.
     {
         let mut server = state.lock().map_err(|e| format!("Lock error: {}", e))?;
         if server.is_some() {
@@ -419,18 +500,26 @@ fn restart_api_server(app: tauri::AppHandle, state: tauri::State<'_, ApiServerPr
         }
     }
     
-    // Ensure port is available
-    if !ensure_port_available(API_PORT) {
-        return Err(format!("Port {} is still in use after cleanup", API_PORT));
-    }
-    
-    // Start new server
+    // Delegate all port logic to start_api_server, which will:
+    //   1. Detect and reuse a healthy external server (ExternalDetected)
+    //   2. Kill an unhealthy port occupant and start fresh (Started)
+    //   3. Report failure if nothing works (Failed)
+    // We intentionally do NOT call ensure_port_available here, because
+    // that would blindly kill an external debugger server on the port.
     {
         let mut server = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-        *server = start_api_server(&app);
-        
-        if server.is_none() {
-            return Err("Failed to start API server".to_string());
+        match start_api_server(&app) {
+            ApiStartResult::Started(child) => {
+                *server = Some(child);
+            }
+            ApiStartResult::ExternalDetected => {
+                *server = None;
+                return Ok(format!("External API server detected on port {}, reusing it", API_PORT));
+            }
+            ApiStartResult::Failed => {
+                *server = None;
+                return Err("Failed to start API server".to_string());
+            }
         }
     }
     
@@ -555,13 +644,31 @@ fn main() {
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
 
-            // Start the FastAPI server
+            // Start the FastAPI server (or detect an externally started one)
+            let using_external_server;
             {
                 let mut server = api_server.lock().unwrap();
-                *server = start_api_server(&app.handle());
+                match start_api_server(&app.handle()) {
+                    ApiStartResult::Started(child) => {
+                        *server = Some(child);
+                        using_external_server = false;
+                    }
+                    ApiStartResult::ExternalDetected => {
+                        *server = None;
+                        using_external_server = true;
+                    }
+                    ApiStartResult::Failed => {
+                        *server = None;
+                        using_external_server = false;
+                        eprintln!("⚠️ No API server available — GUI may not function correctly");
+                    }
+                }
             }
 
             // Wait for the server to be ready with health check
+            if using_external_server {
+                println!("Using externally started API server (debugger mode) on port {}", API_PORT);
+            }
             println!("Waiting for FastAPI server to be ready...");
             let max_retries = 30; // Max 15 seconds (30 * 500ms)
             let mut server_ready = false;
