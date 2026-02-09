@@ -52,6 +52,27 @@ Runtime environment handling:
 3. OSS CAD-specific `PATH`, `YOSYS_PLUGINPATH`, and `YOSYS_DATDIR` are applied to subprocess env only (no global `os.environ` mutation).
 4. `check_slang_plugin()` runs a lightweight preflight check before synthesis (`yosys -p "plugin -i slang"`).
 
+### PDK Runtime Resolution
+
+Current PDK root resolution (for `get_pdk("ics55")`) in `chipcompiler/data/pdk.py`:
+
+1. Explicit `pdk_root` argument (e.g. passed from API `create_workspace`).
+2. Environment variable `CHIPCOMPILER_ICS55_PDK_ROOT`.
+3. Legacy environment variable `ICS55_PDK_ROOT`.
+4. In-repo default path `chipcompiler/thirdparty/icsprout55-pdk`.
+
+Notes:
+
+1. Backend now supports `POST /api/workspace/set_pdk_root` to set the runtime root path by PDK name.
+2. Workspace creation persists resolved root in `parameters.json` as `PDK Root`.
+3. `load_workspace()` prefers `PDK Root` from `parameters.json` and falls back to env/default resolution.
+
+Example:
+
+```bash
+CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/icsprout55-pdk chipcompiler
+```
+
 ### Build ECC-Tools C++ bindings
 
 ```bash

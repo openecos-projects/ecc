@@ -47,5 +47,5 @@ __all__ = [
     'CheckState',
     'StepMetrics',
     'load_metrics',
-    'save_metrics'
+    'save_metrics',
 ]

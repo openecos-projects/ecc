@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 from dataclasses import dataclass, field
+import os
 
 @dataclass
 class PDK:
@@ -10,6 +11,7 @@ class PDK:
     """
     name : str = "" # pdk name
     version : str = "" # pdk version
+    root : str = "" # resolved pdk root path
     tech : str = "" # pdk tech lef file
     lefs : list = field(default_factory=list) # pdk lef files
     libs : list = field(default_factory=list) # pdk liberty files
@@ -29,35 +31,47 @@ class PDK:
     dont_use : list = field(default_factory=list) # don't use cell list
     
 
-def get_pdk(pdk_name : str) -> PDK:
+def get_pdk(pdk_name : str, pdk_root: str = "") -> PDK:
     """
     Return the PDK instance based on the given pdk name.
     """
-    if pdk_name.lower() == "ics55":
-        return PDK_ICS55()
+    pdk_name_normalized = (pdk_name or "").strip().lower()
+    if pdk_name_normalized == "ics55":
+        return PDK_ICS55(pdk_root=pdk_root)
     else:
-        return PDK()
+        return PDK(name=pdk_name_normalized)
 
-def PDK_ICS55() -> PDK:
-    import os
+def PDK_ICS55(pdk_root: str = "") -> PDK:
     current_dir = os.path.split(os.path.abspath(__file__))[0]
     root = current_dir.rsplit('/', 2)[0]
+    default_pdk_root = "{}/chipcompiler/thirdparty/icsprout55-pdk".format(root)
 
-    pdk_root = "{}/chipcompiler/thirdparty/icsprout55-pdk".format(root)
-    stdcell_dir = "{}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100".format(pdk_root)
+    user_root = pdk_root.strip() if isinstance(pdk_root, str) else ""
+    if not user_root:
+        user_root = os.environ.get("CHIPCOMPILER_ICS55_PDK_ROOT", "").strip()
+    if not user_root:
+        user_root = os.environ.get("ICS55_PDK_ROOT", "").strip()
+
+    resolved_root = os.path.abspath(os.path.expanduser(user_root if user_root else default_pdk_root))
+    stdcell_dir = "{}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100".format(resolved_root)
+
+    tech_path = "{}/prtech/techLEF/N551P6M.lef".format(resolved_root)
+    lef_paths = [
+        "{}/ics55_LLSC_H7CR/lef/ics55_LLSC_H7CR_ecos.lef".format(stdcell_dir),
+        "{}/ics55_LLSC_H7CL/lef/ics55_LLSC_H7CL_ecos.lef".format(stdcell_dir)
+    ]
+    lib_paths = [
+        "{}/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir),
+        "{}/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir)
+    ]
 
     pdk = PDK(
         name="ics55",
         version="V1p10C100",
-        tech="{}/prtech/techLEF/N551P6M.lef".format(pdk_root),
-        lefs = [
-            "{}/ics55_LLSC_H7CR/lef/ics55_LLSC_H7CR_ecos.lef".format(stdcell_dir),
-            "{}/ics55_LLSC_H7CL/lef/ics55_LLSC_H7CL_ecos.lef".format(stdcell_dir)
-        ],
-        libs = [
-            "{}/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir),
-            "{}/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir)
-        ],
+        root=resolved_root,
+        tech=tech_path if os.path.isfile(tech_path) else "",
+        lefs=[path for path in lef_paths if os.path.isfile(path)],
+        libs=[path for path in lib_paths if os.path.isfile(path)],
         site_core = "core7",
         site_io = "core7",
         site_corner = "core7",

@@ -221,7 +221,8 @@ def create_workspace(directory : str,
                      origin_verilog : str,
                      pdk : PDK | str,
                      parameters : Parameters | dict,
-                     input_filelist : str = "") -> Workspace:
+                     input_filelist : str = "",
+                     pdk_root : str = "") -> Workspace:
     """
     Create a workspace for chip design flow.
 
@@ -257,7 +258,7 @@ def create_workspace(directory : str,
         workspace.pdk = pdk
         
     if isinstance(pdk, str):
-        workspace.pdk = get_pdk(pdk)    
+        workspace.pdk = get_pdk(pdk_name=pdk, pdk_root=pdk_root)
     
     #update config
     if isinstance(parameters, Parameters):
@@ -267,7 +268,8 @@ def create_workspace(directory : str,
     
     if isinstance(parameters, dict):
         # format parameters
-        workspace.parameters = get_parameters(pdk)
+        pdk_name = workspace.pdk.name if workspace.pdk.name else (pdk if isinstance(pdk, str) else "")
+        workspace.parameters = get_parameters(pdk_name)
         update_parameters(parameters_src=parameters,
                           parameters_target=workspace.parameters.data)
         
@@ -328,6 +330,9 @@ def create_workspace(directory : str,
         shutil.copy(workspace.pdk.spef, f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}")
         workspace.pdk.spef = f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}"
 
+    if workspace.pdk.root:
+        workspace.parameters.data["PDK Root"] = workspace.pdk.root
+
     # save parameter
     save_parameter(workspace.parameters)
      
@@ -345,7 +350,10 @@ def load_workspace(directory : str) -> Workspace:
     parameters = load_parameter(f"{directory}/parameters.json")
     workspace.parameters = parameters
     
-    pdk = get_pdk(pdk_name=parameters.data.get("PDK", ""))
+    pdk = get_pdk(
+        pdk_name=parameters.data.get("PDK", ""),
+        pdk_root=parameters.data.get("PDK Root", ""),
+    )
     sdc_path = find_files(f"{directory}/origin", ".sdc")
     if len(sdc_path) > 0:
         pdk.sdc = sdc_path[0]
