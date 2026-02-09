@@ -440,29 +440,6 @@ fn stop_api_server(process: &mut Option<Child>) {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn configure_linux_graphics_env() {
-    let is_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some()
-        || std::env::var("XDG_SESSION_TYPE")
-            .map(|v| v.eq_ignore_ascii_case("wayland"))
-            .unwrap_or(false);
-
-    if !is_wayland {
-        return;
-    }
-
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        println!("Set WEBKIT_DISABLE_DMABUF_RENDERER=1 for Wayland compatibility");
-    }
-
-    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-        println!("Set WEBKIT_DISABLE_COMPOSITING_MODE=1 to avoid EGL init failure");
-    }
-}
-
-
 #[tauri::command]
 fn show_main_window(window: tauri::Window) {
     window.show().unwrap();
@@ -659,9 +636,6 @@ async fn request_project_permission(app: tauri::AppHandle, path: String) -> Resu
 
 fn main() {
     use std::path::PathBuf;
-
-    #[cfg(target_os = "linux")]
-    configure_linux_graphics_env();
 
     // Create a shared reference for the API server process
     let api_server: ApiServerProcess = Arc::new(Mutex::new(None));
