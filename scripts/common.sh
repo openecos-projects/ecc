@@ -412,7 +412,20 @@ install_ecc_py() {
 
 # Get target platform for Tauri
 get_target_platform() {
-    rustc -vV | grep host | cut -d' ' -f2
+    if ! command -v rustc >/dev/null 2>&1; then
+        echo "ERROR: rustc is not installed or not in PATH." >&2
+        return 1
+    fi
+
+    local target
+    target="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p' | head -n 1)"
+
+    if [[ -z "$target" ]]; then
+        echo "ERROR: failed to detect Rust target triple from 'rustc -vV'." >&2
+        return 1
+    fi
+
+    echo "$target"
 }
 
 # Build Tauri bundles and copy the API server binary into release dir

@@ -34,7 +34,11 @@ echo "Project root: $PROJECT_ROOT"
 echo ""
 
 # Get target platform
-TARGET=$(get_target_platform)
+TARGET="$(get_target_platform || true)"
+if [[ -z "$TARGET" ]]; then
+    echo "ERROR: target platform is empty. Install Rust toolchain and ensure 'rustc' is in PATH."
+    exit 1
+fi
 echo "Target platform: $TARGET"
 echo ""
 
