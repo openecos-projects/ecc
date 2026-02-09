@@ -31,8 +31,6 @@ fn is_port_available(port: u16) -> bool {
 
 /// Kill process using a specific port (platform-specific)
 fn kill_process_on_port(port: u16) -> bool {
-    return true;
-    
     #[cfg(target_os = "windows")]
     {
         // Windows: use netstat + taskkill
@@ -134,6 +132,7 @@ fn ensure_port_available(port: u16) -> bool {
 
 /// Get candidate binary names for api-server.
 /// Prefer target-suffixed names, but also support unsuffixed names from bundled artifacts.
+#[cfg(not(debug_assertions))]
 fn get_api_server_binary_candidates() -> Vec<String> {
     let target = env!("TARGET");
 
@@ -176,7 +175,10 @@ fn get_oss_cad_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> 
         .filter(|path| path.exists())
 }
 
-fn start_api_server(app_handle: &tauri::AppHandle) -> Option<Child> {
+fn start_api_server(
+    #[cfg(debug_assertions)] _app_handle: &tauri::AppHandle,
+    #[cfg(not(debug_assertions))] app_handle: &tauri::AppHandle,
+) -> Option<Child> {
     use std::path::PathBuf;
     
     // Check if a healthy API server is already running (e.g. started by debugger)
@@ -576,8 +578,6 @@ fn kill_port_process() -> Result<String, String> {
 /// 获取调试信息（用于诊断生产环境问题）
 #[tauri::command]
 fn get_debug_info(app: tauri::AppHandle) -> serde_json::Value {
-    use std::path::PathBuf;
-    
     let mut info = serde_json::json!({
         "api_port": API_PORT,
         "port_available": is_port_available(API_PORT),
