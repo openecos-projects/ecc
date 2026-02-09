@@ -6,6 +6,13 @@ import subprocess
 from pathlib import Path
 
 
+def _sanitize_loader_env(env: dict[str, str]) -> dict[str, str]:
+    """Remove loader-related env vars that can break bundled yosys launcher."""
+    env.pop("LD_LIBRARY_PATH", None)
+    env.pop("LD_PRELOAD", None)
+    return env
+
+
 def _build_oss_cad_env(oss_path: Path,
                        base_env: dict[str, str] | None = None) -> dict[str, str]:
     """Build subprocess environment variables for OSS CAD Suite."""
@@ -82,7 +89,7 @@ def get_yosys_runtime() -> tuple[list[str], dict[str, str]]:
     written to global os.environ.
     """
     command, oss_path = _resolve_yosys_command()
-    env = os.environ.copy()
+    env = _sanitize_loader_env(os.environ.copy())
     if oss_path is not None:
         env = _build_oss_cad_env(oss_path=oss_path, base_env=env)
     return command, env
