@@ -457,7 +457,17 @@ inject_oss_cad_into_appimage() {
     rm -rf "$target_dir"
     cp -a "$oss_cad_source" "$target_dir"
 
-    local appimagetool="${APPIMAGETOOL_PATH:-appimagetool}"
+    local appimagetool="${APPIMAGETOOL_PATH:-}"
+    if [[ -z "$appimagetool" ]]; then
+        if command -v appimagetool >/dev/null 2>&1; then
+            appimagetool="appimagetool"
+        else
+            appimagetool="$work_dir/appimagetool-x86_64.AppImage"
+            echo "[inject] Downloading appimagetool..."
+            curl -fL "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -o "$appimagetool"
+            chmod +x "$appimagetool"
+        fi
+    fi
     echo "[inject] Repacking AppImage"
     if ! APPIMAGE_EXTRACT_AND_RUN=1 "$appimagetool" "$work_dir/squashfs-root" "$appimage_abs" >/dev/null; then
         echo "ERROR: appimagetool repack failed"
