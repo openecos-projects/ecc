@@ -19,6 +19,9 @@
         <router-view />
       </div>
     </div>
+
+    <!-- 全局 Toast 通知 -->
+    <Toast position="top-right" />
   </div>
 </template>
 
@@ -29,6 +32,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { useWorkspace } from '@/composables/useWorkspace'
 
 import TopBar from '@/components/TopBar.vue'
+import Toast from 'primevue/toast'
 
 const themeStore = useThemeStore()
 const { loadRecentProjects, currentProject } = useWorkspace()

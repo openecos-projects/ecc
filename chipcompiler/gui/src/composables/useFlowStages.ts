@@ -169,6 +169,41 @@ export function useFlowStages() {
     { immediate: true }
   )
 
+  // 监听 SSE 通知，当收到 step 完成通知时自动刷新流程步骤
+  const { sseMessages } = useWorkspace()
+
+  watch(
+    () => sseMessages.value.length,
+    async (newLen, oldLen) => {
+      if (newLen <= (oldLen ?? 0)) return
+
+      // 获取最新一条 SSE 消息
+      const latest = sseMessages.value[newLen - 1]
+      if (!latest) return
+
+      // 判断是否为 step 完成通知（后端 notify_step 发送的格式：cmd="notify", data.id="step"）
+      const isStepNotify = latest.cmd === 'notify' && latest.data?.id === 'step'
+      if (!isStepNotify) return
+
+      const stepName = latest.data?.step as string | undefined
+      console.log('收到 SSE step 通知，步骤:', stepName)
+
+      // 乐观更新：先将对应步骤状态设为 Success，避免等待文件读取的延迟
+      if (stepName) {
+        const idx = dynamicFlowStages.value.findIndex(s => s.path === stepName)
+        if (idx !== -1) {
+          dynamicFlowStages.value[idx] = {
+            ...dynamicFlowStages.value[idx],
+            state: 'Success'
+          }
+        }
+      }
+
+      // 从 flow.json 重新加载完整状态，确保数据一致性
+      await refreshFlowStages()
+    }
+  )
+
   // 组件挂载时也尝试加载
   onMounted(async () => {
     if (currentProject.value?.path) {

@@ -94,7 +94,7 @@
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-[10px] text-(--text-secondary) uppercase tracking-wider">Total Progress</span>
               <span class="text-[11px] font-bold text-(--accent-color)">{{ flowStats.success }}/{{ flowStats.total
-                }}</span>
+              }}</span>
             </div>
             <div class="h-1.5 bg-(--bg-secondary) rounded-full overflow-hidden">
               <div class="h-full bg-(--accent-color) rounded-full transition-all duration-500"
@@ -200,12 +200,20 @@
             </div>
           </div>
 
-          <!-- RUN ALL 按钮 -->
-          <button @click="handleRunFlow" :disabled="isRunning"
-            class="w-full flex items-center justify-center gap-2 px-3 py-2 bg-(--accent-color) text-white text-[11px] font-bold rounded hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-(--accent-color)/20">
-            <i :class="isRunning ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
-            {{ isRunning ? 'RUNNING' : 'RUN ALL' }}
-          </button>
+          <!-- RTL2GDS 控制区 -->
+          <div class="rtl2gds-control">
+            <button @click="handleRunFlow" :disabled="isRunning" class="rerun-btn" :class="{ running: isRunning }">
+              <i :class="isRunning ? 'ri-loader-4-line animate-spin' : 'ri-refresh-line'"></i>
+              RTL2GDS
+            </button>
+            <!-- 状态指示灯：绿=成功 红=失败 -->
+            <div class="rtl2gds-status-dots">
+              <span class="status-dot"
+                :class="flowResult === 'success' ? 'dot-success-active' : 'dot-success-dim'"></span>
+              <span class="status-dot" :class="flowResult === 'failed' ? 'dot-failed-active' : 'dot-failed-dim'"></span>
+            </div>
+            <button class="rerun-btn">return</button>
+          </div>
         </div>
       </template>
 
@@ -229,7 +237,7 @@
           <div class="flex items-center justify-between mb-2">
             <span class="text-[10px] text-(--text-secondary) uppercase tracking-wider">Progress</span>
             <span class="text-[11px] font-bold text-(--accent-color)">{{ completedSteps }}/{{ totalSteps || 0
-              }}</span>
+            }}</span>
           </div>
           <div class="h-1.5 bg-(--bg-secondary) rounded-full overflow-hidden">
             <div class="h-full bg-(--accent-color) rounded-full transition-all duration-500"
@@ -415,6 +423,15 @@ const flowProgressPercent = computed(() => {
   return (flowStats.value.success / flowStats.value.total) * 100
 })
 
+// RTL2GDS 结果状态：从 flowRunner 的 state 推断
+const flowResult = computed(() => {
+  if (flowStats.value.total === 0) return 'none'
+  if (flowStats.value.failed > 0) return 'failed'
+  if (flowStats.value.success === flowStats.value.total) return 'success'
+  if (flowStats.value.ongoing > 0) return 'running'
+  return 'none'
+})
+
 // ============ 主题相关 ============
 const isDark = computed(() => themeStore.themeName === 'dark')
 
@@ -451,5 +468,112 @@ const handleRunFlow = async () => {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
+}
+
+/* ====== RTL2GDS 控制区 ====== */
+.rtl2gds-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.rtl2gds-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* 状态指示灯 */
+.rtl2gds-status-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.dot-success-active {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.dot-success-dim {
+  background: transparent;
+  border: 2px solid #10b981;
+  opacity: 0.35;
+}
+
+.dot-failed-active {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+.dot-failed-dim {
+  background: transparent;
+  border: 2px solid #ef4444;
+  opacity: 0.35;
+}
+
+/* Rerun Button */
+.rerun-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: var(--accent-color);
+  color: var(--accent-text, #fff);
+  border: none;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.rerun-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.rerun-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.rerun-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rerun-btn.running {
+  animation: pulse-btn 1.5s ease infinite;
+}
+
+@keyframes pulse-btn {
+
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
 }
 </style>

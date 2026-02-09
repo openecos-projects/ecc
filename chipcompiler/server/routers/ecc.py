@@ -40,7 +40,7 @@ async def delete_workspace(request: ECCRequest):
     return ecc_serv.delete_workspace(request)
 
 @router.post("/rtl2gds", response_model=ECCResponse)
-async def rtl2gds(request: ECCRequest):
+def rtl2gds(request: ECCRequest):
     """
     run rtl2gds flow for current workspace.
     """

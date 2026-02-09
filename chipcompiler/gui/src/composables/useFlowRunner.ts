@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTauri } from './useTauri'
+import { useWorkspace } from './useWorkspace'
 import { CMDEnum, StateEnum, StepEnum } from '@/api/type'
 import { runStepApi, rtl2gdsApi, type RunStepResponse } from '@/api/flow'
 
@@ -15,6 +16,7 @@ import { runStepApi, rtl2gdsApi, type RunStepResponse } from '@/api/flow'
  */
 export function useFlowRunner() {
   const { isInTauri, ensureTauri } = useTauri()
+  const { showToast } = useWorkspace()
   const route = useRoute()
 
   // 状态
@@ -71,9 +73,32 @@ export function useFlowRunner() {
         }
       })
       console.log('run step result', result)
+
+      if (result.data?.state === StateEnum.Success) {
+        showToast({
+          severity: 'success',
+          summary: 'Step Completed',
+          detail: `${step} finished successfully`,
+          life: 4000
+        })
+      } else {
+        showToast({
+          severity: 'error',
+          summary: 'Step Failed',
+          detail: `${step} did not complete successfully`,
+          life: 6000
+        })
+      }
+
       return result.data
     } catch (err) {
       console.error('单步运行失败:', err)
+      showToast({
+        severity: 'error',
+        summary: 'Step Error',
+        detail: err instanceof Error ? err.message : String(err),
+        life: 6000
+      })
     } finally {
       isRunning.value = false
     }
@@ -116,9 +141,21 @@ export function useFlowRunner() {
 
       if (result.response === 'success') {
         state.value = StateEnum.Success
+        showToast({
+          severity: 'success',
+          summary: 'RTL2GDS Completed',
+          detail: 'All flow steps finished successfully',
+          life: 5000
+        })
       } else {
         state.value = StateEnum.Imcomplete
         error.value = result.message?.[0] || 'rtl2gds failed'
+        showToast({
+          severity: 'error',
+          summary: 'RTL2GDS Failed',
+          detail: error.value ?? 'Unknown error',
+          life: 8000
+        })
       }
 
       return result.data
@@ -126,6 +163,12 @@ export function useFlowRunner() {
       console.error('运行所有步骤失败:', err)
       error.value = err instanceof Error ? err.message : String(err)
       state.value = StateEnum.Imcomplete
+      showToast({
+        severity: 'error',
+        summary: 'RTL2GDS Error',
+        detail: error.value ?? 'Unknown error',
+        life: 8000
+      })
     } finally {
       isRunning.value = false
     }
