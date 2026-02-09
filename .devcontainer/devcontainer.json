@@ -1,0 +1,22 @@
+{
+  "name": "chipcompiler",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter",
+        "rust-lang.rust-analyzer",
+        "tauri-apps.tauri-vscode",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "forwardPorts": [8765, 5173, 1420],
+  "postCreateCommand": "./scripts/build_release.sh",
+  "remoteUser": "root"
+}
