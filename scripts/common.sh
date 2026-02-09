@@ -428,7 +428,50 @@ get_target_platform() {
     echo "$target"
 }
 
-# Build Tauri bundles and copy the API server binary into release dir
+# Inject OSS CAD Suite into an existing AppImage via extract-copy-repack.
+inject_oss_cad_into_appimage() {
+    local appimage_path="$1"
+    local oss_cad_source="$2"
+
+    if [[ "$ENABLE_OSS_CAD_SUITE" != "true" ]]; then
+        return 0
+    fi
+    if [[ ! -f "$appimage_path" || ! -d "$oss_cad_source" ]]; then
+        echo "ERROR: AppImage or OSS CAD source not found"
+        return 1
+    fi
+
+    local appimage_abs
+    appimage_abs=$(readlink -f "$appimage_path")
+    local work_dir
+    work_dir=$(mktemp -d)
+
+    echo "[inject] Extracting AppImage: $appimage_abs"
+    (cd "$work_dir" && APPIMAGE_EXTRACT_AND_RUN=1 "$appimage_abs" --appimage-extract >/dev/null) || {
+        echo "ERROR: failed to extract AppImage"
+        rm -rf "$work_dir"
+        return 1
+    }
+
+    local target_dir="$work_dir/squashfs-root/usr/lib/ECC/resources/oss-cad-suite"
+    rm -rf "$target_dir"
+    cp -a "$oss_cad_source" "$target_dir"
+
+    local appimagetool="${APPIMAGETOOL_PATH:-appimagetool}"
+    echo "[inject] Repacking AppImage"
+    if ! APPIMAGE_EXTRACT_AND_RUN=1 "$appimagetool" "$work_dir/squashfs-root" "$appimage_abs" >/dev/null; then
+        echo "ERROR: appimagetool repack failed"
+        rm -rf "$work_dir"
+        return 1
+    fi
+
+    chmod +x "$appimage_abs"
+    rm -rf "$work_dir"
+    echo "[inject] AppImage post-injected: $appimage_abs"
+}
+
+# Build Tauri bundles and copy the API server binary into release dir.
+# On Linux, build deb with embedded OSS CAD and appimage with post-injection.
 build_tauri_bundle() {
     local gui_dir="$1"
     local tauri_dir="$2"
@@ -436,21 +479,54 @@ build_tauri_bundle() {
     local binaries_dir="$4"
     local binary_name="$5"
 
-    echo "=== Step 8: Building Tauri application ==="
-    if [ ! -d "$oss_cad_bundle_dir" ]; then
-        echo "ERROR: Tauri resources missing: $oss_cad_bundle_dir"
-        return 1
-    fi
+    local target
+    target=$(get_target_platform) || return 1
+    local tauri_resources_dir
+    tauri_resources_dir="$(dirname "$oss_cad_bundle_dir")"
 
     if [ -d "$HOME/.local/bin" ]; then
         export PATH="$HOME/.local/bin:$PATH"
     fi
-
     export RUST_BACKTRACE=1
 
-    if ! (cd "$gui_dir" && pnpm run tauri build -- --verbose); then
-        echo "ERROR: Tauri build failed"
-        return 1
+    echo "=== Step 8: Building Tauri application ==="
+
+    if [[ "$target" == *"linux"* ]]; then
+        # Build deb with full OSS CAD suite embedded
+        stage_oss_cad_suite "$tauri_resources_dir" "$oss_cad_bundle_dir" "$target" || return 1
+        (cd "$gui_dir" && pnpm exec tauri build --bundles deb --verbose) || return 1
+
+        # Save staged payload, replace with placeholder for appimage
+        local payload_dir
+        payload_dir=$(mktemp -d)
+        mv "$oss_cad_bundle_dir" "$payload_dir/oss-cad-suite"
+        mkdir -p "$oss_cad_bundle_dir"
+        echo "Placeholder" > "$oss_cad_bundle_dir/README"
+
+        # Build appimage without OSS CAD suite
+        (cd "$gui_dir" && pnpm exec tauri build --bundles appimage --verbose) || {
+            rm -rf "$payload_dir"; return 1
+        }
+
+        # Post-inject OSS CAD suite into AppImage
+        local appimage_path
+        appimage_path=$(find "$tauri_dir/target/release/bundle" -type f -name "*.AppImage" 2>/dev/null | sort | tail -1)
+        if [[ -n "$appimage_path" && -d "$payload_dir/oss-cad-suite" ]]; then
+            inject_oss_cad_into_appimage "$appimage_path" "$payload_dir/oss-cad-suite" || {
+                rm -rf "$payload_dir"; return 1
+            }
+        fi
+
+        # Restore staged resources
+        rm -rf "$oss_cad_bundle_dir"
+        mv "$payload_dir/oss-cad-suite" "$oss_cad_bundle_dir" 2>/dev/null || true
+        rm -rf "$payload_dir"
+    else
+        stage_oss_cad_suite "$tauri_resources_dir" "$oss_cad_bundle_dir" "$target" || return 1
+        if ! (cd "$gui_dir" && pnpm exec tauri build --verbose); then
+            echo "ERROR: Tauri build failed"
+            return 1
+        fi
     fi
 
     echo "=== Step 9: Copying API Server to release directory ==="

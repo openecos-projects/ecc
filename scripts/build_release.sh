@@ -52,12 +52,11 @@ echo "=== Step 2: Ensuring yosys is available ==="
 ensure_yosys || exit 1
 echo ""
 
-# Step 3: Stage Yosys runtime for bundling
-echo "=== Step 3: Staging Yosys runtime ==="
+# Step 3: Prepare Yosys runtime source
+echo "=== Step 3: Preparing Yosys runtime source ==="
 if [[ "$ENABLE_OSS_CAD_SUITE" == "true" ]]; then
     setup_oss_cad_suite
 fi
-stage_oss_cad_suite "$TAURI_RESOURCES_DIR" "$OSS_CAD_BUNDLE_DIR" "$TARGET" || exit 1
 echo ""
 
 # Step 4: Ensure ecc_py is built
