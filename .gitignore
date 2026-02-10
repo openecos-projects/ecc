@@ -25,6 +25,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.py-build-cmake_cache/**
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -156,3 +157,6 @@ chipcompiler/gui/src-tauri/resources/oss-cad-suite/
 
 # Tauri dev files
 .pnpm-store/
+
+*.AppImage
+*.tgz
