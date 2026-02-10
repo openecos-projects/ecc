@@ -268,7 +268,7 @@ def create_workspace(directory : str,
     
     if isinstance(parameters, dict):
         # format parameters
-        pdk_name = workspace.pdk.name if workspace.pdk.name else (pdk if isinstance(pdk, str) else "")
+        pdk_name = workspace.pdk.name or (pdk if isinstance(pdk, str) else "")
         workspace.parameters = get_parameters(pdk_name)
         update_parameters(parameters_src=parameters,
                           parameters_target=workspace.parameters.data)

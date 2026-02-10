@@ -46,13 +46,13 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
     root = current_dir.rsplit('/', 2)[0]
     default_pdk_root = "{}/chipcompiler/thirdparty/icsprout55-pdk".format(root)
 
-    user_root = pdk_root.strip() if isinstance(pdk_root, str) else ""
-    if not user_root:
-        user_root = os.environ.get("CHIPCOMPILER_ICS55_PDK_ROOT", "").strip()
-    if not user_root:
-        user_root = os.environ.get("ICS55_PDK_ROOT", "").strip()
-
-    resolved_root = os.path.abspath(os.path.expanduser(user_root if user_root else default_pdk_root))
+    # Resolve: explicit arg > env vars > default
+    resolved_root = os.path.abspath(os.path.expanduser(
+        (pdk_root or "").strip()
+        or os.environ.get("CHIPCOMPILER_ICS55_PDK_ROOT", "").strip()
+        or os.environ.get("ICS55_PDK_ROOT", "").strip()
+        or default_pdk_root
+    ))
     stdcell_dir = "{}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100".format(resolved_root)
 
     tech_path = "{}/prtech/techLEF/N551P6M.lef".format(resolved_root)

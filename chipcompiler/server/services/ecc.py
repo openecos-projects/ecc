@@ -208,42 +208,28 @@ class ECCService:
             "env_key": env_key,
         }
 
+        # Validate inputs
+        error = None
         if not pdk_name:
-            return ECCResponse(
-                cmd=request.cmd,
-                response=ResponseEnum.failed.value,
-                data=response_data,
-                message=["set pdk root failed: missing pdk name"],
-            )
+            error = "missing pdk name"
+        elif not pdk_root:
+            error = "missing pdk_root"
+        elif pdk_name not in {"ics55"}:
+            error = f"unsupported pdk '{pdk_name}'"
+        elif not os.path.isdir(pdk_root):
+            error = f"pdk_root is not a directory: {pdk_root}"
 
-        if not pdk_root:
+        if error:
             return ECCResponse(
                 cmd=request.cmd,
                 response=ResponseEnum.failed.value,
                 data=response_data,
-                message=["set pdk root failed: missing pdk_root"],
-            )
-
-        supported_pdks = {"ics55"}
-        if pdk_name not in supported_pdks:
-            return ECCResponse(
-                cmd=request.cmd,
-                response=ResponseEnum.failed.value,
-                data=response_data,
-                message=[f"set pdk root failed: unsupported pdk '{pdk_name}'"],
-            )
-
-        if not os.path.isdir(pdk_root):
-            return ECCResponse(
-                cmd=request.cmd,
-                response=ResponseEnum.failed.value,
-                data=response_data,
-                message=[f"set pdk root failed: pdk_root is not a directory: {pdk_root}"],
+                message=[f"set pdk root failed: {error}"],
             )
 
         try:
             pdk = get_pdk(pdk_name=pdk_name, pdk_root=pdk_root)
-            resolved_root = pdk.root if pdk.root else pdk_root
+            resolved_root = pdk.root or pdk_root
             os.environ[env_key] = resolved_root
 
             response_data["pdk_root"] = resolved_root
