@@ -205,6 +205,20 @@
                       <p class="text-xs text-(--text-secondary) mt-1">{{ pdk.description }}</p>
                     </div>
                   </button>
+
+                  <!-- Import PDK Card -->
+                  <button @click="importPdk"
+                    class="flex items-start gap-4 p-4 rounded-xl border-2 border-dashed border-(--border-color) hover:border-(--accent-color)/50 hover:bg-(--accent-color)/5 transition-all cursor-pointer text-left group">
+                    <div
+                      class="w-10 h-10 rounded-lg flex items-center justify-center bg-(--bg-primary) text-(--text-secondary) group-hover:bg-(--accent-color)/10 group-hover:text-(--accent-color) transition-colors">
+                      <i class="ri-upload-cloud-2-line text-xl"></i>
+                    </div>
+                    <div>
+                      <h4 class="font-semibold text-(--text-primary) group-hover:text-(--accent-color) transition-colors">
+                        导入工艺库</h4>
+                      <p class="text-xs text-(--text-secondary) mt-1">导入 .tar.gz / .zip 压缩包</p>
+                    </div>
+                  </button>
                 </div>
               </div>
 
@@ -577,6 +591,32 @@ const removeFile = (path: string) => {
 
 const getPdkName = (id: string) => {
   return pdkOptions.find(p => p.id === id)?.name || id
+}
+
+/**
+ * TODO: 导入工艺库（PDK）压缩包
+ *
+ * 实现要点：
+ * 1. 调用 Tauri 文件选择对话框，过滤 .tar.gz / .zip 文件
+ * 2. 将压缩包路径发送到后端 API（POST /api/pdk/import）进行解压和注册
+ * 3. 后端解压到全局工艺库存储目录（~/.chipcompiler/pdks/）
+ * 4. 后端验证 PDK 结构（tech LEF、cell LEF、Liberty 等文件是否存在）
+ * 5. 注册成功后将新 PDK 追加到 pdkOptions 并自动选中
+ * 6. 注册失败时显示错误提示（toast）
+ */
+const importPdk = async () => {
+  // TODO: 后续对接后端 API 进行解压、验证、注册
+  const result = await open({
+    multiple: false,
+    filters: [{
+      name: 'PDK Archive',
+      extensions: ['tar.gz', 'tgz', 'zip']
+    }],
+    title: '选择工艺库压缩包'
+  })
+  if (result) {
+    console.log('TODO: 将压缩包发送到后端进行导入:', result)
+  }
 }
 
 const nextStep = () => {

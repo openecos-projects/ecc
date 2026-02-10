@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from ..schemas import (
     ECCRequest,
@@ -25,6 +25,13 @@ async def create_workspace(request: ECCRequest):
     """
     return ecc_serv.create_workspace(request)
 
+@router.post("/set_pdk_root", response_model=ECCResponse)
+async def set_pdk_root(request: ECCRequest):
+    """
+    Set PDK root path for backend runtime resolution.
+    """
+    return ecc_serv.set_pdk_root(request)
+
 @router.post("/load_workspace", response_model=ECCResponse)
 async def load_workspace(request: ECCRequest):
     """
@@ -40,7 +47,7 @@ async def delete_workspace(request: ECCRequest):
     return ecc_serv.delete_workspace(request)
 
 @router.post("/rtl2gds", response_model=ECCResponse)
-async def rtl2gds(request: ECCRequest):
+def rtl2gds(request: ECCRequest):
     """
     run rtl2gds flow for current workspace.
     """

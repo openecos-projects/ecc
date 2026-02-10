@@ -1,10 +1,11 @@
-import { ref } from 'vue'
+import { ref, getCurrentInstance } from 'vue'
 import type { Project, WorkspaceConfig } from '../types'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { LazyStore } from '@tauri-apps/plugin-store'
 import { exists } from '@tauri-apps/plugin-fs'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useToast } from 'primevue/usetoast'
 import { loadWorkspaceApi, createWorkspaceApi } from '../api'
 import { createSSEClient, type SSEClient, type ECCResponse } from '../api/sse'
 import { isTauri } from './useTauri'
@@ -25,6 +26,9 @@ const recentProjects = ref<Project[]>([])
 // SSE 连接（workspace 级别，跟随 workspace 生命周期）
 const sseClient = ref<SSEClient | null>(null)
 const sseMessages = ref<ECCResponse[]>([])
+
+// Toast 实例（在首次组件上下文调用时初始化）
+let _toast: ReturnType<typeof useToast> | null = null
 
 // 应用名称常量
 const APP_NAME = 'ECC'
@@ -47,6 +51,31 @@ async function updateWindowTitle(projectName?: string) {
 
 export function useWorkspace() {
 
+  // 在组件 setup 上下文中初始化 Toast（仅初始化一次）
+  if (!_toast && getCurrentInstance()) {
+    _toast = useToast()
+  }
+
+  /**
+   * 显示 Toast 通知（全局可用，挂载在 workspace 单例上）
+   */
+  function showToast(options: {
+    severity?: 'success' | 'info' | 'warn' | 'error' | 'secondary' | 'contrast'
+    summary: string
+    detail?: string
+    life?: number
+  }) {
+    if (_toast) {
+      _toast.add({
+        severity: options.severity ?? 'info',
+        summary: options.summary,
+        detail: options.detail,
+        life: options.life ?? 4000
+      })
+    } else {
+      console.warn('[useWorkspace] Toast not initialized — called outside component context?')
+    }
+  }
 
   /**
    * 路径标准化：处理跨平台路径分隔符，移除末尾斜杠
@@ -391,5 +420,7 @@ export function useWorkspace() {
     // SSE
     sseClient,
     sseMessages,
+    // Toast
+    showToast,
   }
 }

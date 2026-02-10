@@ -193,6 +193,17 @@ tool_name/
 └── bin/          # Tool binaries (ecc only)
 ```
 
+### Yosys Runtime Flow (Current)
+
+For synthesis (`chipcompiler/tools/yosys/`), runtime selection and execution are split between utility and runner:
+
+1. `utility.get_yosys_command()` resolves executable priority: bundled runtime (`CHIPCOMPILER_OSS_CAD_DIR`) first, then system `PATH`.
+2. `utility.get_yosys_runtime()` prepares subprocess-only environment.
+3. `utility.check_slang_plugin()` performs preflight plugin check.
+4. `runner.run_step()` uses resolved `(command, env)` for both preflight check and `yosys_synthesis.tcl`.
+
+Key property: utility resolution and env preparation are side-effect free for process-global environment (no global mutation of `os.environ`).
+
 ### Service Layer (chipcompiler/services/)
 
 | Module | Description |

@@ -13,7 +13,8 @@ from chipcompiler.data import (
     log_workspace,
     StepEnum,
     StateEnum,
-    get_pdk
+    get_pdk,
+    get_design_parameters
 )
 
 from chipcompiler.engine import (
@@ -21,14 +22,12 @@ from chipcompiler.engine import (
     EngineFlow
 )
 
-from benchmark import benchmark_parameters
-
 def test_ics55_gcd():
     workspace_dir="{}/test/examples/ics55_gcd_tool".format(root)
 
     input_def = ""
     input_verilog = "{}/test/fixtures/gcd/gcd.v".format(root) # RTL file
-    parameters=benchmark_parameters("ics55", "gcd")
+    parameters=get_design_parameters("ics55", "gcd")
     pdk = get_pdk("ics55")
 
     workspace = create_workspace(

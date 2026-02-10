@@ -5,14 +5,11 @@ import os
 from chipcompiler.data import (
     create_workspace,
     load_workspace,
-    StepEnum,
     StateEnum,
-    PDK,
-    get_pdk
+    get_pdk,
 )
 
 from chipcompiler.engine import (
-    EngineDB,
     EngineFlow
 )
 
@@ -103,6 +100,7 @@ class ECCService:
         "request" : {
             "directory" : "",
             "pdk" : "",
+            "pdk_root" : "",
             "parameters" : {},
             "origin_def" : "",
             "origin_verilog" : "",
@@ -148,7 +146,8 @@ class ECCService:
                                          parameters=data.get("parameters", {}),
                                          origin_def=data.get("origin_def", ""),
                                          origin_verilog=data.get("origin_verilog", ""),
-                                         input_filelist=input_filelist)
+                                         input_filelist=input_filelist,
+                                         pdk_root=data.get("pdk_root", ""))
         except Exception as e:
             return ECCResponse(
                         cmd=request.cmd,
@@ -181,6 +180,77 @@ class ECCService:
                 data=response_data,
                 message = [f"create workspace success : {data.get('directory', '')}"]
             )
+
+    def set_pdk_root(self, request: ECCRequest) -> ECCResponse:
+        """
+        "request" : {
+            "pdk" : "ics55",
+            "pdk_root" : "/abs/path/to/pdk"
+        },
+        "response" : {
+            "pdk" : "ics55",
+            "pdk_root" : "/abs/path/to/pdk",
+            "env_key" : "CHIPCOMPILER_ICS55_PDK_ROOT"
+        }
+        """
+        state, response = self.check_cmd(request, CMDEnum.set_pdk_root)
+        if not state:
+            return response
+
+        data = request.data
+        pdk_name = str(data.get("pdk", "")).strip().lower()
+        pdk_root = str(data.get("pdk_root", "")).strip()
+
+        env_key = f"CHIPCOMPILER_{pdk_name.upper()}_PDK_ROOT" if pdk_name else ""
+        response_data = {
+            "pdk": pdk_name,
+            "pdk_root": pdk_root,
+            "env_key": env_key,
+        }
+
+        # Validate inputs
+        error = None
+        if not pdk_name:
+            error = "missing pdk name"
+        elif not pdk_root:
+            error = "missing pdk_root"
+        elif pdk_name not in {"ics55"}:
+            error = f"unsupported pdk '{pdk_name}'"
+        elif not os.path.isdir(pdk_root):
+            error = f"pdk_root is not a directory: {pdk_root}"
+
+        if error:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.failed.value,
+                data=response_data,
+                message=[f"set pdk root failed: {error}"],
+            )
+
+        try:
+            pdk = get_pdk(pdk_name=pdk_name, pdk_root=pdk_root)
+            resolved_root = pdk.root or pdk_root
+            os.environ[env_key] = resolved_root
+
+            response_data["pdk_root"] = resolved_root
+
+            if self.workspace is not None and self.workspace.pdk.name.lower() == pdk_name:
+                self.workspace.pdk = pdk
+                self.workspace.parameters.data["PDK Root"] = resolved_root
+        except Exception as e:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.error.value,
+                data=response_data,
+                message=[f"set pdk root error: {e}"],
+            )
+
+        return ECCResponse(
+            cmd=request.cmd,
+            response=ResponseEnum.success.value,
+            data=response_data,
+            message=[f"set pdk root success: {pdk_name} -> {response_data['pdk_root']}"],
+        )
     
     def load_workspace(self, request: ECCRequest) -> ECCResponse:
         """

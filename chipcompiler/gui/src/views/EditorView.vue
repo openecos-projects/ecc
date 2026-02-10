@@ -8,27 +8,20 @@ import ThumbnailGallery from '../components/ThumbnailGallery.vue'
 
 let isResizing = false
 
-// 阻止拖拽时的文本选择
-const handleSelectStart = (e: Event) => {
-  if (isResizing) {
-    e.preventDefault()
-    return false
-  }
-}
-
 const handleMouseDown = (e: MouseEvent) => {
-  // 检查是否点击的是 gutter（分割条）
   const target = e.target as HTMLElement
   const gutter = target.closest('.p-splitter-gutter')
   if (gutter) {
     isResizing = true
     document.body.classList.add('splitter-resizing')
 
-    // 检查是否是垂直分割条
     const splitter = gutter.closest('.p-splitter')
     if (splitter?.classList.contains('p-splitter-vertical')) {
       document.body.classList.add('splitter-resizing-vertical')
     }
+
+    // 立即清除任何已存在的选区（Linux WebKitGTK 兼容）
+    window.getSelection()?.removeAllRanges()
   }
 }
 
@@ -41,13 +34,11 @@ const handleMouseUp = () => {
 }
 
 onMounted(() => {
-  document.addEventListener('selectstart', handleSelectStart)
   document.addEventListener('mousedown', handleMouseDown)
   document.addEventListener('mouseup', handleMouseUp)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('selectstart', handleSelectStart)
   document.removeEventListener('mousedown', handleMouseDown)
   document.removeEventListener('mouseup', handleMouseUp)
   document.body.classList.remove('splitter-resizing')

@@ -1,63 +1,75 @@
+[build-system]
+build-backend = "uv_build"
+requires = [ "uv-build>=0.8.5,<0.10" ]
+
 [project]
 name = "chipcompiler"
 version = "0.1.0"
 readme = "README.md"
-requires-python = ">=3.10"
-
-dependencies = [
-    "numpy>=1.21.0",
-    "pandas>=1.3.0",
-    "matplotlib>=3.4.0",
-    "scipy>=1.7.0",
-    "pyjson5>=1.6.0",
-    "pyyaml>=6.0",
-    "klayout==0.30.2",
-    "tqdm>=4.67.1",
-    "fastapi>=0.109.0",
-    "uvicorn>=0.27.0",
-    "pydantic>=2.5.0",
+authors = [
+  { name = "Emin", email = "me@emin.chat" },
+  { name = "KoEkko", email = "225193046@qq.com" },
+  { name = "Yell-walkalone", email = "12112088@qq.com" },
 ]
+requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "fastapi>=0.109",
+  "klayout==0.30.2",
+  "matplotlib>=3.4",
+  "numpy>=1.21",
+  "pandas>=1.3",
+  "pydantic>=2.5",
+  "pyjson5>=1.6",
+  "pyyaml>=6",
+  "scipy>=1.7",
+  "tqdm>=4.67.1",
+  "uvicorn>=0.27",
+]
+scripts.chipcompiler = "chipcompiler.server.run_server:main"
 
 [dependency-groups]
 dev = [
-    "ty>=0.0.9",
-    "ruff>=0.14.10",
-    "pyinstaller==6.17.0",
-    "pyright>=1.1.407",
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "mypy>=1.0.0",
-    "pyinstaller>=6.0.0",
-    "prek>=0.2.20"
+  "black>=23",
+  "mypy>=1",
+  "prek>=0.2.20",
+  "pyinstaller==6.17",
+  "pyinstaller>=6",
+  "pyright>=1.1.407",
+  "pytest>=7",
+  "pytest-cov>=4",
+  "ruff>=0.14.10",
+  "ty>=0.0.9"
 ]
 
-[build-system]
-requires = ["uv_build>=0.8.5,<0.10.0"]
-build-backend = "uv_build"
-[tool.uv.build-backend]
-module-name = ["chipcompiler"]
-module-root = ""
-source-exclude = ["scripts/*"]
-
-[project.scripts]
-chipcompiler = "chipcompiler.server.run_server:main"
+[tool.uv]
+build-backend.module-name = [ "chipcompiler" ]
+build-backend.module-root = ""
+build-backend.source-exclude = [
+  "scripts/*",
+  # Exclude ecc-tools unacceptable filename for now, should remove this after upstream
+  "chipcompiler/thirdparty/ecc-tools/src/third_party/BST-DME/**"
+]
+build-backend.wheel-exclude = [ "chipcompiler/thirdparty/ecc-tools/src/third_party/BST-DME/**" ]
 
 [tool.ruff]
 line-length = 100
-
-[tool.ruff.lint]
-select = [
-    "E",   # pycodestyle
-    "F",   # Pyflakes
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
-    "SIM", # flake8-simplify
-    "I",   # isort
+lint.select = [
+  "B",   # flake8-bugbear
+  "E",   # pycodestyle
+  "F",   # Pyflakes
+  "I",   # isort
+  "SIM", # flake8-simplify
+  "UP",  # pyupgrade
 ]
 
-[tool.ty.environment]
-python-version = "3.10"
-
-[tool.ty.src]
-include = ["chipcompiler/**/*.py", "tests/**/*.py"]
+[tool.ty]
+environment.python-version = "3.10"
+src.include = [ "chipcompiler/**/*.py", "tests/**/*.py" ]

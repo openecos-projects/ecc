@@ -8,14 +8,17 @@ This document explains how to use ECOS Chip Compiler's Python API.
 
 ```python
 from chipcompiler.engine import EngineFlow
-from chipcompiler.data import Workspace, Parameters, PDK
+from chipcompiler.data import create_workspace, get_parameters, get_pdk
 
-# Create a workspace
-workspace = Workspace(
-    name="my_design",
-    pdk=PDK.from_config("path/to/pdk/config.json"),
-    parameters=Parameters.from_config("path/to/params.json"),
-    origin_verilog="path/to/design.v"
+# Create a workspace (using built-in PDK template)
+pdk = get_pdk("ics55", pdk_root="/path/to/icsprout55-pdk")
+parameters = get_parameters("ics55")
+workspace = create_workspace(
+    directory="workspace/my_design",
+    pdk=pdk,
+    parameters=parameters,
+    origin_def="",
+    origin_verilog="path/to/design.v",
 )
 
 # Initialize the flow engine

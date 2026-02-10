@@ -13,7 +13,8 @@ from chipcompiler.data import (
     log_workspace,
     StepEnum,
     StateEnum,
-    get_pdk
+    get_pdk,
+    get_design_parameters
 )
 
 from chipcompiler.engine import (
@@ -28,8 +29,6 @@ from chipcompiler.server import (
     ECCResponse
 )
 
-from benchmark import benchmark_parameters
-
 def test_ics55_gcd():
     workspace_dir="{}/test/examples/ics55_gcd_service".format(root)
 
@@ -38,7 +37,7 @@ def test_ics55_gcd():
     input_filelist = "{}/test/fixtures/gcd/filelist.f".format(root)
     ecc_serv = ecc_service()
     
-    parameters=benchmark_parameters("ics55", "gcd")
+    parameters=get_design_parameters("ics55", "gcd")
     
     # create workspace
     #####################################################

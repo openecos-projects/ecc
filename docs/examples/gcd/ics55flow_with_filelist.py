@@ -13,9 +13,14 @@ For more information on filelist syntax, see:
 docs/specification/filelist-grammar.md
 """
 
-from chipcompiler.data import create_workspace, get_pdk, StepEnum, StateEnum
+from chipcompiler.data import (
+    StateEnum,
+    StepEnum,
+    create_workspace,
+    get_design_parameters,
+    get_pdk,
+)
 from chipcompiler.engine import EngineFlow
-from benchmark import get_parameters
 
 # Setup paths
 workspace_dir = "./gcd_workspace_with_filelist"
@@ -24,7 +29,7 @@ input_filelist = "./docs/examples/gcd/filelist.f"
 # Load PDK and design parameters
 # ICS55 PDK will be automatically downloaded after git submodule update --init --recursive
 pdk = get_pdk("ics55")
-parameters = get_parameters("ics55", "gcd")
+parameters = get_design_parameters("ics55", "gcd")
 
 # Create workspace with filelist
 # The workspace will be created from scratch, the structure is as follows:

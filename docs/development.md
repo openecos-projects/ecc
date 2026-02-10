@@ -37,6 +37,42 @@ If yosys is already installed on your system, you can skip the OSS CAD Suite dow
 ENABLE_OSS_CAD_SUITE=false ./build.sh
 ```
 
+### Yosys Runtime Resolution
+
+Current yosys runtime resolution in `chipcompiler/tools/yosys/utility.py`:
+
+1. If `CHIPCOMPILER_OSS_CAD_DIR` points to a usable bundled runtime, use bundled `yosys`.
+2. Otherwise, fall back to `yosys` from system `PATH`.
+3. If neither is available, synthesis is marked invalid.
+
+Runtime environment handling:
+
+1. `get_yosys_command()` performs side-effect-free detection only.
+2. `get_yosys_runtime()` returns `(command, env)` for subprocess execution.
+3. OSS CAD-specific `PATH`, `YOSYS_PLUGINPATH`, and `YOSYS_DATDIR` are applied to subprocess env only (no global `os.environ` mutation).
+4. `check_slang_plugin()` runs a lightweight preflight check before synthesis (`yosys -p "plugin -i slang"`).
+
+### PDK Runtime Resolution
+
+Current PDK root resolution (for `get_pdk("ics55")`) in `chipcompiler/data/pdk.py`:
+
+1. Explicit `pdk_root` argument (e.g. passed from API `create_workspace`).
+2. Environment variable `CHIPCOMPILER_ICS55_PDK_ROOT`.
+3. Legacy environment variable `ICS55_PDK_ROOT`.
+4. In-repo default path `chipcompiler/thirdparty/icsprout55-pdk`.
+
+Notes:
+
+1. Backend now supports `POST /api/workspace/set_pdk_root` to set the runtime root path by PDK name.
+2. Workspace creation persists resolved root in `parameters.json` as `PDK Root`.
+3. `load_workspace()` prefers `PDK Root` from `parameters.json` and falls back to env/default resolution.
+
+Example:
+
+```bash
+CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/icsprout55-pdk chipcompiler
+```
+
 ### Build ECC-Tools C++ bindings
 
 ```bash
@@ -77,7 +113,8 @@ uv run mypy chipcompiler/
 uv run pytest test/
 
 # Specific file
-uv run pytest test/test_tools_yosys.py -v
+uv run pytest test/test_tools_yosys_utility.py -v
+uv run pytest test/test_tools_yosys_runner.py -v
 
 # Coverage report
 uv run pytest test/ --cov=chipcompiler --cov-report=term-missing

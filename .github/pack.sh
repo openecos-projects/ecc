@@ -64,8 +64,10 @@ main() {
     require_venv
     log "Checking yosys"
     ensure_yosys || exit 1
-    log "Staging OSS CAD Suite"
-    stage_oss_cad_suite "$TAURI_RESOURCES_DIR" "$OSS_CAD_BUNDLE_DIR" "$TARGET" || exit 1
+    log "Preparing OSS CAD Suite source"
+    if [[ "$ENABLE_OSS_CAD_SUITE" == "true" ]]; then
+        setup_oss_cad_suite
+    fi
 
     if [[ ! -d "${ECC_TOOLS_ROOT}" ]]; then
         echo "ERROR: ecc-tools submodule not found."

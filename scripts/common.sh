@@ -59,6 +59,172 @@ setup_oss_cad_suite() {
     echo "==============================="
 }
 
+_oss_cad_keep_path() {
+    local root="$1"
+    local abs_path="$2"
+    local keep_file="$3"
+
+    if [[ ! -e "$abs_path" ]]; then
+        return 0
+    fi
+    if [[ "$abs_path" != "$root/"* ]]; then
+        return 0
+    fi
+
+    local rel_path="${abs_path#"$root"/}"
+    if ! grep -Fxq "$rel_path" "$keep_file"; then
+        echo "$rel_path" >> "$keep_file"
+    fi
+
+    if [[ -L "$abs_path" ]]; then
+        local real_path
+        real_path=$(readlink -f "$abs_path" 2>/dev/null || true)
+        if [[ -n "$real_path" && "$real_path" == "$root/"* ]]; then
+            local real_rel="${real_path#"$root"/}"
+            if ! grep -Fxq "$real_rel" "$keep_file"; then
+                echo "$real_rel" >> "$keep_file"
+            fi
+        fi
+    fi
+}
+
+_oss_cad_collect_elf_closure() {
+    local root="$1"
+    local seed="$2"
+    local keep_file="$3"
+    local seen_file="$4"
+
+    [[ -e "$seed" ]] || return 0
+
+    local queue=("$seed")
+    while ((${#queue[@]} > 0)); do
+        local current="${queue[0]}"
+        queue=("${queue[@]:1}")
+
+        _oss_cad_keep_path "$root" "$current" "$keep_file"
+
+        if grep -Fxq "$current" "$seen_file"; then
+            continue
+        fi
+        echo "$current" >> "$seen_file"
+
+        while IFS= read -r dep; do
+            [[ -n "$dep" ]] || continue
+            if [[ "$dep" == "$root/"* ]]; then
+                _oss_cad_keep_path "$root" "$dep" "$keep_file"
+                if ! grep -Fxq "$dep" "$seen_file"; then
+                    queue+=("$dep")
+                fi
+            fi
+        done < <(ldd "$current" 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i ~ /^\//) print $i}')
+    done
+}
+
+prune_oss_cad_runtime() {
+    local oss_cad_bundle_dir="$1"
+    local target="$2"
+
+    if [[ "$target" != *"linux"* ]]; then
+        return 0
+    fi
+    if ! command -v ldd >/dev/null 2>&1; then
+        echo "Warning: ldd not found, skipping OSS CAD runtime pruning."
+        return 0
+    fi
+
+    local keep_file
+    local seen_file
+    keep_file=$(mktemp)
+    seen_file=$(mktemp)
+
+    # Keep known runtime libs required by yosys launcher/executable in AppImage.
+    # ldd can resolve to host paths during build-time and miss bundled libs, so
+    # we keep a conservative minimal set explicitly.
+    local required_lib_patterns=(
+        "ld-linux*"
+        "libc.so*"
+        "libm.so*"
+        "libz.so*"
+        "libgcc_s.so*"
+        "libstdc++.so*"
+        "libffi.so*"
+        "libreadline.so*"
+        "libtcl8.6.so*"
+        "libtinfo.so*"
+    )
+    local pat
+    for pat in "${required_lib_patterns[@]}"; do
+        for f in "$oss_cad_bundle_dir/lib"/$pat; do
+            [[ -e "$f" ]] || continue
+            _oss_cad_keep_path "$oss_cad_bundle_dir" "$f" "$keep_file"
+        done
+    done
+
+    # Keep loader path used by bin/yosys wrapper.
+    for interp in "$oss_cad_bundle_dir"/lib/ld-linux* "$oss_cad_bundle_dir"/lib64/ld-linux*; do
+        [[ -e "$interp" ]] || continue
+        _oss_cad_keep_path "$oss_cad_bundle_dir" "$interp" "$keep_file"
+    done
+
+    # Yosys Tcl runtime scripts (set by wrapper env vars).
+    if [[ -d "$oss_cad_bundle_dir/lib/tcl8.6" ]]; then
+        find "$oss_cad_bundle_dir/lib/tcl8.6" \( -type f -o -type l \) | while IFS= read -r f; do
+            _oss_cad_keep_path "$oss_cad_bundle_dir" "$f" "$keep_file"
+        done
+    fi
+    if [[ -d "$oss_cad_bundle_dir/lib/tk8.6" ]]; then
+        find "$oss_cad_bundle_dir/lib/tk8.6" \( -type f -o -type l \) | while IFS= read -r f; do
+            _oss_cad_keep_path "$oss_cad_bundle_dir" "$f" "$keep_file"
+        done
+    fi
+
+    # Keep yosys-abc library files (some builds ship it as a file, others as a dir).
+    if [[ -e "$oss_cad_bundle_dir/lib/yosys-abc" ]]; then
+        if [[ -d "$oss_cad_bundle_dir/lib/yosys-abc" ]]; then
+            find "$oss_cad_bundle_dir/lib/yosys-abc" \( -type f -o -type l \) | while IFS= read -r f; do
+                _oss_cad_keep_path "$oss_cad_bundle_dir" "$f" "$keep_file"
+            done
+        else
+            _oss_cad_keep_path "$oss_cad_bundle_dir" "$oss_cad_bundle_dir/lib/yosys-abc" "$keep_file"
+        fi
+    fi
+
+    local elf_seeds=(
+        "$oss_cad_bundle_dir/libexec/yosys"
+        "$oss_cad_bundle_dir/libexec/yosys-abc"
+        "$oss_cad_bundle_dir/bin/yosys-abc"
+        "$oss_cad_bundle_dir/bin/abc"
+        "$oss_cad_bundle_dir/share/yosys/plugins/slang.so"
+    )
+
+    local seed
+    for seed in "${elf_seeds[@]}"; do
+        _oss_cad_collect_elf_closure "$oss_cad_bundle_dir" "$seed" "$keep_file" "$seen_file"
+    done
+
+    if [[ -d "$oss_cad_bundle_dir/lib" ]]; then
+        find "$oss_cad_bundle_dir/lib" \( -type f -o -type l \) | while IFS= read -r f; do
+            local rel="${f#"$oss_cad_bundle_dir"/}"
+            if ! grep -Fxq "$rel" "$keep_file"; then
+                rm -f "$f"
+            fi
+        done
+        find "$oss_cad_bundle_dir/lib" -depth -type d -empty -delete
+    fi
+
+    if [[ -d "$oss_cad_bundle_dir/libexec" ]]; then
+        find "$oss_cad_bundle_dir/libexec" \( -type f -o -type l \) | while IFS= read -r f; do
+            local rel="${f#"$oss_cad_bundle_dir"/}"
+            if ! grep -Fxq "$rel" "$keep_file"; then
+                rm -f "$f"
+            fi
+        done
+        find "$oss_cad_bundle_dir/libexec" -depth -type d -empty -delete
+    fi
+
+    rm -f "$keep_file" "$seen_file"
+}
+
 # Stage OSS CAD Suite into Tauri resources
 stage_oss_cad_suite() {
     local tauri_resources_dir="$1"
@@ -100,12 +266,7 @@ stage_oss_cad_suite() {
     if [ -d "$oss_cad_bundle_dir/bin" ]; then
         find "$oss_cad_bundle_dir/bin" -maxdepth 1 -type f ! -name 'yosys' ! -name 'yosys*' ! -name 'abc' -print0 | xargs -0 -r rm -f
     fi
-    if [ -d "$oss_cad_bundle_dir/libexec" ]; then
-        rm -rf "$oss_cad_bundle_dir/libexec"
-    fi
-    if [ -d "$oss_cad_bundle_dir/lib" ]; then
-        rm -rf "$oss_cad_bundle_dir/lib"
-    fi
+    prune_oss_cad_runtime "$oss_cad_bundle_dir" "$target"
     if [ -d "$oss_cad_bundle_dir/examples" ]; then
         rm -rf "$oss_cad_bundle_dir/examples"
     fi
@@ -120,8 +281,10 @@ stage_oss_cad_suite() {
             xargs -0 -r -I {} bash -c 'if [ "$(basename "{}")" != "yosys" ]; then rm -rf "{}"; fi'
     fi
     if [ -d "$oss_cad_bundle_dir/share/yosys" ]; then
-        find "$oss_cad_bundle_dir/share/yosys" -mindepth 1 -maxdepth 1 -print0 | \
-            xargs -0 -r -I {} bash -c 'name=$(basename "{}"); case "$name" in yosys*|plugins|techlibs|scripts) ;; *) rm -rf "{}" ;; esac'
+        # Keep top-level files under share/yosys (e.g. techmap.v), and only prune
+        # unnecessary subdirectories.
+        find "$oss_cad_bundle_dir/share/yosys" -mindepth 1 -maxdepth 1 -type d -print0 | \
+            xargs -0 -r -I {} bash -c 'name=$(basename "{}"); case "$name" in plugins|techlibs|scripts) ;; *) rm -rf "{}" ;; esac'
         if [ -d "$oss_cad_bundle_dir/share/yosys/plugins" ]; then
             find "$oss_cad_bundle_dir/share/yosys/plugins" -type f ! -name 'slang.so' -print0 | xargs -0 -r rm -f
         fi
@@ -261,10 +424,76 @@ install_ecc_py() {
 
 # Get target platform for Tauri
 get_target_platform() {
-    rustc -vV | grep host | cut -d' ' -f2
+    if ! command -v rustc >/dev/null 2>&1; then
+        echo "ERROR: rustc is not installed or not in PATH." >&2
+        return 1
+    fi
+
+    local target
+    target="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p' | head -n 1)"
+
+    if [[ -z "$target" ]]; then
+        echo "ERROR: failed to detect Rust target triple from 'rustc -vV'." >&2
+        return 1
+    fi
+
+    echo "$target"
 }
 
-# Build Tauri bundles and copy the API server binary into release dir
+# Inject OSS CAD Suite into an existing AppImage via extract-copy-repack.
+inject_oss_cad_into_appimage() {
+    local appimage_path="$1"
+    local oss_cad_source="$2"
+
+    if [[ "$ENABLE_OSS_CAD_SUITE" != "true" ]]; then
+        return 0
+    fi
+    if [[ ! -f "$appimage_path" || ! -d "$oss_cad_source" ]]; then
+        echo "ERROR: AppImage or OSS CAD source not found"
+        return 1
+    fi
+
+    local appimage_abs
+    appimage_abs=$(readlink -f "$appimage_path")
+    local work_dir
+    work_dir=$(mktemp -d)
+
+    echo "[inject] Extracting AppImage: $appimage_abs"
+    (cd "$work_dir" && APPIMAGE_EXTRACT_AND_RUN=1 "$appimage_abs" --appimage-extract >/dev/null) || {
+        echo "ERROR: failed to extract AppImage"
+        rm -rf "$work_dir"
+        return 1
+    }
+
+    local target_dir="$work_dir/squashfs-root/usr/lib/ECC/resources/oss-cad-suite"
+    rm -rf "$target_dir"
+    cp -a "$oss_cad_source" "$target_dir"
+
+    local appimagetool="${APPIMAGETOOL_PATH:-}"
+    if [[ -z "$appimagetool" ]]; then
+        if command -v appimagetool >/dev/null 2>&1; then
+            appimagetool="appimagetool"
+        else
+            appimagetool="$work_dir/appimagetool-x86_64.AppImage"
+            echo "[inject] Downloading appimagetool..."
+            curl -fL "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -o "$appimagetool"
+            chmod +x "$appimagetool"
+        fi
+    fi
+    echo "[inject] Repacking AppImage"
+    if ! APPIMAGE_EXTRACT_AND_RUN=1 "$appimagetool" "$work_dir/squashfs-root" "$appimage_abs" >/dev/null; then
+        echo "ERROR: appimagetool repack failed"
+        rm -rf "$work_dir"
+        return 1
+    fi
+
+    chmod +x "$appimage_abs"
+    rm -rf "$work_dir"
+    echo "[inject] AppImage post-injected: $appimage_abs"
+}
+
+# Build Tauri bundles and copy the API server binary into release dir.
+# On Linux, build deb with embedded OSS CAD and appimage with post-injection.
 build_tauri_bundle() {
     local gui_dir="$1"
     local tauri_dir="$2"
@@ -272,21 +501,54 @@ build_tauri_bundle() {
     local binaries_dir="$4"
     local binary_name="$5"
 
-    echo "=== Step 8: Building Tauri application ==="
-    if [ ! -d "$oss_cad_bundle_dir" ]; then
-        echo "ERROR: Tauri resources missing: $oss_cad_bundle_dir"
-        return 1
-    fi
+    local target
+    target=$(get_target_platform) || return 1
+    local tauri_resources_dir
+    tauri_resources_dir="$(dirname "$oss_cad_bundle_dir")"
 
     if [ -d "$HOME/.local/bin" ]; then
         export PATH="$HOME/.local/bin:$PATH"
     fi
-
     export RUST_BACKTRACE=1
 
-    if ! (cd "$gui_dir" && pnpm run tauri build -- --verbose); then
-        echo "ERROR: Tauri build failed"
-        return 1
+    echo "=== Step 8: Building Tauri application ==="
+
+    if [[ "$target" == *"linux"* ]]; then
+        # Build deb with full OSS CAD suite embedded
+        stage_oss_cad_suite "$tauri_resources_dir" "$oss_cad_bundle_dir" "$target" || return 1
+        (cd "$gui_dir" && pnpm exec tauri build --bundles deb --verbose) || return 1
+
+        # Save staged payload, replace with placeholder for appimage
+        local payload_dir
+        payload_dir=$(mktemp -d)
+        mv "$oss_cad_bundle_dir" "$payload_dir/oss-cad-suite"
+        mkdir -p "$oss_cad_bundle_dir"
+        echo "Placeholder" > "$oss_cad_bundle_dir/README"
+
+        # Build appimage without OSS CAD suite
+        (cd "$gui_dir" && pnpm exec tauri build --bundles appimage --verbose) || {
+            rm -rf "$payload_dir"; return 1
+        }
+
+        # Post-inject OSS CAD suite into AppImage
+        local appimage_path
+        appimage_path=$(find "$tauri_dir/target/release/bundle" -type f -name "*.AppImage" 2>/dev/null | sort | tail -1)
+        if [[ -n "$appimage_path" && -d "$payload_dir/oss-cad-suite" ]]; then
+            inject_oss_cad_into_appimage "$appimage_path" "$payload_dir/oss-cad-suite" || {
+                rm -rf "$payload_dir"; return 1
+            }
+        fi
+
+        # Restore staged resources
+        rm -rf "$oss_cad_bundle_dir"
+        mv "$payload_dir/oss-cad-suite" "$oss_cad_bundle_dir" 2>/dev/null || true
+        rm -rf "$payload_dir"
+    else
+        stage_oss_cad_suite "$tauri_resources_dir" "$oss_cad_bundle_dir" "$target" || return 1
+        if ! (cd "$gui_dir" && pnpm exec tauri build --verbose); then
+            echo "ERROR: Tauri build failed"
+            return 1
+        fi
     fi
 
     echo "=== Step 9: Copying API Server to release directory ==="

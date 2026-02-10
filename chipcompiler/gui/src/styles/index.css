@@ -28,6 +28,25 @@
   text-size-adjust: 100%;
 }
 
+/* 全局禁用文字选择（桌面应用体验） */
+*,
+*::before,
+*::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 允许输入类元素和代码块中的文字选择 */
+input,
+textarea,
+[contenteditable="true"],
+pre,
+code,
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .dark {
   --bg-primary: #1e1e1e;
   --bg-secondary: #252526;
@@ -125,12 +144,18 @@ img {
   contain: layout style paint;
 }
 
-/* 拖拽 Splitter 分割条时禁用全局文本选择 */
-body.splitter-resizing,
-body.splitter-resizing * {
-  user-select: none !important;
-  -webkit-user-select: none !important;
+/* 拖拽 Splitter 分割条时锁定光标 + 覆盖层防选 */
+body.splitter-resizing {
   cursor: col-resize !important;
+}
+body.splitter-resizing * {
+  cursor: col-resize !important;
+  /* 屏蔽子元素的 pointer-events 防止 WebKitGTK 拖选 */
+  pointer-events: none !important;
+}
+/* 保留 gutter 自身的交互 */
+body.splitter-resizing .p-splitter-gutter {
+  pointer-events: auto !important;
 }
 
 /* 垂直分割条拖拽时使用 row-resize 光标 */
