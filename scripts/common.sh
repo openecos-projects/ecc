@@ -178,8 +178,20 @@ prune_oss_cad_runtime() {
         done
     fi
 
+    # Keep yosys-abc library files (some builds ship it as a file, others as a dir).
+    if [[ -e "$oss_cad_bundle_dir/lib/yosys-abc" ]]; then
+        if [[ -d "$oss_cad_bundle_dir/lib/yosys-abc" ]]; then
+            find "$oss_cad_bundle_dir/lib/yosys-abc" \( -type f -o -type l \) | while IFS= read -r f; do
+                _oss_cad_keep_path "$oss_cad_bundle_dir" "$f" "$keep_file"
+            done
+        else
+            _oss_cad_keep_path "$oss_cad_bundle_dir" "$oss_cad_bundle_dir/lib/yosys-abc" "$keep_file"
+        fi
+    fi
+
     local elf_seeds=(
         "$oss_cad_bundle_dir/libexec/yosys"
+        "$oss_cad_bundle_dir/libexec/yosys-abc"
         "$oss_cad_bundle_dir/bin/yosys-abc"
         "$oss_cad_bundle_dir/bin/abc"
         "$oss_cad_bundle_dir/share/yosys/plugins/slang.so"
