@@ -20,7 +20,7 @@ python3 docs/examples/gcd/ics55flow.py
 
 ```python
 from chipcompiler.data import get_pdk
-from benchmark import get_parameters
+from chipcompiler.data import get_design_parameters
 
 # 设置路径
 workspace_dir = "./gcd_workspace"
@@ -29,7 +29,7 @@ input_verilog = "./docs/examples/gcd/gcd.v"
 # 加载 PDK 和设计参数
 # 在执行 git submodule update --init --recursive 后会自动下载 ICS55 PDK
 pdk = get_pdk("ics55")
-parameters = get_parameters("ics55", "gcd")
+parameters = get_design_parameters("ics55", "gcd")
 ```
 
 使用下面的 Python 代码生成工作空间：
@@ -169,7 +169,7 @@ rtl/utils.v
 
 ```python
 from chipcompiler.data import create_workspace, get_pdk
-from benchmark import get_parameters
+from chipcompiler.data import get_design_parameters
 
 # 设置路径
 workspace_dir = "./gcd_workspace_with_filelist"
@@ -177,7 +177,7 @@ input_filelist = "./docs/examples/gcd/filelist.f"
 
 # 加载 PDK 和设计参数
 pdk = get_pdk("ics55")
-parameters = get_parameters("ics55", "gcd")
+parameters = get_design_parameters("ics55", "gcd")
 
 # 使用 filelist 创建工作空间
 workspace = create_workspace(

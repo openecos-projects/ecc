@@ -20,7 +20,7 @@ Before we start, we need to set up the workspace. Below is the code snippet to g
 
 ```python
 from chipcompiler.data import get_pdk
-from benchmark import get_parameters
+from chipcompiler.data import get_design_parameters
 
 # Setup paths
 workspace_dir = "./gcd_workspace"
@@ -29,7 +29,7 @@ input_verilog = "./docs/examples/gcd/gcd.v"
 # Load PDK and design parameters
 # ICS55 PDK will be automatically downloaded after git submodule update --init --recursive
 pdk = get_pdk("ics55")
-parameters = get_parameters("ics55", "gcd")
+parameters = get_design_parameters("ics55", "gcd")
 ```
 
 We use below python code to generate the workspace:
@@ -169,7 +169,7 @@ Use the `input_filelist` parameter when creating a workspace:
 
 ```python
 from chipcompiler.data import create_workspace, get_pdk
-from benchmark import get_parameters
+from chipcompiler.data import get_design_parameters
 
 # Setup paths
 workspace_dir = "./gcd_workspace_with_filelist"
@@ -177,7 +177,7 @@ input_filelist = "./docs/examples/gcd/filelist.f"
 
 # Load PDK and design parameters
 pdk = get_pdk("ics55")
-parameters = get_parameters("ics55", "gcd")
+parameters = get_design_parameters("ics55", "gcd")
 
 # Create workspace with filelist
 workspace = create_workspace(

@@ -2,10 +2,10 @@
 # -*- encoding: utf-8 -*-
 
 import os
-
+from copy import deepcopy
 from dataclasses import dataclass, field
 
-isc55_parameters_template = {
+ICS55_PARAMETERS_TEMPLATE = {
     "PDK":"ICS55",
     "Design":"",
     "Top module":"",
@@ -194,6 +194,15 @@ isc55_parameters_template = {
     } 
 }
 
+ICS55_DESIGN_PARAMETERS = {
+    "gcd": {
+        "Design": "gcd",
+        "Top module": "gcd",
+        "Clock": "clk",
+        "Frequency max [MHz]": 100,
+    }
+}
+
 @dataclass
 class Parameters:
     """
@@ -226,8 +235,26 @@ def get_parameters(pdk_name : str = "", path : str = "") -> Parameters:
     
     match pdk_name.lower():
         case "ics55":
-            parameters.data = isc55_parameters_template
+            parameters.data = deepcopy(ICS55_PARAMETERS_TEMPLATE)
             
+    return parameters
+
+def get_design_parameters(pdk_name : str, design : str = "", path : str = "") -> Parameters:
+    """
+    Return parameters resolved by PDK and optional design name.
+    """
+    parameters = get_parameters(pdk_name, path)
+    if not design or pdk_name.lower() != "ics55":
+        return parameters
+
+    design_info = ICS55_DESIGN_PARAMETERS.get(design.lower())
+    if design_info is None:
+        supported_designs = ", ".join(sorted(ICS55_DESIGN_PARAMETERS.keys()))
+        raise ValueError(
+            f"Unsupported ICS55 design '{design}'. Supported designs: {supported_designs}"
+        )
+
+    parameters.data.update(design_info)
     return parameters
 
 def update_parameters(parameters_src : dict, parameters_target : dict) -> dict:

@@ -64,9 +64,8 @@ source .venv/bin/activate
 这是一个使用 [icsprout55-pdk](https://github.com/openecos-projects/icsprout55-pdk) 实现 GCD 设计的示例流程：
 
 ```python
-from chipcompiler.data import create_workspace, get_pdk, StepEnum, StateEnum
+from chipcompiler.data import create_workspace, get_pdk, get_design_parameters, StepEnum, StateEnum
 from chipcompiler.engine import EngineFlow
-from benchmark import get_parameters
 
 # 设置路径
 workspace_dir = "./gcd_workspace"
@@ -74,7 +73,7 @@ input_verilog = "./docs/examples/gcd.v"
 
 # 加载 PDK 和设计参数
 pdk = get_pdk("ics55")
-parameters = get_parameters("ics55", "gcd")
+parameters = get_design_parameters("ics55", "gcd")
 
 # 创建工作空间
 workspace = create_workspace(
