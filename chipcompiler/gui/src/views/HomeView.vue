@@ -57,20 +57,23 @@
           <div class="header-icon monitor"><i class="ri-pulse-line"></i></div>
           <h2>运行时监控</h2>
         </div>
-        <div class="monitor-content">
-          <div class="monitor-row" v-for="m in runtimeMetrics" :key="m.label">
-            <span class="monitor-label">{{ m.label }}</span>
-            <div class="monitor-spark">
-              <div class="spark-bars">
-                <div
-                  v-for="(h, i) in m.bars"
-                  :key="i"
-                  class="spark-bar"
-                  :style="{ height: h + '%' }"
-                ></div>
-              </div>
+        <div class="monitor-content" v-if="monitorData">
+          <div v-for="cfg in chartConfigs" :key="cfg.key" class="monitor-row">
+            <span class="monitor-label">{{ cfg.label }}</span>
+            <div class="monitor-chart-wrap">
+              <div
+                :ref="(el: any) => { if (cfg.key === 'memory') memoryChartRef = el; else if (cfg.key === 'runtime') runtimeChartRef = el; else if (cfg.key === 'instance') instanceChartRef = el; else if (cfg.key === 'frequency') frequencyChartRef = el; }"
+                class="monitor-chart"
+              ></div>
             </div>
-            <span class="monitor-value">{{ m.value }}</span>
+            <span class="monitor-value">{{ getMetricMax(cfg.key) }}</span>
+          </div>
+        </div>
+        <div v-else class="monitor-content">
+          <div class="monitor-placeholder">
+            <i class="ri-pulse-line"></i>
+            <p>No monitor data</p>
+            <span>运行流程后显示监控数据</span>
           </div>
         </div>
       </section>
@@ -88,7 +91,13 @@
           </div>
         </div>
         <div class="layout-content">
-          <div class="layout-placeholder">
+          <img
+            v-if="layoutBlobUrl"
+            :src="layoutBlobUrl"
+            alt="Layout Preview"
+            class="layout-image"
+          />
+          <div v-else class="layout-placeholder">
             <i class="ri-image-2-line"></i>
             <p>Layout Preview</p>
             <span>等待版图数据...</span>
@@ -148,34 +157,34 @@
         <div class="section-header">
           <div class="header-icon checklist"><i class="ri-checkbox-multiple-line"></i></div>
           <h2>Checklist Table</h2>
-          <span class="header-count">{{ completedCount }}/{{ runStages.length }}</span>
+          <span class="header-count">{{ checklistCompletedCount }}/{{ checklistItems.length }}</span>
         </div>
         <div class="checklist-content">
           <!-- Table format -->
-          <div class="checklist-table-wrap" v-if="runStages.length > 0">
+          <div class="checklist-table-wrap" v-if="checklistItems.length > 0">
             <table class="checklist-table">
               <thead>
                 <tr>
                   <th>步骤/阶段</th>
                   <th>验证类型</th>
-                  <th>步骤验收条件</th>
+                  <th>验收条件</th>
                   <th>验收结果</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="stage in runStages" :key="stage.path" :class="stateClass(stage.state)">
+                <tr v-for="(item, idx) in checklistItems" :key="idx" :class="stateClass(item.state)">
                   <td>
                     <div class="table-step-name">
-                      <i :class="stage.icon" class="table-step-icon"></i>
-                      {{ stage.label }}
+                      <i class="ri-checkbox-blank-circle-line table-step-icon"></i>
+                      {{ item.step }}
                     </div>
                   </td>
-                  <td class="table-tool">功能验证</td>
-                  <td class="table-criteria">步骤正常完成</td>
+                  <td class="table-tool">{{ item.type }}</td>
+                  <td class="table-criteria">{{ item.item }}</td>
                   <td>
-                    <span class="table-state-tag" :class="stateClass(stage.state)">
-                      <i :class="stateIcon(stage.state)" class="table-state-icon"></i>
-                      {{ stateLabel(stage.state) }}
+                    <span class="table-state-tag" :class="stateClass(item.state)">
+                      <i :class="stateIcon(item.state)" class="table-state-icon"></i>
+                      {{ stateLabel(item.state) }}
                     </span>
                   </td>
                 </tr>
@@ -196,46 +205,226 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, type Ref } from 'vue'
+import * as echarts from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { useParameters } from '@/composables/useParameters'
-import { useFlowStages } from '@/composables/useFlowStages'
+import { useHomeData } from '@/composables/useHomeData'
+
+// 注册 ECharts 组件（按需引入）
+echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const { config } = useParameters()
-const { flowStages } = useFlowStages()
+const { monitorData, checklistItems, layoutBlobUrl } = useHomeData()
 
-// 仅保留运行步骤（排除 setup 页面如 Home、Config）
-const runStages = computed(() =>
-  flowStages.value.filter(s => s.group === 'run')
+// checklist 完成计数
+const checklistCompletedCount = computed(() =>
+  checklistItems.value.filter(c => c.state === 'Success').length
 )
 
-// 已完成步骤计数
-const completedCount = computed(() =>
-  runStages.value.filter(s => s.state === 'Success').length
-)
+// ============ ECharts 折线图 ============
 
-// ============ 运行时监控占位数据 ============
-const runtimeMetrics = ref([
-  {
-    label: 'memory',
-    value: '--',
-    bars: [40, 55, 60, 70, 50, 65, 80, 75, 60, 85, 70, 90, 55, 65, 75, 80]
-  },
-  {
-    label: '单元数/线长',
-    value: '--',
-    bars: [30, 45, 55, 70, 60, 50, 65, 55, 75, 80, 70, 60, 85, 75, 50, 65]
-  },
-  {
-    label: '频率',
-    value: '--',
-    bars: [50, 60, 55, 65, 70, 80, 75, 85, 60, 70, 65, 55, 75, 80, 90, 70]
-  },
-  {
-    label: '单元数/线长',
-    value: '--',
-    bars: [60, 70, 80, 65, 55, 75, 85, 70, 60, 90, 80, 75, 65, 55, 70, 85]
+// 4 个图表容器 ref
+const memoryChartRef = ref<HTMLDivElement>()
+const runtimeChartRef = ref<HTMLDivElement>()
+const instanceChartRef = ref<HTMLDivElement>()
+const frequencyChartRef = ref<HTMLDivElement>()
+
+// ECharts 实例
+let memoryChart: echarts.ECharts | null = null
+let runtimeChart: echarts.ECharts | null = null
+let instanceChart: echarts.ECharts | null = null
+let frequencyChart: echarts.ECharts | null = null
+
+// ResizeObserver
+let resizeObserver: ResizeObserver | null = null
+
+/** 将 runtime 字符串 "h:m:s" 转换为秒数 */
+function parseRuntimeToSeconds(runtime: string): number {
+  const parts = runtime.split(':').map(Number)
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2]
   }
-])
+  return 0
+}
+
+/** 图表配色方案 */
+const chartConfigs = [
+  { label: 'Memory (MB)', color: '#ef4444', ref: memoryChartRef, key: 'memory' as const },
+  { label: 'Runtime (s)', color: '#3b82f6', ref: runtimeChartRef, key: 'runtime' as const },
+  { label: 'Instance', color: '#10b981', ref: instanceChartRef, key: 'instance' as const },
+  { label: 'Frequency (MHz)', color: '#a855f7', ref: frequencyChartRef, key: 'frequency' as const },
+]
+
+/** 获取某个维度的数值数组 */
+function getMetricValues(key: string): number[] {
+  if (!monitorData.value) return []
+  const raw = monitorData.value[key as keyof typeof monitorData.value]
+  if (!raw || !Array.isArray(raw)) return []
+
+  if (key === 'runtime') {
+    return (raw as string[]).map(parseRuntimeToSeconds)
+  }
+  if (key === 'memory') {
+    return (raw as string[]).map(Number)
+  }
+  return raw as number[]
+}
+
+/** 获取某个维度的最大值显示 */
+function getMetricMax(key: string): string {
+  const values = getMetricValues(key)
+  if (values.length === 0) return '--'
+  const max = Math.max(...values)
+  if (key === 'memory') return `${max.toFixed(1)} MB`
+  if (key === 'runtime') return `${max}s`
+  if (key === 'frequency') return `${max.toFixed(1)} MHz`
+  return `${max}`
+}
+
+/** 构建单个迷你折线图的 option */
+function buildChartOption(key: string, color: string): echarts.EChartsCoreOption {
+  const values = getMetricValues(key)
+  const steps = monitorData.value?.step || []
+
+  return {
+    grid: {
+      left: 4,
+      right: 4,
+      top: 4,
+      bottom: 4,
+      containLabel: false,
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(30, 30, 30, 0.9)',
+      borderColor: color,
+      borderWidth: 1,
+      textStyle: {
+        color: '#e5e5e5',
+        fontSize: 10,
+      },
+      formatter: (params: any) => {
+        const idx = params[0]?.dataIndex ?? 0
+        const stepName = steps[idx] || `#${idx}`
+        const val = params[0]?.value ?? 0
+        let unit = ''
+        if (key === 'memory') unit = ' MB'
+        else if (key === 'runtime') unit = 's'
+        else if (key === 'frequency') unit = ' MHz'
+        return `<div style="font-size:10px;font-weight:600;margin-bottom:2px">${stepName}</div>
+                <span style="color:${color}">${val}${unit}</span>`
+      },
+    },
+    xAxis: {
+      type: 'category',
+      show: false,
+      data: values.map((_, i) => i),
+      boundaryGap: false,
+    },
+    yAxis: {
+      type: 'value',
+      show: false,
+    },
+    series: [
+      {
+        type: 'line',
+        data: values,
+        smooth: 0.3,
+        symbol: 'none',
+        lineStyle: {
+          color,
+          width: 1.5,
+        },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: color + '40' },
+            { offset: 1, color: color + '05' },
+          ]),
+        },
+      },
+    ],
+    animation: true,
+    animationDuration: 600,
+  }
+}
+
+/** 初始化或更新所有图表 */
+function initOrUpdateCharts() {
+  const chartPairs: Array<{
+    ref: Ref<HTMLDivElement | undefined>
+    getInstance: () => echarts.ECharts | null
+    setInstance: (c: echarts.ECharts) => void
+    key: string
+    color: string
+  }> = [
+    { ref: memoryChartRef, getInstance: () => memoryChart, setInstance: (c) => memoryChart = c, key: 'memory', color: '#ef4444' },
+    { ref: runtimeChartRef, getInstance: () => runtimeChart, setInstance: (c) => runtimeChart = c, key: 'runtime', color: '#3b82f6' },
+    { ref: instanceChartRef, getInstance: () => instanceChart, setInstance: (c) => instanceChart = c, key: 'instance', color: '#10b981' },
+    { ref: frequencyChartRef, getInstance: () => frequencyChart, setInstance: (c) => frequencyChart = c, key: 'frequency', color: '#a855f7' },
+  ]
+
+  for (const { ref: chartRef, getInstance, setInstance, key, color } of chartPairs) {
+    if (!chartRef.value) continue
+
+    let instance = getInstance()
+    if (!instance) {
+      instance = echarts.init(chartRef.value, undefined, { renderer: 'canvas' })
+      setInstance(instance)
+    }
+
+    instance.setOption(buildChartOption(key, color), true)
+  }
+}
+
+/** 销毁所有图表 */
+function disposeCharts() {
+  memoryChart?.dispose(); memoryChart = null
+  runtimeChart?.dispose(); runtimeChart = null
+  instanceChart?.dispose(); instanceChart = null
+  frequencyChart?.dispose(); frequencyChart = null
+}
+
+/** 所有图表 resize */
+function resizeAllCharts() {
+  memoryChart?.resize()
+  runtimeChart?.resize()
+  instanceChart?.resize()
+  frequencyChart?.resize()
+}
+
+// 监听 monitorData 变化，更新图表
+watch(
+  () => monitorData.value,
+  async () => {
+    await nextTick()
+    initOrUpdateCharts()
+  },
+  { deep: true }
+)
+
+onMounted(async () => {
+  await nextTick()
+  if (monitorData.value) {
+    initOrUpdateCharts()
+  }
+
+  // ResizeObserver 响应容器变化
+  resizeObserver = new ResizeObserver(() => {
+    resizeAllCharts()
+  })
+  if (memoryChartRef.value?.parentElement) {
+    resizeObserver.observe(memoryChartRef.value.parentElement)
+  }
+})
+
+onUnmounted(() => {
+  disposeCharts()
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
 
 // ============ 指标分析图表占位 ============
 const analysisCharts = [
@@ -537,7 +726,7 @@ function formatBBox(bbox: string | undefined): string {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px;
+  padding: 4px 10px;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -545,44 +734,69 @@ function formatBBox(bbox: string | undefined): string {
 }
 
 .monitor-label {
-  width: 80px;
-  font-size: 10px;
+  width: 100px;
+  font-size: 9px;
+  font-weight: 600;
   color: var(--text-secondary);
   white-space: nowrap;
   flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-.monitor-spark {
+.monitor-chart-wrap {
   flex: 1;
   height: 100%;
-  min-height: 20px;
-  max-height: 32px;
+  min-height: 24px;
+  min-width: 0;
 }
 
-.spark-bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
+.monitor-chart {
+  width: 100%;
   height: 100%;
-}
-
-.spark-bar {
-  flex: 1;
-  min-width: 3px;
-  background: linear-gradient(180deg, #ef4444 0%, #ef4444 100%);
-  border-radius: 1px 1px 0 0;
-  opacity: 0.85;
-  transition: height 0.3s ease;
+  min-height: 24px;
 }
 
 .monitor-value {
-  min-width: 90px;
+  min-width: 80px;
   text-align: right;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--text-primary);
   font-family: 'JetBrains Mono', monospace;
   flex-shrink: 0;
+}
+
+.monitor-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.monitor-placeholder i {
+  font-size: 28px;
+  color: var(--text-secondary);
+  opacity: 0.3;
+}
+
+.monitor-placeholder p {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.monitor-placeholder span {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.6;
 }
 
 /* ==================== Layout Preview ==================== */
@@ -629,6 +843,13 @@ function formatBBox(bbox: string | undefined): string {
   font-size: 10px;
   color: var(--text-secondary);
   opacity: 0.6;
+}
+
+.layout-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 /* ==================== 指标分析 ==================== */

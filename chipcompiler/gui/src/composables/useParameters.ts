@@ -364,7 +364,7 @@ export function useParameters() {
 
     try {
       const projectPath = currentProject.value.path
-      const parametersPath = `${projectPath}/parameters.json`
+      const parametersPath = `${projectPath}/home/parameters.json`
       console.log('Loading parameters.json from:', parametersPath)
 
       // 先请求文件系统访问权限
@@ -409,7 +409,7 @@ export function useParameters() {
 
     try {
       const projectPath = currentProject.value.path
-      const parametersPath = `${projectPath}/parameters.json`
+      const parametersPath = `${projectPath}/home/parameters.json`
       console.log('Saving parameters.json to:', parametersPath)
 
       // 先请求文件系统访问权限

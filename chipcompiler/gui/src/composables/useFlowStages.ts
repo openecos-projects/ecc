@@ -117,7 +117,7 @@ export function useFlowStages() {
 
     try {
       const projectPath = currentProject.value.path
-      const flowJsonPath = `${projectPath}/flow.json`
+      const flowJsonPath = `${projectPath}/home/flow.json`
       console.log('Loading flow.json from:', flowJsonPath)
 
       // 先请求文件系统访问权限
