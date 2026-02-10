@@ -1,42 +1,35 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum, CheckState
+from chipcompiler.data import (
+    Workspace, 
+    WorkspaceStep, 
+    Checklist, 
+    StepEnum, 
+    CheckState
+)
 
 class EccChecklist:
     def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):
         self.workspace = workspace
         self.workspace_step = workspace_step
         
-        self.init_checklist()
-    
-    def init_checklist(self):
-        from chipcompiler.utility import json_read
-        data = json_read(self.workspace_step.checklist.get("path", ""))
-        if len(data) > 0:
-            self.workspace_step.checklist["checklist"] = data.get("checklist", [])
-        else:
-            self.build_checklist()
+        self.build_checklist()
 
     def build_checklist(self) -> list:
-        if len(self.workspace_step.checklist.get("checklist", [])) > 0:
-            return self.workspace_step.checklist["checklist"]
-        
-        def checklist_template(check_item : str,
-                               description : str):
-            return {
-                "name" : check_item,
-                "description" : description,
-                "state" : CheckState.Unstart.value
-               }
-            
-        checklist = []
-        
+        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
         step = StepEnum(self.workspace_step.name)
         match step:
             case StepEnum.FLOORPLAN:
-                checklist.append(checklist_template(check_item="Die Area",
-                                                    description="check DIE area"))
-
+                checklist.add(step=step.value, 
+                              type="Area", 
+                              item="check DIE area", 
+                              state=CheckState.Unstart.value)
+                
+                # add to home page checklist
+                self.workspace.home.update_checklist(step=step.value, 
+                                                     type="Area", 
+                                                     item="check DIE area", 
+                                                     state=CheckState.Unstart.value)
             case StepEnum.NETLIST_OPT:
                 pass
             case StepEnum.PLACEMENT:
@@ -58,26 +51,22 @@ class EccChecklist:
             case StepEnum.DRC:
                 pass
                 
-        self.workspace_step.checklist["checklist"] = checklist
+        self.workspace_step.checklist["checklist"] = checklist.data
         
-        self.save()
-    
     def save(self) -> bool:
-        from chipcompiler.utility import json_write
-        
-        return json_write(file_path=self.workspace_step.checklist.get("path", ""), 
-                          data=self.workspace_step.checklist)
+        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        return checklist.save()
         
     def update_item(self, 
-                    check_item : str,
+                    step : str, 
+                    type : str,
+                    item : str,
                     state : str | CheckState):
-        state = state.value if isinstance(state, CheckState) else state
-        
-        for item_dict in self.workspace_step.checklist.get("checklist", []):
-            if item_dict.get("name") == check_item:
-                item_dict["state"] = state
-
-        self.save()
+        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist.update(step=step, 
+                         type=type, 
+                         item=item, 
+                         state=state)
         
     def check(self):
         pass

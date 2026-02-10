@@ -6,6 +6,7 @@ from enum import Enum
 from typing import List
 
 class CMDEnum(Enum):
+    home_page = "home_page"
     create_workspace = "create_workspace"
     load_workspace = "load_workspace"
     delete_workspace = "delete_workspace"

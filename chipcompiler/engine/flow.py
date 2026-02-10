@@ -234,6 +234,9 @@ class EngineFlow:
         """
         run all flow steps
         """
+        
+        self.workspace.home.reset() # reset home data before run steps
+        
         for workspace_step in self.workspace_steps: 
             state = self.run_step(workspace_step, rerun)
             

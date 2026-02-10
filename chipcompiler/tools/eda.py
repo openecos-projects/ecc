@@ -123,8 +123,8 @@ def get_step_info(workspace: Workspace,
                                     id=id)
     
 class SubFlowBase:
-    def notify_subflow(self, step : str,  subflow_path : str):
+    def notify_subflow(self, step : str,  subflow_path : str , home_page : str=""):
         from chipcompiler.server.sse import server_notify
         notify_inst = server_notify()
-        notify_inst.notify_subflow(step, subflow_path)
+        notify_inst.notify_subflow(step, subflow_path, home_page)
         

@@ -507,3 +507,39 @@ class ECCService:
                 data=response_data,
                 message = [f"get information success : {step} - {id}"]
             )
+        
+    def get_home_page(self, request: ECCRequest) -> ECCResponse:
+        """
+        "request" : {},
+        "response" : {
+            "path" : ""
+        }
+        """
+        # check cmd
+        state, response = self.check_cmd(request, CMDEnum.home_page)
+        if not state:
+            return response 
+            
+        # get data
+        data = request.data
+ 
+        # check data
+        
+        # process cmd
+        if os.path.exists(self.workspace.home.path):
+            response_data = {
+                "path" : self.workspace.home.path
+            }
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.success.value,
+                data=response_data,
+                message = [f"build home page success : {self.workspace.home.path}"]
+            )
+        else:
+            return ECCResponse(
+                cmd=request.cmd,
+                response=ResponseEnum.failed.value,
+                data={},
+                message = [f"build home page failed : {self.workspace.home.path}"]
+            )

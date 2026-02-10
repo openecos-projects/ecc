@@ -14,10 +14,14 @@ from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 
 
 def build_step_metrics(workspace: Workspace, 
-                       step: WorkspaceStep) -> StepMetrics:
+                       step: WorkspaceStep,
+                       subflow: EccSubFlow = None) -> StepMetrics:
     """
     Build and return a StepMetrics instance for the given workspace step.
     """
+    # update sub flow metrics state
+    sub_flow = subflow if subflow is not None else EccSubFlow(workspace=workspace, workspace_step=step)
+    
     # step matrics
     metrics = None
     match(step.name):
@@ -42,9 +46,6 @@ def build_step_metrics(workspace: Workspace,
         case StepEnum.FILLER.value:
             metrics = build_metrics_filler(workspace, step)
     
-    # update sub flow metrics state
-    sub_flow = EccSubFlow(workspace=workspace,
-                          workspace_step=step)
     sub_flow.update_step(step_name=EccSubFlowEnum.analysis.value,
                          state=StateEnum.Invalid if metrics is None else StateEnum.Success)
     

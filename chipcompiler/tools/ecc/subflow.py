@@ -27,12 +27,20 @@ class EccSubFlowEnum(Enum):
     run_filler = "run filler"
     run_DRC = "run DRC"
 
+import time
+
 class EccSubFlow(SubFlowBase):
     def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):
         self.workspace = workspace
         self.workspace_step = workspace_step
         
         self.init_sub_flow()
+        
+        # set start time
+        self.start_time = time.time()
+        
+        # set start memory
+        self.start_memory = self.get_peak_memory()
     
     def init_sub_flow(self):
         from chipcompiler.utility import json_read
@@ -129,25 +137,70 @@ class EccSubFlow(SubFlowBase):
         
         return json_write(file_path=self.workspace_step.subflow.get("path", ""), 
                           data=self.workspace_step.subflow)
+    
+    def get_runtime(self):
+        # end time
+        end_time = time.time()
+        elapsed_time = end_time - self.start_time
+        runtime = "{}:{}:{}".format(int(elapsed_time // 3600), 
+                                    int((elapsed_time % 3600) // 60), 
+                                    int(elapsed_time % 60))
         
+        # reset start time
+        self.start_time = end_time
+        
+        return runtime
+    
+    def get_peak_memory(self):
+        import os
+        
+        # Get current process ID
+        pid = os.getpid()
+        peak_memory = 0
+        
+        try:
+            # Read memory usage from /proc/{pid}/status
+            with open(f"/proc/{pid}/status", 'r') as f:
+                for line in f:
+                    if line.startswith("VmRSS:"):
+                        # VmRSS is in kB
+                        rss_kb = int(line.split()[1])
+                        # Convert to MB
+                        peak_memory = rss_kb / 1024
+                        break
+        except Exception as e:
+            # Ignore errors, return 0 if failed
+            pass
+        
+        return peak_memory
+    
     def update_step(self, 
                     step_name : str,
                     state : str | StateEnum,
-                    runtime : str = "",
-                    memory : float = 0,
                     info : dict = {}):
         state = state.value if isinstance(state, StateEnum) else state
+        
+        runtime = self.get_runtime()
+        peak_memory = self.get_peak_memory() - self.start_memory
+        peak_memory = 0 if peak_memory < 0 else round(peak_memory, 3)
         
         for step_dict in self.workspace_step.subflow.get("steps", []):
             if step_dict.get("name") == step_name:
                 step_dict["state"] = state
                 step_dict["runtime"] = runtime
-                step_dict["peak memory (mb)"] = memory
+                step_dict["peak memory (mb)"] = peak_memory
                 step_dict["info"] = info
                 
                 self.save()
                 
+                # update home page monitor
+                self.workspace.home.update_monitor(step = self.workspace_step.name,
+                                                   sub_step = step_name,
+                                                   memory = str(peak_memory),
+                                                   runtime = runtime)
+                
                 self.notify_subflow(step = self.workspace_step.name,
-                                    subflow_path=self.workspace_step.subflow.get("path", ""))
+                                    subflow_path=self.workspace_step.subflow.get("path", ""),
+                                    home_page=self.workspace.home.path)
                 
                 break

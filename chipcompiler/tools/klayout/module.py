@@ -26,6 +26,10 @@ class KlayoutModule:
                                  img_file=img_file,
                                  weight=1920,
                                  height=1920)
+        
+        # update home page layout
+        self.workspace.home.set_layout(path=img_file)
+        
         return True 
         
     def save_snapshot_image(self,

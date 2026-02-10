@@ -59,3 +59,10 @@ async def get_info(request: ECCRequest):
     get information by step and id.
     """
     return ecc_serv.get_info(request)
+
+@router.post("/get_home_page", response_model=ECCResponse)
+async def get_home_page(request: ECCRequest):
+    """
+    get home page information.
+    """
+    return ecc_serv.get_home_page(request)

@@ -41,13 +41,6 @@ class StateEnum(Enum):
     Imcomplete = "Incomplete" # step is failed
     # Ignored = "Ignored" # step result do not affect flow step
     
-class CheckState(Enum):
-    """checklist state"""
-    Unstart = "Unstart" # checked unstart
-    Success = "Success" # checked success
-    Failed = "Failed" # checked Failed
-    Warning = "Warning" # checked Warning
-    
 
 ###########################################################################
 # step definition for chip design flow in json format

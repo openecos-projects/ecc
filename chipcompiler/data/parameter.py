@@ -226,7 +226,7 @@ def get_parameters(pdk_name : str = "", path : str = "") -> Parameters:
     
     match pdk_name.lower():
         case "ics55":
-            parameters.data = isc55_parameters_template
+            parameters.data = isc55_parameters_template.copy()
             
     return parameters
 

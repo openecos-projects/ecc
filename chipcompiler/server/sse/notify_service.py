@@ -134,13 +134,15 @@ class NotifyService:
             
     def notify_subflow(self, 
                        step : str,
-                       subflow_path : str):
+                       subflow_path : str,
+                       home_page : str=""):
         """
         update subflow status for step page
         "response" : {
             "step" : "",
             "id" : "",
             "info" : {
+                "home_page" : "", # if home_page = "", don't need to update home page
                 "subflow_path" : ""
             }
         }
@@ -154,6 +156,7 @@ class NotifyService:
                 "step": step, 
                 "id" : NotifyEnum.subflow.value,
                 "info": {
+                    "home_page" : home_page,
                     "subflow_path" : subflow_path
                 }
             },

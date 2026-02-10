@@ -18,7 +18,6 @@ from .parameter import (
 from .step import (
     StepEnum,
     StateEnum,
-    CheckState,
     StepMetrics,
     load_metrics,
     save_metrics
@@ -29,6 +28,13 @@ from .pdk import (
     PDK
 )
 
+from .checklist import (
+    Checklist,
+    CheckState
+)
+
+from .home import HomeData
+
 __all__ = [
     'create_workspace',
     'load_workspace',
@@ -36,10 +42,11 @@ __all__ = [
     'Workspace', 
     'WorkspaceStep', 
     'PDK',
+    'get_pdk',
     'OriginDesign',
     'log_workspace',
     'Parameters',
-    'load_paramter',
+    'load_parameter',
     'save_parameter',
     'get_parameters',
     'StepEnum',
@@ -47,5 +54,7 @@ __all__ = [
     'CheckState',
     'StepMetrics',
     'load_metrics',
-    'save_metrics'
+    'save_metrics',
+    'Checklist',
+    'HomeData'
 ]

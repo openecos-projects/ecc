@@ -9,7 +9,7 @@ def run_step():
     pass
 
 def save_gds_image(workspace: Workspace,
-                     step: WorkspaceStep) -> bool:
+                   step: WorkspaceStep) -> bool:
     """"""
     if not is_eda_exist():
         return False

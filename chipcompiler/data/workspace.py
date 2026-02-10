@@ -10,6 +10,8 @@ from .parameter import (
     update_parameters
 )
 
+from .home import HomeData
+
 from .pdk import get_pdk, PDK
 from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
@@ -43,6 +45,7 @@ class Workspace:
     pdk : PDK = field(default_factory=PDK) # pdk information
     parameters : Parameters = field(default_factory=Parameters) # design parameters
     flow : Flow = field(default_factory=Flow) # design flow for this workspace
+    home : HomeData = field(default_factory=HomeData) # home data for this workspace
     
     # logger
     logger : Logger = field(default_factory=Logger) # logger for this workspace
@@ -276,8 +279,6 @@ def create_workspace(directory : str,
     
     # update path
     workspace.directory = directory
-    workspace.parameters.path = f"{directory}/parameters.json"
-    workspace.flow.path = f"{directory}/flow.json"
     
     # create logger first (needed for copy operations)
     os.makedirs(f"{directory}/log", exist_ok=True)
@@ -328,6 +329,14 @@ def create_workspace(directory : str,
         shutil.copy(workspace.pdk.spef, f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}")
         workspace.pdk.spef = f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}"
 
+    # set home data
+    os.makedirs(f"{directory}/home", exist_ok=True)
+    workspace.flow.path = f"{directory}/home/flow.json"
+    workspace.parameters.path = f"{directory}/home/parameters.json"
+    workspace.home.init(path=f"{directory}/home/home.json")
+    workspace.home.set_flow(workspace.flow.path)
+    workspace.home.set_checklist(f"{directory}/home/checklist.json")
+    
     # save parameter
     save_parameter(workspace.parameters)
      
@@ -342,7 +351,7 @@ def load_workspace(directory : str) -> Workspace:
     workspace = Workspace()
     workspace.directory = directory
 
-    parameters = load_parameter(f"{directory}/parameters.json")
+    parameters = load_parameter(f"{directory}/home/parameters.json")
     workspace.parameters = parameters
     
     pdk = get_pdk(pdk_name=parameters.data.get("PDK", ""))
@@ -376,8 +385,12 @@ def load_workspace(directory : str) -> Workspace:
     if os.path.exists(filelist_path):
         workspace.design.input_filelist = filelist_path
         
-    # update path
-    workspace.flow.path = f"{directory}/flow.json"
+    # set home data
+    os.makedirs(f"{directory}/home", exist_ok=True)
+    workspace.flow.path = f"{directory}/home/flow.json"
+    workspace.home.init(path=f"{directory}/home/home.json")
+    workspace.home.set_flow(workspace.flow.path)
+    workspace.home.set_checklist(f"{directory}/home/checklist.json")
     
     # create logger first (needed for copy operations)
     workspace.logger = create_logger(name=parameters.data["Design"],

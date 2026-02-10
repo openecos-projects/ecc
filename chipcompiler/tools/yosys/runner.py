@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 import subprocess
 import os
+import time
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
 from chipcompiler.tools.yosys.utility import is_eda_exist, get_yosys_command
 from chipcompiler.tools.yosys.metrics import build_step_metrics
@@ -71,6 +72,7 @@ def run_step(workspace: Workspace,
             
             checklist = YosysChecklist(workspace=workspace, workspace_step=step)
             checklist.check()
+            
             return True
         else:
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
