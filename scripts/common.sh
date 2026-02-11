@@ -41,7 +41,7 @@ setup_oss_cad_suite() {
         echo "OSS CAD Suite already exists at ${OSS_CAD_DIR}, skipping download..."
     else
         local latest_tag
-        latest_tag=$(curl -s "https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases/latest" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+        latest_tag=$(curl -sf "https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases/latest" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
         local oss_cad_url="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${latest_tag}/oss-cad-suite-linux-x64-${latest_tag//-/}.tgz"
 
         mkdir -p "${OSS_CAD_DIR}"
