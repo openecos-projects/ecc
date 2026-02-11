@@ -3,11 +3,47 @@
 
 import os
 import time
+import logging
+import traceback
 from multiprocessing import Process
-        
+from threading import Thread
+
 from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
 from chipcompiler.engine import EngineDB
 from chipcompiler.utility import track_process_memory
+from chipcompiler.server.runtime_log import (
+    API_RUNTIME_LOG_ENV_KEY,
+    redirect_stdio_to_file,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _run_step_in_subprocess(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
+    """
+    Step subprocess entry point: redirect stdio to log file if configured,
+    then execute the EDA tool step.
+    """
+    # Redirect stdout/stderr to runtime log file (if set by API server)
+    log_file = os.environ.get(API_RUNTIME_LOG_ENV_KEY, "").strip()
+    if log_file:
+        try:
+            os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
+            redirect_stdio_to_file(log_file)
+        except Exception:
+            traceback.print_exc()
+
+    step_tag = f"{workspace_step.name}({workspace_step.tool})"
+    print(f"[STEP] {step_tag} pid={os.getpid()} started", flush=True)
+
+    try:
+        from chipcompiler.tools import run_step as run_tool_step
+        result = run_tool_step(workspace=workspace, step=workspace_step)
+        print(f"[STEP] {step_tag} finished result={result}", flush=True)
+    except Exception:
+        print(f"[STEP] {step_tag} failed with exception", flush=True)
+        traceback.print_exc()
+
 
 class EngineFlow:
     def __init__(self, workspace : Workspace):
@@ -267,61 +303,59 @@ class EngineFlow:
         if workspace_step is None:
             return StateEnum.Invalid
             
+        step_tag = f"{workspace_step.name}({workspace_step.tool})"
+
         if not rerun and self.check_state(name=workspace_step.name,
                             tool=workspace_step.tool,
                             state=StateEnum.Success):
+            logger.info("[SKIP] %s already succeeded", step_tag)
             return StateEnum.Success
-                        
-        from chipcompiler.tools import create_step, run_step
-        
-        #set timer
-        start_time = time.time()
-        
+
         # set state ongoing
+        start_time = time.time()
         self.set_state(name=workspace_step.name,
                        tool=workspace_step.tool,
                        state=StateEnum.Ongoing)
-        
-        # run step in a separate process
-        p = Process(target=run_step, args=(self.workspace, workspace_step))
+
+        # run step in a subprocess
+        p = Process(target=_run_step_in_subprocess,
+                    args=(self.workspace, workspace_step))
         p.start()
-        
-        # track memory usage in another thread
-        from threading import Thread
-        
-        # track memory usage
+        logger.info("[DISPATCH] %s pid=%s", step_tag, p.pid)
+
+        # track peak memory in a background thread
         peak_memory_result = [0]
-        def memory_tracker_wrapper():
+        def _track_memory():
             peak_memory_result[0] = track_process_memory(p.pid)
-        
-        tracker_thread = Thread(target=memory_tracker_wrapper, daemon=True)
-        tracker_thread.start()
-        # wait for step process to finish
+        tracker = Thread(target=_track_memory, daemon=True)
+        tracker.start()
+
         p.join()
-        # get peak memory usage
-        tracker_thread.join(timeout=1.0)
-        
-        # get peak memory in mb
+        tracker.join(timeout=1.0)
+
+        # compute metrics
         peak_memory_mb = round(peak_memory_result[0] / 1024.0, 3)
-        
-        # end time
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        runtime = "{}:{}:{}".format(int(elapsed_time // 3600), 
-                                    int((elapsed_time % 3600) // 60), 
-                                    int(elapsed_time % 60))
-        
-        # save state
-        state=StateEnum.Success if self.check_step_result(workspace_step=workspace_step) else StateEnum.Imcomplete
+        elapsed = time.time() - start_time
+        runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
+
+        # determine and save state
+        state = (StateEnum.Success
+                 if self.check_step_result(workspace_step=workspace_step)
+                 else StateEnum.Imcomplete)
         self.set_state(name=workspace_step.name,
                        tool=workspace_step.tool,
                        state=state,
                        runtime=runtime,
                        peak_memory=peak_memory_mb)
-        
+        logger.info("[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
+                    step_tag, state.value, runtime, peak_memory_mb, p.exitcode)
+
+        # save layout snapshot on success
         if state == StateEnum.Success:
-            from chipcompiler.tools import save_layout_image
-            save_layout_image(workspace=self.workspace,
-                              step=workspace_step)
-        
+            try:
+                from chipcompiler.tools import save_layout_image
+                save_layout_image(workspace=self.workspace, step=workspace_step)
+            except Exception:
+                logger.exception("Layout snapshot failed for %s", step_tag)
+
         return state

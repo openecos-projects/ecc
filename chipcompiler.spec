@@ -108,6 +108,7 @@ hiddenimports = [
     'chipcompiler',
     'chipcompiler.server',
     'chipcompiler.server.main',
+    'chipcompiler.server.runtime_log',
     'chipcompiler.server.routers',
     'chipcompiler.server.schemas',
     'chipcompiler.server.services',
