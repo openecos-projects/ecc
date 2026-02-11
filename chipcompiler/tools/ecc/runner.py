@@ -10,6 +10,7 @@ from chipcompiler.tools.ecc.plot import ECCToolsPlot
 from chipcompiler.tools.ecc.metrics import build_step_metrics 
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.checklist import EccChecklist
+from chipcompiler.utility import json_read
 
 def create_db_engine(workspace: Workspace,
                      step: WorkspaceStep) -> ECCToolsModule:
@@ -60,7 +61,8 @@ def get_eda_instance(workspace: Workspace,
 
 def save_data(workspace: Workspace,
               step: WorkspaceStep,
-              module : ECCToolsModule) -> bool:
+              module : ECCToolsModule,
+              feature_step : bool = True) -> bool:
     """
     module is ecc module from db engine, 
     eda instacnce may initialize data from this module if module has been set
@@ -72,10 +74,46 @@ def save_data(workspace: Workspace,
     module.verilog_save(output_verilog=step.output["verilog"])
     module.gds_save(output_path=step.output["gds"])
     module.feature_sammry(json_path=step.feature["db"])
-    module.feature_step(step=step.name,
-                        json_path=step.feature["step"])
+    if feature_step:
+        module.feature_step(step=step.name,
+                            json_path=step.feature["step"])
     
     module.report_summary(path=step.report["db"])
+    
+    # update parameters
+    db_json = json_read(step.feature["db"])
+    if len(db_json) > 0: 
+        from chipcompiler.data.parameter import update_parameters, save_parameter
+        die_bounding_width = db_json.get("Design Layout", {}).get("die_bounding_width", 0)
+        die_bounding_height = db_json.get("Design Layout", {}).get("die_bounding_height", 0)
+        die_area = db_json.get("Design Layout", {}).get("die_area", 0)
+        
+        core_bounding_width = db_json.get("Design Layout", {}).get("core_bounding_width", 0)
+        core_bounding_height = db_json.get("Design Layout", {}).get("core_bounding_height", 0)
+        core_area = db_json.get("Design Layout", {}).get("core_area", 0)
+        
+        margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
+        
+        update_param = {
+            "Die": {
+                "Size": [die_bounding_width, die_bounding_height],
+                "Area": die_area
+            },
+            "Core": {
+                "Size": [core_bounding_width, core_bounding_height],
+                "Area": core_area,
+                "Bounding box": "({} , {}) ({} , {})".format(
+                    margin[0], 
+                    margin[1], 
+                    core_bounding_width + margin[0], 
+                    core_bounding_height + margin[1]
+                )
+            }
+        }
+        
+        update_parameters(parameters_src=update_param,
+                          parameters_target=workspace.parameters.data)
+        save_parameter(workspace.parameters)
     
     return True
     
@@ -577,21 +615,14 @@ def run_floorplan(workspace: Workspace,
                          net_type="CLOCK")
         sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value,
                              state=StateEnum.Success)
-                
-        # return save_data(workspace=workspace, step=step, module=eda_inst)
-    
-        eda_inst.def_save(def_path=step.output["def"])
-        eda_inst.verilog_save(output_verilog=step.output["verilog"])
-        eda_inst.gds_save(output_path=step.output["gds"])
-        eda_inst.feature_sammry(json_path=step.feature["db"])
         
-        eda_inst.report_summary(path=step.report["db"])  
+        reslut = save_data(workspace=workspace, step=step, module=eda_inst, feature_step=False)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success)  
         
         run_analysis(workspace = workspace, step = step, subflow = sub_flow)
         
-        return True
+        return reslut
     
     return False 

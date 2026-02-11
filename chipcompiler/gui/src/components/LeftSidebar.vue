@@ -397,7 +397,7 @@ import { useWorkspace } from '@/composables/useWorkspace'
 const themeStore = useThemeStore()
 
 // 流程阶段管理
-const { flowStages, refreshFlowStages, updateStepState } = useFlowStages()
+const { flowStages, refreshFlowStages } = useFlowStages()
 
 // 子流程管理
 const {

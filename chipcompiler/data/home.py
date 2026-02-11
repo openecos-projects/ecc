@@ -5,6 +5,7 @@ from chipcompiler.utility import json_read, json_write
 from .checklist import Checklist
 
 # home_json = {
+#    "parameters" : "",
 #     "flow" : "",
 #     "layout" : "",
 #     "GDS merge" : "",
@@ -26,6 +27,7 @@ from .checklist import Checklist
 #     "checklist" : ""
 # }
 home_json = {
+    "parameters" : "",
     "flow" : "",
     "layout" : "",
     "GDS merge" : "",
@@ -67,6 +69,11 @@ class HomeData:
             
     def save(self):
         json_write(self.path, self.data)
+        
+    def set_parameters(self, path : str):
+        self.reload()
+        self.data["parameters"] = path
+        self.save()
         
     def set_flow(self, path : str):
         self.reload()

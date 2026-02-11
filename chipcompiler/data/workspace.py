@@ -338,6 +338,7 @@ def create_workspace(directory : str,
     workspace.home.init(path=f"{directory}/home/home.json")
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(f"{directory}/home/checklist.json")
+    workspace.home.set_parameters(workspace.parameters.path)
     
     if workspace.pdk.root:
         workspace.parameters.data["PDK Root"] = workspace.pdk.root
@@ -399,6 +400,7 @@ def load_workspace(directory : str) -> Workspace:
     workspace.home.init(path=f"{directory}/home/home.json")
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(f"{directory}/home/checklist.json")
+    workspace.home.set_parameters(workspace.parameters.path)
     
     # create logger first (needed for copy operations)
     workspace.logger = create_logger(name=parameters.data["Design"],

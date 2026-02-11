@@ -11,10 +11,11 @@ ICS55_PARAMETERS_TEMPLATE = {
     "Top module":"",
     "Die" : {
         "Size": [],
-        "Bounding box": ""
+        "Area": 0
     },
     "Core" : {
         "Size": [],
+        "Area" : 0,
         "Bounding box": "",
         "Utilitization": 0.4,
         "Margin" : [2, 2],

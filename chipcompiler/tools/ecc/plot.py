@@ -21,31 +21,34 @@ class ECCToolsPlot:
         state = True
         match self.step.name:
             case StepEnum.FLOORPLAN.value:
-                state = state & self.plot_step_metrics()
+                state = state & self.default_plot()
             case StepEnum.NETLIST_OPT.value:
-                state = state & self.plot_step_metrics() 
+                state = state & self.default_plot() 
             case StepEnum.PLACEMENT.value:
-                state = state & self.plot_step_metrics() & self.plot_placement_heatmap()
+                state = state & self.default_plot() & self.plot_placement_heatmap() 
             case StepEnum.CTS.value:
-                state = state & self.plot_step_metrics() & self.plot_placement_heatmap()
+                state = state & self.default_plot() & self.plot_placement_heatmap()
             case StepEnum.TIMING_OPT_DRV.value:
-                state = state & self.plot_step_metrics()
+                state = state & self.default_plot()
             case StepEnum.TIMING_OPT_HOLD.value:
-                state = state & self.plot_step_metrics()
+                state = state & self.default_plot()
             case StepEnum.LEGALIZATION.value:
-                state = state & self.plot_step_metrics()
+                state = state & self.default_plot()
             case StepEnum.ROUTING.value:
-                state = state & self.plot_step_metrics() & self.plot_routing_heatmap()
+                state = state & self.default_plot() & self.plot_routing_heatmap()
             case StepEnum.DRC.value:
-                state = state & self.plot_step_metrics() & self.plot_drc_statis()
+                state = state & self.default_plot() & self.plot_drc_statis()
             case StepEnum.FILLER.value:
-                state = state & self.plot_step_metrics() 
+                state = state & self.default_plot()
                 
             case default:
                 self.workspace.logger.warning(f"Step {self.step.name} not supported for plotting.")
         
         self.workspace.logger.info(f"Plotting completed for step {self.step.name}")
         return state
+    
+    def default_plot(self) -> bool:
+        return self.plot_step_metrics() & self.plot_instance_distribution()
     
     def plot_step_metrics(self) -> bool:
         # generate report image and dscription
@@ -216,5 +219,75 @@ class ECCToolsPlot:
         
         # Plot the CSV table
         plot_csv_table(input_path=statis_csv)
+        
+        return True
+    
+    def plot_instance_distribution(self) -> bool:
+        import matplotlib.pyplot as plt
+        import numpy as np
+        
+        data = json_read(self.step.feature.get("db", ""))
+        if not data or "Instances" not in data:
+            self.workspace.logger.warning("No Instances data found for plotting.")
+            return False
+        
+        instances_data = data["Instances"]
+        instance_types = list(instances_data.keys())
+        
+        if not instance_types:
+            self.workspace.logger.warning("No instance types found for plotting.")
+            return False
+        
+        # Prepare data for plotting
+        metrics = ["num", "area", "pin_num"]
+        metric_labels = {"num": "Number", "area": "Area", "pin_num": "Pin Number"}
+        colors = ['skyblue', 'lightgreen', 'salmon']
+        
+        # Create single figure
+        fig, ax = plt.subplots(figsize=(12, 8))
+        fig.suptitle("Instance Distribution", fontsize=16)
+        
+        # Set bar width and positions
+        bar_width = 0.25
+        x = np.arange(len(instance_types))
+        
+        # Plot each metric as grouped bars
+        for i, metric in enumerate(metrics):
+            values = [instances_data[inst][metric] for inst in instance_types]
+            positions = x + i * bar_width
+            bars = ax.bar(positions, values, bar_width, color=colors[i], label=metric_labels[metric])
+            
+            # Add value labels on top of bars
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height, f'{height:.2f}',
+                        ha='center', va='bottom')
+        
+        # Set labels and title
+        ax.set_xlabel('Instance Type')
+        ax.set_ylabel('Value')
+        ax.set_title('Instance Distribution by Number, Area and Pin Count')
+        ax.set_xticks(x + bar_width)
+        ax.set_xticklabels(instance_types, rotation=45, ha='right')
+        ax.legend()
+        ax.grid(axis='y', alpha=0.75)
+        
+        # Adjust layout
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        
+        # Save the plot
+        db_path = self.step.feature.get("db", "")
+        if db_path:
+            image_path = db_path.replace(".json", ".inst_dist.png")
+            plt.savefig(image_path, dpi=300, bbox_inches='tight')
+            self.workspace.logger.info(f"Instance distribution plot saved to {image_path}")
+            
+            # update home page metrics
+            self.workspace.home.set_metrics_inst_dist(image_path=image_path)
+        else:
+            self.workspace.logger.warning("Cannot save plot: no db path provided")
+            return False
+        
+        plt.close()
         
         return True
