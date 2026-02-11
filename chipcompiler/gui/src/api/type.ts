@@ -4,7 +4,8 @@ export enum CMDEnum {
   delete_workspace = "delete_workspace",
   rtl2gds = "rtl2gds",
   run_step = "run_step",
-  get_info = "get_info"
+  get_info = "get_info",
+  home_page = "home_page"
 }
 
 // get_info command 的 id 枚举

@@ -105,12 +105,13 @@ export interface ConfigData {
   pdk: string
   design: string
   topModule: string
-  die: { boundingBox: string }
+  die: { boundingBox: string, Size: number[] }
   core: {
     boundingBox: string
     utilization: number
     margin: [number, number]
     aspectRatio: number
+    Size: number[]
   }
   maxFanout: number
   targetDensity: number
@@ -141,12 +142,13 @@ function getDefaultConfig(): ConfigData {
     pdk: '',
     design: '',
     topModule: '',
-    die: { boundingBox: '' },
+    die: { boundingBox: '', Size: [] },
     core: {
       boundingBox: '',
       utilization: 0.4,
       margin: [10, 10],
-      aspectRatio: 1
+      aspectRatio: 1,
+      Size: []
     },
     maxFanout: 20,
     targetDensity: 0.3,
@@ -181,12 +183,13 @@ function transformParametersToConfig(data: ParametersData): ConfigData {
     pdk: data.PDK || '',
     design: data.Design || '',
     topModule: data['Top module'] || '',
-    die: { boundingBox: data.Die?.['Bounding box'] || '' },
+    die: { boundingBox: data.Die?.['Bounding box'] || '', Size: data.Die?.Size || [] },
     core: {
       boundingBox: data.Core?.['Bounding box'] || '',
       utilization: data.Core?.Utilitization || 0.4,
       margin: data.Core?.Margin || [10, 10],
-      aspectRatio: data.Core?.['Aspect ratio'] || 1
+      aspectRatio: data.Core?.['Aspect ratio'] || 1,
+      Size: data.Core?.Size || []
     },
     maxFanout: data['Max fanout'] || 20,
     targetDensity: data['Target density'] || 0.3,

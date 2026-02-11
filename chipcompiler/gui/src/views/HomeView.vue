@@ -25,11 +25,11 @@
             </div>
             <div class="info-item">
               <span class="info-label">Die Size</span>
-              <span class="info-value mono">{{ formatBBox(config.die?.boundingBox) }}</span>
+              <span class="info-value mono">{{ config.die?.Size.join(' x ') || '--' }}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Core Size</span>
-              <span class="info-value mono">{{ formatBBox(config.core?.boundingBox) }}</span>
+              <span class="info-value mono">{{ config.core?.Size.join(' x ') || '--' }}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Frequency</span>
@@ -63,8 +63,7 @@
             <div class="monitor-chart-wrap">
               <div
                 :ref="(el: any) => { if (cfg.key === 'memory') memoryChartRef = el; else if (cfg.key === 'runtime') runtimeChartRef = el; else if (cfg.key === 'instance') instanceChartRef = el; else if (cfg.key === 'frequency') frequencyChartRef = el; }"
-                class="monitor-chart"
-              ></div>
+                class="monitor-chart"></div>
             </div>
             <span class="monitor-value">{{ getMetricMax(cfg.key) }}</span>
           </div>
@@ -90,23 +89,10 @@
             </button>
           </div>
         </div>
-        <div
-          ref="layoutContentRef"
-          class="layout-content"
-          @wheel.prevent="onLayoutWheel"
-          @mousedown="onLayoutMouseDown"
-          @mousemove="onLayoutMouseMove"
-          @mouseup="onLayoutMouseUp"
-          @mouseleave="onLayoutMouseUp"
-        >
-          <img
-            v-if="layoutBlobUrl"
-            :src="layoutBlobUrl"
-            alt="Layout Preview"
-            class="layout-image"
-            :style="layoutImageTransform"
-            draggable="false"
-          />
+        <div ref="layoutContentRef" class="layout-content" @wheel.prevent="onLayoutWheel" @mousedown="onLayoutMouseDown"
+          @mousemove="onLayoutMouseMove" @mouseup="onLayoutMouseUp" @mouseleave="onLayoutMouseUp">
+          <img v-if="layoutBlobUrl" :src="layoutBlobUrl" alt="Layout Preview" class="layout-image"
+            :style="layoutImageTransform" draggable="false" />
           <div v-else class="layout-placeholder">
             <i class="ri-image-2-line"></i>
             <p>Layout Preview</p>
@@ -125,13 +111,19 @@
           <h2>指标分析</h2>
         </div>
         <div class="analysis-content">
-          <div class="charts-grid">
+          <div class="charts-grid" v-if="analysisCharts.length > 0">
             <div class="chart-card" v-for="chart in analysisCharts" :key="chart.label">
               <div class="chart-visual">
-                <i :class="chart.icon"></i>
+                <img v-if="chart.imageBlobUrl" :src="chart.imageBlobUrl" :alt="chart.label" class="chart-image" />
+                <i v-else class="ri-image-2-line"></i>
               </div>
               <span class="chart-label">{{ chart.label }}</span>
             </div>
+          </div>
+          <div v-else class="analysis-placeholder">
+            <i class="ri-pie-chart-line"></i>
+            <p>No metrics data</p>
+            <span>运行流程后显示指标分析</span>
           </div>
         </div>
       </section>
@@ -230,7 +222,7 @@ import { useHomeData } from '@/composables/useHomeData'
 echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const { config } = useParameters()
-const { monitorData, checklistItems, layoutBlobUrl } = useHomeData()
+const { monitorData, checklistItems, layoutBlobUrl, analysisCharts } = useHomeData()
 
 // checklist 完成计数
 const checklistCompletedCount = computed(() =>
@@ -272,9 +264,9 @@ function toggleLayoutFullscreen() {
   if (!el) return
 
   if (!document.fullscreenElement) {
-    el.requestFullscreen().catch(() => {})
+    el.requestFullscreen().catch(() => { })
   } else {
-    document.exitFullscreen().catch(() => {})
+    document.exitFullscreen().catch(() => { })
   }
 }
 
@@ -487,6 +479,7 @@ function buildChartOption(key: string, color: string): echarts.EChartsCoreOption
         symbol: 'circle',
         symbolSize: 6,
         showSymbol: true,
+        showAllSymbol: true,
         itemStyle: {
           color,
           borderColor: '#fff',
@@ -537,6 +530,9 @@ function getAllChartInstances(): echarts.ECharts[] {
 /** 上一次高亮的 dataIndex，用于避免重复 dispatch */
 let lastLinkedDataIndex = -1
 
+/** 标记鼠标是否已离开图表区域，用于防止 globalout 与 updateAxisPointer 的竞态 */
+let isMouseOutPending = false
+
 /** 清除所有图表的 tooltip 和高亮状态 */
 function clearAllChartsState() {
   lastLinkedDataIndex = -1
@@ -550,6 +546,9 @@ function clearAllChartsState() {
 function bindChartLinkEvents(instance: echarts.ECharts) {
   // 鼠标在某个图表上移动时，其他图表只高亮对应节点（不显示 tooltip）
   instance.on('updateAxisPointer', (event: any) => {
+    // 如果鼠标已标记为离开，忽略迟到的 updateAxisPointer 事件（竞态保护）
+    if (isMouseOutPending) return
+
     const dataIndex = event.dataIndex
     if (dataIndex == null || dataIndex === lastLinkedDataIndex) return
     lastLinkedDataIndex = dataIndex
@@ -564,9 +563,21 @@ function bindChartLinkEvents(instance: echarts.ECharts) {
     }
   })
 
+  // 鼠标进入时，清除离开标记
+  instance.getZr().on('mousemove', () => {
+    isMouseOutPending = false
+  })
+
   // 鼠标移出时，清除所有图表状态
   instance.getZr().on('globalout', () => {
-    clearAllChartsState()
+    isMouseOutPending = true
+    // 使用 rAF 确保在所有待处理的 updateAxisPointer 回调之后再执行清理
+    requestAnimationFrame(() => {
+      if (isMouseOutPending) {
+        clearAllChartsState()
+        isMouseOutPending = false
+      }
+    })
   })
 }
 
@@ -654,16 +665,8 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
 })
 
-// ============ 指标分析图表占位 ============
-const analysisCharts = [
-  { label: '单元分布', icon: 'ri-pie-chart-line' },
-  { label: '层分布', icon: 'ri-bar-chart-grouped-line' },
-  { label: '层分布', icon: 'ri-bar-chart-line' },
-  { label: 'Net-Pins分布', icon: 'ri-bar-chart-2-line' },
-  { label: 'DRC类型分布', icon: 'ri-donut-chart-line' },
-  { label: 'DRC层分布', icon: 'ri-bar-chart-horizontal-line' },
-  { label: 'CTS Skew map', icon: 'ri-line-chart-line' }
-]
+// ============ 指标分析 ============
+// analysisCharts 数据从 useHomeData() 动态获取（基于 home.json 的 metrics 字段）
 
 // ============ 辅助函数 ============
 
@@ -768,18 +771,29 @@ function formatBBox(bbox: string | undefined): string {
 }
 
 /* Grid Area Assignments */
-.chip-info-area   { grid-area: info; }
-.monitor-area     { grid-area: monitor; }
-.layout-area      { grid-area: layout; }
+.chip-info-area {
+  grid-area: info;
+}
+
+.monitor-area {
+  grid-area: monitor;
+}
+
+.layout-area {
+  grid-area: layout;
+}
+
 .layout-area:fullscreen {
   background: var(--bg-primary);
 }
+
 .layout-area:fullscreen .layout-content {
   margin: 0;
   border-radius: 0;
   overflow: hidden;
   position: relative;
 }
+
 .layout-area:fullscreen .layout-image {
   object-fit: contain;
   transition: transform 0.05s ease-out;
@@ -801,9 +815,18 @@ function formatBBox(bbox: string | undefined): string {
   pointer-events: none;
   z-index: 10;
 }
-.analysis-area    { grid-area: analysis; }
-.gds-area         { grid-area: gds; }
-.checklist-area   { grid-area: checklist; }
+
+.analysis-area {
+  grid-area: analysis;
+}
+
+.gds-area {
+  grid-area: gds;
+}
+
+.checklist-area {
+  grid-area: checklist;
+}
 
 /* ==================== Section Card 通用样式 ==================== */
 .section-card {
@@ -1125,10 +1148,18 @@ function formatBBox(bbox: string | undefined): string {
   height: 100%;
 }
 
-/* Last row has 3 charts - span adjustment */
-.chart-card:nth-child(5) { grid-column: 1; }
-.chart-card:nth-child(6) { grid-column: 2; }
-.chart-card:nth-child(7) { grid-column: 3 / 5; }
+/* Last row span adjustment for uneven items */
+.chart-card:nth-child(5) {
+  grid-column: 1;
+}
+
+.chart-card:nth-child(6) {
+  grid-column: 2;
+}
+
+.chart-card:nth-child(7) {
+  grid-column: 3 / 5;
+}
 
 .chart-card {
   background: var(--bg-primary);
@@ -1138,8 +1169,8 @@ function formatBBox(bbox: string | undefined): string {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px;
+  gap: 4px;
+  padding: 6px;
   transition: border-color 0.15s ease;
   cursor: pointer;
   overflow: hidden;
@@ -1154,9 +1185,19 @@ function formatBBox(bbox: string | undefined): string {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  min-height: 0;
   font-size: 28px;
   color: var(--text-secondary);
   opacity: 0.25;
+}
+
+.chart-visual img.chart-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  opacity: 1;
 }
 
 .chart-label {
@@ -1165,6 +1206,39 @@ function formatBBox(bbox: string | undefined): string {
   color: var(--text-secondary);
   text-align: center;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.analysis-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.analysis-placeholder i {
+  font-size: 28px;
+  color: var(--text-secondary);
+  opacity: 0.3;
+}
+
+.analysis-placeholder p {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.analysis-placeholder span {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.6;
 }
 
 /* ==================== GDS Merge ==================== */
@@ -1396,8 +1470,13 @@ function formatBBox(bbox: string | undefined): string {
 
 /* ==================== 通用动画 ==================== */
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spin {

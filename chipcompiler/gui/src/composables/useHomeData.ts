@@ -3,6 +3,8 @@ import { readTextFile, readFile } from '@tauri-apps/plugin-fs'
 import { invoke } from '@tauri-apps/api/core'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
+import { getHomePageApi } from '@/api/flow'
+import { ResponseEnum } from '@/api/type'
 import type { ECCResponse } from '@/api/sse'
 
 // ============ 类型定义 ============
@@ -40,6 +42,12 @@ export interface ChecklistData {
   checklist: ChecklistItem[]
 }
 
+/** 指标分析图表项（从 metrics 加载） */
+export interface AnalysisChartItem {
+  label: string
+  imageBlobUrl: string
+}
+
 // ============ Composable ============
 
 /**
@@ -54,11 +62,13 @@ export function useHomeData() {
   const monitorData = ref<MonitorData | null>(null)
   const checklistItems = ref<ChecklistItem[]>([])
   const layoutBlobUrl = ref<string>('')
+  const analysisCharts = ref<AnalysisChartItem[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
   // 用于清理 blob URL
   let currentBlobUrl: string | null = null
+  let metricsBlobUrls: string[] = []
 
   /**
    * 请求文件系统访问权限
@@ -154,6 +164,70 @@ export function useHomeData() {
   }
 
   /**
+   * 清理 metrics 图表的 blob URLs
+   */
+  function cleanupMetricsBlobUrls(): void {
+    for (const url of metricsBlobUrls) {
+      URL.revokeObjectURL(url)
+    }
+    metricsBlobUrls = []
+    analysisCharts.value = []
+  }
+
+  /**
+   * 加载 metrics 指标图片
+   * metrics 格式: { "label": "/path/to/image.png", ... }
+   */
+  async function loadMetricsImages(metrics: Record<string, any>): Promise<void> {
+    if (!metrics || typeof metrics !== 'object') {
+      cleanupMetricsBlobUrls()
+      return
+    }
+
+    const entries = Object.entries(metrics).filter(([_, v]) => v && typeof v === 'string')
+    if (entries.length === 0) {
+      cleanupMetricsBlobUrls()
+      return
+    }
+
+    // 清理旧的 blob URLs
+    cleanupMetricsBlobUrls()
+
+    const charts: AnalysisChartItem[] = []
+    const newBlobUrls: string[] = []
+
+    // 并行加载所有图片
+    const results = await Promise.allSettled(
+      entries.map(async ([label, imagePath]) => {
+        try {
+          const localPath = convertToLocalPath(imagePath as string)
+          const fileData = await readFile(localPath)
+          const blob = new Blob([fileData], { type: 'image/png' })
+          const blobUrl = URL.createObjectURL(blob)
+          return { label, blobUrl }
+        } catch (err) {
+          console.warn(`Failed to load metric image for "${label}":`, err)
+          return { label, blobUrl: '' }
+        }
+      })
+    )
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        const { label, blobUrl } = result.value
+        charts.push({ label, imageBlobUrl: blobUrl })
+        if (blobUrl) {
+          newBlobUrls.push(blobUrl)
+        }
+      }
+    }
+
+    metricsBlobUrls = newBlobUrls
+    analysisCharts.value = charts
+    console.log('Metrics images loaded:', charts.length)
+  }
+
+  /**
    * 加载 checklist 数据
    */
   async function loadChecklist(checklistPath: string): Promise<void> {
@@ -179,6 +253,7 @@ export function useHomeData() {
 
   /**
    * 从 home.json 加载所有 Home 页面数据
+   * 先调用 get_home_page API 获取 home.json 路径，再读取文件
    */
   async function loadHomeData(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
@@ -191,31 +266,42 @@ export function useHomeData() {
     error.value = null
 
     try {
-      const projectPath = currentProject.value.path
-      const homeJsonPath = `${projectPath}/home/home.json`
-      console.log('Loading home.json from:', homeJsonPath)
+      // 1. 调用 get_home_page API 获取 home.json 路径
+      const apiResponse = await getHomePageApi()
+      if (apiResponse.response !== ResponseEnum.success || !apiResponse.data?.path) {
+        console.warn('get_home_page API failed:', apiResponse.message)
+        clearHomeData()
+        return
+      }
 
+      const homeJsonPath = apiResponse.data.path
+      console.log('Got home.json path from API:', homeJsonPath)
+
+      // 2. 转换路径并读取文件
+      const localPath = convertToLocalPath(homeJsonPath)
+      const projectPath = currentProject.value.path
       await requestPermission(projectPath)
 
-      const fileContent = await readTextFile(homeJsonPath)
+      const fileContent = await readTextFile(localPath)
       const homeData: HomeData = JSON.parse(fileContent)
 
       console.log('Loaded home data:', homeData)
 
-      // 加载 monitor 数据
+      // 3. 加载 monitor 数据
       if (homeData.monitor) {
         monitorData.value = homeData.monitor
       }
 
-      // 并行加载 checklist 和 layout
+      // 4. 并行加载 checklist、layout 和 metrics 图片
       await Promise.all([
         loadChecklist(homeData.checklist),
         loadLayoutImage(homeData.layout),
+        loadMetricsImages(homeData.metrics),
       ])
 
       console.log('Home data fully loaded')
     } catch (err) {
-      console.error('Failed to load home.json:', err)
+      console.error('Failed to load home data:', err)
       error.value = err instanceof Error ? err.message : String(err)
       clearHomeData()
     } finally {
@@ -257,10 +343,11 @@ export function useHomeData() {
         monitorData.value = homeData.monitor
       }
 
-      // 并行加载 checklist 和 layout
+      // 并行加载 checklist、layout 和 metrics 图片
       await Promise.all([
         loadChecklist(homeData.checklist),
         loadLayoutImage(homeData.layout),
+        loadMetricsImages(homeData.metrics),
       ])
 
       console.log('Home data from SSE path fully loaded')
@@ -286,6 +373,7 @@ export function useHomeData() {
     monitorData.value = null
     checklistItems.value = []
     cleanupBlobUrl()
+    cleanupMetricsBlobUrls()
     error.value = null
   }
 
@@ -339,6 +427,7 @@ export function useHomeData() {
   // 组件卸载时清理 blob URL
   onUnmounted(() => {
     cleanupBlobUrl()
+    cleanupMetricsBlobUrls()
   })
 
   return {
@@ -346,6 +435,7 @@ export function useHomeData() {
     monitorData,
     checklistItems,
     layoutBlobUrl,
+    analysisCharts,
     isLoading,
     error,
 

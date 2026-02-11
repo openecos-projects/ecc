@@ -94,7 +94,7 @@
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-[10px] text-(--text-secondary) uppercase tracking-wider">Total Progress</span>
               <span class="text-[11px] font-bold text-(--accent-color)">{{ flowStats.success }}/{{ flowStats.total
-              }}</span>
+                }}</span>
             </div>
             <div class="h-1.5 bg-(--bg-secondary) rounded-full overflow-hidden">
               <div class="h-full bg-(--accent-color) rounded-full transition-all duration-500"
@@ -162,7 +162,7 @@
                       stage.state === 'Ongoing' ? 'text-blue-400' :
                         stage.state === 'Invalid' ? 'text-red-500' :
                           stage.state === 'Incomplete' ? 'text-amber-500' :
-                          'text-(--text-primary)'
+                            'text-(--text-primary)'
                   ]">
                     {{ stage.label }}
                   </span>
@@ -182,7 +182,7 @@
         <!-- 底部操作栏 -->
         <div class="p-3 border-t border-(--border-color) bg-(--bg-secondary)/30 space-y-2">
           <!-- SSE 消息显示区域 -->
-          <div v-if="sseMessages.length > 0"
+          <!-- <div v-if="sseMessages.length > 0"
             class="max-h-32 overflow-y-auto bg-(--bg-secondary) rounded p-2 text-[10px] space-y-1">
             <div v-for="(msg, idx) in sseMessages.slice(-5)" :key="idx" class="flex items-center gap-1" :class="{
               'text-blue-400': msg.data?.type === 'step_start',
@@ -204,7 +204,7 @@
                 <span v-if="msg.data?.id" class="opacity-70">({{ msg.data.id }})</span>
               </span>
             </div>
-          </div>
+          </div> -->
 
           <!-- RTL2GDS 控制区 -->
           <div class="rtl2gds-control">
@@ -265,7 +265,7 @@
           <div class="flex items-center justify-between mb-2">
             <span class="text-[10px] text-(--text-secondary) uppercase tracking-wider">Progress</span>
             <span class="text-[11px] font-bold text-(--accent-color)">{{ completedSteps }}/{{ totalSteps || 0
-            }}</span>
+              }}</span>
           </div>
           <div class="h-1.5 bg-(--bg-secondary) rounded-full overflow-hidden">
             <div class="h-full bg-(--accent-color) rounded-full transition-all duration-500"

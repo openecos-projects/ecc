@@ -3,7 +3,9 @@ import { readTextFile } from '@tauri-apps/plugin-fs'
 import { invoke } from '@tauri-apps/api/core'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
-import { STEP_METADATA, getStepMetadata } from '@/api/type'
+import { getHomePageApi } from '@/api/flow'
+import { STEP_METADATA, getStepMetadata, ResponseEnum } from '@/api/type'
+import type { ECCResponse } from '@/api/sse'
 
 // ============ 类型定义 ============
 
@@ -103,7 +105,66 @@ export function useFlowStages() {
   }
 
   /**
+   * 将远程路径转换为本地项目路径（复用 useHomeData 中的逻辑）
+   */
+  function convertToLocalPath(remotePath: string): string {
+    if (!remotePath || !remotePath.includes('/nfs/')) {
+      return remotePath
+    }
+
+    const projectPath = currentProject.value?.path
+    if (!projectPath) return remotePath
+
+    const projectName = projectPath.split(/[/\\]/).filter(Boolean).pop()
+    if (!projectName) return remotePath
+
+    const projectNameIndex = remotePath.indexOf(`/${projectName}/`)
+    if (projectNameIndex === -1) return remotePath
+
+    const relativePath = remotePath.slice(projectNameIndex + projectName.length + 2)
+    return `${projectPath}/${relativePath}`
+  }
+
+  /**
+   * 从指定的 flow.json 路径加载流程步骤
+   */
+  async function loadFlowStagesFromPath(flowJsonPath: string): Promise<void> {
+    if (!isInTauri || !flowJsonPath) {
+      console.warn('无法加载 flow.json: 不在 Tauri 环境或路径为空')
+      return
+    }
+
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const localPath = convertToLocalPath(flowJsonPath)
+      console.log('Loading flow.json from path:', localPath)
+
+      const projectPath = currentProject.value?.path
+      if (projectPath) {
+        await requestPermission(projectPath)
+      }
+
+      const fileContent = await readTextFile(localPath)
+      const flowData: FlowData = JSON.parse(fileContent)
+
+      console.log('Loaded flow data from path:', flowData)
+
+      dynamicFlowStages.value = transformFlowData(flowData)
+      console.log('Flow stages loaded from path:', dynamicFlowStages.value)
+    } catch (err) {
+      console.error('Failed to load flow.json from path:', flowJsonPath, err)
+      error.value = err instanceof Error ? err.message : String(err)
+      dynamicFlowStages.value = []
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * 从 flow.json 加载流程步骤
+   * 先调用 get_home_page API 获取 home.json 路径，从中提取 flow 路径
    */
   async function loadFlowStages(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
@@ -116,24 +177,47 @@ export function useFlowStages() {
     error.value = null
 
     try {
-      const projectPath = currentProject.value.path
-      const flowJsonPath = `${projectPath}/home/flow.json`
-      console.log('Loading flow.json from:', flowJsonPath)
+      // 1. 调用 get_home_page API 获取 home.json 路径
+      const apiResponse = await getHomePageApi()
+      if (apiResponse.response !== ResponseEnum.success || !apiResponse.data?.path) {
+        console.warn('get_home_page API failed:', apiResponse.message)
+        dynamicFlowStages.value = []
+        return
+      }
 
-      // 先请求文件系统访问权限
+      const homeJsonPath = apiResponse.data.path
+      console.log('Got home.json path from API:', homeJsonPath)
+
+      // 2. 读取 home.json 获取 flow 路径
+      const localHomePath = convertToLocalPath(homeJsonPath)
+      const projectPath = currentProject.value.path
       await requestPermission(projectPath)
 
-      const fileContent = await readTextFile(flowJsonPath)
-      const flowData: FlowData = JSON.parse(fileContent)
+      const homeContent = await readTextFile(localHomePath)
+      const homeData = JSON.parse(homeContent)
+
+      const flowJsonPath = homeData.flow as string
+      if (!flowJsonPath) {
+        console.warn('No flow path found in home.json')
+        dynamicFlowStages.value = []
+        return
+      }
+
+      console.log('Got flow.json path from home.json:', flowJsonPath)
+
+      // 3. 读取 flow.json
+      const localFlowPath = convertToLocalPath(flowJsonPath)
+      const flowContent = await readTextFile(localFlowPath)
+      const flowData: FlowData = JSON.parse(flowContent)
 
       console.log('Loaded flow data:', flowData)
 
-      // 转换数据格式
+      // 4. 转换数据格式
       dynamicFlowStages.value = transformFlowData(flowData)
       console.log('Flow stages loaded:', dynamicFlowStages.value)
 
     } catch (err) {
-      console.error('Failed to load flow.json:', err)
+      console.error('Failed to load flow stages:', err)
       error.value = err instanceof Error ? err.message : String(err)
       dynamicFlowStages.value = []
     } finally {
@@ -178,7 +262,7 @@ export function useFlowStages() {
       if (newLen <= (oldLen ?? 0)) return
 
       // 获取最新一条 SSE 消息
-      const latest = sseMessages.value[newLen - 1]
+      const latest: ECCResponse = sseMessages.value[newLen - 1]
       if (!latest) return
 
       // 判断是否为 step 完成通知（后端 notify_step 发送的格式：cmd="notify", data.id="step"）
@@ -186,11 +270,15 @@ export function useFlowStages() {
       if (!isStepNotify) return
 
       const stepName = latest.data?.step as string | undefined
-      console.log('收到 SSE step 通知，步骤:', stepName)
+      const info = latest.data?.info as Record<string, unknown> | undefined
+      const stepPath = info?.step_path as string | undefined
+
+      console.log('收到 SSE step 通知，步骤:', stepName, '路径:', stepPath)
 
       // 乐观更新：先将对应步骤状态设为 Success，避免等待文件读取的延迟
       if (stepName) {
-        const idx = dynamicFlowStages.value.findIndex(s => s.path === stepName)
+        const stepNameLower = stepName.toLowerCase()
+        const idx = dynamicFlowStages.value.findIndex(s => s.path.toLowerCase() === stepNameLower)
         if (idx !== -1) {
           dynamicFlowStages.value[idx] = {
             ...dynamicFlowStages.value[idx],
@@ -199,8 +287,13 @@ export function useFlowStages() {
         }
       }
 
-      // 从 flow.json 重新加载完整状态，确保数据一致性
-      await refreshFlowStages()
+      // 使用通知中的 step_path 直接加载 flow.json，确保数据一致性
+      if (stepPath) {
+        await loadFlowStagesFromPath(stepPath)
+      } else {
+        // 没有 step_path 时回退到 API 方式
+        await refreshFlowStages()
+      }
     }
   )
 
@@ -220,6 +313,7 @@ export function useFlowStages() {
 
     // 方法
     loadFlowStages,
+    loadFlowStagesFromPath,
     refreshFlowStages,
     clearFlowStages
   }

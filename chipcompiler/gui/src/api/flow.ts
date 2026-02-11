@@ -1,5 +1,5 @@
 import { alovaInstance } from './client'
-import { RequestData, ResponseData, StepEnum, InfoEnum, StateEnum } from './type';
+import { CMDEnum, RequestData, ResponseData, StepEnum, InfoEnum, StateEnum } from './type';
 
 export interface GetInfoRequest {
   step: StepEnum;
@@ -42,5 +42,21 @@ export interface RunStepResponse {
 
 export function runStepApi(request: RequestData<RunStepRequest>) {
   return alovaInstance.Post<ResponseData<RunStepResponse>>('/api/workspace/run_step', request as unknown as RequestData<RunStepRequest>)
+}
+
+// ============ Home Page API ============
+
+export interface HomePageResponse {
+  path: string
+}
+
+/**
+ * 调用 get_home_page API 获取 home.json 的路径
+ */
+export function getHomePageApi() {
+  return alovaInstance.Post<ResponseData<HomePageResponse>>('/api/workspace/get_home_page', {
+    cmd: CMDEnum.home_page,
+    data: {}
+  })
 }
 
