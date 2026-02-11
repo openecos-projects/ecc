@@ -36,18 +36,45 @@ datas = [
     # Yosys scripts
     (str(PROJ_ROOT / 'chipcompiler' / 'tools' / 'yosys' / 'configs'), 'chipcompiler/tools/yosys/configs'),
     (str(PROJ_ROOT / 'chipcompiler' / 'tools' / 'yosys' / 'scripts'), 'chipcompiler/tools/yosys/scripts'),
-    # benchmark module
-    (str(PROJ_ROOT / 'benchmark'), 'benchmark'),
 ]
 
 ecc_bin_dir = PROJ_ROOT / 'chipcompiler' / 'thirdparty' / 'ecc-tools' / 'bin'
-ecc_py_files = list(ecc_bin_dir.glob('ecc_py*.so'))
-if not ecc_py_files:
+
+all_ecc_py_files = sorted(ecc_bin_dir.glob('ecc_py*.so'))
+
+if not all_ecc_py_files:
     raise FileNotFoundError(
         f"ecc_py module not found in {ecc_bin_dir}. "
         "Please build it first with: ./build.sh"
     )
-binaries = [(str(f), 'chipcompiler/thirdparty/ecc-tools/bin') for f in ecc_py_files]
+
+py_tag_cpython = f"cpython-{sys.version_info.major}{sys.version_info.minor}"
+py_tag_cp = f"cp{sys.version_info.major}{sys.version_info.minor}"
+
+def _is_abi_compatible(path: Path) -> bool:
+    name = path.name
+    return (
+        name == 'ecc_py.so'
+        or py_tag_cpython in name
+        or py_tag_cp in name
+    )
+
+ecc_py_files = [f for f in all_ecc_py_files if _is_abi_compatible(f)]
+if not ecc_py_files:
+    raise RuntimeError(
+        "Found ecc_py shared libraries, but none are compatible with this Python ABI "
+        f"({py_tag_cpython}/{py_tag_cp}). Found: "
+        + ", ".join(str(p.name) for p in all_ecc_py_files)
+    )
+
+# Runtime imports ecc from chipcompiler.tools.ecc.bin.
+# Always place the extension under this package in the bundle.
+binaries = [(str(f), 'chipcompiler/tools/ecc/bin') for f in ecc_py_files]
+# Add system libraries
+binaries.extend([
+    ('/lib/x86_64-linux-gnu/libgomp.so.1', 'lib'),
+    ('/lib/x86_64-linux-gnu/libtbb.so.12', 'lib'),
+])
 
 # Hidden imports that PyInstaller might miss
 hiddenimports = [
@@ -96,9 +123,6 @@ hiddenimports = [
     'chipcompiler.tools.yosys.builder',
     'chipcompiler.tools.yosys.runner',
     'chipcompiler.tools.yosys.utility',
-    'benchmark',
-    'benchmark.parameters',
-    'benchmark.benchmark',
     # Multiprocessing support
     'multiprocessing',
     'multiprocessing.process',
