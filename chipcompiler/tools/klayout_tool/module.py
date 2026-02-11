@@ -2,10 +2,12 @@
 # -*- encoding: utf-8 -*-
 import os
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
+from klayout import db
+from klayout import lay
 
 class KlayoutModule:
     def __init__(self, workspace : Workspace, step : WorkspaceStep):
-        from chipcompiler.tools.klayout.utility import is_eda_exist
+        from chipcompiler.tools.klayout_tool.utility import is_eda_exist
         if not is_eda_exist():
             raise ImportError("KLayout tool is not installed or not found.")
 
@@ -48,8 +50,6 @@ class KlayoutModule:
             height (int, optional): Image height. Defaults to 1920
         """
         # Set display configuration options
-        from klayout import lay
-        
         lv = lay.LayoutView()
         lv.set_config("background-color", "#F5F5F5")  # background of ECOS MERGE tab
         lv.set_config("grid-visible", "false")

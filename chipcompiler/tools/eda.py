@@ -22,7 +22,12 @@ def load_eda_module(eda_tool: str):
     
     try:
         import importlib
-        eda_module = importlib.import_module(f"chipcompiler.tools.{eda_tool}")
+
+        module_alias = {
+            "klayout": "klayout_tool",
+        }
+        module_name = module_alias.get(eda_tool, eda_tool)
+        eda_module = importlib.import_module(f"chipcompiler.tools.{module_name}")
         # check eda tool exist
         if not check_module(eda_module) or not eda_module.is_eda_exist():
             logging.error(f"EDA tool : {eda_tool} not found!")
@@ -91,7 +96,7 @@ def save_layout_image(workspace: Workspace,
     if eda_module is None:
         return False
     
-    from chipcompiler.tools.klayout.runner import save_gds_image
+    from chipcompiler.tools.klayout_tool.runner import save_gds_image
     return save_gds_image(workspace=workspace,
                           step=step)
     

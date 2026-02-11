@@ -17,6 +17,7 @@ Usage:
 import os
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
 # Project root directory
 PROJ_ROOT = Path(SPECPATH)
@@ -37,6 +38,10 @@ datas = [
     (str(PROJ_ROOT / 'chipcompiler' / 'tools' / 'yosys' / 'configs'), 'chipcompiler/tools/yosys/configs'),
     (str(PROJ_ROOT / 'chipcompiler' / 'tools' / 'yosys' / 'scripts'), 'chipcompiler/tools/yosys/scripts'),
 ]
+
+# Collect klayout package resources (including db_plugins format readers).
+klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all('klayout')
+datas.extend(klayout_datas)
 
 ecc_bin_dir = PROJ_ROOT / 'chipcompiler' / 'thirdparty' / 'ecc-tools' / 'bin'
 
@@ -75,6 +80,7 @@ binaries.extend([
     ('/lib/x86_64-linux-gnu/libgomp.so.1', 'lib'),
     ('/lib/x86_64-linux-gnu/libtbb.so.12', 'lib'),
 ])
+binaries.extend(klayout_binaries)
 
 # Hidden imports that PyInstaller might miss
 hiddenimports = [
@@ -124,6 +130,11 @@ hiddenimports = [
     'chipcompiler.tools.yosys.builder',
     'chipcompiler.tools.yosys.runner',
     'chipcompiler.tools.yosys.utility',
+    'chipcompiler.tools.klayout_tool',
+    'chipcompiler.tools.klayout_tool.builder',
+    'chipcompiler.tools.klayout_tool.runner',
+    'chipcompiler.tools.klayout_tool.module',
+    'chipcompiler.tools.klayout_tool.utility',
     # Multiprocessing support
     'multiprocessing',
     'multiprocessing.process',
@@ -138,6 +149,7 @@ hiddenimports = [
     'numpy._core._methods',
     'numpy.lib.format',
 ]
+hiddenimports.extend(klayout_hiddenimports)
 
 a = Analysis(
     [str(PROJ_ROOT / 'chipcompiler' / 'server' / 'run_server.py')],

@@ -27,7 +27,7 @@ This document describes ECOS Chip Compiler's software architecture in detail.
 │  Tool Layer (chipcompiler/tools/)                   │
 │  ├─ yosys/ - RTL synthesis                           │
 │  ├─ ecc/ - Placement and routing (ECC-Tools)        │
-│  ├─ klayout/ - Layout viewer                         │
+│  ├─ klayout_tool/ - Layout viewer                    │
 │  ├─ openroad/ - Open source backend                  │
 │  └─ magic/ - Layout tool                             │
 ├────────────────────────────────────────────────────┤

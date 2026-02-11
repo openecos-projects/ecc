@@ -2,8 +2,8 @@
 # -*- encoding: utf-8 -*-
 
 from chipcompiler.data import Workspace, WorkspaceStep
-from chipcompiler.tools.klayout.utility import is_eda_exist
-from chipcompiler.tools.klayout.module import KlayoutModule
+from chipcompiler.tools.klayout_tool.utility import is_eda_exist
+from chipcompiler.tools.klayout_tool.module import KlayoutModule
 
 def run_step():
     pass
