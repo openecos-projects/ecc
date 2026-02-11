@@ -11,7 +11,7 @@ setup_project_vars() {
     export ICS55_PDK_ROOT="${CHIPCOMPILER_ROOT}/thirdparty/icsprout55-pdk"
     export OSS_CAD_DIR="${CHIPCOMPILER_ROOT}/thirdparty/oss-cad-suite"
     export VENV_DIR="${PROJECT_ROOT}/.venv"
-    export PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
+    export PYTHON_VERSION="${PYTHON_VERSION:-3.11}"
     export ENABLE_OSS_CAD_SUITE="${ENABLE_OSS_CAD_SUITE:-true}"
     export ECC_PY_GLOB="${ECC_TOOLS_ROOT}/bin/ecc_py*.so"
     export CMAKE_EXTRA_OPTIONS="${CMAKE_EXTRA_OPTIONS:-}"

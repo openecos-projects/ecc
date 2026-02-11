@@ -56,7 +56,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -80,7 +80,7 @@ jobs:
           enable-cache: "true"
 
       - name: Install Python dependencies (uv)
-        run: uv sync --frozen --all-groups --python 3.10
+        run: uv sync --frozen --all-groups --python 3.11
 
       - name: Install frontend dependencies
         working-directory: chipcompiler/gui
