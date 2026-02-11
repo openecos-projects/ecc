@@ -3,6 +3,7 @@ import { readTextFile, readFile } from '@tauri-apps/plugin-fs'
 import { invoke } from '@tauri-apps/api/core'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
+import type { ECCResponse } from '@/api/sse'
 
 // ============ 类型定义 ============
 
@@ -223,6 +224,55 @@ export function useHomeData() {
   }
 
   /**
+   * 从指定的 home.json 路径加载 Home 页面数据
+   * 用于 SSE 通知推送的 home_page 路径
+   */
+  async function loadHomeDataFromPath(homePath: string): Promise<void> {
+    if (!isInTauri || !homePath) {
+      console.warn('无法加载 home data: 不在 Tauri 环境或路径为空')
+      return
+    }
+
+    isLoading.value = true
+    error.value = null
+
+    try {
+      // 转换远程路径为本地路径
+      const localPath = convertToLocalPath(homePath)
+      console.log('Loading home data from SSE path:', localPath)
+
+      // 请求文件系统访问权限
+      const projectPath = currentProject.value?.path
+      if (projectPath) {
+        await requestPermission(projectPath)
+      }
+
+      const fileContent = await readTextFile(localPath)
+      const homeData: HomeData = JSON.parse(fileContent)
+
+      console.log('Loaded home data from SSE path:', homeData)
+
+      // 更新 monitor 数据
+      if (homeData.monitor) {
+        monitorData.value = homeData.monitor
+      }
+
+      // 并行加载 checklist 和 layout
+      await Promise.all([
+        loadChecklist(homeData.checklist),
+        loadLayoutImage(homeData.layout),
+      ])
+
+      console.log('Home data from SSE path fully loaded')
+    } catch (err) {
+      console.error('Failed to load home data from path:', homePath, err)
+      error.value = err instanceof Error ? err.message : String(err)
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * 重新加载所有数据
    */
   async function refreshHomeData(): Promise<void> {
@@ -252,6 +302,33 @@ export function useHomeData() {
     { immediate: true }
   )
 
+  // 监听 SSE 通知，当收到包含 home_page 的通知时自动刷新 Home 数据
+  const { sseMessages } = useWorkspace()
+
+  watch(
+    () => sseMessages.value.length,
+    async (newLen, oldLen) => {
+      if (newLen <= (oldLen ?? 0)) return
+
+      // 获取最新一条 SSE 消息
+      const latest: ECCResponse = sseMessages.value[newLen - 1]
+      if (!latest) return
+
+      // 判断是否为 notify 类型的消息
+      if (latest.cmd !== 'notify') return
+
+      // 提取 home_page 路径（step 通知和 subflow 通知都可能包含）
+      const info = latest.data?.info as Record<string, unknown> | undefined
+      const homePage = info?.home_page as string | undefined
+      if (!homePage) return
+
+      console.log('收到 SSE 通知，包含 home_page 路径:', homePage)
+
+      // 从 home_page 路径重新加载 Home 数据
+      await loadHomeDataFromPath(homePage)
+    }
+  )
+
   // 组件挂载时也尝试加载
   onMounted(async () => {
     if (currentProject.value?.path) {
@@ -274,6 +351,7 @@ export function useHomeData() {
 
     // 方法
     loadHomeData,
+    loadHomeDataFromPath,
     refreshHomeData,
     clearHomeData,
     convertToLocalPath,
