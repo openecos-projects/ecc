@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import logging
 import os
+import time
+from functools import wraps
 
 from chipcompiler.data import (
     create_workspace,
@@ -24,6 +27,47 @@ from chipcompiler.server.schemas import (
 
 from chipcompiler.server.sse import server_notify
 notify_service = server_notify()
+
+logger = logging.getLogger(__name__)
+
+
+def _summarize_request(data: dict) -> dict:
+    """Extract key fields from request data for logging."""
+    if not isinstance(data, dict):
+        return {}
+    summary = {}
+    for key in ("directory", "step", "id", "pdk", "pdk_root", "rerun"):
+        if key in data:
+            summary[key] = data[key]
+    if "parameters" in data:
+        summary["parameters_keys"] = len(data.get("parameters", {}))
+    if "rtl_list" in data:
+        rtl = data["rtl_list"]
+        summary["rtl_count"] = len(rtl.splitlines() if isinstance(rtl, str) else rtl)
+    return summary
+
+
+def _log_api_command(func):
+    """Decorator to log API command execution with timing."""
+    @wraps(func)
+    def wrapper(self, request: ECCRequest, *args, **kwargs):
+        cmd = getattr(request, "cmd", "?")
+        data = getattr(request, "data", {})
+        logger.info("[CMD] %s %s", cmd, _summarize_request(data))
+
+        start = time.time()
+        try:
+            response = func(self, request, *args, **kwargs)
+        except Exception:
+            logger.exception("[CMD] %s failed (%.0fms)", cmd, (time.time() - start) * 1000)
+            raise
+
+        elapsed_ms = (time.time() - start) * 1000
+        result = getattr(response, "response", type(response).__name__)
+        logger.info("[CMD] %s -> %s (%.0fms)", cmd, result, elapsed_ms)
+        return response
+    return wrapper
+
 
 class ECCService:
     def __init__(self):
@@ -73,7 +117,7 @@ class ECCService:
                 cmd=request.cmd,
                 response=ResponseEnum.failed.value,
                 data={},
-                message = [].append(f"requese cmd not match {request.cmd}")
+                message=[f"request cmd not match: expected={cmd.value}, got={request.cmd}"]
             )
             
             return False, response
@@ -95,6 +139,7 @@ class ECCService:
             return 
         engine_flow.create_step_workspaces()
     
+    @_log_api_command
     def create_workspace(self, request: ECCRequest) -> ECCResponse:
         """
         "request" : {
@@ -133,6 +178,7 @@ class ECCService:
                         rtl_paths=rtl_paths
                     )
                 except Exception as e:
+                    logger.exception("create_workspace: failed to write filelist from rtl_list")
                     return ECCResponse(
                         cmd=request.cmd,
                         response=ResponseEnum.error.value,
@@ -149,6 +195,7 @@ class ECCService:
                                          input_filelist=input_filelist,
                                          pdk_root=data.get("pdk_root", ""))
         except Exception as e:
+            logger.exception("create_workspace: create_workspace() raised exception")
             return ECCResponse(
                         cmd=request.cmd,
                         response=ResponseEnum.error.value,
@@ -181,6 +228,7 @@ class ECCService:
                 message = [f"create workspace success : {data.get('directory', '')}"]
             )
 
+    @_log_api_command
     def set_pdk_root(self, request: ECCRequest) -> ECCResponse:
         """
         "request" : {
@@ -238,6 +286,7 @@ class ECCService:
                 self.workspace.pdk = pdk
                 self.workspace.parameters.data["PDK Root"] = resolved_root
         except Exception as e:
+            logger.exception("set_pdk_root: get_pdk() or env update failed")
             return ECCResponse(
                 cmd=request.cmd,
                 response=ResponseEnum.error.value,
@@ -252,6 +301,7 @@ class ECCService:
             message=[f"set pdk root success: {pdk_name} -> {response_data['pdk_root']}"],
         )
     
+    @_log_api_command
     def load_workspace(self, request: ECCRequest) -> ECCResponse:
         """
         "request" : {
@@ -275,6 +325,7 @@ class ECCService:
         try:
             workspace = load_workspace(directory=data.get("directory", ""))
         except Exception as e:
+            logger.exception("load_workspace: load_workspace() raised exception")
             return ECCResponse(
                 cmd=request.cmd,
                 response=ResponseEnum.failed.value,
@@ -307,6 +358,7 @@ class ECCService:
                 message = [f"load workspace success : {data.get('directory', '')}"]
             )
     
+    @_log_api_command
     def delete_workspace(self, request: ECCRequest) -> ECCResponse:
         """
         "request" : {
@@ -346,8 +398,8 @@ class ECCService:
         try:
             import shutil
             shutil.rmtree(directory)
-        except Exception as e:
-            pass
+        except Exception:
+            logger.exception("delete_workspace: failed to remove workspace directory")
             
         response_data = {
             "directory" : directory
@@ -359,6 +411,7 @@ class ECCService:
             message = [f"delete workspace success : {directory}"]
         )
 
+    @_log_api_command
     def rtl2gds(self, request: ECCRequest) -> ECCResponse:
         """
         "request" : {
@@ -424,6 +477,7 @@ class ECCService:
                                                home_page=self.workspace.home.path)
             # self.engine_flow.run_steps()
         except Exception as e:
+            logger.exception("rtl2gds: execution failed")
             return ECCResponse(
                 cmd=request.cmd,
                 response=ResponseEnum.error.value,
@@ -446,6 +500,7 @@ class ECCService:
                 message = [f"run rtl2gds failed in step : {failed_step}"]
             )
 
+    @_log_api_command
     def run_step(self, request: ECCRequest) -> ECCResponse:
         """
         "request" : {
@@ -486,9 +541,9 @@ class ECCService:
         state = StateEnum.Unstart
         try:
             state = self.engine_flow.run_step(step, rerun)
-        except Exception as e:
+        except Exception:
             state = StateEnum.Imcomplete
-            pass
+            logger.exception("run_step: engine_flow.run_step() raised exception")
         
         response_data["state"] = state.value
         
@@ -507,6 +562,7 @@ class ECCService:
                 message = [f"run step {step} failed with state {state.value} : {self.workspace.directory}"]
             )
             
+    @_log_api_command
     def get_info(self, request: ECCRequest) -> ECCResponse:
         """
         get information by step (defined by StepEnum) and id (defined by InfoEnum)
@@ -565,6 +621,7 @@ class ECCService:
             else:
                 response_data["info"] = info
         except Exception as e:
+            logger.exception("get_info: get_step_info() raised exception")
             return ECCResponse(
                 cmd=request.cmd,
                 response=ResponseEnum.error.value,
@@ -579,6 +636,7 @@ class ECCService:
                 message = [f"get information success : {step} - {id}"]
             )
         
+    @_log_api_command
     def get_home_page(self, request: ECCRequest) -> ECCResponse:
         """
         "request" : {},
