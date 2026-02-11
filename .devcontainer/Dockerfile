@@ -11,11 +11,14 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     python3-pip \
     python3-dev \
     libgtk-3-dev \
+    libgtk-3-bin \
     libwebkit2gtk-4.1-dev \
     libcairo2-dev \
     libpango1.0-dev \
     libgdk-pixbuf-2.0-dev \
     libglib2.0-dev \
+    libglib2.0-bin \
+    librsvg2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js (LTS) and pnpm
@@ -33,3 +36,4 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ln -s /root/.local/bin/uv /usr/local/bin/uv
 
 ENV PATH="/root/.cargo/bin:${PATH}"
+ENV PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig"
