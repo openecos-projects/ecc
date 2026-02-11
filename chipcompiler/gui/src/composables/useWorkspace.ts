@@ -326,6 +326,7 @@ export function useWorkspace() {
       const response = await createWorkspaceApi({
         directory: selectedPath,
         pdk: pdkName,
+        pdk_root: config?.pdk_root || '',
         parameters: backendParameters,
         origin_def: config?.origin_def,
         origin_verilog: config?.origin_verilog,

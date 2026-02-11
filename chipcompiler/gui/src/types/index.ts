@@ -81,6 +81,7 @@ export interface WorkspaceParameters {
 export interface WorkspaceConfig {
   directory: string;
   pdk: string;
+  pdk_root: string;
   parameters: Partial<WorkspaceParameters> & Record<string, unknown>;
   origin_def: string;
   origin_verilog: string;

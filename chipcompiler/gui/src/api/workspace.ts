@@ -32,11 +32,13 @@ export interface LoadWorkspaceRequest {
 export interface CreateWorkspaceRequest {
   cmd: CMDEnum.create_workspace;
   data: {
-    directory: string,
     pdk: string,
+    pdk_root: string,
+    directory: string,
     parameters: Record<string, unknown>,
     origin_def: string,
     origin_verilog: string,
+    filelist: string,
     rtl_list: string
   }
 }
@@ -68,6 +70,8 @@ export function createWorkspaceApi(
     origin_def?: string,
     origin_verilog?: string,
     rtl_list?: string
+    pdk_root?: string
+    filelist?: string
   }
 ) {
   return alovaInstance.Post<WorkspaceResponse>('/api/workspace/create_workspace', {
@@ -78,7 +82,9 @@ export function createWorkspaceApi(
       parameters: options.parameters || {},
       origin_def: options.origin_def || '',
       origin_verilog: options.origin_verilog || '',
-      rtl_list: options.rtl_list || ''
+      rtl_list: options.rtl_list || '',
+      pdk_root: options.pdk_root || ''  ,
+      filelist: options.filelist || ''
     }
   } as CreateWorkspaceRequest)
 }
