@@ -22,14 +22,14 @@ The project uses Nix and `uv` for reproducible tool provisioning.
 ```bash
 nix develop
 ```
-Automatically provides Python 3.10+, uv, Yosys with Slang, ECC-Tools, and all Python dependencies.
+Automatically provides Python 3.11+, uv, Yosys with Slang, ECC-Tools, and all Python dependencies.
 
 **Option 2: Manual Setup with uv**
 ```bash
 bash ./build.sh
 source .venv/bin/activate
 ```
-Uses `uv` to create Python 3.10 environment, syncs dependencies from pyproject.toml, and builds ECC-Tools C++ bindings. The script also downloads OSS CAD Suite by default (set `ENABLE_OSS_CAD_SUITE=false` to skip).
+Uses `uv` to create Python 3.11 environment, syncs dependencies from pyproject.toml, and builds ECC-Tools C++ bindings. The script also downloads OSS CAD Suite by default (set `ENABLE_OSS_CAD_SUITE=false` to skip).
 
 **Tip:** If `python` is not found in your shell, activate the project virtualenv first:
 ```bash

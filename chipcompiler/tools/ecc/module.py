@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+from pathlib import Path
 from numpy import double
 
 class ECCToolsModule:
@@ -11,8 +12,14 @@ class ECCToolsModule:
             from chipcompiler.tools.ecc.utility import is_eda_exist
             if is_eda_exist():
                 from chipcompiler.tools.ecc.bin import ecc_py as ecc
-        except ImportError:
-            raise ImportError("ecc tool is not installed or not found.")
+        except ImportError as exc:
+            ecc_bin_dir = Path(__file__).resolve().parent / "bin"
+            candidates = sorted(p.name for p in ecc_bin_dir.glob("ecc_py*.so"))
+            raise ImportError(
+                "ecc tool is not installed or not found. "
+                f"Import error: {exc}. "
+                f"Available ecc_py binaries in {ecc_bin_dir}: {candidates}"
+            ) from exc
     
         self.ecc = ecc
 
