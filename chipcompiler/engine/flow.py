@@ -352,10 +352,7 @@ class EngineFlow:
 
         # save layout snapshot on success
         if state == StateEnum.Success:
-            try:
-                from chipcompiler.tools import save_layout_image
-                save_layout_image(workspace=self.workspace, step=workspace_step)
-            except Exception:
-                logger.exception("Layout snapshot failed for %s", step_tag)
+            from chipcompiler.tools import save_layout_image
+            save_layout_image(workspace=self.workspace, step=workspace_step)
 
         return state
