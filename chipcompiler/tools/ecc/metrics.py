@@ -55,6 +55,11 @@ def build_metrics_db(workspace: Workspace,
                     step: WorkspaceStep) -> dict:
     # db summary matrics
     metrics = {}
+    
+    metrics['Design'] = workspace.design.name
+    metrics['Step'] = step.name
+    metrics['Tool'] = step.tool
+    
     data = json_read(step.feature.get('db', ""))
     if len(data) > 0:
         metrics["Die area [μm^2]"] = f"{round(data.get('Design Layout', {}).get('die_area', 0.0), 3)}"
@@ -77,9 +82,6 @@ def build_metrics_floorplan(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    metrics['Design'] = workspace.design.name
-    metrics['Step'] = step.name
-    metrics['Tool'] = step.tool
     
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
@@ -113,15 +115,9 @@ def build_metrics_net_opt(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    # metrics['Design'] = workspace.design.name
-    # metrics['Step'] = step.name
-    # metrics['Tool'] = step.tool
     
     # db summary matrics
-    # metrics.update(build_metrics_db(workspace, step))
-    data = json_read(step.feature.get('db', ""))
-    metrics["Total instances"] = data.get('Design Statis', {}).get('num_instances', 0)
-    metrics["Total nets"] = data.get('Design Statis', {}).get('num_nets', 0)
+    metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
     json_path = step.feature.get('step', "")
@@ -161,14 +157,9 @@ def build_metrics_filler(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    # metrics['Design'] = workspace.design.name
-    # metrics['Step'] = step.name
-    # metrics['Tool'] = step.tool
     
     # db summary matrics
-    # metrics.update(build_metrics_db(workspace, step))
-    data = json_read(step.feature.get('db', ""))
-    metrics["Total instances"] = data.get('Design Statis', {}).get('num_instances', 0)
+    metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
     json_path = step.feature.get('step', "")
@@ -200,12 +191,9 @@ def build_metrics_drc(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    # metrics['Design'] = workspace.design.name
-    # metrics['Step'] = step.name
-    # metrics['Tool'] = step.tool
-    
+
     # db summary matrics
-    # metrics.update(build_metrics_db(workspace, step))
+    metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
     json_path = step.feature.get('step', "")
@@ -236,12 +224,9 @@ def build_metrics_routing(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    # metrics['Design'] = workspace.design.name
-    # metrics['Step'] = step.name
-    # metrics['Tool'] = step.tool
-    
+
     # db summary matrics
-    # metrics.update(build_metrics_db(workspace, step))
+    metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
     json_path = step.feature.get('db', "")
@@ -273,12 +258,9 @@ def build_metrics_legalization(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    # metrics['Design'] = workspace.design.name
-    # metrics['Step'] = step.name
-    # metrics['Tool'] = step.tool
     
     # db summary matrics
-    # metrics.update(build_metrics_db(workspace, step))
+    metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
     json_path = step.feature.get('step', "")
@@ -309,15 +291,9 @@ def build_metrics_timing_opt_hold(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    # metrics['Design'] = workspace.design.name
-    # metrics['Step'] = step.name
-    # metrics['Tool'] = step.tool
-    
+
     # db summary matrics
-    # metrics.update(build_metrics_db(workspace, step))
-    data = json_read(step.feature.get('db', ""))
-    metrics["Total instances"] = data.get('Design Statis', {}).get('num_instances', 0)
-    metrics["Total nets"] = data.get('Design Statis', {}).get('num_nets', 0)
+    metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
     json_path = step.feature.get('step', "")
@@ -353,15 +329,9 @@ def build_metrics_timing_opt_drv(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    # metrics['Design'] = workspace.design.name
-    # metrics['Step'] = step.name
-    # metrics['Tool'] = step.tool
     
     # db summary matrics
-    # metrics.update(build_metrics_db(workspace, step))
-    data = json_read(step.feature.get('db', ""))
-    metrics["Total instances"] = data.get('Design Statis', {}).get('num_instances', 0)
-    metrics["Total nets"] = data.get('Design Statis', {}).get('num_nets', 0)
+    metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
     json_path = step.feature.get('step', "")
@@ -396,15 +366,9 @@ def build_metrics_cts(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    # metrics['Design'] = workspace.design.name
-    # metrics['Step'] = step.name
-    # metrics['Tool'] = step.tool
     
     # db summary matrics
     # metrics.update(build_metrics_db(workspace, step))
-    data = json_read(step.feature.get('db', ""))
-    metrics["Total instances"] = data.get('Design Statis', {}).get('num_instances', 0)
-    metrics["Total nets"] = data.get('Design Statis', {}).get('num_nets', 0)
     
     # step matrics
     json_path = step.feature.get('step', "")
@@ -448,12 +412,9 @@ def build_metrics_placement(workspace: Workspace,
     step_metrics.path = step.analysis['metrics']    
     
     metrics = {}
-    # metrics['Design'] = workspace.design.name
-    # metrics['Step'] = step.name
-    # metrics['Tool'] = step.tool
     
     # db summary matrics
-    # metrics.update(build_metrics_db(workspace, step))
+    metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
     json_path = step.feature.get('step', "")

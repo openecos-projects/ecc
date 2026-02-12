@@ -396,7 +396,7 @@ import { useFlowStages } from '@/composables/useFlowStages'
 import { useSubflow } from '@/composables/useSubflow'
 import { useFlowRunner } from '@/composables/useFlowRunner'
 import { useCurrentStage } from '@/composables/useCurrentStage'
-import { useWorkspace } from '@/composables/useWorkspace'
+// import { useWorkspace } from '@/composables/useWorkspace'
 
 // ============ Composables ============
 
@@ -426,7 +426,7 @@ const {
 } = useFlowRunner()
 
 // Workspace SSE 消息
-const { sseMessages } = useWorkspace()
+// const { sseMessages } = useWorkspace()
 
 // 当前阶段
 const { currentStage, showProgressPanel, showOverviewPanel, showSubflowPanel } = useCurrentStage()

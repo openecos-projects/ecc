@@ -722,6 +722,7 @@ function stateLabel(state: string): string {
 }
 
 /** 格式化 Bounding Box 显示 */
+/*
 function formatBBox(bbox: string | undefined): string {
   if (!bbox) return '--'
   const match = bbox.match(/\((\d+),(\d+),(\d+),(\d+)\)/)
@@ -732,7 +733,7 @@ function formatBBox(bbox: string | undefined): string {
   }
   return bbox
 }
-
+*/
 </script>
 
 <style scoped>
