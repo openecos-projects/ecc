@@ -164,3 +164,6 @@ chipcompiler/thirdparty/icsprout55-pdk
 *.AppImage
 *.tgz
 .DS_Store
+
+# Nix result
+result
