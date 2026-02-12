@@ -21,6 +21,9 @@ setup_project_vars() {
     if [[ -z "${UV_INSTALLER_GITHUB_BASE_URL:-}" && -n "${GITHUB_PROXY_PREFIX}" ]]; then
         export UV_INSTALLER_GITHUB_BASE_URL="$(append_proxy_prefix "https://github.com" "${GITHUB_PROXY_PREFIX}" "true")"
     fi
+    if [[ -z "${UV_PYTHON_INSTALL_MIRROR:-}" && -n "${GITHUB_PROXY_PREFIX}" ]]; then
+        export UV_PYTHON_INSTALL_MIRROR="$(append_proxy_prefix "https://github.com/astral-sh/python-build-standalone/releases/download" "${GITHUB_PROXY_PREFIX}" "true")"
+    fi
     export OSS_CAD_SOURCE_TYPE="${OSS_CAD_SOURCE_TYPE:-}"
     export OSS_CAD_RELEASE_TAG="${OSS_CAD_RELEASE_TAG:-}"
     export OSS_CAD_RELEASE_SHA256="${OSS_CAD_RELEASE_SHA256:-}"
