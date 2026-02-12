@@ -18,6 +18,9 @@ setup_project_vars() {
     export GITHUB_PROXY_PREFIX="${GITHUB_PROXY_PREFIX:-}"
     export GIT_PROXY_PREFIX="${GIT_PROXY_PREFIX:-}"
     export VERSIONS_JSON="${VERSIONS_JSON:-${PROJECT_ROOT}/scripts/versions.json}"
+    if [[ -z "${UV_INSTALLER_GITHUB_BASE_URL:-}" && -n "${GITHUB_PROXY_PREFIX}" ]]; then
+        export UV_INSTALLER_GITHUB_BASE_URL="$(append_proxy_prefix "https://github.com" "${GITHUB_PROXY_PREFIX}" "true")"
+    fi
     export OSS_CAD_SOURCE_TYPE="${OSS_CAD_SOURCE_TYPE:-}"
     export OSS_CAD_RELEASE_TAG="${OSS_CAD_RELEASE_TAG:-}"
     export OSS_CAD_RELEASE_SHA256="${OSS_CAD_RELEASE_SHA256:-}"
@@ -40,9 +43,15 @@ append_proxy_prefix() {
         echo "$url"
         return 0
     fi
-    if [[ "$github_only" == "true" && "$url" != https://github.com/* ]]; then
-        echo "$url"
-        return 0
+    if [[ "$github_only" == "true" ]]; then
+        case "$url" in
+            https://github.com|https://github.com/*)
+                ;;  # Continue processing
+            *)
+                echo "$url"
+                return 0
+                ;;
+        esac
     fi
 
     if [[ "$prefix" != */ ]]; then
@@ -246,7 +255,8 @@ verify_git_tree_sha256() {
 setup_uv_env() {
     if ! command -v uv &> /dev/null; then
         echo "Error: uv is not installed or not in PATH"
-        echo "Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        local env_prefix="${UV_INSTALLER_GITHUB_BASE_URL:+env UV_INSTALLER_GITHUB_BASE_URL=\"${UV_INSTALLER_GITHUB_BASE_URL}\" }"
+        echo "Install it with: ${env_prefix}curl -LsSf https://astral.sh/uv/install.sh | sh"
         return 1
     fi
 

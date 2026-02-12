@@ -18,8 +18,30 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     libgdk-pixbuf-2.0-dev \
     libglib2.0-dev \
     libglib2.0-bin \
-    librsvg2-dev \
-    && rm -rf /var/lib/apt/lists/*
+    librsvg2-dev
+
+# Install additional dependencies for ECC-Tools build
+RUN apt-get install -y \
+    build-essential \
+    cmake \
+    ninja-build \
+    tcl-dev \
+    libgflags-dev \
+    libgoogle-glog-dev \
+    libboost-all-dev \
+    libgtest-dev \
+    flex\
+    libeigen3-dev \
+    libunwind-dev \
+    libmetis-dev \
+    libgmp-dev \
+    bison \
+    rustc \
+    cargo \
+    libhwloc-dev \
+    libcairo2-dev \
+    libcurl4-openssl-dev \
+    libtbb-dev
 
 # Install Node.js (LTS) and pnpm
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
