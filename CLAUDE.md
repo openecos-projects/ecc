@@ -14,27 +14,49 @@ The architecture follows a modular, plugin-based design with clear separation be
 
 ## Development Setup and Commands
 
-### Environment Setup
+### Installation
 
-The project uses Nix and `uv` for reproducible tool provisioning.
+**Option 1: Install via Nix (Recommended)**
 
-**Option 1: Nix Development Shell (Recommended)**
+Build and install ChipCompiler as a Nix package:
+
+```bash
+# Build the package
+nix build .#chipcompiler
+
+# Run directly
+./result/bin/chipcompiler
+
+# Or install to your profile
+nix profile install .#chipcompiler
+chipcompiler
+```
+
+The Nix build includes all dependencies (Python, ECC-Tools bindings, Yosys) and creates a standalone executable. Binary cache is available at `serve.eminrepo.cc` for faster builds.
+
+Available packages:
+- `chipcompiler` - Core ChipCompiler tool
+- `ecc-tools` - ECC-Tools backend engine
+- `ecos-studio` - ECOS Studio GUI application
+
+**Option 2: Development Shell**
+
+For active development, use the Nix development shell:
+
 ```bash
 nix develop
 ```
-Automatically provides Python 3.11+, uv, Yosys with Slang, ECC-Tools, and all Python dependencies.
 
-**Option 2: Manual Setup with uv**
+Automatically provides Python 3.11+, uv, Yosys with Slang, ECC-Tools, and all Python dependencies. The shell hook runs `uv sync` and activates the virtual environment.
+
+**Option 3: Manual Setup with uv**
+
 ```bash
 bash ./build.sh
 source .venv/bin/activate
 ```
-Uses `uv` to create Python 3.11 environment, syncs dependencies from pyproject.toml, and builds ECC-Tools C++ bindings. The script also downloads OSS CAD Suite by default (set `ENABLE_OSS_CAD_SUITE=false` to skip).
 
-**Tip:** If `python` is not found in your shell, activate the project virtualenv first:
-```bash
-source .venv/bin/activate
-```
+Uses `uv` to create Python 3.11 environment, syncs dependencies from pyproject.toml, and builds ECC-Tools C++ bindings. The script also downloads OSS CAD Suite by default (set `ENABLE_OSS_CAD_SUITE=false` to skip).
 
 **Submodule initialization (first-time setup):**
 ```bash
@@ -42,10 +64,12 @@ git submodule update --init --recursive
 ```
 Required for ECC-Tools engine (chipcompiler/thirdparty/ecc-tools) and icsprout55 PDK (chipcompiler/thirdparty/icsprout55-pdk).
 
-**Option 3: Release Build**
+**Option 4: Release Build**
+
 ```bash
 ./build.sh --release
 ```
+
 Creates standalone executable via PyInstaller.
 
 ### Running Tests
@@ -58,7 +82,7 @@ pytest test/
 
 # Run a specific test file
 pytest test/test_tools_yosys.py
-pytest test/test_tools_ieda.py
+pytest test/test_tools_ecc.py
 
 # Run with verbose output
 pytest test/ -v
@@ -68,7 +92,7 @@ pytest test/ --cov=chipcompiler --cov-report=term-missing
 ```
 
 Key test files:
-- **test_tools_ieda.py** - Tests ECC-Tools (ecc) place-and-route with ICS55 PDK and GCD design
+- **test_tools_ecc.py** - Tests ECC-Tools (ecc) place-and-route with ICS55 PDK and GCD design
 - **test_ics55_batch.py** - Batch synthesis tests on ICS55 PDK
 - **test_benchmark_inputs.py** - Benchmark design input tests
 - **test_filelist.py** - Filelist parsing tests
@@ -167,7 +191,6 @@ pnpm run tauri:build
 │  Tools Layer (chipcompiler/tools/)           │
 │  ├─ yosys/ - RTL synthesis                  │
 │  ├─ ecc/ - Place & route (ECC-Tools)        │
-│  ├─ iEDA/ - Legacy directory (empty)        │
 │  ├─ klayout/ - Layout viewer/editor         │
 │  ├─ openroad/ - Place & route (stub)        │
 │  └─ magic/ - Layout tool (stub)             │
@@ -247,11 +270,10 @@ def run_step() -> StateEnum  # Execute tool via subprocess
 - Python bindings available for post-flow analysis
 
 **Naming Clarification:**
-- **ECC-Tools** = The physical design backend tool suite (formerly known as iEDA project, now renamed to ECC-Tools)
+- **ECC-Tools** = The physical design backend tool suite
 - **ecc** = Tool identifier in Python code (e.g., `tool="ecc"`)
 - **chipcompiler/thirdparty/ecc-tools** = ECC-Tools project source code (C++ engine)
 - **chipcompiler/tools/ecc/** = Python wrapper and integration layer for ECC-Tools
-- **chipcompiler/tools/iEDA/** = Legacy directory (empty, kept for backward compatibility)
 
 **KLayout Integration:**
 - Layout visualization and editing
@@ -383,7 +405,7 @@ Tests use **functional integration testing**:
 - Verify outputs and state updates
 
 Key test files:
-- **test_tools_ieda.py** - ECC-Tools place-and-route flow tests
+- **test_tools_ecc.py** - ECC-Tools place-and-route flow tests
 - **test_ics55_batch.py** - Batch synthesis tests on ICS55 PDK
 - **test_benchmark_inputs.py** - Benchmark design input tests
 - **test_filelist.py** - Filelist parsing tests

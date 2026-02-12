@@ -35,16 +35,34 @@ ECOS Chip Compiler 是一个基于 Python 的**芯片设计自动化解决方案
 
 支持平台：x86_64 Linux（**Ubuntu 24.04+**，或其他安装了 **Nix** 的发行版）
 
-**方式一：Nix（推荐）**
+**方式一：通过 Nix 安装（推荐）**
 
 如果还未安装 Nix 包管理器（Nix 不是 NixOS！）：https://nixos.org/download
+
+```bash
+# 构建并安装 ChipCompiler
+nix build .#chipcompiler
+
+# 直接运行
+./result/bin/chipcompiler
+
+# 或安装到用户配置
+nix profile install .#chipcompiler
+chipcompiler
+```
+
+Nix 构建包含所有依赖，创建独立可执行文件。提供二进制缓存以加速构建。
+
+**方式二：开发环境**
+
+用于开发：
 
 ```bash
 # 进入开发环境
 nix develop
 ```
 
-**方式二：手动安装**
+**方式三：手动安装**
 
 ```bash
 # 安装 uv 包管理器

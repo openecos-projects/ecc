@@ -35,16 +35,34 @@ For detailed architecture, see **[Architecture Documentation](docs/architecture.
 
 Support platforms: x86_64 Linux (**Ubuntu 24.04+**, or other distros with **Nix** installed)
 
-**Option 1: Nix (Recommended)**
+**Option 1: Install via Nix (Recommended)**
 
 Install Nix package manager if you haven't (Nix is not NixOS!): https://nixos.org/download
+
+```bash
+# Build and install ChipCompiler
+nix build .#chipcompiler
+
+# Run directly
+./result/bin/chipcompiler
+
+# Or install to your profile
+nix profile install .#chipcompiler
+chipcompiler
+```
+
+The Nix build includes all dependencies and creates a standalone executable. Binary cache available for faster builds.
+
+**Option 2: Development Environment**
+
+For active development:
 
 ```bash
 # Enter development environment
 nix develop
 ```
 
-**Option 2: Manual Installation**
+**Option 3: Manual Installation**
 
 ```bash
 # Install uv package manager

@@ -2,9 +2,34 @@
 
 This document covers the development environment setup and common workflows for ECOS Chip Compiler.
 
-## Environment Setup
+## Installation
 
-### Option 1: Nix Development Environment (recommended)
+### Option 1: Install via Nix (Recommended)
+
+Build and install ChipCompiler as a Nix package:
+
+```bash
+# Build the package
+nix build .#chipcompiler
+
+# Run directly
+./result/bin/chipcompiler
+
+# Or install to your profile
+nix profile install .#chipcompiler
+chipcompiler
+```
+
+The Nix build includes all dependencies (Python, ECC-Tools bindings, Yosys) and creates a standalone executable. Binary cache is available at `serve.eminrepo.cc` for faster builds.
+
+Available packages:
+- `chipcompiler` - Core ChipCompiler tool
+- `ecc-tools` - ECC-Tools backend engine
+- `ecos-studio` - ECOS Studio GUI application
+
+### Option 2: Nix Development Environment
+
+For active development, use the Nix development shell:
 
 ```bash
 # Enter the development environment
@@ -18,7 +43,9 @@ echo "use flake" > .envrc
 direnv allow
 ```
 
-### Option 2: Manual Installation
+The development shell automatically provides Python 3.11+, uv, Yosys with Slang, ECC-Tools, and all Python dependencies. The shell hook runs `uv sync` and activates the virtual environment.
+
+### Option 3: Manual Installation
 
 ```bash
 # Install the uv package manager
