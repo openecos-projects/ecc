@@ -24,7 +24,7 @@
     }:
     let
       overlay = import ./nix/overlay.nix;
-      edaOverlay = inputs.infra.overlays.default;
+      infraOverlay = inputs.infra.overlays.default;
     in
     parts.lib.mkFlake { inherit inputs; } {
       imports = [
@@ -52,7 +52,7 @@
             inherit system;
             overlays = [
               overlay
-              edaOverlay
+              infraOverlay
             ];
           };
           packages = {
