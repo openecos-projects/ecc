@@ -1,6 +1,5 @@
 {
   lib,
-  python3,
   python3Packages,
   ecc-tools,
   makeWrapper,
@@ -28,6 +27,21 @@ python3Packages.buildPythonPackage {
     install -m 755 ${ecc-tools}/bin/*.cpython-*.so chipcompiler/tools/ecc/bin/
   '';
 
+  postInstall = ''
+    site_packages="$out/${python3Packages.python.sitePackages}"
+
+    for rel in \
+      chipcompiler/tools/ecc/configs \
+      chipcompiler/tools/yosys/configs \
+      chipcompiler/tools/yosys/scripts
+    do
+      if [ -d "$rel" ]; then
+        install -d "$site_packages/$rel"
+        cp -r "$rel"/. "$site_packages/$rel/"
+      fi
+    done
+  '';
+
   build-system = with python3Packages; [ uv-build ];
 
   dependencies = with python3Packages; [
@@ -45,12 +59,6 @@ python3Packages.buildPythonPackage {
   ];
 
   nativeBuildInputs = [ makeWrapper ];
-
-  # Copy ecc_py.so to the correct location
-  postInstall = ''
-    # mkdir -p $out/${python3.sitePackages}/chipcompiler/tools/ecc/bin
-    # cp ${ecc-tools}/bin/ecc_py*.so $out/${python3.sitePackages}/chipcompiler/tools/ecc/bin/
-  '';
 
   # Skip tests for now (they require full environment setup)
   doCheck = false;
