@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from chipcompiler.tools.yosys import utility
 
 
-def _create_oss_cad_tree(base_dir: Path, usable_runtime: bool = True) -> tuple[Path, Path]:
+def _create_oss_cad_tree(base_dir: Path) -> tuple[Path, Path]:
     """Create a minimal OSS CAD directory layout for testing."""
     oss_path = base_dir / "oss-cad-suite"
     bin_dir = oss_path / "bin"
@@ -19,12 +19,6 @@ def _create_oss_cad_tree(base_dir: Path, usable_runtime: bool = True) -> tuple[P
     share_dir = oss_path / "share" / "yosys"
     (share_dir / "plugins").mkdir(parents=True)
     (share_dir / "techlibs").mkdir(parents=True)
-
-    if utility.os.name != "nt" and usable_runtime:
-        libexec_dir = oss_path / "libexec"
-        libexec_dir.mkdir(parents=True)
-        (libexec_dir / "yosys").write_text("")
-        (oss_path / "lib").mkdir(parents=True)
 
     return oss_path, yosys_bin
 
@@ -43,15 +37,6 @@ def test_get_yosys_command_prefers_oss_cad_without_mutating_environ(tmp_path, mo
 
     assert command == [str(yosys_bin)]
     assert before == after
-
-
-def test_get_yosys_command_falls_back_to_path_when_oss_cad_unusable(tmp_path, monkeypatch):
-    oss_path, _ = _create_oss_cad_tree(tmp_path, usable_runtime=False)
-    monkeypatch.setenv("CHIPCOMPILER_OSS_CAD_DIR", str(oss_path))
-    monkeypatch.setattr(utility, "_is_oss_cad_runtime_usable", lambda _: False)
-    monkeypatch.setattr(utility.shutil, "which", lambda _: "/usr/bin/yosys")
-
-    assert utility.get_yosys_command() == ["yosys"]
 
 
 def test_get_yosys_command_returns_empty_when_not_found(monkeypatch):

@@ -68,7 +68,7 @@ ENABLE_OSS_CAD_SUITE=false ./build.sh
 
 Current yosys runtime resolution in `chipcompiler/tools/yosys/utility.py`:
 
-1. If `CHIPCOMPILER_OSS_CAD_DIR` points to a usable bundled runtime, use bundled `yosys`.
+1. If `CHIPCOMPILER_OSS_CAD_DIR` points to a bundled yosys binary, use it.
 2. Otherwise, fall back to `yosys` from system `PATH`.
 3. If neither is available, synthesis is marked invalid.
 

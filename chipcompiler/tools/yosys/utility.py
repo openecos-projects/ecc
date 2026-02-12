@@ -16,6 +16,7 @@ def _sanitize_loader_env(env: dict[str, str]) -> dict[str, str]:
 def _build_oss_cad_env(oss_path: Path,
                        base_env: dict[str, str] | None = None) -> dict[str, str]:
     """Build subprocess environment variables for OSS CAD Suite."""
+    #TODO: Useless in nix build, consider remove this?
     env = dict(base_env) if base_env is not None else os.environ.copy()
 
     bin_dir = str(oss_path / "bin")
@@ -30,18 +31,6 @@ def _build_oss_cad_env(oss_path: Path,
         env.setdefault("YOSYS_DATDIR", str(share_dir))
 
     return env
-
-
-def _is_oss_cad_runtime_usable(oss_path: Path) -> bool:
-    """Check whether bundled OSS CAD runtime is usable for yosys."""
-    if os.name == "nt":
-        return True
-
-    # Linux/macOS bundles use a launcher script that depends on runtime files.
-    if not (oss_path / "libexec" / "yosys").exists():
-        return False
-
-    return (oss_path / "lib").exists()
 
 
 def _resolve_yosys_command() -> tuple[list[str], Path | None]:
