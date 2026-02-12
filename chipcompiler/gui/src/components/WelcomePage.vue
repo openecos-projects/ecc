@@ -17,7 +17,7 @@
           <i class="ri-cpu-line text-6xl text-(--accent-color) relative"></i>
         </div>
         <div class="flex flex-col ml-5">
-          <h1 class="text-4xl font-bold text-(--text-primary) tracking-tight">ECOS Chip Compiler</h1>
+          <h1 class="text-4xl font-bold text-(--text-primary) tracking-tight">ECOS Studio</h1>
         </div>
       </div>
 
@@ -43,14 +43,14 @@
           <span class="text-sm font-medium text-(--text-primary)">新建工程</span>
         </button>
 
-        <button @click="$emit('import-project')"
+        <button @click="handleImportPdk"
           class="group flex flex-col items-center gap-3 px-8 py-6 bg-(--bg-secondary) hover:bg-(--bg-sidebar) rounded-xl transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 border border-(--border-color) hover:border-(--accent-color) min-w-[180px] cursor-pointer shadow-sm hover:shadow-lg hover:shadow-(--accent-color)/5">
           <div
             class="w-14 h-14 rounded-xl bg-(--bg-primary) flex items-center justify-center group-hover:bg-(--accent-color)/10 transition-colors">
             <i
-              class="ri-download-cloud-line text-2xl text-(--text-secondary) group-hover:text-(--accent-color) transition-colors"></i>
+              class="ri-database-2-line text-2xl text-(--text-secondary) group-hover:text-(--accent-color) transition-colors"></i>
           </div>
-          <span class="text-sm font-medium text-(--text-primary)">导入工程</span>
+          <span class="text-sm font-medium text-(--text-primary)">导入 PDK</span>
         </button>
       </div>
 
@@ -76,7 +76,7 @@
         </div>
 
         <div v-else class="space-y-2">
-          <button v-for="project in recentProjects.slice(0, 5)" :key="project.id" @click="$emit('open-recent', project)"
+          <button v-for="project in recentProjects.slice(0, 3)" :key="project.id" @click="$emit('open-recent', project)"
             class="w-full flex items-center justify-between px-5 py-4 bg-(--bg-secondary) hover:bg-(--bg-sidebar) rounded-xl transition-all duration-200 border border-(--border-color) hover:border-(--accent-color) text-left group cursor-pointer hover:shadow-md">
             <div class="flex items-center gap-4 flex-1 min-w-0">
               <div
@@ -99,6 +99,40 @@
           </button>
         </div>
       </div>
+
+      <!-- 已导入的 PDK -->
+      <div v-if="importedPdks.length > 0" class="w-full max-w-3xl px-4 mt-8">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold text-(--text-primary) flex items-center gap-2">
+            <i class="ri-database-2-line text-(--text-secondary)"></i>
+            已导入的 PDK
+          </h2>
+        </div>
+        <div class="flex flex-wrap gap-3">
+          <div v-for="pdk in importedPdks" :key="pdk.id"
+            class="flex items-center gap-3 px-4 py-3 bg-(--bg-secondary) rounded-xl border border-(--border-color) group">
+            <div class="w-8 h-8 rounded-lg bg-(--accent-color)/10 flex items-center justify-center shrink-0">
+              <i class="ri-cpu-line text-(--accent-color)"></i>
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <p class="font-medium text-(--text-primary) text-sm">{{ pdk.name }}</p>
+                <span v-if="pdk.techNode"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-(--accent-color)/10 text-(--accent-color) font-medium">
+                  {{ pdk.techNode }}
+                </span>
+              </div>
+              <p class="text-[11px] text-(--text-secondary) truncate mt-0.5 max-w-[240px] font-mono opacity-60">{{
+                pdk.path }}</p>
+            </div>
+            <button @click.stop="handleRemovePdk(pdk.id)"
+              class="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 transition-all cursor-pointer ml-2"
+              title="移除此 PDK">
+              <i class="ri-close-line text-sm text-(--text-secondary) hover:text-red-500"></i>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- New Project Wizard Modal -->
@@ -107,9 +141,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import type { Project, WorkspaceConfig } from '../types'
 import NewProjectWizard from './NewProjectWizard.vue'
+import { usePdkManager } from '../composables/usePdkManager'
 
 interface Props {
   recentProjects?: Project[]
@@ -129,6 +164,21 @@ withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const showWizard = ref(false)
+
+// PDK 管理
+const { importedPdks, loadPdks, importPdk, removePdk } = usePdkManager()
+
+onMounted(async () => {
+  await loadPdks()
+})
+
+const handleImportPdk = async () => {
+  await importPdk()
+}
+
+const handleRemovePdk = async (id: string) => {
+  await removePdk(id)
+}
 
 const handleWizardCreate = (config: WorkspaceConfig) => {
   showWizard.value = false

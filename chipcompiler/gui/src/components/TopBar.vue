@@ -7,11 +7,28 @@
         <i class="ri-cpu-line"></i>
       </div>
 
-      <!-- 菜单项 -->
-      <div class="menu-items">
-        <button v-for="menu in menus" :key="menu.label" @click="handleMenuClick(menu.action)" class="menu-btn">
-          {{ menu.label }}
-        </button>
+      <!-- 菜单项（带下拉菜单） -->
+      <div class="menu-items" ref="menuBarRef">
+        <div v-for="menu in menus" :key="menu.label" class="menu-wrapper">
+          <button @click="toggleMenu(menu.action)" @mouseenter="handleMenuHover(menu.action)"
+            class="menu-btn" :class="{ 'menu-btn-active': activeMenu === menu.action }">
+            {{ menu.label }}
+          </button>
+          <!-- 下拉菜单 -->
+          <Transition name="dropdown">
+            <div v-if="activeMenu === menu.action && menu.children" class="dropdown-menu">
+              <template v-for="(item, idx) in menu.children" :key="idx">
+                <div v-if="item.separator" class="dropdown-separator" />
+                <button v-else @click="handleItemClick(item.event)" class="dropdown-item"
+                  :disabled="item.disabled">
+                  <i v-if="item.icon" :class="item.icon" class="item-icon" />
+                  <span class="item-label">{{ item.label }}</span>
+                  <span v-if="item.shortcut" class="item-shortcut">{{ item.shortcut }}</span>
+                </button>
+              </template>
+            </div>
+          </Transition>
+        </div>
       </div>
     </div>
 
@@ -44,31 +61,107 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
+// ---- 类型定义 ----
+interface DropdownItem {
+  label?: string
+  icon?: string
+  shortcut?: string
+  event?: string
+  separator?: boolean
+  disabled?: boolean
+}
+
+interface Menu {
+  label: string
+  action: string
+  children?: DropdownItem[]
+}
+
+// ---- Props & Emits ----
 const props = defineProps<{
   projectName?: string
 }>()
 
-// 菜单项配置
-const menus = [
-  { label: 'File', action: 'file' },
-  { label: 'Edit', action: 'edit' },
-  { label: 'Selection', action: 'selection' },
-  { label: 'View', action: 'view' },
-  { label: 'Go', action: 'go' },
-  { label: 'Run', action: 'run' },
-  { label: 'Terminal', action: 'terminal' },
-  { label: 'Help', action: 'help' }
+const emit = defineEmits<{
+  (e: 'menu-action', action: string): void
+}>()
+
+// ---- 菜单配置 ----
+const menus: Menu[] = [
+  {
+    label: 'File',
+    action: 'file',
+    children: [
+      { label: '新建工程', icon: 'ri-add-line', shortcut: '⌘N', event: 'new-project' },
+      { label: '打开工程', icon: 'ri-folder-open-line', shortcut: '⌘O', event: 'open-project' },
+      { separator: true },
+      { label: '导入 PDK', icon: 'ri-database-2-line', event: 'import-pdk' },
+    ]
+  },
+  {
+    label: 'Help',
+    action: 'help',
+    children: [
+      { label: '文档', icon: 'ri-book-open-line', event: 'documentation' },
+      { separator: true },
+      { label: '关于', icon: 'ri-information-line', event: 'about' },
+    ]
+  }
 ]
 
-// 处理菜单点击
-const handleMenuClick = (action: string) => {
-  console.log('Menu clicked:', action)
+// ---- 下拉菜单状态 ----
+const activeMenu = ref<string | null>(null)
+const menuBarRef = ref<HTMLElement | null>(null)
+
+/** 切换菜单展开/收起 */
+const toggleMenu = (action: string) => {
+  activeMenu.value = activeMenu.value === action ? null : action
 }
 
-// 窗口控制
+/** 鼠标悬浮切换（仅当已有菜单打开时） */
+const handleMenuHover = (action: string) => {
+  if (activeMenu.value && activeMenu.value !== action) {
+    activeMenu.value = action
+  }
+}
+
+/** 下拉项点击 */
+const handleItemClick = (event?: string) => {
+  activeMenu.value = null
+  if (event) {
+    emit('menu-action', event)
+  }
+}
+
+/** 点击菜单栏外部关闭 */
+const handleClickOutside = (e: MouseEvent) => {
+  if (menuBarRef.value && !menuBarRef.value.contains(e.target as Node)) {
+    activeMenu.value = null
+  }
+}
+
+/** Escape 键关闭 */
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    activeMenu.value = null
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
+})
+
+// ---- 窗口控制 ----
 const handleMinimize = () => {
   invoke('window_minimize')
 }
@@ -83,20 +176,17 @@ const handleClose = () => {
 
 // 拖拽窗口 - 阻止文字选择并启动拖拽
 const handleMouseDown = async (event: MouseEvent) => {
-  // 阻止默认的文字选择行为
   event.preventDefault()
   const target = event.target as HTMLElement
   if (target.closest('button') || target.closest('input') || target.closest('textarea')) {
     return
   }
-  // 启动窗口拖拽
   await getCurrentWindow().startDragging()
 }
 
 // 双击标题栏空白区域切换最大化/还原
 const handleDoubleClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement
-  // 如果双击的是按钮或按钮内部元素，则不触发
   if (target.closest('button')) {
     return
   }
@@ -113,13 +203,9 @@ const handleDoubleClick = (event: MouseEvent) => {
   justify-content: space-between;
   user-select: none;
   -webkit-user-select: none;
-  /* 圆角边框 */
   border-radius: 9px 9px 0 0;
-  /* 底部分隔线 */
   border-bottom: 1px solid var(--border-color);
-  /* 相对定位，用于中间区域的绝对定位 */
   position: relative;
-  /* 标记为可拖拽区域 */
   -webkit-app-region: drag;
   cursor: default;
 }
@@ -131,9 +217,8 @@ const handleDoubleClick = (event: MouseEvent) => {
   height: 100%;
   padding-left: 16px;
   gap: 8px;
-  z-index: 1;
+  z-index: 10;
   position: relative;
-  /* 排除拖拽区域，允许点击 */
   -webkit-app-region: no-drag;
 }
 
@@ -154,6 +239,14 @@ const handleDoubleClick = (event: MouseEvent) => {
   gap: 2px;
 }
 
+/* 菜单项容器（含下拉） */
+.menu-wrapper {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
 .menu-btn {
   height: 100%;
   padding: 0 10px;
@@ -169,9 +262,109 @@ const handleDoubleClick = (event: MouseEvent) => {
   border-radius: 4px;
 }
 
-.menu-btn:hover {
+.menu-btn:hover,
+.menu-btn-active {
   color: var(--text-primary);
   background: var(--bg-secondary);
+}
+
+/* ===== 下拉菜单 ===== */
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+}
+
+.dropdown-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border-color);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  gap: 10px;
+  transition: background-color 0.12s;
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background: var(--accent-color);
+  color: #fff;
+}
+
+.dropdown-item:hover .item-icon {
+  color: #fff;
+}
+
+.dropdown-item:hover .item-shortcut {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.dropdown-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dropdown-item:disabled:hover {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.item-icon {
+  font-size: 15px;
+  color: var(--text-secondary);
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+
+.item-label {
+  flex: 1;
+}
+
+.item-shortcut {
+  font-size: 12px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+
+/* 下拉菜单过渡动画 */
+.dropdown-enter-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.dropdown-leave-active {
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+.dropdown-enter-from {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
 }
 
 /* 中间拖拽区域 - 始终居中 */
@@ -185,7 +378,6 @@ const handleDoubleClick = (event: MouseEvent) => {
   align-items: center;
   justify-content: center;
   pointer-events: auto;
-  /* 不阻挡左右两侧的点击 */
   z-index: 0;
 }
 
@@ -205,7 +397,6 @@ const handleDoubleClick = (event: MouseEvent) => {
   height: 100%;
   z-index: 1;
   position: relative;
-  /* 排除拖拽区域，允许点击 */
   -webkit-app-region: no-drag;
 }
 

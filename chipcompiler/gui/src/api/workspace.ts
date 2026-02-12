@@ -39,7 +39,7 @@ export interface CreateWorkspaceRequest {
     origin_def: string,
     origin_verilog: string,
     filelist: string,
-    rtl_list: string
+    rtl_list: string[]
   }
 }
 
@@ -69,7 +69,7 @@ export function createWorkspaceApi(
     parameters?: Record<string, unknown>,
     origin_def?: string,
     origin_verilog?: string,
-    rtl_list?: string
+    rtl_list?: string[]
     pdk_root?: string
     filelist?: string
   }
@@ -82,7 +82,7 @@ export function createWorkspaceApi(
       parameters: options.parameters || {},
       origin_def: options.origin_def || '',
       origin_verilog: options.origin_verilog || '',
-      rtl_list: options.rtl_list || '',
+      rtl_list: options.rtl_list || [],
       pdk_root: options.pdk_root || ''  ,
       filelist: options.filelist || ''
     }
