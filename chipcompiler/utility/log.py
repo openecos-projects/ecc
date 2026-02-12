@@ -12,9 +12,6 @@ import time
 
 API_RUNTIME_LOG_ENV_KEY = "CHIPCOMPILER_API_SERVER_LOG_FILE"
 
-_runtime_log_stream: TextIO | None = None
-
-
 def build_timestamped_log_file(log_file: str, pid: int | None = None) -> str:
     """
     Build a timestamped log file path from a base path.
@@ -86,12 +83,10 @@ def init_api_runtime_log(
     backup_count: int = 5,
 ) -> str:
     """Initialize API runtime logging: rotate if needed, redirect stdio."""
-    global _runtime_log_stream
-
     resolved = os.path.abspath(os.path.expanduser(log_file))
     os.makedirs(os.path.dirname(resolved) or ".", exist_ok=True)
     rotate_log_on_start(resolved, max_bytes, backup_count)
-    _runtime_log_stream = redirect_stdio_to_file(resolved)
+    redirect_stdio_to_file(resolved)
     return resolved
 
 
