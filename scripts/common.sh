@@ -16,6 +16,10 @@ setup_project_vars() {
     export ECC_PY_GLOB="${ECC_TOOLS_ROOT}/bin/ecc_py*.so"
     export CMAKE_EXTRA_OPTIONS="${CMAKE_EXTRA_OPTIONS:-}"
     export GITHUB_PROXY_PREFIX="${GITHUB_PROXY_PREFIX:-}"
+    export VERSIONS_JSON="${VERSIONS_JSON:-${PROJECT_ROOT}/scripts/versions.json}"
+    export OSS_CAD_SOURCE_TYPE="${OSS_CAD_SOURCE_TYPE:-}"
+    export OSS_CAD_RELEASE_TAG="${OSS_CAD_RELEASE_TAG:-}"
+    export OSS_CAD_RELEASE_SHA256="${OSS_CAD_RELEASE_SHA256:-}"
 }
 
 # Add optional proxy prefix to GitHub download URLs, e.g.:
@@ -34,6 +38,190 @@ append_github_proxy_prefix() {
     fi
 
     echo "${prefix}${url}"
+}
+
+get_versions_value() {
+    local json_key="$1"
+    local env_var_name="${2:-}"
+    local validation_pattern="${3:-}"
+    local json_path="${VERSIONS_JSON}"
+    local value=""
+
+    if [[ -n "${env_var_name}" ]]; then
+        value="${!env_var_name:-}"
+    fi
+
+    if [[ -z "${value}" ]]; then
+        if [[ ! -f "${json_path}" ]]; then
+            echo "ERROR: versions file not found at ${json_path}" >&2
+            return 1
+        fi
+        if ! command -v jq >/dev/null 2>&1; then
+            echo "ERROR: jq is required to parse ${json_path}" >&2
+            return 1
+        fi
+        if ! value=$(jq -er --arg key_path "${json_key}" 'getpath(($key_path | split(".")))' "${json_path}"); then
+            echo "ERROR: failed to read ${json_key} from ${json_path}" >&2
+            return 1
+        fi
+    fi
+
+    if [[ -z "${value}" ]]; then
+        echo "ERROR: ${json_key} is empty (source: ${json_path})" >&2
+        return 1
+    fi
+    if [[ -n "${validation_pattern}" && ! "${value}" =~ ${validation_pattern} ]]; then
+        echo "ERROR: invalid value for ${json_key}: ${value}" >&2
+        return 1
+    fi
+
+    echo "${value}"
+}
+
+get_git_repo_value() {
+    local repo_key="$1"
+    local field_name="$2"
+    local env_var_name="${3:-}"
+    local validation_pattern="${4:-}"
+    local allow_empty="${5:-false}"
+    local json_path="${VERSIONS_JSON}"
+    local json_key="${repo_key}.${field_name}"
+    local value=""
+
+    if [[ -n "${env_var_name}" ]]; then
+        value="${!env_var_name:-}"
+    fi
+
+    if [[ -z "${value}" ]]; then
+        if [[ ! -f "${json_path}" ]]; then
+            echo "ERROR: versions file not found at ${json_path}" >&2
+            return 1
+        fi
+        if ! command -v jq >/dev/null 2>&1; then
+            echo "ERROR: jq is required to parse ${json_path}" >&2
+            return 1
+        fi
+        value=$(jq -r --arg key_path "${json_key}" 'try (getpath(($key_path | split("."))) // "") catch ""' "${json_path}")
+    fi
+
+    if [[ -z "${value}" && "${allow_empty}" != "true" ]]; then
+        echo "ERROR: ${json_key} is empty (source: ${json_path})" >&2
+        return 1
+    fi
+    if [[ -n "${validation_pattern}" && -n "${value}" && ! "${value}" =~ ${validation_pattern} ]]; then
+        echo "ERROR: invalid value for ${json_key}: ${value}" >&2
+        return 1
+    fi
+
+    echo "${value}"
+}
+
+get_oss_cad_release_tag() {
+    get_versions_value "oss_cad_suite.release_tag" "OSS_CAD_RELEASE_TAG"
+}
+
+get_oss_cad_release_sha256() {
+    get_versions_value "oss_cad_suite.sha256" "OSS_CAD_RELEASE_SHA256" '^[0-9a-fA-F]{64}$'
+}
+
+get_oss_cad_source_type() {
+    get_versions_value "oss_cad_suite.type" "OSS_CAD_SOURCE_TYPE" '^(release|git)$'
+}
+
+get_icsprout55_source_type() {
+    get_versions_value "icsprout55.type" "ICSPROUT55_SOURCE_TYPE" '^(release|git)$'
+}
+
+get_icsprout55_git_url() {
+    get_git_repo_value "icsprout55" "url" "ICSPROUT55_GIT_URL"
+}
+
+get_icsprout55_git_rev() {
+    get_git_repo_value "icsprout55" "rev" "ICSPROUT55_GIT_REV" '^[0-9a-fA-F]{7,40}$'
+}
+
+get_icsprout55_git_sha256() {
+    get_git_repo_value "icsprout55" "sha256" "ICSPROUT55_GIT_SHA256" '^[0-9a-fA-F]{64}$' "true"
+}
+
+compute_sha256() {
+    local file_path="$1"
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file_path" | awk '{print $1}'
+        return 0
+    fi
+
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file_path" | awk '{print $1}'
+        return 0
+    fi
+
+    echo "ERROR: no SHA-256 tool found (need sha256sum or shasum)." >&2
+    return 1
+}
+
+sync_git_repo_at_rev() {
+    local repo_url="$1"
+    local rev="$2"
+    local target_dir="$3"
+
+    if ! command -v git >/dev/null 2>&1; then
+        echo "ERROR: git is required to sync ${repo_url}" >&2
+        return 1
+    fi
+
+    mkdir -p "$(dirname "${target_dir}")"
+
+    if [[ -d "${target_dir}/.git" ]]; then
+        git -C "${target_dir}" remote set-url origin "${repo_url}"
+    else
+        rm -rf "${target_dir}"
+        git clone "${repo_url}" "${target_dir}"
+    fi
+
+    if ! git -C "${target_dir}" cat-file -e "${rev}^{commit}" 2>/dev/null; then
+        git -C "${target_dir}" fetch --tags --prune origin
+    fi
+
+    git -C "${target_dir}" checkout --detach "${rev}"
+
+    local actual_rev
+    actual_rev=$(git -C "${target_dir}" rev-parse HEAD)
+    if [[ "${actual_rev}" != "${rev}" ]]; then
+        echo "ERROR: failed to checkout ${repo_url} at ${rev}. Current HEAD: ${actual_rev}" >&2
+        return 1
+    fi
+}
+
+verify_git_tree_sha256() {
+    local repo_dir="$1"
+    local rev="$2"
+    local expected_sha256="$3"
+    local tmp_dir
+    local archive_path
+    local actual_sha256
+
+    [[ -n "${expected_sha256}" ]] || return 0
+
+    tmp_dir=$(mktemp -d)
+    archive_path="${tmp_dir}/repo.tar"
+    (cd "${repo_dir}" && git archive --format=tar "${rev}" > "${archive_path}")
+    actual_sha256=$(compute_sha256 "${archive_path}") || {
+        rm -rf "${tmp_dir}"
+        return 1
+    }
+
+    if [[ "${actual_sha256}" != "${expected_sha256}" ]]; then
+        echo "ERROR: git source sha256 mismatch for ${repo_dir}." >&2
+        echo "  expected: ${expected_sha256}" >&2
+        echo "  actual:   ${actual_sha256}" >&2
+        rm -rf "${tmp_dir}"
+        return 1
+    fi
+
+    echo "Git source SHA-256 verified: ${actual_sha256}"
+    rm -rf "${tmp_dir}"
 }
 
 # Check and setup uv environment
@@ -59,17 +247,46 @@ setup_oss_cad_suite() {
     if [[ -d "${OSS_CAD_DIR}" && -f "${OSS_CAD_DIR}/bin/yosys" ]]; then
         echo "OSS CAD Suite already exists at ${OSS_CAD_DIR}, skipping download..."
     else
-        local latest_tag
-        latest_tag=$(curl -sf "https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases/latest" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+        local source_type
+        local release_tag
+        local release_sha256
+        source_type=$(get_oss_cad_source_type) || return 1
+        if [[ "${source_type}" != "release" ]]; then
+            if [[ "${source_type}" == "git" ]]; then
+                echo "ERROR: oss_cad_suite.type=git is not implemented yet." >&2
+                return 1
+            fi
+            echo "ERROR: unsupported oss_cad_suite.type: ${source_type}" >&2
+            return 1
+        fi
+        release_tag=$(get_oss_cad_release_tag) || return 1
+        release_sha256=$(get_oss_cad_release_sha256) || return 1
         local oss_cad_url
-        oss_cad_url=$(append_github_proxy_prefix "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${latest_tag}/oss-cad-suite-linux-x64-${latest_tag//-/}.tgz")
+        oss_cad_url=$(append_github_proxy_prefix "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${release_tag}/oss-cad-suite-linux-x64-${release_tag//-/}.tgz")
 
         mkdir -p "${OSS_CAD_DIR}"
         local tmp_dir
+        local archive_path
+        local actual_sha256
         tmp_dir=$(mktemp -d)
+        archive_path="${tmp_dir}/oss-cad-suite.tgz"
+        echo "Using OSS CAD source type: ${source_type}"
+        echo "Using locked OSS CAD Suite release tag: ${release_tag}"
         echo "Downloading OSS CAD Suite from ${oss_cad_url}..."
-        curl -fL "${oss_cad_url}" -o "${tmp_dir}/oss-cad-suite.tgz"
-        tar -xzf "${tmp_dir}/oss-cad-suite.tgz" -C "${OSS_CAD_DIR}" --strip-components=1
+        curl -fL "${oss_cad_url}" -o "${archive_path}"
+        actual_sha256=$(compute_sha256 "${archive_path}") || {
+            rm -rf "${tmp_dir}"
+            return 1
+        }
+        if [[ "${actual_sha256}" != "${release_sha256}" ]]; then
+            echo "ERROR: OSS CAD Suite sha256 mismatch." >&2
+            echo "  expected: ${release_sha256}" >&2
+            echo "  actual:   ${actual_sha256}" >&2
+            rm -rf "${tmp_dir}"
+            return 1
+        fi
+        echo "SHA-256 verified: ${actual_sha256}"
+        tar -xzf "${archive_path}" -C "${OSS_CAD_DIR}" --strip-components=1
         rm -rf "${tmp_dir}"
     fi
 

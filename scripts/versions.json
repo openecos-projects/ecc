@@ -1,0 +1,13 @@
+{
+  "oss_cad_suite": {
+    "type": "release",
+    "release_tag": "2026-01-22",
+    "sha256": "b536961118dd7497707752d9fd45714c5f6dacd150e02387bac4f75c28a16567"
+  },
+  "icsprout55": {
+    "type": "git",
+    "url": "https://github.com/openecos-projects/icsprout55-pdk.git",
+    "rev": "663488bd79bbbd6a78ee053f495dcaecdd15e3f9",
+    "sha256": "87f31b0d931fbaa285583664ddcca8488f082771800e23c22feb99af33fe244c"
+  }
+}
