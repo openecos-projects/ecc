@@ -18,18 +18,11 @@ if project_root not in sys.path:
 import argparse
 import uvicorn
 
-if __package__:
-    from .runtime_log import (
-        API_RUNTIME_LOG_ENV_KEY,
-        build_timestamped_log_file,
-        init_api_runtime_log,
-    )
-else:
-    from chipcompiler.server.runtime_log import (  # type: ignore[no-redef]
-        API_RUNTIME_LOG_ENV_KEY,
-        build_timestamped_log_file,
-        init_api_runtime_log,
-    )
+from chipcompiler.utility.log import (
+    API_RUNTIME_LOG_ENV_KEY,
+    build_timestamped_log_file,
+    init_api_runtime_log,
+)
 
 
 def _setup_logging(args) -> str:

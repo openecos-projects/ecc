@@ -9,7 +9,16 @@ from .json import (
     dict_to_str
 )
 
-from .log import Logger, create_logger
+from .log import (
+    API_RUNTIME_LOG_ENV_KEY,
+    Logger,
+    build_timestamped_log_file,
+    create_logger,
+    get_api_log_file_from_env,
+    init_api_runtime_log,
+    redirect_stdio_to_file,
+    rotate_log_on_start,
+)
 
 from .util import (
     track_process_memory
@@ -40,6 +49,12 @@ __all__ = [
     'dict_to_str',
     'Logger',
     'create_logger',
+    'API_RUNTIME_LOG_ENV_KEY',
+    'build_timestamped_log_file',
+    'rotate_log_on_start',
+    'redirect_stdio_to_file',
+    'init_api_runtime_log',
+    'get_api_log_file_from_env',
     'track_process_memory',
     'plot_csv_map',
     'plot_metrics',
