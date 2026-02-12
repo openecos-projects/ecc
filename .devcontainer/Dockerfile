@@ -36,8 +36,6 @@ RUN apt-get install -y \
     libmetis-dev \
     libgmp-dev \
     bison \
-    rustc \
-    cargo \
     libhwloc-dev \
     libcairo2-dev \
     libcurl4-openssl-dev \
