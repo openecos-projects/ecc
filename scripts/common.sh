@@ -15,6 +15,25 @@ setup_project_vars() {
     export ENABLE_OSS_CAD_SUITE="${ENABLE_OSS_CAD_SUITE:-true}"
     export ECC_PY_GLOB="${ECC_TOOLS_ROOT}/bin/ecc_py*.so"
     export CMAKE_EXTRA_OPTIONS="${CMAKE_EXTRA_OPTIONS:-}"
+    export GITHUB_PROXY_PREFIX="${GITHUB_PROXY_PREFIX:-}"
+}
+
+# Add optional proxy prefix to GitHub download URLs, e.g.:
+#   GITHUB_PROXY_PREFIX="https://gh-proxy.com/"
+append_github_proxy_prefix() {
+    local url="$1"
+    local prefix="${GITHUB_PROXY_PREFIX:-}"
+
+    if [[ -z "$prefix" ]]; then
+        echo "$url"
+        return 0
+    fi
+
+    if [[ "$prefix" != */ ]]; then
+        prefix="${prefix}/"
+    fi
+
+    echo "${prefix}${url}"
 }
 
 # Check and setup uv environment
@@ -42,7 +61,8 @@ setup_oss_cad_suite() {
     else
         local latest_tag
         latest_tag=$(curl -sf "https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases/latest" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-        local oss_cad_url="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${latest_tag}/oss-cad-suite-linux-x64-${latest_tag//-/}.tgz"
+        local oss_cad_url
+        oss_cad_url=$(append_github_proxy_prefix "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${latest_tag}/oss-cad-suite-linux-x64-${latest_tag//-/}.tgz")
 
         mkdir -p "${OSS_CAD_DIR}"
         local tmp_dir
@@ -476,7 +496,9 @@ inject_oss_cad_into_appimage() {
         else
             appimagetool="$work_dir/appimagetool-x86_64.AppImage"
             echo "[inject] Downloading appimagetool..."
-            curl -fL "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -o "$appimagetool"
+            local appimagetool_url
+            appimagetool_url=$(append_github_proxy_prefix "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage")
+            curl -fL "$appimagetool_url" -o "$appimagetool"
             chmod +x "$appimagetool"
         fi
     fi
