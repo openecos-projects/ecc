@@ -12,6 +12,7 @@ import time
 
 API_RUNTIME_LOG_ENV_KEY = "CHIPCOMPILER_API_SERVER_LOG_FILE"
 
+#TODO: Move some functions to Logger Module
 def build_timestamped_log_file(log_file: str, pid: int | None = None) -> str:
     """
     Build a timestamped log file path from a base path.
