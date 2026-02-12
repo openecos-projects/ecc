@@ -16,6 +16,7 @@ OSS_CAD_BUNDLE_DIR="$TAURI_RESOURCES_DIR/oss-cad-suite"
 
 setup_project_vars
 ENABLE_OSS_CAD_SUITE="${ENABLE_OSS_CAD_SUITE:-true}"
+ENABLE_ICS55_PDK_DOWNLOAD="${ENABLE_ICS55_PDK_DOWNLOAD:-false}"
 
 echo "=========================================="
 echo "ChipCompiler ECC Release Build"
@@ -48,6 +49,12 @@ echo
 
 echo "=== Step 4: Ensuring ecc_py is built ==="
 setup_submodules
+if [[ "$ENABLE_ICS55_PDK_DOWNLOAD" == "true" ]]; then
+    echo "ICS55 PDK download is enabled."
+    setup_ics55_pdk
+else
+    echo "Skipping ICS55 PDK download (set ENABLE_ICS55_PDK_DOWNLOAD=true to enable)."
+fi
 build_ecc_py
 echo
 

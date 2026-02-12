@@ -16,19 +16,31 @@ setup_project_vars() {
     export ECC_PY_GLOB="${ECC_TOOLS_ROOT}/bin/ecc_py*.so"
     export CMAKE_EXTRA_OPTIONS="${CMAKE_EXTRA_OPTIONS:-}"
     export GITHUB_PROXY_PREFIX="${GITHUB_PROXY_PREFIX:-}"
+    export GIT_PROXY_PREFIX="${GIT_PROXY_PREFIX:-}"
     export VERSIONS_JSON="${VERSIONS_JSON:-${PROJECT_ROOT}/scripts/versions.json}"
     export OSS_CAD_SOURCE_TYPE="${OSS_CAD_SOURCE_TYPE:-}"
     export OSS_CAD_RELEASE_TAG="${OSS_CAD_RELEASE_TAG:-}"
     export OSS_CAD_RELEASE_SHA256="${OSS_CAD_RELEASE_SHA256:-}"
+    export ICSPROUT55_SOURCE_TYPE="${ICSPROUT55_SOURCE_TYPE:-}"
+    export ICSPROUT55_GIT_URL="${ICSPROUT55_GIT_URL:-}"
+    export ICSPROUT55_GIT_REV="${ICSPROUT55_GIT_REV:-}"
+    export ICSPROUT55_GIT_SHA256="${ICSPROUT55_GIT_SHA256:-}"
 }
 
-# Add optional proxy prefix to GitHub download URLs, e.g.:
-#   GITHUB_PROXY_PREFIX="https://gh-proxy.com/"
-append_github_proxy_prefix() {
+# Add optional proxy prefix to URLs.
+# Examples:
+#   append_proxy_prefix "https://github.com/a/b" "https://gh-proxy.com/"
+#   append_proxy_prefix "https://github.com/a/b" "https://gh-proxy.com/" "true"
+append_proxy_prefix() {
     local url="$1"
-    local prefix="${GITHUB_PROXY_PREFIX:-}"
+    local prefix="${2:-}"
+    local github_only="${3:-false}"
 
     if [[ -z "$prefix" ]]; then
+        echo "$url"
+        return 0
+    fi
+    if [[ "$github_only" == "true" && "$url" != https://github.com/* ]]; then
         echo "$url"
         return 0
     fi
@@ -165,19 +177,25 @@ sync_git_repo_at_rev() {
     local repo_url="$1"
     local rev="$2"
     local target_dir="$3"
+    local clone_url
 
     if ! command -v git >/dev/null 2>&1; then
         echo "ERROR: git is required to sync ${repo_url}" >&2
         return 1
     fi
 
+    clone_url=$(append_proxy_prefix "${repo_url}" "${GIT_PROXY_PREFIX:-${GITHUB_PROXY_PREFIX:-}}" "true")
+    if [[ "${clone_url}" != "${repo_url}" ]]; then
+        echo "Using git proxy URL: ${clone_url}"
+    fi
+
     mkdir -p "$(dirname "${target_dir}")"
 
     if [[ -d "${target_dir}/.git" ]]; then
-        git -C "${target_dir}" remote set-url origin "${repo_url}"
+        git -C "${target_dir}" remote set-url origin "${clone_url}"
     else
         rm -rf "${target_dir}"
-        git clone "${repo_url}" "${target_dir}"
+        git clone "${clone_url}" "${target_dir}"
     fi
 
     if ! git -C "${target_dir}" cat-file -e "${rev}^{commit}" 2>/dev/null; then
@@ -262,7 +280,7 @@ setup_oss_cad_suite() {
         release_tag=$(get_oss_cad_release_tag) || return 1
         release_sha256=$(get_oss_cad_release_sha256) || return 1
         local oss_cad_url
-        oss_cad_url=$(append_github_proxy_prefix "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${release_tag}/oss-cad-suite-linux-x64-${release_tag//-/}.tgz")
+        oss_cad_url=$(append_proxy_prefix "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${release_tag}/oss-cad-suite-linux-x64-${release_tag//-/}.tgz" "${GITHUB_PROXY_PREFIX:-}")
 
         mkdir -p "${OSS_CAD_DIR}"
         local tmp_dir
@@ -544,6 +562,25 @@ setup_submodules() {
 
 # Setup ICS55 PDK
 setup_ics55_pdk() {
+    local source_type
+    source_type=$(get_icsprout55_source_type) || return 1
+
+    if [[ "${source_type}" != "git" ]]; then
+        echo "ERROR: unsupported icsprout55.type: ${source_type} (only 'git' is implemented)." >&2
+        return 1
+    fi
+
+    local repo_url
+    local rev
+    local source_sha256
+    repo_url=$(get_icsprout55_git_url) || return 1
+    rev=$(get_icsprout55_git_rev) || return 1
+    source_sha256=$(get_icsprout55_git_sha256) || return 1
+
+    echo "Syncing ICS55 PDK from git: ${repo_url} @ ${rev}"
+    sync_git_repo_at_rev "${repo_url}" "${rev}" "${ICS55_PDK_ROOT}" || return 1
+    verify_git_tree_sha256 "${ICS55_PDK_ROOT}" "${rev}" "${source_sha256}" || return 1
+
     if [[ -d "${ICS55_PDK_ROOT}" ]]; then
         echo "Setting up ICS55 PDK..."
         (cd "${ICS55_PDK_ROOT}" && make unzip)
@@ -714,7 +751,7 @@ inject_oss_cad_into_appimage() {
             appimagetool="$work_dir/appimagetool-x86_64.AppImage"
             echo "[inject] Downloading appimagetool..."
             local appimagetool_url
-            appimagetool_url=$(append_github_proxy_prefix "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage")
+            appimagetool_url=$(append_proxy_prefix "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" "${GITHUB_PROXY_PREFIX:-}")
             curl -fL "$appimagetool_url" -o "$appimagetool"
             chmod +x "$appimagetool"
         fi
