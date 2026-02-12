@@ -12,12 +12,12 @@ python3Packages.buildPythonPackage {
 
   src = with lib.fileset;
   toSource {
-    root = ./..;
+    root = ./../..;
     fileset = unions [
-      ./../README.md
-      ./../uv.lock
-      ./../pyproject.toml
-      ./../chipcompiler
+      ./../../README.md
+      ./../../uv.lock
+      ./../../pyproject.toml
+      ./../../chipcompiler
     ];
   };
 

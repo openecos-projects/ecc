@@ -22,9 +22,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   src = with lib.fileset;
     toSource {
-      root = ./../chipcompiler/gui;
+      root = ./../../chipcompiler/gui;
       fileset = unions [
-        ./../chipcompiler/gui
+        ./../../chipcompiler/gui
       ];
     };
 
