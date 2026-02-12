@@ -8,7 +8,7 @@
           <i class="ri-robot-2-line text-4xl text-(--text-secondary) opacity-50"></i>
         </div>
         <p class="text-[13px] text-(--text-secondary) leading-relaxed">
-          暂无消息，请输入指令开始与 Chat 交互
+          No messages, please enter instructions to start chatting.
         </p>
       </div>
       <div v-else class="messages-container py-4 space-y-4 min-w-0 w-full max-w-full overflow-hidden">
@@ -56,10 +56,8 @@
             </div>
           </div>
 
-          <button @click="handleSubmit"
-            class="bg-(--accent-color) text-(--accent-text) px-4 py-1.5 rounded-lg flex items-center gap-2 text-sm font-medium hover:opacity-90 transition-opacity">
+          <button @click="handleSubmit" class="send-btn" :class="{ 'send-btn-active': inputValue.trim() }">
             <i class="ri-send-plane-2-fill"></i>
-            发送
           </button>
         </div>
       </div>
@@ -228,6 +226,52 @@ const handleKeyDown = (e: KeyboardEvent) => {
 .message-item {
   contain: layout style paint;
   box-sizing: border-box;
+}
+
+/* ===== 发送按钮 ===== */
+.send-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.send-btn:hover {
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-primary));
+}
+
+/* 有输入内容时 - 高亮激活态 */
+.send-btn-active {
+  color: #fff;
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent-color) 40%, transparent);
+}
+
+.send-btn-active:hover {
+  color: #fff;
+  background: color-mix(in srgb, var(--accent-color) 85%, #000);
+  border-color: color-mix(in srgb, var(--accent-color) 85%, #000);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--accent-color) 50%, transparent);
+  transform: translateY(-1px);
+}
+
+.send-btn-active:active {
+  transform: translateY(0) scale(0.95);
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--accent-color) 30%, transparent);
 }
 
 /* 上拉菜单动画 */

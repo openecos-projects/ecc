@@ -61,6 +61,8 @@ export interface Project {
   name: string
   path: string
   lastOpened: Date
+  /** 路径是否存在（加载时异步检测，undefined 表示尚未检测） */
+  pathExists?: boolean
 }
 
 // New Project Wizard Types

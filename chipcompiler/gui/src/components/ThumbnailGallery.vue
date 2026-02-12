@@ -27,7 +27,7 @@
       <div v-else-if="!currentStep" class="flex items-center justify-center h-full">
         <div class="text-center px-4">
           <i class="ri-information-line text-3xl text-(--text-secondary) opacity-50"></i>
-          <p class="text-[11px] text-(--text-secondary) mt-2">请先选择一个流程步骤</p>
+          <p class="text-[11px] text-(--text-secondary) mt-2">Please select a flow step first</p>
         </div>
       </div>
 
@@ -37,7 +37,7 @@
       <div v-else-if="Object.keys(currentTabInfo).length === 0" class="flex items-center justify-center h-full">
         <div class="text-center px-4">
           <i class="ri-file-list-3-line text-3xl text-(--text-secondary) opacity-50"></i>
-          <p class="text-[11px] text-(--text-secondary) mt-2">暂无数据</p>
+          <p class="text-[11px] text-(--text-secondary) mt-2">No data</p>
         </div>
       </div>
 
@@ -421,7 +421,7 @@ async function handleKeyClick(key: string, value: unknown) {
 
   } catch (err) {
     console.error('handleKeyClick error:', err)
-    setTabError(err instanceof Error ? err.message : '读取文件失败')
+    setTabError(err instanceof Error ? err.message : 'Failed to read file')
   } finally {
     loadingKey.value = null
   }

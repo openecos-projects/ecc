@@ -82,27 +82,50 @@
         </div>
 
         <div v-else class="space-y-2 max-h-[280px] overflow-y-auto scrollbar-thin">
-          <button v-for="project in displayedProjects" :key="project.id" @click="$emit('open-recent', project)"
-            class="w-full flex items-center justify-between px-5 py-4 bg-(--bg-secondary) hover:bg-(--bg-sidebar) rounded-xl transition-all duration-200 border border-(--border-color) hover:border-(--accent-color) text-left group cursor-pointer hover:shadow-md">
+          <div v-for="project in displayedProjects" :key="project.id"
+            class="w-full flex items-center justify-between px-5 py-4 bg-(--bg-secondary) rounded-xl transition-all duration-200 border text-left group"
+            :class="project.pathExists === false
+              ? 'border-(--border-color) opacity-55 cursor-default'
+              : 'border-(--border-color) hover:border-(--accent-color) hover:bg-(--bg-sidebar) cursor-pointer hover:shadow-md'"
+            @click="project.pathExists !== false && $emit('open-recent', project)">
             <div class="flex items-center gap-4 flex-1 min-w-0">
-              <div
-                class="w-10 h-10 rounded-lg bg-(--accent-color)/10 flex items-center justify-center group-hover:bg-(--accent-color)/20 transition-colors">
-                <i class="ri-folder-line text-lg text-(--accent-color)"></i>
+              <div class="w-10 h-10 rounded-lg flex items-center justify-center transition-colors"
+                :class="project.pathExists === false
+                  ? 'bg-red-500/10'
+                  : 'bg-(--accent-color)/10 group-hover:bg-(--accent-color)/20'">
+                <i :class="project.pathExists === false
+                  ? 'ri-folder-warning-line text-lg text-red-400'
+                  : 'ri-folder-line text-lg text-(--accent-color)'"></i>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="font-medium text-(--text-primary) truncate">{{ project.name }}</p>
-                <p class="text-xs text-(--text-secondary) truncate mt-0.5">{{ project.path }}</p>
+                <p class="font-medium truncate"
+                  :class="project.pathExists === false ? 'text-(--text-secondary)' : 'text-(--text-primary)'">
+                  {{ project.name }}
+                </p>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <p class="text-xs text-(--text-secondary) truncate">{{ project.path }}</p>
+                  <span v-if="project.pathExists === false"
+                    class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
+                    路径不可达
+                  </span>
+                </div>
               </div>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
               <span
                 class="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors whitespace-nowrap">
                 {{ formatDate(project.lastOpened) }}
               </span>
-              <i
+              <!-- 删除按钮 -->
+              <button @click.stop="$emit('remove-recent', project.id)"
+                class="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 transition-all cursor-pointer"
+                title="从列表中移除">
+                <i class="ri-close-line text-sm text-(--text-secondary) hover:text-red-500"></i>
+              </button>
+              <i v-if="project.pathExists !== false"
                 class="ri-arrow-right-s-line text-(--text-secondary) opacity-0 group-hover:opacity-100 transition-opacity"></i>
             </div>
-          </button>
+          </div>
         </div>
       </div>
 
@@ -161,6 +184,7 @@ interface Emits {
   (e: 'new-project', config?: WorkspaceConfig): void
   (e: 'import-project'): void
   (e: 'open-recent', project: Project): void
+  (e: 'remove-recent', projectId: string): void
 }
 
 const emit = defineEmits<Emits>()

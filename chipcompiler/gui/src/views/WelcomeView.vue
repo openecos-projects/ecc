@@ -2,7 +2,7 @@
   <div class="flex flex-col h-full overflow-hidden">
     <!-- 欢迎页面内容 -->
     <WelcomePage :recent-projects="recentProjects" @open-project="handleOpenProject" @new-project="handleNewProject"
-      @import-project="handleImportProject" @open-recent="handleOpenRecent" />
+      @import-project="handleImportProject" @open-recent="handleOpenRecent" @remove-recent="handleRemoveRecent" />
   </div>
 </template>
 
@@ -14,7 +14,7 @@ import { useWorkspace } from '../composables/useWorkspace'
 import type { Project, WorkspaceConfig } from '../types'
 
 const router = useRouter()
-const { recentProjects, openProject, newProject, importProject, loadRecentProjects } = useWorkspace()
+const { recentProjects, openProject, newProject, importProject, loadRecentProjects, removeRecentProject } = useWorkspace()
 
 const handleOpenProject = async () => {
   const success = await openProject()
@@ -34,6 +34,10 @@ const handleImportProject = async () => {
 const handleOpenRecent = async (project: Project) => {
   const success = await openProject(project)
   if (success) router.push('/workspace')
+}
+
+const handleRemoveRecent = async (projectId: string) => {
+  await removeRecentProject(projectId)
 }
 
 onMounted(async () => {

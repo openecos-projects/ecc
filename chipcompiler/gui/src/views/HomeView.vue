@@ -55,7 +55,7 @@
       <section class="section-card monitor-area">
         <div class="section-header">
           <div class="header-icon monitor"><i class="ri-pulse-line"></i></div>
-          <h2>运行时监控</h2>
+          <h2>Runtime monitoring</h2>
         </div>
         <div class="monitor-content" v-if="monitorData">
           <div v-for="cfg in chartConfigs" :key="cfg.key" class="monitor-row">
@@ -70,7 +70,7 @@
           <div class="monitor-placeholder">
             <i class="ri-pulse-line"></i>
             <p>No monitor data</p>
-            <span>运行流程后显示监控数据</span>
+            <span>After running the flow, the monitoring data will be displayed.</span>
           </div>
         </div>
       </section>
@@ -80,9 +80,10 @@
         <div class="section-header">
           <div class="header-icon layout"><i class="ri-layout-masonry-line"></i></div>
           <h2>Layout</h2>
-          <span class="header-hint">显示跑通过的最后 step 版图</span>
+          <span class="header-hint">Displays the final step of the layout after the run is completed.</span>
           <div class="header-actions">
-            <button class="action-btn" @click="toggleLayoutFullscreen" :title="isLayoutFullscreen ? '退出全屏' : '全屏'">
+            <button class="action-btn" @click="toggleLayoutFullscreen"
+              :title="isLayoutFullscreen ? 'Exit full screen' : 'full screen'">
               <i :class="isLayoutFullscreen ? 'ri-fullscreen-exit-line' : 'ri-fullscreen-line'"></i>
             </button>
           </div>
@@ -94,7 +95,7 @@
           <div v-else class="layout-placeholder">
             <i class="ri-image-2-line"></i>
             <p>Layout Preview</p>
-            <span>等待版图数据...</span>
+            <span>Waiting for layout data...</span>
           </div>
           <div v-if="isLayoutFullscreen && layoutBlobUrl" class="zoom-indicator">
             {{ Math.round(layoutScale * 100) }}%
@@ -106,7 +107,7 @@
       <section class="section-card analysis-area">
         <div class="section-header">
           <div class="header-icon analysis"><i class="ri-pie-chart-line"></i></div>
-          <h2>指标分析</h2>
+          <h2>Indicator Analysis</h2>
         </div>
         <div class="analysis-content">
           <div class="charts-grid" v-if="analysisCharts.length > 0">
@@ -122,7 +123,7 @@
           <div v-else class="analysis-placeholder">
             <i class="ri-pie-chart-line"></i>
             <p>No metrics data</p>
-            <span>运行流程后显示指标分析</span>
+            <span>After running the flow, the indicator analysis will be displayed.</span>
           </div>
         </div>
       </section>
@@ -169,10 +170,10 @@
             <table class="checklist-table">
               <thead>
                 <tr>
-                  <th>步骤/阶段</th>
-                  <th>验证类型</th>
-                  <th>验收条件</th>
-                  <th>验收结果</th>
+                  <th>Step/Stage</th>
+                  <th>Validation Type</th>
+                  <th>Acceptance Criteria</th>
+                  <th>Acceptance Result</th>
                 </tr>
               </thead>
               <tbody>
@@ -188,7 +189,7 @@
                   <td>
                     <span class="table-state-tag" :class="stateClass(item.state)">
                       <i :class="stateIcon(item.state)" class="table-state-icon"></i>
-                      {{ stateLabel(item.state) }}
+                      {{ item.state }}
                     </span>
                   </td>
                 </tr>
@@ -199,7 +200,7 @@
           <div class="checklist-placeholder" v-else>
             <i class="ri-list-check-2"></i>
             <p>No checklist items</p>
-            <span>运行流程后显示检查项</span>
+            <span>After running the flow, the checklist will be displayed.</span>
           </div>
         </div>
       </section>
@@ -536,57 +537,45 @@ function getAllChartInstances(): echarts.ECharts[] {
   return Array.from(chartInstances.values())
 }
 
-/** 上一次高亮的 dataIndex，用于避免重复 dispatch */
-let lastLinkedDataIndex = -1
+/** 图表联动分组 ID —— 同组图表的 axisPointer 自动同步 */
+const CHART_GROUP = 'monitor-linked'
 
-/** 当前鼠标所在的图表实例（用于精确判断事件来源，替代全局布尔标志） */
+/** 当前鼠标所在的图表实例，用于控制仅在悬浮图表上显示 tooltip 内容 */
 let activeChartInstance: echarts.ECharts | null = null
 
-/** 清除所有图表的 tooltip 和高亮状态 */
-function clearAllChartsState() {
-  lastLinkedDataIndex = -1
-  for (const chart of getAllChartInstances()) {
-    chart.dispatchAction({ type: 'hideTip' })
-    chart.dispatchAction({ type: 'downplay', seriesIndex: 0 })
-  }
-}
-
-/** 为图表绑定联动事件（手动联动，避免多 tooltip） */
+/**
+ * 为图表绑定联动事件。
+ * 使用 echarts.connect 实现轴指针自动同步（数据索引精确对齐），
+ * 并通过动态切换 showContent 控制仅在悬浮图表上显示 tooltip。
+ */
 function bindChartLinkEvents(instance: echarts.ECharts) {
-  // 鼠标在某个图表上移动时，其他图表只高亮对应节点（不显示 tooltip）
-  instance.on('updateAxisPointer', (event: any) => {
-    // 仅响应当前活跃图表的事件，忽略残留/迟到的事件
-    if (activeChartInstance !== instance) return
+  // 加入联动分组，轴指针 & 高亮自动同步到同组所有图表
+  instance.group = CHART_GROUP
 
-    const dataIndex = event.dataIndex
-    if (dataIndex == null || dataIndex === lastLinkedDataIndex) return
-    lastLinkedDataIndex = dataIndex
-
-    for (const other of getAllChartInstances()) {
-      if (other !== instance) {
-        other.dispatchAction({ type: 'hideTip' })
-        other.dispatchAction({ type: 'downplay', seriesIndex: 0 })
-        other.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex })
-      }
+  // 鼠标进入此图表时：仅此图表显示 tooltip 内容，其余图表隐藏内容
+  instance.getZr().on('mousemove', () => {
+    if (activeChartInstance === instance) return
+    activeChartInstance = instance
+    for (const chart of getAllChartInstances()) {
+      chart.setOption(
+        { tooltip: { showContent: chart === instance } },
+        { lazyUpdate: true },
+      )
     }
   })
 
-  // 鼠标进入图表时，标记为活跃实例
-  instance.getZr().on('mousemove', () => {
-    activeChartInstance = instance
-  })
-
-  // 鼠标移出图表时，立即清除所有状态（无需 rAF 延迟）
+  // 鼠标离开此图表
   instance.getZr().on('globalout', () => {
     if (activeChartInstance === instance) {
       activeChartInstance = null
-      clearAllChartsState()
     }
   })
 }
 
 /** 初始化或更新所有图表 */
 function initOrUpdateCharts() {
+  let newInstanceCreated = false
+
   for (const cfg of chartConfigs.value) {
     const el = chartRefs.get(cfg.key)
     if (!el) continue
@@ -599,9 +588,15 @@ function initOrUpdateCharts() {
       instance = echarts.init(el, undefined, { renderer: 'canvas' })
       chartInstances.set(cfg.key, instance)
       bindChartLinkEvents(instance)
+      newInstanceCreated = true
     }
 
     instance.setOption(buildChartOption(cfg.key, cfg.color), true)
+  }
+
+  // 有新图表加入分组时，重新注册 connect 以确保联动生效
+  if (newInstanceCreated) {
+    echarts.connect(CHART_GROUP)
   }
 }
 
@@ -719,23 +714,6 @@ function stateClass(state: string): string {
     case 'Unstart':
     default:
       return 'state-unstart'
-  }
-}
-
-/** 根据步骤状态返回中文标签 */
-function stateLabel(state: string): string {
-  switch (state) {
-    case 'Success':
-      return '已完成'
-    case 'Ongoing':
-      return '运行中'
-    case 'Imcomplete':
-      return '失败'
-    case 'Pending':
-      return '等待中'
-    case 'Unstart':
-    default:
-      return '未开始'
   }
 }
 

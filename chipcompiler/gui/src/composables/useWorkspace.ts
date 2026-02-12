@@ -125,7 +125,12 @@ export function useWorkspace() {
   }
 
   /** 
-   * loadRecentProjects 从本地加载最近项目，并执行失效检查
+   * loadRecentProjects 从本地加载最近项目，并异步标记路径可达性。
+   * 
+   * 设计原则：
+   * - **不自动删除**任何记录（避免因权限/网络等临时问题导致误删）
+   * - 通过 `project.pathExists` 标记当前路径是否可达，供 UI 做差异化展示
+   * - 用户可通过 `removeRecentProject()` 手动移除不需要的条目
    */
   const loadRecentProjects = async () => {
     try {
@@ -134,49 +139,46 @@ export function useWorkspace() {
         return
       }
 
-      // 反序列化并进行失效检查
-      const validProjects: Project[] = []
+      // 1. 先反序列化并立即展示（pathExists 初始为 undefined，表示检测中）
+      const projects = savedProjects.map(deserializeProject)
+      recentProjects.value = projects
 
-      for (const serialized of savedProjects) {
-        const project = deserializeProject(serialized)
-
-        // 关键步骤：在检查路径之前，先请求 Rust 端授予访问权限
+      // 2. 异步并行检测路径有效性（不阻塞 UI 首屏渲染）
+      const checks = projects.map(async (project) => {
+        // 请求 Rust 端授予访问权限（必须在 exists 之前）
         try {
           await invoke('request_project_permission', { path: project.path })
-        } catch (permError) {
-          console.error(`请求访问权限失败: ${project.path}`, permError)
+        } catch {
+          // 权限请求失败不影响后续检测
         }
+        project.pathExists = await isProjectValid(project.path)
+      })
+      await Promise.all(checks)
 
-        const isValid = await isProjectValid(project.path)
+      // 3. 触发响应式更新
+      recentProjects.value = [...projects]
 
-        if (isValid) {
-          validProjects.push(project)
-        } else {
-          // 调试：看看为什么判定无效
-          console.warn(`检测到无效路径: ${project.path}，暂时保留以防误删`);
-          // validProjects.push(project) // 开发阶段建议先保留
+      // 4. 自动设置 currentProject（只选择路径有效的项目）
+      if (!currentProject.value) {
+        const firstValid = projects.find(p => p.pathExists !== false)
+        if (firstValid && router.currentRoute.value.path.startsWith('/workspace')) {
+          currentProject.value = firstValid
+          await updateWindowTitle(firstValid.name)
         }
-      }
-
-      recentProjects.value = validProjects
-
-      // 如果 currentProject 为空且有有效项目，自动设置为第一项
-      if (!currentProject.value && validProjects.length > 0) {
-        if (router.currentRoute.value.path.startsWith('/workspace')) {
-          currentProject.value = validProjects[0]
-          await updateWindowTitle(validProjects[0].name)
-        }
-      }
-
-      // 如果清理后的列表和原列表不同，更新存储
-      if (validProjects.length !== savedProjects.length) {
-        const serialized = validProjects.map(serializeProject)
-        await store.set('recent_projects', serialized)
-        await store.save()
       }
     } catch (error) {
       console.error('Load recent projects error:', error)
     }
+  }
+
+  /**
+   * 从最近项目列表中移除指定项目（用户主动操作）
+   */
+  const removeRecentProject = async (projectId: string) => {
+    recentProjects.value = recentProjects.value.filter(p => p.id !== projectId)
+    const serialized = recentProjects.value.map(serializeProject)
+    await store.set('recent_projects', serialized)
+    await store.save()
   }
 
   /**
@@ -416,6 +418,7 @@ export function useWorkspace() {
 
   return {
     loadRecentProjects,
+    removeRecentProject,
     currentProject,
     recentProjects,
     openProject,
