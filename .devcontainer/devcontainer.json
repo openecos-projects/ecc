@@ -17,6 +17,19 @@
     }
   },
   "forwardPorts": [8765, 5173, 1420],
-  "postCreateCommand": "./scripts/build_release.sh",
+  // Runs uv sync, builds ecc_py, and downloads OSS CAD Suite
+  // To use proxy, set environment variables by using containerEnv field:
+  // "containerEnv": {
+  //   "GITHUB_PROXY_PREFIX": "https://ghproxy.com/",
+  //   "GIT_PROXY_PREFIX": "https://gitproxy.com/",
+  //   "UV_PYTHON_INSTALL_MIRROR": "https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download"
+  // },
+  "containerEnv": {
+    "GITHUB_PROXY_PREFIX": "https://ghfast.top/",
+    "GIT_PROXY_PREFIX": "https://ghfast.top/",
+    "PROJECT_ROOT": "/workspaces/chip-compiler",
+    "UV_PYTHON_INSTALL_MIRROR": "https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download"
+  },
+  "postCreateCommand": "bash -c 'rm -rf .venv && source scripts/common.sh && setup_project_vars && uv sync --frozen --all-groups --python 3.11 && build_ecc_py && setup_oss_cad_suite'",
   "remoteUser": "root"
 }
