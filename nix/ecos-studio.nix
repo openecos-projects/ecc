@@ -66,7 +66,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
   '';
 
   postFixup = ''
-    ls -alh $out/bin/
+    mkdir -p $out/lib/ECOS-Studio/resources/oss-cad-suite/bin
+    ln -s ${yosysWithSlang}/bin/yosys $out/lib/ECOS-Studio/resources/oss-cad-suite/bin/yosys
+
     wrapProgram $out/bin/ecc-client \
       --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}"
   '';
