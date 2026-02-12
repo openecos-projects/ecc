@@ -52,7 +52,7 @@ dev = [
 build-backend.module-name = [ "chipcompiler" ]
 build-backend.module-root = ""
 build-backend.source-exclude = [
-  "scripts/*",
+  "/scripts/**",
   # Exclude ecc-tools unacceptable filename for now, should remove this after upstream
   "chipcompiler/thirdparty/ecc-tools/src/third_party/BST-DME/**"
 ]
