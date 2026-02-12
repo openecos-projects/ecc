@@ -55,22 +55,6 @@
               edaOverlay
             ];
           };
-          # Use `nix develop -c python3 test/test_tools_yosys.py` to run tests in dev shell
-          devShells = {
-            default = pkgs.mkShell {
-              inputsFrom = [
-                inputs'.infra.packages.iedaUnstable
-                pkgs.ecc-tools
-                pkgs.chipcompiler
-                pkgs.ecos-studio
-              ];
-              nativeInputs = with pkgs; [ uv ];
-              shellHook = ''
-                uv sync --frozen --all-groups --python 3.11
-                source .venv/bin/activate
-              '';
-            };
-          };
           packages = {
             inherit (pkgs)
               ecc-tools
