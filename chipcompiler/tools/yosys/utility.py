@@ -57,12 +57,7 @@ def _resolve_yosys_command() -> tuple[list[str], Path | None]:
         oss_path = Path(oss_cad_dir)
         yosys_bin = oss_path / "bin" / ("yosys.exe" if os.name == "nt" else "yosys")
         if yosys_bin.exists():
-            if _is_oss_cad_runtime_usable(oss_path):
-                return [str(yosys_bin)], oss_path
-            logging.warning(
-                "Bundled OSS CAD runtime is incomplete at %s; falling back to PATH yosys.",
-                oss_path
-            )
+            return [str(yosys_bin)], oss_path
 
     if shutil.which("yosys"):
         return ["yosys"], None

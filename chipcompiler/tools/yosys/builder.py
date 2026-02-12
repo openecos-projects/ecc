@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
+import stat
 from chipcompiler.data import WorkspaceStep, Workspace
 
 
@@ -249,22 +250,30 @@ def build_step_config(workspace: Workspace,
     """
     import shutil
 
+    def _copy_writable(src: str, dst: str):
+        """Copy file and ensure it's writable."""
+        shutil.copy2(src, dst)
+        try:
+            os.chmod(dst, os.stat(dst).st_mode | stat.S_IWUSR)
+        except OSError:
+            pass
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     scripts_dir = os.path.abspath(os.path.join(current_dir, 'scripts'))
 
     for file in ['yosys_synthesis.tcl', 'init_tech.tcl']:
         src = os.path.join(scripts_dir, file)
         if os.path.exists(src):
-            shutil.copy2(src, os.path.join(step.script['dir'], file))
+            _copy_writable(src, os.path.join(step.script['dir'], file))
 
     abc_script = os.path.join(scripts_dir, 'abc-opt.script')
     if os.path.exists(abc_script):
-        shutil.copy2(abc_script, os.path.join(step.script['dir'], 'abc-opt.script'))
+        _copy_writable(abc_script, os.path.join(step.script['dir'], 'abc-opt.script'))
 
     configs_dir = os.path.abspath(os.path.join(current_dir, 'configs'))
     aig_file = os.path.join(configs_dir, 'lazy_man_synth_library.aig')
     if os.path.exists(aig_file):
-        shutil.copy2(aig_file, os.path.join(step.script['dir'], 'lazy_man_synth_library.aig'))
+        _copy_writable(aig_file, os.path.join(step.script['dir'], 'lazy_man_synth_library.aig'))
 
     try:
         tcl_content = generate_global_var_tcl(workspace, step)
@@ -305,4 +314,3 @@ def build_environment(workspace: Workspace,
     Build the environment for the given step.
     """
     pass
-

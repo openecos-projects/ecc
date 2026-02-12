@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
+import stat
 from chipcompiler.data import WorkspaceStep, Workspace, Parameters, StepEnum, StateEnum
 
 def build_step(workspace: Workspace, 
@@ -187,6 +188,16 @@ def build_step_config(workspace: Workspace,
     
     # update config by parameters
     from chipcompiler.utility import json_read, json_write
+
+    def _ensure_writable(path: str):
+        """Make files writable after copying from read-only sources."""
+        for root, dirs, files in os.walk(path):
+            for name in dirs + files:
+                target = os.path.join(root, name)
+                try:
+                    os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)
+                except OSError:
+                    pass
     
     def _update_flow():
         # read config
@@ -309,10 +320,10 @@ def build_step_config(workspace: Workspace,
         
     # copy files to origin folder
     import shutil
-    # Get the directory of the current script
     current_dir = os.path.dirname(os.path.abspath(__file__))
     default_dir = os.path.abspath(os.path.join(current_dir, 'configs'))
     shutil.copytree(default_dir, step.config["dir"], dirs_exist_ok=True)
+    _ensure_writable(step.config["dir"])
     
     _update_flow()    
     _update_db()
