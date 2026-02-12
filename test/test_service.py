@@ -31,6 +31,9 @@ from chipcompiler.server import (
 
 def test_ics55_gcd():
     workspace_dir="{}/test/examples/ics55_gcd_service".format(root)
+    pdk_root = os.path.abspath("{}/chipcompiler/thirdparty/icsprout55-pdk".format(root))
+    if not os.path.isdir(pdk_root):
+        raise RuntimeError(f"ics55 pdk root not found: {pdk_root}")
 
     input_def = ""
     input_verilog = ""
@@ -38,6 +41,20 @@ def test_ics55_gcd():
     ecc_serv = ecc_service()
     
     parameters=get_design_parameters("ics55", "gcd")
+
+    # set pdk root
+    #####################################################
+    ecc_req = ECCRequest(
+        cmd = "set_pdk_root",
+        data = {
+            "pdk" : "ics55",
+            "pdk_root" : pdk_root
+        }
+    )
+    ecc_response = ecc_serv.set_pdk_root(ecc_req)
+    print(ecc_response)
+    if ecc_response.response != "success":
+        raise RuntimeError(f"set_pdk_root failed: {ecc_response.message}")
     
     # create workspace
     #####################################################
@@ -46,6 +63,7 @@ def test_ics55_gcd():
         data = {
             "directory" : workspace_dir,
             "pdk" : "ics55",
+            "pdk_root" : pdk_root,
             "parameters" : parameters.data,
             "origin_def" : input_def,
             "origin_verilog" : input_verilog,

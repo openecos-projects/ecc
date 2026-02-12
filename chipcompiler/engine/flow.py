@@ -11,7 +11,7 @@ from threading import Thread
 from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
 from chipcompiler.engine import EngineDB
 from chipcompiler.utility import track_process_memory
-from chipcompiler.server.runtime_log import (
+from chipcompiler.utility.log import (
     API_RUNTIME_LOG_ENV_KEY,
     redirect_stdio_to_file,
 )
