@@ -17,7 +17,6 @@
     }
   },
   "forwardPorts": [8765, 5173, 1420],
-  // Runs uv sync, builds ecc_py, and downloads OSS CAD Suite
   // To use proxy, set environment variables by using containerEnv field:
   // "containerEnv": {
   //   "GITHUB_PROXY_PREFIX": "https://ghproxy.com/",
@@ -27,6 +26,6 @@
   "containerEnv": {
     "PROJECT_ROOT": "/workspaces/chip-compiler"
   },
-  "postCreateCommand": "bash -c 'rm -rf .venv && source scripts/common.sh && setup_project_vars && uv sync --frozen --all-groups --python 3.11 && build_ecc_py && setup_oss_cad_suite'",
+  "postCreateCommand": "bash .devcontainer/setup.sh",
   "remoteUser": "root"
 }
