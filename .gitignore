@@ -155,6 +155,9 @@ chipcompiler.egg-info/
 chipcompiler/thirdparty/oss-cad-suite/
 chipcompiler/gui/src-tauri/resources/oss-cad-suite/
 
+# ICS55 PDK
+chipcompiler/thirdparty/icsprout55-pdk
+
 # Tauri dev files
 .pnpm-store/
 
