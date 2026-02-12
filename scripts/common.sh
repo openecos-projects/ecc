@@ -629,8 +629,9 @@ build_ecc_py() {
     cd "${build_dir}" || return 1
 
     if ! command -v cmake &> /dev/null; then
-        echo "Error: CMake is not installed or not in PATH"
-        sudo bash "${ECC_TOOLS_ROOT}/build.sh" -i apt
+        echo "ERROR: CMake is not installed or not in PATH." >&2
+        echo "Please install CMake first, then rerun the build." >&2
+        return 1
     fi
 
     echo "Configuring project with CMake..."
