@@ -1,0 +1,12 @@
+diff --git a/src/interface/python/CMakeLists.txt b/src/interface/python/CMakeLists.txt
+index a0c8c9f4a..efeda99a8 100644
+--- a/src/interface/python/CMakeLists.txt
++++ b/src/interface/python/CMakeLists.txt
+@@ -54,3 +54,7 @@ target_link_libraries(ecc_py
+     py_vec
+     py_ipnp
+ )
++
++set_target_properties(ecc_py PROPERTIES
++  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
++)

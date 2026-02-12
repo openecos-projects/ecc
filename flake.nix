@@ -22,6 +22,10 @@
       infra,
       ...
     }:
+    let
+      overlay = import ./nix/overlay.nix;
+      edaOverlay = inputs.infra.overlays.default;
+    in
     parts.lib.mkFlake { inherit inputs; } {
       imports = [
         treefmt-nix.flakeModule
@@ -30,13 +34,7 @@
         "x86_64-linux"
         "aarch64-linux"
       ];
-      flake.hydraJobs = {
-        x86_64-linux = {
-          iedaUnstable = inputs.self.packages.x86_64-linux.iedaUnstable;
-          magic-vlsi = inputs.nixpkgs.legacyPackages.x86_64-linux.magic-vlsi;
-          yosysWithSlang = inputs.self.packages.x86_64-linux.yosysWithSlang;
-        };
-      };
+      flake.overlays.default = overlay;
       perSystem =
         {
           inputs',
@@ -49,6 +47,10 @@
         {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
+            overlays = [
+              overlay
+              edaOverlay
+            ];
           };
           # Use `nix develop -c python3 test/test_tools_yosys.py` to run tests in dev shell
           devShells = {
@@ -66,14 +68,17 @@
                   inputs'.infra.packages.yosysWithSlang
                 ];
               shellHook = ''
-                ENABLE_OSS_CAD_SUITE=false ./build.sh
+                uv sync --frozen --all-groups --python 3.11
                 source .venv/bin/activate
               '';
             };
           };
           packages = {
-            yosysWithSlang = inputs'.infra.packages.yosysWithSlang;
-            ieda = inputs'.infra.packages.iedaUnstable;
+            inherit (pkgs)
+              ecc-tools
+              chipcompiler
+              ecos-studio
+            ;
           };
         };
     };
