@@ -3,8 +3,8 @@ import { readTextFile } from '@tauri-apps/plugin-fs'
 import { invoke } from '@tauri-apps/api/core'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
-import { getHomePageApi } from '@/api/flow'
-import { STEP_METADATA, getStepMetadata, ResponseEnum } from '@/api/type'
+import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
+import { STEP_METADATA, getStepMetadata } from '@/api/type'
 import type { ECCResponse } from '@/api/sse'
 
 // ============ 类型定义 ============
@@ -31,6 +31,8 @@ export interface FlowStage {
   icon: string
   group: 'setup' | 'run'
   state: string
+  runtime: string
+  'peak memory (mb)': number
 }
 
 // ============ 常量配置 ============
@@ -44,6 +46,8 @@ const FIXED_SETUP_STAGES: FlowStage[] = Object.entries(STEP_METADATA)
     icon: meta.icon,
     group: 'setup' as const,
     state: 'pending',
+    runtime: '',
+    'peak memory (mb)': 0,
   }))
 
 // ============ Composable ============
@@ -85,7 +89,7 @@ export function useFlowStages() {
    */
   function transformFlowData(flowData: FlowData): FlowStage[] {
     const stages: FlowStage[] = []
-
+    console.log('flowData.steps:', flowData.steps)
     for (const step of flowData.steps) {
       const metadata = getStepMetadata(step.name)
 
@@ -97,6 +101,8 @@ export function useFlowStages() {
         icon: metadata?.icon ?? 'ri-checkbox-blank-circle-line',
         group: 'run',
         state: step.state,
+        runtime: step.runtime || '',
+        'peak memory (mb)': step['peak memory (mb)'] || 0,
       })
 
     }
@@ -105,24 +111,11 @@ export function useFlowStages() {
   }
 
   /**
-   * 将远程路径转换为本地项目路径（复用 useHomeData 中的逻辑）
+   * 将远程路径转换为本地项目路径
    */
   function convertToLocalPath(remotePath: string): string {
-    if (!remotePath || !remotePath.includes('/nfs/')) {
-      return remotePath
-    }
-
     const projectPath = currentProject.value?.path
-    if (!projectPath) return remotePath
-
-    const projectName = projectPath.split(/[/\\]/).filter(Boolean).pop()
-    if (!projectName) return remotePath
-
-    const projectNameIndex = remotePath.indexOf(`/${projectName}/`)
-    if (projectNameIndex === -1) return remotePath
-
-    const relativePath = remotePath.slice(projectNameIndex + projectName.length + 2)
-    return `${projectPath}/${relativePath}`
+    return projectPath ? convertRemoteToLocalPath(remotePath, projectPath) : remotePath
   }
 
   /**
@@ -164,7 +157,7 @@ export function useFlowStages() {
 
   /**
    * 从 flow.json 加载流程步骤
-   * 先调用 get_home_page API 获取 home.json 路径，从中提取 flow 路径
+   * 通过共享缓存获取 home.json 数据（不重复调用 API），从中提取 flow 路径
    */
   async function loadFlowStages(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
@@ -177,26 +170,17 @@ export function useFlowStages() {
     error.value = null
 
     try {
-      // 1. 调用 get_home_page API 获取 home.json 路径
-      const apiResponse = await getHomePageApi()
-      if (apiResponse.response !== ResponseEnum.success || !apiResponse.data?.path) {
-        console.warn('get_home_page API failed:', apiResponse.message)
+      const projectPath = currentProject.value.path
+
+      // 通过共享缓存获取 home.json 数据（去重，不会重复请求）
+      const homeData = await fetchSharedHomeData(projectPath, isInTauri)
+      if (!homeData) {
+        console.warn('Failed to get home data')
         dynamicFlowStages.value = []
         return
       }
 
-      const homeJsonPath = apiResponse.data.path
-      console.log('Got home.json path from API:', homeJsonPath)
-
-      // 2. 读取 home.json 获取 flow 路径
-      const localHomePath = convertToLocalPath(homeJsonPath)
-      const projectPath = currentProject.value.path
-      await requestPermission(projectPath)
-
-      const homeContent = await readTextFile(localHomePath)
-      const homeData = JSON.parse(homeContent)
-
-      const flowJsonPath = homeData.flow as string
+      const flowJsonPath = homeData.flow
       if (!flowJsonPath) {
         console.warn('No flow path found in home.json')
         dynamicFlowStages.value = []
@@ -205,14 +189,14 @@ export function useFlowStages() {
 
       console.log('Got flow.json path from home.json:', flowJsonPath)
 
-      // 3. 读取 flow.json
+      // 读取 flow.json
+      await requestPermission(projectPath)
       const localFlowPath = convertToLocalPath(flowJsonPath)
       const flowContent = await readTextFile(localFlowPath)
       const flowData: FlowData = JSON.parse(flowContent)
 
       console.log('Loaded flow data:', flowData)
 
-      // 4. 转换数据格式
       dynamicFlowStages.value = transformFlowData(flowData)
       console.log('Flow stages loaded:', dynamicFlowStages.value)
 

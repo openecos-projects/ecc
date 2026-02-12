@@ -13,7 +13,7 @@
     <!-- 主应用容器 -->
     <div class="app-container">
       <!-- 全局顶部菜单栏 -->
-      <TopBar :project-name="currentProject?.name" />
+      <TopBar :project-name="currentProject?.name" @menu-action="handleMenuAction" />
       <!-- 页面内容 -->
       <div class="app-content">
         <router-view />
@@ -22,20 +22,59 @@
 
     <!-- 全局 Toast 通知 -->
     <Toast position="top-right" />
+
+    <!-- 全局新建工程向导 -->
+    <NewProjectWizard v-if="showNewProjectWizard" @close="showNewProjectWizard = false" @create="handleWizardCreate" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import { useThemeStore } from '@/stores/themeStore'
 import { useWorkspace } from '@/composables/useWorkspace'
+import { usePdkManager } from '@/composables/usePdkManager'
 
 import TopBar from '@/components/TopBar.vue'
 import Toast from 'primevue/toast'
+import NewProjectWizard from '@/components/NewProjectWizard.vue'
+import type { WorkspaceConfig } from '@/types'
 
+const router = useRouter()
 const themeStore = useThemeStore()
-const { loadRecentProjects, currentProject } = useWorkspace()
+const { loadRecentProjects, currentProject, openProject, newProject } = useWorkspace()
+const { loadPdks } = usePdkManager()
+
+// ---- 新建工程向导 ----
+const showNewProjectWizard = ref(false)
+
+const handleWizardCreate = async (config: WorkspaceConfig) => {
+  showNewProjectWizard.value = false
+  const success = await newProject(config)
+  if (success) router.push('/workspace')
+}
+
+// ---- TopBar 菜单事件 ----
+const handleMenuAction = async (action: string) => {
+  switch (action) {
+    case 'new-project':
+      showNewProjectWizard.value = true
+      break
+    case 'open-project': {
+      const success = await openProject()
+      if (success) router.push('/workspace')
+      break
+    }
+    case 'documentation':
+      shellOpen('https://github.com/openecos-projects/ecc')
+      break
+    case 'about':
+      // TODO: 打开关于对话框
+      break
+  }
+}
 
 // 窗口调整大小
 let isResizing = false
@@ -65,8 +104,8 @@ const handleMouseUp = () => {
 
 onMounted(async () => {
   themeStore.initTheme()
-  // 在应用启动时加载最近项目，确保 currentProject 被初始化
-  await loadRecentProjects()
+  // 在应用启动时加载最近项目和已导入的 PDK
+  await Promise.all([loadRecentProjects(), loadPdks()])
 
   // 添加事件监听
   document.addEventListener('selectstart', handleSelectStart)

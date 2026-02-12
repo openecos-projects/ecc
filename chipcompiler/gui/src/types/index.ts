@@ -61,6 +61,8 @@ export interface Project {
   name: string
   path: string
   lastOpened: Date
+  /** 路径是否存在（加载时异步检测，undefined 表示尚未检测） */
+  pathExists?: boolean
 }
 
 // New Project Wizard Types
@@ -85,7 +87,22 @@ export interface WorkspaceConfig {
   parameters: Partial<WorkspaceParameters> & Record<string, unknown>;
   origin_def: string;
   origin_verilog: string;
-  rtl_list: string;
+  rtl_list: string[];
+}
+
+// 已导入的 PDK 信息（持久化存储）
+export interface ImportedPdk {
+  id: string
+  name: string           // 显示名称，如 "ICS55 PDK"
+  path: string           // PDK 根目录绝对路径
+  description: string    // 描述
+  techNode: string       // 工艺节点，如 "55nm"
+  pdkId: string          // 后端 pdk 标识符，如 "ics55"
+  importedAt: string     // ISO 日期字符串
+  detectedFiles?: {      // 扫描到的目录结构摘要
+    directories: string[]
+    files: string[]
+  }
 }
 
 export interface DesignFile {

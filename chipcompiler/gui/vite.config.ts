@@ -35,6 +35,9 @@ export default defineConfig({
       allow: ['..']
     }
   },
+  esbuild: {
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+  },
   build: {
     // Tauri 环境优化
     target: 'esnext',

@@ -127,10 +127,10 @@
             <!-- File List -->
             <div v-if="config.rtl_list.length > 0" class="mt-6 space-y-2">
               <h4 class="text-sm font-medium text-(--text-primary) mb-3">
-                已添加的文件 ({{config.rtl_list.split('\n').filter(f => f.trim()).length}})
+                已添加的文件 ({{ config.rtl_list.length }})
               </h4>
               <TransitionGroup name="list">
-                <div v-for="file in config.rtl_list.split('\n').filter(f => f.trim())" :key="file"
+                <div v-for="file in config.rtl_list" :key="file"
                   class="flex items-center justify-between px-4 py-3 bg-(--bg-secondary) rounded-lg border border-(--border-color) group">
                   <div class="flex items-center gap-3 min-w-0">
                     <i :class="[
@@ -154,7 +154,7 @@
             </div>
 
             <!-- Top Module and Clock Selection -->
-            <div v-if="config.rtl_list.split('\n').filter(f => f.trim()).length > 0" class="mt-6 space-y-4">
+            <div v-if="config.rtl_list.length > 0" class="mt-6 space-y-4">
               <div>
                 <label class="block text-sm font-medium text-(--text-primary) mb-2">
                   顶层模块名称 <span class="text-red-500">*</span>
@@ -187,44 +187,88 @@
                 <label class="block text-sm font-medium text-(--text-primary) mb-3">
                   工艺设计套件 (PDK) <span class="text-red-500">*</span>
                 </label>
-                <div class="grid grid-cols-2 gap-4">
-                  <button v-for="pdk in pdkOptions" :key="pdk.id" @click="config.pdk = pdk.id" :class="[
-                    'flex items-start gap-4 p-4 rounded-xl border-2 transition-all cursor-pointer text-left',
-                    config.pdk === pdk.id
-                      ? 'border-(--accent-color) bg-(--accent-color)/5'
-                      : 'border-(--border-color) hover:border-(--accent-color)/50 bg-(--bg-secondary)'
-                  ]">
-                    <div :class="[
-                      'w-10 h-10 rounded-lg flex items-center justify-center',
-                      config.parameters.pdk === pdk.id ? 'bg-(--accent-color) text-white' : 'bg-(--bg-primary) text-(--text-secondary)'
+
+                <!-- 已导入的 PDK 列表 -->
+                <div v-if="importedPdks.length > 0" class="space-y-3">
+                  <div class="grid grid-cols-1 gap-3">
+                    <button v-for="pdk in importedPdks" :key="pdk.id" @click="selectPdk(pdk)" :class="[
+                      'flex items-start gap-4 p-4 rounded-xl border-2 transition-all cursor-pointer text-left group relative',
+                      selectedPdkId === pdk.id
+                        ? 'border-(--accent-color) bg-(--accent-color)/5'
+                        : 'border-(--border-color) hover:border-(--accent-color)/50 bg-(--bg-secondary)'
                     ]">
-                      <i :class="pdk.icon"></i>
-                    </div>
-                    <div>
-                      <h4 class="font-semibold text-(--text-primary)">{{ pdk.name }}</h4>
-                      <p class="text-xs text-(--text-secondary) mt-1">{{ pdk.description }}</p>
-                    </div>
+                      <div :class="[
+                        'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
+                        selectedPdkId === pdk.id ? 'bg-(--accent-color) text-white' : 'bg-(--bg-primary) text-(--text-secondary)'
+                      ]">
+                        <i class="ri-cpu-line text-xl"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                          <h4 class="font-semibold text-(--text-primary)">{{ pdk.name }}</h4>
+                          <span v-if="pdk.techNode"
+                            class="text-[10px] px-1.5 py-0.5 rounded bg-(--accent-color)/10 text-(--accent-color) font-medium">
+                            {{ pdk.techNode }}
+                          </span>
+                        </div>
+                        <p v-if="pdk.description" class="text-xs text-(--text-secondary) mt-1">{{ pdk.description }}</p>
+                        <p class="text-[11px] text-(--text-secondary) mt-1.5 truncate font-mono opacity-60">
+                          <i class="ri-folder-line mr-1"></i>{{ pdk.path }}
+                        </p>
+                        <!-- 目录结构摘要 -->
+                        <div v-if="selectedPdkId === pdk.id && pdk.detectedFiles"
+                          class="mt-3 pt-3 border-t border-(--border-color)">
+                          <p class="text-[11px] font-medium text-(--text-secondary) mb-1.5">目录内容：</p>
+                          <div class="flex flex-wrap gap-1.5">
+                            <span v-for="dir in pdk.detectedFiles.directories" :key="dir"
+                              class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-(--bg-primary) text-(--text-secondary)">
+                              <i class="ri-folder-line text-yellow-500"></i>{{ dir }}
+                            </span>
+                            <span v-for="file in pdk.detectedFiles.files.slice(0, 5)" :key="file"
+                              class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-(--bg-primary) text-(--text-secondary)">
+                              <i class="ri-file-line"></i>{{ file }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <!-- 选中标记 -->
+                      <div v-if="selectedPdkId === pdk.id"
+                        class="absolute top-3 right-3 w-5 h-5 rounded-full bg-(--accent-color) flex items-center justify-center">
+                        <i class="ri-check-line text-white text-xs"></i>
+                      </div>
+                      <!-- 删除按钮 -->
+                      <div @click.stop="handleRemovePdk(pdk.id)"
+                        class="absolute bottom-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 transition-all cursor-pointer"
+                        title="移除此 PDK">
+                        <i class="ri-delete-bin-line text-sm text-(--text-secondary) hover:text-red-500"></i>
+                      </div>
+                    </button>
+                  </div>
+
+                  <!-- 导入更多 PDK -->
+                  <button @click="handleImportPdk"
+                    class="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-(--border-color) hover:border-(--accent-color)/50 rounded-xl text-sm text-(--text-secondary) hover:text-(--accent-color) transition-all cursor-pointer">
+                    <i class="ri-add-line"></i>
+                    导入其他 PDK
                   </button>
-
                 </div>
-              </div>
 
-              <!-- PDK Root Directory -->
-              <div>
-                <label class="block text-sm font-medium text-(--text-primary) mb-2">
-                  PDK 根目录路径 <span class="text-red-500">*</span>
-                </label>
-                <div class="flex gap-3">
-                  <input v-model="config.pdk_root" type="text" readonly placeholder="点击选择 PDK 根目录..."
-                    @click="importPdk()"
-                    class="flex-1 px-4 py-3 bg-(--bg-secondary) border border-(--border-color) rounded-lg text-(--text-primary) placeholder:text-(--text-secondary) cursor-pointer" />
-                  <button @click="importPdk"
-                    class="px-6 py-3 bg-(--accent-color) text-white rounded-lg hover:opacity-90 transition-opacity font-medium cursor-pointer flex items-center gap-2">
+                <!-- 无 PDK 时的空状态 -->
+                <div v-else
+                  class="flex flex-col items-center py-10 px-6 border-2 border-dashed border-(--border-color) rounded-xl bg-(--bg-secondary)/30">
+                  <div class="w-16 h-16 rounded-full bg-(--accent-color)/10 flex items-center justify-center mb-4">
+                    <i class="ri-database-2-line text-3xl text-(--accent-color)"></i>
+                  </div>
+                  <h4 class="font-semibold text-(--text-primary) mb-2">尚未导入 PDK</h4>
+                  <p class="text-sm text-(--text-secondary) text-center mb-5 max-w-sm">
+                    请先导入工艺设计套件 (PDK) 目录，系统将自动识别 PDK 类型和包含的工艺库文件
+                  </p>
+                  <button @click="handleImportPdk"
+                    class="px-6 py-2.5 bg-(--accent-color) text-white rounded-lg hover:opacity-90 transition-opacity font-medium cursor-pointer flex items-center gap-2">
                     <i class="ri-folder-open-line"></i>
-                    浏览
+                    选择 PDK 目录
                   </button>
                 </div>
-                <p class="mt-1 text-xs text-(--text-secondary)">选择 PDK 工艺库所在的根目录</p>
               </div>
 
               <!-- Target Frequency -->
@@ -361,8 +405,7 @@
                 <div class="text-sm space-y-2">
                   <div class="flex items-center justify-between">
                     <span class="text-(--text-secondary)">文件数量</span>
-                    <span class="font-medium text-(--text-primary)">{{config.rtl_list.split('\n').filter(f =>
-                      f.trim()).length}} 个文件</span>
+                    <span class="font-medium text-(--text-primary)">{{ config.rtl_list.length }} 个文件</span>
                   </div>
                   <div class="flex items-center justify-between">
                     <span class="text-(--text-secondary)">顶层模块</span>
@@ -464,9 +507,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { WorkspaceConfig } from '../types'
+import { usePdkManager } from '../composables/usePdkManager'
 
 interface Emits {
   (e: 'close'): void
@@ -486,14 +530,17 @@ const steps = [
   { id: 4, title: '确认创建' }
 ]
 
-const pdkOptions = [
-  {
-    id: 'ics55',
-    name: 'ICS55 PDK',
-    description: 'ICSPROUT 55nm 工艺库',
-    icon: 'ri-settings-3-line text-xl'
+// PDK 管理
+const { importedPdks, loadPdks, importPdk: doImportPdk, removePdk } = usePdkManager()
+const selectedPdkId = ref<string>('')
+
+onMounted(async () => {
+  await loadPdks()
+  // 如果只有一个 PDK，自动选中
+  if (importedPdks.value.length === 1) {
+    selectPdk(importedPdks.value[0])
   }
-]
+})
 
 const config = ref<WorkspaceConfig>({
   directory: '',
@@ -514,7 +561,7 @@ const config = ref<WorkspaceConfig>({
   },
   origin_def: '',
   origin_verilog: '',
-  rtl_list: ''
+  rtl_list: []
 })
 
 const canProceed = computed(() => {
@@ -525,11 +572,11 @@ const canProceed = computed(() => {
         (config.value.parameters.design as string)?.trim() !== ''
     case 2:
       // RTL 文件、顶层模块和时钟信号都是必需的
-      return config.value.rtl_list.trim() !== '' &&
+      return config.value.rtl_list.length > 0 &&
         (config.value.parameters.top_module as string)?.trim() !== '' &&
         (config.value.parameters.clock as string)?.trim() !== ''
     case 3:
-      return config.value.pdk !== '' && config.value.pdk_root.trim() !== ''
+      return selectedPdkId.value !== ''
     default:
       return true
   }
@@ -572,42 +619,50 @@ const handleFileDrop = (event: DragEvent) => {
 }
 
 const addFiles = (paths: string[]) => {
-  // 获取现有文件列表
-  const existingFiles = config.value.rtl_list
-    .split('\n')
-    .filter(f => f.trim())
-
+  const existing = new Set(config.value.rtl_list)
   for (const path of paths) {
-    // 避免重复
-    if (!existingFiles.includes(path)) {
-      existingFiles.push(path)
+    if (!existing.has(path)) {
+      config.value.rtl_list.push(path)
+      existing.add(path)
     }
   }
-
-  // 用换行符连接，不加尾部换行
-  config.value.rtl_list = existingFiles.join('\n')
 }
 
 const removeFile = (path: string) => {
-  const files = config.value.rtl_list
-    .split('\n')
-    .filter(f => f.trim() && f !== path)
-  config.value.rtl_list = files.join('\n')
+  config.value.rtl_list = config.value.rtl_list.filter(f => f !== path)
 }
 
-const getPdkName = (id: string) => {
-  return pdkOptions.find(p => p.id === id)?.name || id
+/** 选中一个已导入的 PDK */
+const selectPdk = (pdk: import('../types').ImportedPdk) => {
+  selectedPdkId.value = pdk.id
+  config.value.pdk = pdk.pdkId
+  config.value.pdk_root = pdk.path
 }
 
-const importPdk = async () => {
-  const result = await open({
-    directory: true,
-    multiple: false,
-    title: '选择工艺库根目录'
-  })
-  if (result) {
-    config.value.pdk_root = result as string
+/** 在 Wizard 中导入新 PDK */
+const handleImportPdk = async () => {
+  const pdk = await doImportPdk()
+  if (pdk) {
+    selectPdk(pdk)
   }
+}
+
+/** 删除已导入的 PDK */
+const handleRemovePdk = async (id: string) => {
+  await removePdk(id)
+  // 如果删除的是当前选中的，清除选中
+  if (selectedPdkId.value === id) {
+    selectedPdkId.value = ''
+    config.value.pdk = ''
+    config.value.pdk_root = ''
+  }
+}
+
+/** 获取 PDK 显示名称 */
+const getPdkName = (pdkIdentifier: string) => {
+  // 先从 importedPdks 中按 pdkId 查找
+  const found = importedPdks.value.find(p => p.pdkId === pdkIdentifier || p.id === selectedPdkId.value)
+  return found?.name || pdkIdentifier
 }
 
 const nextStep = () => {

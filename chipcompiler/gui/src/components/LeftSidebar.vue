@@ -155,8 +155,8 @@
               </div>
 
               <!-- 步骤信息 -->
-              <div class="flex-1 min-w-0 h-full flex items-center">
-                <div class="flex items-center  gap-2">
+              <div class="flex-1 min-w-0 h-full flex flex-col justify-center gap-0.5">
+                <div class="flex items-center gap-2">
                   <span class="text-[12px] font-semibold truncate" :class="[
                     stage.state === 'Success' ? 'text-green-500' :
                       stage.state === 'Ongoing' ? 'text-blue-400' :
@@ -169,6 +169,19 @@
                   <!-- 运行中的脉冲动画 -->
                   <span v-if="stage.state === 'Ongoing'"
                     class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                </div>
+                <!-- 运行时信息：内存 & 耗时 -->
+                <div
+                  v-if="stage.state === 'Success' && (stage.runtime || stage['peak memory (mb)'])"
+                  class="flex items-center gap-3 text-[10px] text-(--text-secondary) leading-tight">
+                  <span v-if="stage['peak memory (mb)']" class="flex items-center gap-1">
+                    <i class="ri-ram-line text-[10px]"></i>
+                    {{ stage['peak memory (mb)'].toFixed(1) }} MB
+                  </span>
+                  <span v-if="stage.runtime" class="flex items-center gap-1">
+                    <i class="ri-time-line text-[10px]"></i>
+                    {{ stage.runtime }}
+                  </span>
                 </div>
               </div>
 

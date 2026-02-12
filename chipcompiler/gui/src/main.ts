@@ -6,6 +6,7 @@ import Aura from '@primevue/themes/aura'
 import router from './router'
 import App from './App.vue'
 import { initApiPort } from './api/client'
+import { isTauri } from './composables/useTauri'
 import './styles/index.css'
 import 'remixicon/fonts/remixicon.css'
 
@@ -40,9 +41,9 @@ initApiPort()
     app.mount('#app')
 
     // 在 Tauri 环境中，通知后端应用已准备就绪
-    const isTauri = !!(window as any).__TAURI_IPC__ || !!(window as any).__TAURI_METADATA__;
+    const inTauri = isTauri();
 
-    if (isTauri) {
+    if (inTauri) {
       // 异步触发窗口显示，不阻塞主流程
       (async () => {
         try {

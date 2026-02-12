@@ -1,5 +1,6 @@
 import { ref, getCurrentInstance } from 'vue'
 import type { Project, WorkspaceConfig } from '../types'
+import { useRouter } from 'vue-router'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { LazyStore } from '@tauri-apps/plugin-store'
@@ -31,7 +32,7 @@ const sseMessages = ref<ECCResponse[]>([])
 let _toast: ReturnType<typeof useToast> | null = null
 
 // 应用名称常量
-const APP_NAME = 'ECC'
+const APP_NAME = 'ECOS Studio'
 
 /**
  * 更新窗口标题
@@ -50,7 +51,7 @@ async function updateWindowTitle(projectName?: string) {
 }
 
 export function useWorkspace() {
-
+  const router = useRouter()
   // 在组件 setup 上下文中初始化 Toast（仅初始化一次）
   if (!_toast && getCurrentInstance()) {
     _toast = useToast()
@@ -124,7 +125,12 @@ export function useWorkspace() {
   }
 
   /** 
-   * loadRecentProjects 从本地加载最近项目，并执行失效检查
+   * loadRecentProjects 从本地加载最近项目，并异步标记路径可达性。
+   * 
+   * 设计原则：
+   * - **不自动删除**任何记录（避免因权限/网络等临时问题导致误删）
+   * - 通过 `project.pathExists` 标记当前路径是否可达，供 UI 做差异化展示
+   * - 用户可通过 `removeRecentProject()` 手动移除不需要的条目
    */
   const loadRecentProjects = async () => {
     try {
@@ -133,49 +139,76 @@ export function useWorkspace() {
         return
       }
 
-      // 反序列化并进行失效检查
-      const validProjects: Project[] = []
+      // 1. 先反序列化并立即展示（pathExists 初始为 undefined，表示检测中）
+      const projects = savedProjects.map(deserializeProject)
+      recentProjects.value = projects
 
-      for (const serialized of savedProjects) {
-        const project = deserializeProject(serialized)
-
-        // 关键步骤：在检查路径之前，先请求 Rust 端授予访问权限
+      // 2. 异步并行检测路径有效性（不阻塞 UI 首屏渲染）
+      const checks = projects.map(async (project) => {
+        // 请求 Rust 端授予访问权限（必须在 exists 之前）
         try {
           await invoke('request_project_permission', { path: project.path })
-        } catch (permError) {
-          console.error(`请求访问权限失败: ${project.path}`, permError)
+        } catch {
+          // 权限请求失败不影响后续检测
+        }
+        project.pathExists = await isProjectValid(project.path)
+      })
+      await Promise.all(checks)
+
+      // 3. 触发响应式更新
+      recentProjects.value = [...projects]
+
+      // 4. 恢复 currentProject：优先从持久化的 current_project_path 精确匹配
+      if (!currentProject.value) {
+        const savedCurrentPath = await store.get<string>('current_project_path')
+        let restored: Project | undefined
+
+        if (savedCurrentPath) {
+          // 精确匹配上次打开的项目
+          restored = projects.find(
+            p => normalizePath(p.path) === savedCurrentPath && p.pathExists !== false
+          )
         }
 
-        const isValid = await isProjectValid(project.path)
-
-        if (isValid) {
-          validProjects.push(project)
-        } else {
-          // 调试：看看为什么判定无效
-          console.warn(`检测到无效路径: ${project.path}，暂时保留以防误删`);
-          validProjects.push(project) // 开发阶段建议先保留
+        // 如果精确匹配失败，回退到第一个有效项目
+        if (!restored) {
+          restored = projects.find(p => p.pathExists !== false)
         }
-      }
 
-      recentProjects.value = validProjects
+        if (restored) {
+          // 等待 router 初始化完成，避免 reload 时路由尚未解析的竞态问题
+          await router.isReady()
 
-      // 如果 currentProject 为空且有有效项目，自动设置为第一项
-      if (!currentProject.value && validProjects.length > 0) {
-        currentProject.value = validProjects[0]
-        // 更新窗口标题
-        await updateWindowTitle(validProjects[0].name)
-        console.log('Auto-set currentProject to:', validProjects[0].path)
-      }
+          if (router.currentRoute.value.path.startsWith('/workspace')) {
+            currentProject.value = restored
+            await updateWindowTitle(restored.name)
 
-      // 如果清理后的列表和原列表不同，更新存储
-      if (validProjects.length !== savedProjects.length) {
-        const serialized = validProjects.map(serializeProject)
-        await store.set('recent_projects', serialized)
-        await store.save()
+            // reload 后需要重新通过 API 加载 workspace 状态并建立 SSE 连接
+            try {
+              const response = await loadWorkspaceApi(restored.path)
+              if (response.response === 'success') {
+                const workspaceId = response.data.workspace_id || response.data.directory
+                connectSSE(workspaceId)
+              }
+            } catch (error) {
+              console.error('Failed to reload workspace after restore:', error)
+            }
+          }
+        }
       }
     } catch (error) {
       console.error('Load recent projects error:', error)
     }
+  }
+
+  /**
+   * 从最近项目列表中移除指定项目（用户主动操作）
+   */
+  const removeRecentProject = async (projectId: string) => {
+    recentProjects.value = recentProjects.value.filter(p => p.id !== projectId)
+    const serialized = recentProjects.value.map(serializeProject)
+    await store.set('recent_projects', serialized)
+    await store.save()
   }
 
   /**
@@ -224,7 +257,7 @@ export function useWorkspace() {
         const result = await open({
           directory: true,
           multiple: false,
-          title: '选择 ECC 项目目录'
+          title: '选择 ECOS Studio 项目目录'
         })
         if (!result) return
         selectedPath = result as string
@@ -250,6 +283,10 @@ export function useWorkspace() {
 
         currentProject.value = loadedProject
 
+        // 持久化当前项目路径，以便 reload 后恢复
+        await store.set('current_project_path', normalizePath(loadedProject.path))
+        await store.save()
+
         // 建立 SSE 连接
         const workspaceId = response.data.workspace_id || response.data.directory
         connectSSE(workspaceId)
@@ -263,10 +300,12 @@ export function useWorkspace() {
         return true
       } else {
         console.error('加载项目失败:', response.message)
+        showToast({ severity: 'error', summary: '打开项目失败', detail: response.message?.join('; ') || '未知错误' })
         return false
       }
     } catch (error) {
       console.error('Open project error:', error)
+      showToast({ severity: 'error', summary: '打开项目失败', detail: String(error) })
       return false
     }
   }
@@ -330,7 +369,7 @@ export function useWorkspace() {
         parameters: backendParameters,
         origin_def: config?.origin_def,
         origin_verilog: config?.origin_verilog,
-        rtl_list: config?.rtl_list || ''
+        rtl_list: config?.rtl_list || []
       })
       console.log(response)
       if (response.response === 'success') {
@@ -342,6 +381,10 @@ export function useWorkspace() {
         }
 
         currentProject.value = createdProject
+
+        // 持久化当前项目路径，以便 reload 后恢复
+        await store.set('current_project_path', normalizePath(createdProject.path))
+        await store.save()
 
         // 建立 SSE 连接
         const workspaceId = response.data.workspace_id || response.data.directory
@@ -356,10 +399,12 @@ export function useWorkspace() {
         return true
       } else {
         console.error('创建项目失败:', response.message)
+        showToast({ severity: 'error', summary: '创建项目失败', detail: response.message?.join('; ') || '未知错误' })
         return false
       }
     } catch (error) {
       console.error('New project error:', error)
+      showToast({ severity: 'error', summary: '创建项目失败', detail: String(error) })
       return false
     }
   }
@@ -372,6 +417,9 @@ export function useWorkspace() {
   const closeProject = async () => {
     currentProject.value = null
     disconnectSSE()
+    // 清除持久化的当前项目
+    await store.delete('current_project_path')
+    await store.save()
     // 重置窗口标题为默认
     await updateWindowTitle()
   }
@@ -411,6 +459,7 @@ export function useWorkspace() {
 
   return {
     loadRecentProjects,
+    removeRecentProject,
     currentProject,
     recentProjects,
     openProject,

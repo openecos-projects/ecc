@@ -8,6 +8,7 @@
 
 import { createAlova } from 'alova'
 import adapterFetch from 'alova/fetch'
+import { isTauri } from '@/composables/useTauri'
 
 // API server configuration
 const API_HOST = '127.0.0.1'
@@ -64,10 +65,7 @@ export let alovaInstance = createAlovaClient()
  * @returns The resolved API port number.
  */
 export async function initApiPort(): Promise<number> {
-  const isTauri =
-    !!(window as any).__TAURI_IPC__ || !!(window as any).__TAURI_METADATA__
-
-  if (!isTauri) {
+  if (!isTauri()) {
     console.log(`[api] Not running in Tauri, using default port ${DEFAULT_API_PORT}`)
     return API_PORT
   }

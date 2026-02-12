@@ -32,7 +32,7 @@
               <span class="info-value mono">{{ config.core?.Size.join(' x ') || '--' }}</span>
             </div>
             <div class="info-item">
-              <span class="info-label">Frequency</span>
+              <span class="info-label">Target Frequency</span>
               <span class="info-value">{{ config.frequencyMax || '--' }} <small>MHz</small></span>
             </div>
             <div class="info-item">
@@ -55,15 +55,13 @@
       <section class="section-card monitor-area">
         <div class="section-header">
           <div class="header-icon monitor"><i class="ri-pulse-line"></i></div>
-          <h2>运行时监控</h2>
+          <h2>Runtime monitoring</h2>
         </div>
         <div class="monitor-content" v-if="monitorData">
           <div v-for="cfg in chartConfigs" :key="cfg.key" class="monitor-row">
             <span class="monitor-label">{{ cfg.label }}</span>
             <div class="monitor-chart-wrap">
-              <div
-                :ref="(el: any) => { if (cfg.key === 'memory') memoryChartRef = el; else if (cfg.key === 'runtime') runtimeChartRef = el; else if (cfg.key === 'instance') instanceChartRef = el; else if (cfg.key === 'frequency') frequencyChartRef = el; }"
-                class="monitor-chart"></div>
+              <div :ref="setChartRef(cfg.key)" class="monitor-chart"></div>
             </div>
             <span class="monitor-value">{{ getMetricMax(cfg.key) }}</span>
           </div>
@@ -72,19 +70,20 @@
           <div class="monitor-placeholder">
             <i class="ri-pulse-line"></i>
             <p>No monitor data</p>
-            <span>运行流程后显示监控数据</span>
+            <span>After running the flow, the monitoring data will be displayed.</span>
           </div>
         </div>
       </section>
 
       <!-- ========== Row 2 Left+Center: Layout Preview ========== -->
-      <section ref="layoutSectionRef" class="section-card layout-area">
+      <section ref="layoutSectionRef" :class="['section-card layout-area', { 'is-fullscreen': isLayoutFullscreen }]">
         <div class="section-header">
           <div class="header-icon layout"><i class="ri-layout-masonry-line"></i></div>
           <h2>Layout</h2>
-          <span class="header-hint">显示跑通过的最后 step 版图</span>
+          <span class="header-hint">Displays the final step of the layout after the run is completed.</span>
           <div class="header-actions">
-            <button class="action-btn" @click="toggleLayoutFullscreen" :title="isLayoutFullscreen ? '退出全屏' : '全屏'">
+            <button class="action-btn" @click="toggleLayoutFullscreen"
+              :title="isLayoutFullscreen ? 'Exit full screen' : 'full screen'">
               <i :class="isLayoutFullscreen ? 'ri-fullscreen-exit-line' : 'ri-fullscreen-line'"></i>
             </button>
           </div>
@@ -96,7 +95,7 @@
           <div v-else class="layout-placeholder">
             <i class="ri-image-2-line"></i>
             <p>Layout Preview</p>
-            <span>等待版图数据...</span>
+            <span>Waiting for layout data...</span>
           </div>
           <div v-if="isLayoutFullscreen && layoutBlobUrl" class="zoom-indicator">
             {{ Math.round(layoutScale * 100) }}%
@@ -108,11 +107,12 @@
       <section class="section-card analysis-area">
         <div class="section-header">
           <div class="header-icon analysis"><i class="ri-pie-chart-line"></i></div>
-          <h2>指标分析</h2>
+          <h2>Indicator Analysis</h2>
         </div>
         <div class="analysis-content">
           <div class="charts-grid" v-if="analysisCharts.length > 0">
-            <div class="chart-card" v-for="chart in analysisCharts" :key="chart.label">
+            <div class="chart-card" v-for="chart in analysisCharts" :key="chart.label"
+              @click="chart.imageBlobUrl && openChartPreview(chart.imageBlobUrl, chart.label)">
               <div class="chart-visual">
                 <img v-if="chart.imageBlobUrl" :src="chart.imageBlobUrl" :alt="chart.label" class="chart-image" />
                 <i v-else class="ri-image-2-line"></i>
@@ -123,7 +123,7 @@
           <div v-else class="analysis-placeholder">
             <i class="ri-pie-chart-line"></i>
             <p>No metrics data</p>
-            <span>运行流程后显示指标分析</span>
+            <span>After running the flow, the indicator analysis will be displayed.</span>
           </div>
         </div>
       </section>
@@ -170,10 +170,10 @@
             <table class="checklist-table">
               <thead>
                 <tr>
-                  <th>步骤/阶段</th>
-                  <th>验证类型</th>
-                  <th>验收条件</th>
-                  <th>验收结果</th>
+                  <th>Step/Stage</th>
+                  <th>Validation Type</th>
+                  <th>Acceptance Criteria</th>
+                  <th>Acceptance Result</th>
                 </tr>
               </thead>
               <tbody>
@@ -189,7 +189,7 @@
                   <td>
                     <span class="table-state-tag" :class="stateClass(item.state)">
                       <i :class="stateIcon(item.state)" class="table-state-icon"></i>
-                      {{ stateLabel(item.state) }}
+                      {{ item.state }}
                     </span>
                   </td>
                 </tr>
@@ -200,12 +200,31 @@
           <div class="checklist-placeholder" v-else>
             <i class="ri-list-check-2"></i>
             <p>No checklist items</p>
-            <span>运行流程后显示检查项</span>
+            <span>After running the flow, the checklist will be displayed.</span>
           </div>
         </div>
       </section>
 
     </div>
+
+    <!-- ===== 图表预览 Lightbox ===== -->
+    <Teleport to="body">
+      <Transition name="lightbox">
+        <div v-if="chartPreview.visible" class="chart-lightbox-overlay" @click="closeChartPreview">
+          <div class="chart-lightbox-content" @click.stop>
+            <div class="chart-lightbox-header">
+              <span class="chart-lightbox-title">{{ chartPreview.label }}</span>
+              <button class="chart-lightbox-close" @click="closeChartPreview">
+                <i class="ri-close-line"></i>
+              </button>
+            </div>
+            <div class="chart-lightbox-body">
+              <img :src="chartPreview.url" :alt="chartPreview.label" />
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -260,19 +279,16 @@ function resetLayoutTransform() {
 }
 
 function toggleLayoutFullscreen() {
-  const el = layoutSectionRef.value
-  if (!el) return
-
-  if (!document.fullscreenElement) {
-    el.requestFullscreen().catch(() => { })
-  } else {
-    document.exitFullscreen().catch(() => { })
+  if (!layoutSectionRef.value) return
+  isLayoutFullscreen.value = !isLayoutFullscreen.value
+  if (!isLayoutFullscreen.value) {
+    resetLayoutTransform()
   }
 }
 
-function onFullscreenChange() {
-  isLayoutFullscreen.value = !!document.fullscreenElement
-  if (!isLayoutFullscreen.value) {
+function onFullscreenKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isLayoutFullscreen.value) {
+    isLayoutFullscreen.value = false
     resetLayoutTransform()
   }
 }
@@ -320,50 +336,70 @@ function onLayoutMouseUp() {
 // ============ ECharts 折线图 ============
 
 // 4 个图表容器 ref
-const memoryChartRef = ref<HTMLDivElement>()
-const runtimeChartRef = ref<HTMLDivElement>()
-const instanceChartRef = ref<HTMLDivElement>()
-const frequencyChartRef = ref<HTMLDivElement>()
-
-// ECharts 实例
-let memoryChart: echarts.ECharts | null = null
-let runtimeChart: echarts.ECharts | null = null
-let instanceChart: echarts.ECharts | null = null
-let frequencyChart: echarts.ECharts | null = null
+// 动态图表 ref & 实例管理
+const chartRefs = new Map<string, HTMLDivElement>()
+const chartInstances = new Map<string, echarts.ECharts>()
 
 // ResizeObserver
 let resizeObserver: ResizeObserver | null = null
 
-/** 将 runtime 字符串 "h:m:s" 转换为秒数 */
-function parseRuntimeToSeconds(runtime: string): number {
-  const parts = runtime.split(':').map(Number)
-  if (parts.length === 3) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2]
-  }
-  return 0
-}
-
-/** 图表配色方案 */
-const chartConfigs = [
-  { label: 'Memory (MB)', color: '#ef4444', ref: memoryChartRef, key: 'memory' as const },
-  { label: 'Runtime (s)', color: '#3b82f6', ref: runtimeChartRef, key: 'runtime' as const },
-  { label: 'Instance', color: '#10b981', ref: instanceChartRef, key: 'instance' as const },
-  { label: 'Frequency (MHz)', color: '#a855f7', ref: frequencyChartRef, key: 'frequency' as const },
+/** 预置配色盘 —— 按 key 出现顺序循环取色 */
+const COLOR_PALETTE = [
+  '#ef4444', '#3b82f6', '#10b981', '#a855f7',
+  '#f59e0b', '#06b6d4', '#ec4899', '#84cc16',
 ]
 
-/** 获取某个维度的数值数组 */
+/** 从 monitorData 动态提取除 step 以外的所有指标 key */
+const monitorKeys = computed<string[]>(() => {
+  if (!monitorData.value) return []
+  return Object.keys(monitorData.value).filter(k => k !== 'step')
+})
+
+/** 动态生成图表配置列表 */
+const chartConfigs = computed(() => {
+  return monitorKeys.value.map((key, idx) => ({
+    key,
+    label: key,
+    color: COLOR_PALETTE[idx % COLOR_PALETTE.length],
+  }))
+})
+
+/** 设置图表 DOM ref 的回调（用于 v-for 中的 :ref） */
+function setChartRef(key: string) {
+  return (el: any) => {
+    if (el) {
+      chartRefs.set(key, el as HTMLDivElement)
+    } else {
+      chartRefs.delete(key)
+    }
+  }
+}
+
+/** 将 "h:m:s" 格式的时间字符串转换为秒数 */
+function parseTimeToSeconds(val: string): number {
+  const parts = val.split(':').map(Number)
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  if (parts.length === 2) return parts[0] * 60 + parts[1]
+  return Number(val) || 0
+}
+
+/** 判断一个值数组是否全部为 "h:m:s" 格式的时间字符串 */
+function isTimeFormatArray(arr: any[]): boolean {
+  return arr.length > 0 && arr.every(v => typeof v === 'string' && /^\d+:\d+:\d+$/.test(v))
+}
+
+/** 获取某个维度的数值数组（自动检测字符串/数字） */
 function getMetricValues(key: string): number[] {
   if (!monitorData.value) return []
-  const raw = monitorData.value[key as keyof typeof monitorData.value]
+  const raw = (monitorData.value as Record<string, any>)[key]
   if (!raw || !Array.isArray(raw)) return []
 
-  if (key === 'runtime') {
-    return (raw as string[]).map(parseRuntimeToSeconds)
+  // 时间格式 "h:m:s" → 秒数
+  if (isTimeFormatArray(raw)) {
+    return raw.map(parseTimeToSeconds)
   }
-  if (key === 'memory') {
-    return (raw as string[]).map(Number)
-  }
-  return raw as number[]
+  // 字符串数字 → Number
+  return raw.map((v: any) => Number(v) || 0)
 }
 
 /** 获取某个维度的最大值显示 */
@@ -371,54 +407,37 @@ function getMetricMax(key: string): string {
   const values = getMetricValues(key)
   if (values.length === 0) return '--'
   const max = Math.max(...values)
-  if (key === 'memory') return `${max.toFixed(1)} MB`
-  if (key === 'runtime') return `${max}s`
-  if (key === 'frequency') return `${max.toFixed(1)} MHz`
-  return `${max}`
+  // 整数显示为整数，小数保留 1 位
+  return Number.isInteger(max) ? `${max}` : `${max.toFixed(1)}`
 }
 
-/** 获取某个维度的原始显示值（带单位） */
+/** 获取某个维度的原始显示值 */
 function getMetricDisplay(key: string, idx: number): string {
   if (!monitorData.value) return '--'
-  if (key === 'memory') {
-    const raw = monitorData.value.memory
-    return raw?.[idx] != null ? `${Number(raw[idx]).toFixed(1)} MB` : '--'
-  }
-  if (key === 'runtime') {
-    const raw = monitorData.value.runtime
-    return raw?.[idx] ?? '--'
-  }
-  if (key === 'instance') {
-    const raw = monitorData.value.instance
-    return raw?.[idx] != null ? `${raw[idx]}` : '--'
-  }
-  if (key === 'frequency') {
-    const raw = monitorData.value.frequency
-    return raw?.[idx] != null ? `${raw[idx].toFixed(1)} MHz` : '--'
-  }
-  return '--'
+  const raw = (monitorData.value as Record<string, any>)[key]
+  if (!raw || !Array.isArray(raw) || raw[idx] == null) return '--'
+  const v = raw[idx]
+  // 如果原始值是字符串（如 "h:m:s"），直接展示
+  if (typeof v === 'string') return v
+  // 数字：整数原样，小数保留 1 位
+  return Number.isInteger(v) ? `${v}` : `${Number(v).toFixed(1)}`
 }
 
-/** 构建所有图表共享的 tooltip formatter */
+/** 构建所有图表共享的 tooltip formatter（动态根据 monitorKeys 生成） */
 function buildSharedTooltipFormatter(params: any): string {
   const idx = params[0]?.dataIndex ?? 0
   const steps = monitorData.value?.step || []
   const stepName = steps[idx] || `Step #${idx}`
 
-  const metrics = [
-    { label: 'Memory', value: getMetricDisplay('memory', idx), color: '#ef4444' },
-    { label: 'Runtime', value: getMetricDisplay('runtime', idx), color: '#3b82f6' },
-    { label: 'Instance', value: getMetricDisplay('instance', idx), color: '#10b981' },
-    { label: 'Frequency', value: getMetricDisplay('frequency', idx), color: '#a855f7' },
-  ]
-
-  const rows = metrics.map(m =>
-    `<div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-       <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${m.color}"></span>
-       <span style="flex:1;color:#aaa">${m.label}</span>
-       <span style="font-weight:600;color:#e5e5e5;font-family:'JetBrains Mono',monospace">${m.value}</span>
+  const configs = chartConfigs.value
+  const rows = configs.map(cfg => {
+    const value = getMetricDisplay(cfg.key, idx)
+    return `<div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+       <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${cfg.color}"></span>
+       <span style="flex:1;color:#aaa">${cfg.label}</span>
+       <span style="font-weight:600;color:#e5e5e5;font-family:'JetBrains Mono',monospace">${value}</span>
      </div>`
-  ).join('')
+  }).join('')
 
   return `<div style="font-size:11px;font-weight:700;margin-bottom:4px;color:#fff;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px">${stepName}</div>
           <div style="font-size:10px">${rows}</div>`
@@ -445,6 +464,7 @@ function buildChartOption(key: string, color: string): echarts.EChartsCoreOption
       borderWidth: 1,
       borderRadius: 6,
       padding: [8, 10],
+      extraCssText: 'pointer-events: none;',
       textStyle: {
         color: '#e5e5e5',
         fontSize: 10,
@@ -512,109 +532,87 @@ function buildChartOption(key: string, color: string): echarts.EChartsCoreOption
   }
 }
 
-/** 图表配对信息 */
-function getChartPairs() {
-  return [
-    { ref: memoryChartRef, getInstance: () => memoryChart, setInstance: (c: echarts.ECharts) => memoryChart = c, key: 'memory', color: '#ef4444' },
-    { ref: runtimeChartRef, getInstance: () => runtimeChart, setInstance: (c: echarts.ECharts) => runtimeChart = c, key: 'runtime', color: '#3b82f6' },
-    { ref: instanceChartRef, getInstance: () => instanceChart, setInstance: (c: echarts.ECharts) => instanceChart = c, key: 'instance', color: '#10b981' },
-    { ref: frequencyChartRef, getInstance: () => frequencyChart, setInstance: (c: echarts.ECharts) => frequencyChart = c, key: 'frequency', color: '#a855f7' },
-  ]
-}
-
 /** 获取所有已初始化的图表实例 */
 function getAllChartInstances(): echarts.ECharts[] {
-  return [memoryChart, runtimeChart, instanceChart, frequencyChart].filter(Boolean) as echarts.ECharts[]
+  return Array.from(chartInstances.values())
 }
 
-/** 上一次高亮的 dataIndex，用于避免重复 dispatch */
-let lastLinkedDataIndex = -1
+/** 图表联动分组 ID —— 同组图表的 axisPointer 自动同步 */
+const CHART_GROUP = 'monitor-linked'
 
-/** 标记鼠标是否已离开图表区域，用于防止 globalout 与 updateAxisPointer 的竞态 */
-let isMouseOutPending = false
+/** 当前鼠标所在的图表实例，用于控制仅在悬浮图表上显示 tooltip 内容 */
+let activeChartInstance: echarts.ECharts | null = null
 
-/** 清除所有图表的 tooltip 和高亮状态 */
-function clearAllChartsState() {
-  lastLinkedDataIndex = -1
-  for (const chart of getAllChartInstances()) {
-    chart.dispatchAction({ type: 'hideTip' })
-    chart.dispatchAction({ type: 'downplay', seriesIndex: 0 })
-  }
-}
-
-/** 为图表绑定联动事件（手动联动，避免多 tooltip） */
+/**
+ * 为图表绑定联动事件。
+ * 使用 echarts.connect 实现轴指针自动同步（数据索引精确对齐），
+ * 并通过动态切换 showContent 控制仅在悬浮图表上显示 tooltip。
+ */
 function bindChartLinkEvents(instance: echarts.ECharts) {
-  // 鼠标在某个图表上移动时，其他图表只高亮对应节点（不显示 tooltip）
-  instance.on('updateAxisPointer', (event: any) => {
-    // 如果鼠标已标记为离开，忽略迟到的 updateAxisPointer 事件（竞态保护）
-    if (isMouseOutPending) return
+  // 加入联动分组，轴指针 & 高亮自动同步到同组所有图表
+  instance.group = CHART_GROUP
 
-    const dataIndex = event.dataIndex
-    if (dataIndex == null || dataIndex === lastLinkedDataIndex) return
-    lastLinkedDataIndex = dataIndex
-
-    for (const other of getAllChartInstances()) {
-      if (other !== instance) {
-        // 先隐藏其他图表的 tooltip，再高亮节点
-        other.dispatchAction({ type: 'hideTip' })
-        other.dispatchAction({ type: 'downplay', seriesIndex: 0 })
-        other.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex })
-      }
+  // 鼠标进入此图表时：仅此图表显示 tooltip 内容，其余图表隐藏内容
+  instance.getZr().on('mousemove', () => {
+    if (activeChartInstance === instance) return
+    activeChartInstance = instance
+    for (const chart of getAllChartInstances()) {
+      chart.setOption(
+        { tooltip: { showContent: chart === instance } },
+        { lazyUpdate: true },
+      )
     }
   })
 
-  // 鼠标进入时，清除离开标记
-  instance.getZr().on('mousemove', () => {
-    isMouseOutPending = false
-  })
-
-  // 鼠标移出时，清除所有图表状态
+  // 鼠标离开此图表
   instance.getZr().on('globalout', () => {
-    isMouseOutPending = true
-    // 使用 rAF 确保在所有待处理的 updateAxisPointer 回调之后再执行清理
-    requestAnimationFrame(() => {
-      if (isMouseOutPending) {
-        clearAllChartsState()
-        isMouseOutPending = false
-      }
-    })
+    if (activeChartInstance === instance) {
+      activeChartInstance = null
+    }
   })
 }
 
 /** 初始化或更新所有图表 */
 function initOrUpdateCharts() {
-  for (const { ref: chartRef, getInstance, setInstance, key, color } of getChartPairs()) {
-    const el = chartRef.value
+  let newInstanceCreated = false
+
+  for (const cfg of chartConfigs.value) {
+    const el = chartRefs.get(cfg.key)
     if (!el) continue
 
     // 跳过尺寸为 0 的元素，等待 ResizeObserver 回调再初始化
     if (!el.clientWidth || !el.clientHeight) continue
 
-    let instance = getInstance()
+    let instance = chartInstances.get(cfg.key)
     if (!instance) {
       instance = echarts.init(el, undefined, { renderer: 'canvas' })
-      setInstance(instance)
+      chartInstances.set(cfg.key, instance)
       bindChartLinkEvents(instance)
+      newInstanceCreated = true
     }
 
-    instance.setOption(buildChartOption(key, color), true)
+    instance.setOption(buildChartOption(cfg.key, cfg.color), true)
+  }
+
+  // 有新图表加入分组时，重新注册 connect 以确保联动生效
+  if (newInstanceCreated) {
+    echarts.connect(CHART_GROUP)
   }
 }
 
 /** 销毁所有图表 */
 function disposeCharts() {
-  memoryChart?.dispose(); memoryChart = null
-  runtimeChart?.dispose(); runtimeChart = null
-  instanceChart?.dispose(); instanceChart = null
-  frequencyChart?.dispose(); frequencyChart = null
+  for (const instance of chartInstances.values()) {
+    instance.dispose()
+  }
+  chartInstances.clear()
 }
 
 /** 所有图表 resize */
 function resizeAllCharts() {
-  memoryChart?.resize()
-  runtimeChart?.resize()
-  instanceChart?.resize()
-  frequencyChart?.resize()
+  for (const instance of chartInstances.values()) {
+    instance.resize()
+  }
 }
 
 /** 监听图表容器尺寸变化，处理初始化和 resize */
@@ -630,9 +628,9 @@ function setupResizeObserver() {
   })
 
   // 观察所有图表容器
-  for (const { ref: chartRef } of getChartPairs()) {
-    if (chartRef.value) {
-      resizeObserver.observe(chartRef.value)
+  for (const el of chartRefs.values()) {
+    if (el) {
+      resizeObserver.observe(el)
     }
   }
 }
@@ -655,18 +653,33 @@ onMounted(async () => {
   if (monitorData.value) {
     initOrUpdateCharts()
   }
-  document.addEventListener('fullscreenchange', onFullscreenChange)
+  document.addEventListener('keydown', onFullscreenKeydown)
 })
 
 onUnmounted(() => {
   disposeCharts()
   resizeObserver?.disconnect()
   resizeObserver = null
-  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.removeEventListener('keydown', onFullscreenKeydown)
 })
 
 // ============ 指标分析 ============
 // analysisCharts 数据从 useHomeData() 动态获取（基于 home.json 的 metrics 字段）
+
+// 图表预览 Lightbox
+const chartPreview = ref<{ visible: boolean; url: string; label: string }>({
+  visible: false,
+  url: '',
+  label: '',
+})
+
+function openChartPreview(url: string, label: string) {
+  chartPreview.value = { visible: true, url, label }
+}
+
+function closeChartPreview() {
+  chartPreview.value.visible = false
+}
 
 // ============ 辅助函数 ============
 
@@ -704,36 +717,6 @@ function stateClass(state: string): string {
   }
 }
 
-/** 根据步骤状态返回中文标签 */
-function stateLabel(state: string): string {
-  switch (state) {
-    case 'Success':
-      return '已完成'
-    case 'Ongoing':
-      return '运行中'
-    case 'Imcomplete':
-      return '失败'
-    case 'Pending':
-      return '等待中'
-    case 'Unstart':
-    default:
-      return '未开始'
-  }
-}
-
-/** 格式化 Bounding Box 显示 */
-/*
-function formatBBox(bbox: string | undefined): string {
-  if (!bbox) return '--'
-  const match = bbox.match(/\((\d+),(\d+),(\d+),(\d+)\)/)
-  if (match) {
-    const w = parseInt(match[3]) - parseInt(match[1])
-    const h = parseInt(match[4]) - parseInt(match[2])
-    return `${w}x${h}`
-  }
-  return bbox
-}
-*/
 </script>
 
 <style scoped>
@@ -784,18 +767,25 @@ function formatBBox(bbox: string | undefined): string {
   grid-area: layout;
 }
 
-.layout-area:fullscreen {
+.layout-area.is-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  border-radius: 0;
   background: var(--bg-primary);
 }
 
-.layout-area:fullscreen .layout-content {
+.layout-area.is-fullscreen .layout-content {
   margin: 0;
   border-radius: 0;
   overflow: hidden;
   position: relative;
 }
 
-.layout-area:fullscreen .layout-image {
+.layout-area.is-fullscreen .layout-image {
   object-fit: contain;
   transition: transform 0.05s ease-out;
   user-select: none;
@@ -1208,6 +1198,115 @@ function formatBBox(bbox: string | undefined): string {
   text-align: center;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ===== 图表预览 Lightbox ===== */
+.chart-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+}
+
+.chart-lightbox-content {
+  display: flex;
+  flex-direction: column;
+  max-width: 90vw;
+  max-height: 90vh;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.chart-lightbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.chart-lightbox-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chart-lightbox-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chart-lightbox-close:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.chart-lightbox-body {
+  padding: 16px;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-lightbox-body img {
+  max-width: 85vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* Lightbox 过渡动画 */
+.lightbox-enter-active {
+  transition: opacity 0.2s ease;
+}
+
+.lightbox-enter-active .chart-lightbox-content {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.lightbox-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.lightbox-leave-active .chart-lightbox-content {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.lightbox-enter-from {
+  opacity: 0;
+}
+
+.lightbox-enter-from .chart-lightbox-content {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+.lightbox-leave-to {
+  opacity: 0;
+}
+
+.lightbox-leave-to .chart-lightbox-content {
+  opacity: 0;
+  transform: scale(0.95);
 }
 
 .analysis-placeholder {

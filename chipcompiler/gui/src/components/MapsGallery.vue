@@ -55,7 +55,7 @@
     <!-- 空状态 -->
     <div v-if="Object.keys(mapsData).length === 0" class="flex flex-col items-center justify-center py-8">
       <i class="ri-image-line text-4xl text-(--text-secondary)/30 mb-2"></i>
-      <p class="text-xs text-(--text-secondary)">暂无数据</p>
+      <p class="text-xs text-(--text-secondary)">No data</p>
     </div>
   </div>
 </template>

@@ -13,19 +13,17 @@ import type { ECCResponse } from '@/api/sse'
 export interface HomeData {
   flow: string
   layout: string
+  parameters: string
   'GDS merge': string
   checklist: string
   metrics: Record<string, any>
   monitor: MonitorData
 }
 
-/** monitor 数据结构 */
+/** monitor 数据结构（step 为固定字段，其余为动态指标） */
 export interface MonitorData {
   step: string[]
-  memory: string[]
-  runtime: string[]
-  instance: number[]
-  frequency: number[]
+  [key: string]: (string | number)[]
 }
 
 /** checklist.json 中的单个检查项 */
@@ -46,6 +44,112 @@ export interface ChecklistData {
 export interface AnalysisChartItem {
   label: string
   imageBlobUrl: string
+}
+
+// ============ 共享 HomeData 缓存（模块级单例） ============
+
+/**
+ * 将远程 NFS 路径转换为本地项目路径（纯函数版，不依赖 composable 上下文）
+ * 例: /nfs/.../project_name/sub/path → {projectPath}/sub/path
+ */
+export function convertRemoteToLocalPath(remotePath: string, projectPath: string): string {
+  if (!remotePath || !remotePath.includes('/nfs/')) return remotePath
+  if (!projectPath) return remotePath
+
+  const projectName = projectPath.split(/[/\\]/).filter(Boolean).pop()
+  if (!projectName) return remotePath
+
+  const idx = remotePath.indexOf(`/${projectName}/`)
+  if (idx === -1) return remotePath
+
+  const relativePath = remotePath.slice(idx + projectName.length + 2)
+  return `${projectPath}/${relativePath}`
+}
+
+/** 共享的 home.json 解析结果 */
+export const sharedHomeData = ref<HomeData | null>(null)
+
+/** 防止并发重复请求的 Promise */
+let _fetchPromise: Promise<HomeData | null> | null = null
+/** 缓存对应的项目路径（路径变化时自动失效） */
+let _cachedForProject = ''
+
+/**
+ * 获取 home.json 数据（共享 + 去重）
+ *
+ * 多个 composable（useHomeData / useFlowStages / useParameters）
+ * 同时调用时只发起 **一次** API 请求 + 一次文件读取。
+ *
+ * @param projectPath 当前项目路径
+ * @param isInTauri   是否在 Tauri 环境
+ * @returns 解析后的 HomeData，失败返回 null
+ */
+export async function fetchSharedHomeData(
+  projectPath: string,
+  isInTauri: boolean,
+): Promise<HomeData | null> {
+  // 项目切换时使缓存失效
+  if (projectPath !== _cachedForProject) {
+    sharedHomeData.value = null
+    _fetchPromise = null
+    _cachedForProject = projectPath
+  }
+
+  // 已有缓存，直接返回
+  if (sharedHomeData.value) return sharedHomeData.value
+
+  // 已有进行中的请求，复用同一个 Promise
+  if (_fetchPromise) return _fetchPromise
+
+  _fetchPromise = (async (): Promise<HomeData | null> => {
+    try {
+      if (!isInTauri || !projectPath) return null
+
+      // 请求文件系统权限
+      try {
+        await invoke('request_project_permission', { path: projectPath })
+      } catch (e) {
+        console.warn('请求文件访问权限失败:', e)
+      }
+
+      // 调用 API 获取 home.json 路径
+      const apiResponse = await getHomePageApi()
+      if (apiResponse.response !== ResponseEnum.success || !apiResponse.data?.path) {
+        console.warn('get_home_page API failed:', apiResponse.message)
+        return null
+      }
+
+      // 读取 home.json
+      const localPath = convertRemoteToLocalPath(apiResponse.data.path, projectPath)
+      console.log('Loading home.json from:', localPath)
+
+      const content = await readTextFile(localPath)
+      const data: HomeData = JSON.parse(content)
+
+      sharedHomeData.value = data
+      console.log('Shared home data loaded:', Object.keys(data))
+      return data
+    } catch (err) {
+      console.error('Failed to fetch shared home data:', err)
+      return null
+    } finally {
+      _fetchPromise = null
+    }
+  })()
+
+  return _fetchPromise
+}
+
+/** 从 SSE 路径更新共享缓存 */
+export function updateSharedHomeData(data: HomeData) {
+  sharedHomeData.value = data
+}
+
+/** 清除共享缓存 */
+export function invalidateSharedHomeData() {
+  sharedHomeData.value = null
+  _fetchPromise = null
+  _cachedForProject = ''
 }
 
 // ============ Composable ============
@@ -253,7 +357,7 @@ export function useHomeData() {
 
   /**
    * 从 home.json 加载所有 Home 页面数据
-   * 先调用 get_home_page API 获取 home.json 路径，再读取文件
+   * 使用共享缓存避免重复 API 调用
    */
   async function loadHomeData(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
@@ -266,33 +370,22 @@ export function useHomeData() {
     error.value = null
 
     try {
-      // 1. 调用 get_home_page API 获取 home.json 路径
-      const apiResponse = await getHomePageApi()
-      if (apiResponse.response !== ResponseEnum.success || !apiResponse.data?.path) {
-        console.warn('get_home_page API failed:', apiResponse.message)
+      // 通过共享缓存获取 home.json 数据（去重，不会重复请求）
+      const homeData = await fetchSharedHomeData(currentProject.value.path, isInTauri)
+      if (!homeData) {
+        console.warn('Failed to get home data from shared cache')
         clearHomeData()
         return
       }
 
-      const homeJsonPath = apiResponse.data.path
-      console.log('Got home.json path from API:', homeJsonPath)
-
-      // 2. 转换路径并读取文件
-      const localPath = convertToLocalPath(homeJsonPath)
-      const projectPath = currentProject.value.path
-      await requestPermission(projectPath)
-
-      const fileContent = await readTextFile(localPath)
-      const homeData: HomeData = JSON.parse(fileContent)
-
       console.log('Loaded home data:', homeData)
 
-      // 3. 加载 monitor 数据
+      // 加载 monitor 数据
       if (homeData.monitor) {
         monitorData.value = homeData.monitor
       }
 
-      // 4. 并行加载 checklist、layout 和 metrics 图片
+      // 并行加载 checklist、layout 和 metrics 图片
       await Promise.all([
         loadChecklist(homeData.checklist),
         loadLayoutImage(homeData.layout),
@@ -336,6 +429,9 @@ export function useHomeData() {
       const fileContent = await readTextFile(localPath)
       const homeData: HomeData = JSON.parse(fileContent)
 
+      // 更新共享缓存，让其他 composable 也能获取最新数据
+      updateSharedHomeData(homeData)
+
       console.log('Loaded home data from SSE path:', homeData)
 
       // 更新 monitor 数据
@@ -375,6 +471,7 @@ export function useHomeData() {
     cleanupBlobUrl()
     cleanupMetricsBlobUrls()
     error.value = null
+    invalidateSharedHomeData()
   }
 
   // 监听当前项目变化，自动重新加载

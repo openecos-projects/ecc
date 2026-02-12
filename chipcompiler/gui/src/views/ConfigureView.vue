@@ -144,7 +144,7 @@ const toggleSection = (key: keyof typeof expandedSections) => {
                 <InputText v-model="config.clock" size="small" />
               </div>
               <div class="field">
-                <label>Freq (MHz)</label>
+                <label>Target Freq (MHz)</label>
                 <InputNumber v-model="config.frequencyMax" size="small" />
               </div>
             </div>
@@ -157,6 +157,16 @@ const toggleSection = (key: keyof typeof expandedSections) => {
             <span>Die</span>
           </div>
           <div class="card-body">
+            <div class="field-row">
+              <div class="field">
+                <label>Width</label>
+                <InputNumber v-model="config.die.Size[0]" size="small" suffix=" μm" />
+              </div>
+              <div class="field">
+                <label>Height</label>
+                <InputNumber v-model="config.die.Size[1]" size="small" suffix=" μm" />
+              </div>
+            </div>
             <div class="field">
               <label>Bounding Box</label>
               <InputText v-model="config.die.boundingBox" size="small" placeholder="x1 y1 x2 y2" />
@@ -228,6 +238,16 @@ const toggleSection = (key: keyof typeof expandedSections) => {
             <span>Core</span>
           </div>
           <div class="card-body">
+            <div class="field-row">
+              <div class="field">
+                <label>Width</label>
+                <InputNumber v-model="config.core.Size[0]" size="small" suffix=" μm" />
+              </div>
+              <div class="field">
+                <label>Height</label>
+                <InputNumber v-model="config.core.Size[1]" size="small" suffix=" μm" />
+              </div>
+            </div>
             <div class="field">
               <label>Bounding Box</label>
               <InputText v-model="config.core.boundingBox" size="small" placeholder="x1 y1 x2 y2" />

@@ -3,6 +3,7 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { invoke } from '@tauri-apps/api/core'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
+import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
 
 // ============ 类型定义 ============
 
@@ -174,8 +175,8 @@ function getDefaultConfig(): ConfigData {
 
 /** 将 parameters.json 数据转换为前端配置格式 */
 function transformParametersToConfig(data: ParametersData): ConfigData {
-  // 处理 grid 字段（兼容两种命名方式）
-  const gridData = data.PDN.grid || data.PDN.Grid
+  // 处理 grid 字段（兼容两种命名方式，PDN 可能不存在）
+  const gridData = data.PDN?.grid || data.PDN?.Grid
   // 兼容不同命名：'ground net' 和 'power ground'
   const groundNet = gridData?.['ground net'] || (gridData as { 'power ground'?: string })?.['power ground'] || 'VSS'
 
@@ -339,6 +340,9 @@ export function useParameters() {
   // 原始数据（用于检测变更）
   let originalConfig: string = ''
 
+  // 动态解析出的 parameters 文件本地路径（由 loadParameters 设置）
+  let resolvedParametersPath: string = ''
+
   /**
    * 请求文件系统访问权限
    */
@@ -353,11 +357,20 @@ export function useParameters() {
   }
 
   /**
-   * 从 parameters.json 加载配置参数
+   * 将远程路径转换为本地项目路径
+   */
+  function convertToLocalPath(remotePath: string): string {
+    const projectPath = currentProject.value?.path
+    return projectPath ? convertRemoteToLocalPath(remotePath, projectPath) : remotePath
+  }
+
+  /**
+   * 从 home.json 动态获取 parameters 文件路径并加载配置参数
+   * 通过共享缓存获取 home.json 数据（不重复调用 API）
    */
   async function loadParameters(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('无法加载 parameters.json: 不在 Tauri 环境或没有打开的项目')
+      console.warn('无法加载 parameters: 不在 Tauri 环境或没有打开的项目')
       Object.assign(config, getDefaultConfig())
       return
     }
@@ -367,21 +380,38 @@ export function useParameters() {
 
     try {
       const projectPath = currentProject.value.path
-      const parametersPath = `${projectPath}/home/parameters.json`
-      console.log('Loading parameters.json from:', parametersPath)
-
-      // 先请求文件系统访问权限
       await requestPermission(projectPath)
 
+      // 通过共享缓存获取 home.json 数据（去重，不会重复请求）
+      const homeData = await fetchSharedHomeData(projectPath, isInTauri)
+      if (!homeData) {
+        console.warn('Failed to get home data')
+        Object.assign(config, getDefaultConfig())
+        return
+      }
+
+      if (!homeData.parameters) {
+        console.warn('home.json 中没有 parameters 字段')
+        Object.assign(config, getDefaultConfig())
+        return
+      }
+
+      const parametersPath = convertToLocalPath(homeData.parameters)
+      console.log('Loading parameters from:', parametersPath)
+
+      // 读取 parameters 文件
       const fileContent = await readTextFile(parametersPath)
       const parametersData: ParametersData = JSON.parse(fileContent)
 
       console.log('Loaded parameters data:', parametersData)
 
+      // 缓存解析后的本地路径，供 saveParameters 使用
+      resolvedParametersPath = parametersPath
+
       // 转换数据格式并更新 config
       const transformedConfig = transformParametersToConfig(parametersData)
       Object.assign(config, transformedConfig)
-
+      console.log('Loaded config:', config)
       // 保存原始数据用于变更检测
       originalConfig = JSON.stringify(config)
       hasChanges.value = false
@@ -389,7 +419,7 @@ export function useParameters() {
       console.log('Parameters loaded:', config)
 
     } catch (err) {
-      console.error('Failed to load parameters.json:', err)
+      console.error('Failed to load parameters:', err)
       error.value = err instanceof Error ? err.message : String(err)
       // 加载失败时使用默认配置
       Object.assign(config, getDefaultConfig())
@@ -399,11 +429,17 @@ export function useParameters() {
   }
 
   /**
-   * 保存配置到 parameters.json
+   * 保存配置到 parameters 文件
+   * 使用 loadParameters 解析得到的动态路径
    */
   async function saveParameters(): Promise<boolean> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('无法保存 parameters.json: 不在 Tauri 环境或没有打开的项目')
+      console.warn('无法保存 parameters: 不在 Tauri 环境或没有打开的项目')
+      return false
+    }
+
+    if (!resolvedParametersPath) {
+      console.warn('parameters 文件路径未解析，请先调用 loadParameters')
       return false
     }
 
@@ -412,17 +448,15 @@ export function useParameters() {
 
     try {
       const projectPath = currentProject.value.path
-      const parametersPath = `${projectPath}/home/parameters.json`
-      console.log('Saving parameters.json to:', parametersPath)
-
-      // 先请求文件系统访问权限
       await requestPermission(projectPath)
+
+      console.log('Saving parameters to:', resolvedParametersPath)
 
       // 转换为 parameters.json 格式
       const parametersData = transformConfigToParameters(config)
       const fileContent = JSON.stringify(parametersData, null, 4)
 
-      await writeTextFile(parametersPath, fileContent)
+      await writeTextFile(resolvedParametersPath, fileContent)
 
       // 更新原始数据
       originalConfig = JSON.stringify(config)
@@ -432,7 +466,7 @@ export function useParameters() {
       return true
 
     } catch (err) {
-      console.error('Failed to save parameters.json:', err)
+      console.error('Failed to save parameters:', err)
       error.value = err instanceof Error ? err.message : String(err)
       return false
     } finally {

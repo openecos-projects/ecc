@@ -223,14 +223,31 @@ fn start_api_server(
 ) -> ApiStartResult {
     use std::path::PathBuf;
 
-    // Check if a healthy API server is already running on the default port
-    // (e.g. started by debugger)
+    // Check if a healthy API server is already running on the default port.
+    //
+    // On shared remote servers another user's ChipCompiler instance may occupy
+    // the same port.  Blindly reusing it would connect this GUI to someone
+    // else's backend — a serious bug.
+    //
+    // Therefore, auto-reuse is **off by default**.  Developers who manually start
+    // the API server for debugging can opt in by setting:
+    //     ECOS_REUSE_API_SERVER=1
     if !is_port_available(DEFAULT_API_PORT) && is_api_server_healthy(DEFAULT_API_PORT) {
+        let reuse = std::env::var("ECOS_REUSE_API_SERVER")
+            .unwrap_or_default()
+            == "1";
+        if reuse {
+            println!(
+                "✅ Healthy API server on port {} and ECOS_REUSE_API_SERVER=1, reusing it",
+                DEFAULT_API_PORT
+            );
+            return ApiStartResult::ExternalDetected(DEFAULT_API_PORT);
+        }
         println!(
-            "✅ Healthy API server already running on port {}, reusing it (external/debugger mode)",
+            "⚠️ Port {} has a healthy API server but ECOS_REUSE_API_SERVER is not set — \
+             will start on a different port (set ECOS_REUSE_API_SERVER=1 to reuse)",
             DEFAULT_API_PORT
         );
-        return ApiStartResult::ExternalDetected(DEFAULT_API_PORT);
     }
 
     // Find an available port (starting from the default)
@@ -738,7 +755,7 @@ async fn request_project_permission(app: tauri::AppHandle, path: String) -> Resu
         .map_err(|e| format!("无法授予文件系统访问权限 {}: {}", path_buf.display(), e))?;
 
     // 在 Tauri v2 中，convertFileSrc 自动使用 fs scope，不需要单独的 asset protocol scope
-    println!("✅ 已授予文件系统访问权限: {}", path);
+    // println!("✅ 已授予文件系统访问权限: {}", path);
     Ok(())
 }
 
