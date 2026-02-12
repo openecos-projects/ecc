@@ -10,16 +10,17 @@ python3Packages.buildPythonPackage {
   version = "0.1.0";
   pyproject = true;
 
-  src = with lib.fileset;
-  toSource {
-    root = ./../..;
-    fileset = unions [
-      ./../../README.md
-      ./../../uv.lock
-      ./../../pyproject.toml
-      ./../../chipcompiler
-    ];
-  };
+  src =
+    with lib.fileset;
+    toSource {
+      root = ./../..;
+      fileset = unions [
+        ./../../README.md
+        ./../../uv.lock
+        ./../../pyproject.toml
+        ./../../chipcompiler
+      ];
+    };
 
   postPatch = ''
     mkdir -p thirdparty/ecc-tools/bin

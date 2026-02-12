@@ -13,14 +13,15 @@
   pkg-config,
   webkitgtk_4_1,
   wrapGAppsHook4,
-  yosysWithSlang
+  yosysWithSlang,
 }:
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "ecos-studio";
   version = "0.1.0-alpha";
 
-  src = with lib.fileset;
+  src =
+    with lib.fileset;
     toSource {
       root = ./../../chipcompiler/gui;
       fileset = unions [

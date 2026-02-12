@@ -86,7 +86,6 @@ stdenv.mkDerivation {
   # Only build the Python bindings target
   buildTargets = [ "ecc_py" ];
 
-
   preConfigure = ''
     cmakeFlags+=" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY:FILEPATH=$out/bin -DCMAKE_LIBRARY_OUTPUT_DIRECTORY:FILEPATH=$out/lib"
   '';
