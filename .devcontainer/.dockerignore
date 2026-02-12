@@ -1,0 +1,58 @@
+# Python virtual environment
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.so
+*.o
+*.a
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Third-party dependencies (will be downloaded during build)
+chipcompiler/thirdparty/oss-cad-suite/
+chipcompiler/thirdparty/icsprout55-pdk/
+
+# Test and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Documentation build
+docs/_build/
+
+# Temporary files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Node modules (GUI)
+chipcompiler/gui/node_modules/
+chipcompiler/gui/dist/
+chipcompiler/gui/src-tauri/target/
+
+# Workspace test directories
+workspacetest/
+squashfs-root/
+
+# Claude AI files
+.claude/
