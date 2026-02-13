@@ -43,13 +43,14 @@ ECOS Chip Compiler 是一个**开源芯片设计自动化解决方案**，集成
 
 ```bash
 # 下载 AppImage
-wget https://github.com/openecos-projects/ecc/releases/latest/download/ecos-studio-x86_64.AppImage
+# 以 Releases 页面上的实际 AppImage 文件名为准
+wget https://github.com/openecos-projects/ecc/releases/latest/download/ECOS-Studio_*.AppImage
 
 # 添加执行权限
-chmod +x ecos-studio-x86_64.AppImage
+chmod +x ./ECOS-Studio_*.AppImage
 
 # 运行
-./ecos-studio-x86_64.AppImage
+./ECOS-Studio_*.AppImage
 ```
 
 AppImage 是便携格式，无需安装即可在大多数 Linux 发行版上运行。所有依赖已打包。

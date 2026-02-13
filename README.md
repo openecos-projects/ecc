@@ -43,13 +43,14 @@ Download the latest AppImage from [Releases](https://github.com/openecos-project
 
 ```bash
 # Download AppImage
-wget https://github.com/openecos-projects/ecc/releases/latest/download/ecos-studio-x86_64.AppImage
+# Use the actual AppImage file name on the Releases page.
+wget https://github.com/openecos-projects/ecc/releases/latest/download/ECOS-Studio_*.AppImage
 
 # Make executable
-chmod +x ecos-studio-x86_64.AppImage
+chmod +x ./ECOS-Studio_*.AppImage
 
 # Run
-./ecos-studio-x86_64.AppImage
+./ECOS-Studio_*.AppImage
 ```
 
 AppImage is a portable format that runs on most Linux distributions without installation. All dependencies are bundled.

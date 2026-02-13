@@ -15,7 +15,7 @@ This guide will walk you through using ECOS Studio to design and implement your 
     - [Step 3: Technology Setup](#step-3-technology-setup)
       - [PDK Selection](#pdk-selection)
       - [Design Parameters](#design-parameters)
-    - [Step 4: Review & Create](#step-4-review--create)
+    - [Step 4: Review \& Create](#step-4-review--create)
     - [Creating the Workspace](#creating-the-workspace)
   - [Workspace Overview](#workspace-overview)
   - [Workspace Pages](#workspace-pages)
@@ -39,7 +39,8 @@ This guide will walk you through using ECOS Studio to design and implement your 
 
 **Linux (AppImage):**
 ```bash
-./ecos-studio-x86_64.AppImage
+chmod +x ./ECOS-Studio_*.AppImage
+./ECOS-Studio_*.AppImage
 ```
 
 **From Nix:**
