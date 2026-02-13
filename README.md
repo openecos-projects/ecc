@@ -32,7 +32,6 @@ ECOS Chip Compiler is an **open-source chip design automation solution** that in
 - **Desktop GUI (ECOS Studio)** - Visual design tool for interactive chip design
 - **Python API** - Programmatic flow control for automation
 
-For detailed architecture, see **[Architecture Documentation](docs/architecture.md)**.
 
 ## Quick Start
 
@@ -68,6 +67,10 @@ ecc-client
 Nix build includes all dependencies. Binary cache available for faster builds.
 
 **Supported Platforms:** x86_64 Linux (Ubuntu 24.04+, or other distros)
+
+### Usage
+
+For detailed usage, see **[User Guide](docs/user-guide.md)**.
 
 ### Development Environment
 
