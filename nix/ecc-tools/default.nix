@@ -28,8 +28,8 @@
 
 let
   rootSrc = stdenv.mkDerivation {
-    pname = "ecc-tools-src";
-    version = "0-unstable-2025-12-16";
+    pname = "ecc-tools";
+    version = "0-unstable-2026-01-23";
     src = fetchGit {
       url = "git@github.com:openecos-projects/ecc-tools.git";
       rev = "07b6d4133f848ba6e54c0889c3b777a2b544d06b";
@@ -57,8 +57,7 @@ let
   rustpkgs = callPackages ./rustpkgs.nix { inherit rootSrc; };
 in
 stdenv.mkDerivation {
-  pname = "ecc-tools";
-  version = "0.1.0-unstable-${rootSrc.version}";
+  inherit (rootSrc) pname version;
 
   src = rootSrc;
 
@@ -125,7 +124,7 @@ stdenv.mkDerivation {
   enableParallelBuild = true;
 
   meta = {
-    description = "Open-source EDA infracstructure and tools from Netlist to GDS for ASIC design";
+    description = "Open-source EDA for ASIC design";
     homepage = "https://github.com/openecos-projects/ecc-tools";
     license = lib.licenses.mulan-psl2;
     platforms = lib.platforms.linux;
