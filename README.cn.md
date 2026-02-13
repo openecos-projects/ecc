@@ -22,6 +22,12 @@
 
 ECOS Chip Compiler 是一个**开源芯片设计自动化解决方案**，集成 EDA 工具（Yosys、[**ECC-Tools**](https://github.com/openecos-projects/ecc-tools)、KLayout）实现完整的 RTL-to-GDS 设计流程。由 [**ECOS 团队**](https://github.com/openecos-projects) 开发维护。
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/asset/overview-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/asset/overview-light.png">
+  <img alt="ECOS Chip Compiler 概览" src="docs/asset/overview-light.png">
+</picture>
+
 **两种使用方式：**
 - **桌面 GUI (ECOS Studio)** - 可视化设计工具，用于交互式芯片设计
 - **Python API** - 编程式流程控制，用于自动化
