@@ -119,6 +119,7 @@ Special thanks to these open-source projects:
 - [Tauri](https://tauri.app/) - Desktop Application Framework
 - [Vue.js](https://vuejs.org/) - Frontend Framework
 - [PixiJS](https://pixijs.com/) - 2D Rendering Engine
+- [nixpkgs](https://github.com/NixOS/nixpkgs) - A collection of Nix packages
 
 <div align="center">
 

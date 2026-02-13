@@ -93,7 +93,6 @@ Nix 构建包含所有依赖。提供二进制缓存以加速构建。
 | [Yosys](https://github.com/YosysHQ/yosys) | RTL 综合 | ✅ |
 | [ECC-Tools](https://github.com/openecos-projects/ecc-tools) | 物理设计（布局布线） | ✅ |
 | [KLayout](https://www.klayout.de/) | 版图查看 | 🚧 |
-| [OpenROAD](https://github.com/The-OpenROAD-Project/OpenROAD) | 备选后端 | 🚧 |
 
 ## 文档
 
@@ -119,6 +118,7 @@ Nix 构建包含所有依赖。提供二进制缓存以加速构建。
 - [Tauri](https://tauri.app/) - 桌面应用框架
 - [Vue.js](https://vuejs.org/) - 前端框架
 - [PixiJS](https://pixijs.com/) - 2D 渲染引擎
+- [nixpkgs](https://github.com/NixOS/nixpkgs) - Nix 包合集
 
 <div align="center">
 
