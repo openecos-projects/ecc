@@ -16,19 +16,12 @@ Architecture: modular, plugin-based design with clear separation between data, e
 
 ### Installation
 
-**Option 1: Nix (Recommended)**
-```bash
-nix shell github:openecos-projects/ecc#chipcompiler  # Run directly
-nix profile install github:openecos-projects/ecc#chipcompiler  # Install to profile
-```
-Binary cache available at `serve.eminrepo.cc`. Available packages: `chipcompiler`, `ecc-tools`, `ecos-studio`.
-
-**Option 2: Development Shell**
+**Option 1: Nix Development Shell (Recommended)**
 ```bash
 nix develop  # Provides Python 3.11+, uv, Yosys, ECC-Tools, dependencies
 ```
 
-**Option 3: Manual Setup**
+**Option 2: Manual Setup**
 ```bash
 bash ./build.sh  # Creates .venv, builds ECC-Tools, downloads OSS CAD Suite
 source .venv/bin/activate

@@ -4,19 +4,7 @@ Development environment setup and workflows for ECOS Chip Compiler.
 
 ## Installation
 
-### Option 1: Nix (Recommended)
-
-```bash
-# Run directly
-nix shell github:openecos-projects/ecc#chipcompiler
-
-# Install to profile
-nix profile install github:openecos-projects/ecc#chipcompiler
-```
-
-Binary cache at `serve.eminrepo.cc`. Available packages: `chipcompiler`, `ecc-tools`, `ecos-studio`.
-
-### Option 2: Nix Development Shell
+### Option 1: Nix Development Shell (Recommended)
 
 ```bash
 nix develop  # Provides Python 3.11+, uv, Yosys, ECC-Tools, dependencies
@@ -28,9 +16,9 @@ echo "use flake" > .envrc
 direnv allow
 ```
 
-Shell hook runs `uv sync` and activates venv.
+Shell hook runs `uv sync` and activates venv. Binary cache at `serve.eminrepo.cc`.
 
-### Option 3: Manual Installation
+### Option 2: Manual Installation
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh  # Install uv
@@ -42,11 +30,14 @@ Skip OSS CAD Suite if yosys installed: `ENABLE_OSS_CAD_SUITE=false ./build.sh`
 
 ## Python API Usage
 
-For programmatic automation and scripting:
+For programmatic automation and scripting, install ChipCompiler:
 
 ```bash
-# Install via Nix
+# For end users: Install via Nix
 nix shell github:openecos-projects/ecc#chipcompiler
+
+# For developers: Use development shell
+nix develop
 
 # Or manual installation
 curl -LsSf https://astral.sh/uv/install.sh | sh
