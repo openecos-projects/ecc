@@ -60,7 +60,7 @@ export function useTauri() {
    */
   function ensureTauri(showAlert = true): void {
     if (!isInTauri) {
-      const message = '此功能仅在桌面应用中可用，请使用 Tauri 客户端运行'
+      const message = 'This feature is only available in the desktop app. Please run it with the Tauri client.'
       
       if (showAlert) {
         alert(message)

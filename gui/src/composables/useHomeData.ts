@@ -109,7 +109,7 @@ export async function fetchSharedHomeData(
       try {
         await invoke('request_project_permission', { path: projectPath })
       } catch (e) {
-        console.warn('请求文件访问权限失败:', e)
+        console.warn('Failed to request file access permission:', e)
       }
 
       // 调用 API 获取 home.json 路径
@@ -182,7 +182,7 @@ export function useHomeData() {
       await invoke('request_project_permission', { path })
       return true
     } catch (permError) {
-      console.warn('请求文件访问权限失败:', permError)
+      console.warn('Failed to request file access permission:', permError)
       return false
     }
   }
@@ -361,7 +361,7 @@ export function useHomeData() {
    */
   async function loadHomeData(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('无法加载 home.json: 不在 Tauri 环境或没有打开的项目')
+      console.warn('Cannot load home.json: not in Tauri environment or no project is open')
       clearHomeData()
       return
     }
@@ -408,7 +408,7 @@ export function useHomeData() {
    */
   async function loadHomeDataFromPath(homePath: string): Promise<void> {
     if (!isInTauri || !homePath) {
-      console.warn('无法加载 home data: 不在 Tauri 环境或路径为空')
+      console.warn('Cannot load home data: not in Tauri environment or path is empty')
       return
     }
 
@@ -507,7 +507,7 @@ export function useHomeData() {
       const homePage = info?.home_page as string | undefined
       if (!homePage) return
 
-      console.log('收到 SSE 通知，包含 home_page 路径:', homePage)
+      console.log('Received SSE notification containing home_page path:', homePage)
 
       // 从 home_page 路径重新加载 Home 数据
       await loadHomeDataFromPath(homePage)

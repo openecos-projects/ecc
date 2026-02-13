@@ -351,7 +351,7 @@ export function useParameters() {
       await invoke('request_project_permission', { path })
       return true
     } catch (permError) {
-      console.warn('请求文件访问权限失败:', permError)
+      console.warn('Failed to request file access permission:', permError)
       return false
     }
   }
@@ -370,7 +370,7 @@ export function useParameters() {
    */
   async function loadParameters(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('无法加载 parameters: 不在 Tauri 环境或没有打开的项目')
+      console.warn('Cannot load parameters: not in Tauri environment or no project is open')
       Object.assign(config, getDefaultConfig())
       return
     }
@@ -391,7 +391,7 @@ export function useParameters() {
       }
 
       if (!homeData.parameters) {
-        console.warn('home.json 中没有 parameters 字段')
+        console.warn('No parameters field found in home.json')
         Object.assign(config, getDefaultConfig())
         return
       }
@@ -434,12 +434,12 @@ export function useParameters() {
    */
   async function saveParameters(): Promise<boolean> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('无法保存 parameters: 不在 Tauri 环境或没有打开的项目')
+      console.warn('Cannot save parameters: not in Tauri environment or no project is open')
       return false
     }
 
     if (!resolvedParametersPath) {
-      console.warn('parameters 文件路径未解析，请先调用 loadParameters')
+      console.warn('Parameters file path is not resolved. Call loadParameters first.')
       return false
     }
 

@@ -1,7 +1,7 @@
 <template>
   <div class="w-8 shrink-0 bg-(--bg-sidebar) border-l border-(--border-color) h-full flex flex-col items-center py-4">
     <div class="vertical-text text-[11px] text-(--text-secondary) font-medium tracking-widest py-4">
-    属性栏
+    Inspector
     </div>
   </div>
 </template>
@@ -15,4 +15,3 @@
   text-orientation: mixed;
 }
 </style>
-

@@ -333,7 +333,7 @@ async function fetchTabInfo(tabId: InfoEnum) {
     console.log('getInfoApi response:', response)
 
     if (response.response !== ResponseEnum.success) {
-      setTabError(response.message?.join(', ') || '获取信息失败')
+      setTabError(response.message?.join(', ') || 'Failed to get info')
       return
     }
 
@@ -343,7 +343,7 @@ async function fetchTabInfo(tabId: InfoEnum) {
     }
   } catch (err) {
     console.error('fetchTabInfo error:', err)
-    setTabError(err instanceof Error ? err.message : '未知错误')
+    setTabError(err instanceof Error ? err.message : 'Unknown error')
   } finally {
     isLoadingTab.value = false
   }
@@ -371,7 +371,7 @@ async function handleKeyClick(key: string, value: unknown) {
     // 如果有 path，尝试读取文件
     if (path) {
       if (!isInTauri) {
-        content = `文件路径: ${path}\n(需要在 Tauri 环境中才能读取)`
+        content = `File path: ${path}\n(Readable only in Tauri environment)`
       } else {
         // 转换远程路径为本地路径
         const localPath = convertToLocalPath(path)
@@ -445,10 +445,10 @@ function handleMapSelect(key: string, item: MapInfoType, blobUrl: string) {
 
   // 确定分类
   const lowerKey = key.toLowerCase()
-  let category = '其他'
-  if (lowerKey.includes('density')) category = '密度图'
+  let category = 'Other'
+  if (lowerKey.includes('density')) category = 'Density Map'
   else if (lowerKey.includes('rudy')) category = 'RUDY'
-  else if (lowerKey.includes('egr')) category = 'EGR拥塞'
+  else if (lowerKey.includes('egr')) category = 'EGR Congestion'
 
   // 发送到 chat
   messageStore.addMapMessage({

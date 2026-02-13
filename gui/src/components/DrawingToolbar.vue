@@ -14,14 +14,14 @@ const zoomLevel = ref(100)
 let unlistenTransform: (() => void) | null = null
 
 const tools = [
-  { id: 'hand', icon: 'ri-hand', tooltip: '平移' },
-  { id: 'select', icon: 'ri-cursor-fill', tooltip: '选择' },
-  { id: 'marquee', icon: 'ri-shape-line', tooltip: '框选' },
-  { id: 'route', icon: 'ri-route-line', tooltip: '布线' },
-  { id: 'measure', icon: 'ri-ruler-2-line', tooltip: '测量' },
-  { id: 'highlight', icon: 'ri-focus-3-line', tooltip: '高亮' },
-  { id: 'layers', icon: 'ri-stack-line', tooltip: '层次' },
-  { id: 'annotation', icon: 'ri-markup-line', tooltip: '标注' }
+  { id: 'hand', icon: 'ri-hand', tooltip: 'Pan' },
+  { id: 'select', icon: 'ri-cursor-fill', tooltip: 'Select' },
+  { id: 'marquee', icon: 'ri-shape-line', tooltip: 'Marquee' },
+  { id: 'route', icon: 'ri-route-line', tooltip: 'Route' },
+  { id: 'measure', icon: 'ri-ruler-2-line', tooltip: 'Measure' },
+  { id: 'highlight', icon: 'ri-focus-3-line', tooltip: 'Highlight' },
+  { id: 'layers', icon: 'ri-stack-line', tooltip: 'Layers' },
+  { id: 'annotation', icon: 'ri-markup-line', tooltip: 'Annotate' }
 ]
 
 const setActiveTool = (toolId: string) => {
@@ -92,7 +92,7 @@ onUnmounted(() => {
       <button @click="toggleRuler" :class="[
         isRulerEnabled ? 'text-(--accent-color) bg-(--accent-color)/20 border-(--accent-color)/50 shadow-sm shadow-(--accent-color)/20' : 'text-(--text-secondary) border-(--border-color) hover:text-(--text-primary) hover:bg-(--bg-hover) hover:border-(--border-color)',
         'h-8 px-2 flex items-center gap-1.5 rounded border transition-all'
-      ]" title="显示/隐藏标尺">
+      ]" title="Show/Hide Ruler">
         <i class="ri-ruler-line text-base"></i>
       </button>
 
@@ -100,18 +100,18 @@ onUnmounted(() => {
 
       <div class="flex items-center gap-2 px-3 py-1.5 bg-(--bg-primary) rounded border border-(--border-color)">
         <button @click="handleZoomOut" class="text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-          title="缩小">
+          title="Zoom Out">
           <i class="ri-subtract-line text-sm"></i>
         </button>
         <span class="text-[13px] text-(--text-primary) font-medium min-w-[50px] text-center">{{ zoomLevel }}%</span>
         <button @click="handleZoomIn" class="text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-          title="放大">
+          title="Zoom In">
           <i class="ri-add-line text-sm"></i>
         </button>
       </div>
       <button @click="handleFitToWorld"
         class="w-8 h-8 flex items-center justify-center rounded text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors"
-        title="适应画布">
+        title="Fit to Canvas">
         <i class="ri-fullscreen-fill text-base"></i>
       </button>
     </div>

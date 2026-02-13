@@ -80,7 +80,7 @@ export function usePdkManager() {
       // ICS55: 有 prtech/ 和 IP/ 目录
       if (topDirs.includes('prtech') && topDirs.includes('IP')) {
         info.name = 'ics55'
-        info.description = 'ICSPROUT 55nm 工艺库 (自动检测)'
+        info.description = 'ICSPROUT 55nm process library (auto-detected)'
         info.techNode = '55nm'
         info.pdkId = 'ics55'
         return info
@@ -89,7 +89,7 @@ export function usePdkManager() {
       // SKY130: 有 sky130_fd_sc_hd 等目录
       if (topDirs.some(d => d.startsWith('sky130'))) {
         info.name = 'SkyWater SKY130 PDK'
-        info.description = 'SkyWater 130nm 开源 PDK (自动检测)'
+        info.description = 'SkyWater 130nm open-source PDK (auto-detected)'
         info.techNode = '130nm'
         info.pdkId = 'sky130'
         return info
@@ -99,7 +99,7 @@ export function usePdkManager() {
       const hasLef = topFiles.some(f => f.endsWith('.lef'))
       const hasLib = topFiles.some(f => f.endsWith('.lib'))
       if (hasLef || hasLib) {
-        info.description = '检测到工艺库文件'
+        info.description = 'Process library files detected'
       }
 
       // 使用目录名作为默认名称
@@ -125,7 +125,7 @@ export function usePdkManager() {
       const result = await open({
         directory: true,
         multiple: false,
-        title: '选择 PDK 工艺库根目录'
+        title: 'Select PDK Root Directory'
       })
 
       if (!result) return null

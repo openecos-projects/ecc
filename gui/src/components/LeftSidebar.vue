@@ -36,7 +36,7 @@
         </router-link>
       </div>
       <button @click="toggleTheme" class="p-2 text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-        title="切换主题">
+        title="Toggle theme">
         <i :class="isDark ? 'ri-sun-line' : 'ri-moon-line'" class="text-lg"></i>
       </button>
     </div>

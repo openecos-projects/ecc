@@ -27,7 +27,7 @@
         class="px-4 py-3 border-b border-(--border-color)/50 overflow-hidden">
         <div class="flex items-center gap-2 mb-2">
           <i class="ri-bar-chart-2-line text-(--accent-color) text-xs shrink-0"></i>
-          <span class="text-[10px] font-medium text-(--text-secondary) uppercase tracking-wide">统计信息</span>
+          <span class="text-[10px] font-medium text-(--text-secondary) uppercase tracking-wide">Statistics</span>
         </div>
         <div class="grid grid-cols-1 gap-1.5">
           <div v-for="(infoLine, idx) in message.mapData.info.filter(l => l)" :key="idx"
@@ -47,7 +47,7 @@
             class="absolute inset-0 flex items-center justify-center z-10 bg-(--bg-secondary)/80">
             <div class="text-center">
               <i class="ri-loader-4-line text-2xl text-(--accent-color) animate-spin"></i>
-              <p class="text-[10px] text-(--text-secondary) mt-2">加载中...</p>
+              <p class="text-[10px] text-(--text-secondary) mt-2">Loading...</p>
             </div>
           </div>
 
@@ -169,13 +169,13 @@
             <span class="w-2 h-2 bg-current rounded-full animate-bounce" style="animation-delay: 150ms;"></span>
             <span class="w-2 h-2 bg-current rounded-full animate-bounce" style="animation-delay: 300ms;"></span>
           </div>
-          <span class="text-xs opacity-70">正在思考...</span>
+          <span class="text-xs opacity-70">Thinking...</span>
         </div>
 
         <!-- 错误状态 -->
         <div v-else-if="message.status === 'error'" class="flex items-center gap-2 text-red-500">
           <i class="ri-error-warning-line"></i>
-          <span>{{ message.content || '消息发送失败' }}</span>
+          <span>{{ message.content || 'Failed to send message' }}</span>
         </div>
 
         <!-- 正常内容（Markdown 渲染） -->
