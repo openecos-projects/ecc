@@ -261,4 +261,4 @@ Output in `dist/`.
 
 - [Architecture](architecture.md) - System design and patterns
 - [API Guide](api-guide.md) - Python API usage
-- [GUI Development Guide](gui-guide.md) - GUI development
+- [GUI Development Guide](gui-develop-guide.md) - GUI development

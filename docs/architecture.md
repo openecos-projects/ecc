@@ -203,4 +203,4 @@ Usage: `parameters = get_parameters("ics55", "gcd")`
 
 - [Development Guide](development.md) - Setup, workflows, adding tools
 - [API Guide](api-guide.md) - Python API usage
-- [GUI Development Guide](gui-guide.md) - GUI development
+- [GUI Development Guide](gui-develop-guide.md) - GUI development

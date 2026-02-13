@@ -37,7 +37,7 @@ pnpm run tauri:build
 
 详细的环境配置和开发指南，请参阅：
 
-**[GUI Development Guide](../docs/gui-guide.md)**
+**[GUI Development Guide](../docs/gui-develop-guide.md)**
 
 包含：
 - Node.js、pnpm、Rust 安装
@@ -48,7 +48,7 @@ pnpm run tauri:build
 
 ## 相关文档
 
-- [GUI Development Guide](../docs/gui-guide.md) - 完整 GUI 开发指南
+- [GUI Development Guide](../docs/gui-develop-guide.md) - 完整 GUI 开发指南
 - [项目主 README](../README.md) - 项目概览和快速开始
 - [开发指南](../docs/development.md) - 完整开发环境配置
 - [架构文档](../docs/architecture.md) - 系统架构设计

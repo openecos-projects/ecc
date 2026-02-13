@@ -116,4 +116,4 @@ db_engine = flow.init_db_engine()
 
 - [Architecture](architecture.md)
 - [Development Guide](development.md)
-- [GUI Development Guide](gui-guide.md)
+- [GUI Development Guide](gui-develop-guide.md)

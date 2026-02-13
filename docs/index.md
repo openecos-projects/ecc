@@ -22,7 +22,7 @@ Welcome to the ChipCompiler documentation center.
   - Client examples
   - Custom endpoint development
 
-- **[GUI Guide](gui-guide.md)** - Desktop GUI development documentation
+- **[GUI Guide](gui-develop-guide.md)** - Desktop GUI development documentation
   - Technology stack introduction
   - Environment preparation
   - Core feature development
@@ -46,7 +46,7 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 - **Understand the architecture** → [Architecture](architecture.md)
 - **Set up development environment** → [Development Guide](development.md)
 - **Use Python API** → [API Guide - Python API](api-guide.md#python-api)
-- **Develop GUI** → [GUI Guide](gui-guide.md)
+- **Develop GUI** → [GUI Guide](gui-develop-guide.md)
 - **Add new tools** → [Development Guide - Adding EDA Tools](development.md#adding-new-eda-tools)
 - **Debug workflows** → [Development Guide - Debugging](development.md#debugging-workflow-steps)
 
