@@ -1,7 +1,9 @@
 {
   "name": "chipcompiler",
   "build": {
-    "dockerfile": "Dockerfile"
+    "dockerfile": "../Dockerfile",
+    "context": "..",
+    "target": "devcontainer"
   },
   "customizations": {
     "vscode": {
