@@ -50,8 +50,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust (for Tauri).
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y \
-    && echo 'source $HOME/.cargo/env' >> /etc/profile.d/rust.sh
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 
 # Install uv (Python package manager used by project).
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
@@ -82,6 +81,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && source .venv/bin/activate \
     && build_ecc_py \
     && bash ./scripts/autopatch-ecc-py.sh
+
+ENV VIRTUAL_ENV="/workspace/.venv"
+ENV PATH="/workspace/.venv/bin:${PATH}"
+RUN echo 'if [ -f /workspace/.venv/bin/activate ]; then source /workspace/.venv/bin/activate; fi' >> /root/.bashrc
+
 
 # Build commands:
 # docker build --target runtime -t ecc:latest .
