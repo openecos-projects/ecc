@@ -9,7 +9,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$PROJECT_ROOT/scripts/common.sh"
 
-GUI_DIR="$PROJECT_ROOT/chipcompiler/gui"
+GUI_DIR="$PROJECT_ROOT/gui"
 TAURI_DIR="$GUI_DIR/src-tauri"
 BINARIES_DIR="$TAURI_DIR/binaries"
 TAURI_RESOURCES_DIR="$TAURI_DIR/resources"

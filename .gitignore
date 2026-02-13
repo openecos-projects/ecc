@@ -153,7 +153,7 @@ chipcompiler.egg-info/
 
 # OSS CAD Suite
 chipcompiler/thirdparty/oss-cad-suite/
-chipcompiler/gui/src-tauri/resources/oss-cad-suite/
+gui/src-tauri/resources/oss-cad-suite/
 
 # ICS55 PDK
 chipcompiler/thirdparty/icsprout55-pdk

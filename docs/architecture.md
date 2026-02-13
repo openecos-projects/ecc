@@ -6,7 +6,7 @@ This document describes ECOS Chip Compiler's software architecture in detail.
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  GUI Layer (chipcompiler/gui/)                      │
+│  GUI Layer (gui/)                      │
 │  ├─ Tauri (Rust backend)                            │
 │  ├─ Vue 3 + TypeScript (frontend)                   │
 │  ├─ PixiJS (WebGL/WebGPU rendering)                 │
@@ -214,7 +214,7 @@ Key property: utility resolution and env preparation are side-effect free for pr
 | `services/` | Business logic implementations |
 | `run_server.py` | Uvicorn entrypoint |
 
-### GUI Layer (chipcompiler/gui/)
+### GUI Layer (gui/)
 
 | Directory | Description |
 |---|---|

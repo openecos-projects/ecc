@@ -71,7 +71,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: chipcompiler/gui/pnpm-lock.yaml
+          cache-dependency-path: gui/pnpm-lock.yaml
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
@@ -83,7 +83,7 @@ jobs:
         run: uv sync --frozen --all-groups --python 3.11
 
       - name: Install frontend dependencies
-        working-directory: chipcompiler/gui
+        working-directory: gui
         run: pnpm install
 
       - name: Install system dependencies
@@ -115,7 +115,7 @@ jobs:
           name: ecc-client
           if-no-files-found: ignore
           path: |
-            chipcompiler/gui/src-tauri/target/release/ecc-client
+            gui/src-tauri/target/release/ecc-client
 
       - name: Upload AppImage artifacts
         if: always()
@@ -124,7 +124,7 @@ jobs:
           name: appimage
           if-no-files-found: ignore
           path: |
-            chipcompiler/gui/src-tauri/target/release/bundle/**/*.AppImage
+            gui/src-tauri/target/release/bundle/**/*.AppImage
 
       - name: Upload deb artifacts
         if: always()
@@ -133,4 +133,4 @@ jobs:
           name: deb
           if-no-files-found: ignore
           path: |
-            chipcompiler/gui/src-tauri/target/release/bundle/**/*.deb
+            gui/src-tauri/target/release/bundle/**/*.deb

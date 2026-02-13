@@ -144,7 +144,7 @@ API documentation available at `http://localhost:8765/docs` (Swagger UI).
 The desktop GUI is built with Tauri + Vue 3:
 
 ```bash
-cd chipcompiler/gui
+cd gui
 
 # Install frontend dependencies
 pnpm install
@@ -159,7 +159,7 @@ pnpm run dev
 pnpm run tauri:build
 ```
 
-**GUI Prerequisites:** Node.js LTS, pnpm, Rust toolchain, platform-specific Tauri dependencies (see [gui/README.md](chipcompiler/gui/README.md)).
+**GUI Prerequisites:** Node.js LTS, pnpm, Rust toolchain, platform-specific Tauri dependencies (see [gui/README.md](gui/README.md)).
 
 ## Code Architecture
 
@@ -167,7 +167,7 @@ pnpm run tauri:build
 
 ```
 ┌─────────────────────────────────────────────┐
-│  GUI Layer (chipcompiler/gui/)               │
+│  GUI Layer (gui/)               │
 │  ├─ Tauri (Rust backend)                    │
 │  ├─ Vue 3 + TypeScript (frontend)           │
 │  ├─ PixiJS (WebGL/WebGPU rendering)         │
@@ -289,7 +289,7 @@ FastAPI-based REST API for programmatic access:
 
 The API server can be spawned by the Tauri GUI at application startup.
 
-### GUI Layer (chipcompiler/gui/)
+### GUI Layer (gui/)
 
 Desktop application built with Tauri + Vue 3:
 
@@ -437,7 +437,7 @@ Extend tests by adding new designs in benchmark/parameters.py and benchmark/ics5
 
 **Working with the GUI:**
 1. Start backend API: `chipcompiler --reload` (port 8765)
-2. Start frontend in dev mode: `cd chipcompiler/gui && pnpm run tauri:dev`
+2. Start frontend in dev mode: `cd gui && pnpm run tauri:dev`
 3. GUI frontend communicates with API via HTTP requests
 4. Frontend changes hot-reload automatically in dev mode
 5. Backend changes require restart (or use --reload flag)

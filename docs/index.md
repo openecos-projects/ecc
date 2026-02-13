@@ -53,4 +53,4 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 ## Additional Resources
 
 - [Main README](../README.md)
-- [GUI Documentation](../chipcompiler/gui/README.md)
+- [GUI Documentation](../gui/README.md)

@@ -46,9 +46,9 @@ docs/_build/
 Thumbs.db
 
 # Node modules (GUI)
-chipcompiler/gui/node_modules/
-chipcompiler/gui/dist/
-chipcompiler/gui/src-tauri/target/
+gui/node_modules/
+gui/dist/
+gui/src-tauri/target/
 
 # Workspace test directories
 workspacetest/
