@@ -4,202 +4,90 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ChipCompiler is an ECOS chip design automation solution that orchestrates EDA tools (Yosys, ECC-Tools, OpenROAD, Magic, KLayout) to perform RTL-to-GDS synthesis and place-and-route flows. The project includes:
+ChipCompiler is an ECOS chip design automation solution that orchestrates EDA tools (Yosys, ECC-Tools, OpenROAD, Magic, KLayout) to perform RTL-to-GDS flows. The project includes:
 
-1. **Desktop GUI (ecc-client)** - Tauri + Vue 3 application for visual design and layout editing with AI-assisted interface
+1. **Desktop GUI (ecc-client)** - Tauri + Vue 3 application for visual design and layout editing
 2. **Core Engine** - Python-based flow orchestration and EDA tool integration
 3. **REST API** - FastAPI backend for programmatic access
 
-The architecture follows a modular, plugin-based design with clear separation between data structures, flow orchestration, tool integration, and user interfaces.
+Architecture: modular, plugin-based design with clear separation between data, engine, tools, services, and UI layers.
 
 ## Development Setup and Commands
 
 ### Installation
 
-**Option 1: Install via Nix (Recommended)**
-
-Build and install ChipCompiler as a Nix package:
-
+**Option 1: Nix (Recommended)**
 ```bash
-# Run directly from GitHub
-nix shell github:openecos-projects/ecc#chipcompiler
-
-# Or install to your profile
-nix profile install github:openecos-projects/ecc#chipcompiler
-chipcompiler
+nix shell github:openecos-projects/ecc#chipcompiler  # Run directly
+nix profile install github:openecos-projects/ecc#chipcompiler  # Install to profile
 ```
-
-The Nix build includes all dependencies (Python, ECC-Tools bindings, Yosys) and creates a standalone executable. Binary cache is available at `serve.eminrepo.cc` for faster builds.
-
-Available packages:
-- `chipcompiler` - Core ChipCompiler tool
-- `ecc-tools` - ECC-Tools backend engine
-- `ecos-studio` - ECOS Studio GUI application
+Binary cache available at `serve.eminrepo.cc`. Available packages: `chipcompiler`, `ecc-tools`, `ecos-studio`.
 
 **Option 2: Development Shell**
-
-For active development, use the Nix development shell:
-
 ```bash
-nix develop
+nix develop  # Provides Python 3.11+, uv, Yosys, ECC-Tools, dependencies
 ```
 
-Automatically provides Python 3.11+, uv, Yosys with Slang, ECC-Tools, and all Python dependencies. The shell hook runs `uv sync` and activates the virtual environment.
-
-**Option 3: Manual Setup with uv**
-
+**Option 3: Manual Setup**
 ```bash
-bash ./build.sh
+bash ./build.sh  # Creates .venv, builds ECC-Tools, downloads OSS CAD Suite
 source .venv/bin/activate
+ENABLE_OSS_CAD_SUITE=false ./build.sh  # Skip OSS CAD Suite if yosys installed
 ```
 
-Uses `uv` to create Python 3.11 environment, syncs dependencies from pyproject.toml, and builds ECC-Tools C++ bindings. The script also downloads OSS CAD Suite by default (set `ENABLE_OSS_CAD_SUITE=false` to skip).
-
-**Submodule initialization (first-time setup):**
+**First-time setup:**
 ```bash
-git submodule update --init --recursive
+git submodule update --init --recursive  # Required for ECC-Tools and icsprout55 PDK
 ```
-Required for ECC-Tools engine (chipcompiler/thirdparty/ecc-tools) and icsprout55 PDK (chipcompiler/thirdparty/icsprout55-pdk).
-
-**Option 4: Release Build**
-
-```bash
-./build.sh --release
-```
-
-Creates standalone executable via PyInstaller.
 
 ### Running Tests
 
-Tests are located in the `test/` directory. Run with:
-
 ```bash
-# Run all tests
-pytest test/
-
-# Run a specific test file
-pytest test/test_tools_yosys.py
-pytest test/test_tools_ecc.py
-
-# Run with verbose output
-pytest test/ -v
-
-# Run with coverage report
-pytest test/ --cov=chipcompiler --cov-report=term-missing
+pytest test/                                    # All tests
+pytest test/test_tools_yosys.py                 # Specific test file
+pytest test/ -v                                 # Verbose output
+pytest test/ --cov=chipcompiler --cov-report=term-missing  # Coverage
 ```
 
-Key test files:
-- **test_tools_ecc.py** - Tests ECC-Tools (ecc) place-and-route with ICS55 PDK and GCD design
-- **test_ics55_batch.py** - Batch synthesis tests on ICS55 PDK
-- **test_benchmark_inputs.py** - Benchmark design input tests
-- **test_filelist.py** - Filelist parsing tests
-- **test_service.py** - REST API endpoint tests
+Key test files: `test_tools_ecc.py` (P&R flow), `test_ics55_batch.py` (batch synthesis), `test_benchmark_inputs.py`, `test_filelist.py`, `test_service.py` (API).
 
 ### Code Quality
 
 ```bash
-# Format code with ruff (modern formatter)
-ruff format chipcompiler/ test/
-
-# Lint with ruff
-ruff check chipcompiler/ test/
-
-# Type checking
-pyright chipcompiler/  # Primary type checker
-mypy chipcompiler/     # Alternative type checker
-
-# Legacy tools (still supported)
-black chipcompiler/ test/
-isort chipcompiler/ test/
+ruff format chipcompiler/ test/    # Format (recommended)
+ruff check chipcompiler/ test/     # Lint
+pyright chipcompiler/              # Type check (primary)
+mypy chipcompiler/                 # Type check (alternative)
 ```
 
-### Building with CMake
+### Building ECC-Tools
 
 ```bash
 mkdir -p build && cd build
 cmake ..
 make
 ```
-Builds ECC-Tools C++ bindings. Python executable path defaults to `.venv/bin/python3`.
-
-### Patching ECC Runtime Dependencies
-
-After building ECC-Tools Python bindings, use `autopatch-ecc-py.sh` to bundle runtime dependencies:
-
-```bash
-# Auto-detect from default location
-./scripts/autopatch-ecc-py.sh
-
-# Specify custom ecc_py.so location
-./scripts/autopatch-ecc-py.sh --ecc-py /path/to/ecc_py.so
-
-# Separated ecc_py.so and build directory
-./scripts/autopatch-ecc-py.sh \
-    --ecc-py chipcompiler/tools/ecc/bin/ecc_py.so \
-    --runtime-lib-path /path/to/build
-
-# Multiple runtime library paths
-./scripts/autopatch-ecc-py.sh \
-    --runtime-lib-path /path/to/build \
-    --runtime-lib-path /path/to/extra/libs
-```
-
-**What it does:**
-1. Collects all `.so` dependencies from ECC-Tools build directory
-2. Copies them to `chipcompiler/tools/ecc/bin/lib/`
-3. Uses `auto-patchelf` to fix library dependencies and RPATH
-4. Sets RUNPATH to `$ORIGIN:$ORIGIN/lib` for portable deployment
-5. Verifies all dependencies are resolved via `ldd`
-
-**Requirements:**
-- `patchelf` - ELF binary patcher (`apt install patchelf`)
-- `pyelftools` - Python library (auto-installed in isolated venv)
-
-**When to use:**
-- After building ECC-Tools (`build_ecc_py`)
-- Before packaging for distribution
-- When deploying to systems without ECC-Tools build directory
-
-This script is automatically called by `build.sh`, `Dockerfile`, and `.devcontainer/setup.sh`.
+Builds ECC-Tools C++ bindings. After building, run `./scripts/autopatch-ecc-py.sh` to bundle runtime dependencies with correct RPATH (`$ORIGIN:$ORIGIN/lib`) for portable deployment.
 
 ### Running the API Server
 
-The REST API provides programmatic access to ChipCompiler functionality:
-
 ```bash
-# Start API server (default port 8765)
-chipcompiler
-
-# Custom host and port
-chipcompiler --host 127.0.0.1 --port 8000
-
-# Development mode with auto-reload
-chipcompiler --reload
+chipcompiler                        # Start server (default port 8765)
+chipcompiler --host 127.0.0.1 --port 8000  # Custom host/port
+chipcompiler --reload               # Development mode with auto-reload
 ```
-
-API documentation available at `http://localhost:8765/docs` (Swagger UI).
+API docs at `http://localhost:8765/docs` (Swagger UI).
 
 ### Running the GUI Application
 
-The desktop GUI is built with Tauri + Vue 3:
-
 ```bash
 cd gui
-
-# Install frontend dependencies
-pnpm install
-
-# Run GUI in development mode (hot reload)
-pnpm run tauri:dev
-
-# Run frontend only in browser
-pnpm run dev
-
-# Build production application (generates .dmg, .exe, .deb)
-pnpm run tauri:build
+pnpm install                # Install dependencies
+pnpm run tauri:dev          # Development mode (hot reload)
+pnpm run dev                # Frontend only in browser
+pnpm run tauri:build        # Production build (.dmg, .exe, .deb)
 ```
-
-**GUI Prerequisites:** Node.js LTS, pnpm, Rust toolchain, platform-specific Tauri dependencies (see [gui/README.md](gui/README.md)).
+Prerequisites: Node.js LTS, pnpm, Rust toolchain, Tauri dependencies (see [gui/README.md](gui/README.md)).
 
 ## Code Architecture
 
@@ -245,136 +133,83 @@ pnpm run tauri:build
 
 ### Data Layer (chipcompiler/data/)
 
-**Core Entities:**
-- **Workspace** - Top-level container with design files, PDK, parameters, and flow state
-- **WorkspaceStep** - Per-flow-step workspace managing inputs, outputs, configs, logs, reports, scripts
-- **Parameters** - Design specifications (die size, clock frequency, buffer/filler/tie cells)
+Core entities:
+- **Workspace** - Top-level container with design files, PDK, parameters, flow state
+- **WorkspaceStep** - Per-step workspace managing inputs, outputs, configs, logs, reports, scripts
+- **Parameters** - Design specs (die size, clock frequency, buffer/filler/tie cells)
 - **PDK** - Technology library paths (LEF, liberty, timing, etc.)
-- **StepEnum** - Flow step types (SYNTHESIS, NETLIST_OPT, PLACEMENT, CTS, TIMING_OPT_DRV, TIMING_OPT_HOLD, LEGALIZATION, ROUTING, FILLER)
+- **StepEnum** - Flow steps (SYNTHESIS, NETLIST_OPT, PLACEMENT, CTS, TIMING_OPT_DRV, TIMING_OPT_HOLD, LEGALIZATION, ROUTING, FILLER)
 - **StateEnum** - Step states (Unstart, Ongoing, Success, Incomplete, Invalid, Ignored, Pending)
 
-**Key Pattern:** Each workspace contains a JSON flow definition (workspace.flow.json) that persists flow state and step information. This enables reproducibility and recovery.
+Each workspace contains `workspace.flow.json` persisting flow state for reproducibility and recovery.
 
 ### Engine Layer (chipcompiler/engine/)
 
 **EngineFlow (flow.py):**
-- Loads/saves flow configuration from workspace JSON
-- Manages workflow step sequences via `build_default_steps()` or custom steps via `add_step()`
+- Loads/saves flow config from workspace JSON
+- Manages workflow via `build_default_steps()` or custom `add_step()`
 - Creates per-step workspaces via `create_step_workspaces()` - chains input/output between steps
-- Executes flow via `run_steps()` - each step runs in a subprocess for isolation
+- Executes flow via `run_steps()` - each step runs in subprocess for isolation
 - Tracks step state (check_state, set_state, clear_states)
-- Initializes database engine when needed via `init_db_engine()`
+- Initializes database engine via `init_db_engine()`
 
-**Key Method:** `flow.run_steps()` - iterates workspace_steps, skips already-successful steps, runs remaining steps via subprocess, updates state and runtime.
+Key method: `flow.run_steps()` iterates workspace_steps, skips successful steps, runs remaining via subprocess, updates state and runtime.
 
 **EngineDB (db.py):**
-- Wraps ECC-Tools C++ engine lifecycle for post-flow analysis
-- Initialized with a specific WorkspaceStep (typically the last successful step)
-- Enables circuit analysis and optimization via ECC-Tools Python bindings
+Wraps ECC-Tools C++ engine lifecycle for post-flow analysis. Initialized with a WorkspaceStep (typically last successful step).
 
 ### Tools Layer (chipcompiler/tools/)
 
 **Standard EDA Tool Interface:**
 Each tool module (yosys, ecc, klayout, openroad, magic) exports:
 ```python
-def is_eda_exist() -> bool  # Check tool availability
-def build_step() -> WorkspaceStep  # Create step workspace structure
-def build_step_space() -> None  # Initialize directory tree
-def build_step_config() -> None  # Generate tool-specific JSON config
-def run_step() -> StateEnum  # Execute tool via subprocess
+def is_eda_exist() -> bool         # Check tool availability
+def build_step() -> WorkspaceStep  # Create step workspace
+def build_step_space() -> None     # Initialize directory tree
+def build_step_config() -> None    # Generate tool config
+def run_step() -> StateEnum        # Execute tool via subprocess
 ```
 
-**Tool Module Structure:**
-- `builder.py` - Workspace creation and config building
-- `runner.py` - Tool execution (subprocess with environment variables, timeouts)
-- `utility.py` - Tool-specific helper functions
-- `configs/` - JSON configuration templates
-- `scripts/` - Tool scripts (TCL, Python, shell)
-- `bin/` - Tool binaries (ecc only)
+**Tool Module Structure:** `builder.py`, `runner.py`, `utility.py`, `configs/`, `scripts/`, `bin/` (ecc only).
 
-**Yosys Integration:**
-- Converts RTL (Verilog) to gate-level netlist
-- Generates synthesis reports and logs
-- Configuration in `chipcompiler/tools/yosys/configs/`
+**Yosys:** Converts RTL to gate-level netlist. Config in `chipcompiler/tools/yosys/configs/`.
 
 **ECC-Tools Integration:**
-- Backend physical design tool provided via [ECC-Tools](https://github.com/openecos-projects/ecc-tools)
-- Tool name is **"ecc"** in flow configurations (e.g., `add_step(step=StepEnum.PLACEMENT, tool="ecc")`)
-- Wraps ECC-Tools engine internally (located in chipcompiler/thirdparty/ecc-tools)
-- Performs netlist optimization, placement, CTS, timing optimization, legalization, routing, filler insertion
-- Reads DEF/Verilog inputs, PDK LEF/liberty files, timing constraints (SDC)
-- Generates DEF/Verilog outputs for next step
+- Backend physical design tool from [ECC-Tools](https://github.com/openecos-projects/ecc-tools)
+- Tool identifier: **"ecc"** (e.g., `add_step(step=StepEnum.PLACEMENT, tool="ecc")`)
+- Source: `chipcompiler/thirdparty/ecc-tools` (C++ engine)
+- Wrapper: `chipcompiler/tools/ecc/` (Python integration layer)
+- Performs: netlist optimization, placement, CTS, timing optimization, legalization, routing, filler insertion
+- I/O: Reads DEF/Verilog, PDK LEF/liberty, SDC; generates DEF/Verilog for next step
 - Python bindings available for post-flow analysis
 
-**Naming Clarification:**
-- **ECC-Tools** = The physical design backend tool suite
-- **ecc** = Tool identifier in Python code (e.g., `tool="ecc"`)
-- **chipcompiler/thirdparty/ecc-tools** = ECC-Tools project source code (C++ engine)
-- **chipcompiler/tools/ecc/** = Python wrapper and integration layer for ECC-Tools
-
-**KLayout Integration:**
-- Layout visualization and editing
-- GDS/OASIS file handling
-- DRC visualization
+**KLayout:** Layout visualization, GDS/OASIS handling, DRC visualization.
 
 ### Services Layer (chipcompiler/services/)
 
-FastAPI-based REST API for programmatic access:
-
-- **main.py** - FastAPI app with CORS middleware for GUI access
-- **routers/** - API endpoint definitions (workspace management)
-- **schemas/** - Pydantic models for request/response validation
-- **services/** - Business logic implementations
-- **run_server.py** - Uvicorn server entry point
-
-The API server can be spawned by the Tauri GUI at application startup.
+FastAPI REST API: `main.py` (app + CORS), `routers/` (endpoints), `schemas/` (Pydantic models), `services/` (business logic), `run_server.py` (Uvicorn entry). API server spawnable by Tauri GUI at startup.
 
 ### GUI Layer (gui/)
 
-Desktop application built with Tauri + Vue 3:
+Tauri + Vue 3 desktop app:
+- `src/` - Vue 3 frontend: `applications/editor/` (PixiJS layout editor), `components/` (UI), `composables/` (workspace/EDA/menu), `stores/` (Pinia state), `views/` (pages)
+- `src-tauri/` - Rust backend
+- `public/` - Static assets
 
-- **src/** - Vue 3 frontend with TypeScript
-  - `applications/editor/` - PixiJS-based layout editor with ruler plugin
-  - `components/` - UI components (panels, toolbars, chat)
-  - `composables/` - Vue composition functions (workspace, EDA, menu events)
-  - `stores/` - Pinia state management
-  - `views/` - Page components (Welcome, Editor, Configure)
-- **src-tauri/** - Rust backend for native functionality
-- **public/** - Static assets (icons, thumbnails)
-
-Key features: high-performance WebGL rendering, project management, AI-assisted design interface.
+Features: WebGL rendering, project management, AI-assisted design.
 
 ### RTL2GDS Layer (chipcompiler/rtl2gds/)
 
-Provides pre-configured flow templates:
-
-- **builder.py** - `build_rtl2gds_flow()` - Returns complete step sequence (SYNTHESIS → FLOORPLAN → NETLIST_OPT → PLACEMENT → CTS → LEGALIZATION → ROUTING → DRC → FILLER)
-
-This simplifies creating full RTL-to-GDS flows without manually defining each step.
+`builder.py` - `build_rtl2gds_flow()` returns complete step sequence: SYNTHESIS → FLOORPLAN → NETLIST_OPT → PLACEMENT → CTS → LEGALIZATION → ROUTING → DRC → FILLER.
 
 ### Benchmark Module (benchmark/)
 
-Provides batch testing infrastructure and design parameter management:
+Batch testing infrastructure:
+- `benchmark.py` - `run_benchmark()`, `benchmark_statis()`, `benchmark_metrics()`
+- `parameters.py` - `get_parameters(pdk_name, design)` returns Parameters from JSON files
+- Benchmark JSONs (ics55_benchmark.json, ics55_tapeout.json) define designs for regression testing
 
-- **benchmark.py** - Batch execution functions:
-  - `run_benchmark()` - Runs synthesis/P&R on multiple designs from JSON config
-  - `benchmark_statis()` - Collects statistics from batch runs
-  - `benchmark_metrics()` - Generates metrics reports
-
-- **parameters.py** - Factory for design parameters:
-  - `get_parameters(pdk_name, design)` - Returns Parameters instance for specific PDK/design
-  - Loads from JSON files (ics55_parameter.json)
-  - Merges design-specific info from benchmark JSON files
-
-- **Benchmark JSON files** (ics55_benchmark.json, ics55_tapeout.json):
-  - Define multiple designs with filelist paths, top modules, clock names, frequencies
-  - Used for regression testing and batch synthesis flows
-
-**Usage Pattern:**
-```python
-from benchmark import get_parameters
-parameters = get_parameters("ics55", "gcd")  # Returns pre-configured Parameters
-```
+Usage: `from benchmark import get_parameters; parameters = get_parameters("ics55", "gcd")`
 
 ### Typical Flow Execution Path
 
@@ -409,7 +244,7 @@ parameters = get_parameters("ics55", "gcd")  # Returns pre-configured Parameters
 ### Data Flow Between Steps
 
 - **Input chaining:** First step uses `workspace.design.origin_verilog/origin_def`. Subsequent steps use previous step's output.
-- **File locations:** Each step's input/output defined in `WorkspaceStep` with consistent directory structure (input/, output/, config/, logs/, scripts/, reports/, data/, features/, analysis/).
+- **File locations:** Each step has consistent directory structure: input/, output/, config/, logs/, scripts/, reports/, data/, features/, analysis/.
 - **State persistence:** Flow state saved to `workspace.flow.json` after each step - enables resumption and inspection.
 
 ## Key Design Patterns
@@ -423,81 +258,58 @@ parameters = get_parameters("ics55", "gcd")  # Returns pre-configured Parameters
 
 ## Important Implementation Notes
 
-- **Subprocess Execution:** Steps are isolated via Python multiprocessing.Process. Return state is currently simplified but should capture tool exit codes properly.
-- **File Chaining:** Input/output file paths must match expectations (DEF/Verilog filenames) for next step to find them.
-- **PDK Paths:** PDK definitions must provide valid paths to LEF, liberty, timing (SDC), and SPEF files - verified at workspace creation.
-- **Tool Availability:** `is_eda_exist()` checks tool binary presence before execution - ensures tool is installed via Nix or system PATH.
-- **Logging:** Each step generates logs in workspace_step.logs/ - useful for debugging tool failures.
-- **Third-party Dependencies:** ECC-Tools engine in chipcompiler/thirdparty/ecc-tools, icsprout55 PDK in chipcompiler/thirdparty/icsprout55-pdk (submodules).
-- **GUI-API Communication:** GUI frontend communicates with Python backend via REST API (port 8765). CORS is configured for Tauri dev server (1420) and Vite dev server (5173).
-- **Package Management:** Uses `uv` for fast dependency resolution and environment management. Dependencies defined in pyproject.toml.
-- **Filelist Support:** The project supports Verilog filelist format (`.f` files) for specifying multiple RTL sources. See [docs/examples/gcd/ics55flow_with_filelist.py](docs/examples/gcd/ics55flow_with_filelist.py) for usage.
-- **ECC Runtime Dependencies:** ECC-Tools Python bindings require bundled `.so` libraries. The `autopatch-ecc-py.sh` script automatically collects, patches, and bundles these dependencies with correct RPATH settings (`$ORIGIN:$ORIGIN/lib`) for portable deployment. This ensures `ecc_py*.so` can load all dependencies without requiring the original build directory.
+- **Subprocess Execution:** Steps isolated via multiprocessing.Process for timeout handling
+- **File Chaining:** Input/output paths must match expectations (DEF/Verilog filenames) for next step
+- **PDK Paths:** PDK definitions verified at workspace creation (LEF, liberty, timing, SPEF)
+- **Tool Availability:** `is_eda_exist()` checks tool binary before execution
+- **Logging:** Each step generates logs in workspace_step.logs/ for debugging
+- **Third-party Dependencies:** ECC-Tools in chipcompiler/thirdparty/ecc-tools, icsprout55 PDK in chipcompiler/thirdparty/icsprout55-pdk (submodules)
+- **GUI-API Communication:** GUI communicates with Python backend via REST API (port 8765). CORS configured for Tauri (1420) and Vite (5173) dev servers
+- **Package Management:** Uses `uv` for fast dependency resolution. Dependencies in pyproject.toml
+- **Filelist Support:** Supports Verilog filelist format (`.f` files). See [docs/examples/gcd/ics55flow_with_filelist.py](docs/examples/gcd/ics55flow_with_filelist.py)
+- **ECC Runtime Dependencies:** ECC-Tools Python bindings require bundled `.so` libraries. `autopatch-ecc-py.sh` collects, patches, and bundles dependencies with RPATH `$ORIGIN:$ORIGIN/lib` for portable deployment
 
 ## Testing Strategy
 
-Tests use **functional integration testing**:
+Functional integration testing approach:
 - Create workspace with real design files (GCD design)
 - Define complete flow via EngineFlow
-- Run full pipeline (synthesis or place-and-route)
+- Run full pipeline (synthesis or P&R)
 - Verify outputs and state updates
 
-Key test files:
-- **test_tools_ecc.py** - ECC-Tools place-and-route flow tests
-- **test_ics55_batch.py** - Batch synthesis tests on ICS55 PDK
-- **test_benchmark_inputs.py** - Benchmark design input tests
-- **test_filelist.py** - Filelist parsing tests
-- **test_service.py** - REST API endpoint tests
+Test designs: ics55_gcd (GCD on ICS55), batch designs in benchmark/ics55_benchmark.json for regression.
 
-Test designs:
-- **ics55_gcd** - GCD on ICS55 technology
-- **Batch designs** - Multiple designs defined in benchmark/ics55_benchmark.json for regression testing
-
-Extend tests by adding new designs in benchmark/parameters.py and benchmark/ics55_parameter.json.
+Extend tests by adding designs in benchmark/parameters.py and benchmark/ics55_parameter.json.
 
 ## Common Development Workflows
 
 **Adding a new EDA tool:**
-1. Create `chipcompiler/tools/<tool_name>/` directory
-2. Implement builder.py, runner.py with required functions
-3. Add tool configs in `configs/` and scripts in `scripts/`
-4. Update flow step definitions in EngineFlow.build_default_steps() or add_step()
-5. Add test in test/ with new PDK if needed
+1. Create `chipcompiler/tools/<tool_name>/` with builder.py, runner.py, utility.py
+2. Implement required functions: `is_eda_exist()`, `build_step()`, `build_step_space()`, `build_step_config()`, `run_step()`
+3. Add configs in `configs/` and scripts in `scripts/`
+4. Update EngineFlow.build_default_steps() or use add_step()
+5. Add test in test/
 
 **Debugging a flow step:**
 1. Check `workspace_step.logs/` for tool output
 2. Inspect `workspace_step.config/` for generated configs
 3. Verify input files in `workspace_step.input/`
-4. Run individual step via EngineFlow.run_step() after examining state
+4. Run individual step via EngineFlow.run_step()
 
 **Modifying flow sequence:**
 1. Edit EngineFlow.build_default_steps() or use add_step()
-2. Call flow.save() to persist changes to workspace.flow.json
-3. Run flow.run_steps() - will skip already-successful steps
+2. Call flow.save() to persist to workspace.flow.json
+3. Run flow.run_steps() - skips successful steps
 4. Use clear_states() to reset and re-run
 
-**Rebuilding ECC-Tools with dependency bundling:**
-1. Build ECC-Tools Python bindings: `build_ecc_py` (from common.sh)
-2. Bundle runtime dependencies: `./scripts/autopatch-ecc-py.sh`
-3. Verify dependencies: `ldd chipcompiler/tools/ecc/bin/ecc_py*.so`
-4. All dependencies should resolve to `$ORIGIN/lib/` or system libraries
-
-**Deploying to a new system:**
-1. Copy `chipcompiler/tools/ecc/bin/` directory (includes ecc_py*.so and lib/)
-2. Ensure `patchelf` is installed on target system
-3. No need to copy ECC-Tools build directory - all dependencies are bundled
-4. Python can import ecc_py module directly from this location
-
 **Working with the GUI:**
-1. Start backend API: `chipcompiler --reload` (port 8765)
-2. Start frontend in dev mode: `cd gui && pnpm run tauri:dev`
-3. GUI frontend communicates with API via HTTP requests
-4. Frontend changes hot-reload automatically in dev mode
-5. Backend changes require restart (or use --reload flag)
+1. Start backend: `chipcompiler --reload` (port 8765)
+2. Start frontend: `cd gui && pnpm run tauri:dev`
+3. Frontend changes hot-reload; backend requires restart (or --reload)
 
 **Adding API endpoints:**
 1. Define schema in `chipcompiler/services/schemas/`
-2. Implement business logic in `chipcompiler/services/services/`
+2. Implement logic in `chipcompiler/services/services/`
 3. Create router in `chipcompiler/services/routers/`
-4. Register router in `chipcompiler/services/main.py`
+4. Register in `chipcompiler/services/main.py`
 5. Test via Swagger UI at `http://localhost:8765/docs`
