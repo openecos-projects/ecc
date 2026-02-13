@@ -4,15 +4,16 @@
 
 **开源芯片设计自动化解决方案**
 
-[![Python](https://img.shields.io/badge/Python-121011?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Nix](https://img.shields.io/badge/Nix-121011?style=for-the-badge&logo=nixos&logoColor=white)](https://nixos.org/)
 [![ECC](https://img.shields.io/badge/ECC-EF6C00?style=for-the-badge)](https://github.com/openecos-projects/ecc)
 [![ECC-Tools](https://img.shields.io/badge/ECCTools-EF6C00?style=for-the-badge)](https://github.com/openecos-projects/ecc-tools)
+[![License](https://img.shields.io/badge/License-Apache_2.0-121011?style=for-the-badge&logo=apache&logoColor=white)](LICENSE)
+
+[![Python](https://img.shields.io/badge/Python-121011?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Nix](https://img.shields.io/badge/Nix-121011?style=for-the-badge&logo=nixos&logoColor=white)](https://nixos.org/)
 [![Tauri](https://img.shields.io/badge/Tauri-121011?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
 
-<!-- [![License](https://img.shields.io/badge/License-Apache_2.0-121011?style=for-the-badge&logo=apache&logoColor=white)](LICENSE) -->
-[![English](https://img.shields.io/badge/English-121011?style=for-the-badge)](README.md)
-[![简体中文](https://img.shields.io/badge/简体中文-121011?style=for-the-badge)](README.cn.md)
+[![documentation](https://img.shields.io/badge/documentation-121011?style=for-the-badge)](README.md)
+[![文档](https://img.shields.io/badge/文档-121011?style=for-the-badge)](README.cn.md)
 
 </div>
 
