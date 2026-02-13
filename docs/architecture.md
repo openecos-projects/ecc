@@ -1,65 +1,48 @@
 # Architecture
 
-This document describes ECOS Chip Compiler's software architecture in detail.
+ECOS Chip Compiler orchestrates EDA tools through a layered, plugin-based architecture.
 
 ## Layered Architecture
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  GUI Layer (gui/)                      │
-│  ├─ Tauri (Rust backend)                            │
-│  ├─ Vue 3 + TypeScript (frontend)                   │
-│  ├─ PixiJS (WebGL/WebGPU rendering)                 │
-│  └─ PrimeVue + Tailwind CSS (UI)                    │
+│  GUI Layer (gui/)                                  │
+│  Tauri + Vue 3 + PixiJS + PrimeVue                 │
 ├────────────────────────────────────────────────────┤
-│  Service Layer (chipcompiler/services/)             │
-│  ├─ FastAPI REST API                                │
-│  ├─ Workspace management endpoints                  │
-│  └─ CORS support                                    │
+│  Service Layer (chipcompiler/services/)            │
+│  FastAPI REST API + CORS                           │
 ├────────────────────────────────────────────────────┤
-│  RTL2GDS Layer (chipcompiler/rtl2gds/)              │
-│  └─ Full flow builder                               │
+│  RTL2GDS Layer (chipcompiler/rtl2gds/)             │
+│  Pre-configured flow templates                     │
 ├────────────────────────────────────────────────────┤
-│  Engine Layer (chipcompiler/engine/)                │
-│  ├─ EngineFlow - Flow orchestration                 │
-│  └─ EngineDB - Database engine lifecycle            │
+│  Engine Layer (chipcompiler/engine/)               │
+│  EngineFlow (orchestration) + EngineDB (analysis)  │
 ├────────────────────────────────────────────────────┤
-│  Tool Layer (chipcompiler/tools/)                   │
-│  ├─ yosys/ - RTL synthesis                           │
-│  ├─ ecc/ - Placement and routing (ECC-Tools)        │
-│  ├─ klayout_tool/ - Layout viewer                    │
-│  ├─ openroad/ - Open source backend                  │
-│  └─ magic/ - Layout tool                             │
+│  Tool Layer (chipcompiler/tools/)                  │
+│  yosys, ecc, klayout, openroad, magic              │
 ├────────────────────────────────────────────────────┤
-│  Data Layer (chipcompiler/data/)                    │
-│  ├─ Workspace - Top-level design container          │
-│  ├─ WorkspaceStep - Step-level workspace            │
-│  ├─ Parameters - Design parameters                  │
-│  └─ PDK - PDK configuration                         │
+│  Data Layer (chipcompiler/data/)                   │
+│  Workspace, WorkspaceStep, Parameters, PDK         │
 ├────────────────────────────────────────────────────┤
-│  Utility Layer (chipcompiler/utility/)              │
-│  └─ Logging, JSON I/O, file operations              │
+│  Utility Layer (chipcompiler/utility/)             │
+│  Logging, JSON I/O, file operations                │
 └────────────────────────────────────────────────────┘
 ```
 
 ## Core Design Patterns
 
 ### 1. Plugin Architecture
-
-EDA tools are loaded dynamically via `load_eda_module()`. Each tool must implement the standard interface:
-
+Tools loaded dynamically via `load_eda_module()`. Standard interface:
 ```python
-def is_eda_exist() -> bool      # Check whether the tool is available
-def build_step() -> WorkspaceStep  # Create the step workspace
-def build_step_space() -> None  # Initialize directory structure
-def build_step_config() -> None # Generate tool configuration
-def run_step() -> StateEnum     # Run the tool
+def is_eda_exist() -> bool         # Check availability
+def build_step() -> WorkspaceStep  # Create workspace
+def build_step_space() -> None     # Initialize directories
+def build_step_config() -> None    # Generate config
+def run_step() -> StateEnum        # Execute tool
 ```
 
 ### 2. Workspace Isolation
-
-Each flow step has its own directory structure:
-
+Each step has isolated directory structure:
 ```
 workspace_step/
 ├── input/      # Input files
@@ -74,176 +57,150 @@ workspace_step/
 ```
 
 ### 3. State Machine
-
-Step state transitions:
-
 ```
 Unstart → Ongoing → Success
                   ↘ Incomplete
 ```
-
-- **Unstart**: Not started
-- **Ongoing**: Running
-- **Success**: Completed successfully
-- **Incomplete**: Failed
+States: Unstart (not started), Ongoing (running), Success (completed), Incomplete (failed), Invalid, Ignored, Pending.
 
 ### 4. Configuration as Data
-
-Flow definitions and tool configurations are stored as JSON:
-- `workspace.flow.json` - Flow state
-- `config/*.json` - Tool configuration
+- `workspace.flow.json` - Flow state persistence
+- `config/*.json` - Tool configurations
 
 ### 5. Process Isolation
-
-Steps execute in subprocesses via `multiprocessing.Process`, providing:
-- Resource isolation
-- Timeout control
-- Fault isolation
+Steps execute in subprocesses (`multiprocessing.Process`) for resource isolation, timeout control, and fault isolation.
 
 ### 6. Flow Persistence
-
-After saving flow state, it supports:
-- Resume after interruption
-- State checks
-- Incremental execution
+Saved flow state enables resume after interruption, state checks, and incremental execution.
 
 ## Data Flow
 
-### Inter-step Data Transfer
-
+### Inter-step Transfer
 ```
-Step 1 (Synthesis)
-   │
-   ├─ output/design.v (netlist)
-   │
-   ▼
-Step 2 (Placement)
-   │
-   ├─ input/design.v (from previous step output)
-   ├─ output/design.def
-   │
-   ▼
-Step 3 (Routing)
-   ...
+Synthesis → output/design.v
+              ↓
+Placement → input/design.v → output/design.def
+              ↓
+Routing → input/design.def → ...
 ```
 
-**Rules**:
-- The first step uses `workspace.design.origin_verilog/origin_def`
-- Subsequent steps use the previous step's `output/` as `input/`
+**Rules:**
+- First step uses `workspace.design.origin_verilog/origin_def`
+- Subsequent steps chain: previous `output/` → next `input/`
 
-### Typical Flow Execution
-
+### Typical Execution Flow
 ```
-1. Create Workspace
-   └─ Define PDK, parameters, RTL source files
-
-2. Initialize EngineFlow
-   ├─ Load/create workspace.flow.json
-   ├─ Call create_step_workspaces()
-   └─ Build workspace_steps list
-
+1. Create Workspace (PDK, parameters, RTL)
+2. Initialize EngineFlow (load/create workspace.flow.json)
 3. Run flow.run_steps()
-   ├─ Iterate each workspace_step
-   │  ├─ State is Success -> skip
-   │  └─ Otherwise run run_step()
-   │     ├─ Set state = Ongoing
-   │     ├─ Run tool in a subprocess
-   │     ├─ Update state = Success/Incomplete
-   │     └─ Record runtime
-
-4. Initialize DB engine (optional)
-   └─ Load ECC-Tools engine using the last successful step
-
-5. Analysis (optional)
-   └─ Use the ECC-Tools Python bindings for circuit analysis
+   - Iterate workspace_steps
+   - Skip Success states
+   - Run remaining: Ongoing → subprocess → Success/Incomplete
+4. Optional: Initialize EngineDB for post-flow analysis
 ```
 
-## Module Details
+## Layer Details
 
 ### Data Layer (chipcompiler/data/)
 
-| Class | Description |
-|---|---|
-| `Workspace` | Top-level container including design files, PDK, parameters, and flow state |
-| `WorkspaceStep` | Step-level workspace managing inputs, outputs, and configuration |
-| `Parameters` | Design parameters: die size, clock frequency, buffer cells, etc. |
-| `PDK` | PDK paths: LEF, Liberty, timing constraints, etc. |
-| `StepEnum` | Flow step type enum |
-| `StateEnum` | Step state enum |
+| Entity | Purpose |
+|--------|---------|
+| `Workspace` | Top-level container: design files, PDK, parameters, flow state |
+| `WorkspaceStep` | Per-step workspace: inputs, outputs, configs, logs, reports |
+| `Parameters` | Design specs: die size, clock frequency, buffer/filler/tie cells |
+| `PDK` | Tech library paths: LEF, liberty, timing, SPEF |
+| `StepEnum` | Flow steps: SYNTHESIS, NETLIST_OPT, PLACEMENT, CTS, TIMING_OPT_*, LEGALIZATION, ROUTING, FILLER |
+| `StateEnum` | Step states: Unstart, Ongoing, Success, Incomplete, Invalid, Ignored, Pending |
 
 ### Engine Layer (chipcompiler/engine/)
 
-| Module | Description |
-|---|---|
-| `EngineFlow` | Flow orchestration: load/save configs, manage steps, run flow |
-| `EngineDB` | Database engine: wraps ECC-Tools C++ engine lifecycle |
+**EngineFlow (flow.py):**
+- Load/save flow config from `workspace.flow.json`
+- Build workflow: `build_default_steps()` or `add_step()`
+- Chain workspaces: `create_step_workspaces()` links input/output
+- Execute: `run_steps()` runs steps in subprocess, tracks state/runtime
+- State management: `check_state()`, `set_state()`, `clear_states()`
+
+**EngineDB (db.py):**
+Wraps ECC-Tools C++ engine for post-flow circuit analysis. Initialized with a WorkspaceStep (typically last successful).
 
 ### Tool Layer (chipcompiler/tools/)
 
-Each tool directory layout:
-
+**Directory Structure:**
 ```
 tool_name/
-├── __init__.py   # Export interface
-├── builder.py    # Workspace creation and config build
+├── __init__.py   # Interface exports
+├── builder.py    # Workspace + config creation
 ├── runner.py     # Tool execution
-├── utility.py    # Helper functions
+├── utility.py    # Helpers
 ├── configs/      # Config templates
-├── scripts/      # Tool scripts
-└── bin/          # Tool binaries (ecc only)
-    └── lib/      # Bundled runtime dependencies (ecc only)
+├── scripts/      # Tool scripts (TCL/Python/Shell)
+└── bin/          # Binaries (ecc only)
+    └── lib/      # Runtime dependencies (ecc only)
 ```
 
-**ECC-Tools Runtime Dependencies:**
+**Integrated Tools:**
 
-The ECC-Tools Python bindings (`ecc_py*.so`) require numerous shared libraries (`.so` files) at runtime. To enable portable deployment without requiring the full ECC-Tools build directory, these dependencies are bundled:
+**Yosys** - RTL synthesis (Verilog → gate-level netlist)
 
-- **Location**: `chipcompiler/tools/ecc/bin/lib/`
-- **Bundling script**: `scripts/autopatch-ecc-py.sh`
-- **RPATH configuration**: `$ORIGIN:$ORIGIN/lib` (relative paths for portability)
+**ECC-Tools** - Physical design backend
+- Tool name: `"ecc"` (e.g., `add_step(StepEnum.PLACEMENT, tool="ecc")`)
+- Source: `chipcompiler/thirdparty/ecc-tools` (C++ engine)
+- Wrapper: `chipcompiler/tools/ecc/` (Python integration)
+- Operations: netlist optimization, placement, CTS, timing optimization, legalization, routing, filler
+- I/O: DEF/Verilog, PDK LEF/liberty, SDC
+- Runtime deps bundled in `bin/lib/` with RPATH `$ORIGIN:$ORIGIN/lib` for portability
 
-The bundling process:
-1. Collects all `.so` dependencies from ECC-Tools build directory
-2. Copies them to the `lib/` subdirectory
-3. Uses `auto-patchelf` to rewrite RPATH entries in all binaries
-4. Verifies dependency resolution via `ldd`
+**KLayout** - Layout visualization, GDS/OASIS handling, DRC
 
-This allows `ecc_py*.so` to be deployed independently of the build environment, as all dependencies are co-located and referenced via relative paths.
+**Runtime Dependency Bundling (ECC-Tools):**
+Script `scripts/autopatch-ecc-py.sh` collects `.so` dependencies, copies to `bin/lib/`, patches RPATH with `auto-patchelf`, verifies with `ldd`. Enables deployment without build directory.
 
-### Yosys Runtime Flow (Current)
-
-For synthesis (`chipcompiler/tools/yosys/`), runtime selection and execution are split between utility and runner:
-
-1. `utility.get_yosys_command()` resolves executable priority: bundled runtime (`CHIPCOMPILER_OSS_CAD_DIR`) first, then system `PATH`.
-2. `utility.get_yosys_runtime()` prepares subprocess-only environment.
-3. `utility.check_slang_plugin()` performs preflight plugin check.
-4. `runner.run_step()` uses resolved `(command, env)` for both preflight check and `yosys_synthesis.tcl`.
-
-Key property: utility resolution and env preparation are side-effect free for process-global environment (no global mutation of `os.environ`).
+**Yosys Runtime Resolution:**
+1. `utility.get_yosys_command()` - Resolve executable (bundled `CHIPCOMPILER_OSS_CAD_DIR` → system PATH)
+2. `utility.get_yosys_runtime()` - Prepare subprocess env (no global `os.environ` mutation)
+3. `utility.check_slang_plugin()` - Preflight check
+4. `runner.run_step()` - Execute with resolved `(command, env)`
 
 ### Service Layer (chipcompiler/services/)
 
-| Module | Description |
-|---|---|
-| `main.py` | FastAPI app, CORS configuration |
-| `routers/` | API endpoint definitions |
-| `schemas/` | Pydantic request/response models |
-| `services/` | Business logic implementations |
-| `run_server.py` | Uvicorn entrypoint |
+FastAPI REST API structure:
+- `main.py` - App + CORS config
+- `routers/` - Endpoint definitions
+- `schemas/` - Pydantic models
+- `services/` - Business logic
+- `run_server.py` - Uvicorn entry
+
+Spawnable by Tauri GUI at startup. API docs at `/docs` (Swagger UI).
 
 ### GUI Layer (gui/)
 
-| Directory | Description |
-|---|---|
-| `src/applications/` | Core applications (PixiJS editor) |
-| `src/components/` | Vue components |
-| `src/composables/` | Composables |
-| `src/stores/` | Pinia state management |
-| `src/views/` | Page components |
-| `src-tauri/` | Rust backend |
+Tauri + Vue 3 desktop app:
+- `src/applications/editor/` - PixiJS layout editor
+- `src/components/` - UI components
+- `src/composables/` - Workspace/EDA/menu functions
+- `src/stores/` - Pinia state management
+- `src/views/` - Page components
+- `src-tauri/` - Rust backend
+- `public/` - Static assets
+
+Features: WebGL rendering, project management.
+
+### RTL2GDS Layer (chipcompiler/rtl2gds/)
+
+`build_rtl2gds_flow()` returns complete flow: SYNTHESIS → FLOORPLAN → NETLIST_OPT → PLACEMENT → CTS → LEGALIZATION → ROUTING → DRC → FILLER.
+
+### Benchmark Module (benchmark/)
+
+Batch testing infrastructure:
+- `benchmark.py` - `run_benchmark()`, `benchmark_statis()`, `benchmark_metrics()`
+- `parameters.py` - `get_parameters(pdk_name, design)` factory
+- JSON configs: `ics55_benchmark.json`, `ics55_tapeout.json`
+
+Usage: `parameters = get_parameters("ics55", "gcd")`
 
 ## Related Documentation
 
-- [Development Guide](development.md)
-- [API Guide](api-guide.md)
-- [GUI Development Guide](gui-guide.md)
+- [Development Guide](development.md) - Setup, workflows, adding tools
+- [API Guide](api-guide.md) - Python API usage
+- [GUI Development Guide](gui-guide.md) - GUI development

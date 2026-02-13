@@ -19,144 +19,95 @@
 
 ## Overview
 
-ECOS Chip Compiler is a Python-based **Chip design automation solution** that integrates Open Source EDA tools (Yosys, [**ECC-Tools**](https://github.com/openecos-projects/ecc-tools), Magic, KLayout) and several custom components to achieve complete RTL-to-GDS design flow. The solution is currently developed and maintained by the [**ECOS Team**](https://github.com/openecos-projects).
+ECOS Chip Compiler is an **open-source chip design automation solution** that integrates EDA tools (Yosys, [**ECC-Tools**](https://github.com/openecos-projects/ecc-tools), KLayout) to achieve complete RTL-to-GDS design flow. Developed and maintained by the [**ECOS Team**](https://github.com/openecos-projects).
 
-Please refer the **[Quick Start Guide](#-quick-start)** section to get started quickly.
-
-**Two ways to use**:
-- **Desktop GUI (ecc-client)** - Visual design tool
-- **Python API** - Programmatic flow control for automation (see [examples](#usage-examples))
+**Two ways to use:**
+- **Desktop GUI (ECOS Studio)** - Visual design tool for interactive chip design
+- **Python API** - Programmatic flow control for automation
 
 For detailed architecture, see **[Architecture Documentation](docs/architecture.md)**.
 
 ## Quick Start
 
-### Install All Dependencies
+### Desktop Application (Recommended)
 
-Support platforms: x86_64 Linux (**Ubuntu 24.04+**, or other distros with **Nix** installed)
+**Option 1: AppImage (Linux x86_64)**
 
-**Option 1: Install via Nix (Recommended)**
+Download the latest AppImage from [Releases](https://github.com/openecos-projects/ecc/releases):
 
-Install Nix package manager if you haven't (Nix is not NixOS!): https://nixos.org/download
+```bash
+# Download AppImage
+wget https://github.com/openecos-projects/ecc/releases/latest/download/ecos-studio-x86_64.AppImage
+
+# Make executable
+chmod +x ecos-studio-x86_64.AppImage
+
+# Run
+./ecos-studio-x86_64.AppImage
+```
+
+AppImage is a portable format that runs on most Linux distributions without installation. All dependencies are bundled.
+
+**Option 2: Install via Nix**
 
 ```bash
 # Run directly from GitHub
 nix shell github:openecos-projects/ecc#ecos-studio
 
-ecc-client # This will open gui client
+# Launch GUI
+ecc-client
 ```
 
-The Nix build includes all dependencies and creates a standalone executable. Binary cache available for faster builds.
+Nix build includes all dependencies. Binary cache available for faster builds.
 
-**Option 2: Development Environment**
+**Supported Platforms:** x86_64 Linux (Ubuntu 24.04+, or other distros)
 
-For active development:
+### Development Environment
 
-```bash
-# Enter development environment
-nix develop
-```
+For active development or Python API usage, see **[Development Guide](docs/development.md)**.
 
-**Option 3: Manual Installation**
+## Features
 
-```bash
-# Install uv package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Build project dependencies
-./build.sh
-source .venv/bin/activate
-```
-
-For more installation options, see **[Development Guide](docs/development.md)**.
-
-## Usage Examples
-
-### Python API
-
-Here is a example flow with [icsprout55-pdk](https://github.com/openecos-projects/icsprout55-pdk) to implement GCD design:
-
-```python
-from chipcompiler.data import create_workspace, get_pdk, get_design_parameters, StepEnum, StateEnum
-from chipcompiler.engine import EngineFlow
-
-# Setup paths
-workspace_dir = "./gcd_workspace"
-input_verilog = "./docs/examples/gcd/gcd.v"
-
-# Load PDK and design parameters
-pdk = get_pdk("ics55")
-parameters = get_design_parameters("ics55", "gcd")
-
-# Create workspace
-workspace = create_workspace(
-    directory=workspace_dir,
-    origin_def="",
-    origin_verilog=input_verilog,
-    pdk=pdk,
-    parameters=parameters
-)
-
-# Setup flow engine and add steps
-engine_flow = EngineFlow(workspace=workspace)
-if not engine_flow.has_init():
-    engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.ROUTING, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.FILLER, tool="ecc", state=StateEnum.Unstart)
-
-# Create step workspaces and run
-engine_flow.create_step_workspaces()
-engine_flow.run_steps()
-```
-
-Full reference: **[docs/examples/gcd](docs/examples/gcd/README.md)**
-
-For complete API documentation, see **[API Guide](docs/api-guide.md)**.
-
-### Desktop GUI
-
-> [!WARNING]
-> Desktop GUI is still under development. We will release the first version soon.
->
-
-## More Documentation
-
-See [documentation index](docs/index.md) for complete documentation navigation.
+- **Complete RTL-to-GDS Flow** - Synthesis, placement, routing, timing optimization
+- **Visual Design Interface** - PixiJS-based layout editor with WebGL rendering
+- **Open-Source EDA Integration** - Yosys (synthesis), ECC-Tools (P&R), KLayout (viewer)
+- **Python API** - Scriptable automation for batch processing
+- **REST API** - FastAPI backend for external tool integration
+- **Portable Deployment** - AppImage, Nix, or standalone builds
 
 ## 🛠️ Integrated Tools
 
 | Tool | Purpose | Status |
 |------|---------|--------|
 | [Yosys](https://github.com/YosysHQ/yosys) | RTL Synthesis | ✅ |
-| [ECC-Tools](https://github.com/openecos-projects/ecc-tools) | Backend Flow | ✅ |
+| [ECC-Tools](https://github.com/openecos-projects/ecc-tools) | Physical Design (P&R) | ✅ |
 | [KLayout](https://www.klayout.de/) | Layout Viewer | 🚧 |
-| [OpenROAD](https://github.com/The-OpenROAD-Project/OpenROAD) | Backend Flow | 🚧 |
+| [OpenROAD](https://github.com/The-OpenROAD-Project/OpenROAD) | Alternative Backend | 🚧 |
+
+## Documentation
+
+- [Architecture](docs/architecture.md) - System design and patterns
+- [Development Guide](docs/development.md) - Setup and workflows
+- [API Guide](docs/api-guide.md) - Python API reference
+- [GUI Guide](docs/gui-guide.md) - GUI development
+- [Examples](docs/examples/) - Usage examples
+- [Documentation Index](docs/index.md) - Complete navigation
 
 ## Contributing
 
-See [Development Guide](docs/development.md) for details.
-
-<!-- ## 📄 License
-
-This project is licensed under [Apache License 2.0](LICENSE). -->
+Contributions welcome! See [Development Guide](docs/development.md) for setup instructions.
 
 ## Acknowledgments
 
 Special thanks to these open-source projects:
 
 - [Yosys](https://github.com/YosysHQ/yosys) - RTL Synthesis
-- [ECC-Tools](https://github.com/openecos-projects/ecc-tools) - Open-Source EDA Tools (Physical Design)
+- [ECC-Tools](https://github.com/openecos-projects/ecc-tools) - Physical Design Backend
 - [KLayout](https://www.klayout.de/) - Layout Viewer
 - [FastAPI](https://fastapi.tiangolo.com/) - Python Web Framework
 - [Tauri](https://tauri.app/) - Desktop Application Framework
 - [Vue.js](https://vuejs.org/) - Frontend Framework
 - [PixiJS](https://pixijs.com/) - 2D Rendering Engine
-
-
 
 <div align="center">
 

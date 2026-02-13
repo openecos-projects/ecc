@@ -91,125 +91,44 @@ Prerequisites: Node.js LTS, pnpm, Rust toolchain, Tauri dependencies (see [gui/R
 
 ## Code Architecture
 
+For detailed architecture, see [docs/architecture.md](docs/architecture.md).
+
 ### Layered Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
-│  GUI Layer (gui/)               │
-│  ├─ Tauri (Rust backend)                    │
-│  ├─ Vue 3 + TypeScript (frontend)           │
-│  ├─ PixiJS (WebGL/WebGPU rendering)         │
-│  └─ PrimeVue + Tailwind CSS (UI)            │
+│  GUI Layer (gui/)                           │
+│  Tauri + Vue 3 + PixiJS                     │
 ├─────────────────────────────────────────────┤
-│  Services Layer (chipcompiler/services/)     │
-│  ├─ FastAPI REST API                        │
-│  ├─ Workspace management endpoints          │
-│  └─ CORS-enabled for GUI/external access    │
+│  Services Layer (chipcompiler/services/)    │
+│  FastAPI REST API                           │
 ├─────────────────────────────────────────────┤
-│  RTL2GDS Layer (chipcompiler/rtl2gds/)       │
-│  └─ Flow builder for complete RTL-to-GDS    │
+│  RTL2GDS Layer (chipcompiler/rtl2gds/)      │
+│  Flow builder                               │
 ├─────────────────────────────────────────────┤
-│  Engine Layer (chipcompiler/engine/)         │
-│  ├─ EngineFlow - Flow orchestration         │
-│  └─ EngineDB - Database engine lifecycle    │
+│  Engine Layer (chipcompiler/engine/)        │
+│  EngineFlow + EngineDB                      │
 ├─────────────────────────────────────────────┤
-│  Tools Layer (chipcompiler/tools/)           │
-│  ├─ yosys/ - RTL synthesis                  │
-│  ├─ ecc/ - Place & route (ECC-Tools)        │
-│  ├─ klayout/ - Layout viewer/editor         │
-│  ├─ openroad/ - Place & route (stub)        │
-│  └─ magic/ - Layout tool (stub)             │
+│  Tools Layer (chipcompiler/tools/)          │
+│  yosys, ecc, klayout, openroad, magic       │
 ├─────────────────────────────────────────────┤
-│  Data Layer (chipcompiler/data/)             │
-│  ├─ Workspace - Top-level design container  │
-│  ├─ WorkspaceStep - Per-step workspace      │
-│  ├─ Parameters - Design parameters          │
-│  └─ PDK - Process design kit config         │
+│  Data Layer (chipcompiler/data/)            │
+│  Workspace, WorkspaceStep, Parameters, PDK  │
 ├─────────────────────────────────────────────┤
-│  Utility Layer (chipcompiler/utility/)       │
-│  ├─ Logging, JSON I/O, file operations      │
+│  Utility Layer (chipcompiler/utility/)      │
+│  Logging, JSON I/O, file operations         │
 └─────────────────────────────────────────────┘
 ```
 
-### Data Layer (chipcompiler/data/)
+### Key Layers
 
-Core entities:
-- **Workspace** - Top-level container with design files, PDK, parameters, flow state
-- **WorkspaceStep** - Per-step workspace managing inputs, outputs, configs, logs, reports, scripts
-- **Parameters** - Design specs (die size, clock frequency, buffer/filler/tie cells)
-- **PDK** - Technology library paths (LEF, liberty, timing, etc.)
-- **StepEnum** - Flow steps (SYNTHESIS, NETLIST_OPT, PLACEMENT, CTS, TIMING_OPT_DRV, TIMING_OPT_HOLD, LEGALIZATION, ROUTING, FILLER)
-- **StateEnum** - Step states (Unstart, Ongoing, Success, Incomplete, Invalid, Ignored, Pending)
+**Data Layer:** Workspace (top-level container), WorkspaceStep (per-step workspace), Parameters (design specs), PDK (tech library paths). Each workspace has `workspace.flow.json` for state persistence.
 
-Each workspace contains `workspace.flow.json` persisting flow state for reproducibility and recovery.
+**Engine Layer:** EngineFlow orchestrates workflow (build_default_steps, add_step, create_step_workspaces, run_steps). EngineDB wraps ECC-Tools for post-flow analysis.
 
-### Engine Layer (chipcompiler/engine/)
+**Tools Layer:** Standard interface (is_eda_exist, build_step, run_step). Yosys (synthesis), ECC-Tools (P&R - tool name "ecc"), KLayout (layout viewer).
 
-**EngineFlow (flow.py):**
-- Loads/saves flow config from workspace JSON
-- Manages workflow via `build_default_steps()` or custom `add_step()`
-- Creates per-step workspaces via `create_step_workspaces()` - chains input/output between steps
-- Executes flow via `run_steps()` - each step runs in subprocess for isolation
-- Tracks step state (check_state, set_state, clear_states)
-- Initializes database engine via `init_db_engine()`
-
-Key method: `flow.run_steps()` iterates workspace_steps, skips successful steps, runs remaining via subprocess, updates state and runtime.
-
-**EngineDB (db.py):**
-Wraps ECC-Tools C++ engine lifecycle for post-flow analysis. Initialized with a WorkspaceStep (typically last successful step).
-
-### Tools Layer (chipcompiler/tools/)
-
-**Standard EDA Tool Interface:**
-Each tool module (yosys, ecc, klayout, openroad, magic) exports:
-```python
-def is_eda_exist() -> bool         # Check tool availability
-def build_step() -> WorkspaceStep  # Create step workspace
-def build_step_space() -> None     # Initialize directory tree
-def build_step_config() -> None    # Generate tool config
-def run_step() -> StateEnum        # Execute tool via subprocess
-```
-
-**Tool Module Structure:** `builder.py`, `runner.py`, `utility.py`, `configs/`, `scripts/`, `bin/` (ecc only).
-
-**Yosys:** Converts RTL to gate-level netlist. Config in `chipcompiler/tools/yosys/configs/`.
-
-**ECC-Tools Integration:**
-- Backend physical design tool from [ECC-Tools](https://github.com/openecos-projects/ecc-tools)
-- Tool identifier: **"ecc"** (e.g., `add_step(step=StepEnum.PLACEMENT, tool="ecc")`)
-- Source: `chipcompiler/thirdparty/ecc-tools` (C++ engine)
-- Wrapper: `chipcompiler/tools/ecc/` (Python integration layer)
-- Performs: netlist optimization, placement, CTS, timing optimization, legalization, routing, filler insertion
-- I/O: Reads DEF/Verilog, PDK LEF/liberty, SDC; generates DEF/Verilog for next step
-- Python bindings available for post-flow analysis
-
-**KLayout:** Layout visualization, GDS/OASIS handling, DRC visualization.
-
-### Services Layer (chipcompiler/services/)
-
-FastAPI REST API: `main.py` (app + CORS), `routers/` (endpoints), `schemas/` (Pydantic models), `services/` (business logic), `run_server.py` (Uvicorn entry). API server spawnable by Tauri GUI at startup.
-
-### GUI Layer (gui/)
-
-Tauri + Vue 3 desktop app:
-- `src/` - Vue 3 frontend: `applications/editor/` (PixiJS layout editor), `components/` (UI), `composables/` (workspace/EDA/menu), `stores/` (Pinia state), `views/` (pages)
-- `src-tauri/` - Rust backend
-- `public/` - Static assets
-
-Features: WebGL rendering, project management, AI-assisted design.
-
-### RTL2GDS Layer (chipcompiler/rtl2gds/)
-
-`builder.py` - `build_rtl2gds_flow()` returns complete step sequence: SYNTHESIS → FLOORPLAN → NETLIST_OPT → PLACEMENT → CTS → LEGALIZATION → ROUTING → DRC → FILLER.
-
-### Benchmark Module (benchmark/)
-
-Batch testing infrastructure:
-- `benchmark.py` - `run_benchmark()`, `benchmark_statis()`, `benchmark_metrics()`
-- `parameters.py` - `get_parameters(pdk_name, design)` returns Parameters from JSON files
-- Benchmark JSONs (ics55_benchmark.json, ics55_tapeout.json) define designs for regression testing
-
-Usage: `from benchmark import get_parameters; parameters = get_parameters("ics55", "gcd")`
+**ECC-Tools Note:** Tool identifier is "ecc" in code. Source in chipcompiler/thirdparty/ecc-tools, wrapper in chipcompiler/tools/ecc/.
 
 ### Typical Flow Execution Path
 
@@ -283,33 +202,11 @@ Extend tests by adding designs in benchmark/parameters.py and benchmark/ics55_pa
 
 ## Common Development Workflows
 
-**Adding a new EDA tool:**
-1. Create `chipcompiler/tools/<tool_name>/` with builder.py, runner.py, utility.py
-2. Implement required functions: `is_eda_exist()`, `build_step()`, `build_step_space()`, `build_step_config()`, `run_step()`
-3. Add configs in `configs/` and scripts in `scripts/`
-4. Update EngineFlow.build_default_steps() or use add_step()
-5. Add test in test/
+For detailed workflows, see [docs/development.md](docs/development.md).
 
-**Debugging a flow step:**
-1. Check `workspace_step.logs/` for tool output
-2. Inspect `workspace_step.config/` for generated configs
-3. Verify input files in `workspace_step.input/`
-4. Run individual step via EngineFlow.run_step()
-
-**Modifying flow sequence:**
-1. Edit EngineFlow.build_default_steps() or use add_step()
-2. Call flow.save() to persist to workspace.flow.json
-3. Run flow.run_steps() - skips successful steps
-4. Use clear_states() to reset and re-run
-
-**Working with the GUI:**
-1. Start backend: `chipcompiler --reload` (port 8765)
-2. Start frontend: `cd gui && pnpm run tauri:dev`
-3. Frontend changes hot-reload; backend requires restart (or --reload)
-
-**Adding API endpoints:**
-1. Define schema in `chipcompiler/services/schemas/`
-2. Implement logic in `chipcompiler/services/services/`
-3. Create router in `chipcompiler/services/routers/`
-4. Register in `chipcompiler/services/main.py`
-5. Test via Swagger UI at `http://localhost:8765/docs`
+**Quick reference:**
+- **Add EDA tool:** Create tool module with standard interface (is_eda_exist, build_step, run_step), add configs/scripts, integrate into flow
+- **Debug step:** Check workspace_step.logs/, config/, input/; run individual step via EngineFlow.run_step()
+- **Modify flow:** Edit build_default_steps() or use add_step(), call flow.save(), run flow.run_steps()
+- **GUI dev:** Start backend (`chipcompiler --reload`), start frontend (`cd gui && pnpm run tauri:dev`)
+- **Add API endpoint:** Define schema, implement logic, create router, register in main.py, test via Swagger UI

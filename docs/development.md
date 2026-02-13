@@ -1,103 +1,107 @@
 # Development Guide
 
-This document covers the development environment setup and common workflows for ECOS Chip Compiler.
+Development environment setup and workflows for ECOS Chip Compiler.
 
 ## Installation
 
-### Option 1: Install via Nix (Recommended)
-
-Build and install ChipCompiler as a Nix package:
+### Option 1: Nix (Recommended)
 
 ```bash
-# Run directly from GitHub
+# Run directly
 nix shell github:openecos-projects/ecc#chipcompiler
 
-# Or install to your profile
+# Install to profile
 nix profile install github:openecos-projects/ecc#chipcompiler
-chipcompiler
 ```
 
-The Nix build includes all dependencies (Python, ECC-Tools bindings, Yosys) and creates a standalone executable. Binary cache is available at `serve.eminrepo.cc` for faster builds.
+Binary cache at `serve.eminrepo.cc`. Available packages: `chipcompiler`, `ecc-tools`, `ecos-studio`.
 
-Available packages:
-- `chipcompiler` - Core ChipCompiler tool
-- `ecc-tools` - ECC-Tools backend engine
-- `ecos-studio` - ECOS Studio GUI application
-
-### Option 2: Nix Development Environment
-
-For active development, use the Nix development shell:
+### Option 2: Nix Development Shell
 
 ```bash
-# Enter the development environment
-nix develop
+nix develop  # Provides Python 3.11+, uv, Yosys, ECC-Tools, dependencies
 ```
 
-Use direnv for automatic loading:
-
+Auto-load with direnv:
 ```bash
 echo "use flake" > .envrc
 direnv allow
 ```
 
-The development shell automatically provides Python 3.11+, uv, Yosys with Slang, ECC-Tools, and all Python dependencies. The shell hook runs `uv sync` and activates the virtual environment.
+Shell hook runs `uv sync` and activates venv.
 
 ### Option 3: Manual Installation
 
 ```bash
-# Install the uv package manager
+curl -LsSf https://astral.sh/uv/install.sh | sh  # Install uv
+./build.sh                                        # Build project
+source .venv/bin/activate                         # Activate venv
+```
+
+Skip OSS CAD Suite if yosys installed: `ENABLE_OSS_CAD_SUITE=false ./build.sh`
+
+## Python API Usage
+
+For programmatic automation and scripting:
+
+```bash
+# Install via Nix
+nix shell github:openecos-projects/ecc#chipcompiler
+
+# Or manual installation
 curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Build the project
 ./build.sh
-
-# Activate the virtual environment
 source .venv/bin/activate
 ```
 
-If yosys is already installed on your system, you can skip the OSS CAD Suite download:
+**Example usage:**
+```python
+from chipcompiler.data import create_workspace, get_pdk, get_design_parameters
+from chipcompiler.engine import EngineFlow
 
-```bash
-ENABLE_OSS_CAD_SUITE=false ./build.sh
+# Create workspace with PDK and parameters
+pdk = get_pdk("ics55")
+parameters = get_design_parameters("ics55", "gcd")
+workspace = create_workspace(
+    directory="./gcd_workspace",
+    origin_verilog="./design.v",
+    pdk=pdk,
+    parameters=parameters
+)
+
+# Run RTL-to-GDS flow
+flow = EngineFlow(workspace=workspace)
+flow.build_default_steps()
+flow.create_step_workspaces()
+flow.run_steps()
 ```
+
+Full API reference: **[API Guide](api-guide.md)** | Examples: **[examples/gcd](examples/gcd/README.md)**
 
 ### Yosys Runtime Resolution
 
-Current yosys runtime resolution in `chipcompiler/tools/yosys/utility.py`:
+Resolution priority in `chipcompiler/tools/yosys/utility.py`:
+1. Bundled runtime (`CHIPCOMPILER_OSS_CAD_DIR`)
+2. System PATH (`yosys`)
 
-1. If `CHIPCOMPILER_OSS_CAD_DIR` points to a bundled yosys binary, use it.
-2. Otherwise, fall back to `yosys` from system `PATH`.
-3. If neither is available, synthesis is marked invalid.
-
-Runtime environment handling:
-
-1. `get_yosys_command()` performs side-effect-free detection only.
-2. `get_yosys_runtime()` returns `(command, env)` for subprocess execution.
-3. OSS CAD-specific `PATH`, `YOSYS_PLUGINPATH`, and `YOSYS_DATDIR` are applied to subprocess env only (no global `os.environ` mutation).
-4. `check_slang_plugin()` runs a lightweight preflight check before synthesis (`yosys -p "plugin -i slang"`).
+Runtime handling:
+- `get_yosys_command()` - Side-effect-free detection
+- `get_yosys_runtime()` - Returns `(command, env)` for subprocess (no global `os.environ` mutation)
+- `check_slang_plugin()` - Preflight check: `yosys -p "plugin -i slang"`
 
 ### PDK Runtime Resolution
 
-Current PDK root resolution (for `get_pdk("ics55")`) in `chipcompiler/data/pdk.py`:
+Resolution priority for `get_pdk("ics55")` in `chipcompiler/data/pdk.py`:
+1. Explicit `pdk_root` argument
+2. `CHIPCOMPILER_ICS55_PDK_ROOT` env var
+3. Legacy `ICS55_PDK_ROOT` env var
+4. In-repo default: `chipcompiler/thirdparty/icsprout55-pdk`
 
-1. Explicit `pdk_root` argument (e.g. passed from API `create_workspace`).
-2. Environment variable `CHIPCOMPILER_ICS55_PDK_ROOT`.
-3. Legacy environment variable `ICS55_PDK_ROOT`.
-4. In-repo default path `chipcompiler/thirdparty/icsprout55-pdk`.
+Backend supports `POST /api/workspace/set_pdk_root` to set runtime path. Workspace creation persists resolved root in `parameters.json` as `PDK Root`.
 
-Notes:
+Example: `CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk chipcompiler`
 
-1. Backend now supports `POST /api/workspace/set_pdk_root` to set the runtime root path by PDK name.
-2. Workspace creation persists resolved root in `parameters.json` as `PDK Root`.
-3. `load_workspace()` prefers `PDK Root` from `parameters.json` and falls back to env/default resolution.
-
-Example:
-
-```bash
-CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/icsprout55-pdk chipcompiler
-```
-
-### Build ECC-Tools C++ bindings
+### Build ECC-Tools C++ Bindings
 
 ```bash
 mkdir -p build && cd build
@@ -107,192 +111,110 @@ ninja ieda_py
 
 ### Bundle ECC Runtime Dependencies
 
-After building ECC-Tools Python bindings, bundle runtime dependencies for portable deployment:
-
+After building ECC-Tools bindings:
 ```bash
-# Auto-detect from default location
-./scripts/autopatch-ecc-py.sh
-
-# Specify custom ecc_py.so location
-./scripts/autopatch-ecc-py.sh --ecc-py /path/to/ecc_py.so
-
-# Separated ecc_py.so and build directory
-./scripts/autopatch-ecc-py.sh \
-    --ecc-py chipcompiler/tools/ecc/bin/ecc_py.so \
-    --runtime-lib-path /path/to/build
-
-# Multiple runtime library paths
-./scripts/autopatch-ecc-py.sh \
-    --runtime-lib-path /path/to/build \
-    --runtime-lib-path /path/to/extra/libs
+./scripts/autopatch-ecc-py.sh  # Auto-detect
+./scripts/autopatch-ecc-py.sh --ecc-py /path/to/ecc_py.so  # Custom path
 ```
 
-**What it does:**
-1. Collects all `.so` dependencies from ECC-Tools build directory
-2. Copies them to `chipcompiler/tools/ecc/bin/lib/`
-3. Uses `auto-patchelf` to fix library dependencies and RPATH
-4. Sets RUNPATH to `$ORIGIN:$ORIGIN/lib` for portable deployment
-5. Verifies all dependencies are resolved via `ldd`
+Process: collects `.so` deps → copies to `bin/lib/` → patches RPATH (`$ORIGIN:$ORIGIN/lib`) → verifies with `ldd`.
 
-**Requirements:**
-- `patchelf` - ELF binary patcher (`apt install patchelf`)
-- `pyelftools` - Python library (auto-installed in isolated venv by the script)
+Requirements: `patchelf` (`apt install patchelf`), `pyelftools` (auto-installed).
 
-**When to use:**
-- After building ECC-Tools (`build_ecc_py` or `ninja ieda_py`)
-- Before packaging for distribution
-- When deploying to systems without ECC-Tools build directory
+Verification: `ldd chipcompiler/tools/ecc/bin/ecc_py*.so` (all deps should resolve to `$ORIGIN/lib/` or system).
 
-**Verification:**
-```bash
-# Check that all dependencies resolve correctly
-ldd chipcompiler/tools/ecc/bin/ecc_py*.so
-
-# All dependencies should point to $ORIGIN/lib/ or system libraries
-# No references to the original build directory should remain
-```
-
-This script is automatically called by `build.sh`, `Dockerfile`, and `.devcontainer/setup.sh`.
+Auto-called by `build.sh`, `Dockerfile`, `.devcontainer/setup.sh`.
 
 ## Code Quality
 
-### Formatting
-
 ```bash
-# Use ruff (recommended)
+# Format & lint (recommended)
 uv run ruff format chipcompiler/ test/
 uv run ruff check chipcompiler/ test/
 
-# Traditional tools
+# Type check
+uv run ty check              # Recommended (configured in pyproject.toml)
+uv run pyright chipcompiler/
+uv run mypy chipcompiler/
+
+# Legacy
 uv run black chipcompiler/ test/
 uv run isort chipcompiler/ test/
 ```
 
-### Type Checking
+## Testing
 
 ```bash
-# Use ty (recommended; configured in pyproject.toml)
-uv run ty check
-
-# Or use other tools
-uv run pyright chipcompiler/
-uv run mypy chipcompiler/
-```
-
-### Run Tests
-
-```bash
-# All tests
-uv run pytest test/
-
-# Specific file
-uv run pytest test/test_tools_yosys_utility.py -v
-uv run pytest test/test_tools_yosys_runner.py -v
-
-# Coverage report
-uv run pytest test/ --cov=chipcompiler --cov-report=term-missing
+uv run pytest test/                                    # All tests
+uv run pytest test/test_tools_yosys_utility.py -v     # Specific file
+uv run pytest test/ --cov=chipcompiler --cov-report=term-missing  # Coverage
 ```
 
 ## Add a New EDA Tool
 
-### 1. Create the tool directory
-
+### 1. Create Structure
 ```bash
 mkdir -p chipcompiler/tools/<tool_name>/{configs,scripts}
 touch chipcompiler/tools/<tool_name>/{__init__.py,builder.py,runner.py,utility.py}
 ```
 
-### 2. Implement standard interfaces
+### 2. Implement Interface
 
-**builder.py**:
-
+**builder.py:**
 ```python
 from chipcompiler.data import Workspace, WorkspaceStep, StepEnum
 
 def build_step(workspace: Workspace, step: StepEnum) -> WorkspaceStep:
-    """Create the step workspace"""
-    workspace_step = WorkspaceStep(
-        workspace=workspace,
-        step=step,
-        tool="<tool_name>"
-    )
-    return workspace_step
+    return WorkspaceStep(workspace=workspace, step=step, tool="<tool_name>")
 
 def build_step_space(workspace_step: WorkspaceStep) -> None:
-    """Initialize directory structure"""
     workspace_step.create_directories()
 
 def build_step_config(workspace_step: WorkspaceStep) -> None:
-    """Generate tool config file"""
-    config = {
-        "input": workspace_step.input_path,
-        "output": workspace_step.output_path,
-        # ... other configuration
-    }
+    config = {"input": workspace_step.input_path, "output": workspace_step.output_path}
     workspace_step.write_config(config)
 ```
 
-**runner.py**:
-
+**runner.py:**
 ```python
 import subprocess
 from chipcompiler.data import WorkspaceStep, StateEnum
 
 def is_eda_exist() -> bool:
-    """Check whether the tool is available"""
     try:
-        subprocess.run(["<tool_name>", "--version"],
-                      capture_output=True, check=True)
+        subprocess.run(["<tool_name>", "--version"], capture_output=True, check=True)
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
 
 def run_step(workspace_step: WorkspaceStep) -> StateEnum:
-    """Run the tool"""
     try:
         result = subprocess.run(
             ["<tool_name>", "-c", workspace_step.config_file],
-            cwd=workspace_step.path,
-            capture_output=True,
-            timeout=workspace_step.timeout
+            cwd=workspace_step.path, capture_output=True, timeout=workspace_step.timeout
         )
-        if result.returncode == 0:
-            return StateEnum.Success
-        return StateEnum.Incomplete
+        return StateEnum.Success if result.returncode == 0 else StateEnum.Incomplete
     except Exception as e:
         workspace_step.log_error(str(e))
         return StateEnum.Incomplete
 ```
 
-**__init__.py**:
-
+**__init__.py:**
 ```python
 from .builder import build_step, build_step_space, build_step_config
 from .runner import is_eda_exist, run_step
 
-__all__ = [
-    "build_step",
-    "build_step_space",
-    "build_step_config",
-    "is_eda_exist",
-    "run_step"
-]
+__all__ = ["build_step", "build_step_space", "build_step_config", "is_eda_exist", "run_step"]
 ```
 
-### 3. Add config templates
+### 3. Add Configs & Scripts
+- JSON templates in `configs/`
+- TCL/Python/Shell scripts in `scripts/`
 
-Add JSON config templates in the `configs/` directory.
-
-### 4. Add tool scripts
-
-Add TCL/Python/Shell scripts in the `scripts/` directory.
-
-### 5. Integrate into the flow
-
+### 4. Integrate into Flow
 Update `EngineFlow.build_default_steps()` or use `add_step()`.
 
-### 6. Write tests
-
+### 5. Write Tests
 ```python
 # test/test_tools_<tool_name>.py
 import pytest
@@ -300,29 +222,52 @@ from chipcompiler.tools.<tool_name> import is_eda_exist, run_step
 
 @pytest.mark.skipif(not is_eda_exist(), reason="<tool_name> not installed")
 def test_run_step():
-    # ... test implementation
+    # Test implementation
     pass
 ```
 
+## Common Workflows
+
+### Debug Flow Step
+1. Check `workspace_step.logs/` for tool output
+2. Inspect `workspace_step.config/` for configs
+3. Verify `workspace_step.input/` files
+4. Run individual step: `EngineFlow.run_step()`
+
+### Modify Flow Sequence
+1. Edit `EngineFlow.build_default_steps()` or use `add_step()`
+2. Persist: `flow.save()` → `workspace.flow.json`
+3. Run: `flow.run_steps()` (skips successful steps)
+4. Reset: `clear_states()` to re-run
+
+### GUI Development
+1. Start backend: `chipcompiler --reload` (port 8765)
+2. Start frontend: `cd gui && pnpm run tauri:dev`
+3. Frontend hot-reloads; backend needs restart (or --reload)
+
+### Add API Endpoint
+1. Define schema: `chipcompiler/services/schemas/`
+2. Implement logic: `chipcompiler/services/services/`
+3. Create router: `chipcompiler/services/routers/`
+4. Register: `chipcompiler/services/main.py`
+5. Test: Swagger UI at `http://localhost:8765/docs`
 
 ## Release Builds
 
-### Python package
-
+### Python Package
 ```bash
 uv build
 ```
 
-### Standalone executable (Run-Server mode)
-
+### Standalone Executable
 ```bash
 ./build.sh --release
 ```
 
-Generated files are in the `dist/` directory.
+Output in `dist/`.
 
 ## Related Documentation
 
-- [Architecture](architecture.md)
-- [API Guide](api-guide.md)
-- [GUI Development Guide](gui-guide.md)
+- [Architecture](architecture.md) - System design and patterns
+- [API Guide](api-guide.md) - Python API usage
+- [GUI Development Guide](gui-guide.md) - GUI development
