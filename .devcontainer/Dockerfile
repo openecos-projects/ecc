@@ -80,7 +80,7 @@ RUN cd scripts \
     && setup_project_vars \
     && cd - >/dev/null \
     && source .venv/bin/activate \
-    && build_ecc_py \
+    && build_ecc_py
 
 RUN source .venv/bin/activate \
     && bash ./scripts/autopatch-ecc-py.sh
