@@ -16,7 +16,7 @@ echo "use flake" > .envrc
 direnv allow
 ```
 
-Shell hook runs `uv sync` and activates venv. Binary cache at `serve.eminrepo.cc`.
+Shell hook runs `uv sync` and activates venv. Binary cache at [serve.eminrepo.cc](https://serve.eminrepo.cc).
 
 ### Option 2: Manual Installation
 
