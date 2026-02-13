@@ -58,6 +58,10 @@ fi
 build_ecc_py
 echo
 
+echo "=== Step 4.5: Patching ECC runtime dependencies ==="
+bash "$SCRIPT_DIR/autopatch-ecc-py.sh"
+echo
+
 echo "=== Step 5: Building API Server ==="
 cd "$PROJECT_ROOT"
 rm -rf build dist __pycache__
