@@ -68,22 +68,34 @@ FROM base AS runtime
 
 WORKDIR /workspace
 COPY . /workspace
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     rm -rf .venv \
-    && uv sync --frozen --all-groups --python 3.11 \
-    && cd scripts \
+    && uv sync --frozen --all-groups --python 3.11
+
+RUN cd scripts \
     && source common.sh \
     && setup_project_vars \
     && cd - >/dev/null \
     && source .venv/bin/activate \
-    && build_ecc_py \
+    && build_ecc_py
+
+RUN source .venv/bin/activate \
     && bash ./scripts/autopatch-ecc-py.sh
+
+RUN cd scripts \
+    && source common.sh \
+    && setup_project_vars \
+    && setup_oss_cad_suite \
+    && setup_ics55_pdk
 
 ENV VIRTUAL_ENV="/workspace/.venv"
 ENV PATH="/workspace/.venv/bin:${PATH}"
+ENV CHIPCOMPILER_OSS_CAD_DIR="/workspace/chipcompiler/thirdparty/oss-cad-suite"
+ENV CHIPCOMPILER_ICS55_PDK_ROOT="/workspace/chip-compiler/chipcompiler/thirdparty/icsprout55-pdk"
 RUN echo 'if [ -f /workspace/.venv/bin/activate ]; then source /workspace/.venv/bin/activate; fi' >> /root/.bashrc
 
 

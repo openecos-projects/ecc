@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import logging
 import os
 import shutil
 import subprocess
@@ -13,10 +12,9 @@ def _sanitize_loader_env(env: dict[str, str]) -> dict[str, str]:
     return env
 
 
-def _build_oss_cad_env(oss_path: Path,
-                       base_env: dict[str, str] | None = None) -> dict[str, str]:
+def _build_oss_cad_env(oss_path: Path, base_env: dict[str, str] | None = None) -> dict[str, str]:
     """Build subprocess environment variables for OSS CAD Suite."""
-    #TODO: Useless in nix build, consider remove this?
+    # TODO: Useless in nix build, consider remove this?
     env = dict(base_env) if base_env is not None else os.environ.copy()
 
     bin_dir = str(oss_path / "bin")
@@ -33,6 +31,19 @@ def _build_oss_cad_env(oss_path: Path,
     return env
 
 
+def _resolve_oss_yosys_paths() -> tuple[str, Path | None, Path | None]:
+    """
+    Resolve OSS CAD root and expected yosys binary path from environment.
+    """
+    oss_cad_dir = os.environ.get("CHIPCOMPILER_OSS_CAD_DIR", "").strip()
+    if not oss_cad_dir:
+        return "", None, None
+
+    oss_path = Path(oss_cad_dir)
+    yosys_bin = oss_path / "bin" / ("yosys.exe" if os.name == "nt" else "yosys")
+    return oss_cad_dir, oss_path, yosys_bin
+
+
 def _resolve_yosys_command() -> tuple[list[str], Path | None]:
     """
     Resolve yosys executable from bundled runtime first, then system PATH.
@@ -42,16 +53,34 @@ def _resolve_yosys_command() -> tuple[list[str], Path | None]:
             - command: list containing executable command or empty list if unavailable
             - oss_path: OSS CAD root path if bundled yosys is selected, else None
     """
-    if oss_cad_dir := os.environ.get("CHIPCOMPILER_OSS_CAD_DIR"):
-        oss_path = Path(oss_cad_dir)
-        yosys_bin = oss_path / "bin" / ("yosys.exe" if os.name == "nt" else "yosys")
-        if yosys_bin.exists():
-            return [str(yosys_bin)], oss_path
+    _, oss_path, yosys_bin = _resolve_oss_yosys_paths()
+    if oss_path is not None and yosys_bin is not None and yosys_bin.exists():
+        return [str(yosys_bin)], oss_path
 
     if shutil.which("yosys"):
         return ["yosys"], None
 
     return [], None
+
+
+def get_yosys_not_found_error() -> str:
+    """
+    Build a clear error message when yosys cannot be resolved.
+    """
+    oss_cad_dir, _, yosys_bin = _resolve_oss_yosys_paths()
+    if oss_cad_dir and yosys_bin is not None:
+        return (
+            "Yosys executable not found. "
+            f"Checked CHIPCOMPILER_OSS_CAD_DIR='{oss_cad_dir}' "
+            f"(expected binary at '{yosys_bin}') and system PATH. "
+            "Please install yosys or fix CHIPCOMPILER_OSS_CAD_DIR."
+        )
+
+    return (
+        "Yosys executable not found in system PATH, and CHIPCOMPILER_OSS_CAD_DIR "
+        "is not set. Please install yosys or set CHIPCOMPILER_OSS_CAD_DIR "
+        "to the OSS CAD Suite root directory."
+    )
 
 
 def get_yosys_command() -> list[str]:
@@ -79,11 +108,9 @@ def get_yosys_runtime() -> tuple[list[str], dict[str, str]]:
     return command, env
 
 
-def check_slang_plugin(yosys_cmd: list[str],
-                       cwd_dir: str,
-                       yosys_env: dict[str, str],
-                       log_file,
-                       timeout: int = 60) -> bool:
+def check_slang_plugin(
+    yosys_cmd: list[str], cwd_dir: str, yosys_env: dict[str, str], log_file, timeout: int = 60
+) -> bool:
     """
     Run a lightweight slang plugin availability check.
     """
@@ -94,7 +121,7 @@ def check_slang_plugin(yosys_cmd: list[str],
         env=yosys_env,
         stdout=log_file,
         stderr=subprocess.STDOUT,
-        timeout=timeout
+        timeout=timeout,
     )
     if slang_check_result.returncode == 0:
         return True
@@ -112,4 +139,7 @@ def is_eda_exist() -> bool:
     """
     Check if yosys is available via bundled runtime or PATH.
     """
-    return bool(get_yosys_command())
+    if get_yosys_command():
+        return True
+
+    raise RuntimeError(get_yosys_not_found_error())

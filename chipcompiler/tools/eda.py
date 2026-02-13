@@ -20,22 +20,25 @@ def load_eda_module(eda_tool: str):
                 return False
         return True
     
-    try:
-        import importlib
+    import importlib
 
-        module_alias = {
-            "klayout": "klayout_tool",
-        }
-        module_name = module_alias.get(eda_tool, eda_tool)
+    module_alias = {
+        "klayout": "klayout_tool",
+    }
+    module_name = module_alias.get(eda_tool, eda_tool)
+
+    try:
         eda_module = importlib.import_module(f"chipcompiler.tools.{module_name}")
-        # check eda tool exist
-        if not check_module(eda_module) or not eda_module.is_eda_exist():
-            logging.error(f"EDA tool : {eda_tool} not found!")
-            return None
-        return eda_module
     except Exception as e:
         logging.error(f"Error load module {eda_tool}: {e}")
         return None
+
+    # check eda tool exist
+    if not check_module(eda_module) or not eda_module.is_eda_exist():
+        logging.error(f"EDA tool : {eda_tool} not found!")
+        return None
+
+    return eda_module
 
 def create_step(workspace : Workspace, 
                step : str, 
