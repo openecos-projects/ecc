@@ -28,9 +28,9 @@ ECOS Chip Compiler is an **open-source chip design automation solution** that in
   <img alt="ECOS Chip Compiler Overview" src="docs/asset/overview-light.png">
 </picture>
 
-**Two ways to use:**
+**How to use:**
 - **Desktop GUI (ECOS Studio)** - Visual design tool for interactive chip design
-- **Python API** - Programmatic flow control for automation
+- **CLI (`cli`)** - Command-line flow execution
 
 
 ## Quick Start
@@ -75,14 +75,23 @@ For detailed usage, see **[User Guide](docs/user-guide.md)**.
 
 ### Development Environment
 
-For active development or Python API usage, see **[Development Guide](docs/development.md)**.
+For active development, see **[Development Guide](docs/development.md)**.
+
+### CLI Flow Runner
+
+Use `cli` to create a workspace and run the full RTL2GDS flow directly.
+
+```bash
+cli --workspace ./ws --rtl ./rtl/top.v --design top --top top --clock clk --pdk-root /path/to/ics55
+cli --workspace ./ws --rtl ./rtl/filelist.f --design top --top top --clock clk --pdk-root /path/to/ics55 --freq 200
+```
 
 ## Features
 
 - **Complete RTL-to-GDS Flow** - Synthesis, placement, routing, timing optimization
 - **Visual Design Interface** - PixiJS-based layout editor with WebGL rendering
 - **Open-Source EDA Integration** - Yosys (synthesis), ECC-Tools (P&R), KLayout (viewer)
-- **Python API** - Scriptable automation for batch processing
+- **CLI Automation** - Scriptable flow execution from command line
 - **REST API** - FastAPI backend for external tool integration
 - **Portable Deployment** - AppImage, Nix, or standalone builds
 
@@ -100,7 +109,7 @@ For active development or Python API usage, see **[Development Guide](docs/devel
 - [Documentation Index](docs/index.md) - Complete navigation
 - [Architecture](docs/architecture.md) - System design and patterns
 - [Development Guide](docs/development.md) - Setup and workflows
-- [API Guide](docs/api-guide.md) - Python API reference
+- [API Guide](docs/api-guide.md) - REST API reference
 - [GUI Guide](docs/gui-develop-guide.md) - GUI development
 - [Examples](docs/examples/) - Usage examples
 

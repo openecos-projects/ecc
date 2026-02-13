@@ -28,9 +28,9 @@ source .venv/bin/activate                         # Activate venv
 
 Skip OSS CAD Suite if yosys installed: `ENABLE_OSS_CAD_SUITE=false ./build.sh`
 
-## Python API Usage
+## CLI Usage
 
-For programmatic automation and scripting, install ChipCompiler:
+For command-line automation and scripting, install ChipCompiler:
 
 ```bash
 # For end users: Install via Nix
@@ -46,28 +46,12 @@ source .venv/bin/activate
 ```
 
 **Example usage:**
-```python
-from chipcompiler.data import create_workspace, get_pdk, get_design_parameters
-from chipcompiler.engine import EngineFlow
-
-# Create workspace with PDK and parameters
-pdk = get_pdk("ics55")
-parameters = get_design_parameters("ics55", "gcd")
-workspace = create_workspace(
-    directory="./gcd_workspace",
-    origin_verilog="./design.v",
-    pdk=pdk,
-    parameters=parameters
-)
-
-# Run RTL-to-GDS flow
-flow = EngineFlow(workspace=workspace)
-flow.build_default_steps()
-flow.create_step_workspaces()
-flow.run_steps()
+```bash
+cli --workspace ./ws --rtl ./rtl/top.v --design top --top top --clock clk --pdk-root /path/to/ics55
+cli --workspace ./ws --rtl ./rtl/filelist.f --design top --top top --clock clk --pdk-root /path/to/ics55 --freq 200
 ```
 
-Full API reference: **[API Guide](api-guide.md)** | Examples: **[examples/gcd](examples/gcd/README.md)**
+REST API reference: **[API Guide](api-guide.md)** | Examples: **[examples/gcd](examples/gcd/README.md)**
 
 ### Yosys Runtime Resolution
 
@@ -260,5 +244,5 @@ Output in `dist/`.
 ## Related Documentation
 
 - [Architecture](architecture.md) - System design and patterns
-- [API Guide](api-guide.md) - Python API usage
+- [API Guide](api-guide.md) - REST API usage
 - [GUI Development Guide](gui-develop-guide.md) - GUI development

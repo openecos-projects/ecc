@@ -456,7 +456,7 @@ View design metrics and analysis charts generated during the flow:
 ## Next Steps
 
 - **Explore Examples** - Check `docs/examples/` for sample projects
-- **Read API Guide** - Learn to automate flows with Python API
+- **Read API Guide** - Learn backend integration with REST API
 - **Join Community** - Participate in discussions and contribute
 
 For more information, see:

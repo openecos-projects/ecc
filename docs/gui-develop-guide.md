@@ -147,4 +147,4 @@ Output: `src-tauri/target/release/bundle/appimage/`
 
 - [Architecture](architecture.md) - System design and patterns
 - [Development Guide](development.md) - Complete development setup
-- [API Guide](api-guide.md) - Python API reference
+- [API Guide](api-guide.md) - REST API reference

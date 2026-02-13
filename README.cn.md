@@ -28,9 +28,9 @@ ECOS Chip Compiler 是一个**开源芯片设计自动化解决方案**，集成
   <img alt="ECOS Chip Compiler 概览" src="docs/asset/overview-light.png">
 </picture>
 
-**两种使用方式：**
+**使用方式：**
 - **桌面 GUI (ECOS Studio)** - 可视化设计工具，用于交互式芯片设计
-- **Python API** - 编程式流程控制，用于自动化
+- **CLI (`cli`)** - 命令行流程执行
 
 
 ## 快速开始
@@ -75,14 +75,23 @@ Nix 构建包含所有依赖。提供二进制缓存以加速构建。
 
 ### 开发环境
 
-开发或使用 Python API，请参阅 **[开发指南](docs/development.md)**。
+开发请参阅 **[开发指南](docs/development.md)**。
+
+### CLI 流程运行
+
+可以使用 `cli` 命令直接创建 workspace 并执行完整 RTL2GDS 流程。
+
+```bash
+cli --workspace ./ws --rtl ./rtl/top.v --design top --top top --clock clk --pdk-root /path/to/ics55
+cli --workspace ./ws --rtl ./rtl/filelist.f --design top --top top --clock clk --pdk-root /path/to/ics55 --freq 200
+```
 
 ## 功能特性
 
 - **完整 RTL-to-GDS 流程** - 综合、布局、布线、时序优化
 - **可视化设计界面** - 基于 PixiJS 的版图编辑器，WebGL 渲染
 - **开源 EDA 集成** - Yosys（综合）、ECC-Tools（布局布线）、KLayout（查看器）
-- **Python API** - 可脚本化自动化，支持批处理
+- **CLI 自动化** - 可脚本化的命令行流程执行
 - **REST API** - FastAPI 后端，支持外部工具集成
 - **便携部署** - AppImage、Nix 或独立构建
 
@@ -99,7 +108,7 @@ Nix 构建包含所有依赖。提供二进制缓存以加速构建。
 - [文档索引](docs/index.md) - 完整导航
 - [架构](docs/architecture.md) - 系统设计和模式
 - [开发指南](docs/development.md) - 配置和工作流
-- [API 指南](docs/api-guide.md) - Python API 参考
+- [API 指南](docs/api-guide.md) - REST API 参考
 - [GUI 指南](docs/gui-develop-guide.md) - GUI 开发
 - [示例](docs/examples/) - 使用示例
 

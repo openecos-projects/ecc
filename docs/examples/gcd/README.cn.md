@@ -1,4 +1,4 @@
-# 使用 Python API 的 GCD 示例
+# GCD 流程示例
 
 ## 安装
 

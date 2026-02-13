@@ -16,10 +16,9 @@ Welcome to the ChipCompiler documentation center.
   - Adding new EDA tools
   - Debugging and testing
 
-- **[API Guide](api-guide.md)** - Python API and REST API documentation
-  - Python API examples
+- **[API Guide](api-guide.md)** - REST API documentation
   - REST API endpoints
-  - Client examples
+  - API usage examples
   - Custom endpoint development
 
 - **[GUI Guide](gui-develop-guide.md)** - Desktop GUI development documentation
@@ -45,7 +44,7 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 - **Get started with ChipCompiler** → See main [README](../README.md)
 - **Understand the architecture** → [Architecture](architecture.md)
 - **Set up development environment** → [Development Guide](development.md)
-- **Use Python API** → [API Guide - Python API](api-guide.md#python-api)
+- **Use REST API** → [API Guide](api-guide.md)
 - **Develop GUI** → [GUI Guide](gui-develop-guide.md)
 - **Add new tools** → [Development Guide - Adding EDA Tools](development.md#adding-new-eda-tools)
 - **Debug workflows** → [Development Guide - Debugging](development.md#debugging-workflow-steps)

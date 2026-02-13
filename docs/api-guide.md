@@ -1,116 +1,64 @@
 # API Guide
 
-This document explains how to use ECOS Chip Compiler's Python API.
+This document explains ChipCompiler's REST API.
 
-## Python API
+## Server Startup
 
-### Basic Usage
+Start the backend server:
 
-```python
-from chipcompiler.engine import EngineFlow
-from chipcompiler.data import create_workspace, get_parameters, get_pdk
-
-# Create a workspace (using built-in PDK template)
-pdk = get_pdk("ics55", pdk_root="/path/to/icsprout55-pdk")
-parameters = get_parameters("ics55")
-workspace = create_workspace(
-    directory="workspace/my_design",
-    pdk=pdk,
-    parameters=parameters,
-    origin_def="",
-    origin_verilog="path/to/design.v",
-)
-
-# Initialize the flow engine
-flow = EngineFlow(workspace)
-flow.build_default_steps()  # Build default flow steps
-flow.create_step_workspaces()  # Create step workspaces
-
-# Run the full flow
-flow.run_steps()
-
-# Check flow status
-for step in flow.workspace_steps:
-    print(f"{step.name}: {step.state}")
+```bash
+chipcompiler --host 127.0.0.1 --port 8765
 ```
 
-### Custom Flow
+Swagger UI:
+- `http://127.0.0.1:8765/docs`
 
-```python
-from chipcompiler.data import StepEnum
+Health checks:
+- `GET /health`
+- `GET /api/workspace/health`
+- `GET /sse/health`
 
-flow = EngineFlow(workspace)
+## Request/Response Schema
 
-# Manually add steps
-flow.add_step(StepEnum.SYNTHESIS, "yosys")
-flow.add_step(StepEnum.PLACEMENT, "ecc")
-flow.add_step(StepEnum.CTS, "ecc")
-flow.add_step(StepEnum.ROUTING, "ecc")
+Most workspace APIs use this envelope:
 
-flow.create_step_workspaces()
-flow.run_steps()
+```json
+{
+  "cmd": "create_workspace",
+  "data": {}
+}
 ```
 
-### Incremental Execution
+Response envelope:
 
-```python
-# First run
-flow.run_steps()
-
-# After fixing errors, rerun only failed steps
-flow = EngineFlow.load("workspace/my_design")
-flow.run_steps()  # Automatically skip successful steps
+```json
+{
+  "cmd": "create_workspace",
+  "response": "success",
+  "data": {},
+  "message": []
+}
 ```
 
-### Single-Step Execution
+## Workspace Endpoints
 
-```python
-# Run a specific step
-flow.run_step(flow.workspace_steps[0])
+Base path: `/api/workspace`
 
-# Check status
-state = flow.check_state("SYNTHESIS")
-print(state)  # StateEnum.Success / Incomplete
-```
+- `POST /create_workspace`
+- `POST /set_pdk_root`
+- `POST /load_workspace`
+- `POST /delete_workspace`
+- `POST /rtl2gds`
+- `POST /run_step`
+- `POST /get_info`
+- `POST /get_home_page`
 
-### State Management
+## SSE Endpoints
 
-```python
-# Clear all states (start over)
-flow.clear_states()
+Base path: `/sse`
 
-# Set a specific step state
-flow.set_state("SYNTHESIS", StateEnum.Unstart)
-
-# Save flow configuration
-flow.save()
-```
-
-### Use a Predefined Flow
-
-```python
-from chipcompiler.rtl2gds import build_rtl2gds_flow
-
-# Get the full RTL-to-GDS flow
-steps = build_rtl2gds_flow()
-
-flow = EngineFlow(workspace)
-for step_enum, tool, state in steps:
-    flow.add_step(step_enum, tool)
-
-flow.create_step_workspaces()
-flow.run_steps()
-```
-
-### Database Engine
-
-```python
-# Initialize the database engine (uses ECC-Tools engine internally)
-db_engine = flow.init_db_engine()
-
-# Use the ECC-Tools Python bindings for post-flow analysis
-# db_engine provides access to circuit data for analysis and optimization
-```
+- `GET /stream/{workspace_id}` for real-time flow notifications
+- `GET /health`
 
 ## Related Documentation
 
