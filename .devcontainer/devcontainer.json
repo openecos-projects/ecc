@@ -1,7 +1,9 @@
 {
   "name": "chipcompiler",
   "build": {
-    "dockerfile": "Dockerfile"
+    "dockerfile": "../Dockerfile",
+    "context": "..",
+    "target": "devcontainer"
   },
   "customizations": {
     "vscode": {
@@ -19,8 +21,8 @@
   "forwardPorts": [8765, 5173, 1420],
   // To use proxy, set environment variables by using containerEnv field:
   // "containerEnv": {
-  //   "GITHUB_PROXY_PREFIX": "https://ghproxy.com/",
-  //   "GIT_PROXY_PREFIX": "https://gitproxy.com/",
+  //   "GITHUB_PROXY_PREFIX": "https://ghfast.top/",
+  //   "GIT_PROXY_PREFIX": "https://ghfast.top/",
   //   "UV_PYTHON_INSTALL_MIRROR": "https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download"
   // },
   "containerEnv": {
