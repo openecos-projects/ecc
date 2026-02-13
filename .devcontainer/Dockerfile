@@ -68,6 +68,7 @@ FROM base AS runtime
 
 WORKDIR /workspace
 COPY . /workspace
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cargo/registry \
@@ -84,6 +85,12 @@ RUN cd scripts \
 
 RUN source .venv/bin/activate \
     && bash ./scripts/autopatch-ecc-py.sh
+
+RUN cd scripts \
+    && source common.sh \
+    && setup_project_vars \
+    && setup_oss_cad_suite \
+    && setup_ics55_pdk
 
 ENV VIRTUAL_ENV="/workspace/.venv"
 ENV PATH="/workspace/.venv/bin:${PATH}"
