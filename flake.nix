@@ -57,9 +57,10 @@
           };
           packages = {
             inherit (pkgs)
+              ecos-studio
               ecc-tools
               chipcompiler
-              ecos-studio
+              cli
               ;
           };
         };
