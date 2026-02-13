@@ -12,10 +12,10 @@ setup_project_vars
 cd -
 
 uv sync --frozen --all-groups --python 3.11
+source .venv/bin/activate
+
 setup_oss_cad_suite
 setup_ics55_pdk
-
-source .venv/bin/activate
 build_ecc_py
 bash ./scripts/autopatch-ecc-py.sh
 
