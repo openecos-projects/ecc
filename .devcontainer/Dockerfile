@@ -39,7 +39,8 @@ RUN apt-get install -y \
     libhwloc-dev \
     libcairo2-dev \
     libcurl4-openssl-dev \
-    libtbb-dev
+    libtbb-dev \
+    patchelf
 
 # Install Node.js (LTS) and pnpm
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
