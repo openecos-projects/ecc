@@ -122,6 +122,46 @@ make
 ```
 Builds ECC-Tools C++ bindings. Python executable path defaults to `.venv/bin/python3`.
 
+### Patching ECC Runtime Dependencies
+
+After building ECC-Tools Python bindings, use `autopatch-ecc-py.sh` to bundle runtime dependencies:
+
+```bash
+# Auto-detect from default location
+./scripts/autopatch-ecc-py.sh
+
+# Specify custom ecc_py.so location
+./scripts/autopatch-ecc-py.sh --ecc-py /path/to/ecc_py.so
+
+# Separated ecc_py.so and build directory
+./scripts/autopatch-ecc-py.sh \
+    --ecc-py chipcompiler/tools/ecc/bin/ecc_py.so \
+    --runtime-lib-path /path/to/build
+
+# Multiple runtime library paths
+./scripts/autopatch-ecc-py.sh \
+    --runtime-lib-path /path/to/build \
+    --runtime-lib-path /path/to/extra/libs
+```
+
+**What it does:**
+1. Collects all `.so` dependencies from ECC-Tools build directory
+2. Copies them to `chipcompiler/tools/ecc/bin/lib/`
+3. Uses `auto-patchelf` to fix library dependencies and RPATH
+4. Sets RUNPATH to `$ORIGIN:$ORIGIN/lib` for portable deployment
+5. Verifies all dependencies are resolved via `ldd`
+
+**Requirements:**
+- `patchelf` - ELF binary patcher (`apt install patchelf`)
+- `pyelftools` - Python library (auto-installed in isolated venv)
+
+**When to use:**
+- After building ECC-Tools (`build_ecc_py`)
+- Before packaging for distribution
+- When deploying to systems without ECC-Tools build directory
+
+This script is automatically called by `build.sh`, `Dockerfile`, and `.devcontainer/setup.sh`.
+
 ### Running the API Server
 
 The REST API provides programmatic access to ChipCompiler functionality:
@@ -392,6 +432,7 @@ parameters = get_parameters("ics55", "gcd")  # Returns pre-configured Parameters
 - **GUI-API Communication:** GUI frontend communicates with Python backend via REST API (port 8765). CORS is configured for Tauri dev server (1420) and Vite dev server (5173).
 - **Package Management:** Uses `uv` for fast dependency resolution and environment management. Dependencies defined in pyproject.toml.
 - **Filelist Support:** The project supports Verilog filelist format (`.f` files) for specifying multiple RTL sources. See [docs/examples/gcd/ics55flow_with_filelist.py](docs/examples/gcd/ics55flow_with_filelist.py) for usage.
+- **ECC Runtime Dependencies:** ECC-Tools Python bindings require bundled `.so` libraries. The `autopatch-ecc-py.sh` script automatically collects, patches, and bundles these dependencies with correct RPATH settings (`$ORIGIN:$ORIGIN/lib`) for portable deployment. This ensures `ecc_py*.so` can load all dependencies without requiring the original build directory.
 
 ## Testing Strategy
 
@@ -434,6 +475,18 @@ Extend tests by adding new designs in benchmark/parameters.py and benchmark/ics5
 2. Call flow.save() to persist changes to workspace.flow.json
 3. Run flow.run_steps() - will skip already-successful steps
 4. Use clear_states() to reset and re-run
+
+**Rebuilding ECC-Tools with dependency bundling:**
+1. Build ECC-Tools Python bindings: `build_ecc_py` (from common.sh)
+2. Bundle runtime dependencies: `./scripts/autopatch-ecc-py.sh`
+3. Verify dependencies: `ldd chipcompiler/tools/ecc/bin/ecc_py*.so`
+4. All dependencies should resolve to `$ORIGIN/lib/` or system libraries
+
+**Deploying to a new system:**
+1. Copy `chipcompiler/tools/ecc/bin/` directory (includes ecc_py*.so and lib/)
+2. Ensure `patchelf` is installed on target system
+3. No need to copy ECC-Tools build directory - all dependencies are bundled
+4. Python can import ecc_py module directly from this location
 
 **Working with the GUI:**
 1. Start backend API: `chipcompiler --reload` (port 8765)

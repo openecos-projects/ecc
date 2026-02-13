@@ -191,7 +191,24 @@ tool_name/
 ├── configs/      # Config templates
 ├── scripts/      # Tool scripts
 └── bin/          # Tool binaries (ecc only)
+    └── lib/      # Bundled runtime dependencies (ecc only)
 ```
+
+**ECC-Tools Runtime Dependencies:**
+
+The ECC-Tools Python bindings (`ecc_py*.so`) require numerous shared libraries (`.so` files) at runtime. To enable portable deployment without requiring the full ECC-Tools build directory, these dependencies are bundled:
+
+- **Location**: `chipcompiler/tools/ecc/bin/lib/`
+- **Bundling script**: `scripts/autopatch-ecc-py.sh`
+- **RPATH configuration**: `$ORIGIN:$ORIGIN/lib` (relative paths for portability)
+
+The bundling process:
+1. Collects all `.so` dependencies from ECC-Tools build directory
+2. Copies them to the `lib/` subdirectory
+3. Uses `auto-patchelf` to rewrite RPATH entries in all binaries
+4. Verifies dependency resolution via `ldd`
+
+This allows `ecc_py*.so` to be deployed independently of the build environment, as all dependencies are co-located and referenced via relative paths.
 
 ### Yosys Runtime Flow (Current)
 

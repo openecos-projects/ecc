@@ -105,6 +105,55 @@ cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_AIEDA=ON ..
 ninja ieda_py
 ```
 
+### Bundle ECC Runtime Dependencies
+
+After building ECC-Tools Python bindings, bundle runtime dependencies for portable deployment:
+
+```bash
+# Auto-detect from default location
+./scripts/autopatch-ecc-py.sh
+
+# Specify custom ecc_py.so location
+./scripts/autopatch-ecc-py.sh --ecc-py /path/to/ecc_py.so
+
+# Separated ecc_py.so and build directory
+./scripts/autopatch-ecc-py.sh \
+    --ecc-py chipcompiler/tools/ecc/bin/ecc_py.so \
+    --runtime-lib-path /path/to/build
+
+# Multiple runtime library paths
+./scripts/autopatch-ecc-py.sh \
+    --runtime-lib-path /path/to/build \
+    --runtime-lib-path /path/to/extra/libs
+```
+
+**What it does:**
+1. Collects all `.so` dependencies from ECC-Tools build directory
+2. Copies them to `chipcompiler/tools/ecc/bin/lib/`
+3. Uses `auto-patchelf` to fix library dependencies and RPATH
+4. Sets RUNPATH to `$ORIGIN:$ORIGIN/lib` for portable deployment
+5. Verifies all dependencies are resolved via `ldd`
+
+**Requirements:**
+- `patchelf` - ELF binary patcher (`apt install patchelf`)
+- `pyelftools` - Python library (auto-installed in isolated venv by the script)
+
+**When to use:**
+- After building ECC-Tools (`build_ecc_py` or `ninja ieda_py`)
+- Before packaging for distribution
+- When deploying to systems without ECC-Tools build directory
+
+**Verification:**
+```bash
+# Check that all dependencies resolve correctly
+ldd chipcompiler/tools/ecc/bin/ecc_py*.so
+
+# All dependencies should point to $ORIGIN/lib/ or system libraries
+# No references to the original build directory should remain
+```
+
+This script is automatically called by `build.sh`, `Dockerfile`, and `.devcontainer/setup.sh`.
+
 ## Code Quality
 
 ### Formatting
