@@ -127,7 +127,7 @@ done
 mapfile -t ecc_py_dst < <(find "$ECC_PY_DST" -maxdepth 1 -type f -name "ecc_py*.so" | sort)
 
 echo "[bundle] running auto-patchelf"
-auto-patchelf --no-recurse --ignore-missing --paths "${ecc_py_dst[@]}" "$ECC_LIB_DST" --libs "${search_paths[@]}" --runtime-dependencies --append-rpaths --extra-args
+auto-patchelf --no-recurse --ignore-missing --paths "${ecc_py_dst[@]}" "$ECC_LIB_DST" --libs "${search_paths[@]}"
 
 echo "[bundle] setting RUNPATH"
 for f in "${ecc_py_dst[@]}"; do patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' "$f"; done
