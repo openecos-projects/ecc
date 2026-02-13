@@ -97,12 +97,12 @@ For active development or Python API usage, see **[Development Guide](docs/devel
 
 ## Documentation
 
+- [Documentation Index](docs/index.md) - Complete navigation
 - [Architecture](docs/architecture.md) - System design and patterns
 - [Development Guide](docs/development.md) - Setup and workflows
 - [API Guide](docs/api-guide.md) - Python API reference
 - [GUI Guide](docs/gui-develop-guide.md) - GUI development
 - [Examples](docs/examples/) - Usage examples
-- [Documentation Index](docs/index.md) - Complete navigation
 
 ## Contributing
 

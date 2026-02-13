@@ -97,12 +97,12 @@ Nix 构建包含所有依赖。提供二进制缓存以加速构建。
 
 ## 文档
 
+- [文档索引](docs/index.md) - 完整导航
 - [架构](docs/architecture.md) - 系统设计和模式
 - [开发指南](docs/development.md) - 配置和工作流
 - [API 指南](docs/api-guide.md) - Python API 参考
 - [GUI 指南](docs/gui-develop-guide.md) - GUI 开发
 - [示例](docs/examples/) - 使用示例
-- [文档索引](docs/index.md) - 完整导航
 
 ## 参与贡献
 
