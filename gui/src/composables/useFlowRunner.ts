@@ -44,13 +44,13 @@ export function useFlowRunner() {
     const step = getCurrentStep()
 
     if (!step) {
-      console.warn('无法获取当前步骤')
+      console.warn('Unable to get current step')
       return null
     }
 
     // 检查是否在 Tauri 环境中
     if (!isInTauri) {
-      console.warn('当前不在 Tauri 环境中，无法执行 Python 脚本')
+      console.warn('Not running in Tauri environment, cannot execute Python script')
       ensureTauri(true) // 显示警告弹窗
       return { step: step as StepEnum, state: StateEnum.Invalid }
     }
@@ -92,7 +92,7 @@ export function useFlowRunner() {
 
       return result.data
     } catch (err) {
-      console.error('单步运行失败:', err)
+      console.error('Single-step run failed:', err)
       showToast({
         severity: 'error',
         summary: 'Step Error',
@@ -115,7 +115,7 @@ export function useFlowRunner() {
   async function runAllFlow(): Promise<any | null> {
     // 检查是否在 Tauri 环境中
     if (!isInTauri) {
-      console.warn('当前不在 Tauri 环境中，无法执行 Python 脚本')
+      console.warn('Not running in Tauri environment, cannot execute Python script')
       ensureTauri(true) // 显示警告弹窗
       return null
     }
@@ -160,7 +160,7 @@ export function useFlowRunner() {
 
       return result.data
     } catch (err) {
-      console.error('运行所有步骤失败:', err)
+      console.error('Run-all flow failed:', err)
       error.value = err instanceof Error ? err.message : String(err)
       state.value = StateEnum.Imcomplete
       showToast({

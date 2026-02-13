@@ -78,7 +78,7 @@ export function useFlowStages() {
       await invoke('request_project_permission', { path })
       return true
     } catch (permError) {
-      console.warn('请求文件访问权限失败:', permError)
+      console.warn('Failed to request file access permission:', permError)
       return false
     }
   }
@@ -123,7 +123,7 @@ export function useFlowStages() {
    */
   async function loadFlowStagesFromPath(flowJsonPath: string): Promise<void> {
     if (!isInTauri || !flowJsonPath) {
-      console.warn('无法加载 flow.json: 不在 Tauri 环境或路径为空')
+      console.warn('Cannot load flow.json: not in Tauri environment or path is empty')
       return
     }
 
@@ -161,7 +161,7 @@ export function useFlowStages() {
    */
   async function loadFlowStages(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('无法加载 flow.json: 不在 Tauri 环境或没有打开的项目')
+      console.warn('Cannot load flow.json: not in Tauri environment or no project is open')
       dynamicFlowStages.value = []
       return
     }
@@ -257,7 +257,7 @@ export function useFlowStages() {
       const info = latest.data?.info as Record<string, unknown> | undefined
       const stepPath = info?.step_path as string | undefined
 
-      console.log('收到 SSE step 通知，步骤:', stepName, '路径:', stepPath)
+      console.log('Received SSE step notification, step:', stepName, 'path:', stepPath)
 
       // 乐观更新：先将对应步骤状态设为 Success，避免等待文件读取的延迟
       if (stepName) {

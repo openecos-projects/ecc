@@ -73,7 +73,7 @@ export const useMessageStore = defineStore('messages', () => {
     messages.value.push({
       id,
       role: 'user',
-      content: `查看图片: ${thumbnail.label}`,
+      content: `View image: ${thumbnail.label}`,
       type: 'image',
       status: 'done',
       image: {
@@ -138,4 +138,3 @@ export const useMessageStore = defineStore('messages', () => {
     clearMessages
   }
 })
-

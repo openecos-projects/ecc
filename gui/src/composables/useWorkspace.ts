@@ -257,7 +257,7 @@ export function useWorkspace() {
         const result = await open({
           directory: true,
           multiple: false,
-          title: '选择 ECOS Studio 项目目录'
+          title: 'Select ECOS Studio Project Directory'
         })
         if (!result) return
         selectedPath = result as string
@@ -267,7 +267,7 @@ export function useWorkspace() {
       try {
         await invoke('request_project_permission', { path: selectedPath })
       } catch (permError) {
-        console.error('请求访问权限失败:', permError)
+        console.error('Failed to request access permission:', permError)
         // 权限请求失败不阻止继续，API 服务端有独立的文件访问权限
       }
 
@@ -299,13 +299,13 @@ export function useWorkspace() {
 
         return true
       } else {
-        console.error('加载项目失败:', response.message)
-        showToast({ severity: 'error', summary: '打开项目失败', detail: response.message?.join('; ') || '未知错误' })
+        console.error('Failed to load project:', response.message)
+        showToast({ severity: 'error', summary: 'Failed to Open Project', detail: response.message?.join('; ') || 'Unknown error' })
         return false
       }
     } catch (error) {
       console.error('Open project error:', error)
-      showToast({ severity: 'error', summary: '打开项目失败', detail: String(error) })
+      showToast({ severity: 'error', summary: 'Failed to Open Project', detail: String(error) })
       return false
     }
   }
@@ -326,7 +326,7 @@ export function useWorkspace() {
         const result = await open({
           directory: true,
           multiple: false,
-          title: '选择新项目保存位置'
+          title: 'Select New Project Save Location'
         })
 
         if (!result) return false
@@ -337,7 +337,7 @@ export function useWorkspace() {
       try {
         await invoke('request_project_permission', { path: selectedPath })
       } catch (permError) {
-        console.error('请求访问权限失败:', permError)
+        console.error('Failed to request access permission:', permError)
         // 权限请求失败不阻止继续，API 服务端有独立的文件访问权限
       }
 
@@ -398,13 +398,13 @@ export function useWorkspace() {
 
         return true
       } else {
-        console.error('创建项目失败:', response.message)
-        showToast({ severity: 'error', summary: '创建项目失败', detail: response.message?.join('; ') || '未知错误' })
+        console.error('Failed to create project:', response.message)
+        showToast({ severity: 'error', summary: 'Failed to Create Project', detail: response.message?.join('; ') || 'Unknown error' })
         return false
       }
     } catch (error) {
       console.error('New project error:', error)
-      showToast({ severity: 'error', summary: '创建项目失败', detail: String(error) })
+      showToast({ severity: 'error', summary: 'Failed to Create Project', detail: String(error) })
       return false
     }
   }

@@ -221,7 +221,7 @@ export function useSubflow() {
    */
   async function loadSubflowFromPath(subflowPath: string): Promise<void> {
     if (!isInTauri || !subflowPath) {
-      console.warn('无法加载 subflow: 不在 Tauri 环境或路径为空')
+      console.warn('Cannot load subflow: not in Tauri environment or path is empty')
       return
     }
 
@@ -309,7 +309,7 @@ export function useSubflow() {
 
       if (!subflowPath) return
 
-      console.log('收到 SSE subflow 通知，步骤:', sseStep, '路径:', subflowPath)
+      console.log('Received SSE subflow notification, step:', sseStep, 'path:', subflowPath)
 
       // 判断当前路由是否在该 step 的页面上
       const currentRouteStep = getCurrentRouteStep()

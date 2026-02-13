@@ -29,7 +29,7 @@ const routes: RouteRecordRaw[] = [
       }
     ],
     meta: {
-      title: '工作区',
+      title: 'Workspace',
       requiresProject: true
     }
   }
@@ -52,4 +52,3 @@ router.beforeEach((to, _from, next) => {
 })
 
 export default router
-
