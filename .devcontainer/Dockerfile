@@ -52,6 +52,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
 # Install Rust (for Tauri).
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 
+# Install Bazel
+RUN wget https://ghfast.top/https://github.com/bazelbuild/bazel/releases/download/9.0.0/bazel-9.0.0-linux-x86_64 -O /usr/local/bin/bazel \
+    && chmod +x /usr/local/bin/bazel
+
 # Install uv (Python package manager used by project).
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ln -s /root/.local/bin/uv /usr/local/bin/uv
