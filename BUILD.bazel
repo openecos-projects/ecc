@@ -36,7 +36,7 @@ genrule(
     cmd = """
 set -euo pipefail
 
-OUT_DIR="$(@D)/api_server_bundle"
+OUT_DIR="$(@D)"
 WORK_DIR="$(@D)/api_server_bundle_work"
 SPEC_FILE="$(location chipcompiler.spec)"
 PROJECT_DIR="$$(dirname "$(location pyproject.toml)")"
@@ -59,7 +59,12 @@ uv run --project "$$PROJECT_DIR" --group dev --locked --python "$$PYTHON_BIN" py
   --workpath "$$WORK_DIR/build"
 
 # Ensure the declared output exists exactly at the expected Bazel path.
-test -f "$@"
+if [ ! -f "$@" ]; then
+  echo "ERROR: expected output not found at $@" >&2
+  echo "Files under $(@D):" >&2
+  find "$(@D)" -maxdepth 3 -type f | sort >&2
+  exit 1
+fi
 """,
 )
 
