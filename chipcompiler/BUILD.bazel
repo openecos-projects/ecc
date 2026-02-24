@@ -106,11 +106,8 @@ py_binary(
     ],
 )
 
-py_binary(
+# Onefile and onedir packaging share the same Python entrypoint.
+alias(
     name = "api_server_onefile",
-    srcs = ["server/api_server_onefile_runner.py"],
-    main = "server/api_server_onefile_runner.py",
-    data = ["//chipcompiler/thirdparty:runtime_bundle"],
-    # Keep the runtime graph explicit so Bazel tracks Python source changes.
-    deps = [":chipcompiler_core"],
+    actual = ":chipcompiler_server",
 )
