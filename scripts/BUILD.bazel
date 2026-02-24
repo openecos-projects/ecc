@@ -1,0 +1,12 @@
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "autopatch-ecc-py.sh",
+])
+
+filegroup(
+    name = "autopatch_ecc_py",
+    # Why: expose the script as a stable Bazel target for genrule task inputs,
+    # making runtime bundling dependencies explicit and cache-friendly.
+    srcs = ["autopatch-ecc-py.sh"],
+)

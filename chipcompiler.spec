@@ -43,14 +43,14 @@ datas = [
 klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all('klayout')
 datas.extend(klayout_datas)
 
-ecc_bin_dir = PROJ_ROOT / 'chipcompiler' / 'thirdparty' / 'ecc-tools' / 'bin'
-
+ecc_bin_dir = PROJ_ROOT / 'chipcompiler' / 'tools' / 'ecc' / 'bin'
 all_ecc_py_files = sorted(ecc_bin_dir.glob('ecc_py*.so'))
 
 if not all_ecc_py_files:
     raise FileNotFoundError(
         f"ecc_py module not found in {ecc_bin_dir}. "
-        "Please build it first with: ./build.sh"
+        "Build and install runtime first, for example: "
+        "bazel run //chipcompiler/thirdparty:install_ecc_runtime"
     )
 
 py_tag_cpython = f"cpython-{sys.version_info.major}{sys.version_info.minor}"
@@ -75,6 +75,22 @@ if not ecc_py_files:
 # Runtime imports ecc from chipcompiler.tools.ecc.bin.
 # Always place the extension under this package in the bundle.
 binaries = [(str(f), 'chipcompiler/tools/ecc/bin') for f in ecc_py_files]
+# Explicit runtime dependency: bundle all ECC runtime shared libs.
+if sys.platform.startswith("linux"):
+    ecc_lib_dir = ecc_bin_dir / "lib"
+    if not ecc_lib_dir.is_dir():
+        raise FileNotFoundError(
+            f"ECC runtime lib directory not found: {ecc_lib_dir}. "
+            "Run: bazel run //chipcompiler/thirdparty:install_ecc_runtime"
+        )
+    ecc_runtime_libs = sorted(p for p in ecc_lib_dir.glob("*.so*") if p.is_file())
+    if not ecc_runtime_libs:
+        raise FileNotFoundError(
+            f"No runtime shared libraries found in {ecc_lib_dir}. "
+            "Run: bazel run //chipcompiler/thirdparty:install_ecc_runtime"
+        )
+    binaries.extend((str(p), 'chipcompiler/tools/ecc/bin/lib') for p in ecc_runtime_libs)
+
 # Add system libraries
 binaries.extend([
     ('/lib/x86_64-linux-gnu/libgomp.so.1', 'lib'),
@@ -125,7 +141,7 @@ hiddenimports = [
     'chipcompiler.tools.ecc.builder',
     'chipcompiler.tools.ecc.runner',
     'chipcompiler.tools.ecc.module',
-    'chipcompiler.thirdparty.ecc-tools.bin.ecc_py',
+    'chipcompiler.tools.ecc.bin.ecc_py',
     'chipcompiler.tools.yosys',
     'chipcompiler.tools.yosys.builder',
     'chipcompiler.tools.yosys.runner',

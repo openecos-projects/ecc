@@ -1,0 +1,18 @@
+build --disk_cache=~/.cache/bazel-disk
+build --spawn_strategy=sandboxed
+build --verbose_failures
+build --show_timestamps
+build --python_version=PY3
+# Keep tool lookup deterministic in sandboxed actions (cmake -> cargo, etc.).
+build --action_env=PATH=/root/.cargo/bin:/home/vscode/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Optional GitHub mirror config for external repository downloads.
+# Usage: bazel --config=ghproxy build //...
+common:ghproxy --downloader_config=.bazel_downloader_config
+# Prefer the Bazel Central Registry content on raw.githubusercontent.com.
+# Fall back to the official registry endpoint.
+common:ghproxy --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/main
+common:ghproxy --registry=https://bcr.bazel.build/
+common:ghproxy --experimental_repository_downloader_retries=5
+common:ghproxy --http_connector_attempts=16
+common:ghproxy --http_connector_retry_max_timeout=30s
