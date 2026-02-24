@@ -106,7 +106,7 @@ rm -rf "$$BUNDLE_STAGE_DIR"
 mkdir -p "$$BUNDLE_STAGE_DIR/chipcompiler/tools/ecc"
 
 # BUILD_WORKSPACE_DIRECTORY is unavailable in genrule; reference the script via location substitution.
-"$(location //scripts:autopatch_ecc_py_script)" \
+CHIPCOMPILER_PROJECT_ROOT="$$PWD" "$(location //scripts:autopatch_ecc_py_script)" \
   --ecc-py "$(location :ecc_py_raw)" \
   --runtime-roots-tar "$(location :ecc_runtime_roots_tar)"
 

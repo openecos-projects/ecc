@@ -2,7 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [[ -n "${CHIPCOMPILER_PROJECT_ROOT:-}" ]]; then
+    PROJECT_ROOT="$(realpath "${CHIPCOMPILER_PROJECT_ROOT}")"
+else
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
 
 # Add local auto-patchelf to PATH if not already available
 if ! command -v auto-patchelf >/dev/null 2>&1; then
