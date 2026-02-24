@@ -35,6 +35,12 @@ BUILD_DIR="$$RULE_OUT_ROOT/ecc_py_build_tmp"
 RUNTIME_STAGE_DIR="$$RULE_OUT_ROOT/ecc_runtime_roots"
 OUT_ECC_PY="$$OUT_DIR/ecc_py.so"
 OUT_RUNTIME_TAR="$$OUT_DIR/runtime_roots.tar"
+PYTHON_BIN="$${CHIPCOMPILER_PYTHON:-$$(command -v python3)}"
+
+if [ -z "$$PYTHON_BIN" ] || [ ! -x "$$PYTHON_BIN" ]; then
+  echo "ERROR: Python interpreter not found. Set CHIPCOMPILER_PYTHON or ensure python3 is in PATH." >&2
+  exit 1
+fi
 
 mkdir -p "$$OUT_DIR"
 rm -rf "$$BUILD_DIR"
@@ -46,6 +52,9 @@ CMAKE_PREFIX_ARG="$${CMAKE_PREFIX_PATH:+-DCMAKE_PREFIX_PATH=$${CMAKE_PREFIX_PATH
 cmake -S "$$SRC_ROOT" -B "$$BUILD_DIR" \
   -DBUILD_AIEDA=ON \
   -DCMAKE_BUILD_TYPE=Release \
+  -DPython_EXECUTABLE="$$PYTHON_BIN" \
+  -DPython3_EXECUTABLE="$$PYTHON_BIN" \
+  -DPYTHON_EXECUTABLE="$$PYTHON_BIN" \
   $$CMAKE_PREFIX_ARG
 
 cmake --build "$$BUILD_DIR" --target ecc_py --parallel
@@ -82,17 +91,32 @@ genrule(
     srcs = [
         ":ecc_py_raw",
         ":ecc_runtime_roots_tar",
+        "//scripts:autopatch_ecc_py_script",
         "//scripts:autopatch_ecc_py",
     ],
-    outs = ["runtime_bundle_stamp"],
+    outs = ["runtime_bundle/runtime_bundle.tar"],
     cmd = """
 set -euo pipefail
 
+BUNDLE_STAGE_DIR="$(@D)/runtime_bundle_stage"
+RUNTIME_DIR_IN_EXECROOT="chipcompiler/tools/ecc/bin"
+OUT_TAR="$@"
+
+rm -rf "$$BUNDLE_STAGE_DIR"
+mkdir -p "$$BUNDLE_STAGE_DIR/chipcompiler/tools/ecc"
+
 # BUILD_WORKSPACE_DIRECTORY is unavailable in genrule; reference the script via location substitution.
-"$(location //scripts:autopatch_ecc_py)" \
+"$(location //scripts:autopatch_ecc_py_script)" \
   --ecc-py "$(location :ecc_py_raw)" \
   --runtime-roots-tar "$(location :ecc_runtime_roots_tar)"
-printf "runtime bundle complete\\n" > "$@"
+
+if [ ! -d "$$RUNTIME_DIR_IN_EXECROOT" ]; then
+  echo "ERROR: expected runtime dir not found after autopatch: $$RUNTIME_DIR_IN_EXECROOT" >&2
+  exit 1
+fi
+
+cp -a "$$RUNTIME_DIR_IN_EXECROOT" "$$BUNDLE_STAGE_DIR/chipcompiler/tools/ecc/"
+tar -cf "$$OUT_TAR" -C "$$BUNDLE_STAGE_DIR" .
 """,
 )
 
@@ -101,6 +125,7 @@ genrule(
     srcs = [
         ":ecc_py_raw",
         ":ecc_runtime_roots_tar",
+        "//scripts:autopatch_ecc_py_script",
         "//scripts:autopatch_ecc_py",
     ],
     outs = ["install_ecc_runtime_runner.sh"],
@@ -114,7 +139,7 @@ set -euo pipefail
 
 WORKSPACE_DIR="$${BUILD_WORKSPACE_DIRECTORY:-$$PWD}"
 
-"$${WORKSPACE_DIR}/$(location //scripts:autopatch_ecc_py)" \
+"$${WORKSPACE_DIR}/$(location //scripts:autopatch_ecc_py_script)" \
   --ecc-py "$${WORKSPACE_DIR}/$(location :ecc_py_raw)" \
   --runtime-roots-tar "$${WORKSPACE_DIR}/$(location :ecc_runtime_roots_tar)"
 EOF

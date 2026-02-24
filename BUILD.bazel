@@ -22,11 +22,15 @@ genrule(
     # Why: PyInstaller is expensive; by declaring all Python + lock/spec inputs,
     # Bazel can reuse disk-cache results when nothing relevant changed.
     srcs = [
+        "README.md",
+        "pyproject.toml",
+        "uv.lock",
         "requirements_lock.txt",
         "chipcompiler.spec",
         "//chipcompiler:chipcompiler_python_sources",
         # Include data files so cache invalidates when .json/.tcl/.awk etc. change.
         "//chipcompiler:chipcompiler_runtime_data",
+        "//chipcompiler/thirdparty:runtime_bundle",
     ],
     outs = ["api_server_bundle/chipcompiler"],
     cmd = """
@@ -35,14 +39,24 @@ set -euo pipefail
 OUT_DIR="$(@D)/api_server_bundle"
 WORK_DIR="$(@D)/api_server_bundle_work"
 SPEC_FILE="$(location chipcompiler.spec)"
+PROJECT_DIR="$$(dirname "$(location pyproject.toml)")"
+RUNTIME_BUNDLE_TAR="$(location //chipcompiler/thirdparty:runtime_bundle)"
+PYTHON_BIN="$${CHIPCOMPILER_PYTHON:-$$(command -v python3)}"
+
+if [ -z "$$PYTHON_BIN" ] || [ ! -x "$$PYTHON_BIN" ]; then
+  echo "ERROR: Python interpreter not found. Set CHIPCOMPILER_PYTHON or ensure python3 is in PATH." >&2
+  exit 1
+fi
 
 mkdir -p "$$OUT_DIR" "$$WORK_DIR"
-uv run pyinstaller "$$SPEC_FILE" \
+
+tar -xf "$$RUNTIME_BUNDLE_TAR" -C .
+
+uv run --project "$$PROJECT_DIR" --group dev --locked --python "$$PYTHON_BIN" pyinstaller "$$SPEC_FILE" \
   --clean \
   --noconfirm \
   --distpath "$$OUT_DIR" \
-  --workpath "$$WORK_DIR/build" \
-  --specpath "$$WORK_DIR/spec"
+  --workpath "$$WORK_DIR/build"
 
 # Ensure the declared output exists exactly at the expected Bazel path.
 test -f "$@"

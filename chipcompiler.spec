@@ -8,10 +8,10 @@ The main user interface is provided by the GUI (Tauri app).
 
 Usage:
     # Build onedir mode (default)
-    pyinstaller chipcompiler.spec
+    uv run --group dev pyinstaller chipcompiler.spec
 
     # Build onefile mode
-    PYINSTALLER_ONEFILE=1 pyinstaller chipcompiler.spec
+    PYINSTALLER_ONEFILE=1 uv run --group dev pyinstaller chipcompiler.spec
 """
 
 import os
