@@ -5,6 +5,7 @@ build --show_timestamps
 build --python_version=PY3
 # Keep tool lookup deterministic in sandboxed actions (cmake -> cargo, etc.).
 build --action_env=PATH=/root/.cargo/bin:/home/vscode/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+build --action_env=PYINSTALLER_ONEFILE=1
 
 # Optional GitHub mirror config for external repository downloads.
 # Usage: bazel --config=ghproxy build //...
