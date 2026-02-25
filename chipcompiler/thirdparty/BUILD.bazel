@@ -49,7 +49,13 @@ rm -rf "$$RUNTIME_STAGE_DIR"
 mkdir -p "$$RUNTIME_STAGE_DIR"
 
 CMAKE_PREFIX_ARG="$${CMAKE_PREFIX_PATH:+-DCMAKE_PREFIX_PATH=$${CMAKE_PREFIX_PATH}}"
-cmake -S "$$SRC_ROOT" -B "$$BUILD_DIR" \
+if command -v ninja >/dev/null 2>&1; then
+  CMAKE_GEN_ARGS=(-G Ninja)
+else
+  CMAKE_GEN_ARGS=()
+fi
+
+cmake "$${CMAKE_GEN_ARGS[@]}" -S "$$SRC_ROOT" -B "$$BUILD_DIR" \
   -DBUILD_AIEDA=ON \
   -DCMAKE_BUILD_TYPE=Release \
   -DPython_EXECUTABLE="$$PYTHON_BIN" \
