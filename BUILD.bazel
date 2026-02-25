@@ -1,4 +1,5 @@
 load("@rules_uv//uv:pip.bzl", "pip_compile")
+load("//bazel:root_defs.bzl", "chipcompiler_api_server_bundle", "chipcompiler_tauri_bundle")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -9,96 +10,22 @@ exports_files([
 
 pip_compile(
     name = "requirements_lock",
-    requirements_in = "pyproject.toml",
-    requirements_txt = "requirements_lock.txt",
     extra_args = [
         "--group",
         "dev",
     ],
+    requirements_in = "pyproject.toml",
+    requirements_txt = "requirements_lock.txt",
 )
 
-genrule(
+chipcompiler_api_server_bundle(
     name = "api_server_bundle",
-    # Why: PyInstaller is expensive; by declaring all Python + lock/spec inputs,
-    # Bazel can reuse disk-cache results when nothing relevant changed.
-    srcs = [
-        "README.md",
-        "pyproject.toml",
-        "uv.lock",
-        "requirements_lock.txt",
-        "chipcompiler.spec",
-        "//chipcompiler:chipcompiler_python_sources",
-        # Include data files so cache invalidates when .json/.tcl/.awk etc. change.
-        "//chipcompiler:chipcompiler_runtime_data",
-        "//chipcompiler/thirdparty:runtime_bundle",
-    ],
-    outs = ["api_server_bundle/chipcompiler"],
-    cmd = """
-set -euo pipefail
-
-OUT_DIR="$(@D)"
-WORK_DIR="$(@D)/api_server_bundle_work"
-SPEC_FILE="$(location chipcompiler.spec)"
-PROJECT_DIR="$$(dirname "$(location pyproject.toml)")"
-RUNTIME_BUNDLE_TAR="$(location //chipcompiler/thirdparty:runtime_bundle)"
-PYTHON_BIN="$${CHIPCOMPILER_PYTHON:-$$(command -v python3)}"
-
-if [ -z "$$PYTHON_BIN" ] || [ ! -x "$$PYTHON_BIN" ]; then
-  echo "ERROR: Python interpreter not found. Set CHIPCOMPILER_PYTHON or ensure python3 is in PATH." >&2
-  exit 1
-fi
-
-mkdir -p "$$OUT_DIR" "$$WORK_DIR"
-
-tar -xf "$$RUNTIME_BUNDLE_TAR" -C .
-
-uv run --project "$$PROJECT_DIR" --group dev --locked --python "$$PYTHON_BIN" pyinstaller "$$SPEC_FILE" \
-  --clean \
-  --noconfirm \
-  --distpath "$$OUT_DIR" \
-  --workpath "$$WORK_DIR/build"
-
-# Ensure the declared output exists exactly at the expected Bazel path.
-if [ ! -f "$@" ]; then
-  echo "ERROR: expected output not found at $@" >&2
-  echo "Files under $(@D):" >&2
-  find "$(@D)" -maxdepth 3 -type f | sort >&2
-  exit 1
-fi
-""",
+    # Why: PyInstaller is expensive; explicit inputs keep this heavy target cacheable.
 )
 
-genrule(
+chipcompiler_tauri_bundle(
     name = "tauri_bundle",
-    # Why: Tauri bundling is a heavy task; explicit gui/tauri sources + the
-    # api_server binary input let Bazel cache this stage and only rebuild when
-    # frontend/rust or packaged backend inputs actually change.
-    srcs = glob(
-        [
-            "gui/src/**/*",
-            "gui/public/**/*",
-            "gui/index.html",
-            "gui/package.json",
-            "gui/pnpm-lock.yaml",
-            "gui/tsconfig*.json",
-            "gui/vite.config.ts",
-            "gui/tailwind.config.ts",
-        ],
-    ) + [
-        "//gui/src-tauri:tauri_rust_sources",
-        ":api_server_bundle",
-        "//scripts:build_tauri_bundle_script",
-    ],
-    outs = ["tauri_bundle/tauri_bundle.tar"],
-    cmd = """
-set -euo pipefail
-
-bash "$(location //scripts:build_tauri_bundle_script)" \
-  --gui-src-dir "$$(dirname $(location gui/package.json))" \
-  --api-server-bin "$(location :api_server_bundle)" \
-  --out-tar "$@" \
-  --work-root "$(@D)/tauri_bundle_work"
-""",
+    # Why: frontend/rust/backend artifacts are explicit macro inputs for stable caching.
 )
 
 filegroup(

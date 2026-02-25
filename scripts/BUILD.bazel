@@ -1,27 +1,41 @@
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
-    "autopatch-ecc-py.sh",
-    "build-tauri-bundle.sh",
+    "build.sh",
+    "common.sh",
 ])
 
-filegroup(
+alias(
     name = "autopatch_ecc_py_script",
-    srcs = ["autopatch-ecc-py.sh"],
+    actual = "//bazel/scripts:autopatch_ecc_py_script",
 )
 
-filegroup(
+alias(
     name = "build_tauri_bundle_script",
-    srcs = ["build-tauri-bundle.sh"],
+    actual = "//bazel/scripts:build_tauri_bundle_script",
 )
 
-filegroup(
+alias(
+    name = "api_server_bundle_script",
+    actual = "//bazel/scripts:api_server_bundle_script",
+)
+
+alias(
+    name = "ecc_py_build_artifacts_script",
+    actual = "//bazel/scripts:ecc_py_build_artifacts_script",
+)
+
+alias(
+    name = "runtime_bundle_script",
+    actual = "//bazel/scripts:runtime_bundle_script",
+)
+
+alias(
     name = "autopatch_ecc_py",
-    # Why: expose the script as a stable Bazel target for genrule task inputs,
-    # making runtime bundling dependencies explicit and cache-friendly.
-    srcs = [
-        "autopatch-ecc-py.sh",
-        "auto-patchelf/auto-patchelf",
-        "auto-patchelf/autopatchelf.py",
-    ],
+    actual = "//bazel/scripts:autopatch_ecc_py",
+)
+
+alias(
+    name = "init_ics55_pdk",
+    actual = "//bazel/scripts:init_ics55_pdk",
 )

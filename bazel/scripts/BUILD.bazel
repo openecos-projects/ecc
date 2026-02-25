@@ -1,0 +1,54 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "autopatch-ecc-py.sh",
+    "build-api-server-bundle.sh",
+    "build-ecc-py-artifacts.sh",
+    "build-runtime-bundle.sh",
+    "build-tauri-bundle.sh",
+    "init-ics55-pdk.sh",
+    "install-ecc-runtime.sh",
+    "versions.json",
+])
+
+filegroup(
+    name = "autopatch_ecc_py_script",
+    srcs = ["autopatch-ecc-py.sh"],
+)
+
+filegroup(
+    name = "build_tauri_bundle_script",
+    srcs = ["build-tauri-bundle.sh"],
+)
+
+filegroup(
+    name = "api_server_bundle_script",
+    srcs = ["build-api-server-bundle.sh"],
+)
+
+filegroup(
+    name = "ecc_py_build_artifacts_script",
+    srcs = ["build-ecc-py-artifacts.sh"],
+)
+
+filegroup(
+    name = "runtime_bundle_script",
+    srcs = ["build-runtime-bundle.sh"],
+)
+
+filegroup(
+    name = "autopatch_ecc_py",
+    srcs = [
+        "auto-patchelf/auto-patchelf",
+        "auto-patchelf/autopatchelf.py",
+        "autopatch-ecc-py.sh",
+    ],
+)
+
+sh_binary(
+    name = "init_ics55_pdk",
+    srcs = ["init-ics55-pdk.sh"],
+    data = ["versions.json"],
+)

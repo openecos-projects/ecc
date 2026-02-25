@@ -1,83 +1,15 @@
+load(
+    "//bazel:thirdparty_defs.bzl",
+    "chipcompiler_ecc_py_build_artifacts",
+    "chipcompiler_install_ecc_runtime",
+    "chipcompiler_runtime_bundle",
+)
+
 package(default_visibility = ["//visibility:public"])
 
-genrule(
+chipcompiler_ecc_py_build_artifacts(
     name = "ecc_py_build_artifacts",
-    # Why: Bazel can only cache this expensive native build when the C++ sources
-    # and CMake config are explicit task inputs.
-    srcs = glob(
-        [
-            "ecc-tools/cmake/**/*.cmake",
-            "ecc-tools/src/**/CMakeLists.txt",
-            "ecc-tools/src/**/*.c",
-            "ecc-tools/src/**/*.cc",
-            "ecc-tools/src/**/*.cpp",
-            "ecc-tools/src/**/*.cxx",
-            "ecc-tools/src/**/*.h",
-            "ecc-tools/src/**/*.hh",
-            "ecc-tools/src/**/*.hpp",
-            "ecc-tools/CMakeLists.txt",
-        ],
-        # Bazel 9 may reject empty sub-globs by default; keep this target robust
-        # across ecc-tools revisions where some extensions are absent.
-        allow_empty = True,
-    ),
-    outs = [
-        "ecc_py_build/ecc_py.so",
-        "ecc_py_build/runtime_roots.tar",
-    ],
-    cmd = """
-set -euo pipefail
-
-SRC_ROOT="$$(dirname "$$(readlink -f "$(location ecc-tools/CMakeLists.txt)")")"
-RULE_OUT_ROOT="$(RULEDIR)"
-OUT_DIR="$$RULE_OUT_ROOT/ecc_py_build"
-BUILD_DIR="$$RULE_OUT_ROOT/ecc_py_build_tmp"
-RUNTIME_STAGE_DIR="$$RULE_OUT_ROOT/ecc_runtime_roots"
-OUT_ECC_PY="$$OUT_DIR/ecc_py.so"
-OUT_RUNTIME_TAR="$$OUT_DIR/runtime_roots.tar"
-PYTHON_BIN="$${CHIPCOMPILER_PYTHON:-$$(command -v python3)}"
-
-if [ -z "$$PYTHON_BIN" ] || [ ! -x "$$PYTHON_BIN" ]; then
-  echo "ERROR: Python interpreter not found. Set CHIPCOMPILER_PYTHON or ensure python3 is in PATH." >&2
-  exit 1
-fi
-
-mkdir -p "$$OUT_DIR"
-rm -rf "$$BUILD_DIR"
-mkdir -p "$$BUILD_DIR"
-rm -rf "$$RUNTIME_STAGE_DIR"
-mkdir -p "$$RUNTIME_STAGE_DIR"
-
-CMAKE_PREFIX_ARG="$${CMAKE_PREFIX_PATH:+-DCMAKE_PREFIX_PATH=$${CMAKE_PREFIX_PATH}}"
-if command -v ninja >/dev/null 2>&1; then
-  CMAKE_GEN_ARGS=(-G Ninja)
-else
-  CMAKE_GEN_ARGS=()
-fi
-
-cmake "$${CMAKE_GEN_ARGS[@]}" -S "$$SRC_ROOT" -B "$$BUILD_DIR" \
-  -DBUILD_AIEDA=ON \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DPython_EXECUTABLE="$$PYTHON_BIN" \
-  -DPython3_EXECUTABLE="$$PYTHON_BIN" \
-  -DPYTHON_EXECUTABLE="$$PYTHON_BIN" \
-  $$CMAKE_PREFIX_ARG
-
-cmake --build "$$BUILD_DIR" --target ecc_py --parallel
-
-ECC_PY_SO="$$(find "$$SRC_ROOT/bin" "$$BUILD_DIR/bin" -maxdepth 2 -type f -name 'ecc_py*.so' | head -n 1 || true)"
-if [ -z "$$ECC_PY_SO" ]; then
-  echo "ERROR: ecc_py build succeeded but ecc_py*.so was not found." >&2
-  exit 1
-fi
-
-cp -f "$$ECC_PY_SO" "$$OUT_ECC_PY"
-
-mkdir -p "$$RUNTIME_STAGE_DIR/build"
-cp -a "$$BUILD_DIR/." "$$RUNTIME_STAGE_DIR/build/"
-
-tar -cf "$$OUT_RUNTIME_TAR" -C "$$RUNTIME_STAGE_DIR" .
-""",
+    # Why: native build is expensive; macro keeps inputs explicit and reusable.
 )
 
 filegroup(
@@ -90,66 +22,12 @@ filegroup(
     srcs = ["ecc_py_build/runtime_roots.tar"],
 )
 
-genrule(
+chipcompiler_runtime_bundle(
     name = "runtime_bundle",
-    # Why: runtime repackaging must be a cacheable task keyed by the native
-    # artifact and patch script, not an opaque Python wrapper.
-    srcs = [
-        ":ecc_py_raw",
-        ":ecc_runtime_roots_tar",
-        "//scripts:autopatch_ecc_py_script",
-        "//scripts:autopatch_ecc_py",
-    ],
-    outs = ["runtime_bundle/runtime_bundle.tar"],
-    cmd = """
-set -euo pipefail
-
-BUNDLE_STAGE_DIR="$(@D)/runtime_bundle_stage"
-RUNTIME_DIR_IN_EXECROOT="chipcompiler/tools/ecc/bin"
-OUT_TAR="$@"
-
-rm -rf "$$BUNDLE_STAGE_DIR"
-mkdir -p "$$BUNDLE_STAGE_DIR/chipcompiler/tools/ecc"
-
-# BUILD_WORKSPACE_DIRECTORY is unavailable in genrule; reference the script via location substitution.
-CHIPCOMPILER_PROJECT_ROOT="$$PWD" "$(location //scripts:autopatch_ecc_py_script)" \
-  --ecc-py "$(location :ecc_py_raw)" \
-  --runtime-roots-tar "$(location :ecc_runtime_roots_tar)"
-
-if [ ! -d "$$RUNTIME_DIR_IN_EXECROOT" ]; then
-  echo "ERROR: expected runtime dir not found after autopatch: $$RUNTIME_DIR_IN_EXECROOT" >&2
-  exit 1
-fi
-
-cp -a "$$RUNTIME_DIR_IN_EXECROOT" "$$BUNDLE_STAGE_DIR/chipcompiler/tools/ecc/"
-tar -cf "$$OUT_TAR" -C "$$BUNDLE_STAGE_DIR" .
-""",
+    # Why: keep patch+bundle pipeline declarative via shared macro.
 )
 
-genrule(
+chipcompiler_install_ecc_runtime(
     name = "install_ecc_runtime",
-    srcs = [
-        ":ecc_py_raw",
-        ":ecc_runtime_roots_tar",
-        "//scripts:autopatch_ecc_py_script",
-        "//scripts:autopatch_ecc_py",
-    ],
-    outs = ["install_ecc_runtime_runner.sh"],
-    executable = True,
-    cmd = """
-set -euo pipefail
-
-cat > "$@" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-WORKSPACE_DIR="$${BUILD_WORKSPACE_DIRECTORY:-$$PWD}"
-
-"$${WORKSPACE_DIR}/$(location //scripts:autopatch_ecc_py_script)" \
-  --ecc-py "$${WORKSPACE_DIR}/$(location :ecc_py_raw)" \
-  --runtime-roots-tar "$${WORKSPACE_DIR}/$(location :ecc_runtime_roots_tar)"
-EOF
-
-chmod +x "$@"
-""",
+    # Why: install runner is now a macro-backed reusable sh_binary.
 )
