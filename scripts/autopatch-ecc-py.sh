@@ -195,6 +195,8 @@ mkdir -p "$ECC_PY_DST" "$ECC_LIB_DST"
 
 echo "[bundle] copying ecc_py modules"
 cp -f "${ecc_py_src[@]}" "$ECC_PY_DST/"
+# Bazel-generated artifacts are often read-only; patchelf needs write bit.
+chmod u+w "$ECC_PY_DST"/ecc_py*.so 2>/dev/null || true
 
 echo "[bundle] collecting runtime libraries"
 declare -A seen=()
@@ -208,6 +210,7 @@ for src in "${runtime_candidates[@]}"; do
         continue
     fi
     cp -f "$src" "$ECC_LIB_DST/"
+    chmod u+w "$ECC_LIB_DST/$base" 2>/dev/null || true
     seen["$base"]="$hash"
     copied=$((copied + 1))
 done
