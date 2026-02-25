@@ -37,6 +37,10 @@
 
     <!-- 右侧：窗口控制按钮 -->
     <div class="topbar-right" @mousedown.stop>
+      <button @click="toggleTheme" class="window-btn theme-btn"
+        :title="isDark ? 'Switch to light theme' : 'Switch to dark theme'">
+        <i :class="isDark ? 'ri-sun-line' : 'ri-moon-line'" class="text-base"></i>
+      </button>
       <!-- 最小化 -->
       <button @click="handleMinimize" class="window-btn" title="Minimize">
         <svg width="16" height="16" viewBox="0 0 16 16">
@@ -60,9 +64,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useThemeStore } from '@/stores/themeStore'
 
 // ---- 类型定义 ----
 interface DropdownItem {
@@ -88,6 +93,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'menu-action', action: string): void
 }>()
+
+const themeStore = useThemeStore()
+const isDark = computed(() => themeStore.themeName === 'dark')
+const toggleTheme = () => {
+  themeStore.toggleTheme()
+}
 
 // ---- 菜单配置 ----
 const menus: Menu[] = [
@@ -412,6 +423,10 @@ const handleDoubleClick = (event: MouseEvent) => {
 .window-btn:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);
+}
+
+.theme-btn {
+  width: 40px;
 }
 
 .window-btn-close {
