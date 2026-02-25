@@ -10,6 +10,7 @@ filegroup(
         "src/**/*",
         "capabilities/**/*",
         "icons/**/*",
+        "resources/**/*",
         "Cargo.toml",
         "Cargo.lock",
         "tauri.conf.json",
