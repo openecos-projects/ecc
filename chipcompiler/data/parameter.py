@@ -250,10 +250,7 @@ def get_design_parameters(pdk_name : str, design : str = "", path : str = "") ->
 
     design_info = ICS55_DESIGN_PARAMETERS.get(design.lower())
     if design_info is None:
-        supported_designs = ", ".join(sorted(ICS55_DESIGN_PARAMETERS.keys()))
-        raise ValueError(
-            f"Unsupported ICS55 design '{design}'. Supported designs: {supported_designs}"
-        )
+        return parameters
 
     parameters.data.update(design_info)
     return parameters

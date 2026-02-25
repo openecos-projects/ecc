@@ -1,5 +1,3 @@
-import pytest
-
 from chipcompiler.data import get_design_parameters, get_parameters
 
 
@@ -21,9 +19,13 @@ def test_get_design_parameters_ics55_empty_design_returns_base_template():
     assert parameters.data["Frequency max [MHz]"] == 100
 
 
-def test_get_design_parameters_ics55_unknown_design_raises():
-    with pytest.raises(ValueError, match="Unsupported ICS55 design"):
-        get_design_parameters("ics55", "unknown_design")
+def test_get_design_parameters_ics55_unknown_design_returns_base_template():
+    parameters = get_design_parameters("ics55", "unknown_design")
+
+    assert parameters.data["Design"] == ""
+    assert parameters.data["Top module"] == ""
+    assert parameters.data["Clock"] == ""
+    assert parameters.data["Frequency max [MHz]"] == 100
 
 
 def test_get_parameters_returns_independent_copies():
