@@ -2,11 +2,17 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files([
     "autopatch-ecc-py.sh",
+    "build-tauri-bundle.sh",
 ])
 
 filegroup(
     name = "autopatch_ecc_py_script",
     srcs = ["autopatch-ecc-py.sh"],
+)
+
+filegroup(
+    name = "build_tauri_bundle_script",
+    srcs = ["build-tauri-bundle.sh"],
 )
 
 filegroup(

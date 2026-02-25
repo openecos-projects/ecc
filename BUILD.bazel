@@ -76,21 +76,28 @@ genrule(
     srcs = glob(
         [
             "gui/src/**/*",
+            "gui/public/**/*",
+            "gui/index.html",
             "gui/package.json",
             "gui/pnpm-lock.yaml",
+            "gui/tsconfig*.json",
+            "gui/vite.config.ts",
+            "gui/tailwind.config.ts",
         ],
     ) + [
         "//gui/src-tauri:tauri_rust_sources",
         ":api_server_bundle",
+        "//scripts:build_tauri_bundle_script",
     ],
-    outs = ["tauri_out"],
+    outs = ["tauri_bundle/tauri_bundle.tar"],
     cmd = """
 set -euo pipefail
 
-GUI_DIR="$$(dirname $(location gui/package.json))"
-export TAURI_API_SERVER_BIN="$(location :api_server_bundle)"
-(cd "$$GUI_DIR" && pnpm exec tauri build)
-printf "tauri bundle complete\\n" > "$@"
+bash "$(location //scripts:build_tauri_bundle_script)" \
+  --gui-src-dir "$$(dirname $(location gui/package.json))" \
+  --api-server-bin "$(location :api_server_bundle)" \
+  --out-tar "$@" \
+  --work-root "$(@D)/tauri_bundle_work"
 """,
 )
 
