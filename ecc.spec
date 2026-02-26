@@ -16,7 +16,6 @@ Usage:
 
 import os
 import sys
-import sysconfig
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
@@ -30,23 +29,6 @@ ONEFILE_MODE = os.environ.get('PYINSTALLER_ONEFILE', '0') == '1'
 CODESIGN_IDENTITY = os.environ.get('APPLE_SIGNING_IDENTITY', None)
 
 block_cipher = None
-
-
-def _detect_sysconfig_hiddenimports() -> list[str]:
-    """Collect sysconfig data modules required by pandas/numpy at runtime."""
-    names: set[str] = {"sysconfig"}
-
-    getter = getattr(sysconfig, "_get_sysconfigdata_name", None)
-    if callable(getter):
-        name = getter()
-        if name:
-            names.add(name)
-
-    stdlib_dir = Path(sysconfig.get_path("stdlib"))
-    for path in stdlib_dir.glob("_sysconfigdata__*.py"):
-        names.add(path.stem)
-
-    return sorted(names)
 
 # Collect all data files that need to be included
 datas = [
@@ -184,7 +166,6 @@ hiddenimports = [
     'numpy.lib.format',
 ]
 hiddenimports.extend(klayout_hiddenimports)
-hiddenimports.extend(_detect_sysconfig_hiddenimports())
 
 a = Analysis(
     [str(PROJ_ROOT / 'chipcompiler' / 'server' / 'run_server.py')],

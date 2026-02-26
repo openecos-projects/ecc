@@ -71,11 +71,24 @@ mkdir -p "$OUT_DIR" "$WORK_DIR"
 
 tar -xf "$RUNTIME_BUNDLE_TAR" -C .
 
-uv run --project "$PROJECT_DIR" --group dev --locked --python "$PYTHON_BIN" pyinstaller "$SPEC_FILE" \
-    --clean \
-    --noconfirm \
-    --distpath "$OUT_DIR" \
-    --workpath "$WORK_DIR/build"
+if "$PYTHON_BIN" -c "import PyInstaller" >/dev/null 2>&1; then
+    echo "INFO: using PyInstaller from $PYTHON_BIN"
+    "$PYTHON_BIN" -m PyInstaller "$SPEC_FILE" \
+        --clean \
+        --noconfirm \
+        --distpath "$OUT_DIR" \
+        --workpath "$WORK_DIR/build"
+elif command -v uv >/dev/null 2>&1; then
+    echo "INFO: PyInstaller is not installed in $PYTHON_BIN, falling back to uv run"
+    uv run --project "$PROJECT_DIR" --group dev --locked --python "$PYTHON_BIN" pyinstaller "$SPEC_FILE" \
+        --clean \
+        --noconfirm \
+        --distpath "$OUT_DIR" \
+        --workpath "$WORK_DIR/build"
+else
+    echo "ERROR: PyInstaller not found in $PYTHON_BIN and uv is unavailable." >&2
+    exit 1
+fi
 
 if [[ ! -f "$OUT_BIN" ]]; then
     echo "ERROR: expected output not found at $OUT_BIN" >&2
@@ -83,4 +96,3 @@ if [[ ! -f "$OUT_BIN" ]]; then
     find "$OUT_DIR" -maxdepth 3 -type f | sort >&2
     exit 1
 fi
-

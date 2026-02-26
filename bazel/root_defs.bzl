@@ -12,7 +12,7 @@ def chipcompiler_api_server_bundle(
             "pyproject.toml",
             "uv.lock",
             "requirements_lock.txt",
-            "chipcompiler.spec",
+            "ecc.spec",
             "//chipcompiler:chipcompiler_python_sources",
             "//chipcompiler:chipcompiler_runtime_data",
             runtime_bundle,
@@ -23,7 +23,7 @@ def chipcompiler_api_server_bundle(
             set -euo pipefail
 
             bash "$(location {script})" \\
-                --spec-file "$(location chipcompiler.spec)" \\
+                --spec-file "$(location ecc.spec)" \\
                 --project-dir "$$(dirname "$(location pyproject.toml)")" \\
                 --runtime-bundle-tar "$(location {runtime_bundle})" \\
                 --out-bin "$@" \\

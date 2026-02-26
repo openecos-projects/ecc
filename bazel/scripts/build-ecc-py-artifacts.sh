@@ -84,26 +84,54 @@ cmake "${CMAKE_GEN_ARGS[@]}" -S "$SRC_ROOT" -B "$BUILD_DIR" \
 cmake --build "$BUILD_DIR" --target ecc_py --parallel
 
 search_dirs=()
-if [[ -d "$SRC_ROOT/bin" ]]; then
-    search_dirs+=("$SRC_ROOT/bin")
-fi
 if [[ -d "$BUILD_DIR/bin" ]]; then
     search_dirs+=("$BUILD_DIR/bin")
+fi
+if [[ -d "$SRC_ROOT/bin" ]]; then
+    search_dirs+=("$SRC_ROOT/bin")
 fi
 if [[ ${#search_dirs[@]} -eq 0 ]]; then
     echo "ERROR: ecc_py build succeeded but no bin directory was found." >&2
     exit 1
 fi
 
-ECC_PY_SO="$(find "${search_dirs[@]}" -maxdepth 2 -type f -name 'ecc_py*.so' | head -n 1 || true)"
+PY_MM="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
+PY_TAG_CP="cp${PY_MM}"
+PY_TAG_CPYTHON="cpython-${PY_MM}"
+
+ecc_py_candidates=()
+for dir in "${search_dirs[@]}"; do
+    mapfile -t dir_candidates < <(find "$dir" -maxdepth 2 -type f -name 'ecc_py*.so' | sort)
+    if [[ ${#dir_candidates[@]} -gt 0 ]]; then
+        ecc_py_candidates+=("${dir_candidates[@]}")
+    fi
+done
+
+ECC_PY_SO=""
+for candidate in "${ecc_py_candidates[@]}"; do
+    base_name="$(basename "$candidate")"
+    if [[ "$base_name" == *"$PY_TAG_CP"* || "$base_name" == *"$PY_TAG_CPYTHON"* ]]; then
+        ECC_PY_SO="$candidate"
+        break
+    fi
+done
+if [[ -z "$ECC_PY_SO" && ${#ecc_py_candidates[@]} -eq 1 ]]; then
+    ECC_PY_SO="${ecc_py_candidates[0]}"
+fi
 if [[ -z "$ECC_PY_SO" ]]; then
-    echo "ERROR: ecc_py build succeeded but ecc_py*.so was not found." >&2
+    if [[ ${#ecc_py_candidates[@]} -eq 0 ]]; then
+        echo "ERROR: ecc_py build succeeded but ecc_py*.so was not found." >&2
+    else
+        echo "ERROR: no ecc_py binary matched Python ABI ${PY_TAG_CPYTHON}/${PY_TAG_CP}." >&2
+        echo "Candidates:" >&2
+        printf '  - %s\n' "${ecc_py_candidates[@]}" >&2
+    fi
     exit 1
 fi
 
+echo "INFO: selected ecc_py binary for Python ABI ${PY_TAG_CPYTHON}/${PY_TAG_CP}: $ECC_PY_SO"
 cp -f "$ECC_PY_SO" "$OUT_ECC_PY"
 
 mkdir -p "$RUNTIME_STAGE_DIR/build"
 cp -a "$BUILD_DIR/." "$RUNTIME_STAGE_DIR/build/"
 tar -cf "$OUT_RUNTIME_TAR" -C "$RUNTIME_STAGE_DIR" .
-
