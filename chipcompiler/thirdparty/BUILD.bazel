@@ -7,70 +7,37 @@ load(
 
 package(default_visibility = ["//visibility:public"])
 
-filegroup(
-    name = "ecc_tools_sources",
-    srcs = glob(
-        [
-            "ecc-tools/cmake/**/*.cmake",
-            "ecc-tools/src/**/CMakeLists.txt",
-            "ecc-tools/src/**/*.c",
-            "ecc-tools/src/**/*.cc",
-            "ecc-tools/src/**/*.cpp",
-            "ecc-tools/src/**/*.cxx",
-            "ecc-tools/src/**/*.h",
-            "ecc-tools/src/**/*.hh",
-            "ecc-tools/src/**/*.hpp",
-            "ecc-tools/CMakeLists.txt",
-        ],
-        allow_empty = True,
-    ),
-)
-
 cmake(
     name = "ecc_py_cmake",
-    lib_source = ":ecc_tools_sources",
+    lib_source = "@ecc_tools_src//:all_sources",
     cache_entries = {
         "BUILD_AIEDA": "ON",
+        "BUILD_PYTHON": "ON",
         "CMAKE_BUILD_TYPE": "Release",
+        # Use venv Python so the built .so matches chipcompiler's Python ABI
+        "Python3_EXECUTABLE": "$$EXT_BUILD_ROOT$$/.venv/bin/python",
     },
     targets = ["ecc_py"],
+    install = False,
     # Why: ecc_py.so has a dynamic Python ABI suffix (e.g. cpython-311-x86_64-linux-gnu).
-    # Copy it into $INSTALLDIR/lib so rules_foreign_cc captures it as a data dir output.
-    postfix_script = "find . -maxdepth 4 -name 'ecc_py*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;",
-    out_data_dirs = ["lib"],
-)
-
-genrule(
-    name = "ecc_py_build_artifacts",
-    srcs = [":ecc_py_cmake"],
-    outs = [
-        "ecc_py_build/ecc_py.so",
-        "ecc_py_build/runtime_roots.tar",
-    ],
-    cmd = """
-        ECC_PY=$$(find $(location :ecc_py_cmake) -name 'ecc_py*.so' | head -1)
-        cp "$$ECC_PY" $(location ecc_py_build/ecc_py.so)
-        tar -cf $(location ecc_py_build/runtime_roots.tar) \
-            -C $$(dirname "$(location :ecc_py_cmake)") lib
+    # The .so is output to the source dir (ecc_tools_src/bin/), not the build dir.
+    # Copy ecc_py*.so and all runtime .so libs into $INSTALLDIR/lib.
+    postfix_script = """
+        mkdir -p $$INSTALLDIR/lib
+        find $$EXT_BUILD_ROOT/external -name 'ecc_py*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;
+        find . -name '*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;
     """,
-)
-
-filegroup(
-    name = "ecc_py_raw",
-    srcs = ["ecc_py_build/ecc_py.so"],
-)
-
-filegroup(
-    name = "ecc_runtime_roots_tar",
-    srcs = ["ecc_py_build/runtime_roots.tar"],
+    out_headers_only = True,
+    generate_args = ["-GNinja"],
+    out_data_dirs = ["lib"],
 )
 
 chipcompiler_runtime_bundle(
     name = "runtime_bundle",
-    # Why: keep patch+bundle pipeline declarative via shared macro.
+    ecc_py_cmake = ":ecc_py_cmake",
 )
 
 chipcompiler_install_ecc_runtime(
     name = "install_ecc_runtime",
-    # Why: install runner is now a macro-backed reusable sh_binary.
+    ecc_py_cmake = ":ecc_py_cmake",
 )

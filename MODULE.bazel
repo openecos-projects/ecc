@@ -34,7 +34,12 @@ pip.parse(
     python_version = "3.11",
     requirements_lock = "//:requirements_lock.txt",
 )
-use_repo(pip, "pypi")
+pip.parse(
+    hub_name = "pypi_autopatchelf",
+    python_version = "3.11",
+    requirements_lock = "//bazel/scripts/auto-patchelf:requirements.txt",
+)
+use_repo(pip, "pypi", "pypi_autopatchelf")
 
 # Bazel-native, reproducible appimagetool for Linux AppImage post-processing.
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
@@ -60,6 +65,23 @@ http_archive(
         srcs = glob(["**"]),
     )
     """,
+)
+
+# Bazel-native, reproducible patchelf binary for RPATH patching.
+http_archive(
+    name = "patchelf",
+    urls = ["https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz"],
+    sha256 = "ce84f2447fb7a8679e58bc54a20dc2b01b37b5802e12c57eece772a6f14bf3f0",
+    build_file_content = """exports_files(["bin/patchelf"])""",
+)
+
+# ECC-Tools source tree, imported without BUILD/WORKSPACE files so cmake() glob works.
+# (src/third_party contains abseil-cpp/yaml-cpp with their own BUILD files that
+# create package boundaries and block glob traversal.)
+ecc_tools_sources = use_repo_rule("//bazel:ecc_tools_repo.bzl", "ecc_tools_sources")
+ecc_tools_sources(
+    name = "ecc_tools_src",
+    path = "chipcompiler/thirdparty/ecc-tools",
 )
 
 # Bazel-native, reproducible OSS CAD Suite (Linux x64) archive.

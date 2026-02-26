@@ -3,8 +3,7 @@
 def chipcompiler_api_server_bundle(
         name,
         visibility = None,
-        runtime_bundle = "//chipcompiler/thirdparty:runtime_bundle",
-        script = "//bazel/scripts:api_server_bundle_script"):
+        runtime_bundle = "//chipcompiler/thirdparty:runtime_bundle"):
     kwargs = {
         "name": name,
         "srcs": [
@@ -16,21 +15,30 @@ def chipcompiler_api_server_bundle(
             "//chipcompiler:chipcompiler_python_sources",
             "//chipcompiler:chipcompiler_runtime_data",
             runtime_bundle,
-            script,
         ],
         "outs": ["api_server_bundle/chipcompiler"],
+        # Use local execution to access venv Python with PyInstaller
+        "tags": ["local", "no-sandbox"],
         "cmd": """
             set -euo pipefail
 
-            bash "$(location {script})" \\
-                --spec-file "$(location ecc.spec)" \\
-                --project-dir "$$(dirname "$(location pyproject.toml)")" \\
-                --runtime-bundle-tar "$(location {runtime_bundle})" \\
-                --out-bin "$@" \\
-                --work-dir "$(@D)/api_server_bundle_work"
+            # Find workspace root from a known source file
+            WORKSPACE_ROOT=$$(dirname $$(realpath $(location pyproject.toml)))
+
+            tar -xf $(location {runtime_bundle}) -C .
+            "$$WORKSPACE_ROOT/.venv/bin/python3" -m PyInstaller $(location ecc.spec) \
+                --clean \
+                --noconfirm \
+                --distpath "$(@D)/api_server_bundle" \
+                --workpath "$(@D)/api_server_bundle_work"
+
+            if [ ! -f "$@" ]; then
+                echo "ERROR: expected output not found at $@" >&2
+                find "$(@D)/api_server_bundle" -maxdepth 3 -type f | sort >&2
+                exit 1
+            fi
         """.format(
             runtime_bundle = runtime_bundle,
-            script = script,
         ),
     }
     if visibility != None:

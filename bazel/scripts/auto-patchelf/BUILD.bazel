@@ -1,0 +1,14 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["requirements.txt"])
+
+py_binary(
+    name = "auto_patchelf",
+    srcs = ["autopatchelf.py"],
+    main = "autopatchelf.py",
+    deps = [
+        "@pypi_autopatchelf//pyelftools",
+    ],
+)

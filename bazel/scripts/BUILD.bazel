@@ -4,8 +4,6 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files([
     "autopatch-ecc-py.sh",
-    "build-api-server-bundle.sh",
-    "build-runtime-bundle.sh",
     "build-tauri-bundle.sh",
     "init-ics55-pdk.sh",
     "install-ecc-runtime.sh",
@@ -20,26 +18,6 @@ filegroup(
 filegroup(
     name = "build_tauri_bundle_script",
     srcs = ["build-tauri-bundle.sh"],
-)
-
-filegroup(
-    name = "api_server_bundle_script",
-    srcs = ["build-api-server-bundle.sh"],
-)
-
-
-filegroup(
-    name = "runtime_bundle_script",
-    srcs = ["build-runtime-bundle.sh"],
-)
-
-filegroup(
-    name = "autopatch_ecc_py",
-    srcs = [
-        "auto-patchelf/auto-patchelf",
-        "auto-patchelf/autopatchelf.py",
-        "autopatch-ecc-py.sh",
-    ],
 )
 
 sh_binary(
