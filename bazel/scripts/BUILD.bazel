@@ -5,7 +5,6 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "autopatch-ecc-py.sh",
     "build-api-server-bundle.sh",
-    "build-ecc-py-artifacts.sh",
     "build-runtime-bundle.sh",
     "build-tauri-bundle.sh",
     "init-ics55-pdk.sh",
@@ -28,10 +27,6 @@ filegroup(
     srcs = ["build-api-server-bundle.sh"],
 )
 
-filegroup(
-    name = "ecc_py_build_artifacts_script",
-    srcs = ["build-ecc-py-artifacts.sh"],
-)
 
 filegroup(
     name = "runtime_bundle_script",

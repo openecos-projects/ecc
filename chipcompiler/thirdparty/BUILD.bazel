@@ -1,15 +1,58 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
 load(
     "//bazel:thirdparty_defs.bzl",
-    "chipcompiler_ecc_py_build_artifacts",
     "chipcompiler_install_ecc_runtime",
     "chipcompiler_runtime_bundle",
 )
 
 package(default_visibility = ["//visibility:public"])
 
-chipcompiler_ecc_py_build_artifacts(
+filegroup(
+    name = "ecc_tools_sources",
+    srcs = glob(
+        [
+            "ecc-tools/cmake/**/*.cmake",
+            "ecc-tools/src/**/CMakeLists.txt",
+            "ecc-tools/src/**/*.c",
+            "ecc-tools/src/**/*.cc",
+            "ecc-tools/src/**/*.cpp",
+            "ecc-tools/src/**/*.cxx",
+            "ecc-tools/src/**/*.h",
+            "ecc-tools/src/**/*.hh",
+            "ecc-tools/src/**/*.hpp",
+            "ecc-tools/CMakeLists.txt",
+        ],
+        allow_empty = True,
+    ),
+)
+
+cmake(
+    name = "ecc_py_cmake",
+    lib_source = ":ecc_tools_sources",
+    cache_entries = {
+        "BUILD_AIEDA": "ON",
+        "CMAKE_BUILD_TYPE": "Release",
+    },
+    targets = ["ecc_py"],
+    # Why: ecc_py.so has a dynamic Python ABI suffix (e.g. cpython-311-x86_64-linux-gnu).
+    # Copy it into $INSTALLDIR/lib so rules_foreign_cc captures it as a data dir output.
+    postfix_script = "find . -maxdepth 4 -name 'ecc_py*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;",
+    out_data_dirs = ["lib"],
+)
+
+genrule(
     name = "ecc_py_build_artifacts",
-    # Why: native build is expensive; macro keeps inputs explicit and reusable.
+    srcs = [":ecc_py_cmake"],
+    outs = [
+        "ecc_py_build/ecc_py.so",
+        "ecc_py_build/runtime_roots.tar",
+    ],
+    cmd = """
+        ECC_PY=$$(find $(location :ecc_py_cmake) -name 'ecc_py*.so' | head -1)
+        cp "$$ECC_PY" $(location ecc_py_build/ecc_py.so)
+        tar -cf $(location ecc_py_build/runtime_roots.tar) \
+            -C $$(dirname "$(location :ecc_py_cmake)") lib
+    """,
 )
 
 filegroup(

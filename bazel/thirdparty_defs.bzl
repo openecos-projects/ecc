@@ -2,46 +2,6 @@
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
-def chipcompiler_ecc_py_build_artifacts(
-        name,
-        visibility = None,
-        script = "//bazel/scripts:ecc_py_build_artifacts_script"):
-    kwargs = {
-        "name": name,
-        "srcs": native.glob(
-            [
-                "ecc-tools/cmake/**/*.cmake",
-                "ecc-tools/src/**/CMakeLists.txt",
-                "ecc-tools/src/**/*.c",
-                "ecc-tools/src/**/*.cc",
-                "ecc-tools/src/**/*.cpp",
-                "ecc-tools/src/**/*.cxx",
-                "ecc-tools/src/**/*.h",
-                "ecc-tools/src/**/*.hh",
-                "ecc-tools/src/**/*.hpp",
-                "ecc-tools/CMakeLists.txt",
-            ],
-            allow_empty = True,
-        ) + [script],
-        "outs": [
-            "ecc_py_build/ecc_py.so",
-            "ecc_py_build/runtime_roots.tar",
-        ],
-        "cmd": """
-            set -euo pipefail
-
-            bash "$(location {script})" \\
-                --src-root "$$(dirname "$$(readlink -f "$(location ecc-tools/CMakeLists.txt)")")" \\
-                --rule-out-root "$(RULEDIR)"
-        """.format(
-            script = script,
-        ),
-    }
-    if visibility != None:
-        kwargs["visibility"] = visibility
-
-    native.genrule(**kwargs)
-
 def chipcompiler_runtime_bundle(
         name,
         visibility = None,
