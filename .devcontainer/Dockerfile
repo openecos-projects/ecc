@@ -80,21 +80,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     rm -rf .venv \
     && uv sync --frozen --all-groups --python 3.11
 
-RUN cd scripts \
-    && source common.sh \
-    && setup_project_vars \
-    && cd - >/dev/null \
-    && source .venv/bin/activate \
-    && build_ecc_py
+RUN bazel run //chipcompiler/thirdparty:install_ecc_runtime
 
-RUN source .venv/bin/activate \
-    && bash ./scripts/autopatch-ecc-py.sh
-
-RUN cd scripts \
-    && source common.sh \
-    && setup_project_vars \
-    && setup_oss_cad_suite \
-    && setup_ics55_pdk
+RUN bazel run //scripts:init_ics55_pdk
 
 ENV VIRTUAL_ENV="/workspace/.venv"
 ENV PATH="/workspace/.venv/bin:${PATH}"
