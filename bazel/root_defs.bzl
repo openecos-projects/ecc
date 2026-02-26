@@ -44,6 +44,8 @@ def chipcompiler_tauri_bundle(
         api_server_bundle = ":api_server_bundle",
         rust_sources = "//gui/src-tauri:tauri_rust_sources",
         appimagetool_bin = "@appimagetool_x86_64_linux//file",
+        oss_cad_files = "@oss_cad_suite//:all_files",
+        oss_cad_yosys_bin = "@oss_cad_suite//:yosys_bin",
         script = "//bazel/scripts:build_tauri_bundle_script"):
     kwargs = {
         "name": name,
@@ -60,6 +62,8 @@ def chipcompiler_tauri_bundle(
             rust_sources,
             api_server_bundle,
             appimagetool_bin,
+            oss_cad_files,
+            oss_cad_yosys_bin,
             script,
         ],
         "outs": ["tauri_bundle/tauri_bundle.tar"],
@@ -70,11 +74,13 @@ def chipcompiler_tauri_bundle(
                 --gui-src-dir "$$(dirname $(location gui/package.json))" \\
                 --api-server-bin "$(location {api_server_bundle})" \\
                 --appimagetool-bin "$(location {appimagetool_bin})" \\
+                --oss-cad-bin "$(location {oss_cad_yosys_bin})" \\
                 --out-tar "$@" \\
                 --work-root "$(@D)/tauri_bundle_work"
         """.format(
             api_server_bundle = api_server_bundle,
             appimagetool_bin = appimagetool_bin,
+            oss_cad_yosys_bin = oss_cad_yosys_bin,
             script = script,
         ),
     }

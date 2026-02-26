@@ -61,3 +61,11 @@ http_archive(
     )
     """,
 )
+
+# Bazel-native, reproducible OSS CAD Suite (Linux x64) archive.
+http_archive(
+    name = "oss_cad_suite",
+    urls = ["https://ghfast.top/https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-01-22/oss-cad-suite-linux-x64-20260122.tgz"],
+    sha256 = "b536961118dd7497707752d9fd45714c5f6dacd150e02387bac4f75c28a16567",
+    build_file = "//bazel:oss_cad_suite.BUILD.bazel",
+)

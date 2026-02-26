@@ -91,7 +91,7 @@ inject_oss_cad_into_appimage() {
 
 usage() {
     cat <<EOF
-Usage: $0 --gui-src-dir <dir> --api-server-bin <path> --out-tar <path> --work-root <dir> [--appimagetool-bin <path>]
+Usage: $0 --gui-src-dir <dir> --api-server-bin <path> --out-tar <path> --work-root <dir> [--appimagetool-bin <path>] [--oss-cad-bin <path>]
 EOF
 }
 
@@ -100,6 +100,7 @@ API_SERVER_BIN=""
 OUT_TAR=""
 WORK_ROOT=""
 APPIMAGETOOL_BIN=""
+OSS_CAD_BIN=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -121,6 +122,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --appimagetool-bin)
             APPIMAGETOOL_BIN="$2"
+            shift 2
+            ;;
+        --oss-cad-bin)
+            OSS_CAD_BIN="$2"
             shift 2
             ;;
         -h|--help)
@@ -184,6 +189,22 @@ echo "[bundle] tauri bundles: $TAURI_BUNDLES"
 TAURI_DIR="$GUI_DIR/src-tauri"
 OSS_CAD_BUNDLE_DIR="$TAURI_DIR/resources/oss-cad-suite"
 BUNDLE_DIR="$TAURI_DIR/target/release/bundle"
+
+if [[ "${ENABLE_OSS_CAD_SUITE:-true}" == "true" ]] && [[ -n "$OSS_CAD_BIN" ]]; then
+    OSS_CAD_BIN="$(readlink -f "$OSS_CAD_BIN")"
+    if [[ ! -f "$OSS_CAD_BIN" ]]; then
+        echo "ERROR: OSS CAD yosys binary not found: $OSS_CAD_BIN" >&2
+        exit 1
+    fi
+    OSS_CAD_ROOT="$(dirname "$(dirname "$OSS_CAD_BIN")")"
+    if [[ ! -f "$OSS_CAD_ROOT/bin/yosys" ]]; then
+        echo "ERROR: invalid OSS CAD suite root: $OSS_CAD_ROOT" >&2
+        exit 1
+    fi
+    mkdir -p "$TAURI_DIR/resources"
+    rm -rf "$OSS_CAD_BUNDLE_DIR"
+    cp -a "$OSS_CAD_ROOT" "$OSS_CAD_BUNDLE_DIR"
+fi
 
 (cd "$GUI_DIR" && pnpm install --frozen-lockfile)
 

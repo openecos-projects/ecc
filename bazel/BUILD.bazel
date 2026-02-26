@@ -1,6 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
+    "oss_cad_suite.BUILD.bazel",
     "root_defs.bzl",
     "thirdparty_defs.bzl",
 ])
