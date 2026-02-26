@@ -35,3 +35,29 @@ pip.parse(
     requirements_lock = "//:requirements_lock.txt",
 )
 use_repo(pip, "pypi")
+
+# Bazel-native, reproducible appimagetool for Linux AppImage post-processing.
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_file(
+    name = "appimagetool_x86_64_linux",
+    urls = ["https://ghfast.top/https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"],
+    sha256 = "b90f4a8b18967545fda78a445b27680a1642f1ef9488ced28b65398f2be7add2",
+    executable = True,
+)
+
+# Bazel-native, reproducible ICS55 PDK repository.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(
+    name = "icsprout55_pdk",
+    urls = ["https://ghfast.top/https://github.com/openecos-projects/icsprout55-pdk/archive/663488bd79bbbd6a78ee053f495dcaecdd15e3f9.tar.gz"],
+    strip_prefix = "icsprout55-pdk-663488bd79bbbd6a78ee053f495dcaecdd15e3f9",
+    sha256 = "87f31b0d931fbaa285583664ddcca8488f082771800e23c22feb99af33fe244c",
+    build_file_content = """
+    package(default_visibility = ["//visibility:public"])
+    exports_files(["README.md"])
+    filegroup(
+        name = "all_files",
+        srcs = glob(["**"]),
+    )
+    """,
+)

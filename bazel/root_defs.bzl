@@ -43,6 +43,7 @@ def chipcompiler_tauri_bundle(
         visibility = None,
         api_server_bundle = ":api_server_bundle",
         rust_sources = "//gui/src-tauri:tauri_rust_sources",
+        appimagetool_bin = "@appimagetool_x86_64_linux//file",
         script = "//bazel/scripts:build_tauri_bundle_script"):
     kwargs = {
         "name": name,
@@ -58,6 +59,7 @@ def chipcompiler_tauri_bundle(
         ]) + [
             rust_sources,
             api_server_bundle,
+            appimagetool_bin,
             script,
         ],
         "outs": ["tauri_bundle/tauri_bundle.tar"],
@@ -67,10 +69,12 @@ def chipcompiler_tauri_bundle(
             bash "$(location {script})" \\
                 --gui-src-dir "$$(dirname $(location gui/package.json))" \\
                 --api-server-bin "$(location {api_server_bundle})" \\
+                --appimagetool-bin "$(location {appimagetool_bin})" \\
                 --out-tar "$@" \\
                 --work-root "$(@D)/tauri_bundle_work"
         """.format(
             api_server_bundle = api_server_bundle,
+            appimagetool_bin = appimagetool_bin,
             script = script,
         ),
     }
