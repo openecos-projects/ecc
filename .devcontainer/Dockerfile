@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS base
 SHELL ["/bin/bash", "-lc"]
 
