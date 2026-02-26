@@ -28,6 +28,6 @@
   "containerEnv": {
     "PROJECT_ROOT": "/workspaces/chip-compiler"
   },
-  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postCreateCommand": "bash .devcontainer/post-setup.sh",
   "remoteUser": "root"
 }
