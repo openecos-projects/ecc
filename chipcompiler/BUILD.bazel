@@ -93,6 +93,13 @@ py_binary(
     name = "chipcompiler_cli",
     srcs = ["cli/main.py"],
     main = "cli/main.py",
+    data = [
+        "@icsprout55_pdk//:README.md",
+        "@icsprout55_pdk//:all_files",
+    ],
+    env = {
+        "CHIPCOMPILER_ICS55_PDK_ROOT": "$(location @icsprout55_pdk//:README.md)/..",
+    },
     deps = [":chipcompiler_core"],
 )
 
@@ -100,6 +107,13 @@ py_binary(
     name = "chipcompiler_server",
     srcs = ["server/run_server.py"],
     main = "server/run_server.py",
+    data = [
+        "@icsprout55_pdk//:README.md",
+        "@icsprout55_pdk//:all_files",
+    ],
+    env = {
+        "CHIPCOMPILER_ICS55_PDK_ROOT": "$(location @icsprout55_pdk//:README.md)/..",
+    },
     deps = [
         ":chipcompiler_core",
         "@pypi//uvicorn",
