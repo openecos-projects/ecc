@@ -1,22 +1,10 @@
-load("@rules_uv//uv:pip.bzl", "pip_compile")
 load("@ecos_bazel_rules//rules:python_packaging.bzl", "python_pyinstaller_bundle")
 
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
-    "requirements_lock.txt",
     "ecc.spec",
 ])
-
-pip_compile(
-    name = "requirements_lock",
-    extra_args = [
-        "--group",
-        "dev",
-    ],
-    requirements_in = "pyproject.toml",
-    requirements_txt = "requirements_lock.txt",
-)
 
 python_pyinstaller_bundle(
     name = "api_server_bundle",
@@ -25,7 +13,6 @@ python_pyinstaller_bundle(
         "README.md",
         "pyproject.toml",
         "uv.lock",
-        "requirements_lock.txt",
         "//chipcompiler:chipcompiler_python_sources",
         "//chipcompiler:chipcompiler_runtime_data",
     ],
