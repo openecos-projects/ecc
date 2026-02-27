@@ -16,7 +16,7 @@ echo "use flake" > .envrc
 direnv allow
 ```
 
-Shell hook runs `uv sync` and activates venv. Binary cache at [serve.eminrepo.cc](https://serve.eminrepo.cc).
+Shell hook runs `uv sync --frozen --all-groups --python 3.11` and activates venv. Binary cache at [serve.eminrepo.cc](https://serve.eminrepo.cc).
 
 ## CLI Usage
 
@@ -216,6 +216,7 @@ uv build
 
 ### Standalone Executable
 ```bash
+source .venv/bin/activate
 bazel build //:server_bundle
 ```
 
@@ -239,13 +240,26 @@ uv sync --frozen --all-groups --python 3.11
 ### Key Build Targets
 
 ```bash
+source .venv/bin/activate  # Activate venv for Python deps
+
+# Then run Bazel builds
 bazel build //chipcompiler/thirdparty:ecc_py_cmake   # ECC-Tools C++ build
 bazel build //:server_bundle                      # PyInstaller API server executable
 bazel build //:tauri_bundle                           # Full Tauri GUI bundle
 bazel build //:release_bundle                         # Release artifact
 ```
 
-Use `--config=ghproxy` behind restricted networks to route downloads through a GitHub mirror proxy.
+Use `--config=ghproxy` behind restricted networks to route HTTP downloads through a GitHub mirror proxy:
+
+```bash
+bazel --config=ghproxy build //...
+```
+
+For `git_override` dependencies (e.g. `ecos-bazel`), Bazel uses `git clone` which bypasses the HTTP downloader. Configure git to use the mirror directly:
+
+```bash
+git config --global url."https://ghfast.top/https://github.com/".insteadOf "https://github.com/"
+```
 
 ### Python Dependency Management
 

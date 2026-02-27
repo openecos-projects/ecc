@@ -12,6 +12,8 @@ build --action_env=PKG_CONFIG_PATH
 
 # Optional GitHub mirror config for external repository downloads.
 # Usage: bazel --config=ghproxy build //...
+# Set up git config to use ghfast mirror for github.com can also help with bazel's git_repository() rules:
+# git config --global url."https://ghfast.top/https://github.com/".insteadOf "https://github.com/"
 common:ghproxy --experimental_downloader_config=.bazel_downloader_config
 # Use ghfast-hosted Bazel Central Registry to avoid direct githubusercontent DNS issues.
 common:ghproxy --registry=https://ghfast.top/https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/main
