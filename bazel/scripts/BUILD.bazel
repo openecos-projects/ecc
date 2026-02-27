@@ -10,3 +10,24 @@ filegroup(
     name = "build_tauri_bundle_script",
     srcs = ["build-tauri-bundle.sh"],
 )
+
+sh_binary(
+    name = "prepare_dev",
+    srcs = ["prepare-dev.sh"],
+)
+
+sh_binary(
+    name = "install_dev",
+    srcs = ["install-dev.sh"],
+    data = [
+        "//chipcompiler/thirdparty:ecc_bundle",
+        "@oss_cad_suite//:yosys_bin",
+        "@icsprout55_pdk//:all_files",
+        "@icsprout55_pdk//:README.md",
+    ],
+    args = [
+        "$(rlocationpath //chipcompiler/thirdparty:ecc_bundle)",
+        "$(rlocationpath @oss_cad_suite//:yosys_bin)",
+        "$(rlocationpath @icsprout55_pdk//:README.md)",
+    ],
+)

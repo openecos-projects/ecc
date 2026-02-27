@@ -59,3 +59,13 @@ filegroup(
     name = "release_bundle",
     srcs = [":tauri_bundle"],
 )
+
+alias(
+    name = "install_dev",
+    actual = "//bazel/scripts:install_dev",
+)
+
+alias(
+    name = "prepare_dev",
+    actual = "//bazel/scripts:prepare_dev",
+)

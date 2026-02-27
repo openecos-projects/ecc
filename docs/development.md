@@ -18,6 +18,21 @@ direnv allow
 
 Shell hook runs `uv sync --frozen --all-groups --python 3.11` and activates venv. Binary cache at [serve.eminrepo.cc](https://serve.eminrepo.cc).
 
+### Option 2: Bazel Dev Setup
+
+If not using Nix, set up the full development environment with a single command:
+
+```bash
+bazel run //:prepare_dev
+```
+
+This runs two phases:
+1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv
+2. `bazel run //:install_dev` — builds and installs Bazel-managed dependencies:
+   - Extracts ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
+   - Links OSS CAD Suite → `chipcompiler/thirdparty/oss-cad-suite`
+   - Links icsprout55 PDK → `chipcompiler/thirdparty/icsprout55-pdk`
+
 ## CLI Usage
 
 For command-line automation and scripting, run CLI via Nix:
@@ -281,6 +296,8 @@ BUILD.bazel               # Root targets: server_bundle, tauri_bundle, release_b
 bazel/
   BUILD.bazel             # PyInstaller alias
   scripts/
+    prepare-dev.sh        # Dev env setup (uv sync + install_dev)
+    install-dev.sh        # Install Bazel-built deps into workspace
     build-tauri-bundle.sh # Shell script for Tauri build orchestration
 ```
 
