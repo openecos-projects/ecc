@@ -24,7 +24,7 @@ chipcompiler --reload                    # API server dev mode, port 8765
 
 # Bazel (release only)
 bazel build //:release_bundle
-bazel build //:api_server_bundle
+bazel build //:server_bundle
 bazel build //chipcompiler/thirdparty:ecc_py_cmake
 ```
 

@@ -216,10 +216,10 @@ uv build
 
 ### Standalone Executable
 ```bash
-bazel build //:api_server_bundle
+bazel build //:server_bundle
 ```
 
-Output in `bazel-bin/api_server_bundle/`.
+Output in `bazel-bin/server_bundle/`.
 
 ## Bazel Build System
 
@@ -240,7 +240,7 @@ uv sync --frozen --all-groups --python 3.11
 
 ```bash
 bazel build //chipcompiler/thirdparty:ecc_py_cmake   # ECC-Tools C++ build
-bazel build //:api_server_bundle                      # PyInstaller API server executable
+bazel build //:server_bundle                      # PyInstaller API server executable
 bazel build //:tauri_bundle                           # Full Tauri GUI bundle
 bazel build //:release_bundle                         # Release artifact
 ```
@@ -262,11 +262,11 @@ To add or update a Python dependency: edit `pyproject.toml`, run `uv lock`, and 
 
 ```
 MODULE.bazel              # Root module: deps, python toolchain, uv_export, pip, external repos
-BUILD.bazel               # Root targets: api_server_bundle, tauri_bundle, release_bundle
+BUILD.bazel               # Root targets: server_bundle, tauri_bundle, release_bundle
 .bazelrc                  # Build flags: disk cache, sandbox, PATH passthrough, ghproxy config
 bazel/
   BUILD.bazel             # PyInstaller alias
-  root_defs.bzl           # Macros: chipcompiler_api_server_bundle, chipcompiler_tauri_bundle
+  root_defs.bzl           # Macros: chipcompiler_server_bundle, chipcompiler_tauri_bundle
   scripts/
     build-tauri-bundle.sh # Shell script for Tauri build orchestration
 ```

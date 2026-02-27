@@ -7,7 +7,7 @@ This packages ChipCompiler as a backend API server (onefile mode).
 The main user interface is provided by the GUI (Tauri app).
 
 Usage:
-    bazel build //:api_server_bundle
+    bazel build //:server_bundle
 """
 
 import os
