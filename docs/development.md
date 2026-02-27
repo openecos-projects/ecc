@@ -243,6 +243,71 @@ uv build
 
 Output in `dist/`.
 
+## Bazel Build System
+
+Bazel is used for reproducible release builds (API server bundle, Tauri GUI bundle, ECC-Tools C++ compilation). Day-to-day development still uses `uv`/`pytest`/`nix develop` as described above.
+
+### Prerequisites
+
+- Bazel 9+ (via Bazelisk recommended)
+- `uv` on PATH (required by the `uv_export` repository rule)
+- Python 3.11 virtualenv at `.venv/` (used by ECC-Tools cmake build for ABI matching)
+
+### Key Build Targets
+
+```bash
+bazel build //chipcompiler/thirdparty:ecc_py_cmake   # ECC-Tools C++ build
+bazel build //:api_server_bundle                      # PyInstaller API server executable
+bazel build //:tauri_bundle                           # Full Tauri GUI bundle
+bazel build //:release_bundle                         # Release artifact
+```
+
+Use `--config=ghproxy` behind restricted networks to route downloads through a GitHub mirror proxy.
+
+### Python Dependency Management
+
+`uv.lock` is the single source of truth for Python dependencies. Bazel consumes it automatically:
+
+1. The `uv_export` repository rule runs `uv export` at module resolution time
+2. This generates `requirements_lock.txt` in a Bazel repository -- developers never run this manually
+3. `requirements_lock.txt` is NOT committed to the repo (listed in `.gitignore`)
+4. `rules_python` `pip.parse` reads the generated lockfile to create `@pypi` hub
+
+To add or update a Python dependency: edit `pyproject.toml`, run `uv lock`, and Bazel picks up the change on next build.
+
+### Project Structure
+
+```
+MODULE.bazel              # Root module: deps, python toolchain, uv_export, pip, external repos
+BUILD.bazel               # Root targets: api_server_bundle, tauri_bundle, release_bundle
+.bazelrc                  # Build flags: disk cache, sandbox, PATH passthrough, ghproxy config
+bazel/
+  BUILD.bazel             # PyInstaller alias
+  root_defs.bzl           # Macros: chipcompiler_api_server_bundle, chipcompiler_tauri_bundle
+  scripts/
+    build-tauri-bundle.sh # Shell script for Tauri build orchestration
+```
+
+### External Repositories
+
+Defined in `MODULE.bazel`:
+
+| Repository | Source | Purpose |
+|---|---|---|
+| `@icsprout55_pdk` | GitHub archive | ICS55 PDK (with `make unzip` post-setup) |
+| `@patchelf` | GitHub release | ELF binary patching tool |
+| `@oss_cad_suite` | GitHub release | Yosys and other OSS EDA tools |
+| `@ecc_tools_src` | Local submodule | ECC-Tools C++ source (via `local_source_repo`) |
+| `@appimagetool_x86_64_linux` | GitHub release | AppImage packaging tool |
+
+### Lockfile Maintenance
+
+To update `MODULE.bazel.lock` after changing `MODULE.bazel` or Bazel dependency versions:
+
+```bash
+bazel mod deps --lockfile_mode=update
+```
+
 ## Related Documentation
 
 - [Architecture](architecture.md) - System design and patterns

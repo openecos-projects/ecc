@@ -62,6 +62,25 @@ make
 ```
 Builds ECC-Tools C++ bindings. After building, run `./scripts/autopatch-ecc-py.sh` to bundle runtime dependencies with correct RPATH (`$ORIGIN:$ORIGIN/lib`) for portable deployment.
 
+### Bazel Build System
+
+Bazel is used for reproducible release builds. Requires Bazel 9+ and `uv` on PATH.
+
+```bash
+bazel build //chipcompiler/thirdparty:ecc_py_cmake   # ECC-Tools C++ build
+bazel build //:api_server_bundle                      # PyInstaller API server bundle
+bazel build //:tauri_bundle                           # Full Tauri GUI bundle
+bazel build //:release_bundle                         # Release artifact
+bazel mod deps --lockfile_mode=update                 # Update MODULE.bazel.lock
+```
+
+Key details:
+- **Python deps:** `uv.lock` is the single source of truth. The `uv_export` repository rule auto-generates `requirements_lock.txt` at Bazel module resolution time -- no manual step needed. `requirements_lock.txt` is gitignored.
+- **bazel/ directory:** Contains `BUILD.bazel` (pyinstaller alias), `root_defs.bzl` (packaging macros), `scripts/build-tauri-bundle.sh`.
+- **Network proxy:** Use `--config=ghproxy` for restricted networks (configured in `.bazelrc`).
+
+For detailed Bazel documentation, see [docs/development.md](docs/development.md).
+
 ### Running the API Server
 
 ```bash
