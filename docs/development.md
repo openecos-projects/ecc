@@ -77,7 +77,7 @@ bazel build //chipcompiler/thirdparty:ecc_py_cmake
 ### Bundle ECC Runtime Dependencies
 
 ```bash
-bazel build //chipcompiler/thirdparty:runtime_bundle
+bazel build //chipcompiler/thirdparty:ecc_bundle
 ```
 
 ## Code Quality

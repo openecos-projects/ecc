@@ -16,7 +16,7 @@ python_pyinstaller_bundle(
         "//chipcompiler:chipcompiler_python_sources",
         "//chipcompiler:chipcompiler_runtime_data",
     ],
-    runtime_bundle = "//chipcompiler/thirdparty:runtime_bundle",
+    runtime_bundle = "//chipcompiler/thirdparty:ecc_bundle",
     output_name = "chipcompiler",
     pyinstaller = "//bazel:pyinstaller",
 )

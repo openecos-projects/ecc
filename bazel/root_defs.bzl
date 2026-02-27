@@ -3,7 +3,7 @@
 def chipcompiler_api_server_bundle(
         name,
         visibility = None,
-        runtime_bundle = "//chipcompiler/thirdparty:runtime_bundle",
+        runtime_bundle = "//chipcompiler/thirdparty:ecc_bundle",
         pyinstaller = "//bazel:pyinstaller"):
     kwargs = {
         "name": name,

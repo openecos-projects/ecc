@@ -29,7 +29,7 @@ cmake(
 )
 
 cpp_runtime_bundle(
-    name = "runtime_bundle",
+    name = "ecc_bundle",
     cmake_target = ":ecc_py_cmake",
     dest_bin_dir = "chipcompiler/tools/ecc/bin",
     dest_lib_dir = "chipcompiler/tools/ecc/bin/lib",
