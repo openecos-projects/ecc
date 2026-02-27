@@ -69,6 +69,7 @@ lint.select = [
   "SIM", # flake8-simplify
   "UP",  # pyupgrade
 ]
+extend-include = ["*.spec"]
 
 [tool.ty]
 environment.python-version = "3.11"
