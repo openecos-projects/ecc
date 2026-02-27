@@ -15,7 +15,7 @@ bazel_dep(name = "ecos-bazel")
 git_override(
     module_name = "ecos-bazel",
     remote = "https://github.com/Emin017/ecos-bazel",
-    commit = "3066e5067de071d90cc3fb697ea05b00947a8ae0",
+    commit = "447e2f306b5cd4e2771ba5428c897d0e59d469f6",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
