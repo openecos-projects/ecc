@@ -3,7 +3,8 @@
 def chipcompiler_api_server_bundle(
         name,
         visibility = None,
-        runtime_bundle = "//chipcompiler/thirdparty:runtime_bundle"):
+        runtime_bundle = "//chipcompiler/thirdparty:runtime_bundle",
+        pyinstaller = "//bazel:pyinstaller"):
     kwargs = {
         "name": name,
         "srcs": [
@@ -16,8 +17,9 @@ def chipcompiler_api_server_bundle(
             "//chipcompiler:chipcompiler_runtime_data",
             runtime_bundle,
         ],
+        "tools": [pyinstaller],
         "outs": ["api_server_bundle/chipcompiler"],
-        # Use local execution to access venv Python with PyInstaller
+        # Use local execution for PyInstaller's introspection needs
         "tags": ["local", "no-sandbox"],
         "cmd": """
             set -euo pipefail
@@ -26,7 +28,7 @@ def chipcompiler_api_server_bundle(
             WORKSPACE_ROOT=$$(dirname $$(realpath $(location pyproject.toml)))
 
             tar -xf $(location {runtime_bundle}) -C .
-            "$$WORKSPACE_ROOT/.venv/bin/python3" -m PyInstaller $(location ecc.spec) \
+            $(location {pyinstaller}) $(location ecc.spec) \
                 --clean \
                 --noconfirm \
                 --distpath "$(@D)/api_server_bundle" \
@@ -39,6 +41,7 @@ def chipcompiler_api_server_bundle(
             fi
         """.format(
             runtime_bundle = runtime_bundle,
+            pyinstaller = pyinstaller,
         ),
     }
     if visibility != None:

@@ -1,31 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-append_proxy_prefix() {
-    local url="$1"
-    local prefix="${2:-}"
-    local github_only="${3:-false}"
-
-    if [[ -z "$prefix" ]]; then
-        echo "$url"
-        return 0
-    fi
-    if [[ "$github_only" == "true" ]]; then
-        case "$url" in
-            https://github.com|https://github.com/*)
-                ;;
-            *)
-                echo "$url"
-                return 0
-                ;;
-        esac
-    fi
-    if [[ "$prefix" != */ ]]; then
-        prefix="${prefix}/"
-    fi
-    echo "${prefix}${url}"
-}
-
 inject_oss_cad_into_appimage() {
     local appimage_path="$1"
     local oss_cad_source="$2"
@@ -65,16 +40,9 @@ inject_oss_cad_into_appimage() {
 
     local appimagetool="${APPIMAGETOOL_PATH:-${APPIMAGETOOL_BIN:-}}"
     if [[ -z "$appimagetool" ]]; then
-        if command -v appimagetool >/dev/null 2>&1; then
-            appimagetool="appimagetool"
-        else
-            appimagetool="$work_dir/appimagetool-x86_64.AppImage"
-            echo "[inject] Downloading appimagetool..."
-            local appimagetool_url
-            appimagetool_url=$(append_proxy_prefix "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" "${GITHUB_PROXY_PREFIX:-}" "true")
-            curl -fL "$appimagetool_url" -o "$appimagetool"
-            chmod +x "$appimagetool"
-        fi
+        echo "ERROR: appimagetool not provided via APPIMAGETOOL_PATH or APPIMAGETOOL_BIN"
+        rm -rf "$work_dir"
+        return 1
     fi
 
     echo "[inject] Repacking AppImage"

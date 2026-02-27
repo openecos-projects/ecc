@@ -8,6 +8,6 @@ cd "$PROJECT_ROOT"
 
 uv sync --frozen --all-groups --python 3.11
 bazel run //chipcompiler/thirdparty:install_ecc_runtime
-bazel run //scripts:init_ics55_pdk
+bazel run //bazel/scripts:init_ics55_pdk
 
 echo "✓ Development environment ready!"

@@ -1,5 +1,5 @@
 build --disk_cache=~/.cache/bazel-disk
-build --spawn_strategy=sandboxed,standalone
+build --spawn_strategy=sandboxed
 build --verbose_failures
 build --show_timestamps
 build --python_version=PY3
