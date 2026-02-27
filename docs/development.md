@@ -280,7 +280,6 @@ BUILD.bazel               # Root targets: server_bundle, tauri_bundle, release_b
 .bazelrc                  # Build flags: disk cache, sandbox, PATH passthrough, ghproxy config
 bazel/
   BUILD.bazel             # PyInstaller alias
-  root_defs.bzl           # Macros: chipcompiler_server_bundle, chipcompiler_tauri_bundle
   scripts/
     build-tauri-bundle.sh # Shell script for Tauri build orchestration
 ```
