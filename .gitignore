@@ -174,3 +174,6 @@ result
 
 # Bazel result
 bazel-*
+
+# Generated from uv.lock, not committed
+requirements_lock.txt
