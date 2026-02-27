@@ -1,5 +1,5 @@
 load("@rules_uv//uv:pip.bzl", "pip_compile")
-load("//bazel:root_defs.bzl", "chipcompiler_api_server_bundle", "chipcompiler_tauri_bundle")
+load("@ecos_bazel_rules//rules:python_packaging.bzl", "python_pyinstaller_bundle")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -18,14 +18,54 @@ pip_compile(
     requirements_txt = "requirements_lock.txt",
 )
 
-chipcompiler_api_server_bundle(
+python_pyinstaller_bundle(
     name = "api_server_bundle",
-    # Why: PyInstaller is expensive; explicit inputs keep this heavy target cacheable.
+    spec_file = "ecc.spec",
+    srcs = [
+        "README.md",
+        "pyproject.toml",
+        "uv.lock",
+        "requirements_lock.txt",
+        "//chipcompiler:chipcompiler_python_sources",
+        "//chipcompiler:chipcompiler_runtime_data",
+    ],
+    runtime_bundle = "//chipcompiler/thirdparty:runtime_bundle",
+    output_name = "chipcompiler",
+    pyinstaller = "//bazel:pyinstaller",
 )
 
-chipcompiler_tauri_bundle(
+# Tauri bundle - ChipCompiler specific
+genrule(
     name = "tauri_bundle",
-    # Why: frontend/rust/backend artifacts are explicit macro inputs for stable caching.
+    srcs = glob([
+        "gui/src/**/*",
+        "gui/public/**/*",
+        "gui/index.html",
+        "gui/package.json",
+        "gui/pnpm-lock.yaml",
+        "gui/tsconfig*.json",
+        "gui/vite.config.ts",
+        "gui/tailwind.config.ts",
+    ]) + [
+        "//gui/src-tauri:tauri_rust_sources",
+        ":api_server_bundle",
+        "@appimagetool_x86_64_linux//file",
+        "@oss_cad_suite//:all_files",
+        "@oss_cad_suite//:yosys_bin",
+        "//bazel/scripts:build_tauri_bundle_script",
+    ],
+    outs = ["tauri_bundle/tauri_bundle.tar"],
+    cmd = """
+        set -euo pipefail
+
+        bash "$(location //bazel/scripts:build_tauri_bundle_script)" \\
+            --gui-src-dir "$$(dirname $(location gui/package.json))" \\
+            --api-server-bin "$(location :api_server_bundle)" \\
+            --appimagetool-bin "$(location @appimagetool_x86_64_linux//file)" \\
+            --oss-cad-bin "$(location @oss_cad_suite//:yosys_bin)" \\
+            --out-tar "$@" \\
+            --work-root "$(@D)/tauri_bundle_work"
+    """,
 )
 
 filegroup(

@@ -17,6 +17,15 @@ bazel_dep(name = "rules_cc", version = "0.2.14")
 # NOTE: 0.12.0 fails to load under Bazel 9 (rule() arg mismatch in upstream module extensions).
 bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
 
+# Declare ecos-bazel-rules as a non-registry module
+bazel_dep(name = "ecos_bazel_rules")
+
+# Local override for ecos-bazel-rules library
+local_path_override(
+    module_name = "ecos_bazel_rules",
+    path = "ecos-bazel-rules",
+)
+
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(python_version = "3.11")
 use_repo(python, "python_3_11")
@@ -34,12 +43,7 @@ pip.parse(
     python_version = "3.11",
     requirements_lock = "//:requirements_lock.txt",
 )
-pip.parse(
-    hub_name = "pypi_autopatchelf",
-    python_version = "3.11",
-    requirements_lock = "//bazel/scripts/auto-patchelf:requirements.txt",
-)
-use_repo(pip, "pypi", "pypi_autopatchelf")
+use_repo(pip, "pypi")
 
 # Bazel-native, reproducible appimagetool for Linux AppImage post-processing.
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
@@ -50,8 +54,9 @@ http_file(
     executable = True,
 )
 
-# Generic download_and_extract rule for external dependencies
-download_and_extract = use_repo_rule("//bazel:download_and_extract.bzl", "download_and_extract")
+# Use library's repository rules
+download_and_extract = use_repo_rule("@ecos_bazel_rules//rules:download_and_extract.bzl", "download_and_extract")
+local_source_repo = use_repo_rule("@ecos_bazel_rules//rules:local_source_repo.bzl", "local_source_repo")
 
 download_and_extract(
     name = "icsprout55_pdk",
@@ -60,7 +65,7 @@ download_and_extract(
     sha256 = "6e96c565b83eb227d7adf24941404a18c75bda179054b3de5b491f6d9b748dc9",
     post_setup_cmds = ["make unzip"],
     environment = {"TOOL": "curl"},
-    build_file_template = "//bazel:icsprout55_pdk_repo.BUILD.bazel",
+    build_file_template = "@ecos_bazel_rules//rules:pdk_repo.BUILD.bazel",
 )
 
 download_and_extract(
@@ -74,14 +79,13 @@ download_and_extract(
     name = "oss_cad_suite",
     urls = ["https://ghfast.top/https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-01-22/oss-cad-suite-linux-x64-20260122.tgz"],
     sha256 = "b536961118dd7497707752d9fd45714c5f6dacd150e02387bac4f75c28a16567",
-    build_file_template = "//bazel:oss_cad_suite.BUILD.bazel",
+    build_file_template = "@ecos_bazel_rules//rules:oss_cad_suite.BUILD.bazel",
 )
 
 # ECC-Tools source tree, imported without BUILD/WORKSPACE files so cmake() glob works.
 # (src/third_party contains abseil-cpp/yaml-cpp with their own BUILD files that
 # create package boundaries and block glob traversal.)
-ecc_tools_sources = use_repo_rule("//bazel:ecc_tools_repo.bzl", "ecc_tools_sources")
-ecc_tools_sources(
+local_source_repo(
     name = "ecc_tools_src",
     path = "chipcompiler/thirdparty/ecc-tools",
 )

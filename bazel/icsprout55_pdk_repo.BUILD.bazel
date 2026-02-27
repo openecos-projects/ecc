@@ -1,8 +1,0 @@
-package(default_visibility = ["//visibility:public"])
-
-exports_files(["README.md"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["**"]),
-)

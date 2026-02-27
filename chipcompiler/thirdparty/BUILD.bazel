@@ -1,9 +1,5 @@
 load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
-load(
-    "//bazel:thirdparty_defs.bzl",
-    "chipcompiler_install_ecc_runtime",
-    "chipcompiler_runtime_bundle",
-)
+load("@ecos_bazel_rules//rules:python_packaging.bzl", "cpp_runtime_bundle")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -32,12 +28,13 @@ cmake(
     out_data_dirs = ["lib"],
 )
 
-chipcompiler_runtime_bundle(
+cpp_runtime_bundle(
     name = "runtime_bundle",
-    ecc_py_cmake = ":ecc_py_cmake",
-)
-
-chipcompiler_install_ecc_runtime(
-    name = "install_ecc_runtime",
-    ecc_py_cmake = ":ecc_py_cmake",
+    cmake_target = ":ecc_py_cmake",
+    dest_bin_dir = "chipcompiler/tools/ecc/bin",
+    dest_lib_dir = "chipcompiler/tools/ecc/bin/lib",
+    so_pattern = "ecc_py*.so",
+    autopatch_script = "@ecos_bazel_rules//tools:autopatch_runtime",
+    auto_patchelf_bin = "@ecos_bazel_rules//tools/auto-patchelf:auto_patchelf",
+    patchelf = "@patchelf//:bin/patchelf",
 )

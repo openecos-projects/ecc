@@ -3,23 +3,8 @@ load("@pypi//:requirements.bzl", "requirement")
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files([
-    "oss_cad_suite.BUILD.bazel",
-    "patcher.py",
-    "root_defs.bzl",
-    "thirdparty_defs.bzl",
-    "ecc_tools_repo.BUILD.bazel",
-    "icsprout55_pdk_repo.BUILD.bazel",
-])
-
-sh_binary(
+# Alias to ecos-bazel-rules pyinstaller tool
+alias(
     name = "pyinstaller",
-    srcs = ["pyinstaller.sh"],
-    data = [
-        "@python_3_11//:python",
-        requirement("pyinstaller"),
-    ],
-    env = {
-        "PYTHON_INTERPRETER": "$(location @python_3_11//:python)",
-    },
+    actual = "@ecos_bazel_rules//tools:pyinstaller",
 )
