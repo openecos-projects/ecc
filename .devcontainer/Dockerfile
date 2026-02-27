@@ -66,9 +66,6 @@ ENV PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr
 FROM base AS devcontainer
 
 FROM base AS runtime
-# ENV GITHUB_PROXY_PREFIX="https://ghfast.top/"
-# ENV GIT_PROXY_PREFIX="https://ghfast.top/"
-# ENV UV_PYTHON_INSTALL_MIRROR="https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download"
 
 WORKDIR /workspace
 COPY . /workspace
