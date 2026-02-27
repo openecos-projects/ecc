@@ -9,6 +9,7 @@ exports_files([
     "root_defs.bzl",
     "thirdparty_defs.bzl",
     "ecc_tools_repo.BUILD.bazel",
+    "icsprout55_pdk_repo.BUILD.bazel",
 ])
 
 sh_binary(

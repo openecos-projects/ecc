@@ -50,29 +50,31 @@ http_file(
     executable = True,
 )
 
-# Bazel-native, reproducible ICS55 PDK repository.
-http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-http_archive(
+# Generic download_and_extract rule for external dependencies
+download_and_extract = use_repo_rule("//bazel:download_and_extract.bzl", "download_and_extract")
+
+download_and_extract(
     name = "icsprout55_pdk",
     urls = ["https://ghfast.top/https://github.com/openecos-projects/icsprout55-pdk/archive/663488bd79bbbd6a78ee053f495dcaecdd15e3f9.tar.gz"],
     strip_prefix = "icsprout55-pdk-663488bd79bbbd6a78ee053f495dcaecdd15e3f9",
-    sha256 = "87f31b0d931fbaa285583664ddcca8488f082771800e23c22feb99af33fe244c",
-    build_file_content = """
-    package(default_visibility = ["//visibility:public"])
-    exports_files(["README.md"])
-    filegroup(
-        name = "all_files",
-        srcs = glob(["**"]),
-    )
-    """,
+    sha256 = "6e96c565b83eb227d7adf24941404a18c75bda179054b3de5b491f6d9b748dc9",
+    post_setup_cmds = ["make unzip"],
+    environment = {"TOOL": "curl"},
+    build_file_template = "//bazel:icsprout55_pdk_repo.BUILD.bazel",
 )
 
-# Bazel-native, reproducible patchelf binary for RPATH patching.
-http_archive(
+download_and_extract(
     name = "patchelf",
     urls = ["https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz"],
     sha256 = "ce84f2447fb7a8679e58bc54a20dc2b01b37b5802e12c57eece772a6f14bf3f0",
     build_file_content = """exports_files(["bin/patchelf"])""",
+)
+
+download_and_extract(
+    name = "oss_cad_suite",
+    urls = ["https://ghfast.top/https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-01-22/oss-cad-suite-linux-x64-20260122.tgz"],
+    sha256 = "b536961118dd7497707752d9fd45714c5f6dacd150e02387bac4f75c28a16567",
+    build_file_template = "//bazel:oss_cad_suite.BUILD.bazel",
 )
 
 # ECC-Tools source tree, imported without BUILD/WORKSPACE files so cmake() glob works.
@@ -82,12 +84,4 @@ ecc_tools_sources = use_repo_rule("//bazel:ecc_tools_repo.bzl", "ecc_tools_sourc
 ecc_tools_sources(
     name = "ecc_tools_src",
     path = "chipcompiler/thirdparty/ecc-tools",
-)
-
-# Bazel-native, reproducible OSS CAD Suite (Linux x64) archive.
-http_archive(
-    name = "oss_cad_suite",
-    urls = ["https://ghfast.top/https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-01-22/oss-cad-suite-linux-x64-20260122.tgz"],
-    sha256 = "b536961118dd7497707752d9fd45714c5f6dacd150e02387bac4f75c28a16567",
-    build_file = "//bazel:oss_cad_suite.BUILD.bazel",
 )
