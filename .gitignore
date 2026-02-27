@@ -170,6 +170,7 @@ chipcompiler/thirdparty/icsprout55-pdk
 
 # Nix result
 result
+.direnv/
 
 # Bazel result
 bazel-*
