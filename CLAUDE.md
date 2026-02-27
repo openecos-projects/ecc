@@ -1,4 +1,4 @@
-# ECOS Chip Compiler (ECC)
+# CLAUDE.md
 
 ECOS chip design automation solution orchestrating EDA tools (Yosys, ECC-Tools, OpenROAD, Magic, KLayout) for RTL-to-GDS flows. See `docs/architecture.md` for architecture details and `docs/development.md` for workflows.
 
