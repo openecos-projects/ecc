@@ -29,14 +29,11 @@ def _ecc_tools_sources_impl(ctx):
         """.format(src = str(src))],
         quiet = False,
     )
-    ctx.file("BUILD.bazel", """\
-package(default_visibility = ["//visibility:public"])
-
-filegroup(
-    name = "all_sources",
-    srcs = glob(["**"]),
-)
-""")
+    ctx.template(
+        "BUILD.bazel",
+        Label("//bazel:ecc_tools_repo.BUILD.bazel"),
+        substitutions = {},
+    )
 
 ecc_tools_sources = repository_rule(
     implementation = _ecc_tools_sources_impl,
