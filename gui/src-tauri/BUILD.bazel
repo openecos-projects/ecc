@@ -21,7 +21,7 @@ filegroup(
 py_binary(
     name = "external_api_bin",
     srcs = ["external_api_bin_runner.py"],
-    data = ["//chipcompiler:api_server_onefile"],
+    data = ["//chipcompiler:chipcompiler_server"],
     main = "external_api_bin_runner.py",
 )
 

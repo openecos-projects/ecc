@@ -119,9 +119,3 @@ py_binary(
         "@pypi//uvicorn",
     ],
 )
-
-# Onefile and onedir packaging share the same Python entrypoint.
-alias(
-    name = "api_server_onefile",
-    actual = ":chipcompiler_server",
-)
