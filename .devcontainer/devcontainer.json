@@ -20,7 +20,7 @@
   },
   "forwardPorts": [8765, 5173, 1420],
   "containerEnv": {
-    "PROJECT_ROOT": "/workspaces/chip-compiler"
+    "PROJECT_ROOT": "${containerWorkspaceFolder}"
   },
   "postCreateCommand": "bash .devcontainer/post-setup.sh",
   "remoteUser": "root"
