@@ -18,16 +18,6 @@ direnv allow
 
 Shell hook runs `uv sync` and activates venv. Binary cache at [serve.eminrepo.cc](https://serve.eminrepo.cc).
 
-### Option 2: Manual Installation
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh  # Install uv
-./build.sh                                        # Build project
-source .venv/bin/activate                         # Activate venv
-```
-
-Skip OSS CAD Suite if yosys installed: `ENABLE_OSS_CAD_SUITE=false ./build.sh`
-
 ## CLI Usage
 
 For command-line automation and scripting, run CLI via Nix:
@@ -81,26 +71,14 @@ Example: `CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk chipcompiler`
 ### Build ECC-Tools C++ Bindings
 
 ```bash
-mkdir -p build && cd build
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_ECOS=ON ..
-ninja ieda_py
+bazel build //chipcompiler/thirdparty:ecc_py_cmake
 ```
 
 ### Bundle ECC Runtime Dependencies
 
-After building ECC-Tools bindings:
 ```bash
-./scripts/autopatch-ecc-py.sh  # Auto-detect
-./scripts/autopatch-ecc-py.sh --ecc-py /path/to/ecc_py.so  # Custom path
+bazel build //chipcompiler/thirdparty:runtime_bundle
 ```
-
-Process: collects `.so` deps → copies to `bin/lib/` → patches RPATH (`$ORIGIN:$ORIGIN/lib`) → verifies with `ldd`.
-
-Requirements: `patchelf` (`apt install patchelf`), `pyelftools` (auto-installed).
-
-Verification: `ldd chipcompiler/tools/ecc/bin/ecc_py*.so` (all deps should resolve to `$ORIGIN/lib/` or system).
-
-Auto-called by `build.sh`, `Dockerfile`, `.devcontainer/setup.sh`.
 
 ## Code Quality
 
@@ -238,10 +216,10 @@ uv build
 
 ### Standalone Executable
 ```bash
-./build.sh --release
+bazel build //:api_server_bundle
 ```
 
-Output in `dist/`.
+Output in `bazel-bin/api_server_bundle/`.
 
 ## Bazel Build System
 
@@ -251,7 +229,12 @@ Bazel is used for reproducible release builds (API server bundle, Tauri GUI bund
 
 - Bazel 9+ (via Bazelisk recommended)
 - `uv` on PATH (required by the `uv_export` repository rule)
-- Python 3.11 virtualenv at `.venv/` (used by ECC-Tools cmake build for ABI matching)
+- Python 3.11 virtualenv at `.venv/` (used by ECC-Tools cmake build and PyInstaller)
+
+Before running Bazel builds, ensure the venv is set up:
+```bash
+uv sync --frozen --all-groups --python 3.11
+```
 
 ### Key Build Targets
 
