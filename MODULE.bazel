@@ -30,12 +30,6 @@ python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(python_version = "3.11")
 use_repo(python, "python_3_11")
 
-uv = use_extension("@rules_uv//uv:extensions.bzl", "uv")
-uv.toolchain(
-    name = "uv",
-    uv_version = "0.8.17",
-)
-use_repo(uv, "uv")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
