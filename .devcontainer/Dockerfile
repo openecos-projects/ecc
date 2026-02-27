@@ -75,9 +75,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     rm -rf .venv \
     && uv sync --frozen --all-groups --python 3.11
 
-RUN bazel run //chipcompiler/thirdparty:install_ecc_runtime
-
-RUN bazel run //scripts:init_ics55_pdk
+RUN bazel run //:install_dev
 
 ENV VIRTUAL_ENV="/workspace/.venv"
 ENV PATH="/workspace/.venv/bin:${PATH}"

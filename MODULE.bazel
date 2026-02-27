@@ -36,7 +36,6 @@ pip.parse(
 )
 use_repo(pip, "pypi")
 
-# Reproducible appimagetool for Linux AppImage post-processing.
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_file(
     name = "appimagetool_x86_64_linux",

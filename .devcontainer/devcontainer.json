@@ -22,6 +22,6 @@
   "containerEnv": {
     "PROJECT_ROOT": "${containerWorkspaceFolder}"
   },
-  "postCreateCommand": "bash .devcontainer/post-setup.sh",
+  "postCreateCommand": "bazel run //:prepare_dev",
   "remoteUser": "root"
 }
