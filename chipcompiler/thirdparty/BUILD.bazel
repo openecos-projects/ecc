@@ -1,5 +1,5 @@
 load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
-load("@ecos_bazel_rules//rules:python_packaging.bzl", "cpp_runtime_bundle")
+load("@ecos-bazel//rules:python_packaging.bzl", "cpp_runtime_bundle")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -34,7 +34,7 @@ cpp_runtime_bundle(
     dest_bin_dir = "chipcompiler/tools/ecc/bin",
     dest_lib_dir = "chipcompiler/tools/ecc/bin/lib",
     so_pattern = "ecc_py*.so",
-    autopatch_script = "@ecos_bazel_rules//tools:autopatch_runtime",
-    auto_patchelf_bin = "@ecos_bazel_rules//tools/auto-patchelf:auto_patchelf",
+    autopatch_script = "@ecos-bazel//tools:autopatch_runtime",
+    auto_patchelf_bin = "@ecos-bazel//tools/auto-patchelf:auto_patchelf",
     patchelf = "@patchelf//:bin/patchelf",
 )

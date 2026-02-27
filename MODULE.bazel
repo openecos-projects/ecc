@@ -11,17 +11,17 @@ bazel_dep(name = "rules_cc", version = "0.2.14")
 # NOTE: 0.12.0 fails to load under Bazel 9 (rule() arg mismatch in upstream module extensions).
 bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
 
-bazel_dep(name = "ecos_bazel_rules")
+bazel_dep(name = "ecos-bazel")
 local_path_override(
-    module_name = "ecos_bazel_rules",
-    path = "ecos-bazel-rules",
+    module_name = "ecos-bazel",
+    path = "ecos-bazel",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(python_version = "3.11")
 use_repo(python, "python_3_11")
 
-uv_export = use_repo_rule("@ecos_bazel_rules//rules:uv_export.bzl", "uv_export")
+uv_export = use_repo_rule("@ecos-bazel//rules:uv_export.bzl", "uv_export")
 uv_export(
     name = "uv_requirements",
     uv_lock = "//:uv.lock",
@@ -44,8 +44,8 @@ http_file(
     executable = True,
 )
 
-download_and_extract = use_repo_rule("@ecos_bazel_rules//rules:download_and_extract.bzl", "download_and_extract")
-local_source_repo = use_repo_rule("@ecos_bazel_rules//rules:local_source_repo.bzl", "local_source_repo")
+download_and_extract = use_repo_rule("@ecos-bazel//rules:download_and_extract.bzl", "download_and_extract")
+local_source_repo = use_repo_rule("@ecos-bazel//rules:local_source_repo.bzl", "local_source_repo")
 
 download_and_extract(
     name = "icsprout55_pdk",
@@ -54,7 +54,7 @@ download_and_extract(
     sha256 = "6e96c565b83eb227d7adf24941404a18c75bda179054b3de5b491f6d9b748dc9",
     post_setup_cmds = ["make unzip"],
     environment = {"TOOL": "curl"},
-    build_file_template = "@ecos_bazel_rules//rules:pdk_repo.BUILD.bazel",
+    build_file_template = "@ecos-bazel//rules:pdk_repo.BUILD.bazel",
 )
 
 download_and_extract(
@@ -68,7 +68,7 @@ download_and_extract(
     name = "oss_cad_suite",
     urls = ["https://ghfast.top/https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-01-22/oss-cad-suite-linux-x64-20260122.tgz"],
     sha256 = "b536961118dd7497707752d9fd45714c5f6dacd150e02387bac4f75c28a16567",
-    build_file_template = "@ecos_bazel_rules//rules:oss_cad_suite.BUILD.bazel",
+    build_file_template = "@ecos-bazel//rules:oss_cad_suite.BUILD.bazel",
 )
 
 # ECC-Tools source tree, imported without BUILD/WORKSPACE files so cmake() glob works.

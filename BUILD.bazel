@@ -1,4 +1,4 @@
-load("@ecos_bazel_rules//rules:python_packaging.bzl", "python_pyinstaller_bundle")
+load("@ecos-bazel//rules:python_packaging.bzl", "python_pyinstaller_bundle")
 
 package(default_visibility = ["//visibility:public"])
 
