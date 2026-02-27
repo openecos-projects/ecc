@@ -1,5 +1,4 @@
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@pypi//:requirements.bzl", "requirement")
 
 package(default_visibility = ["//visibility:public"])
 

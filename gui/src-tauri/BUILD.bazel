@@ -1,5 +1,3 @@
-load("@rules_python//python:defs.bzl", "py_binary")
-
 package(default_visibility = ["//visibility:public"])
 
 filegroup(
@@ -16,32 +14,4 @@ filegroup(
         "tauri.conf.json",
         "build.rs",
     ]),
-)
-
-py_binary(
-    name = "external_api_bin",
-    srcs = ["external_api_bin_runner.py"],
-    data = ["//chipcompiler:chipcompiler_server"],
-    main = "external_api_bin_runner.py",
-)
-
-py_binary(
-    name = "bundle_nonlinux",
-    srcs = ["bundle_nonlinux_runner.py"],
-    data = [":external_api_bin"],
-    main = "bundle_nonlinux_runner.py",
-)
-
-py_binary(
-    name = "bundle_linux_deb",
-    srcs = ["bundle_linux_deb_runner.py"],
-    data = [":external_api_bin"],
-    main = "bundle_linux_deb_runner.py",
-)
-
-py_binary(
-    name = "bundle_linux_appimage",
-    srcs = ["bundle_linux_appimage_runner.py"],
-    data = [":external_api_bin"],
-    main = "bundle_linux_appimage_runner.py",
 )
