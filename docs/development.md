@@ -4,21 +4,7 @@ Development environment setup and workflows for ECOS Chip Compiler.
 
 ## Installation
 
-### Option 1: Nix Development Shell (Recommended)
-
-```bash
-nix develop  # Provides Python 3.11+, uv, Yosys, ECC-Tools, dependencies
-```
-
-Auto-load with direnv:
-```bash
-echo "use flake" > .envrc
-direnv allow
-```
-
-Shell hook runs `uv sync --frozen --all-groups --python 3.11` and activates venv. Binary cache at [serve.eminrepo.cc](https://serve.eminrepo.cc).
-
-### Option 2: Bazel Dev Setup
+### Option 1: Bazel Dev Setup (Recommended)
 
 If not using Nix, set up the full development environment with a single command:
 
@@ -32,6 +18,20 @@ This runs two phases:
    - Extracts ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
    - Links OSS CAD Suite → `chipcompiler/thirdparty/oss-cad-suite`
    - Links icsprout55 PDK → `chipcompiler/thirdparty/icsprout55-pdk`
+
+### Option 2: Nix Development Shell
+
+```bash
+nix develop  # Provides Python 3.11+, uv, Yosys, ECC-Tools, dependencies
+```
+
+Auto-load with direnv:
+```bash
+echo "use flake" > .envrc
+direnv allow
+```
+
+Shell hook runs `uv sync --frozen --all-groups --python 3.11` and activates venv. Binary cache at [serve.eminrepo.cc](https://serve.eminrepo.cc).
 
 ## CLI Usage
 

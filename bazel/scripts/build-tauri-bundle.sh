@@ -17,13 +17,13 @@ inject_oss_cad_into_appimage() {
     appimage_abs=$(readlink -f "$appimage_path")
     local work_dir
     work_dir=$(mktemp -d)
+    trap 'rm -rf "$work_dir"' RETURN
 
     echo "[inject] Extracting AppImage: $appimage_abs"
-    (cd "$work_dir" && APPIMAGE_EXTRACT_AND_RUN=1 "$appimage_abs" --appimage-extract >/dev/null) || {
+    if ! (cd "$work_dir" && APPIMAGE_EXTRACT_AND_RUN=1 "$appimage_abs" --appimage-extract >/dev/null); then
         echo "ERROR: failed to extract AppImage"
-        rm -rf "$work_dir"
         return 1
-    }
+    fi
 
     local target_dir
     target_dir=$(find "$work_dir/squashfs-root/usr/lib" -type d -path "*/resources/oss-cad-suite" -print -quit 2>/dev/null || true)
@@ -35,25 +35,22 @@ inject_oss_cad_into_appimage() {
     cp -a "$oss_cad_source" "$target_dir"
 
     for lib in libwayland-client.so.0 libreadline.so.8; do
-        [[ -f "$work_dir/squashfs-root/usr/lib/$lib" ]] && rm -f "$work_dir/squashfs-root/usr/lib/$lib"
+        rm -f "$work_dir/squashfs-root/usr/lib/$lib"
     done
 
     local appimagetool="${APPIMAGETOOL_PATH:-${APPIMAGETOOL_BIN:-}}"
     if [[ -z "$appimagetool" ]]; then
         echo "ERROR: appimagetool not provided via APPIMAGETOOL_PATH or APPIMAGETOOL_BIN"
-        rm -rf "$work_dir"
         return 1
     fi
 
     echo "[inject] Repacking AppImage"
     if ! env -u SOURCE_DATE_EPOCH APPIMAGE_EXTRACT_AND_RUN=1 "$appimagetool" "$work_dir/squashfs-root" "$appimage_abs" >/dev/null; then
         echo "ERROR: appimagetool repack failed"
-        rm -rf "$work_dir"
         return 1
     fi
 
     chmod +x "$appimage_abs"
-    rm -rf "$work_dir"
     echo "[inject] AppImage post-injected: $appimage_abs"
 }
 
@@ -151,7 +148,7 @@ export TAURI_API_SERVER_BIN="$API_SERVER_BIN"
 export APPIMAGE_EXTRACT_AND_RUN="${APPIMAGE_EXTRACT_AND_RUN:-1}"
 
 TAURI_BUNDLES="${TAURI_BUNDLES:-deb,appimage}"
-TAURI_BUNDLES="$(echo "$TAURI_BUNDLES" | tr -d '[:space:]' | sed -E 's/^,+//; s/,+$//; s/,+/,/g')"
+TAURI_BUNDLES="$(echo "$TAURI_BUNDLES" | tr -d '[:space:]' | tr -s ',' | sed 's/^,//; s/,$//')"
 echo "[bundle] tauri bundles: $TAURI_BUNDLES"
 
 TAURI_DIR="$GUI_DIR/src-tauri"
@@ -177,7 +174,7 @@ fi
 (cd "$GUI_DIR" && pnpm install --frozen-lockfile)
 
 if [[ "$TARGET_TRIPLE" == *linux* ]] && [[ ",$TAURI_BUNDLES," == *",appimage,"* ]]; then
-    NON_APPIMAGE_BUNDLES="$(echo "$TAURI_BUNDLES" | sed -E 's/(^|,)appimage(,|$)/,/g; s/^,+//; s/,+$//; s/,+/,/g')"
+    NON_APPIMAGE_BUNDLES="$(echo "$TAURI_BUNDLES" | sed -E 's/(^|,)appimage(,|$)/,/g' | tr -s ',' | sed 's/^,//; s/,$//')"
 
     if [[ -n "$NON_APPIMAGE_BUNDLES" ]]; then
         echo "[bundle] building non-appimage bundles with full OSS CAD suite: $NON_APPIMAGE_BUNDLES"
@@ -194,33 +191,32 @@ if [[ "$TARGET_TRIPLE" == *linux* ]] && [[ ",$TAURI_BUNDLES," == *",appimage,"* 
     mkdir -p "$OSS_CAD_BUNDLE_DIR"
     echo "Placeholder" > "$OSS_CAD_BUNDLE_DIR/README"
 
-    if ! (cd "$GUI_DIR" && pnpm exec tauri build --verbose --bundles appimage); then
+    # Restore the real OSS CAD suite on both success and failure.
+    restore_oss_cad() {
         rm -rf "$OSS_CAD_BUNDLE_DIR"
         mv "$PAYLOAD_STAGE_DIR/oss-cad-suite" "$OSS_CAD_BUNDLE_DIR" 2>/dev/null || true
         rm -rf "$PAYLOAD_STAGE_DIR"
+    }
+    trap restore_oss_cad EXIT
+
+    if ! (cd "$GUI_DIR" && pnpm exec tauri build --verbose --bundles appimage); then
         echo "ERROR: Tauri appimage build failed" >&2
         exit 1
     fi
 
     APPIMAGE_PATH="$(find "$BUNDLE_DIR" -type f -name "*.AppImage" 2>/dev/null | sort | tail -1)"
     if [[ -z "$APPIMAGE_PATH" || ! -f "$APPIMAGE_PATH" ]]; then
-        rm -rf "$OSS_CAD_BUNDLE_DIR"
-        mv "$PAYLOAD_STAGE_DIR/oss-cad-suite" "$OSS_CAD_BUNDLE_DIR" 2>/dev/null || true
-        rm -rf "$PAYLOAD_STAGE_DIR"
         echo "ERROR: AppImage artifact not found under: $BUNDLE_DIR" >&2
         exit 1
     fi
 
     if ! inject_oss_cad_into_appimage "$APPIMAGE_PATH" "$PAYLOAD_STAGE_DIR/oss-cad-suite"; then
-        rm -rf "$OSS_CAD_BUNDLE_DIR"
-        mv "$PAYLOAD_STAGE_DIR/oss-cad-suite" "$OSS_CAD_BUNDLE_DIR" 2>/dev/null || true
-        rm -rf "$PAYLOAD_STAGE_DIR"
         exit 1
     fi
 
-    rm -rf "$OSS_CAD_BUNDLE_DIR"
-    mv "$PAYLOAD_STAGE_DIR/oss-cad-suite" "$OSS_CAD_BUNDLE_DIR"
-    rm -rf "$PAYLOAD_STAGE_DIR"
+    # Disarm the trap — restore manually so the script can continue.
+    trap - EXIT
+    restore_oss_cad
 else
     (cd "$GUI_DIR" && pnpm exec tauri build --verbose --bundles "$TAURI_BUNDLES")
 fi
