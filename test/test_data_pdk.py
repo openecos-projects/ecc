@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.data.pdk import get_pdk
 
 
@@ -57,12 +59,9 @@ def test_get_pdk_uses_legacy_env_when_namespaced_missing(tmp_path, monkeypatch):
     assert pdk.root == str(legacy_root.resolve())
 
 
-def test_get_pdk_allows_partial_root_without_forcing_paths(tmp_path):
+def test_get_pdk_raises_on_missing_pdk_files(tmp_path):
     invalid_root = tmp_path / "broken_ics55"
     invalid_root.mkdir(parents=True, exist_ok=True)
 
-    pdk = get_pdk("ics55", pdk_root=str(invalid_root))
-    assert pdk.root == str(invalid_root.resolve())
-    assert pdk.tech == ""
-    assert pdk.lefs == []
-    assert pdk.libs == []
+    with pytest.raises(ValueError, match="PDK validation failed"):
+        get_pdk("ics55", pdk_root=str(invalid_root))

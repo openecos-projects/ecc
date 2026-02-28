@@ -2,7 +2,10 @@
 # -*- encoding: utf-8 -*-
 
 from dataclasses import dataclass, field
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class PDK:
@@ -29,7 +32,22 @@ class PDK:
     tie_low_cell : str = ""
     tie_low_port : str = ""
     dont_use : list = field(default_factory=list) # don't use cell list
-    
+
+    def validate(self) -> None:
+        """Check that critical PDK paths exist. Raises ValueError if not."""
+        errors = []
+        if self.root and not os.path.isdir(self.root):
+            errors.append(f"PDK root directory not found: {self.root}")
+        if not self.tech:
+            errors.append("PDK tech LEF is missing")
+        if not self.lefs:
+            errors.append("PDK has no LEF files")
+        if not self.libs:
+            errors.append("PDK has no liberty files")
+        if errors:
+            msg = "PDK validation failed:\n  " + "\n  ".join(errors)
+            logger.error(msg)
+            raise ValueError(msg)
 
 def get_pdk(pdk_name : str, pdk_root: str = "") -> PDK:
     """
@@ -37,9 +55,11 @@ def get_pdk(pdk_name : str, pdk_root: str = "") -> PDK:
     """
     pdk_name_normalized = (pdk_name or "").strip().lower()
     if pdk_name_normalized == "ics55":
-        return PDK_ICS55(pdk_root=pdk_root)
+        pdk = PDK_ICS55(pdk_root=pdk_root)
     else:
-        return PDK(name=pdk_name_normalized)
+        pdk = PDK(name=pdk_name_normalized)
+    pdk.validate()
+    return pdk
 
 def PDK_ICS55(pdk_root: str = "") -> PDK:
     current_dir = os.path.split(os.path.abspath(__file__))[0]
