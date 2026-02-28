@@ -27,6 +27,7 @@ cmake(
     """,
     out_headers_only = True,
     env = {"PKG_CONFIG_PATH": PKG_CONFIG_PATH},
+    tags = ["no-sandbox"],
     generate_args = ["-GNinja"],
     out_data_dirs = ["lib"],
 )
