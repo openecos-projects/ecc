@@ -164,6 +164,22 @@
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
+    "//bazel:pkg_config.bzl%pkg_config": {
+      "general": {
+        "bzlTransitiveDigest": "+o3CK4RUhO1SdBQfANsq+5fwAL3SIoDoB1rxinpQ4dQ=",
+        "usagesDigest": "X22WE0SXiWpVkCd2Q/V7llgkzjUmbFrtL3JEyw3r3Kc=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "pkg_config_path": {
+            "repoRuleId": "@@//bazel:pkg_config.bzl%_pkg_config_path_repo",
+            "attributes": {}
+          }
+        },
+        "recordedRepoMappingEntries": []
+      }
+    },
     "@@buildifier_prebuilt+//:defs.bzl%buildifier_prebuilt_deps_extension": {
       "general": {
         "bzlTransitiveDigest": "AiLhk8M3bYsCKureJxwsWsnViRPlVmt1v8pnOgBAUzw=",
@@ -559,7 +575,7 @@
     },
     "@@rules_multitool+//multitool:extension.bzl%multitool": {
       "general": {
-        "bzlTransitiveDigest": "qRTZGTC5YfCTmxzWaSA9EVkqg8lVQamLvSK20MxufcI=",
+        "bzlTransitiveDigest": "OmyUzwsloBp1uNITj7Bu1ytDkaGAuF0eMC4A0GZV/Kg=",
         "usagesDigest": "kKFKsjNo1vbiSGlyYYHdSAj1Z8xtmvq8JBs56ZEpNS4=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},

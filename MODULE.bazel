@@ -12,6 +12,11 @@ bazel_dep(name = "rules_cc", version = "0.2.14")
 bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
 
 bazel_dep(name = "ecos-bazel")
+# git_override(
+#     module_name = "ecos-bazel",
+#     remote = "https://github.com/Emin017/ecos-bazel",
+#     commit = "447e2f306b5cd4e2771ba5428c897d0e59d469f6",
+# )
 git_override(
     module_name = "ecos-bazel",
     remote = "https://github.com/Emin017/ecos-bazel",
@@ -66,3 +71,6 @@ local_source_repo(
     name = "ecc_tools_src",
     path = "chipcompiler/thirdparty/ecc-tools",
 )
+
+pkg_config = use_extension("//bazel:pkg_config.bzl", "pkg_config")
+use_repo(pkg_config, "pkg_config_path")

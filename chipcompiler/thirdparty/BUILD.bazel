@@ -1,5 +1,6 @@
 load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
 load("@ecos-bazel//rules:python_packaging.bzl", "cpp_runtime_bundle")
+load("@pkg_config_path//:defs.bzl", "PKG_CONFIG_PATH")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -25,6 +26,7 @@ cmake(
         find . -name '*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;
     """,
     out_headers_only = True,
+    env = {"PKG_CONFIG_PATH": PKG_CONFIG_PATH},
     generate_args = ["-GNinja"],
     out_data_dirs = ["lib"],
 )
