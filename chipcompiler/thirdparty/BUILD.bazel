@@ -7,7 +7,7 @@ cmake(
     name = "ecc_py_cmake",
     lib_source = "@ecc_tools_src//:all_sources",
     cache_entries = {
-        "BUILD_AIEDA": "ON",
+        "BUILD_ECOS": "ON",
         "BUILD_PYTHON": "ON",
         "CMAKE_BUILD_TYPE": "Release",
         # Use venv Python so the built .so matches chipcompiler's Python ABI
