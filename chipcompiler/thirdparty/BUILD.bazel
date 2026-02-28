@@ -20,7 +20,8 @@ cmake(
     # Copy ecc_py*.so and all runtime .so libs into $INSTALLDIR/lib.
     postfix_script = """
         mkdir -p $$INSTALLDIR/lib
-        find $$EXT_BUILD_ROOT/external -name 'ecc_py*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;
+        ECC_PY_ABI=$$($$EXT_BUILD_ROOT$$/.venv/bin/python -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
+        find $$EXT_BUILD_ROOT/external -name "ecc_py*$${ECC_PY_ABI}" -exec cp -f {} $$INSTALLDIR/lib/ \\;
         find . -name '*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;
     """,
     out_headers_only = True,
