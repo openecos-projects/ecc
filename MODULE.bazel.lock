@@ -303,6 +303,79 @@
         ]
       }
     },
+    "@@ecos-bazel+//rules:icsprout55_pdk.bzl%icsprout55_pdk": {
+      "general": {
+        "bzlTransitiveDigest": "9L/GU4ZBPRMzAS4D2sMr7riOpEHPWftGgdqZSWDfRWo=",
+        "usagesDigest": "hhfE7dT3uuWLq897ULBHmwCroA8+hrW+vHrUqlK4Azk=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "icsprout55_pdk": {
+            "repoRuleId": "@@ecos-bazel+//rules:download_and_extract.bzl%download_and_extract",
+            "attributes": {
+              "urls": [
+                "https://github.com/openecos-projects/icsprout55-pdk/archive/e696e093129ca2212487aa169af74d06ebd86eb6.tar.gz"
+              ],
+              "sha256": "105790f050fe27f7f2d79536533837a37b290a2f97e8cfca98a93cc28c31f759",
+              "strip_prefix": "icsprout55-pdk-e696e093129ca2212487aa169af74d06ebd86eb6",
+              "post_setup_cmds": [
+                "USE_PROXY=true make unzip"
+              ],
+              "environment": {
+                "TOOL": "curl"
+              },
+              "build_file_template": "@@ecos-bazel+//rules:pdk_repo.BUILD.bazel"
+            }
+          }
+        },
+        "recordedRepoMappingEntries": []
+      }
+    },
+    "@@ecos-bazel+//rules:oss_cad_suite.bzl%oss_cad_suite": {
+      "general": {
+        "bzlTransitiveDigest": "llqB5NGvTkda66lWR6gFbFZkVmh4MYyOO4xj7Bi3xCY=",
+        "usagesDigest": "53IpSdVBaOACjBYFBKACE7GPYKpleh9UTa9JY4Ig5m0=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "oss_cad_suite": {
+            "repoRuleId": "@@ecos-bazel+//rules:download_and_extract.bzl%download_and_extract",
+            "attributes": {
+              "urls": [
+                "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-01-22/oss-cad-suite-linux-x64-20260122.tgz"
+              ],
+              "sha256": "b536961118dd7497707752d9fd45714c5f6dacd150e02387bac4f75c28a16567",
+              "build_file_template": "@@ecos-bazel+//rules:oss_cad_suite.BUILD.bazel"
+            }
+          }
+        },
+        "recordedRepoMappingEntries": []
+      }
+    },
+    "@@ecos-bazel+//rules:patchelf.bzl%patchelf": {
+      "general": {
+        "bzlTransitiveDigest": "AFzYBso+CG+yLIee4gmiWLkWo0vVUfDLJYJD4BHy7tA=",
+        "usagesDigest": "GGo4zKVwAKZFhK1W/Vgqr+2pFxoYYnWs9PsFwx2u8aY=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "patchelf": {
+            "repoRuleId": "@@ecos-bazel+//rules:download_and_extract.bzl%download_and_extract",
+            "attributes": {
+              "urls": [
+                "https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz"
+              ],
+              "sha256": "ce84f2447fb7a8679e58bc54a20dc2b01b37b5802e12c57eece772a6f14bf3f0",
+              "build_file_content": "exports_files([\"bin/patchelf\"])"
+            }
+          }
+        },
+        "recordedRepoMappingEntries": []
+      }
+    },
     "@@pybind11_bazel+//:python_configure.bzl%extension": {
       "general": {
         "bzlTransitiveDigest": "c9ZWWeXeu6bctL4/SsY2otFWyeFN0JJ20+ymGyJZtWk=",

@@ -15,8 +15,12 @@ bazel_dep(name = "ecos-bazel")
 git_override(
     module_name = "ecos-bazel",
     remote = "https://github.com/Emin017/ecos-bazel",
-    commit = "447e2f306b5cd4e2771ba5428c897d0e59d469f6",
+    commit = "6a1fbd31b0255f80b0c429984d92a41a221e15e1",
 )
+# local_path_override(
+#     module_name = "ecos-bazel",
+#     path = "./ecos-bazel",
+# )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(python_version = "3.11")
@@ -44,32 +48,16 @@ http_file(
     executable = True,
 )
 
-download_and_extract = use_repo_rule("@ecos-bazel//rules:download_and_extract.bzl", "download_and_extract")
+icsprout55_pdk_ext = use_extension("@ecos-bazel//rules:icsprout55_pdk.bzl", "icsprout55_pdk")
+use_repo(icsprout55_pdk_ext, "icsprout55_pdk")
+
+oss_cad_suite_ext = use_extension("@ecos-bazel//rules:oss_cad_suite.bzl", "oss_cad_suite")
+use_repo(oss_cad_suite_ext, "oss_cad_suite")
+
+patchelf_ext = use_extension("@ecos-bazel//rules:patchelf.bzl", "patchelf")
+use_repo(patchelf_ext, "patchelf")
+
 local_source_repo = use_repo_rule("@ecos-bazel//rules:local_source_repo.bzl", "local_source_repo")
-
-download_and_extract(
-    name = "icsprout55_pdk",
-    urls = ["https://github.com/openecos-projects/icsprout55-pdk/archive/663488bd79bbbd6a78ee053f495dcaecdd15e3f9.tar.gz"],
-    strip_prefix = "icsprout55-pdk-663488bd79bbbd6a78ee053f495dcaecdd15e3f9",
-    sha256 = "6e96c565b83eb227d7adf24941404a18c75bda179054b3de5b491f6d9b748dc9",
-    post_setup_cmds = ["make unzip"],
-    environment = {"TOOL": "curl"},
-    build_file_template = "@ecos-bazel//rules:pdk_repo.BUILD.bazel",
-)
-
-download_and_extract(
-    name = "patchelf",
-    urls = ["https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz"],
-    sha256 = "ce84f2447fb7a8679e58bc54a20dc2b01b37b5802e12c57eece772a6f14bf3f0",
-    build_file_content = """exports_files(["bin/patchelf"])""",
-)
-
-download_and_extract(
-    name = "oss_cad_suite",
-    urls = ["https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-01-22/oss-cad-suite-linux-x64-20260122.tgz"],
-    sha256 = "b536961118dd7497707752d9fd45714c5f6dacd150e02387bac4f75c28a16567",
-    build_file_template = "@ecos-bazel//rules:oss_cad_suite.BUILD.bazel",
-)
 
 # ECC-Tools source tree, imported without BUILD/WORKSPACE files so cmake() glob works.
 # (src/third_party contains abseil-cpp/yaml-cpp with their own BUILD files that
