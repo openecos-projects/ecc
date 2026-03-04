@@ -13,7 +13,10 @@ from chipcompiler.server.schemas import (
     )
 
 from chipcompiler.server.sse import server_notify
-notify_service = server_notify()
+gui_notify = server_notify()
+
+from chipcompiler.tools import set_gui_notify
+set_gui_notify(gui_notify)
 
 logger = logging.getLogger(__name__)
 
@@ -203,8 +206,8 @@ class ECCService:
             self.workspace = workspace
             self.__build_flow()
             
-            # 设置 notify_service 的 workspace_id
-            notify_service.set_workspace(workspace.directory)
+            # 设置 gui_notify 的 workspace_id
+            gui_notify.set_workspace(workspace.directory)
             
             response_data = {
                 "directory" : data.get("directory", ""),
@@ -337,8 +340,8 @@ class ECCService:
             self.workspace = workspace
             self.__build_flow()
             
-            # 设置 notify_service 的 workspace_id
-            notify_service.set_workspace(workspace.directory)
+            # 设置 gui_notify 的 workspace_id
+            gui_notify.set_workspace(workspace.directory)
             
             response_data = {
                 "directory" : data.get("directory", ""),
@@ -385,8 +388,8 @@ class ECCService:
         self.engine_flow = None
         self.workspace = None
         
-        # 清除 notify_service 的 workspace_id
-        notify_service.clear_workspace()
+        # 清除 gui_notify 的 workspace_id
+        gui_notify.clear_workspace()
         
         try:
             import shutil
@@ -465,7 +468,7 @@ class ECCService:
                     failed_step = workspace_step.name
                     break
                 else: 
-                    notify_service.notify_step(step=workspace_step.name,
+                    gui_notify.notify_step(step=workspace_step.name,
                                                step_path=self.workspace.flow.path,
                                                home_page=self.workspace.home.path)
             # self.engine_flow.run_steps()
