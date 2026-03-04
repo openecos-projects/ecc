@@ -1,6 +1,6 @@
 <template>
   <div class="flex h-full">
-    <!-- 第一栏：流程步骤导航 (优化版) -->
+    <!-- 第一栏：流程步骤导航  -->
     <div
       class="w-[64px] shrink-0 bg-(--bg-sidebar) border-r border-(--border-color) flex flex-col justify-between py-3 overflow-y-auto">
       <div class="overflow-y-auto">
@@ -416,7 +416,7 @@ import { useCurrentStage } from '@/composables/useCurrentStage'
 const themeStore = useThemeStore()
 
 // 流程阶段管理
-const { flowStages, refreshFlowStages } = useFlowStages()
+const { flowStages, refreshFlowStages, setFirstRunStepOngoing } = useFlowStages()
 
 // 子流程管理
 const {
@@ -497,15 +497,14 @@ onUnmounted(() => document.removeEventListener('click', closeMenu))
 // ============ 事件处理 ============
 const handleRunFlow = async () => {
   closeMenu()
-  // TODO: 根据 runMode 区分 run / rerun 行为
   if (currentStage.value === 'home') {
+    // 乐观更新：立即将第一个待运行步骤显示为 Ongoing
+    setFirstRunStepOngoing()
     await runAllFlow()
   } else {
     await runFlow()
   }
-  // 流程执行完成后（无论成功或失败），从 flow.json 刷新步骤状态
-  // 处理 SSE 未通知失败的场景：后端在步骤失败时会更新 flow.json 中的状态，
-  // 但不会通过 SSE 发送失败通知，因此需要在 API 返回后主动刷新
+  // 流程执行完成后（无论成功或失败），从 flow.json 刷新最终状态
   await refreshFlowStages()
 }
 </script>
