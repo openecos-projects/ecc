@@ -10,6 +10,8 @@ cmake(
     cache_entries = {
         "BUILD_ECOS": "ON",
         "BUILD_PYTHON": "ON",
+        # BUILD_STATIC_LIB must be OFF when BUILD_PYTHON is ON (CMakeLists.txt enforces mutual exclusion)
+        "BUILD_STATIC_LIB": "OFF",
         "CMAKE_BUILD_TYPE": "Release",
         # Use venv Python so the built .so matches chipcompiler's Python ABI
         "Python3_EXECUTABLE": "$$EXT_BUILD_ROOT$$/.venv/bin/python",
@@ -22,8 +24,9 @@ cmake(
     postfix_script = """
         mkdir -p $$INSTALLDIR/lib
         ECC_PY_ABI=$$($$EXT_BUILD_ROOT$$/.venv/bin/python -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
-        find $$EXT_BUILD_ROOT/external -name "ecc_py*$${ECC_PY_ABI}" -exec cp -f {} $$INSTALLDIR/lib/ \\;
+        find -L $$EXT_BUILD_ROOT/external -name "ecc_py*$${ECC_PY_ABI}" -exec cp -f {} $$INSTALLDIR/lib/ \\;
         find . -name '*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;
+        ls $$INSTALLDIR/lib/ecc_py* >/dev/null 2>&1 || { echo "ERROR: ecc_py .so not found"; exit 1; }
     """,
     out_headers_only = True,
     env = {"PKG_CONFIG_PATH": PKG_CONFIG_PATH},

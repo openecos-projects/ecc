@@ -60,6 +60,33 @@ Python deps are managed via `uv.lock` — Bazel consumes it automatically throug
 uv build
 ```
 
+### Bazel Wheel Build (ECC Runtime + auditwheel)
+
+Build a portable wheel from local sources with Bazel-managed ECC runtime injected:
+
+```bash
+bazel run //:build_wheel
+```
+
+Artifacts:
+- Raw wheels: `dist/wheel/raw/`
+- Repaired wheels: `dist/wheel/repaired/`
+- auditwheel report: `dist/wheel/reports/show.txt`
+- Checksums: `dist/wheel/SHA256SUMS`
+
+Requirements:
+- Linux x86_64
+- Python 3.11 (`python3.11`)
+- `uv`
+- `auditwheel` (installed via dev deps)
+- Prepared workspace (`.venv` exists; run `bazel run //:prepare_dev` once)
+
+Common failures:
+- `auditwheel` missing: run `uv sync --frozen --all-groups --python 3.11`
+- `ecc_py*.so` missing after bundle extraction: build/install runtime (`bazel run //:install_dev`)
+- auditwheel policy mismatch (e.g. glibc symbols too new): rebuild on older compatible base or adjust target policy
+- missing runtime libraries: inspect `dist/wheel/reports/show.txt`
+
 ### Standalone Executable
 ```bash
 source .venv/bin/activate

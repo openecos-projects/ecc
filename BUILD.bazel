@@ -69,3 +69,8 @@ alias(
     name = "prepare_dev",
     actual = "//bazel/scripts:prepare_dev",
 )
+
+alias(
+    name = "build_wheel",
+    actual = "//bazel/scripts:build_wheel",
+)

@@ -37,6 +37,7 @@ scripts.cli = "chipcompiler.cli.main:main"
 
 [dependency-groups]
 dev = [
+  "auditwheel>=6",
   "black>=23",
   "mypy>=1",
   "prek>=0.2.20",

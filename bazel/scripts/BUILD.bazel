@@ -31,3 +31,14 @@ sh_binary(
         "$(rlocationpath @icsprout55_pdk//:README.md)",
     ],
 )
+
+sh_binary(
+    name = "build_wheel",
+    srcs = ["build-wheel.sh"],
+    data = [
+        "//chipcompiler/thirdparty:ecc_bundle",
+    ],
+    args = [
+        "$(rlocationpath //chipcompiler/thirdparty:ecc_bundle)",
+    ],
+)
