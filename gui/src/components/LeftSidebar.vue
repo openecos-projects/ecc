@@ -428,7 +428,8 @@ const {
   progressPercent,
   totalTime,
   overallStatus,
-  totalSteps
+  totalSteps,
+  refreshCurrentSubflow
 } = useSubflow()
 
 // 流程运行器
@@ -501,11 +502,16 @@ const handleRunFlow = async () => {
     // 乐观更新：立即将第一个待运行步骤显示为 Ongoing
     setFirstRunStepOngoing()
     await runAllFlow()
+    // Home 面板刷新 flow.json 派生的总流程状态
+    await refreshFlowStages()
   } else {
     await runFlow()
+    // 子流程页同步刷新子流程与侧栏总流程状态
+    await Promise.all([
+      refreshCurrentSubflow(),
+      refreshFlowStages()
+    ])
   }
-  // 流程执行完成后（无论成功或失败），从 flow.json 刷新最终状态
-  await refreshFlowStages()
 }
 </script>
 
