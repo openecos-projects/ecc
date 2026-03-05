@@ -141,7 +141,21 @@ shopt -u nullglob
 echo "[wheel] running smoke test"
 python3.11 -m venv "$smoke_dir/venv"
 "$smoke_dir/venv/bin/pip" install "${repaired_wheels[@]}"
-"$smoke_dir/venv/bin/python" -c "import importlib; importlib.import_module('chipcompiler.tools.ecc.bin.ecc_py'); print('ecc_py import ok')"
+"$smoke_dir/venv/bin/python" -c "
+from chipcompiler.tools.ecc.bin import ecc_py
+
+required = ['flow_init', 'flow_exit', 'db_init', 'def_init', 'lef_init', 'def_save',
+            'run_placer', 'run_cts', 'run_rt', 'run_drc', 'run_filler',
+            'init_floorplan', 'report_db', 'feature_summary']
+missing = [f for f in required if not callable(getattr(ecc_py, f, None))]
+assert not missing, f'missing or non-callable bindings: {missing}'
+
+from chipcompiler.tools.ecc.module import ECCToolsModule
+m = ECCToolsModule()
+assert m.ecc is ecc_py
+
+print(f'ecc_py smoke test passed: {len(required)} bindings verified')
+"
 
 (
     cd "$repair_out"
