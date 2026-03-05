@@ -3,7 +3,7 @@ build-backend = "uv_build"
 requires = [ "uv-build>=0.8.5,<0.10" ]
 
 [project]
-name = "chipcompiler"
+name = "ecc"
 version = "0.1.0"
 readme = "README.md"
 authors = [
