@@ -1,0 +1,47 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+load("@ecos-bazel//rules:python_packaging.bzl", "cpp_runtime_bundle")
+load("@pkg_config_path//:defs.bzl", "PKG_CONFIG_PATH")
+
+package(default_visibility = ["//visibility:public"])
+
+cmake(
+    name = "ecc_py_cmake",
+    lib_source = "@ecc_tools_src//:all_sources",
+    cache_entries = {
+        "BUILD_ECOS": "ON",
+        "BUILD_PYTHON": "ON",
+        # BUILD_STATIC_LIB must be OFF when BUILD_PYTHON is ON (CMakeLists.txt enforces mutual exclusion)
+        "BUILD_STATIC_LIB": "OFF",
+        "CMAKE_BUILD_TYPE": "Release",
+        # Use venv Python so the built .so matches chipcompiler's Python ABI
+        "Python3_EXECUTABLE": "$$EXT_BUILD_ROOT$$/.venv/bin/python",
+    },
+    targets = ["ecc_py"],
+    install = False,
+    # Why: ecc_py.so has a dynamic Python ABI suffix (e.g. cpython-311-x86_64-linux-gnu).
+    # The .so is output to the source dir (ecc_tools_src/bin/), not the build dir.
+    # Copy ecc_py*.so and all runtime .so libs into $INSTALLDIR/lib.
+    postfix_script = """
+        mkdir -p $$INSTALLDIR/lib
+        ECC_PY_ABI=$$($$EXT_BUILD_ROOT$$/.venv/bin/python -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
+        find -L $$EXT_BUILD_ROOT/external -name "ecc_py*$${ECC_PY_ABI}" -exec cp -f {} $$INSTALLDIR/lib/ \\;
+        find . -name '*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;
+        ls $$INSTALLDIR/lib/ecc_py* >/dev/null 2>&1 || { echo "ERROR: ecc_py .so not found"; exit 1; }
+    """,
+    out_headers_only = True,
+    env = {"PKG_CONFIG_PATH": PKG_CONFIG_PATH},
+    tags = ["no-sandbox"],
+    generate_args = ["-GNinja"],
+    out_data_dirs = ["lib"],
+)
+
+cpp_runtime_bundle(
+    name = "ecc_bundle",
+    cmake_target = ":ecc_py_cmake",
+    dest_bin_dir = "chipcompiler/tools/ecc/bin",
+    dest_lib_dir = "chipcompiler/tools/ecc/bin/lib",
+    so_pattern = "ecc_py*.so",
+    autopatch_script = "@ecos-bazel//tools:autopatch_runtime",
+    auto_patchelf_bin = "@ecos-bazel//tools/auto-patchelf:auto_patchelf",
+    patchelf = "@patchelf//:bin/patchelf",
+)

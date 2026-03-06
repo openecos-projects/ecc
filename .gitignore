@@ -170,3 +170,10 @@ chipcompiler/thirdparty/icsprout55-pdk
 
 # Nix result
 result
+.direnv/
+
+# Bazel result
+bazel-*
+
+# Generated from uv.lock, not committed
+requirements_lock.txt

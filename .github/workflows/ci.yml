@@ -99,23 +99,22 @@ jobs:
             libhwloc-dev libcairo2-dev libcurl4-openssl-dev libtbb-dev git \
             libftdi1-2 libhidapi-hidraw0 librsvg2-dev
 
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
       - name: Build release (packaging test)
         env:
           ENABLE_OSS_CAD_SUITE: "true"
           CARGO_PROFILE_RELEASE_STRIP: "false"
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
-          CMAKE_EXTRA_OPTIONS='-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache' \
-            bash ./.github/pack.sh
-
-      - name: Upload ecc-client artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ecc-client
-          if-no-files-found: ignore
-          path: |
-            gui/src-tauri/target/release/ecc-client
+          bazel build //:release_bundle
+          mkdir -p _bundle_out
+          tar -xf bazel-bin/tauri_bundle/tauri_bundle.tar -C _bundle_out
 
       - name: Upload AppImage artifacts
         if: always()
@@ -123,8 +122,7 @@ jobs:
         with:
           name: appimage
           if-no-files-found: ignore
-          path: |
-            gui/src-tauri/target/release/bundle/**/*.AppImage
+          path: _bundle_out/**/*.AppImage
 
       - name: Upload deb artifacts
         if: always()
@@ -132,5 +130,4 @@ jobs:
         with:
           name: deb
           if-no-files-found: ignore
-          path: |
-            gui/src-tauri/target/release/bundle/**/*.deb
+          path: _bundle_out/**/*.deb

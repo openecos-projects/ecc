@@ -4,7 +4,22 @@ Development environment setup and workflows for ECOS Chip Compiler.
 
 ## Installation
 
-### Option 1: Nix Development Shell (Recommended)
+### Option 1: Bazel Dev Setup (Recommended)
+
+If not using Nix, set up the full development environment with a single command:
+
+```bash
+bazel run //:prepare_dev
+```
+
+This runs two phases:
+1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv
+2. `bazel run //:install_dev` — builds and installs Bazel-managed dependencies:
+   - Extracts ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
+   - Links OSS CAD Suite → `chipcompiler/thirdparty/oss-cad-suite`
+   - Links icsprout55 PDK → `chipcompiler/thirdparty/icsprout55-pdk`
+
+### Option 2: Nix Development Shell
 
 ```bash
 nix develop  # Provides Python 3.11+, uv, Yosys, ECC-Tools, dependencies
@@ -16,91 +31,69 @@ echo "use flake" > .envrc
 direnv allow
 ```
 
-Shell hook runs `uv sync` and activates venv. Binary cache at [serve.eminrepo.cc](https://serve.eminrepo.cc).
+Shell hook runs `uv sync --frozen --all-groups --python 3.11` and activates venv. Binary cache at [serve.eminrepo.cc](https://serve.eminrepo.cc).
 
-### Option 2: Manual Installation
+## Bazel Build System
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh  # Install uv
-./build.sh                                        # Build project
-source .venv/bin/activate                         # Activate venv
-```
-
-Skip OSS CAD Suite if yosys installed: `ENABLE_OSS_CAD_SUITE=false ./build.sh`
-
-## CLI Usage
-
-For command-line automation and scripting, run CLI via Nix:
+Bazel is used for reproducible release builds and ECC-Tools C++ compilation. Requires Bazel 8+ and `uv` on PATH.
 
 ```bash
-# Run directly from project root
-nix run .#cli -- --workspace ./ws \
-                --rtl ./rtl/top.v \
-                --design top \
-                --top top \
-                --clock clk \
-                --pdk-root /path/to/ics55
-
-# Filelist mode
-nix run .#cli -- --workspace ./ws \
-                --rtl ./rtl/filelist.f \
-                --design top \
-                --top top \
-                --clock clk \
-                --pdk-root /path/to/ics55 \
-                --freq 200
+bazel build //chipcompiler/thirdparty:ecc_py_cmake   # ECC-Tools C++ build
+bazel build //:server_bundle                          # PyInstaller API server executable
+bazel build //:tauri_bundle                           # Full Tauri GUI bundle
+bazel build //:release_bundle                         # Release artifact
 ```
 
-If you need an interactive environment for development, use `nix develop`.
-
-REST API reference: **[API Guide](api-guide.md)** | Examples: **[examples/gcd](examples/gcd/README.md)**
-
-### Yosys Runtime Resolution
-
-Resolution priority in `chipcompiler/tools/yosys/utility.py`:
-1. Bundled runtime (`CHIPCOMPILER_OSS_CAD_DIR`)
-2. System PATH (`yosys`)
-
-Runtime handling:
-- `get_yosys_command()` - Side-effect-free detection
-- `get_yosys_runtime()` - Returns `(command, env)` for subprocess (no global `os.environ` mutation)
-- `check_slang_plugin()` - Preflight check: `yosys -p "plugin -i slang"`
-
-### PDK Runtime Resolution
-
-Resolution priority for `get_pdk("ics55")` in `chipcompiler/data/pdk.py`:
-1. Explicit `pdk_root` argument
-2. `CHIPCOMPILER_ICS55_PDK_ROOT` env var
-3. Legacy `ICS55_PDK_ROOT` env var
-4. In-repo default: `chipcompiler/thirdparty/icsprout55-pdk`
-
-Backend supports `POST /api/workspace/set_pdk_root` to set runtime path. Workspace creation persists resolved root in `parameters.json` as `PDK Root`.
-
-Example: `CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk chipcompiler`
-
-### Build ECC-Tools C++ Bindings
+Use `--config=ghproxy` behind restricted networks. For `git_override` deps (e.g. `ecos-bazel`), configure git mirror directly:
 
 ```bash
-mkdir -p build && cd build
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_ECOS=ON ..
-ninja ieda_py
+git config --global url."https://ghfast.top/https://github.com/".insteadOf "https://github.com/"
+bazel build --config=ghproxy //...
 ```
 
-### Bundle ECC Runtime Dependencies
+Python deps are managed via `uv.lock` — Bazel consumes it automatically through `uv_export`. To update: edit `pyproject.toml`, run `uv lock`.
 
-After building ECC-Tools bindings:
+## Release Builds
+
+### Python Package
 ```bash
-./scripts/autopatch-ecc-py.sh  # Auto-detect
-./scripts/autopatch-ecc-py.sh --ecc-py /path/to/ecc_py.so  # Custom path
+uv build
 ```
 
-Process: collects `.so` deps → copies to `bin/lib/` → patches RPATH (`$ORIGIN:$ORIGIN/lib`) → verifies with `ldd`.
+### Bazel Wheel Build (ECC Runtime + auditwheel)
 
-Requirements: `patchelf` (`apt install patchelf`), `pyelftools` (auto-installed).
+Build a portable wheel from local sources with Bazel-managed ECC runtime injected:
 
-Verification: `ldd chipcompiler/tools/ecc/bin/ecc_py*.so` (all deps should resolve to `$ORIGIN/lib/` or system).
+```bash
+bazel run //:build_wheel
+```
 
-Auto-called by `build.sh`, `Dockerfile`, `.devcontainer/setup.sh`.
+Artifacts:
+- Raw wheels: `dist/wheel/raw/`
+- Repaired wheels: `dist/wheel/repaired/`
+- auditwheel report: `dist/wheel/reports/show.txt`
+- Checksums: `dist/wheel/SHA256SUMS`
+
+Requirements:
+- Linux x86_64
+- Python 3.11 (`python3.11`)
+- `uv`
+- `auditwheel` (installed via dev deps)
+- Prepared workspace (`.venv` exists; run `bazel run //:prepare_dev` once)
+
+Common failures:
+- `auditwheel` missing: run `uv sync --frozen --all-groups --python 3.11`
+- `ecc_py*.so` missing after bundle extraction: build/install runtime (`bazel run //:install_dev`)
+- auditwheel policy mismatch (e.g. glibc symbols too new): rebuild on older compatible base or adjust target policy
+- missing runtime libraries: inspect `dist/wheel/reports/show.txt`
+
+### Standalone Executable
+```bash
+source .venv/bin/activate
+bazel build //:server_bundle
+```
+
+Output in `bazel-bin/server_bundle/`.
 
 ## Code Quality
 
@@ -203,6 +196,56 @@ def test_run_step():
     pass
 ```
 
+## CLI Usage
+
+For command-line automation and scripting, run CLI via Nix:
+
+```bash
+# Run directly from project root
+nix run .#cli -- --workspace ./ws \
+                --rtl ./rtl/top.v \
+                --design top \
+                --top top \
+                --clock clk \
+                --pdk-root /path/to/ics55
+
+# Filelist mode
+nix run .#cli -- --workspace ./ws \
+                --rtl ./rtl/filelist.f \
+                --design top \
+                --top top \
+                --clock clk \
+                --pdk-root /path/to/ics55 \
+                --freq 200
+```
+
+If you need an interactive environment for development, use `nix develop`.
+
+REST API reference: **[API Guide](api-guide.md)** | Examples: **[examples/gcd](examples/gcd/README.md)**
+
+### Yosys Runtime Resolution
+
+Resolution priority in `chipcompiler/tools/yosys/utility.py`:
+1. Bundled runtime (`CHIPCOMPILER_OSS_CAD_DIR`)
+2. System PATH (`yosys`)
+
+Runtime handling:
+- `get_yosys_command()` - Side-effect-free detection
+- `get_yosys_runtime()` - Returns `(command, env)` for subprocess (no global `os.environ` mutation)
+- `check_slang_plugin()` - Preflight check: `yosys -p "plugin -i slang"`
+
+### PDK Runtime Resolution
+
+Resolution priority for `get_pdk("ics55")` in `chipcompiler/data/pdk.py`:
+1. Explicit `pdk_root` argument
+2. `CHIPCOMPILER_ICS55_PDK_ROOT` env var
+3. Legacy `ICS55_PDK_ROOT` env var
+4. In-repo default: `chipcompiler/thirdparty/icsprout55-pdk`
+
+Backend supports `POST /api/workspace/set_pdk_root` to set runtime path. Workspace creation persists resolved root in `parameters.json` as `PDK Root`.
+
+Example: `CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk chipcompiler`
+
 ## Common Workflows
 
 ### Debug Flow Step
@@ -228,20 +271,6 @@ def test_run_step():
 3. Create router: `chipcompiler/services/routers/`
 4. Register: `chipcompiler/services/main.py`
 5. Test: Swagger UI at `http://localhost:8765/docs`
-
-## Release Builds
-
-### Python Package
-```bash
-uv build
-```
-
-### Standalone Executable
-```bash
-./build.sh --release
-```
-
-Output in `dist/`.
 
 ## Related Documentation
 

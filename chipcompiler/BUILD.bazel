@@ -1,0 +1,121 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "chipcompiler_python_sources",
+    # Why: root-level PyInstaller genrule needs explicit source inputs for
+    # reliable task-level cache invalidation on Python changes.
+    srcs = glob(
+        ["**/*.py"],
+        exclude = [
+            "thirdparty/ecc-tools/**",
+        ],
+    ),
+)
+
+filegroup(
+    name = "chipcompiler_runtime_data",
+    srcs = glob(
+        [
+            "**/*.json",
+            "**/*.tcl",
+            "**/*.awk",
+            "**/*.script",
+            "**/*.aig",
+            "**/*.constr",
+        ],
+        exclude = [
+            "thirdparty/ecc-tools/**",
+        ],
+    ),
+)
+
+py_library(
+    name = "chipcompiler_domain_modules",
+    srcs = glob(
+        [
+            "analysis/**/*.py",
+            "data/**/*.py",
+            "engine/**/*.py",
+            "rtl2gds/**/*.py",
+            "tools/**/*.py",
+            "utility/**/*.py",
+        ],
+        exclude = [
+            "thirdparty/ecc-tools/**",
+        ],
+    ),
+    data = [":chipcompiler_runtime_data"],
+    deps = [
+        "@pypi//matplotlib",
+        "@pypi//numpy",
+        "@pypi//pandas",
+        "@pypi//pydantic",
+        "@pypi//pyyaml",
+        "@pypi//tqdm",
+    ],
+)
+
+py_library(
+    name = "chipcompiler_api_modules",
+    srcs = glob(["server/**/*.py"]),
+    deps = [
+        ":chipcompiler_domain_modules",
+        "@pypi//fastapi",
+        "@pypi//pydantic",
+        # Keep uvicorn explicit for modules that import server startup helpers.
+        "@pypi//uvicorn",
+    ],
+)
+
+py_library(
+    name = "chipcompiler_core",
+    srcs = glob(
+        [
+            "*.py",
+        ],
+        exclude = [
+            # CLI sources are owned by chipcompiler_cli to avoid glob overlap and
+            # unnecessary invalidation of this shared core library.
+            "cli/**/*.py",
+            "thirdparty/ecc-tools/**",
+        ],
+    ),
+    data = [":chipcompiler_runtime_data"],
+    deps = [
+        ":chipcompiler_api_modules",
+        ":chipcompiler_domain_modules",
+    ],
+)
+
+py_binary(
+    name = "chipcompiler_cli",
+    srcs = ["cli/main.py"],
+    main = "cli/main.py",
+    data = [
+        "@icsprout55_pdk//:README.md",
+        "@icsprout55_pdk//:all_files",
+    ],
+    env = {
+        "CHIPCOMPILER_ICS55_PDK_ROOT": "$(location @icsprout55_pdk//:README.md)/..",
+    },
+    deps = [":chipcompiler_core"],
+)
+
+py_binary(
+    name = "chipcompiler_server",
+    srcs = ["server/run_server.py"],
+    main = "server/run_server.py",
+    data = [
+        "@icsprout55_pdk//:README.md",
+        "@icsprout55_pdk//:all_files",
+    ],
+    env = {
+        "CHIPCOMPILER_ICS55_PDK_ROOT": "$(location @icsprout55_pdk//:README.md)/..",
+    },
+    deps = [
+        ":chipcompiler_core",
+        "@pypi//uvicorn",
+    ],
+)

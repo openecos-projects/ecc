@@ -1,0 +1,5 @@
+chipcompiler/thirdparty/ecc-tools/build
+chipcompiler/thirdparty/ecc-tools/_deps
+chipcompiler/thirdparty/icsprout55-pdk
+# Vendored ecc-tools contains standalone Bazel packages not compatible with this workspace.
+chipcompiler/thirdparty/ecc-tools/src/third_party

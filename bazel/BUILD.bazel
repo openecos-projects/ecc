@@ -1,0 +1,9 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+# Alias to ecos-bazel-rules pyinstaller tool
+alias(
+    name = "pyinstaller",
+    actual = "@ecos-bazel//tools:pyinstaller",
+)

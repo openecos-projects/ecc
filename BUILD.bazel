@@ -1,0 +1,76 @@
+load("@ecos-bazel//rules:python_packaging.bzl", "python_pyinstaller_bundle")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "ecc.spec",
+])
+
+python_pyinstaller_bundle(
+    name = "server_bundle",
+    spec_file = "ecc.spec",
+    srcs = [
+        "README.md",
+        "pyproject.toml",
+        "uv.lock",
+        "//chipcompiler:chipcompiler_python_sources",
+        "//chipcompiler:chipcompiler_runtime_data",
+    ],
+    runtime_bundle = "//chipcompiler/thirdparty:ecc_bundle",
+    output_name = "chipcompiler",
+    pyinstaller = "//bazel:pyinstaller",
+)
+
+# Tauri bundle - ChipCompiler specific
+genrule(
+    name = "tauri_bundle",
+    srcs = glob([
+        "gui/src/**/*",
+        "gui/public/**/*",
+        "gui/index.html",
+        "gui/package.json",
+        "gui/pnpm-lock.yaml",
+        "gui/tsconfig*.json",
+        "gui/vite.config.ts",
+        "gui/tailwind.config.ts",
+    ]) + [
+        "//gui/src-tauri:tauri_rust_sources",
+        ":server_bundle",
+        "@appimagetool_x86_64_linux//file",
+        "@oss_cad_suite//:all_files",
+        "@oss_cad_suite//:yosys_bin",
+        "//bazel/scripts:build_tauri_bundle_script",
+    ],
+    outs = ["tauri_bundle/tauri_bundle.tar"],
+    cmd = """
+        set -euo pipefail
+
+        bash "$(location //bazel/scripts:build_tauri_bundle_script)" \\
+            --gui-src-dir "$$(dirname $(location gui/package.json))" \\
+            --api-server-bin "$(location :server_bundle)" \\
+            --appimagetool-bin "$(location @appimagetool_x86_64_linux//file)" \\
+            --oss-cad-bin "$(location @oss_cad_suite//:yosys_bin)" \\
+            --out-tar "$@" \\
+            --work-root "$(@D)/tauri_bundle_work"
+    """,
+)
+
+filegroup(
+    name = "release_bundle",
+    srcs = [":tauri_bundle"],
+)
+
+alias(
+    name = "install_dev",
+    actual = "//bazel/scripts:install_dev",
+)
+
+alias(
+    name = "prepare_dev",
+    actual = "//bazel/scripts:prepare_dev",
+)
+
+alias(
+    name = "build_wheel",
+    actual = "//bazel/scripts:build_wheel",
+)

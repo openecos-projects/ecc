@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS base
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae AS base
 SHELL ["/bin/bash", "-lc"]
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -50,6 +50,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
 # Install Rust (for Tauri).
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 
+# Install Bazel
+RUN wget https://github.com/bazelbuild/bazel/releases/download/8.5.0/bazel-8.5.0-linux-x86_64 -O /usr/local/bin/bazel \
+    && chmod +x /usr/local/bin/bazel
+
 # Install uv (Python package manager used by project).
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ln -s /root/.local/bin/uv /usr/local/bin/uv
@@ -60,9 +64,6 @@ ENV PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr
 FROM base AS devcontainer
 
 FROM base AS runtime
-# ENV GITHUB_PROXY_PREFIX="https://ghfast.top/"
-# ENV GIT_PROXY_PREFIX="https://ghfast.top/"
-# ENV UV_PYTHON_INSTALL_MIRROR="https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download"
 
 WORKDIR /workspace
 COPY . /workspace
@@ -74,21 +75,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     rm -rf .venv \
     && uv sync --frozen --all-groups --python 3.11
 
-RUN cd scripts \
-    && source common.sh \
-    && setup_project_vars \
-    && cd - >/dev/null \
-    && source .venv/bin/activate \
-    && build_ecc_py
-
-RUN source .venv/bin/activate \
-    && bash ./scripts/autopatch-ecc-py.sh
-
-RUN cd scripts \
-    && source common.sh \
-    && setup_project_vars \
-    && setup_oss_cad_suite \
-    && setup_ics55_pdk
+RUN bazel run //:install_dev
 
 ENV VIRTUAL_ENV="/workspace/.venv"
 ENV PATH="/workspace/.venv/bin:${PATH}"
