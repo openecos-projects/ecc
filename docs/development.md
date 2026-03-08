@@ -62,10 +62,11 @@ uv build
 
 ### Bazel Wheel Build (ECC Runtime + auditwheel)
 
-Build a portable wheel from local sources with Bazel-managed ECC runtime injected:
+Build a portable wheel with Bazel-managed ECC runtime and hermetic uv/Python:
 
 ```bash
-bazel run //:build_wheel
+bazel build //:raw_wheel   # Sandboxed, cacheable — produces raw .whl
+bazel run //:build_wheel   # auditwheel repair + smoke test
 ```
 
 Artifacts:
@@ -76,10 +77,7 @@ Artifacts:
 
 Requirements:
 - Linux x86_64
-- Python 3.11 (`python3.11`)
-- `uv`
 - `auditwheel` (installed via dev deps)
-- Prepared workspace (`.venv` exists; run `bazel run //:prepare_dev` once)
 
 Common failures:
 - `auditwheel` missing: run `uv sync --frozen --all-groups --python 3.11`
