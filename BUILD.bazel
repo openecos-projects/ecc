@@ -70,6 +70,36 @@ alias(
     actual = "//bazel/scripts:prepare_dev",
 )
 
+genrule(
+    name = "raw_wheel",
+    srcs = [
+        "pyproject.toml",
+        "README.md",
+        "//chipcompiler:chipcompiler_python_sources",
+        "//chipcompiler:chipcompiler_runtime_data",
+        "//chipcompiler/thirdparty:ecc_bundle",
+    ],
+    outs = ["raw_wheel/ecc-0.1.0-py3-none-any.whl"],
+    tools = ["@multitool//tools/uv"],
+    cmd = """
+        set -euo pipefail
+        UV="$(execpath @multitool//tools/uv)"
+        BUNDLE="$(location //chipcompiler/thirdparty:ecc_bundle)"
+        STAGE=$$(mktemp -d)
+        trap 'rm -rf "$$STAGE"' EXIT
+        for src in $(locations pyproject.toml) \
+                   $(locations README.md) \
+                   $(locations //chipcompiler:chipcompiler_python_sources) \
+                   $(locations //chipcompiler:chipcompiler_runtime_data); do
+            mkdir -p "$$STAGE/$$(dirname "$$src")"
+            cp "$$src" "$$STAGE/$$src"
+        done
+        tar -xf "$$BUNDLE" -C "$$STAGE"
+        "$$UV" build --wheel --no-build-isolation --directory "$$STAGE" --out-dir "$$STAGE/_dist"
+        cp "$$STAGE"/_dist/*.whl "$@"
+    """,
+)
+
 alias(
     name = "build_wheel",
     actual = "//bazel/scripts:build_wheel",

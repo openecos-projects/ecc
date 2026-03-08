@@ -10,27 +10,30 @@ cmake(
     cache_entries = {
         "BUILD_ECOS": "ON",
         "BUILD_PYTHON": "ON",
-        # BUILD_STATIC_LIB must be OFF when BUILD_PYTHON is ON (CMakeLists.txt enforces mutual exclusion)
         "BUILD_STATIC_LIB": "OFF",
         "CMAKE_BUILD_TYPE": "Release",
-        # Use venv Python so the built .so matches chipcompiler's Python ABI
-        "Python3_EXECUTABLE": "$$EXT_BUILD_ROOT$$/.venv/bin/python",
+        "Python3_EXECUTABLE": "$$EXT_BUILD_ROOT/$(execpath @python_3_11//:python3)",
+        "Python3_ROOT_DIR": "$$(dirname $$(dirname $$EXT_BUILD_ROOT/$(execpath @python_3_11//:python3)))",
+        "Python3_FIND_STRATEGY": "LOCATION",
+        # pybind11's FindPythonLibsNew uses legacy FindPythonInterp which only recognizes PYTHON_EXECUTABLE.
+        "PYTHON_EXECUTABLE": "$$EXT_BUILD_ROOT/$(execpath @python_3_11//:python3)",
     },
+    build_data = [
+        "@python_3_11//:python3",
+        "@python_3_11//:python_headers",
+        "@python_3_11//:libpython",
+    ],
     targets = ["ecc_py"],
     install = False,
-    # Why: ecc_py.so has a dynamic Python ABI suffix (e.g. cpython-311-x86_64-linux-gnu).
-    # The .so is output to the source dir (ecc_tools_src/bin/), not the build dir.
-    # Copy ecc_py*.so and all runtime .so libs into $INSTALLDIR/lib.
     postfix_script = """
         mkdir -p $$INSTALLDIR/lib
-        ECC_PY_ABI=$$($$EXT_BUILD_ROOT$$/.venv/bin/python -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
+        ECC_PY_ABI=$$($$EXT_BUILD_ROOT/$(execpath @python_3_11//:python3) -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
         find -L $$EXT_BUILD_ROOT/external -name "ecc_py*$${ECC_PY_ABI}" -exec cp -f {} $$INSTALLDIR/lib/ \\;
         find . -name '*.so' -exec cp -f {} $$INSTALLDIR/lib/ \\;
         ls $$INSTALLDIR/lib/ecc_py* >/dev/null 2>&1 || { echo "ERROR: ecc_py .so not found"; exit 1; }
     """,
     out_headers_only = True,
     env = {"PKG_CONFIG_PATH": PKG_CONFIG_PATH},
-    tags = ["no-sandbox"],
     generate_args = ["-GNinja"],
     out_data_dirs = ["lib"],
 )

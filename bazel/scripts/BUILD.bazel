@@ -31,9 +31,10 @@ sh_binary(
     name = "build_wheel",
     srcs = ["build-wheel.sh"],
     data = [
-        "//chipcompiler/thirdparty:ecc_bundle",
+        "//:raw_wheel",
+        "@python_3_11//:python3",
     ],
     args = [
-        "$(rlocationpath //chipcompiler/thirdparty:ecc_bundle)",
+        "$(rlocationpath //:raw_wheel)",
     ],
 )

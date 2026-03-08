@@ -5,6 +5,7 @@ module(
 
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "rules_uv", version = "0.87.0")
+bazel_dep(name = "rules_multitool", version = "0.11.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "rules_cc", version = "0.2.14")
 
@@ -66,6 +67,9 @@ local_source_repo(
     name = "ecc_tools_src",
     path = "chipcompiler/thirdparty/ecc-tools",
 )
+
+multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")
+use_repo(multitool, "multitool")
 
 pkg_config = use_extension("//bazel:pkg_config.bzl", "pkg_config")
 use_repo(pkg_config, "pkg_config_path")
