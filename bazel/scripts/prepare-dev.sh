@@ -11,8 +11,12 @@ WS="${BUILD_WORKSPACE_DIRECTORY:?Must run via: bazel run //:prepare_dev}"
 cd "$WS"
 
 echo "==> Setting up Python venv..."
-uv sync --frozen --all-groups --python 3.11
-source .venv/bin/activate
+if [[ "${SKIP_VENV:-}" != "1" ]]; then
+    uv sync --frozen --all-groups --python 3.11
+    source .venv/bin/activate
+else
+    echo "    Skipped (SKIP_VENV=1)"
+fi
 
 echo "==> Building and installing Bazel-managed deps..."
 # Same as install-dev.sh, inline here to avoid deps change

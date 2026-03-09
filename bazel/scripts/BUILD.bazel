@@ -23,17 +23,6 @@ sh_binary(
 )
 
 sh_binary(
-    name = "install_dev",
-    srcs = ["install-dev.sh"],
-    data = [
-        "//chipcompiler/thirdparty:ecc_bundle",
-    ],
-    args = [
-        "$(rlocationpath //chipcompiler/thirdparty:ecc_bundle)",
-    ],
-)
-
-sh_binary(
     name = "build_wheel",
     srcs = ["build-wheel.sh"],
     data = [
