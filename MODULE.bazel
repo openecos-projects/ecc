@@ -16,7 +16,7 @@ bazel_dep(name = "ecos-bazel")
 git_override(
     module_name = "ecos-bazel",
     remote = "https://github.com/Emin017/ecos-bazel",
-    commit = "6a1fbd31b0255f80b0c429984d92a41a221e15e1",
+    commit = "01049f8d9d993827769d5f09121c3ca475925741",
 )
 # local_path_override(
 #     module_name = "ecos-bazel",

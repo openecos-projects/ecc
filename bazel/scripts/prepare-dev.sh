@@ -15,7 +15,11 @@ uv sync --frozen --all-groups --python 3.11
 source .venv/bin/activate
 
 echo "==> Building and installing Bazel-managed deps..."
-bazel run //:install_dev
+# Same as install-dev.sh, inline here to avoid deps change
+RF="${RUNFILES_DIR:-${BASH_SOURCE[0]}.runfiles}"
+ecc_bundle="$RF/$1"
+tar -xf "$ecc_bundle" -C "$WS" --keep-directory-symlink --no-same-owner
+echo "Installed ECC runtime -> chipcompiler/tools/ecc/bin/"
 
 echo ""
 echo -e "${GREEN}Dev environment is ready.${RESET}"
