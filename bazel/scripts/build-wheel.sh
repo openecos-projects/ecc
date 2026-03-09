@@ -54,7 +54,7 @@ mkdir -p "$raw_out" "$repair_out" "$report_out"
 show_report="$report_out/show.txt"
 : > "$show_report"
 
-smoke_dir="$(mktemp -d /tmp/chipcompiler-wheel-smoke.XXXXXX)"
+smoke_dir="$(mktemp -d)"
 cleanup() { rm -rf "$smoke_dir"; }
 trap cleanup EXIT
 
