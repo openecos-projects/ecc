@@ -12,12 +12,9 @@ If not using Nix, set up the full development environment with a single command:
 bazel run //:prepare_dev
 ```
 
-This runs two phases:
+This runs two steps:
 1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv
-2. `bazel run //:install_dev` — builds and installs Bazel-managed dependencies:
-   - Extracts ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
-   - Links OSS CAD Suite → `chipcompiler/thirdparty/oss-cad-suite`
-   - Links icsprout55 PDK → `chipcompiler/thirdparty/icsprout55-pdk`
+2. Builds and extracts the ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
 
 ### Option 2: Nix Development Shell
 
@@ -81,7 +78,7 @@ Requirements:
 
 Common failures:
 - `auditwheel` missing: run `uv sync --frozen --all-groups --python 3.11`
-- `ecc_py*.so` missing after bundle extraction: build/install runtime (`bazel run //:install_dev`)
+- `ecc_py*.so` missing after bundle extraction: build/install runtime (`bazel run //:prepare_dev`)
 - auditwheel policy mismatch (e.g. glibc symbols too new): rebuild on older compatible base or adjust target policy
 - missing runtime libraries: inspect `dist/wheel/reports/show.txt`
 
