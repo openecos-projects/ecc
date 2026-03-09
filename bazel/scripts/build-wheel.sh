@@ -39,7 +39,7 @@ if [[ ! -f "$raw_whl" ]]; then
     exit 1
 fi
 
-PYTHON3="$RF/rules_python++python+python_3_11_x86_64-unknown-linux-gnu/bin/python3"
+PYTHON3="$RF/$2"
 if [[ ! -x "$PYTHON3" ]]; then
     echo "ERROR: hermetic Python 3.11 not found in runfiles: $PYTHON3" >&2
     exit 1

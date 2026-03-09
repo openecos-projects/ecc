@@ -31,5 +31,6 @@ sh_binary(
     ],
     args = [
         "$(rlocationpath //:raw_wheel)",
+        "$(rlocationpath @python_3_11//:python3)",
     ],
 )
