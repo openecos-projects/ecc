@@ -16,9 +16,24 @@ sh_binary(
     srcs = ["prepare-dev.sh"],
 )
 
+genrule(
+    name = "install_dev_script",
+    outs = ["install-dev.gen.sh"],
+    cmd = """\
+        cat > $@ <<'SCRIPT'
+        #!/usr/bin/env bash
+        set -euo pipefail
+        WS="$${BUILD_WORKSPACE_DIRECTORY:?Must run via: bazel run //bazel/scripts:install_dev}"
+        RF="$${RUNFILES_DIR:-$${BASH_SOURCE[0]}.runfiles}"
+        tar -xf "$$RF/$$1" -C "$$WS" --keep-directory-symlink
+        echo "Installed ECC runtime -> chipcompiler/tools/ecc/bin/"
+        SCRIPT
+    """,
+)
+
 sh_binary(
     name = "install_dev",
-    srcs = ["install-dev.sh"],
+    srcs = [":install_dev_script"],
     data = [
         "//chipcompiler/thirdparty:ecc_bundle",
     ],
