@@ -168,7 +168,7 @@ FastAPI REST API structure:
 - `services/` - Business logic
 - `run_server.py` - Uvicorn entry
 
-API docs at `/docs` (Swagger UI). The GUI and Tauri backend have been moved to `ecos/gui/` in the parent repo.
+API docs at `/docs` (Swagger UI). The GUI and Tauri backend have been moved to `ecos/gui/` in the [ecos-studio](https://github.com/0xharry/ecos-studio) repo.
 
 ### RTL2GDS Layer (chipcompiler/rtl2gds/)
 
