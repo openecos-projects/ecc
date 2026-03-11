@@ -10,7 +10,6 @@
 
 [![Python](https://img.shields.io/badge/Python-121011?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Nix](https://img.shields.io/badge/Nix-121011?style=for-the-badge&logo=nixos&logoColor=white)](https://nixos.org/)
-[![Tauri](https://img.shields.io/badge/Tauri-121011?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
 
 [![documentation](https://img.shields.io/badge/documentation-121011?style=for-the-badge)](README.md)
 [![文档](https://img.shields.io/badge/文档-121011?style=for-the-badge)](README.cn.md)
@@ -22,60 +21,14 @@
 
 ECOS Chip Compiler is an **open-source chip design automation solution** that integrates EDA tools (Yosys, [**ECC-Tools**](https://github.com/openecos-projects/ecc-tools), KLayout) to achieve complete RTL-to-GDS design flow. Developed and maintained by the [**ECOS Team**](https://github.com/openecos-projects).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/asset/overview-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/asset/overview-light.png">
-  <img alt="ECOS Chip Compiler Overview" src="docs/asset/overview-light.png">
-</picture>
+The GUI (ECOS Studio) has been moved to the [ecos-studio](https://github.com/0xharry/ecos-studio) repo.
 
 **How to use:**
-- **Desktop GUI (ECOS Studio)** - Visual design tool for interactive chip design
 - **CLI (`cli`)** - Command-line flow execution
+- **Python API** - Use `chipcompiler` as a library
 
 
 ## Quick Start
-
-### Desktop Application (Recommended)
-
-**Option 1: AppImage (Linux x86_64)**
-
-Download the latest AppImage from [Releases](https://github.com/openecos-projects/ecc/releases):
-
-```bash
-# Download AppImage
-# Use the actual AppImage file name on the Releases page.
-wget https://github.com/openecos-projects/ecc/releases/latest/download/ECOS-Studio_*.AppImage
-
-# Make executable
-chmod +x ./ECOS-Studio_*.AppImage
-
-# Run
-./ECOS-Studio_*.AppImage
-```
-
-AppImage is a portable format that runs on most Linux distributions without installation. All dependencies are bundled.
-
-**Option 2: Install via Nix**
-
-```bash
-# Run directly from GitHub
-nix shell github:openecos-projects/ecc#ecos-studio
-
-# Launch GUI
-ecc-client
-```
-
-Nix build includes all dependencies. Binary cache available for faster builds.
-
-**Supported Platforms:** x86_64 Linux (Distros with Nix installed)
-
-### Usage
-
-For detailed usage, see **[User Guide](docs/user-guide.md)**.
-
-### Development Environment
-
-For active development, see **[Development Guide](docs/development.md)**.
 
 ### CLI Flow Runner
 
@@ -100,11 +53,9 @@ nix run .#cli -- --workspace ./ws \
 ## Features
 
 - **Complete RTL-to-GDS Flow** - Synthesis, placement, routing, timing optimization
-- **Visual Design Interface** - PixiJS-based layout editor with WebGL rendering
 - **Open-Source EDA Integration** - Yosys (synthesis), ECC-Tools (P&R), KLayout (viewer)
 - **CLI Automation** - Scriptable flow execution from command line
-- **REST API** - FastAPI backend for external tool integration
-- **Portable Deployment** - AppImage, Nix, or standalone builds
+- **Portable Deployment** - Nix or standalone builds
 
 ## 🛠️ Integrated Tools
 
@@ -119,8 +70,6 @@ nix run .#cli -- --workspace ./ws \
 - [Documentation Index](docs/index.md) - Complete navigation
 - [Architecture](docs/architecture.md) - System design and patterns
 - [Development Guide](docs/development.md) - Setup and workflows
-- [API Guide](docs/api-guide.md) - REST API reference
-- [GUI Guide](docs/gui-develop-guide.md) - GUI development
 - [Examples](docs/examples/) - Usage examples
 
 ## Contributing
@@ -134,10 +83,6 @@ Special thanks to these open-source projects:
 - [Yosys](https://github.com/YosysHQ/yosys) - RTL Synthesis
 - [ECC-Tools](https://github.com/openecos-projects/ecc-tools) - Physical Design Backend
 - [KLayout](https://www.klayout.de/) - Layout Viewer
-- [FastAPI](https://fastapi.tiangolo.com/) - Python Web Framework
-- [Tauri](https://tauri.app/) - Desktop Application Framework
-- [Vue.js](https://vuejs.org/) - Frontend Framework
-- [PixiJS](https://pixijs.com/) - 2D Rendering Engine
 - [nixpkgs](https://github.com/NixOS/nixpkgs) - A collection of Nix packages
 
 <div align="center">
