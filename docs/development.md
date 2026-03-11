@@ -36,9 +36,6 @@ Bazel is used for reproducible release builds and ECC-Tools C++ compilation. Req
 
 ```bash
 bazel build //chipcompiler/thirdparty:ecc_py_cmake   # ECC-Tools C++ build
-bazel build //:server_bundle                          # PyInstaller API server executable
-bazel build //:tauri_bundle                           # Full Tauri GUI bundle
-bazel build //:release_bundle                         # Release artifact
 ```
 
 Use `--config=ghproxy` behind restricted networks. For `git_override` deps (e.g. `ecos-bazel`), configure git mirror directly:
@@ -216,7 +213,7 @@ nix run .#cli -- --workspace ./ws \
 
 If you need an interactive environment for development, use `nix develop`.
 
-REST API reference: **[API Guide](api-guide.md)** | Examples: **[examples/gcd](examples/gcd/README.md)**
+REST API reference: Examples: **[examples/gcd](examples/gcd/README.md)**
 
 ### Yosys Runtime Resolution
 
@@ -255,20 +252,6 @@ Example: `CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk chipcompiler`
 3. Run: `flow.run_steps()` (skips successful steps)
 4. Reset: `clear_states()` to re-run
 
-### GUI Development
-1. Start backend: `chipcompiler --reload` (port 8765)
-2. Start frontend: `cd gui && pnpm run tauri:dev`
-3. Frontend hot-reloads; backend needs restart (or --reload)
-
-### Add API Endpoint
-1. Define schema: `chipcompiler/services/schemas/`
-2. Implement logic: `chipcompiler/services/services/`
-3. Create router: `chipcompiler/services/routers/`
-4. Register: `chipcompiler/services/main.py`
-5. Test: Swagger UI at `http://localhost:8765/docs`
-
 ## Related Documentation
 
 - [Architecture](architecture.md) - System design and patterns
-- [API Guide](api-guide.md) - REST API usage
-- [GUI Development Guide](gui-develop-guide.md) - GUI development

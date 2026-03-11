@@ -10,7 +10,6 @@
 
 [![Python](https://img.shields.io/badge/Python-121011?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Nix](https://img.shields.io/badge/Nix-121011?style=for-the-badge&logo=nixos&logoColor=white)](https://nixos.org/)
-[![Tauri](https://img.shields.io/badge/Tauri-121011?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
 
 [![documentation](https://img.shields.io/badge/documentation-121011?style=for-the-badge)](README.md)
 [![文档](https://img.shields.io/badge/文档-121011?style=for-the-badge)](README.cn.md)
@@ -22,60 +21,14 @@
 
 ECOS Chip Compiler 是一个**开源芯片设计自动化解决方案**，集成 EDA 工具（Yosys、[**ECC-Tools**](https://github.com/openecos-projects/ecc-tools)、KLayout）实现完整的 RTL-to-GDS 设计流程。由 [**ECOS 团队**](https://github.com/openecos-projects) 开发维护。
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/asset/overview-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/asset/overview-light.png">
-  <img alt="ECOS Chip Compiler 概览" src="docs/asset/overview-light.png">
-</picture>
+GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-studio) 仓库。
 
 **使用方式：**
-- **桌面 GUI (ECOS Studio)** - 可视化设计工具，用于交互式芯片设计
 - **CLI (`cli`)** - 命令行流程执行
+- **Python API** - 将 `chipcompiler` 作为库使用
 
 
 ## 快速开始
-
-### 桌面应用（推荐）
-
-**方式一：AppImage（Linux x86_64）**
-
-从 [Releases](https://github.com/openecos-projects/ecc/releases) 下载最新 AppImage：
-
-```bash
-# 下载 AppImage
-# 以 Releases 页面上的实际 AppImage 文件名为准
-wget https://github.com/openecos-projects/ecc/releases/latest/download/ECOS-Studio_*.AppImage
-
-# 添加执行权限
-chmod +x ./ECOS-Studio_*.AppImage
-
-# 运行
-./ECOS-Studio_*.AppImage
-```
-
-AppImage 是便携格式，无需安装即可在大多数 Linux 发行版上运行。所有依赖已打包。
-
-**方式二：通过 Nix 安装**
-
-```bash
-# 直接从 GitHub 运行
-nix shell github:openecos-projects/ecc#ecos-studio
-
-# 启动 GUI
-ecc-client
-```
-
-Nix 构建包含所有依赖。提供二进制缓存以加速构建。
-
-**支持平台：** x86_64 Linux（安装了 Nix 的发行版）
-
-### 使用手册
-
-详细使用手册请阅读 **[用户使用手册](docs/user-guide.md)**.
-
-### 开发环境
-
-开发请参阅 **[开发指南](docs/development.md)**。
 
 ### CLI 流程运行
 
@@ -100,11 +53,9 @@ nix run .#cli -- --workspace ./ws \
 ## 功能特性
 
 - **完整 RTL-to-GDS 流程** - 综合、布局、布线、时序优化
-- **可视化设计界面** - 基于 PixiJS 的版图编辑器，WebGL 渲染
 - **开源 EDA 集成** - Yosys（综合）、ECC-Tools（布局布线）、KLayout（查看器）
 - **CLI 自动化** - 可脚本化的命令行流程执行
-- **REST API** - FastAPI 后端，支持外部工具集成
-- **便携部署** - AppImage、Nix 或独立构建
+- **便携部署** - Nix 或独立构建
 
 ## 🛠️ 集成工具
 
@@ -119,8 +70,6 @@ nix run .#cli -- --workspace ./ws \
 - [文档索引](docs/index.md) - 完整导航
 - [架构](docs/architecture.md) - 系统设计和模式
 - [开发指南](docs/development.md) - 配置和工作流
-- [API 指南](docs/api-guide.md) - REST API 参考
-- [GUI 指南](docs/gui-develop-guide.md) - GUI 开发
 - [示例](docs/examples/) - 使用示例
 
 ## 参与贡献
@@ -134,10 +83,6 @@ nix run .#cli -- --workspace ./ws \
 - [Yosys](https://github.com/YosysHQ/yosys) - RTL 综合
 - [ECC-Tools](https://github.com/openecos-projects/ecc-tools) - 物理设计后端
 - [KLayout](https://www.klayout.de/) - 版图查看器
-- [FastAPI](https://fastapi.tiangolo.com/) - Python Web 框架
-- [Tauri](https://tauri.app/) - 桌面应用框架
-- [Vue.js](https://vuejs.org/) - 前端框架
-- [PixiJS](https://pixijs.com/) - 2D 渲染引擎
 - [nixpkgs](https://github.com/NixOS/nixpkgs) - Nix 包合集
 
 <div align="center">

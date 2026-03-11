@@ -1,14 +1,12 @@
 # CLAUDE.md
 
-ECOS chip design automation solution orchestrating EDA tools (Yosys, ECC-Tools, OpenROAD, Magic, KLayout) for RTL-to-GDS flows. See `docs/architecture.md` for architecture details and `docs/development.md` for workflows.
+ECC is the EDA toolchain component of ECOS Studio, orchestrating EDA tools (Yosys, ECC-Tools, OpenROAD, Magic, KLayout) for RTL-to-GDS flows. The GUI and API server have been moved to `ecos/gui/` and `ecos/server/` respectively. See `docs/architecture.md` for architecture details and `docs/development.md` for workflows.
 
 # Commands
 
 ```bash
 # Setup
-git submodule update --init --recursive  # required first-time
 nix develop                              # recommended dev shell
-bash ./build.sh                          # manual setup
 
 # Test
 pytest test/
@@ -19,20 +17,15 @@ ruff format chipcompiler/ test/
 ruff check chipcompiler/ test/
 pyright chipcompiler/
 
-# Run
-chipcompiler --reload                    # API server dev mode, port 8765
-
-# Bazel (release only)
-bazel build //:release_bundle
-bazel build //:server_bundle
+# Bazel
 bazel build //chipcompiler/thirdparty:ecc_py_cmake
 ```
 
 # Architecture
 
-`gui/` → `services/` → `rtl2gds/` → `engine/` → `tools/` → `data/` → `utility/`
+`services/` → `rtl2gds/` → `engine/` → `tools/` → `data/` → `utility/`
 
-All layers under `chipcompiler/`. GUI communicates with backend via REST on port 8765.
+All layers under `chipcompiler/`. GUI and API server are now maintained in `ecos/gui/` and `ecos/server/`.
 
 # Gotchas
 

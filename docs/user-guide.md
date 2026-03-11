@@ -462,4 +462,3 @@ View design metrics and analysis charts generated during the flow:
 For more information, see:
 - [Architecture Documentation](architecture.md)
 - [Development Guide](development.md)
-- [API Guide](api-guide.md)

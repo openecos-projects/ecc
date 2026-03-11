@@ -6,11 +6,7 @@ ECOS Chip Compiler orchestrates EDA tools through a layered, plugin-based archit
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  GUI Layer (gui/)                                  │
-│  Tauri + Vue 3 + PixiJS + PrimeVue                 │
-├────────────────────────────────────────────────────┤
-│  Service Layer (chipcompiler/services/)            │
-│  FastAPI REST API + CORS                           │
+│  Service Layer (chipcompiler/services/) [removed]  │
 ├────────────────────────────────────────────────────┤
 │  RTL2GDS Layer (chipcompiler/rtl2gds/)             │
 │  Pre-configured flow templates                     │
@@ -162,30 +158,6 @@ Script `scripts/autopatch-ecc-py.sh` collects `.so` dependencies, copies to `bin
 3. `utility.check_slang_plugin()` - Preflight check
 4. `runner.run_step()` - Execute with resolved `(command, env)`
 
-### Service Layer (chipcompiler/services/)
-
-FastAPI REST API structure:
-- `main.py` - App + CORS config
-- `routers/` - Endpoint definitions
-- `schemas/` - Pydantic models
-- `services/` - Business logic
-- `run_server.py` - Uvicorn entry
-
-Spawnable by Tauri GUI at startup. API docs at `/docs` (Swagger UI).
-
-### GUI Layer (gui/)
-
-Tauri + Vue 3 desktop app:
-- `src/applications/editor/` - PixiJS layout editor
-- `src/components/` - UI components
-- `src/composables/` - Workspace/EDA/menu functions
-- `src/stores/` - Pinia state management
-- `src/views/` - Page components
-- `src-tauri/` - Rust backend
-- `public/` - Static assets
-
-Features: WebGL rendering, project management.
-
 ### RTL2GDS Layer (chipcompiler/rtl2gds/)
 
 `build_rtl2gds_flow()` returns complete flow: SYNTHESIS → FLOORPLAN → NETLIST_OPT → PLACEMENT → CTS → LEGALIZATION → ROUTING → DRC → FILLER.
@@ -202,5 +174,3 @@ Usage: `parameters = get_parameters("ics55", "gcd")`
 ## Related Documentation
 
 - [Development Guide](development.md) - Setup, workflows, adding tools
-- [API Guide](api-guide.md) - REST API usage
-- [GUI Development Guide](gui-develop-guide.md) - GUI development

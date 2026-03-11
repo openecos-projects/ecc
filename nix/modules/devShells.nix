@@ -6,7 +6,6 @@
         inputs'.infra.packages.iedaUnstable
         pkgs.ecc-tools
         pkgs.chipcompiler
-        pkgs.ecos-studio
       ];
       nativeBuildInputs = with pkgs; [ uv bazel_8 bazel-buildtools ];
       shellHook = ''
