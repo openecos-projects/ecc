@@ -16,11 +16,6 @@ Welcome to the ChipCompiler documentation center.
   - Adding new EDA tools
   - Debugging and testing
 
-- **[API Guide](api-guide.md)** - REST API documentation
-  - REST API endpoints
-  - API usage examples
-  - Custom endpoint development
-
 ## Technical Specifications
 
 ### File Format Specifications
@@ -38,7 +33,6 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 - **Get started with ChipCompiler** → See main [README](../README.md)
 - **Understand the architecture** → [Architecture](architecture.md)
 - **Set up development environment** → [Development Guide](development.md)
-- **Use REST API** → [API Guide](api-guide.md)
 - **Add new tools** → [Development Guide - Adding EDA Tools](development.md#adding-new-eda-tools)
 - **Debug workflows** → [Development Guide - Debugging](development.md#debugging-workflow-steps)
 

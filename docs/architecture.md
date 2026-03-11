@@ -6,8 +6,7 @@ ECOS Chip Compiler orchestrates EDA tools through a layered, plugin-based archit
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  Service Layer (chipcompiler/services/)            │
-│  FastAPI REST API + CORS                           │
+│  Service Layer (chipcompiler/services/) [removed]  │
 ├────────────────────────────────────────────────────┤
 │  RTL2GDS Layer (chipcompiler/rtl2gds/)             │
 │  Pre-configured flow templates                     │
@@ -158,17 +157,6 @@ Script `scripts/autopatch-ecc-py.sh` collects `.so` dependencies, copies to `bin
 2. `utility.get_yosys_runtime()` - Prepare subprocess env (no global `os.environ` mutation)
 3. `utility.check_slang_plugin()` - Preflight check
 4. `runner.run_step()` - Execute with resolved `(command, env)`
-
-### Service Layer (chipcompiler/services/)
-
-FastAPI REST API structure:
-- `main.py` - App + CORS config
-- `routers/` - Endpoint definitions
-- `schemas/` - Pydantic models
-- `services/` - Business logic
-- `run_server.py` - Uvicorn entry
-
-API docs at `/docs` (Swagger UI). The GUI and Tauri backend have been moved to `ecos/gui/` in the [ecos-studio](https://github.com/0xharry/ecos-studio) repo.
 
 ### RTL2GDS Layer (chipcompiler/rtl2gds/)
 

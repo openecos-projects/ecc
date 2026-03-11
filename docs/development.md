@@ -213,7 +213,7 @@ nix run .#cli -- --workspace ./ws \
 
 If you need an interactive environment for development, use `nix develop`.
 
-REST API reference: **[API Guide](api-guide.md)** | Examples: **[examples/gcd](examples/gcd/README.md)**
+REST API reference: Examples: **[examples/gcd](examples/gcd/README.md)**
 
 ### Yosys Runtime Resolution
 
@@ -255,4 +255,3 @@ Example: `CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk chipcompiler`
 ## Related Documentation
 
 - [Architecture](architecture.md) - System design and patterns
-- [API Guide](api-guide.md) - REST API usage
