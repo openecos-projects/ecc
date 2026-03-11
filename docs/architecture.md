@@ -6,9 +6,6 @@ ECOS Chip Compiler orchestrates EDA tools through a layered, plugin-based archit
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  GUI Layer (gui/)                                  │
-│  Tauri + Vue 3 + PixiJS + PrimeVue                 │
-├────────────────────────────────────────────────────┤
 │  Service Layer (chipcompiler/services/)            │
 │  FastAPI REST API + CORS                           │
 ├────────────────────────────────────────────────────┤
@@ -171,20 +168,7 @@ FastAPI REST API structure:
 - `services/` - Business logic
 - `run_server.py` - Uvicorn entry
 
-Spawnable by Tauri GUI at startup. API docs at `/docs` (Swagger UI).
-
-### GUI Layer (gui/)
-
-Tauri + Vue 3 desktop app:
-- `src/applications/editor/` - PixiJS layout editor
-- `src/components/` - UI components
-- `src/composables/` - Workspace/EDA/menu functions
-- `src/stores/` - Pinia state management
-- `src/views/` - Page components
-- `src-tauri/` - Rust backend
-- `public/` - Static assets
-
-Features: WebGL rendering, project management.
+API docs at `/docs` (Swagger UI). The GUI and Tauri backend have been moved to `ecos/gui/` in the parent repo.
 
 ### RTL2GDS Layer (chipcompiler/rtl2gds/)
 
@@ -202,5 +186,3 @@ Usage: `parameters = get_parameters("ics55", "gcd")`
 ## Related Documentation
 
 - [Development Guide](development.md) - Setup, workflows, adding tools
-- [API Guide](api-guide.md) - REST API usage
-- [GUI Development Guide](gui-develop-guide.md) - GUI development
