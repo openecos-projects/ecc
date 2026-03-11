@@ -57,7 +57,6 @@
           };
           packages = {
             inherit (pkgs)
-              ecos-studio
               ecc-tools
               chipcompiler
               cli
