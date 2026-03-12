@@ -57,6 +57,7 @@ python3Packages.buildPythonPackage {
     scipy
     tqdm
     uvicorn
+    pip
   ];
 
   nativeBuildInputs = [ makeWrapper ];
@@ -64,10 +65,13 @@ python3Packages.buildPythonPackage {
   # Skip tests for now (they require full environment setup)
   doCheck = false;
 
+  env.MPLCONFIGDIR = ".";
+
   pythonImportsCheck = [
     "chipcompiler"
-    "chipcompiler.server"
+    "chipcompiler.cli"
     "chipcompiler.engine"
+    "chipcompiler.rtl2gds"
     "chipcompiler.tools"
   ];
 
