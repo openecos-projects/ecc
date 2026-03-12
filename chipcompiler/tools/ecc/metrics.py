@@ -82,7 +82,7 @@ def build_metrics_timing(workspace: Workspace,
     if frequency > 0 and max_WNS is not None:
         clk_period = 1000.0 / frequency
         
-        real_frequency = 1000.0 / (clk_period + abs(max_WNS)) if max_WNS is not None else 0
+        real_frequency = 1000.0 / (clk_period - max_WNS) if max_WNS is not None else 0
         metrics["Frequency [MHz]"] = round(real_frequency, 2)
 
     return metrics
