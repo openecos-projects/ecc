@@ -89,6 +89,11 @@ stdenv.mkDerivation {
     cmakeFlags+=" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY:FILEPATH=$out/bin -DCMAKE_LIBRARY_OUTPUT_DIRECTORY:FILEPATH=$out/lib"
   '';
 
+  postPatch = ''
+    sed -i '1i find_package(Boost REQUIRED)' src/operation/iPA/test/CMakeLists.txt
+    sed -i 's/boost_system/Boost::headers/g' src/operation/iPA/test/CMakeLists.txt
+  '';
+
   buildInputs = [
     rustpkgs.iir-rust
     rustpkgs.sdf-parse
