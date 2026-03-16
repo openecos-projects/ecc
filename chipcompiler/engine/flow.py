@@ -324,7 +324,9 @@ class EngineFlow:
         p = Process(target=_run_step_in_subprocess,
                     args=(self.workspace, workspace_step))
         p.start()
-        self.workspace.logger.info("[DISPATCH] %s pid=%s", step_tag, p.pid)
+        step_log_file = workspace_step.log.get("file", "")
+        logger.info("[DISPATCH] %s pid=%s log=%s", step_tag, p.pid,
+                    os.path.abspath(step_log_file) if step_log_file else "N/A")
 
         # track peak memory in a background thread
         peak_memory_result = [0]
