@@ -2,3 +2,6 @@
 [submodule "chipcompiler/thirdparty/ecc-tools"]
 	path = chipcompiler/thirdparty/ecc-tools
 	url = git@github.com:openecos-projects/ecc-tools.git
+[submodule "chipcompiler/thirdparty/ecc-dreamplace"]
+	path = chipcompiler/thirdparty/ecc-dreamplace
+	url = git@github.com:openecos-projects/ecc-dreamplace.git
