@@ -10,8 +10,6 @@ from typing import Optional, TextIO
 import time
 
 
-API_RUNTIME_LOG_ENV_KEY = "CHIPCOMPILER_API_SERVER_LOG_FILE"
-
 #TODO: Move some functions to Logger Module
 def build_timestamped_log_file(log_file: str, pid: int | None = None) -> str:
     """
@@ -89,14 +87,6 @@ def init_api_runtime_log(
     rotate_log_on_start(resolved, max_bytes, backup_count)
     redirect_stdio_to_file(resolved)
     return resolved
-
-
-def get_api_log_file_from_env() -> str | None:
-    """
-    Get runtime log file path from environment.
-    """
-    value = os.environ.get(API_RUNTIME_LOG_ENV_KEY, "").strip()
-    return value or None
 
 
 class Logger:
