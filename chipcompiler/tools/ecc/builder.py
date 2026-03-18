@@ -4,13 +4,13 @@ import os
 import stat
 from chipcompiler.data import WorkspaceStep, Workspace, Parameters, StepEnum, StateEnum
 
-def build_step(workspace: Workspace, 
+def build_step(workspace: Workspace,
                step_name: str,
                input_def : str,
                input_verilog : str,
-               output_def : str = None,
-               output_verilog : str = None,
-               output_gds : str = None) -> WorkspaceStep:
+               output_def : str | None = None,
+               output_verilog : str | None = None,
+               output_gds : str | None = None) -> WorkspaceStep:
     """
     Build the given step in the specified workspace.
     """

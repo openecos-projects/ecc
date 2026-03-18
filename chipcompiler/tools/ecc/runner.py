@@ -126,9 +126,9 @@ def save_data(workspace: Workspace,
     
 def run_step(workspace: Workspace,
              step: WorkspaceStep,
-             module : ECCToolsModule = None) -> bool:
+             module : ECCToolsModule | None = None) -> bool:
     if not is_eda_exist():
-        return StateEnum.Invalid
+        return False
         
     state = False
     match(step.name):
