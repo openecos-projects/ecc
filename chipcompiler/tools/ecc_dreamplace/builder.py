@@ -12,7 +12,7 @@ from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.utility import json_read, json_write
 
 
-TOOL_NAME = "ecc-dreamplace"
+TOOL_NAME = "dreamplace"
 
 
 def _replace_directory_prefix(value, old_prefix: str, new_prefix: str):
@@ -52,7 +52,7 @@ def _retarget_step_paths(step: WorkspaceStep, new_directory: str) -> WorkspaceSt
         value = getattr(step, attr)
         setattr(step, attr, _replace_directory_prefix(value, old_directory, new_directory))
 
-    step.config["dreamplace"] = f"{step.config['dir']}/param.json"
+    step.config["dreamplace"] = f"{step.config['dir']}/dreamplace.json"
     return step
 
 
@@ -83,23 +83,21 @@ def build_step_space(step: WorkspaceStep) -> None:
 
 
 def _update_dreamplace_config(workspace: Workspace, step: WorkspaceStep) -> None:
-    param_src = Path(__file__).resolve().parent / "configs" / "param.json"
+    param_src = Path(__file__).resolve().parent / "configs" / "dreamplace.json"
     shutil.copy2(param_src, step.config["dreamplace"])
 
     params = json_read(step.config["dreamplace"])
-    result_dir = Path(step.data.get(step.name, step.data["dir"])) / "dreamplace"
-    result_dir.mkdir(parents=True, exist_ok=True)
 
     params["lef_input"] = [workspace.pdk.tech, *workspace.pdk.lefs]
     params["def_input"] = step.input.get("def", "")
     params["verilog_input"] = step.input.get("verilog", "")
-    params["result_dir"] = str(result_dir)
+    params["result_dir"] = step.data.get(step.name, step.data["dir"])
     params["base_design_name"] = workspace.design.name
     params["target_density"] = workspace.parameters.data.get(
-        "Target density", params.get("target_density", 0.3)
+        "target_density", params.get("target_density", 0.3)
     )
     params["stop_overflow"] = workspace.parameters.data.get(
-        "Target overflow", params.get("stop_overflow", 0.1)
+        "stop_overflow", params.get("stop_overflow", 0.1)
     )
     params["timing_opt_flag"] = 0
     params["timing_eval_flag"] = 0

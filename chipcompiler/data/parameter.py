@@ -27,7 +27,7 @@ ICS55_PARAMETERS_TEMPLATE = {
     "Global right padding": 0,
     "Clock" : "",
     "Frequency max [MHz]" : 100,
-    "Bottom layer" : "MET1",
+    "Bottom layer" : "MET2",
     "Top layer" : "MET5",
     "Floorplan" : {
         "Tap distance" : 58,

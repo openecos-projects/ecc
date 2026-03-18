@@ -177,3 +177,5 @@ bazel-*
 
 # Generated from uv.lock, not committed
 requirements_lock.txt
+
+chipcompiler/tools/ecc_dreamplace/dreamplace
