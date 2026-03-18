@@ -64,6 +64,9 @@ dev = [
   "ty>=0.0.9"
 ]
 
+[project.optional-dependencies]
+dreamplace = ["dreamplace"]
+
 [tool.uv]
 constraint-dependencies = [
   "llvmlite>=0.40.0",
@@ -78,6 +81,12 @@ build-backend.source-exclude = [
 build-backend.wheel-exclude = [
   "chipcompiler/thirdparty/**",
 ]
+
+[tool.uv.workspace]
+members = ["chipcompiler/thirdparty/ecc-dreamplace"]
+
+[tool.uv.sources]
+dreamplace = { workspace = true }
 
 [tool.ruff]
 line-length = 100
