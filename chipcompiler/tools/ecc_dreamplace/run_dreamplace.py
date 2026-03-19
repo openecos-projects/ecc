@@ -18,22 +18,6 @@ from .module import ECCToolsModule
 LOGGER = logging.getLogger(__name__)
 
 
-def _compiled_extension_abi_tags() -> list[str]:
-    try:
-        import dreamplace as _dp_pkg
-
-        pkg_root = Path(_dp_pkg.__file__).resolve().parent
-    except Exception:
-        return []
-    abi_tags: set[str] = set()
-    for extension_path in pkg_root.rglob("*.so"):
-        if ".cpython-" not in extension_path.name:
-            continue
-        abi_tag = extension_path.name.split(".cpython-", 1)[1].split("-", 1)[0]
-        abi_tags.add(abi_tag)
-    return sorted(abi_tags)
-
-
 def _current_extension_abi_tag() -> str | None:
     for suffix in importlib.machinery.EXTENSION_SUFFIXES:
         if not suffix.startswith(".cpython-"):
@@ -76,30 +60,6 @@ def _python_module_exists(module_name: str) -> bool:
     return module_path.is_dir() or module_path.with_suffix(".py").exists()
 
 
-def _current_torch_cxx11_abi() -> int | None:
-    try:
-        import torch
-    except Exception:
-        return None
-
-    abi_flag = getattr(getattr(torch, "_C", object()), "_GLIBCXX_USE_CXX11_ABI", None)
-    if abi_flag is None:
-        return None
-    return int(bool(abi_flag))
-
-
-def _cxx_abi_rebuild_hint() -> str:
-    torch_abi = _current_torch_cxx11_abi()
-    if torch_abi is None:
-        return _rebuild_hint()
-    return (
-        "Rebuild and reinstall DreamPlace with "
-        f"`-DPYTHON_EXECUTABLE={sys.executable}` and "
-        f"`-DCMAKE_CXX_ABI={torch_abi}` so the compiled extensions match the active "
-        "PyTorch runtime."
-    )
-
-
 def _load_dreamplace():
     try:
         from dreamplace.Params import Params
@@ -129,17 +89,6 @@ def _load_dreamplace():
                 ) from exc
             raise ModuleNotFoundError(
                 f"{exc}. DreamPlace could not resolve the required module."
-            ) from exc
-        raise
-    except ImportError as exc:
-        message = str(exc)
-        if "torchCheckFail" in message:
-            torch_abi = _current_torch_cxx11_abi()
-            raise ImportError(
-                f"{exc}. DreamPlace extensions appear to be built with a different "
-                "value of `_GLIBCXX_USE_CXX11_ABI` than the active PyTorch runtime. "
-                f"Current torch expects '{torch_abi if torch_abi is not None else 'unknown'}'. "
-                f"{_cxx_abi_rebuild_hint()}"
             ) from exc
         raise
 
