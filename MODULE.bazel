@@ -16,7 +16,7 @@ bazel_dep(name = "ecos-bazel")
 git_override(
     module_name = "ecos-bazel",
     remote = "https://github.com/Emin017/ecos-bazel",
-    commit = "01049f8d9d993827769d5f09121c3ca475925741",
+    commit = "1f223bae8abeed392c72162cd5e98ecbd4f13b9c",
 )
 # local_path_override(
 #     module_name = "ecos-bazel",
@@ -31,6 +31,7 @@ uv_export = use_repo_rule("@ecos-bazel//rules:uv_export.bzl", "uv_export")
 uv_export(
     name = "uv_requirements",
     uv_lock = "//:uv.lock",
+    extras = ["dreamplace"],
 )
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
@@ -66,6 +67,15 @@ local_source_repo = use_repo_rule("@ecos-bazel//rules:local_source_repo.bzl", "l
 local_source_repo(
     name = "ecc_tools_src",
     path = "chipcompiler/thirdparty/ecc-tools",
+)
+
+# DreamPlace source tree. No nested BUILD files to strip, so new_local_repository
+# suffices. The BUILD template excludes *.so build artifacts via glob(exclude=...).
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+new_local_repository(
+    name = "dreamplace_src",
+    path = "chipcompiler/thirdparty/ecc-dreamplace",
+    build_file = "//chipcompiler/thirdparty:dreamplace.BUILD.bazel",
 )
 
 multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")

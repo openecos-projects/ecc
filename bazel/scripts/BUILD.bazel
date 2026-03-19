@@ -7,10 +7,13 @@ sh_binary(
     name = "prepare_dev",
     srcs = ["prepare-dev.sh"],
     data = [
+        "install-dreamplace.sh",
         "//chipcompiler/thirdparty:ecc_bundle",
+        "//chipcompiler/thirdparty:dreamplace_cmake",
     ],
     args = [
         "$(rlocationpath //chipcompiler/thirdparty:ecc_bundle)",
+        "$(locations //chipcompiler/thirdparty:dreamplace_cmake)",
     ],
 )
 
@@ -24,5 +27,16 @@ sh_binary(
     args = [
         "$(rlocationpath //:raw_wheel)",
         "$(rlocationpath @python_3_11//:python3)",
+    ],
+)
+
+sh_binary(
+    name = "install_dreamplace",
+    srcs = ["install-dreamplace.sh"],
+    data = [
+        "//chipcompiler/thirdparty:dreamplace_cmake",
+    ],
+    args = [
+        "$(locations //chipcompiler/thirdparty:dreamplace_cmake)",
     ],
 )
