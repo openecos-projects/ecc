@@ -15,6 +15,12 @@ bazel run //:prepare_dev
 This runs two steps:
 1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv
 2. Builds and extracts the ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
+3. Builds and installs DreamPlace operators → `chipcompiler/thirdparty/ecc-dreamplace/dreamplace/ops/`
+
+ECC-Tools and DreamPlace are built in parallel by Bazel. On memory-constrained machines, limit parallelism:
+```bash
+bazel run //:prepare_dev --jobs=2
+```
 
 ### Option 2: Nix Development Shell
 
@@ -35,7 +41,10 @@ Shell hook runs `uv sync --frozen --all-groups --python 3.11` and activates venv
 Bazel is used for reproducible release builds and ECC-Tools C++ compilation. Requires Bazel 8+ and `uv` on PATH.
 
 ```bash
-bazel build //chipcompiler/thirdparty:ecc_py_cmake   # ECC-Tools C++ build
+bazel build //chipcompiler/thirdparty:ecc_py_cmake       # ECC-Tools C++ build
+bazel build //chipcompiler/thirdparty:dreamplace_cmake    # DreamPlace operators build
+bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so to source tree
+bazel run //bazel/scripts:prepare_dev                     # Full dev environment setup (ECC + DreamPlace)
 ```
 
 Use `--config=ghproxy` behind restricted networks. For `git_override` deps (e.g. `ecos-bazel`), configure git mirror directly:

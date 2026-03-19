@@ -18,7 +18,10 @@ ruff check chipcompiler/ test/
 pyright chipcompiler/
 
 # Bazel
-bazel build //chipcompiler/thirdparty:ecc_py_cmake
+bazel build //chipcompiler/thirdparty:ecc_py_cmake       # Build ECC-Tools
+bazel build //chipcompiler/thirdparty:dreamplace_cmake    # Build DreamPlace
+bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so to source tree
+bazel run //bazel/scripts:prepare_dev                     # Full dev environment setup
 ```
 
 # Architecture
