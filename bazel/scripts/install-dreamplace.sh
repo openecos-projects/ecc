@@ -29,13 +29,13 @@ find "${DREAMPLACE_DIR}/ops" -name '*.so' | while read -r so_file; do
     rel="${so_file#"${DREAMPLACE_DIR}/"}"
     dest="${DREAMPLACE_ROOT}/dreamplace/${rel}"
     mkdir -p "$(dirname "${dest}")"
-    cp -f "${so_file}" "${dest}"
+    cp -f --no-preserve=ownership "${so_file}" "${dest}"
     echo "  Installed: dreamplace/${rel}"
 done
 
 # Copy generated configure.py
 if [[ -f "${DREAMPLACE_DIR}/configure.py" ]]; then
-    cp -f "${DREAMPLACE_DIR}/configure.py" "${DREAMPLACE_ROOT}/dreamplace/configure.py"
+    cp -f --no-preserve=ownership "${DREAMPLACE_DIR}/configure.py" "${DREAMPLACE_ROOT}/dreamplace/configure.py"
     echo "  Installed: dreamplace/configure.py"
 fi
 
