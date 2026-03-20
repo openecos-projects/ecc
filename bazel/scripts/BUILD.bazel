@@ -40,3 +40,9 @@ sh_binary(
         "$(locations //chipcompiler/thirdparty:dreamplace_cmake)",
     ],
 )
+
+sh_binary(
+    name = "clean_dreamplace",
+    srcs = ["install-dreamplace.sh"],
+    args = ["--clean"],
+)

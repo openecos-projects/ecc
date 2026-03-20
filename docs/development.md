@@ -44,6 +44,7 @@ Bazel is used for reproducible release builds and ECC-Tools C++ compilation. Req
 bazel build //chipcompiler/thirdparty:ecc_py_cmake       # ECC-Tools C++ build
 bazel build //chipcompiler/thirdparty:dreamplace_cmake    # DreamPlace operators build
 bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so to source tree
+bazel run //bazel/scripts:clean_dreamplace                # Remove installed DreamPlace artifacts
 bazel run //bazel/scripts:prepare_dev                     # Full dev environment setup (ECC + DreamPlace)
 ```
 
