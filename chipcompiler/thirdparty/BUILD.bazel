@@ -43,7 +43,8 @@ cmake(
     lib_source = "@dreamplace_src//:all_sources",
     cache_entries = {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CXX_ABI": "0",
+        # Must match torch's _GLIBCXX_USE_CXX11_ABI (pip torch uses 1).
+        "CMAKE_CXX_ABI": "1",
         "PYTHON_EXECUTABLE": "$$EXT_BUILD_ROOT/$(execpath @python_3_11//:python3)",
         "TORCH_INSTALL_PREFIX": "$$EXT_BUILD_ROOT/external/rules_python++pip+pypi_311_torch/site-packages/torch",
         "TORCH_ENABLE_CUDA": "0",
