@@ -89,7 +89,7 @@ def _run_dreamplace_step(workspace: Workspace, step: WorkspaceStep) -> bool:
 
     sub_flow.update_step(step_name=subflow_step, state=StateEnum.Success)
 
-    success = save_data(workspace=workspace, step=step, module=module)
+    success = save_data(workspace=workspace, step=step, module=module, feature_step=False)
     if not success:
         return False
 

@@ -29,6 +29,28 @@ class ECCToolsModule:
     def exit(self):
         """exit ECC tools"""
         self.ecc.flow_exit()
+        
+    def get_dmInst_ptr(self):
+        self.ecc.get_dmInst()
+        
+    def pydb(
+        self,
+        dm_inst_ptr,
+        route_num_bins_x: int,
+        route_num_bins_y: int,
+        routability_opt_flag: int,
+        with_sta: int,
+    ):
+        return self.ecc.pydb(
+            dm_inst_ptr,
+            route_num_bins_x,
+            route_num_bins_y,
+            routability_opt_flag,
+            with_sta,
+        )
+
+    def build_macro_connection_map(self, max_hop: int):
+        return self.ecc.build_macro_connection_map(max_hop)
     
     ########################################################################
     # config api
@@ -454,6 +476,8 @@ class ECCToolsModule:
                  lib_paths : list[str],
                  sdc_path: str):
         self.ecc.init_sta(output=output_dir)
+
+        # self.ecc.run_sta(output=output_dir)
         # self.ecc.set_design_workspace(output_dir)
 
         # self.ecc.read_liberty(lib_paths)
