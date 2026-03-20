@@ -15,6 +15,12 @@ bazel run //:prepare_dev
 This runs two steps:
 1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv
 2. Builds and extracts the ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
+3. Builds and installs DreamPlace operators → `chipcompiler/thirdparty/ecc-dreamplace/dreamplace/ops/`
+
+ECC-Tools and DreamPlace are built in parallel by Bazel. On memory-constrained machines, limit parallelism:
+```bash
+bazel run //:prepare_dev --jobs=2
+```
 
 ### Option 2: Nix Development Shell
 
@@ -35,7 +41,11 @@ Shell hook runs `uv sync --frozen --all-groups --python 3.11` and activates venv
 Bazel is used for reproducible release builds and ECC-Tools C++ compilation. Requires Bazel 8+ and `uv` on PATH.
 
 ```bash
-bazel build //chipcompiler/thirdparty:ecc_py_cmake   # ECC-Tools C++ build
+bazel build //chipcompiler/thirdparty:ecc_py_cmake       # ECC-Tools C++ build
+bazel build //chipcompiler/thirdparty:dreamplace_cmake    # DreamPlace operators build
+bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so to source tree
+bazel run //bazel/scripts:clean_dreamplace                # Remove installed DreamPlace artifacts
+bazel run //bazel/scripts:prepare_dev                     # Full dev environment setup (ECC + DreamPlace)
 ```
 
 Use `--config=ghproxy` behind restricted networks. For `git_override` deps (e.g. `ecos-bazel`), configure git mirror directly:
@@ -187,6 +197,41 @@ def test_run_step():
     # Test implementation
     pass
 ```
+
+## Integrating a Thirdparty Tool into the Build System
+
+ECC uses a dual-build strategy: **uv workspace** for dev, **Bazel** (+ Nix) for release. Reference `ecc-dreamplace` as a working example.
+
+**Principle**: Avoid modifying the thirdparty tool's own build system (CMakeLists, setup.py, etc.). Prefer solving build issues from the Bazel side or ECC's build configuration (cache entries, env vars, wrapper scripts).
+
+### 1. Python deps
+
+Add to uv workspace in root `pyproject.toml` (`[tool.uv.workspace].members`, `[tool.uv.sources]`, `[project.optional-dependencies]`), then `uv lock`.
+
+### 2. Dev build
+
+If the tool has compiled artifacts (`.so`, generated configs):
+- Add a Bazel build target in `chipcompiler/thirdparty/BUILD.bazel`
+- Create `bazel/scripts/install-<tool>.sh` with manifest-based install/clean (see `install-dreamplace.sh`)
+- Register `install_<tool>` and `clean_<tool>` targets in `bazel/scripts/BUILD.bazel`
+- Wire into `prepare-dev.sh` with explicit `RUNFILES_DIR="${RF}"`
+
+### 3. Release build
+
+Add runtime artifacts to `//chipcompiler:chipcompiler_runtime_data` (consumed by `raw_wheel` and `server_bundle`). For Nix, add to flake build inputs.
+
+### 4. Bazel sandbox deps
+
+Add the tool's extra to `uv_export(extras=[...])` in `MODULE.bazel`; reference as `@pypi//<pkg>` in BUILD files.
+
+### 5. EDA tool module
+
+Create `chipcompiler/tools/<tool>/` with `__init__.py`, `builder.py`, `runner.py`. Each tool must implement `is_eda_exist`, `build_step`, `run_step`. Integrate into flow via `EngineFlow.build_default_steps()` or `add_step()`. See [Add a New EDA Tool](#add-a-new-eda-tool) above for the full interface and code examples.
+
+### Pitfalls
+
+- **Runfiles**: child scripts called from `prepare-dev.sh` cannot resolve `RUNFILES_DIR` from `BASH_SOURCE[0]` — pass it explicitly
+- **File ownership**: use `cp --no-preserve=ownership` and `tar --no-same-owner` when extracting Bazel outputs to avoid root-owned files in devcontainer builds
 
 ## CLI Usage
 

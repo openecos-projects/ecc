@@ -101,12 +101,12 @@ def _run_dreamplace_step(workspace: Workspace, step: WorkspaceStep) -> bool:
 def run_step(
     workspace: Workspace,
     step: WorkspaceStep,
-    module: ECCToolsModule = None,
+    module: ECCToolsModule | None = None,
 ) -> bool:
     if step.name not in SUPPORTED_DREAMPLACE_STEPS:
         return run_ecc_step(workspace=workspace, step=step, module=module)
 
     if not is_eda_exist():
-        return StateEnum.Invalid
+        return False
 
     return _run_dreamplace_step(workspace=workspace, step=step)

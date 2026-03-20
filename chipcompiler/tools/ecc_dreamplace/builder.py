@@ -61,9 +61,9 @@ def build_step(
     step_name: str,
     input_def: str,
     input_verilog: str,
-    output_def: str = None,
-    output_verilog: str = None,
-    output_gds: str = None,
+    output_def: str | None = None,
+    output_verilog: str | None = None,
+    output_gds: str | None = None,
 ) -> WorkspaceStep:
     step = ecc_builder.build_step(
         workspace=workspace,

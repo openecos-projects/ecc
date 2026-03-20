@@ -18,30 +18,6 @@ from .module import ECCToolsModule
 LOGGER = logging.getLogger(__name__)
 
 
-def _dreamplace_install_root() -> Path:
-    return Path(__file__).resolve().parent / "dreamplace"
-
-
-def _dreamplace_package_root() -> Path:
-    return _dreamplace_install_root() / "dreamplace"
-
-
-def _ensure_import_path() -> None:
-    root = str(_dreamplace_install_root())
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-
-def _compiled_extension_abi_tags() -> list[str]:
-    abi_tags: set[str] = set()
-    for extension_path in _dreamplace_package_root().rglob("*.so"):
-        if ".cpython-" not in extension_path.name:
-            continue
-        abi_tag = extension_path.name.split(".cpython-", 1)[1].split("-", 1)[0]
-        abi_tags.add(abi_tag)
-    return sorted(abi_tags)
-
-
 def _current_extension_abi_tag() -> str | None:
     for suffix in importlib.machinery.EXTENSION_SUFFIXES:
         if not suffix.startswith(".cpython-"):
@@ -58,50 +34,33 @@ def _rebuild_hint() -> str:
     )
 
 
-def _module_paths(module_name: str) -> tuple[Path, Path]:
+def _compiled_module_paths(module_name: str) -> list[Path]:
+    try:
+        import dreamplace as _dp_pkg
+
+        pkg_root = Path(_dp_pkg.__file__).resolve().parent
+    except Exception:
+        return []
     module_parts = module_name.split(".")
     relative_parts = module_parts[1:]
-    module_path = _dreamplace_package_root().joinpath(*relative_parts)
-    return module_path, module_path.with_suffix(".py")
-
-
-def _compiled_module_paths(module_name: str) -> list[Path]:
-    module_path, _ = _module_paths(module_name)
+    module_path = pkg_root.joinpath(*relative_parts)
     return sorted(module_path.parent.glob(f"{module_path.name}*.so"))
 
 
 def _python_module_exists(module_name: str) -> bool:
-    module_path, module_file = _module_paths(module_name)
-    return module_path.is_dir() or module_file.exists()
-
-
-def _current_torch_cxx11_abi() -> int | None:
     try:
-        import torch
+        import dreamplace as _dp_pkg
+
+        pkg_root = Path(_dp_pkg.__file__).resolve().parent
     except Exception:
-        return None
-
-    abi_flag = getattr(getattr(torch, "_C", object()), "_GLIBCXX_USE_CXX11_ABI", None)
-    if abi_flag is None:
-        return None
-    return int(bool(abi_flag))
-
-
-def _cxx_abi_rebuild_hint() -> str:
-    torch_abi = _current_torch_cxx11_abi()
-    if torch_abi is None:
-        return _rebuild_hint()
-    return (
-        "Rebuild and reinstall DreamPlace with "
-        f"`-DPYTHON_EXECUTABLE={sys.executable}` and "
-        f"`-DCMAKE_CXX_ABI={torch_abi}` so the compiled extensions match the active "
-        "PyTorch runtime."
-    )
+        return False
+    module_parts = module_name.split(".")
+    relative_parts = module_parts[1:]
+    module_path = pkg_root.joinpath(*relative_parts)
+    return module_path.is_dir() or module_path.with_suffix(".py").exists()
 
 
 def _load_dreamplace():
-    _ensure_import_path()
-
     try:
         from dreamplace.Params import Params
         from dreamplace.Placer import PlacementEngine
@@ -118,32 +77,18 @@ def _load_dreamplace():
                 )
                 current_abi_tag = _current_extension_abi_tag()
                 raise ModuleNotFoundError(
-                    f"{exc}. DreamPlace extensions under '{_dreamplace_package_root()}' "
-                    f"were built for CPython ABI tag(s) {abi_tags}, but the current "
-                    f"interpreter expects '{current_abi_tag or 'unknown'}'. "
-                    f"{_rebuild_hint()}"
+                    f"{exc}. DreamPlace extensions were built for CPython ABI tag(s) "
+                    f"{abi_tags}, but the current interpreter expects "
+                    f"'{current_abi_tag or 'unknown'}'. {_rebuild_hint()}"
                 ) from exc
             if not _python_module_exists(exc.name):
                 raise ModuleNotFoundError(
-                    f"{exc}. DreamPlace module '{exc.name}' was not installed under "
-                    f"'{_dreamplace_package_root()}'. Reinstall DreamPlace or update "
-                    "the install rules so the missing module is copied into the runtime package."
+                    f"{exc}. DreamPlace module '{exc.name}' was not found in the "
+                    "installed package. Reinstall DreamPlace or rebuild the CMake "
+                    "extensions so the missing module is present."
                 ) from exc
             raise ModuleNotFoundError(
-                f"{exc}. DreamPlace could not resolve the required module from "
-                f"'{_dreamplace_package_root()}'."
-            ) from exc
-        raise
-    except ImportError as exc:
-        message = str(exc)
-        if "torchCheckFail" in message:
-            torch_abi = _current_torch_cxx11_abi()
-            raise ImportError(
-                f"{exc}. DreamPlace extensions under '{_dreamplace_package_root()}' "
-                "appear to be built with a different value of "
-                "`_GLIBCXX_USE_CXX11_ABI` than the active PyTorch runtime. "
-                f"Current torch expects '{torch_abi if torch_abi is not None else 'unknown'}'. "
-                f"{_cxx_abi_rebuild_hint()}"
+                f"{exc}. DreamPlace could not resolve the required module."
             ) from exc
         raise
 

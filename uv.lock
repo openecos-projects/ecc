@@ -10,6 +10,10 @@ resolution-markers = [
 ]
 
 [manifest]
+members = [
+    "dreamplace",
+    "ecc",
+]
 constraints = [
     { name = "llvmlite", specifier = ">=0.40.0" },
     { name = "numba", specifier = ">=0.57.0" },
@@ -441,6 +445,53 @@ wheels = [
 ]
 
 [[package]]
+name = "dreamplace"
+version = "0.1.0"
+source = { editable = "chipcompiler/thirdparty/ecc-dreamplace" }
+dependencies = [
+    { name = "cairocffi" },
+    { name = "configspace" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "patool" },
+    { name = "pkgconfig" },
+    { name = "pydoe2" },
+    { name = "pygmo" },
+    { name = "pyro4" },
+    { name = "pyunpack" },
+    { name = "scipy" },
+    { name = "setuptools" },
+    { name = "shap", version = "0.49.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "shap", version = "0.50.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "shap", version = "0.51.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "shapely" },
+    { name = "statsmodels" },
+    { name = "torch" },
+    { name = "xgboost" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cairocffi", specifier = ">=0.9.0" },
+    { name = "configspace", specifier = ">=0.6.0" },
+    { name = "matplotlib", specifier = ">=3.4" },
+    { name = "numpy", specifier = ">=1.21" },
+    { name = "patool", specifier = ">=1.12" },
+    { name = "pkgconfig", specifier = ">=1.4.0" },
+    { name = "pydoe2", specifier = ">=1.3.0" },
+    { name = "pygmo", specifier = ">=2.16.1" },
+    { name = "pyro4", specifier = ">=4.82" },
+    { name = "pyunpack", specifier = ">=0.1.2" },
+    { name = "scipy", specifier = ">=1.7" },
+    { name = "setuptools", specifier = ">=39.1.0" },
+    { name = "shap", specifier = ">=0.45.0" },
+    { name = "shapely", specifier = ">=1.7.0" },
+    { name = "statsmodels", specifier = ">=0.13.2" },
+    { name = "torch", specifier = ">=1.6.0" },
+    { name = "xgboost", specifier = ">=1.5.1" },
+]
+
+[[package]]
 name = "easyprocess"
 version = "1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -454,34 +505,23 @@ name = "ecc"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "cairocffi" },
-    { name = "configspace" },
     { name = "fastapi" },
     { name = "klayout" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "patool" },
     { name = "pip" },
-    { name = "pkgconfig" },
     { name = "pydantic" },
-    { name = "pydoe2" },
-    { name = "pygmo" },
     { name = "pyjson5" },
-    { name = "pyro4" },
-    { name = "pyunpack" },
     { name = "pyyaml" },
     { name = "scipy" },
-    { name = "setuptools" },
-    { name = "shap", version = "0.49.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
-    { name = "shap", version = "0.50.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'darwin'" },
-    { name = "shap", version = "0.51.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
-    { name = "shapely" },
-    { name = "statsmodels" },
-    { name = "torch" },
     { name = "tqdm" },
     { name = "uvicorn" },
-    { name = "xgboost" },
+]
+
+[package.optional-dependencies]
+dreamplace = [
+    { name = "dreamplace" },
 ]
 
 [package.dev-dependencies]
@@ -500,33 +540,21 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cairocffi", specifier = ">=0.9.0" },
-    { name = "configspace", specifier = ">=0.6.0" },
+    { name = "dreamplace", marker = "extra == 'dreamplace'", editable = "chipcompiler/thirdparty/ecc-dreamplace" },
     { name = "fastapi", specifier = ">=0.109" },
     { name = "klayout", specifier = ">=0.30.2" },
     { name = "matplotlib", specifier = ">=3.4" },
     { name = "numpy", specifier = ">=1.21" },
     { name = "pandas", specifier = ">=1.3" },
-    { name = "patool", specifier = ">=1.12" },
     { name = "pip", specifier = ">=25.0.1" },
-    { name = "pkgconfig", specifier = ">=1.4.0" },
     { name = "pydantic", specifier = ">=2.5" },
-    { name = "pydoe2", specifier = ">=1.3.0" },
-    { name = "pygmo", specifier = ">=2.16.1" },
     { name = "pyjson5", specifier = ">=1.6" },
-    { name = "pyro4", specifier = ">=4.82" },
-    { name = "pyunpack", specifier = ">=0.1.2" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "scipy", specifier = ">=1.7" },
-    { name = "setuptools", specifier = ">=39.1.0" },
-    { name = "shap", specifier = ">=0.45.0" },
-    { name = "shapely", specifier = ">=1.7.0" },
-    { name = "statsmodels", specifier = ">=0.13.2" },
-    { name = "torch", specifier = ">=1.6.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "uvicorn", specifier = ">=0.27" },
-    { name = "xgboost", specifier = ">=1.5.1" },
 ]
+provides-extras = ["dreamplace"]
 
 [package.metadata.requires-dev]
 dev = [

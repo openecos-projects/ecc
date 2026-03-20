@@ -38,6 +38,37 @@ cmake(
     out_data_dirs = ["lib"],
 )
 
+cmake(
+    name = "dreamplace_cmake",
+    lib_source = "@dreamplace_src//:all_sources",
+    cache_entries = {
+        "CMAKE_BUILD_TYPE": "Release",
+        # Must match torch's _GLIBCXX_USE_CXX11_ABI (pip torch uses 1).
+        "CMAKE_CXX_ABI": "1",
+        "PYTHON_EXECUTABLE": "$$EXT_BUILD_ROOT/$(execpath @python_3_11//:python3)",
+        "TORCH_INSTALL_PREFIX": "$$EXT_BUILD_ROOT/external/rules_python++pip+pypi_311_torch/site-packages/torch",
+        "TORCH_ENABLE_CUDA": "0",
+        "TORCH_VERSION": "2.10.0",
+    },
+    build_data = [
+        "@python_3_11//:python3",
+        "@python_3_11//:python_headers",
+        "@python_3_11//:libpython",
+        "@pypi//torch",
+    ],
+    install = True,
+    out_headers_only = True,
+    postfix_script = """
+        echo "DreamPlace: build and install completed"
+    """,
+    env = {
+        "PKG_CONFIG_PATH": PKG_CONFIG_PATH,
+        "PYTHONPATH": "$$EXT_BUILD_ROOT/external/rules_python++pip+pypi_311_torch/site-packages",
+    },
+    generate_args = ["-GNinja"],
+    out_data_dirs = ["dreamplace"],
+)
+
 cpp_runtime_bundle(
     name = "ecc_bundle",
     cmake_target = ":ecc_py_cmake",
