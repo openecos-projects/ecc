@@ -128,7 +128,7 @@ def run_step(workspace: Workspace,
              step: WorkspaceStep,
              module : ECCToolsModule | None = None) -> bool:
     if not is_eda_exist():
-        return False
+        return StateEnum.Invalid
         
     state = False
     match(step.name):
