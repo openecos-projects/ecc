@@ -28,7 +28,7 @@ echo "Installed ECC runtime -> chipcompiler/tools/ecc/bin/"
 
 # Install DreamPlace .so files by reusing install-dreamplace.sh
 shift
-if ! "${RF}/_main/bazel/scripts/install-dreamplace.sh" "$@"; then
+if ! RUNFILES_DIR="${RF}" "${RF}/_main/bazel/scripts/install-dreamplace.sh" "$@"; then
     echo -e "${YELLOW}WARNING: DreamPlace install failed. DreamPlace operators will not be available.${RESET}"
     echo -e "${YELLOW}  You can retry with: bazel run //bazel/scripts:install_dreamplace${RESET}"
 fi
