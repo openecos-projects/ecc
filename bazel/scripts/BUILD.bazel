@@ -46,3 +46,16 @@ sh_binary(
     srcs = ["install-dreamplace.sh"],
     args = ["--clean"],
 )
+
+sh_binary(
+    name = "build_dreamplace_wheel",
+    srcs = ["build-dreamplace-wheel.sh"],
+    data = [
+        "//:dreamplace_raw_wheel",
+        "@python_3_11//:python3",
+    ],
+    args = [
+        "$(rlocationpath //:dreamplace_raw_wheel)",
+        "$(rlocationpath @python_3_11//:python3)",
+    ],
+)

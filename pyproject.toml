@@ -51,7 +51,7 @@ dev = [
 ]
 
 [project.optional-dependencies]
-dreamplace = ["dreamplace"]
+dreamplace = ["ecc-dreamplace"]
 
 [tool.uv]
 constraint-dependencies = [
@@ -71,8 +71,14 @@ build-backend.wheel-exclude = [
 [tool.uv.workspace]
 members = ["chipcompiler/thirdparty/ecc-dreamplace"]
 
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.uv.sources]
-dreamplace = { workspace = true }
+ecc-dreamplace = { workspace = true }
+torch = { index = "pytorch-cpu" }
 
 [tool.ruff]
 line-length = 100

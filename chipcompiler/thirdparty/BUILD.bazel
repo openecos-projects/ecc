@@ -69,6 +69,17 @@ cmake(
     out_data_dirs = ["dreamplace"],
 )
 
+filegroup(
+    name = "dreamplace_python_sources",
+    srcs = glob(
+        [
+            "ecc-dreamplace/**/*.py",
+            "ecc-dreamplace/pyproject.toml",
+        ],
+        exclude = ["**/__pycache__/**"],
+    ),
+)
+
 cpp_runtime_bundle(
     name = "ecc_bundle",
     cmake_target = ":ecc_py_cmake",
