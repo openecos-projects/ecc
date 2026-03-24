@@ -46,6 +46,7 @@ def build_views(workspace: Workspace,
     
     info = {
         "image" : step.output.get("image", ""),
+        "json" : step.output.get("json", ""),
         "metrics" : metrics.path,
         "information" : {}
     }
@@ -65,7 +66,8 @@ def build_metrics(workspace: Workspace,
 def build_layout(workspace: Workspace, 
                  step: WorkspaceStep) -> dict:
     info = {
-        "image" : step.output.get("image", "")
+        "image" : step.output.get("image", ""),
+        "json" : step.output.get("json", "")
     }
     
     return info
