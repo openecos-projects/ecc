@@ -99,7 +99,7 @@ genrule(
         done
 
         # Build wheel
-        "$$UV" build --wheel --no-build-isolation --directory "$$STAGE" --out-dir "$$STAGE/_dist"
+        "$$UV" build --wheel --directory "$$STAGE" --out-dir "$$STAGE/_dist"
         cp "$$STAGE"/_dist/*.whl "$@"
     """,
 )

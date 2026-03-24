@@ -46,7 +46,7 @@ cmake(
         # Must match torch's _GLIBCXX_USE_CXX11_ABI (pip torch uses 1).
         "CMAKE_CXX_ABI": "1",
         "PYTHON_EXECUTABLE": "$$EXT_BUILD_ROOT/$(execpath @python_3_11//:python3)",
-        "TORCH_INSTALL_PREFIX": "$$EXT_BUILD_ROOT/external/rules_python++pip+pypi_311_torch/site-packages/torch",
+        "TORCH_INSTALL_PREFIX": "$$EXT_BUILD_ROOT/external/rules_python++pip+pypi_311_torch_linux_aarch64_linux_x86_64_osx_x86_64_windows_aarch64_windows_x86_64/site-packages/torch",
         "TORCH_ENABLE_CUDA": "0",
         "TORCH_VERSION": "2.10.0",
     },
@@ -63,7 +63,7 @@ cmake(
     """,
     env = {
         "PKG_CONFIG_PATH": PKG_CONFIG_PATH,
-        "PYTHONPATH": "$$EXT_BUILD_ROOT/external/rules_python++pip+pypi_311_torch/site-packages",
+        "PYTHONPATH": "$$EXT_BUILD_ROOT/external/rules_python++pip+pypi_311_torch_linux_aarch64_linux_x86_64_osx_x86_64_windows_aarch64_windows_x86_64/site-packages",
     },
     generate_args = ["-GNinja"],
     out_data_dirs = ["dreamplace"],
