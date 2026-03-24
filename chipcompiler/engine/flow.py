@@ -8,7 +8,7 @@ import traceback
 from multiprocessing import Process
 from threading import Thread
 
-from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
+from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum, log_flow
 from chipcompiler.engine import EngineDB
 from chipcompiler.utility import track_process_memory
 from chipcompiler.utility.log import (
@@ -275,7 +275,21 @@ class EngineFlow:
         self.workspace.home.reset() # reset home data before run steps
         
         for workspace_step in self.workspace_steps: 
+            self.workspace.logger.info("")
+            self.workspace.logger.info("######################################################################")
+            self.workspace.logger.info("begin running step %s with %s", workspace_step.name, workspace_step.tool)
+            self.workspace.logger.info("######################################################################")
+            self.workspace.logger.info("")
+            
             state = self.run_step(workspace_step, rerun)
+            
+            log_flow(workspace=self.workspace)
+            
+            self.workspace.logger.info("")
+            self.workspace.logger.info("######################################################################")
+            self.workspace.logger.info("finish step %s with %s", workspace_step.name, workspace_step.tool)
+            self.workspace.logger.info("######################################################################")
+            self.workspace.logger.info("")
             
             match(state):
                 case StateEnum.Success:

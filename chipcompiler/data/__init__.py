@@ -15,6 +15,8 @@ from .workspace import (
     create_workspace,
     load_workspace,
     log_workspace,
+    log_parameters,
+    log_flow
 )
 
 from .checklist import (

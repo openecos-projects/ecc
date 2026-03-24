@@ -11,6 +11,7 @@ sys.path.append(root)
 from chipcompiler.data import (
     create_workspace,
     log_workspace,
+    log_parameters,
     StepEnum,
     StateEnum,
     get_pdk,
@@ -47,8 +48,6 @@ def test_ics55_gcd():
             engine_flow.add_step(step=step, tool=tool, state=state)
             
     engine_flow.create_step_workspaces()
-    
-    log_workspace(workspace=workspace)
     
     engine_flow.run_steps()
     

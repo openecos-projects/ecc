@@ -48,7 +48,6 @@ class ECCToolsPlot:
             case default:
                 self.workspace.logger.warning(f"Step {self.step.name} not supported for plotting.")
         
-        self.workspace.logger.info(f"Plotting completed for step {self.step.name}")
         return state
     
     def default_plot(self) -> bool:
@@ -129,8 +128,6 @@ class ECCToolsPlot:
             self.workspace.logger.warning("No valid CSV files found for plotting.")
             return
         
-        self.workspace.logger.info(f"Plotting {len(valid_paths)} array maps with multi-threading...")
-        
         # Use ThreadPoolExecutor for multi-threading with progress bar (limit to 10 threads)
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             # Create a progress bar
@@ -140,12 +137,6 @@ class ECCToolsPlot:
                 desc="Plotting array maps",
                 unit="file"
             ))
-        
-        # Count successful and failed plots
-        successful = sum(results)
-        failed = len(results) - successful
-        
-        self.workspace.logger.info(f"Plotting completed: {successful} successful, {failed} failed.")
     
     def plot_drc_statis(self) -> bool:
         # build layer header
@@ -218,9 +209,6 @@ class ECCToolsPlot:
                     row[layer] = layer_counts.get(layer, 0)
                 writer.writerow(row)
         
-        # Log the CSV creation
-        self.workspace.logger.info(f"DRC statistics saved to {statis_csv}")
-        
         # Plot the CSV table
         # plot_csv_table(input_path=statis_csv)
         output_path=statis_csv.replace(".csv", ".png")
@@ -268,8 +256,6 @@ class ECCToolsPlot:
             )
             
             if success:
-                self.workspace.logger.info(f"Instance distribution plot saved to {image_path}")
-                
                 # update home page metrics
                 if hasattr(self.workspace, 'home') and hasattr(self.workspace.home, 'set_metrics_inst_dist'):
                     self.workspace.home.set_metrics_inst_dist(image_path=image_path)
@@ -320,7 +306,6 @@ class ECCToolsPlot:
             )
             
             if success:
-                self.workspace.logger.info(f"Pin distribution plot saved to {image_path}")
                 self.workspace.home.set_metrics_pin_dist(image_path=image_path)
             else:
                 self.workspace.logger.warning("Failed to generate pin distribution plot")
@@ -368,7 +353,6 @@ class ECCToolsPlot:
             )
             
             if success:
-                self.workspace.logger.info(f"Layer via distribution plot saved to {image_path}")
                 # update home page metrics
                 if hasattr(self.workspace, 'home') and hasattr(self.workspace.home, 'set_metrics_layer_via_dist'):
                     self.workspace.home.set_metrics_layer_via_dist(image_path=image_path)
@@ -418,7 +402,6 @@ class ECCToolsPlot:
             )
             
             if success:
-                self.workspace.logger.info(f"Layer wire distribution plot saved to {image_path}")
                 # update home page metrics
                 if hasattr(self.workspace, 'home') and hasattr(self.workspace.home, 'set_metrics_layer_wire_dist'):
                     self.workspace.home.set_metrics_layer_wire_dist(image_path=image_path)

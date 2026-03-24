@@ -5,7 +5,7 @@ import os
 import sys
 from collections.abc import Sequence
 
-from chipcompiler.data import create_workspace, get_parameters, log_workspace
+from chipcompiler.data import create_workspace, get_parameters
 from chipcompiler.engine import EngineFlow
 from chipcompiler.rtl2gds import build_rtl2gds_flow
 from chipcompiler.utility.filelist import parse_filelist, validate_filelist
@@ -129,7 +129,6 @@ def run(argv: Sequence[str] | None = None) -> int:
                 engine_flow.add_step(step=step, tool=tool, state=state)
 
         engine_flow.create_step_workspaces()
-        log_workspace(workspace=workspace)
 
         if not engine_flow.run_steps():
             print("Error: flow execution failed", file=sys.stderr)

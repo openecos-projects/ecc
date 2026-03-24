@@ -345,6 +345,9 @@ def create_workspace(directory : str,
 
     # save parameter
     save_parameter(workspace.parameters)
+    
+    log_workspace(workspace)
+    log_parameters(workspace)
      
     return workspace
 
@@ -405,13 +408,19 @@ def load_workspace(directory : str) -> Workspace:
     # create logger first (needed for copy operations)
     workspace.logger = create_logger(name=parameters.data["Design"],
                                      log_dir=f"{directory}/log")
+    
+    log_workspace(workspace)
+    log_parameters(workspace)
 
     return workspace
 
 def log_workspace(workspace : Workspace):
     def format_string(text : str, len=20) -> str:
         return text.ljust(len, " ")
-        
+    
+    workspace.logger.info("")    
+    workspace.logger.info("######################################################################")
+    workspace.logger.info("                            workspace begin                           ")
     workspace.logger.info("######################################################################")
     workspace.logger.info("workspace      : %s", workspace.directory)
     workspace.logger.info("PDK            : %s", workspace.pdk.name)
@@ -423,12 +432,29 @@ def log_workspace(workspace : Workspace):
     workspace.logger.info("sdc            : %s", workspace.pdk.sdc)
     workspace.logger.info("spef           : %s", workspace.pdk.spef)
     workspace.logger.info("######################################################################")
+    workspace.logger.info("                             workspace end                            ")
+    workspace.logger.info("######################################################################")
     workspace.logger.info("")
+    
+def log_parameters(workspace : Workspace):        
+    workspace.logger.info("")
+    workspace.logger.info("######################################################################")
+    workspace.logger.info("                           parameters begin                           ")
     workspace.logger.info("######################################################################")
     workspace.logger.info("parameters     : %s", workspace.parameters.path)
     workspace.logger.info("\n%s", dict_to_str(workspace.parameters.data))
     workspace.logger.info("######################################################################")
+    workspace.logger.info("                            parameters end                            ")
+    workspace.logger.info("######################################################################")
     workspace.logger.info("")
+    
+def log_flow(workspace : Workspace):
+    def format_string(text : str, len=20) -> str:
+        return text.ljust(len, " ")
+        
+    workspace.logger.info("")
+    workspace.logger.info("######################################################################")
+    workspace.logger.info("                              flow begin                              ")
     workspace.logger.info("######################################################################")
     workspace.logger.info("flow           : %s", workspace.flow.path)
     workspace.logger.info("%s | %s | %s | %s", 
@@ -443,6 +469,9 @@ def log_workspace(workspace : Workspace):
                               format_string(step.get("state", "")),
                               format_string(step.get("runtime", "")))
     workspace.logger.info("######################################################################")
+    workspace.logger.info("                               flow end                               ")
+    workspace.logger.info("######################################################################")
+    workspace.logger.info("")
 
 def create_default_sdc(workspace : Workspace):
     """
