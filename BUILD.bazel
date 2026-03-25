@@ -52,7 +52,7 @@ genrule(
             cp "$$src" "$$STAGE/$$src"
         done
         tar -xf "$$BUNDLE" -C "$$STAGE"
-        "$$UV" build --wheel --no-build-isolation --directory "$$STAGE" --out-dir "$$STAGE/_dist"
+        "$$UV" build --wheel --directory "$$STAGE" --out-dir "$$STAGE/_dist"
         cp "$$STAGE"/_dist/*.whl "$@"
     """,
 )
@@ -60,4 +60,51 @@ genrule(
 alias(
     name = "build_wheel",
     actual = "//bazel/scripts:build_wheel",
+)
+
+genrule(
+    name = "dreamplace_raw_wheel",
+    srcs = [
+        "//chipcompiler/thirdparty:dreamplace_cmake",
+        "//chipcompiler/thirdparty:dreamplace_python_sources",
+    ],
+    outs = ["dreamplace_raw_wheel/ecc_dreamplace-0.1.0-py3-none-any.whl"],
+    tools = ["@multitool//tools/uv"],
+    cmd = """
+        set -euo pipefail
+        UV="$(execpath @multitool//tools/uv)"
+        STAGE=$$(mktemp -d)
+        trap 'rm -rf "$$STAGE"' EXIT
+
+        # Reconstruct ecc-dreamplace directory with Python sources + pyproject.toml
+        for src in $(locations //chipcompiler/thirdparty:dreamplace_python_sources); do
+            rel=$${src#chipcompiler/thirdparty/ecc-dreamplace/}
+            mkdir -p "$$STAGE/$$(dirname "$$rel")"
+            cp "$$src" "$$STAGE/$$rel"
+        done
+
+        # Copy compiled .so files from dreamplace_cmake output
+        for d in $(locations //chipcompiler/thirdparty:dreamplace_cmake); do
+            if [ -d "$$d" ]; then
+                find "$$d" -name '*.so' | while read f; do
+                    rel=$${f#*dreamplace/}
+                    mkdir -p "$$STAGE/dreamplace/$$(dirname "$$rel")"
+                    cp -f "$$f" "$$STAGE/dreamplace/$$rel"
+                done
+                if [ -f "$$d/dreamplace/configure.py" ]; then
+                    cp -f "$$d/dreamplace/configure.py" "$$STAGE/dreamplace/configure.py"
+                fi
+                break
+            fi
+        done
+
+        # Build wheel
+        "$$UV" build --wheel --directory "$$STAGE" --out-dir "$$STAGE/_dist"
+        cp "$$STAGE"/_dist/*.whl "$@"
+    """,
+)
+
+alias(
+    name = "build_dreamplace_wheel",
+    actual = "//bazel/scripts:build_dreamplace_wheel",
 )
