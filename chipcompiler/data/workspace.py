@@ -78,6 +78,27 @@ class WorkspaceStep:
 
     # step result info
     result : dict = field(default_factory=dict) # result info about this step
+    
+def log_workspace_step(step : WorkspaceStep, logger : Logger):
+    logger.log_section(f"step {step.name} info")
+    logger.info(f"step name         : {step.name}")
+    logger.info(f"step eda          : {step.tool}")
+    logger.info(f"step eda version  : {step.version}")
+    logger.info(f"step subworkspace : {step.directory}")
+    
+    logger.info("\nconfig - \n%s", dict_to_str(step.config))
+    logger.info("\ninput - \n%s", dict_to_str(step.input))
+    logger.info("\noutput - \n%s", dict_to_str(step.output))
+    logger.info("\ndata - \n%s", dict_to_str(step.data))
+    logger.info("\nfeature - \n%s", dict_to_str(step.feature))
+    logger.info("\nreport - \n%s", dict_to_str(step.report))
+    logger.info("\nlog - \n%s", dict_to_str(step.log))
+    logger.info("\nscript - \n%s", dict_to_str(step.script))
+    logger.info("\nanalysis - \n%s", dict_to_str(step.analysis))
+    logger.info("\nsubflow - \n%s", dict_to_str(step.subflow))
+    logger.info("\nchecklist - \n%s", dict_to_str(step.checklist))
+    logger.log_separator()
+    
 
 def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=None) -> str:
     """
@@ -418,10 +439,7 @@ def log_workspace(workspace : Workspace):
     def format_string(text : str, len=20) -> str:
         return text.ljust(len, " ")
     
-    workspace.logger.info("")    
-    workspace.logger.info("######################################################################")
-    workspace.logger.info("                            workspace begin                           ")
-    workspace.logger.info("######################################################################")
+    workspace.logger.log_section("workspace info") 
     workspace.logger.info("workspace      : %s", workspace.directory)
     workspace.logger.info("PDK            : %s", workspace.pdk.name)
     workspace.logger.info("design         : %s", workspace.design.name)
@@ -431,31 +449,17 @@ def log_workspace(workspace : Workspace):
     workspace.logger.info("input filelist : %s", workspace.design.input_filelist)
     workspace.logger.info("sdc            : %s", workspace.pdk.sdc)
     workspace.logger.info("spef           : %s", workspace.pdk.spef)
-    workspace.logger.info("######################################################################")
-    workspace.logger.info("                             workspace end                            ")
-    workspace.logger.info("######################################################################")
-    workspace.logger.info("")
     
-def log_parameters(workspace : Workspace):        
-    workspace.logger.info("")
-    workspace.logger.info("######################################################################")
-    workspace.logger.info("                           parameters begin                           ")
-    workspace.logger.info("######################################################################")
+def log_parameters(workspace : Workspace):       
+    workspace.logger.log_section("parameters info") 
     workspace.logger.info("parameters     : %s", workspace.parameters.path)
     workspace.logger.info("\n%s", dict_to_str(workspace.parameters.data))
-    workspace.logger.info("######################################################################")
-    workspace.logger.info("                            parameters end                            ")
-    workspace.logger.info("######################################################################")
-    workspace.logger.info("")
     
 def log_flow(workspace : Workspace):
     def format_string(text : str, len=20) -> str:
         return text.ljust(len, " ")
         
-    workspace.logger.info("")
-    workspace.logger.info("######################################################################")
-    workspace.logger.info("                              flow begin                              ")
-    workspace.logger.info("######################################################################")
+    workspace.logger.log_section("flow info")
     workspace.logger.info("flow           : %s", workspace.flow.path)
     workspace.logger.info("%s | %s | %s | %s", 
                               format_string("name"),
@@ -468,10 +472,6 @@ def log_flow(workspace : Workspace):
                               format_string(step.get("tool", "")),
                               format_string(step.get("state", "")),
                               format_string(step.get("runtime", "")))
-    workspace.logger.info("######################################################################")
-    workspace.logger.info("                               flow end                               ")
-    workspace.logger.info("######################################################################")
-    workspace.logger.info("")
 
 def create_default_sdc(workspace : Workspace):
     """

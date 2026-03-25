@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, save_metrics
 from chipcompiler.tools.yosys.metrics import build_step_metrics
+from chipcompiler.utility import dict_to_str
 
 def get_step_info(workspace: Workspace, 
                   step: WorkspaceStep,
@@ -26,6 +27,9 @@ def get_step_info(workspace: Workspace,
             step_info = build_maps(workspace=workspace, step=step)
         case "checklist":
             step_info = build_checklist(workspace=workspace, step=step)
+            
+    workspace.logger.log_section(f"[yosys] get step info, id = {id}")
+    workspace.logger.info(f"{dict_to_str(step_info)}")
 
     return step_info
 

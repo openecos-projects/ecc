@@ -7,6 +7,8 @@ from chipcompiler.data import (
     StepEnum
 )
 
+from chipcompiler.utility import dict_to_str
+
     
 def get_step_info(workspace: Workspace, 
                   step: WorkspaceStep,
@@ -21,5 +23,8 @@ def get_step_info(workspace: Workspace,
     step_info = ecc_get_step_info(workspace=workspace,
                                   step=step,
                                   id=id)
+    
+    workspace.logger.log_section(f"[ecc dreamplace] get step info, id = {id}")
+    workspace.logger.info(f"{dict_to_str(step_info)}")
     
     return step_info

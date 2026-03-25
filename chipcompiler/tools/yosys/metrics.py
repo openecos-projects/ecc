@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, save_metrics
-from chipcompiler.utility import json_read
+from chipcompiler.utility import json_read, dict_to_str
 
 
 def build_step_metrics(workspace: Workspace,
@@ -40,6 +40,8 @@ def build_step_metrics(workspace: Workspace,
         f"Area: {metrics['Cell area']}"
     )
     step_metrics.report.append(("", report))
+    
+    workspace.logger.info("\nmetrics - \n%s", dict_to_str(step_metrics))
 
     if save_metrics(step_metrics):
         return step_metrics

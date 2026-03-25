@@ -142,6 +142,19 @@ class Logger:
 
     def critical(self, msg: str, *args, **kwargs):
         self.logger.critical(msg, *args, **kwargs)
+        
+    def log_separator(self, max_len = 60):
+        self.logger.info('#' * max_len)
+        
+    def log_section(self, section : str, max_len = 60):
+        if len(section) >= max_len:
+            section = section[:max_len]
+        self.logger.info("")
+        self.logger.info('#' * max_len)
+        padding = (max_len - len(section)) // 2
+        self.logger.info(' ' * padding + section + ' ' * padding)
+        self.logger.info('#' * max_len)
+        self.logger.info("")
 
 
 def create_logger(

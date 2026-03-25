@@ -16,7 +16,8 @@ from .workspace import (
     load_workspace,
     log_workspace,
     log_parameters,
-    log_flow
+    log_flow,
+    log_workspace_step
 )
 
 from .checklist import (
@@ -36,6 +37,9 @@ __all__ = [
     'get_pdk',
     'OriginDesign',
     'log_workspace',
+    'log_parameters',
+    'log_flow',
+    'log_workspace_step'
     'Parameters',
     'load_parameter',
     'save_parameter',

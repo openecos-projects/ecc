@@ -16,9 +16,6 @@ from chipcompiler.utility.log import (
     redirect_stdio_to_file,
 )
 
-logger = logging.getLogger(__name__)
-
-
 def _run_step_in_subprocess(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
     """
     Step subprocess entry point: redirect stdio to log file if configured,
@@ -34,14 +31,14 @@ def _run_step_in_subprocess(workspace: Workspace, workspace_step: WorkspaceStep)
             traceback.print_exc()
 
     step_tag = f"{workspace_step.name}({workspace_step.tool})"
-    print(f"[STEP] {step_tag} pid={os.getpid()} started", flush=True)
+    workspace.logger.info(f"[STEP] {step_tag} pid={os.getpid()} started")
 
     try:
         from chipcompiler.tools import run_step as run_tool_step
         result = run_tool_step(workspace=workspace, step=workspace_step)
-        print(f"[STEP] {step_tag} finished result={result}", flush=True)
+        workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
     except Exception:
-        print(f"[STEP] {step_tag} failed with exception", flush=True)
+        workspace.logger.error(f"[STEP] {step_tag} failed with exception")
         traceback.print_exc()
 
 
@@ -275,21 +272,12 @@ class EngineFlow:
         self.workspace.home.reset() # reset home data before run steps
         
         for workspace_step in self.workspace_steps: 
-            self.workspace.logger.info("")
-            self.workspace.logger.info("######################################################################")
-            self.workspace.logger.info("begin running step %s with %s", workspace_step.name, workspace_step.tool)
-            self.workspace.logger.info("######################################################################")
-            self.workspace.logger.info("")
+            self.workspace.logger.log_section(f"{workspace_step.tool} - begin step - {workspace_step.name}")
             
             state = self.run_step(workspace_step, rerun)
             
             log_flow(workspace=self.workspace)
-            
-            self.workspace.logger.info("")
-            self.workspace.logger.info("######################################################################")
-            self.workspace.logger.info("finish step %s with %s", workspace_step.name, workspace_step.tool)
-            self.workspace.logger.info("######################################################################")
-            self.workspace.logger.info("")
+            self.workspace.logger.log_section(f"{workspace_step.tool} - end step - {workspace_step.name}")
             
             match(state):
                 case StateEnum.Success:
@@ -323,7 +311,7 @@ class EngineFlow:
         if not rerun and self.check_state(name=workspace_step.name,
                             tool=workspace_step.tool,
                             state=StateEnum.Success):
-            logger.info("[SKIP] %s already succeeded", step_tag)
+            self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
             return StateEnum.Success
 
         # set state ongoing
@@ -336,7 +324,7 @@ class EngineFlow:
         p = Process(target=_run_step_in_subprocess,
                     args=(self.workspace, workspace_step))
         p.start()
-        logger.info("[DISPATCH] %s pid=%s", step_tag, p.pid)
+        self.workspace.logger.info("[DISPATCH] %s pid=%s", step_tag, p.pid)
 
         # track peak memory in a background thread
         peak_memory_result = [0]
@@ -362,7 +350,7 @@ class EngineFlow:
                        state=state,
                        runtime=runtime,
                        peak_memory=peak_memory_mb)
-        logger.info("[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
+        self.workspace.logger.info("[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
                     step_tag, state.value, runtime, peak_memory_mb, p.exitcode)
 
         # save layout snapshot on success

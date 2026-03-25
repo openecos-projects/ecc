@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, log_flow
+from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, log_flow, log_workspace_step
+from chipcompiler.utility import dict_to_str
 import logging
 
 def load_eda_module(eda_tool: str):
@@ -89,6 +90,8 @@ def run_step(workspace: Workspace,
     # update config 
     eda_module.build_step_config(workspace, step)
     
+    log_workspace_step(step, workspace.logger)
+    
     return eda_module.run_step(workspace=workspace, 
                                step=step,
                                ecc_module=ecc_module)
@@ -114,10 +117,12 @@ def build_step_metrics(workspace: Workspace,
     """
     eda_module = load_eda_module(step.tool)
     if eda_module is None:
-        return False
+        return None
 
-    return eda_module.build_step_metrics(workspace=workspace,
-                                         step=step)
+    metrics = eda_module.build_step_metrics(workspace=workspace,
+                                            step=step)
+    
+    return metrics
     
 def get_step_info(workspace: Workspace, 
                   step: WorkspaceStep,

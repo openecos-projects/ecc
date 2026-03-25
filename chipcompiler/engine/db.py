@@ -32,8 +32,10 @@ class EngineDB:
         from chipcompiler.tools.ecc import create_db_engine
         self.eda = create_db_engine(self.workspace, step)
         if self.eda is not None:
+            self.workspace.logger.info("ecc db initialize success.")
             return True
         else:
+            self.workspace.logger.error("ecc db initialize failed.")
             return False
     
     def update_db_from_step(self,

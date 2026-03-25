@@ -8,7 +8,7 @@ from chipcompiler.data import (
     StepEnum,
     StateEnum
 )
-from chipcompiler.utility import json_read
+from chipcompiler.utility import json_read, dict_to_str
 
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 
@@ -59,6 +59,8 @@ def build_step_metrics(workspace: Workspace,
                          state=StateEnum.Invalid if metrics is None else StateEnum.Success,
                          info=info)
     
+    
+    workspace.logger.info("\nmetrics - \n%s", dict_to_str(metrics))
     return metrics
 
 
