@@ -36,8 +36,14 @@ def load_eda_module(eda_tool: str):
         return None
 
     # check eda tool exist
-    if not check_module(eda_module) or not eda_module.is_eda_exist():
-        logging.error(f"EDA tool : {eda_tool} not found!")
+    if not check_module(eda_module):
+        functions = ['is_eda_exist', 'build_step_space', 'build_step_config', 'run_step']
+        missing = [f for f in functions if not hasattr(eda_module, f)]
+        logging.error("EDA tool '%s': module loaded but missing interface: %s", eda_tool, missing)
+        return None
+
+    if not eda_module.is_eda_exist():
+        logging.error("EDA tool '%s': dependency check failed (is_eda_exist returned False)", eda_tool)
         return None
 
     return eda_module
