@@ -41,7 +41,7 @@ def build_step_metrics(workspace: Workspace,
     )
     step_metrics.report.append(("", report))
     
-    workspace.logger.info("\nmetrics - \n%s", dict_to_str(step_metrics))
+    workspace.logger.info("\nmetrics - \n%s", dict_to_str(step_metrics.data))
 
     if save_metrics(step_metrics):
         return step_metrics

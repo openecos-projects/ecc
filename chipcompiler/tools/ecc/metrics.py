@@ -60,7 +60,7 @@ def build_step_metrics(workspace: Workspace,
                          info=info)
     
     
-    workspace.logger.info("\nmetrics - \n%s", dict_to_str(metrics))
+    workspace.logger.info("\nmetrics - \n%s", dict_to_str(metrics.data))
     return metrics
 
 
