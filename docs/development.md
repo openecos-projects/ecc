@@ -89,6 +89,21 @@ Common failures:
 - auditwheel policy mismatch (e.g. glibc symbols too new): rebuild on older compatible base or adjust target policy
 - missing runtime libraries: inspect `dist/wheel/reports/show.txt`
 
+### Bazel Wheel Build (DreamPlace + auditwheel)
+
+Build a portable DreamPlace wheel (includes compiled C++ operators, excludes PyTorch/CUDA runtime):
+
+```bash
+bazel build //:dreamplace_raw_wheel    # Sandboxed, cacheable — produces raw .whl
+bazel run //:build_dreamplace_wheel    # auditwheel repair + smoke test
+```
+
+Artifacts output to `dist/wheel/` (shared with ECC wheel). Requirements same as ECC wheel build, plus `torch` in venv.
+
+Common failures:
+- torch lib dir not found: run `uv sync --frozen --all-groups --extra dreamplace --python 3.11`
+- auditwheel not found: run `uv sync --frozen --all-groups --python 3.11 --all-extras`
+
 ### Standalone Executable
 ```bash
 source .venv/bin/activate
