@@ -49,8 +49,9 @@ out_root="$WS/dist/wheel"
 raw_out="$out_root/raw"
 repair_out="$out_root/repaired"
 report_out="$out_root/reports"
-rm -rf "$out_root"
 mkdir -p "$raw_out" "$repair_out" "$report_out"
+# Clean only ecc wheels (not ecc_dreamplace) to preserve prior dreamplace build
+rm -f "$raw_out"/ecc-*.whl "$repair_out"/ecc-*.whl
 show_report="$report_out/show.txt"
 : > "$show_report"
 
@@ -59,16 +60,15 @@ cleanup() { rm -rf "$smoke_dir"; }
 trap cleanup EXIT
 
 cp "$raw_whl" "$raw_out/"
+local_raw_whl="$raw_out/$(basename "$raw_whl")"
 
 echo "[wheel] running auditwheel show/repair"
-shopt -s nullglob
-local_raw_wheels=("$raw_out"/*.whl)
-if [[ ${#local_raw_wheels[@]} -eq 0 ]]; then
-    echo "ERROR: raw wheel output directory is empty: $raw_out" >&2
+if [[ ! -f "$local_raw_whl" ]]; then
+    echo "ERROR: raw wheel not found after copy: $local_raw_whl" >&2
     exit 1
 fi
 
-for whl in "${local_raw_wheels[@]}"; do
+for whl in "$local_raw_whl"; do
     {
         echo "=== $(basename "$whl") ==="
         "$auditwheel_bin" show "$whl"
@@ -76,12 +76,12 @@ for whl in "${local_raw_wheels[@]}"; do
     } >> "$show_report"
     "$auditwheel_bin" repair "$whl" -w "$repair_out"
 done
-shopt -u nullglob
 
+# Find only the ecc repaired wheel (not ecc_dreamplace)
 shopt -s nullglob
-repaired_wheels=("$repair_out"/*.whl)
+repaired_wheels=("$repair_out"/ecc-*.whl)
 if [[ ${#repaired_wheels[@]} -eq 0 ]]; then
-    echo "ERROR: no repaired wheel artifacts found in $repair_out" >&2
+    echo "ERROR: no repaired ecc wheel found in $repair_out" >&2
     exit 1
 fi
 shopt -u nullglob

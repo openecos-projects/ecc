@@ -32,6 +32,8 @@ raw_out="$out_root/raw"
 repair_out="$out_root/repaired"
 report_out="$out_root/reports"
 mkdir -p "$raw_out" "$repair_out" "$report_out"
+# Clean only dreamplace wheels to preserve prior ecc build
+rm -f "$raw_out"/ecc_dreamplace-*.whl "$repair_out"/ecc_dreamplace-*.whl
 show_report="$report_out/dreamplace-show.txt"
 : > "$show_report"
 
@@ -39,6 +41,7 @@ smoke_dir="$(mktemp -d)"
 trap 'rm -rf "$smoke_dir"' EXIT
 
 cp "$raw_whl" "$raw_out/"
+local_raw_whl="$raw_out/$(basename "$raw_whl")"
 
 # Locate torch's lib directory so auditwheel can find libtorch.so, libc10.so, etc.
 torch_lib_dir="$("${WS}/.venv/bin/python3" -c "import torch, pathlib; print(pathlib.Path(torch.__file__).parent / 'lib')" 2>/dev/null || true)"
@@ -64,11 +67,9 @@ for lib in "${EXCLUDE_LIBS[@]}"; do
 done
 
 echo "[dreamplace-wheel] running auditwheel show/repair"
-shopt -s nullglob
-local_raw_wheels=("$raw_out"/*.whl)
-[[ ${#local_raw_wheels[@]} -gt 0 ]] || die "raw wheel output directory is empty: $raw_out"
+[[ -f "$local_raw_whl" ]] || die "raw wheel not found after copy: $local_raw_whl"
 
-for whl in "${local_raw_wheels[@]}"; do
+for whl in "$local_raw_whl"; do
     {
         echo "=== $(basename "$whl") ==="
         "$auditwheel_bin" show "$whl"
@@ -77,8 +78,10 @@ for whl in "${local_raw_wheels[@]}"; do
     "$auditwheel_bin" repair "$whl" -w "$repair_out" "${exclude_flags[@]}"
 done
 
-repaired_wheels=("$repair_out"/*.whl)
-[[ ${#repaired_wheels[@]} -gt 0 ]] || die "no repaired wheel artifacts found in $repair_out"
+# Find only the dreamplace repaired wheel (not ecc)
+shopt -s nullglob
+repaired_wheels=("$repair_out"/ecc_dreamplace-*.whl)
+[[ ${#repaired_wheels[@]} -gt 0 ]] || die "no repaired dreamplace wheel found in $repair_out"
 shopt -u nullglob
 
 echo "[dreamplace-wheel] running smoke test"
