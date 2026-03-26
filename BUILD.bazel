@@ -98,8 +98,9 @@ genrule(
             fi
         done
 
-        # Build wheel
-        "$$UV" build --wheel --directory "$$STAGE" --out-dir "$$STAGE/_dist"
+        # Build wheel (use a temporary cache dir to avoid writing to ~/.cache/uv
+        # which is read-only inside the Bazel sandbox)
+        "$$UV" build --wheel --directory "$$STAGE" --out-dir "$$STAGE/_dist" --cache-dir "$$STAGE/.uv-cache"
         cp "$$STAGE"/_dist/*.whl "$@"
     """,
 )
