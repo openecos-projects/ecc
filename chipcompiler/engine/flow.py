@@ -13,6 +13,8 @@ from chipcompiler.engine import EngineDB
 from chipcompiler.utility import track_process_memory
 from chipcompiler.utility.log import redirect_stdio_to_file
 
+logger = logging.getLogger(__name__)
+
 def _run_step_in_subprocess(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
     """
     Step subprocess entry point: redirect stdio to log file if configured,
