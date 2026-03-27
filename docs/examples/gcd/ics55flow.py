@@ -2,6 +2,7 @@ from chipcompiler.data import (
     StateEnum,
     StepEnum,
     create_workspace,
+    load_workspace,
     get_design_parameters,
     get_pdk,
 )
@@ -60,24 +61,25 @@ parameters = get_design_parameters("ics55", "gcd")
 # └── Synthesis_yosys
 #     ...
 #     └── script
-workspace = create_workspace(
-    directory=workspace_dir,
-    origin_def="",
-    origin_verilog=input_verilog,
-    pdk=pdk,
-    parameters=parameters
-)
+# workspace = create_workspace(
+#     directory=workspace_dir,
+#     origin_def="",
+#     origin_verilog=input_verilog,
+#     pdk=pdk,
+#     parameters=parameters
+# )
 # Use load_workspace to resume from existing workspace
 # workspace = load_workspace(directory=workspace_dir)
 
 # Setup flow engine and add steps
+workspace = load_workspace("./gcd_workspace")
 engine_flow = EngineFlow(workspace=workspace)
 if not engine_flow.has_init():
     # Use `add_step` to add steps to the flow
-    engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="Yosys", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="yosys", state=StateEnum.Success)
+    engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Success)
+    engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="ecc", state=StateEnum.Success)
+    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.ROUTING, tool="ecc", state=StateEnum.Unstart)
