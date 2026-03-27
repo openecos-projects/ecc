@@ -69,16 +69,13 @@ build-backend.wheel-exclude = [
   "chipcompiler/thirdparty/**",
 ]
 
-[tool.uv.workspace]
-members = ["chipcompiler/thirdparty/ecc-dreamplace"]
-
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
-ecc-dreamplace = { workspace = true }
+ecc-dreamplace = { path = "chipcompiler/thirdparty/ecc-dreamplace" }
 torch = { index = "pytorch-cpu" }
 
 [tool.ruff]
