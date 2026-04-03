@@ -19,7 +19,7 @@ This runs two steps:
 
 ECC-Tools and DreamPlace are built in parallel by Bazel. On memory-constrained machines, limit parallelism:
 ```bash
-bazel run //:prepare_dev --jobs=2
+bazel run //:prepare_dev --jobs=1
 ```
 
 ### Option 2: Nix Development Shell
