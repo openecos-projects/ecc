@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 import os
 import shutil
 import subprocess
@@ -10,6 +11,27 @@ def _sanitize_loader_env(env: dict[str, str]) -> dict[str, str]:
     env.pop("LD_LIBRARY_PATH", None)
     env.pop("LD_PRELOAD", None)
     return env
+
+
+_MANIFEST_PATH = Path.home() / ".ecos" / "tools" / "manifest.json"
+
+
+def _resolve_from_manifest(tool_name: str) -> tuple[list[str], Path | None]:
+    """Check ~/.ecos/tools/manifest.json for a plugin-managed tool."""
+    if not _MANIFEST_PATH.exists():
+        return [], None
+    try:
+        manifest = json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return [], None
+    entry = manifest.get("installed", {}).get(tool_name)
+    if not entry:
+        return [], None
+    tool_dir = Path(entry["path"])
+    binary = tool_dir / "bin" / ("yosys.exe" if os.name == "nt" else tool_name)
+    if binary.exists():
+        return [str(binary)], tool_dir
+    return [], None
 
 
 def _build_oss_cad_env(oss_path: Path, base_env: dict[str, str] | None = None) -> dict[str, str]:
@@ -46,17 +68,24 @@ def _resolve_oss_yosys_paths() -> tuple[str, Path | None, Path | None]:
 
 def _resolve_yosys_command() -> tuple[list[str], Path | None]:
     """
-    Resolve yosys executable from bundled runtime first, then system PATH.
+    Resolve yosys executable: manifest first, then bundled runtime, then system PATH.
 
     Returns:
         (command, oss_path):
             - command: list containing executable command or empty list if unavailable
-            - oss_path: OSS CAD root path if bundled yosys is selected, else None
+            - oss_path: tool root path if resolved, else None
     """
+    # 1. Check manifest (plugin-managed tools)
+    cmd, path = _resolve_from_manifest("yosys")
+    if cmd:
+        return cmd, path
+
+    # 2. Check CHIPCOMPILER_OSS_CAD_DIR (bundled/Nix path)
     _, oss_path, yosys_bin = _resolve_oss_yosys_paths()
     if oss_path is not None and yosys_bin is not None and yosys_bin.exists():
         return [str(yosys_bin)], oss_path
 
+    # 3. System PATH
     if shutil.which("yosys"):
         return ["yosys"], None
 
