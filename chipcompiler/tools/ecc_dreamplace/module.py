@@ -1,16 +1,14 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import importlib.machinery
 import json
 import logging
 import os
-import sys
-from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
-    
+from chipcompiler.tools.ecc_dreamplace.utility import ensure_dreamplace_import_path
+
+
 class DreamplaceModule:
     def __init__(
         self,
@@ -61,9 +59,10 @@ class DreamplaceModule:
         return os.path.join(self.result_dir, log_name)
 
     def _run(self, legalize_only: bool) -> bool:
+        ensure_dreamplace_import_path()
         from dreamplace.Params import Params
         from dreamplace.Placer import PlacementEngine
-        
+
         params = self._build_params(Params, legalize_only=legalize_only)
 
         engine = PlacementEngine(params)
@@ -84,5 +83,6 @@ class DreamplaceModule:
         if self.step.name != StepEnum.LEGALIZATION.value:
             return False
         return self._run(legalize_only=True)
+
 
 __all__ = ["DreamplaceModule"]
