@@ -53,10 +53,10 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     params["result_dir"] = step.data.get(step.name, step.data["dir"])
     params["base_design_name"] = workspace.design.name
     params["target_density"] = workspace.parameters.data.get(
-        "target_density", params.get("target_density", 0.3)
+        "Target density", params.get("target_density", 0.3)
     )
     params["stop_overflow"] = workspace.parameters.data.get(
-        "stop_overflow", params.get("stop_overflow", 0.1)
+        "Target overflow", params.get("stop_overflow", 0.1)
     )
     params["timing_opt_flag"] = 0
     params["timing_eval_flag"] = 0
