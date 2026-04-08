@@ -37,3 +37,10 @@ def test_get_parameters_returns_independent_copies():
 
     assert second.data["Design"] == ""
     assert second.data["Floorplan"]["Tracks"][0]["x step"] == 200
+
+
+def test_ics55_template_has_dreamplace_padding_defaults():
+    parameters = get_parameters("ics55")
+
+    assert parameters.data["Cell padding x"] == 600
+    assert parameters.data["Routability opt flag"] == 1
