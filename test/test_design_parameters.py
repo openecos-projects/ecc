@@ -43,5 +43,4 @@ def test_ics55_template_has_dreamplace_padding_defaults():
     parameters = get_parameters("ics55")
 
     assert parameters.data["Cell padding x"] == 600
-    assert parameters.data["Boundary padding x"] == 0
-    assert parameters.data["Boundary padding y"] == 0
+    assert parameters.data["Routability opt flag"] == 0

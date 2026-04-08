@@ -61,11 +61,8 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     params["cell_padding_x"] = workspace.parameters.data.get(
         "Cell padding x", params.get("cell_padding_x", 600)
     )
-    params["bndry_padding_x"] = workspace.parameters.data.get(
-        "Boundary padding x", params.get("bndry_padding_x", 0)
-    )
-    params["bndry_padding_y"] = workspace.parameters.data.get(
-        "Boundary padding y", params.get("bndry_padding_y", 0)
+    params["routability_opt_flag"] = workspace.parameters.data.get(
+        "Routability opt flag", params.get("routability_opt_flag", 0)
     )
     params["timing_opt_flag"] = 0
     params["timing_eval_flag"] = 0
