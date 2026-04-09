@@ -17,21 +17,28 @@ def dump_smt2(solver: Solver, name: str, output_dir: str | None = None) -> Path:
     Args:
         solver: z3 Solver instance with constraints added.
         name: File stem (e.g., "state_machine_transition"). Produces `<name>.smt2`.
-              Must not contain path separators.
+              Must be a non-empty string without path separators or whitespace-only.
         output_dir: Directory for output. Defaults to `test/formal/smt2/`.
 
     Returns:
         Path to the written .smt2 file.
 
     Raises:
-        ValueError: If name contains path separators or attempts directory traversal.
+        ValueError: If name is empty, whitespace-only, contains path separators,
+                    or attempts directory traversal.
 
     Example:
+        >>> from z3 import Solver, Int
         >>> solver = Solver()
+        >>> x = Int("x")
         >>> solver.add(x > 0)
         >>> path = dump_smt2(solver, "example")
         >>> # writes test/formal/smt2/example.smt2
     """
+    if not name or not name.strip():
+        msg = f"name must be a non-empty string, got: {name!r}"
+        raise ValueError(msg)
+
     if os.path.basename(name) != name or os.sep in name or "/" in name:
         msg = f"name must be a plain filename stem, got: {name!r}"
         raise ValueError(msg)
@@ -46,5 +53,5 @@ def dump_smt2(solver: Solver, name: str, output_dir: str | None = None) -> Path:
         msg = f"resolved path {out_path} escapes output directory {resolved_dir}"
         raise ValueError(msg)
 
-    out_path.write_text(solver.to_smt2())
+    out_path.write_text(solver.to_smt2(), encoding="utf-8")
     return out_path
