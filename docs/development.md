@@ -135,7 +135,12 @@ uv run isort chipcompiler/ test/
 uv run pytest test/                                    # All tests
 uv run pytest test/test_tools_yosys_utility.py -v     # Specific file
 uv run pytest test/ --cov=chipcompiler --cov-report=term-missing  # Coverage
+uv run pytest test/formal/ -v                          # Formal verification tests only
 ```
+
+### Formal Verification
+
+z3-based formal verification. See [test/formal/README.md](../test/formal/README.md) for details on the approach, test inventory, and known bugs found.
 
 ## Add a New EDA Tool
 
