@@ -7,8 +7,12 @@ Verifies:
 3. Dead defaults and forced overrides are documented.
 """
 
+from __future__ import annotations
+
+from typing import Any
+
 import pytest
-from z3 import Int, Real, Solver, unsat
+from z3 import ArithRef, Int, Real, Solver, unsat
 
 from chipcompiler.data import get_parameters
 
@@ -35,20 +39,20 @@ BUILDER_PARAM_KEYS: list[tuple[str, str, str]] = [
     reason="'File list' key used in yosys/builder.py but not defined in ICS55 template",
     strict=False,
 )
-def test_key_spelling_matches_template():
+def test_key_spelling_matches_template() -> None:
     """Every parameter key used in dict.get() calls in builders must exist
     in the ICS55 template. A typo like 'target density' (lowercase) when
     the template has 'Target density' (capitalized) means the override
     silently falls back to the default."""
     template = get_parameters("ics55")
 
-    def _key_exists_in_dict(data: dict, key: str) -> bool:
+    def _key_exists_in_dict(data: dict[str, Any], key: str) -> bool:
         """Check if key exists at top level or any nested dict."""
         if key in data:
             return True
         return any(isinstance(v, dict) and _key_exists_in_dict(v, key) for v in data.values())
 
-    missing = []
+    missing: list[str] = []
     for key, builder, config_field in BUILDER_PARAM_KEYS:
         if not _key_exists_in_dict(template.data, key):
             missing.append(f"  '{key}' (used in {builder} -> {config_field})")
@@ -64,7 +68,7 @@ def test_key_spelling_matches_template():
 
 # Known parameter -> config mappings with both defaults.
 # (param_key, param_default, config_default, description)
-PARAM_CONFIG_DEFAULTS: list[tuple[str, object, object, str]] = [
+PARAM_CONFIG_DEFAULTS: list[tuple[str, float, float, str]] = [
     ("Target density", 0.3, 0.8, "dreamplace.target_density"),
     ("Target overflow", 0.1, 0.1, "dreamplace.stop_overflow"),
     ("Cell padding x", 600, 600, "dreamplace.cell_padding_x"),
@@ -79,7 +83,9 @@ PARAM_CONFIG_DEFAULTS: list[tuple[str, object, object, str]] = [
     PARAM_CONFIG_DEFAULTS,
     ids=[t[3] for t in PARAM_CONFIG_DEFAULTS],
 )
-def test_dead_defaults(param_key, param_default, config_default, config_field):
+def test_dead_defaults(
+    param_key: str, param_default: float, config_default: float, config_field: str
+) -> None:
     """z3: if param_default != config_default, the JSON config default is dead
     code (the builder always overwrites it with the parameter value).
 
@@ -89,8 +95,8 @@ def test_dead_defaults(param_key, param_default, config_default, config_field):
     if param_default == config_default:
         pytest.skip("Defaults match -- config default is not dead")
 
-    param_val = Real("param_val")
-    config_val = Real("config_val")
+    param_val: ArithRef = Real("param_val")
+    config_val: ArithRef = Real("config_val")
 
     solver = Solver()
     # Builder logic: config_val = param_val (always reads from parameters)
@@ -120,14 +126,14 @@ FORCED_OVERRIDES: list[tuple[str, int, str]] = [
     FORCED_OVERRIDES,
     ids=[t[0] for t in FORCED_OVERRIDES],
 )
-def test_builder_forced_overrides(config_field, forced_value, source_line):
+def test_builder_forced_overrides(config_field: str, forced_value: int, source_line: str) -> None:
     """z3: these config fields are always forced to a specific value by the
     builder, regardless of any parameter setting. Verify the forced value
     is intentional by proving that no parameter can change it.
 
     Query: config_val != forced_value. Must be UNSAT.
     """
-    config_val = Int("config_val")
+    config_val: ArithRef = Int("config_val")
 
     solver = Solver()
     solver.add(config_val == forced_value)
@@ -165,7 +171,7 @@ PROPAGATION_MAP: list[tuple[str, str, bool]] = [
     PROPAGATION_MAP,
     ids=[t[1] for t in PROPAGATION_MAP],
 )
-def test_propagation_z3(param_key, config_field, reads_param):
+def test_propagation_z3(param_key: str, config_field: str, reads_param: bool) -> None:
     """z3: for each parameter -> config mapping, prove that the parameter
     value reaches the config field.
 
@@ -177,8 +183,8 @@ def test_propagation_z3(param_key, config_field, reads_param):
     UNSAT = parameter always propagates.
     SAT = builder ignores parameter.
     """
-    param_val = Real("param_val")
-    config_val = Real("config_val")
+    param_val: ArithRef = Real("param_val")
+    config_val: ArithRef = Real("config_val")
 
     solver = Solver()
 

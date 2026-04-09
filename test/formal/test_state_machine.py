@@ -5,6 +5,8 @@ Encodes StateEnum as integer sort and transition relations as SMT constraints.
 z3 provides exhaustive proof (UNSAT = safe) or concrete counterexample (SAT = bug).
 """
 
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path
@@ -12,6 +14,8 @@ from pathlib import Path
 import pytest
 from z3 import (
     And,
+    ArithRef,
+    BoolRef,
     Int,
     Not,
     Or,
@@ -40,7 +44,7 @@ STATE_MAP: dict[StateEnum, int] = {
     StateEnum.Invalid: 5,
 }
 
-STATE_COUNT = len(STATE_MAP)
+STATE_COUNT: int = len(STATE_MAP)
 
 # Reference transition graph from spec.
 # Key = source state, value = set of valid target states.
@@ -53,12 +57,12 @@ VALID_TRANSITIONS: dict[StateEnum, set[StateEnum]] = {
     StateEnum.Invalid: set(),  # terminal
 }
 
-TERMINAL_STATES = {StateEnum.Success, StateEnum.Imcomplete, StateEnum.Invalid}
+TERMINAL_STATES: set[StateEnum] = {StateEnum.Success, StateEnum.Imcomplete, StateEnum.Invalid}
 
 
-def _valid_transition_constraint(s_old, s_new):
+def _valid_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> BoolRef | bool:
     """Build z3 constraint: V(s_old, s_new) is True iff transition is in VALID_TRANSITIONS."""
-    clauses = []
+    clauses: list[BoolRef] = []
     for src, targets in VALID_TRANSITIONS.items():
         src_id = STATE_MAP[src]
         for tgt in targets:
@@ -69,7 +73,7 @@ def _valid_transition_constraint(s_old, s_new):
     return Or(*clauses)
 
 
-def _code_transition_constraint(s_old, s_new):
+def _code_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> BoolRef:
     """Build z3 constraint: T(s_old, s_new) models what set_state() actually allows.
 
     Current code: set_state() accepts ANY (s_old, s_new) pair without validation.
@@ -87,14 +91,14 @@ def _code_transition_constraint(s_old, s_new):
     reason="set_state() has no transition guards -- z3 will find invalid pairs (SAT)",
     strict=False,
 )
-def test_no_invalid_transition_allowed():
+def test_no_invalid_transition_allowed() -> None:
     """Prove: no (s_old, s_new) pair exists where code allows it but spec forbids it.
 
     Query: Exists(s_old, s_new): T(s_old, s_new) AND NOT V(s_old, s_new)
     UNSAT = proven safe. SAT = z3 gives a concrete violating pair.
     """
-    s_old = Int("s_old")
-    s_new = Int("s_new")
+    s_old: ArithRef = Int("s_old")
+    s_new: ArithRef = Int("s_new")
 
     solver = Solver()
     solver.add(_code_transition_constraint(s_old, s_new))
@@ -103,9 +107,9 @@ def test_no_invalid_transition_allowed():
     result = solver.check()
     if result == sat:
         model = solver.model()
-        old_val = model[s_old].as_long()
-        new_val = model[s_new].as_long()
-        reverse_map = {v: k for k, v in STATE_MAP.items()}
+        old_val: int = model[s_old].as_long()
+        new_val: int = model[s_new].as_long()
+        reverse_map: dict[int, StateEnum] = {v: k for k, v in STATE_MAP.items()}
         old_state = reverse_map.get(old_val, f"unknown({old_val})")
         new_state = reverse_map.get(new_val, f"unknown({new_val})")
         pytest.fail(
@@ -121,7 +125,7 @@ def test_no_invalid_transition_allowed():
     strict=False,
 )
 @pytest.mark.parametrize("bound", [1, 2, 3, 5, 10])
-def test_terminal_unreachable_without_ongoing(bound):
+def test_terminal_unreachable_without_ongoing(bound: int) -> None:
     """BMC: prove no trace of length `bound` starting from Unstart reaches
     a terminal state without passing through Ongoing.
 
@@ -131,7 +135,7 @@ def test_terminal_unreachable_without_ongoing(bound):
            AND for all i in 0..bound-1: s[i] != Ongoing
     SAT = z3 gives a concrete trace that bypasses Ongoing.
     """
-    states = [Int(f"s_{i}") for i in range(bound + 1)]
+    states: list[ArithRef] = [Int(f"s_{i}") for i in range(bound + 1)]
 
     solver = Solver()
     solver.add(states[0] == STATE_MAP[StateEnum.Unstart])
@@ -152,10 +156,10 @@ def test_terminal_unreachable_without_ongoing(bound):
     result = solver.check()
     if result == sat:
         model = solver.model()
-        reverse_map = {v: k for k, v in STATE_MAP.items()}
-        trace = []
+        reverse_map: dict[int, StateEnum] = {v: k for k, v in STATE_MAP.items()}
+        trace: list[str] = []
         for i in range(bound + 1):
-            val = model[states[i]].as_long()
+            val: int = model[states[i]].as_long()
             trace.append(str(reverse_map.get(val, f"unknown({val})")))
         pytest.fail(f"z3 found trace bypassing Ongoing (bound={bound}): " + " -> ".join(trace))
     else:
@@ -163,20 +167,20 @@ def test_terminal_unreachable_without_ongoing(bound):
 
 
 @pytest.mark.parametrize("num_steps", [1, 3, 5, 9])
-def test_is_flow_success_iff_all_success(num_steps):
+def test_is_flow_success_iff_all_success(num_steps: int) -> None:
     """Verify: is_flow_success() returns True iff ALL steps have state Success.
 
     Must be UNSAT when all_success is combined with any step != Success.
     """
-    step_states = [Int(f"step_{i}") for i in range(num_steps)]
-    success_id = STATE_MAP[StateEnum.Success]
+    step_states: list[ArithRef] = [Int(f"step_{i}") for i in range(num_steps)]
+    success_id: int = STATE_MAP[StateEnum.Success]
 
     solver = Solver()
 
     for s in step_states:
         solver.add(And(s >= 0, s < STATE_COUNT))
 
-    all_success = And(*[s == success_id for s in step_states])
+    all_success: BoolRef = And(*[s == success_id for s in step_states])
 
     # Part A: no assignment makes all_success True when any step is not Success
     solver.push()
@@ -199,15 +203,15 @@ def test_is_flow_success_iff_all_success(num_steps):
 
 def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
     """Create a minimal workspace for testing EngineFlow."""
-    ws_dir = str(tmp_path / "workspace")
+    ws_dir: str = str(tmp_path / "workspace")
     os.makedirs(ws_dir, exist_ok=True)
-    home_dir = os.path.join(ws_dir, "home")
+    home_dir: str = os.path.join(ws_dir, "home")
     os.makedirs(home_dir, exist_ok=True)
     os.makedirs(os.path.join(ws_dir, "log"), exist_ok=True)
 
-    flow_path = os.path.join(home_dir, "flow.json")
+    flow_path: str = os.path.join(home_dir, "flow.json")
 
-    steps = []
+    steps: list[dict[str, object]] = []
     for i in range(num_steps):
         steps.append(
             {
@@ -231,10 +235,10 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
     )
 
 
-def test_clear_states_resets_all(tmp_path):
+def test_clear_states_resets_all(tmp_path: Path) -> None:
     """After clear_states(), every step must be Unstart."""
-    ws = _make_workspace(tmp_path, num_steps=5)
-    flow = EngineFlow(workspace=ws)
+    ws: Workspace = _make_workspace(tmp_path, num_steps=5)
+    flow: EngineFlow = EngineFlow(workspace=ws)
 
     for i, state in enumerate(
         [
@@ -261,17 +265,17 @@ def test_clear_states_resets_all(tmp_path):
 
 
 @pytest.mark.parametrize("fail_index", [0, 1, 2, 3, 4])
-def test_run_steps_stops_on_failure(tmp_path, fail_index):
+def test_run_steps_stops_on_failure(tmp_path: Path, fail_index: int) -> None:
     """Property: if step K fails, steps K+1..N are never executed."""
-    num_steps = 5
-    ws = _make_workspace(tmp_path, num_steps=num_steps)
-    flow = EngineFlow(workspace=ws)
+    num_steps: int = 5
+    ws: Workspace = _make_workspace(tmp_path, num_steps=num_steps)
+    flow: EngineFlow = EngineFlow(workspace=ws)
 
-    executed = []
+    executed: list[int] = []
     for i in range(num_steps):
-        step_dir = os.path.join(ws.directory, f"step_{i}_mock")
+        step_dir: str = os.path.join(ws.directory, f"step_{i}_mock")
         os.makedirs(step_dir, exist_ok=True)
-        output_dir = os.path.join(step_dir, "output")
+        output_dir: str = os.path.join(step_dir, "output")
         os.makedirs(output_dir, exist_ok=True)
 
         ws_step = WorkspaceStep(
@@ -287,10 +291,12 @@ def test_run_steps_stops_on_failure(tmp_path, fail_index):
         )
         flow.workspace_steps.append(ws_step)
 
-    def mock_run_step(workspace_step, rerun=False):
+    def mock_run_step(workspace_step: WorkspaceStep | str, rerun: bool = False) -> StateEnum:
         if isinstance(workspace_step, str):
-            workspace_step = flow.get_workspace_step(workspace_step)
-        idx = int(workspace_step.name.split("_")[1])
+            resolved = flow.get_workspace_step(workspace_step)
+            assert resolved is not None, f"Step '{workspace_step}' not found"
+            workspace_step = resolved
+        idx: int = int(workspace_step.name.split("_")[1])
         executed.append(idx)
 
         if idx == fail_index:
@@ -308,7 +314,7 @@ def test_run_steps_stops_on_failure(tmp_path, fail_index):
         )
         return StateEnum.Success
 
-    flow.run_step = mock_run_step
+    flow.run_step = mock_run_step  # type: ignore[assignment]
     flow.run_steps()
 
     for idx in executed:
