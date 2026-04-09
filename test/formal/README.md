@@ -48,6 +48,23 @@ Verifies `create_step_workspaces()` file chaining invariants. Abstracts file pat
 uv run pytest test/formal/ -v
 ```
 
+## SMT-LIB Export
+
+Use `dump_smt2()` from `test.formal` to export any solver's constraints to
+SMT-LIB2 format for manual review or use with other solvers (cvc5, yices2):
+
+```python
+from z3 import Solver, Int
+from test.formal import dump_smt2
+
+solver = Solver()
+x = Int("x")
+solver.add(x > 0, x < 10)
+dump_smt2(solver, "example")  # writes test/formal/smt2/example.smt2
+```
+
+Output directory: `test/formal/smt2/` (gitignored, generated on demand).
+
 ## Dependencies
 
 - `z3-solver>=4.12` (dev dependency)
