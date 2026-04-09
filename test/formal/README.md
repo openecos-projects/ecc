@@ -60,3 +60,38 @@ These are documented by XFAIL tests with concrete z3 counterexamples:
 2. **Terminal states reachable without Ongoing** -- `Unstart -> Success` in one step
 3. **Silent step skip** -- `create_step_workspaces()` silently continues when `create_step()` returns None, feeding stale data to downstream steps
 4. **No taint tracking** -- steps after a failure can "succeed" on stale input from a pre-failure step
+5. **"File list" key missing from template** -- yosys builder reads `"File list"` via `dict.get()` but ICS55 template does not define it
+
+## Parameter Pipeline Verification
+
+### `test_param_merge.py`
+
+z3 proofs that `update_parameters()` merge logic is correct:
+
+| Test | Method | Status |
+|------|--------|--------|
+| `test_scalar_override_wins` | z3 universally quantified over keys | PASS |
+| `test_absent_keys_preserved` | z3 universally quantified over keys | PASS |
+| `test_list_replaced_not_appended` | z3 universally quantified over keys | PASS |
+| `test_new_key_added` | z3 universally quantified over keys | PASS |
+| `test_nested_dict_merges_not_replaces` | z3 with fixed key layout | PASS |
+| `test_merge_against_real_template_*` | Concrete tests against ICS55 template | PASS |
+
+### `test_param_propagation.py`
+
+Verifies parameters reach tool configs correctly:
+
+| Test | Method | Status |
+|------|--------|--------|
+| `test_key_spelling_matches_template` | String match against ICS55 template | XFAIL (`"File list"` missing) |
+| `test_dead_defaults` | z3 proves config defaults overwritten by builder | PASS (3 dead defaults found) |
+| `test_builder_forced_overrides` | z3 proves forced values are immutable | PASS |
+| `test_propagation_z3` | z3 proves parameter reaches config field | PASS |
+
+### Dead defaults found
+
+These JSON config defaults are always overwritten by the builder with parameter values:
+
+1. `dreamplace.json: target_density=0.8` -- overwritten with parameter default 0.3
+2. `dreamplace.json: routability_opt_flag=0` -- overwritten with parameter default 1
+3. `no_default_config_fixfanout.json: max_fanout=32` -- overwritten with parameter default 20
