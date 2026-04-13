@@ -319,6 +319,22 @@
         ]
       }
     },
+    "@@ecc-dreamplace+//bazel:pkg_config.bzl%pkg_config": {
+      "general": {
+        "bzlTransitiveDigest": "+o3CK4RUhO1SdBQfANsq+5fwAL3SIoDoB1rxinpQ4dQ=",
+        "usagesDigest": "5IhqWTEkfVT3uNjCF0smTptjmt9c+1PPDSqRZnVbask=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "pkg_config_path": {
+            "repoRuleId": "@@ecc-dreamplace+//bazel:pkg_config.bzl%_pkg_config_path_repo",
+            "attributes": {}
+          }
+        },
+        "recordedRepoMappingEntries": []
+      }
+    },
     "@@ecos-bazel+//rules:icsprout55_pdk.bzl%icsprout55_pdk": {
       "general": {
         "bzlTransitiveDigest": "9L/GU4ZBPRMzAS4D2sMr7riOpEHPWftGgdqZSWDfRWo=",
@@ -671,7 +687,7 @@
     },
     "@@rules_python+//python/extensions:config.bzl%config": {
       "general": {
-        "bzlTransitiveDigest": "W97kKxM+lW7l/kO0rQa7Jm31CA1j+W1bNHGKjwX5xMg=",
+        "bzlTransitiveDigest": "9cZw51LLMu2V/jKcxvnA1pBg58ZgQEDuMni3CbNZSRg=",
         "usagesDigest": "ZVSXMAGpD+xzVNPuvF1IoLBkty7TROO0+akMapt1pAg=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
