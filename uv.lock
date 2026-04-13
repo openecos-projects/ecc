@@ -533,6 +533,12 @@ wheels = [
     { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:212139c43f825498968eda10309959b99cd93aec0744d182a17bb5d34b53145e" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "auditwheel" },
+    { name = "uv-build" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "cairocffi", specifier = ">=0.9.0" },
@@ -552,6 +558,12 @@ requires-dist = [
     { name = "statsmodels", specifier = ">=0.13.2" },
     { name = "torch", specifier = ">=1.6.0" },
     { name = "xgboost", specifier = ">=1.5.1" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "auditwheel" },
+    { name = "uv-build", specifier = ">=0.10.9" },
 ]
 
 [[package]]
