@@ -42,8 +42,7 @@ Bazel is used for reproducible release builds and ECC-Tools C++ compilation. Req
 
 ```bash
 bazel build //chipcompiler/thirdparty:ecc_py_cmake       # ECC-Tools C++ build
-bazel build //chipcompiler/thirdparty:dreamplace_cmake    # DreamPlace operators build
-bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so to source tree
+bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so (via @ecc-dreamplace)
 bazel run //bazel/scripts:clean_dreamplace                # Remove installed DreamPlace artifacts
 bazel run //bazel/scripts:prepare_dev                     # Full dev environment setup (ECC + DreamPlace)
 ```
@@ -89,20 +88,9 @@ Common failures:
 - auditwheel policy mismatch (e.g. glibc symbols too new): rebuild on older compatible base or adjust target policy
 - missing runtime libraries: inspect `dist/wheel/reports/show.txt`
 
-### Bazel Wheel Build (DreamPlace + auditwheel)
+### DreamPlace Wheel Build
 
-Build a portable DreamPlace wheel (includes compiled C++ operators, excludes PyTorch/CUDA runtime):
-
-```bash
-bazel build //:dreamplace_raw_wheel    # Sandboxed, cacheable — produces raw .whl
-bazel run //:build_dreamplace_wheel    # auditwheel repair + smoke test
-```
-
-Artifacts output to `dist/wheel/` (shared with ECC wheel). Requirements same as ECC wheel build, plus `torch` in venv.
-
-Common failures:
-- torch lib dir not found: run `uv sync --frozen --all-groups --extra dreamplace --python 3.11`
-- auditwheel not found: run `uv sync --frozen --all-groups --python 3.11 --all-extras`
+DreamPlace has its own standalone build and CI/CD. See `chipcompiler/thirdparty/ecc-dreamplace/` for wheel build instructions.
 
 ### Standalone Executable
 ```bash
