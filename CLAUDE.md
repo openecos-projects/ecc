@@ -19,17 +19,14 @@ pyright chipcompiler/
 
 # Bazel
 bazel build //chipcompiler/thirdparty:ecc_py_cmake       # Build ECC-Tools
-bazel build //chipcompiler/thirdparty:dreamplace_cmake    # Build DreamPlace
-bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so to source tree
+bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so to source tree (via @ecc-dreamplace module)
 bazel run //bazel/scripts:clean_dreamplace                # Remove installed DreamPlace artifacts
 bazel run //bazel/scripts:prepare_dev                     # Full dev environment setup
 ```
 
 # Workflow
 
-`bazel run //:prepare_dev` performs: venv creation (`uv sync`) → ECC-Tools runtime install → DreamPlace `.so` install. After setup: `source .venv/bin/activate`. Use `--jobs=2` on memory-constrained machines.
-
-DreamPlace install is manifest-based (`dreamplace/.install_manifest.txt`): `clean_dreamplace` only removes tracked files, safe for source tree.
+`bazel run //:prepare_dev` performs: venv creation (`uv sync`) -> ECC-Tools runtime install -> DreamPlace `.so` install (built via `@ecc-dreamplace` module). After setup: `source .venv/bin/activate`. Use `--jobs=2` on memory-constrained machines.
 
 ## Integrating a Thirdparty Tool into the Build System
 
@@ -37,7 +34,7 @@ See [docs/development.md — Integrating a Thirdparty Tool into the Build System
 
 # Architecture
 
-`services/` → `rtl2gds/` → `engine/` → `tools/` → `data/` → `utility/`
+`services/` -> `rtl2gds/` -> `engine/` -> `tools/` -> `data/` -> `utility/`
 
 All layers under `chipcompiler/`. GUI and API server are now maintained in `ecos/gui/` and `ecos/server/`.
 
@@ -51,4 +48,4 @@ All layers under `chipcompiler/`. GUI and API server are now maintained in `ecos
 - ECC runtime `.so` deps bundled via `scripts/autopatch-ecc-py.sh` (RPATH `$ORIGIN:$ORIGIN/lib`)
 - Use `--config=ghproxy` for Bazel on restricted networks
 - **Bazel 8 Bzlmod**: This project uses Bzlmod (`MODULE.bazel`), not legacy `WORKSPACE`. `new_local_repository` etc. must be loaded via `use_repo_rule()`, never used as bare globals. Do not use `WORKSPACE`-era idioms.
-- **Do not assume Bazel/Starlark APIs exist** — always verify against the exact Bazel version (currently 8.x) before using an API. For example, `watch_tree` has no `exclude` parameter. If an API doesn't work, investigate alternatives instead of retrying with guessed parameters.
+- **Do not assume Bazel/Starlark APIs exist** -- always verify against the exact Bazel version (currently 8.x) before using an API. For example, `watch_tree` has no `exclude` parameter. If an API doesn't work, investigate alternatives instead of retrying with guessed parameters.
