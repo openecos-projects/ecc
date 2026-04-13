@@ -19,7 +19,7 @@ This runs two steps:
 
 ECC-Tools and DreamPlace are built in parallel by Bazel. On memory-constrained machines, limit parallelism:
 ```bash
-bazel run //:prepare_dev --jobs=2
+bazel run //:prepare_dev --jobs=1
 ```
 
 ### Option 2: Nix Development Shell
@@ -135,7 +135,12 @@ uv run isort chipcompiler/ test/
 uv run pytest test/                                    # All tests
 uv run pytest test/test_tools_yosys_utility.py -v     # Specific file
 uv run pytest test/ --cov=chipcompiler --cov-report=term-missing  # Coverage
+uv run pytest test/formal/ -v                          # Formal verification tests only
 ```
+
+### Formal Verification
+
+z3-based formal verification. See [test/formal/README.md](../test/formal/README.md) for details on the approach, test inventory, and known bugs found.
 
 ## Add a New EDA Tool
 

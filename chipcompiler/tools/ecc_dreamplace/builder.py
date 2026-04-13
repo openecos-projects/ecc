@@ -58,8 +58,19 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     workspace_stop_overflow = workspace.parameters.data.get(
         "stop_overflow", workspace.parameters.data.get("Target overflow", 0.1)
     )
+    workspace_cell_padding_x = workspace.parameters.data.get(
+        "cell_padding_x", workspace.parameters.data.get("Cell padding x", 600)
+    )
+    workspace_routability_opt_flag = workspace.parameters.data.get(
+        "routability_opt_flag",
+        workspace.parameters.data.get("Routability opt flag", 0),
+    )
     params["target_density"] = params.get("target_density", workspace_target_density)
     params["stop_overflow"] = params.get("stop_overflow", workspace_stop_overflow)
+    params["cell_padding_x"] = params.get("cell_padding_x", workspace_cell_padding_x)
+    params["routability_opt_flag"] = params.get(
+        "routability_opt_flag", workspace_routability_opt_flag
+    )
     params["timing_opt_flag"] = 0
     params["timing_eval_flag"] = 0
     params["with_sta"] = 0

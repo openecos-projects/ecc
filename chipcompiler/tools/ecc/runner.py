@@ -534,9 +534,10 @@ def run_floorplan(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value,
                              state=StateEnum.Success)
         
-        json_floorplan = workspace.parameters.data.get("Floorplan", {})
+        floorplan_dict = json_read(step.config.get(StepEnum.FLOORPLAN.value, ""))
         
         # create tracks
+        json_floorplan = floorplan_dict.get("Floorplan", {})
         json_track = json_floorplan.get("Tracks", [])
         for item in json_track:
             eda_inst.gern_track(layer=item.get("layer", ""),
@@ -548,7 +549,7 @@ def run_floorplan(workspace: Workspace,
                              state=StateEnum.Success)
         
         # PDN
-        json_PDN = workspace.parameters.data.get("PDN", {})
+        json_PDN = floorplan_dict.get("PDN", {})
         
         # IO placement
         json_io_pins = json_PDN.get("IO", {})
@@ -601,27 +602,27 @@ def run_floorplan(workspace: Workspace,
                                      offset=offset)
         
         # PDN stripe
-        # json_pdn_stripe = json_PDN.get("Stripe", {})
-        # for item in json_pdn_stripe:
-        #     layer = item.get("layer", "")
-        #     power_net = item.get("power net", "")
-        #     ground_net = item.get("ground net", "")
-        #     width = item.get("width", 0)
-        #     pitch = item.get("pitch", 0)
-        #     offset = item.get("offset", 0)
-        #     eda_inst.create_pdn_stripe(layer=layer,
-        #                                net_power=power_net,
-        #                                net_ground=ground_net,
-        #                                width=width,
-        #                                pitch=pitch,
-        #                                offset=offset)
+        json_pdn_stripe = json_PDN.get("Stripe", {})
+        for item in json_pdn_stripe:
+            layer = item.get("layer", "")
+            power_net = item.get("power net", "")
+            ground_net = item.get("ground net", "")
+            width = item.get("width", 0)
+            pitch = item.get("pitch", 0)
+            offset = item.get("offset", 0)
+            eda_inst.create_pdn_stripe(layer=layer,
+                                       net_power=power_net,
+                                       net_ground=ground_net,
+                                       width=width,
+                                       pitch=pitch,
+                                       offset=offset)
             
-        # # PDN connect layers
-        # json_pdn_connect_layers= json_PDN.get("Connect layers", [])
-        # for item in json_pdn_connect_layers:
-        #     layers = item.get("layers", [])
-        #     if len(layers) >= 2:
-        #         eda_inst.connect_pdn_layers(layers)
+        # PDN connect layers
+        json_pdn_connect_layers= json_PDN.get("Connect layers", [])
+        for item in json_pdn_connect_layers:
+            layers = item.get("layers", [])
+            if len(layers) >= 2:
+                eda_inst.connect_pdn_layers(layers)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.PDN.value,
                              state=StateEnum.Success)

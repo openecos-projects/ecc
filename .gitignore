@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Generated SMT-LIB dumps from formal verification tests
+test/formal/smt2/
+
 # C extensions
 *.so
 

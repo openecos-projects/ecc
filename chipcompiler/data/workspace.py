@@ -382,6 +382,9 @@ def load_workspace(directory : str) -> Workspace:
     workspace.directory = directory
 
     parameters = load_parameter(f"{directory}/home/parameters.json")
+    if len(parameters.data)<=0:
+        return None
+    
     workspace.parameters = parameters
     
     pdk = get_pdk(

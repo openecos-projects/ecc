@@ -52,7 +52,7 @@ genrule(
             cp "$$src" "$$STAGE/$$src"
         done
         tar -xf "$$BUNDLE" -C "$$STAGE"
-        "$$UV" build --wheel --directory "$$STAGE" --out-dir "$$STAGE/_dist"
+        "$$UV" build --wheel --directory "$$STAGE" --out-dir "$$STAGE/_dist" --cache-dir "$$STAGE/.uv-cache"
         cp "$$STAGE"/_dist/*.whl "$@"
     """,
 )
