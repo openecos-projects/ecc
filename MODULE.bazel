@@ -35,12 +35,12 @@ uv_export(
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
-    hub_name = "pypi",
+    hub_name = "ecc_pypi",
     python_version = "3.11",
     requirements_lock = "@uv_requirements//:requirements_lock.txt",
     extra_pip_args = ["--extra-index-url=https://download.pytorch.org/whl/cpu"],
 )
-use_repo(pip, "pypi")
+use_repo(pip, "ecc_pypi")
 
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_file(
