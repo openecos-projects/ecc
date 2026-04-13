@@ -26,23 +26,20 @@ from chipcompiler.engine import (
 
 def test_ics55_gcd():
     workspace_dir="{}/test/examples/ics55_gcd_tool".format(root)
-    
-    workspace_dir = f"/nfs/share/home/qiming/ecc-workspace/workspace2"
 
     input_def = ""
     input_verilog = "{}/test/fixtures/gcd/gcd.v".format(root) # RTL file
     parameters=get_design_parameters("ics55", "gcd")
     pdk = get_pdk("ics55")
 
-    # workspace = create_workspace(
-    #     directory=workspace_dir,
-    #     origin_def=input_def,
-    #     origin_verilog=input_verilog,
-    #     pdk=pdk,
-    #     parameters=parameters
-    # )
-    workspace = load_workspace("/nfs/share/home/qiming/ecc-workspace/workspace2")
-    
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def=input_def,
+        origin_verilog=input_verilog,
+        pdk=pdk,
+        parameters=parameters
+    )
+    # workspace = load_workspace(workspace_dir)
     
     
     engine_flow = EngineFlow(workspace=workspace)

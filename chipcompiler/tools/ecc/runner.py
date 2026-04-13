@@ -534,9 +534,10 @@ def run_floorplan(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value,
                              state=StateEnum.Success)
         
-        json_floorplan = workspace.parameters.data.get("Floorplan", {})
+        floorplan_dict = json_read(step.config.get(StepEnum.FLOORPLAN.value, ""))
         
         # create tracks
+        json_floorplan = floorplan_dict.get("Floorplan", {})
         json_track = json_floorplan.get("Tracks", [])
         for item in json_track:
             eda_inst.gern_track(layer=item.get("layer", ""),
@@ -548,7 +549,7 @@ def run_floorplan(workspace: Workspace,
                              state=StateEnum.Success)
         
         # PDN
-        json_PDN = workspace.parameters.data.get("PDN", {})
+        json_PDN = floorplan_dict.get("PDN", {})
         
         # IO placement
         json_io_pins = json_PDN.get("IO", {})

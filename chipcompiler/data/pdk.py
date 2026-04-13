@@ -75,7 +75,7 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
     ))
     stdcell_dir = "{}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100".format(resolved_root)
 
-    tech_path = "{}/prtech/techLEF/N551P6M.lef".format(resolved_root)
+    tech_path = "{}/prtech/techLEF/N551P6M_ecos.lef".format(resolved_root)
     lef_paths = [
         "{}/ics55_LLSC_H7CR/lef/ics55_LLSC_H7CR_ecos.lef".format(stdcell_dir),
         "{}/ics55_LLSC_H7CL/lef/ics55_LLSC_H7CL_ecos.lef".format(stdcell_dir)
