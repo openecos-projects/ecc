@@ -48,7 +48,8 @@ dev = [
   "pytest-cov>=4",
   "ruff>=0.14.10",
   "ty>=0.0.9",
-  "uv-build>=0.10.9,<0.11.0"
+  "uv-build>=0.10.9,<0.11.0",
+  "z3-solver>=4.12",
 ]
 
 [project.optional-dependencies]
@@ -92,6 +93,10 @@ lint.select = [
   "UP",  # pyupgrade
 ]
 extend-include = ["*.spec"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+norecursedirs = ["bazel-bin", "bazel-out", "bazel-ecc", "bazel-testlogs", ".venv"]
 
 [tool.ty]
 environment.python-version = "3.11"
