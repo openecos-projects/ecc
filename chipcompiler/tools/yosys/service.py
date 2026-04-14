@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import os
 from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, save_metrics
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.utility import dict_to_str
@@ -27,7 +28,9 @@ def get_step_info(workspace: Workspace,
             step_info = build_maps(workspace=workspace, step=step)
         case "checklist":
             step_info = build_checklist(workspace=workspace, step=step)
-            
+        case "config":
+            step_info = build_config(workspace=workspace, step=step)
+
     workspace.logger.log_section(f"[yosys] get step info, id = {id}")
     workspace.logger.info(f"{dict_to_str(step_info)}")
 
@@ -66,6 +69,13 @@ def build_subflow(workspace: Workspace,
     }
     
     return info
+
+
+def build_config(workspace: Workspace, step: WorkspaceStep) -> dict:
+    path = (step.config or {}).get("flow", "")
+    if not path and step.directory:
+        path = os.path.join(step.directory, "config", "flow_config.json")
+    return {"path": path}
 
 def build_analysis(workspace: Workspace, 
                    step: WorkspaceStep) -> dict:          
