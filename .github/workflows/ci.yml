@@ -82,6 +82,11 @@ jobs:
       - name: Install Python dependencies (uv)
         run: uv sync --frozen --all-groups --python 3.11
 
+      - name: Install ecc-dreamplace from release wheel
+        run: >
+          uv pip install --no-deps
+          https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha/ecc_dreamplace-0.1.0a0-py3-none-manylinux_2_39_x86_64.whl
+
       - name: Install frontend dependencies
         working-directory: gui
         run: pnpm install
