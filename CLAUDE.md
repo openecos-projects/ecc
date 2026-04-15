@@ -28,6 +28,8 @@ bazel run //bazel/scripts:prepare_dev                     # Full dev environment
 
 `bazel run //:prepare_dev` performs: venv creation (`uv sync`) -> ECC-Tools runtime install -> DreamPlace `.so` install (built via `@ecc-dreamplace` module). After setup: `source .venv/bin/activate`. Use `--jobs=2` on memory-constrained machines.
 
+Release builds (via parent `make build`) download a pre-built DreamPlace wheel from GitHub Releases instead of building from source. The CI workflow uses `uv pip install --no-deps <wheel-url>` directly.
+
 ## Integrating a Thirdparty Tool into the Build System
 
 See [docs/development.md — Integrating a Thirdparty Tool into the Build System](docs/development.md#integrating-a-thirdparty-tool-into-the-build-system) for the full guide (dual-build strategy, Bazel targets, manifest-based install, pitfalls).

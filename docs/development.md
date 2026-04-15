@@ -15,7 +15,7 @@ bazel run //:prepare_dev
 This runs two steps:
 1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv
 2. Builds and extracts the ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
-3. Builds and installs DreamPlace operators → `chipcompiler/thirdparty/ecc-dreamplace/dreamplace/ops/`
+3. Builds and installs DreamPlace operators (source build, dev only) → `chipcompiler/thirdparty/ecc-dreamplace/dreamplace/ops/`
 
 ECC-Tools and DreamPlace are built in parallel by Bazel. On memory-constrained machines, limit parallelism:
 ```bash
@@ -90,7 +90,19 @@ Common failures:
 
 ### DreamPlace Wheel Build
 
-DreamPlace has its own standalone build and CI/CD. See `chipcompiler/thirdparty/ecc-dreamplace/` for wheel build instructions.
+DreamPlace has its own standalone build, CI/CD, and release pipeline.
+
+- **Dev mode**: `bazel run //:prepare_dev` builds .so files from source and installs them into the source tree.
+  `uv sync --extra dreamplace` resolves via workspace member.
+
+- **Release mode**: A pre-built wheel is downloaded from
+  [GitHub Releases](https://github.com/openecos-projects/ecc-dreamplace/releases).
+  The parent `Makefile` (`make build`) fetches it automatically via the
+  `_download_dreamplace_wheel` target. The CI workflow installs it directly:
+
+  ```bash
+  uv pip install --no-deps https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha/ecc_dreamplace-0.1.0a0-py3-none-manylinux_2_39_x86_64.whl
+  ```
 
 ### Standalone Executable
 ```bash
