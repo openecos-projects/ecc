@@ -36,7 +36,9 @@ def get_step_info(workspace: Workspace,
             step_info = build_checklist(workspace=workspace, step=step)
         case "sta":
             step_info = build_sta(workspace=workspace, step=step)
-            
+        case "config":
+            step_info = build_config(workspace=workspace, step=step)
+
     workspace.logger.log_section(f"[ecc] get step info, id = {id}")
     workspace.logger.info(f"{dict_to_str(step_info)}")
 
@@ -81,6 +83,18 @@ def build_subflow(workspace: Workspace,
         "path" : step.subflow.get("path", "")
     }
     
+    return info
+
+def build_config(workspace: Workspace,
+                 step: WorkspaceStep) -> dict:
+    cfg = step.config or {}
+    info = {
+        "flow": cfg.get("flow", ""),
+    }
+    if not info["flow"] and info["dir"]:
+        info["flow"] = os.path.join(info["dir"], "flow_config.json")
+    elif not info["flow"] and step.directory:
+        info["flow"] = os.path.join(step.directory, "config", "flow_config.json")
     return info
 
 def build_analysis(workspace: Workspace, 
