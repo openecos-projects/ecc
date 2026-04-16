@@ -30,7 +30,8 @@ def test_ics55_gcd():
     input_def = ""
     input_verilog = "{}/test/fixtures/gcd/gcd.v".format(root) # RTL file
     parameters=get_design_parameters("ics55", "gcd")
-    pdk = get_pdk("ics55")
+    pdk = get_pdk(pdk_name= "ics55", 
+                  pdk_root="{}/../icsprout55-pdk".format(root))
 
     workspace = create_workspace(
         directory=workspace_dir,
