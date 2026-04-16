@@ -24,6 +24,7 @@ class EccSubFlowEnum(Enum):
     run_routing = "run routing"
     run_filler = "run filler"
     run_DRC = "run DRC"
+    run_harden = "run harden"
 
 import time
 

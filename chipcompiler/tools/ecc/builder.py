@@ -58,13 +58,17 @@ def build_step(workspace: Workspace,
         output_gds = f"{step.directory}/output/{workspace.design.name}_{step.name}.gds"
     output_image = f"{step.directory}/output/{workspace.design.name}_{step.name}.png"
     output_json = f"{step.directory}/output/{workspace.design.name}_{step.name}.json"
+    output_lef = f"{step.directory}/output/{workspace.design.name}_{step.name}.lef"
+    output_lib = f"{step.directory}/output/{workspace.design.name}_{step.name}.lib"
     step.output = {
         "dir": f"{step.directory}/output",
         "def": output_def,
         "verilog": output_verilog,
         "gds": output_gds,
         "image": output_image,
-        "json" : output_json
+        "json" : output_json,
+        "lef" : output_lef,
+        "lib" : output_lib
     }
     
     # build data paths

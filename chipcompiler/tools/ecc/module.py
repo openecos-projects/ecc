@@ -474,6 +474,9 @@ class ECCToolsModule:
     ########################################################################
     # STA api
     ########################################################################
+    def run_sta(self, output_dir: str):
+        return self.ecc.run_sta(output=output_dir)
+
     def init_sta(self,
                  output_dir : str,
                  top_module : str,
@@ -487,15 +490,86 @@ class ECCToolsModule:
         # self.ecc.read_liberty(lib_paths)
         # self.ecc.link_design(top_module)
         # self.ecc.read_sdc(sdc_path)
+
+    def report_sta(self, output=None):
+        if output is None:
+            return self.ecc.report_sta()
+        return self.ecc.report_sta(output)
+
+    def init_log(self, log_dir: str):
+        return self.ecc.init_log(log_dir)
+
+    def set_design_workspace(self, design_workspace: str):
+        return self.ecc.set_design_workspace(design_workspace)
+
+    def read_lef_def(self, lef_files: list[str], def_file: str):
+        return self.ecc.read_lef_def(lef_files, def_file)
+
+    def read_netlist(self, file_name: str):
+        return self.ecc.read_netlist(file_name)
         
     def read_liberty(self, lib_paths : list[str]):
-        self.ecc.read_liberty(lib_paths)
+        return self.ecc.read_liberty(lib_paths)
         
     def link_design(self, design : str):
-        self.ecc.link_design(design)
+        return self.ecc.link_design(design)
+
+    def read_spef(self, file_name: str):
+        return self.ecc.read_spef(file_name)
 
     def read_sdc(self, sdc_path : str):
-        self.ecc.read_sdc(sdc_path)
+        return self.ecc.read_sdc(sdc_path)
+
+    def get_net_name(self, pin_port_name: str):
+        return self.ecc.get_net_name(pin_port_name)
+
+    def get_segment_capacitance(
+        self,
+        layer_id: int,
+        segment_length: double,
+        route_layer_id: int,
+    ):
+        return self.ecc.get_segment_capacitance(
+            layer_id,
+            segment_length,
+            route_layer_id,
+        )
+
+    def get_segment_resistance(
+        self,
+        layer_id: int,
+        segment_length: double,
+        route_layer_id: int,
+    ):
+        return self.ecc.get_segment_resistance(
+            layer_id,
+            segment_length,
+            route_layer_id,
+        )
+
+    def make_rc_tree_inner_node(self, net_name: str, node_id: int, cap: float):
+        return self.ecc.make_rc_tree_inner_node(net_name, node_id, cap)
+
+    def make_rc_tree_obj_node(self, pin_port_name: str, cap: float):
+        return self.ecc.make_rc_tree_obj_node(pin_port_name, cap)
+
+    def make_rc_tree_edge(self, net_name: str, node1: str, node2: str, res: float):
+        return self.ecc.make_rc_tree_edge(net_name, node1, node2, res)
+
+    def update_rc_tree_info(self, net_name: str):
+        return self.ecc.update_rc_tree_info(net_name)
+
+    def update_timing(self):
+        return self.ecc.update_timing()
+
+    def write_abstract_lef(self, output_lef_path: str):
+        return self.ecc.write_abstract_lef(output_lef_path)
+
+    def write_timing_model(
+        self,
+        output_lib_path: str,
+        analysis_mode: str = "max"):
+        return self.ecc.write_timing_model(output_lib_path, analysis_mode)
         
     def create_data_flow(self):
         self.ecc.create_data_flow()
@@ -538,6 +612,18 @@ class ECCToolsModule:
             to_list=to_list,
             is_json=is_json,
         )
+
+    def build_timing_graph(self):
+        return self.ecc.build_timing_graph()
+
+    def update_clock_timing(self):
+        return self.ecc.update_clock_timing()
+
+    def convert_idb_to_timing_netlist(self):
+        return self.ecc.convert_idb_to_timing_netlist()
+
+    def get_wire_timing_data(self, n_worst_path_per_clock: int):
+        return self.ecc.get_wire_timing_data(n_worst_path_per_clock)
         
     ########################################################################
     # timing opt api
@@ -590,8 +676,7 @@ class ECCToolsModule:
         return self.ecc.run_no_fixfanout(config)
     
     def build_rc_tree_from_flat_data(self, *args, **kwargs):
-        raise NotImplementedError("ecc dreamplace STA bridge is not implemented in this runtime")
+        return self.ecc.build_rc_tree_from_flat_data(*args, **kwargs)
 
     def update_and_get_all_pin_timings(self, *args, **kwargs):
-        raise NotImplementedError("ecc dreamplace STA bridge is not implemented in this runtime")
-
+        return self.ecc.update_and_get_all_pin_timings(*args, **kwargs)

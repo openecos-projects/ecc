@@ -172,7 +172,12 @@ def run_step(workspace: Workspace,
         case StepEnum.FILLER.value:
             state = run_filler(workspace=workspace, 
                                step=step, 
-                               ecc_module=ecc_module)      
+                               ecc_module=ecc_module)  
+        case StepEnum.HARDEN.value:
+            state = run_harden(workspace=workspace,
+                               step=step, 
+                               ecc_module=ecc_module)
+                
     return state
 
 def run_analysis(workspace: Workspace,
@@ -644,3 +649,30 @@ def run_floorplan(workspace: Workspace,
         return reslut
     
     return False 
+
+def run_harden(workspace: Workspace,
+               step: WorkspaceStep,
+               ecc_module : ECCToolsModule = None) -> bool:
+    """
+    run harden, save design as Lef Macro and extract lib
+    """
+    reslut = False
+    
+    sub_flow = EccSubFlow(workspace=workspace,
+                          workspace_step=step)
+    
+    eda_inst = get_eda_instance(workspace=workspace,
+                                step=step,
+                                ecc_module = ecc_module)
+    
+    if eda_inst is not None:
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+        
+        eda_inst.write_abstract_lef(output_lef_path=step.output.get("lef", ""))
+        eda_inst.write_timing_model(output_lib_path=step.output.get("lib", ""))
+        
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
+        
+        reslut = True
+    
+    return reslut
