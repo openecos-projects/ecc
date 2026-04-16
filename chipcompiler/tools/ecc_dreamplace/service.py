@@ -24,6 +24,9 @@ def get_step_info(workspace: Workspace,
                                   step=step,
                                   id=id)
     
+    if id == "config":
+        step_info["config"] = step.config.get("dreamplace", "")
+    
     workspace.logger.log_section(f"[ecc dreamplace] get step info, id = {id}")
     workspace.logger.info(f"{dict_to_str(step_info)}")
     

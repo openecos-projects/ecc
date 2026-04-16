@@ -89,12 +89,9 @@ def build_config(workspace: Workspace,
                  step: WorkspaceStep) -> dict:
     cfg = step.config or {}
     info = {
-        "flow": cfg.get("flow", ""),
+        "config": cfg.get(f"{step.name}", ""),
     }
-    if not info["flow"] and info["dir"]:
-        info["flow"] = os.path.join(info["dir"], "flow_config.json")
-    elif not info["flow"] and step.directory:
-        info["flow"] = os.path.join(step.directory, "config", "flow_config.json")
+
     return info
 
 def build_analysis(workspace: Workspace, 
