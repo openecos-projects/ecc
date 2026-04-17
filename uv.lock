@@ -536,7 +536,6 @@ wheels = [
 [package.dev-dependencies]
 dev = [
     { name = "auditwheel" },
-    { name = "uv-build" },
 ]
 
 [package.metadata]
@@ -561,10 +560,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "auditwheel" },
-    { name = "uv-build", specifier = ">=0.10.9" },
-]
+dev = [{ name = "auditwheel" }]
 
 [[package]]
 name = "ecc-tools"
