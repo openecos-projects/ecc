@@ -9,18 +9,20 @@ class ECCToolsModule:
     """
     def __init__(self):
         try:
-            from chipcompiler.tools.ecc.utility import is_eda_exist
-            if is_eda_exist():
+            from ecc_tools_bin import ecc_py as ecc
+        except ImportError:
+            try:
                 from chipcompiler.tools.ecc.bin import ecc_py as ecc
-        except ImportError as exc:
-            ecc_bin_dir = Path(__file__).resolve().parent / "bin"
-            candidates = sorted(p.name for p in ecc_bin_dir.glob("ecc_py*.so"))
-            raise ImportError(
-                "ecc tool is not installed or not found. "
-                f"Import error: {exc}. "
-                f"Available ecc_py binaries in {ecc_bin_dir}: {candidates}"
-            ) from exc
-    
+            except ImportError as exc:
+                ecc_bin_dir = Path(__file__).resolve().parent / "bin"
+                candidates = sorted(p.name for p in ecc_bin_dir.glob("ecc_py*.so"))
+                raise ImportError(
+                    "ecc-tools is not installed. Install the ecc-tools wheel or "
+                    "build from source with: bazel run //:prepare_dev. "
+                    f"Import error: {exc}. "
+                    f"Available ecc_py binaries in {ecc_bin_dir}: {candidates}"
+                ) from exc
+
         self.ecc = ecc
 
     def get_ecc(self):
