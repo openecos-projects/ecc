@@ -101,7 +101,7 @@ DreamPlace has its own standalone build, CI/CD, and release pipeline.
   `_download_dreamplace_wheel` target. The CI workflow installs it directly:
 
   ```bash
-  uv pip install --no-deps https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha/ecc_dreamplace-0.1.0a0-py3-none-manylinux_2_39_x86_64.whl
+  uv pip install --no-deps https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl
   ```
 
 ### Standalone Executable

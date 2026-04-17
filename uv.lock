@@ -510,7 +510,7 @@ dev = [
 
 [[package]]
 name = "ecc-dreamplace"
-version = "0.1.0"
+version = "0.1.0a0"
 source = { editable = "chipcompiler/thirdparty/ecc-dreamplace" }
 dependencies = [
     { name = "cairocffi" },
@@ -537,7 +537,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "auditwheel" },
-    { name = "uv-build" },
 ]
 
 [package.metadata]
@@ -562,10 +561,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "auditwheel" },
-    { name = "uv-build", specifier = ">=0.10.9" },
-]
+dev = [{ name = "auditwheel" }]
 
 [[package]]
 name = "entrypoint2"
