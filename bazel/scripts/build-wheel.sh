@@ -50,7 +50,7 @@ raw_out="$out_root/raw"
 repair_out="$out_root/repaired"
 report_out="$out_root/reports"
 mkdir -p "$raw_out" "$repair_out" "$report_out"
-# Clean only ecc wheels (not ecc_dreamplace) to preserve prior dreamplace build
+# Clean only ecc wheels to preserve prior build
 rm -f "$raw_out"/ecc-*.whl "$repair_out"/ecc-*.whl
 show_report="$report_out/show.txt"
 : > "$show_report"
@@ -77,7 +77,7 @@ for whl in "$local_raw_whl"; do
     "$auditwheel_bin" repair "$whl" -w "$repair_out"
 done
 
-# Find only the ecc repaired wheel (not ecc_dreamplace)
+# Find only the ecc repaired wheel
 shopt -s nullglob
 repaired_wheels=("$repair_out"/ecc-*.whl)
 if [[ ${#repaired_wheels[@]} -eq 0 ]]; then
