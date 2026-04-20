@@ -666,6 +666,10 @@ def run_harden(workspace: Workspace,
                                 ecc_module = ecc_module)
     
     if eda_inst is not None:
+        eda_inst.init_sta(output_dir=step.data["sta"],
+                              top_module=workspace.design.top_module,
+                              lib_paths=workspace.pdk.libs,
+                              sdc_path=workspace.pdk.sdc)
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.write_abstract_lef(output_lef_path=step.output.get("lef", ""))

@@ -203,6 +203,10 @@ class EngineFlow:
             case StepEnum.SYNTHESIS.value:
                 if os.path.exists(workspace_step.output.get("verilog", "")):
                     success = True
+            case StepEnum.HARDEN.value:
+                if os.path.exists(workspace_step.output.get("lef", "")) and \
+                    os.path.exists(workspace_step.output.get("lib", "")):
+                    success = True
             case default:
                 if os.path.exists(workspace_step.output.get("def", "")) and \
                     os.path.exists(workspace_step.output.get("verilog", "")) and \
