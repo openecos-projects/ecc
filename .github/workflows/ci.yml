@@ -2,107 +2,43 @@ name: CI
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - 'main'
-  # pull_request:
+  push:
+    branches:
+      - main
+  pull_request:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
-  GH_TOKEN: ${{ secrets.GH_TOKEN }}
-  SCCACHE_GHA_ENABLED: "true"
-  RUSTC_WRAPPER: "sccache"
   UV_PYTHON_PREFERENCE: only-managed
+  ECC_DREAMPLACE_WHEEL_URL: https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl
+  ECC_TOOLS_WHEEL_URL: https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha/ecc_tools-0.1.0a0-py3-none-manylinux_2_34_x86_64.whl
 
 jobs:
-  build-package:
-    name: Build Package
+  ci:
+    name: Checks And Build
     runs-on: ubuntu-latest
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          # this might remove tools that are actually needed,
-          # if set to "true" but frees about 6 GB
-          tool-cache: true
-
-          # feel free to set to "false" if necessary for your workflow
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: false
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          token: ${{ env.GH_TOKEN }}
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Convert SSH to HTTPS in gitmodules
-        run: sed -i 's/git@github.com:/https:\/\/github.com\//' .gitmodules
-
-      - name: Configure git credentials
-        run: |
-          git config --global url."https://${{ env.GH_TOKEN }}@github.com/".insteadOf "https://github.com/"
-
-      - name: Checkout submodules
-        run: git submodule update --init --recursive
+          submodules: recursive
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: gui/pnpm-lock.yaml
+          python-version: "3.11"
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
         with:
           version: latest
           enable-cache: "true"
-
-      - name: Install Python dependencies (uv)
-        run: uv sync --frozen --all-groups --python 3.11
-
-      - name: Install ecc-dreamplace from release wheel
-        run: >
-          uv pip install --no-deps
-          https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl
-
-      - name: Install frontend dependencies
-        working-directory: gui
-        run: pnpm install
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build build-essential unzip pkg-config \
-            libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libfuse2 \
-            patchelf squashfs-tools desktop-file-utils libwebkit2gtk-4.1-dev
-
-          sudo apt-get install -y g++-10 \
-            tcl-dev libgflags-dev libgoogle-glog-dev libboost-all-dev libgtest-dev \
-            flex libeigen3-dev libunwind-dev libmetis-dev libgmp-dev bison \
-            libhwloc-dev libcairo2-dev libcurl4-openssl-dev libtbb-dev git \
-            libftdi1-2 libhidapi-hidraw0 librsvg2-dev
 
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.14.0
@@ -111,28 +47,45 @@ jobs:
           disk-cache: ${{ github.workflow }}
           repository-cache: true
 
-      - name: Build release (packaging test)
-        env:
-          ENABLE_OSS_CAD_SUITE: "true"
-          CARGO_PROFILE_RELEASE_STRIP: "false"
-          APPIMAGE_EXTRACT_AND_RUN: "1"
+      - name: Install Python dependencies
+        run: uv sync --frozen --all-groups --python 3.11
+
+      - name: Install release wheels for native toolchains
         run: |
-          bazel build //:release_bundle
-          mkdir -p _bundle_out
-          tar -xf bazel-bin/tauri_bundle/tauri_bundle.tar -C _bundle_out
+          uv pip install --python .venv/bin/python --no-deps "${ECC_DREAMPLACE_WHEEL_URL}"
+          uv pip install --python .venv/bin/python --no-deps "${ECC_TOOLS_WHEEL_URL}"
 
-      - name: Upload AppImage artifacts
+      - name: Smoke test native toolchain wheels
+        run: |
+          .venv/bin/python - <<'PY'
+          import ecc_tools_bin.ecc_py  # noqa: F401
+          from dreamplace.Params import Params  # noqa: F401
+          from dreamplace.Placer import PlacementEngine  # noqa: F401
+
+          print("ecc-tools and ecc-dreamplace imports passed")
+          PY
+
+      # - name: Ruff format check
+      #   run: uv run ruff format --check chipcompiler test
+
+      # - name: Ruff lint
+      #   run: uv run ruff check chipcompiler test
+
+      # - name: Pyright
+      #   run: uv run pyright chipcompiler
+
+      # - name: Pytest
+      #   run: uv run pytest test/ --cov=chipcompiler --cov-report=term-missing
+
+      - name: Build distributable wheel
+        run: bazel run //:build_wheel
+
+      - name: Upload wheel artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: appimage
+          name: ecc-wheel
           if-no-files-found: ignore
-          path: _bundle_out/**/*.AppImage
-
-      - name: Upload deb artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: deb
-          if-no-files-found: ignore
-          path: _bundle_out/**/*.deb
+          path: |
+            dist/wheel/repaired/*.whl
+            dist/wheel/SHA256SUMS
