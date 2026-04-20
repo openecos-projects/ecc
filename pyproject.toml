@@ -20,6 +20,8 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
+  "ecc-dreamplace==0.1.0a1",
+  "ecc-tools==0.1.0a0",
   "fastapi>=0.109",
   "klayout>=0.30.2",
   "matplotlib>=3.4",
@@ -30,6 +32,7 @@ dependencies = [
   "pyjson5>=1.6",
   "pyyaml>=6",
   "scipy>=1.7",
+  "torch>=1.6.0",
   "tqdm>=4.67.1",
   "uvicorn>=0.27",
 ]
@@ -52,9 +55,6 @@ dev = [
   "z3-solver>=4.12",
 ]
 
-[project.optional-dependencies]
-dreamplace = ["ecc-dreamplace"]
-
 [tool.uv]
 constraint-dependencies = [
   "llvmlite>=0.40.0",
@@ -71,7 +71,9 @@ build-backend.wheel-exclude = [
 ]
 
 [tool.uv.workspace]
-members = ["chipcompiler/thirdparty/ecc-dreamplace"]
+members = [
+  "chipcompiler/thirdparty/ecc-tools",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -79,7 +81,8 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
-ecc-dreamplace = { workspace = true }
+ecc-dreamplace = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" }
+ecc-tools = { workspace = true }
 torch = { index = "pytorch-cpu" }
 
 [tool.ruff]
