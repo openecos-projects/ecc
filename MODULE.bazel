@@ -31,17 +31,16 @@ uv_export = use_repo_rule("@ecos-bazel//rules:uv_export.bzl", "uv_export")
 uv_export(
     name = "uv_requirements",
     uv_lock = "//:uv.lock",
-    extras = ["dreamplace"],
 )
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
-    hub_name = "pypi",
+    hub_name = "ecc_pypi",
     python_version = "3.11",
     requirements_lock = "@uv_requirements//:requirements_lock.txt",
     extra_pip_args = ["--extra-index-url=https://download.pytorch.org/whl/cpu"],
 )
-use_repo(pip, "pypi")
+use_repo(pip, "ecc_pypi")
 
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_file(
@@ -70,13 +69,10 @@ local_source_repo(
     path = "chipcompiler/thirdparty/ecc-tools",
 )
 
-# DreamPlace source tree. No nested BUILD files to strip, so new_local_repository
-# suffices. The BUILD template excludes *.so build artifacts via glob(exclude=...).
-new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
-new_local_repository(
-    name = "dreamplace_src",
+bazel_dep(name = "ecc-dreamplace", version = "0.1.0")
+local_path_override(
+    module_name = "ecc-dreamplace",
     path = "chipcompiler/thirdparty/ecc-dreamplace",
-    build_file = "//chipcompiler/thirdparty:dreamplace.BUILD.bazel",
 )
 
 multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")

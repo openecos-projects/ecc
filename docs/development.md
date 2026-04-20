@@ -13,9 +13,9 @@ bazel run //:prepare_dev
 ```
 
 This runs two steps:
-1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv
+1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv and installs the locked `ecc-dreamplace` and `ecc-tools` wheels
 2. Builds and extracts the ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
-3. Builds and installs DreamPlace operators → `chipcompiler/thirdparty/ecc-dreamplace/dreamplace/ops/`
+3. Builds and installs DreamPlace operators (source build, dev only) → `chipcompiler/thirdparty/ecc-dreamplace/dreamplace/ops/`
 
 ECC-Tools and DreamPlace are built in parallel by Bazel. On memory-constrained machines, limit parallelism:
 ```bash
@@ -42,8 +42,7 @@ Bazel is used for reproducible release builds and ECC-Tools C++ compilation. Req
 
 ```bash
 bazel build //chipcompiler/thirdparty:ecc_py_cmake       # ECC-Tools C++ build
-bazel build //chipcompiler/thirdparty:dreamplace_cmake    # DreamPlace operators build
-bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so to source tree
+bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so (via @ecc-dreamplace)
 bazel run //bazel/scripts:clean_dreamplace                # Remove installed DreamPlace artifacts
 bazel run //bazel/scripts:prepare_dev                     # Full dev environment setup (ECC + DreamPlace)
 ```
@@ -89,28 +88,104 @@ Common failures:
 - auditwheel policy mismatch (e.g. glibc symbols too new): rebuild on older compatible base or adjust target policy
 - missing runtime libraries: inspect `dist/wheel/reports/show.txt`
 
-### Bazel Wheel Build (DreamPlace + auditwheel)
+### DreamPlace Wheel Build
 
-Build a portable DreamPlace wheel (includes compiled C++ operators, excludes PyTorch/CUDA runtime):
+DreamPlace has its own standalone build, CI/CD, and release pipeline.
 
-```bash
-bazel build //:dreamplace_raw_wheel    # Sandboxed, cacheable — produces raw .whl
-bazel run //:build_dreamplace_wheel    # auditwheel repair + smoke test
+- **Default dev mode**: `uv sync --frozen --all-groups --python 3.11` installs the locked DreamPlace and ECC-Tools wheels into `.venv`.
+  `bazel run //:prepare_dev` still builds the source-tree operators so source debug mode can override imports when needed.
+
+- **Release mode**: A pre-built wheel is downloaded from
+  [GitHub Releases](https://github.com/openecos-projects/ecc-dreamplace/releases).
+  The parent `Makefile` (`make build`) fetches it automatically via the
+  `_download_dreamplace_wheel` target. The CI workflow installs it directly:
+
+  ```bash
+  uv pip install --no-deps https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl
+  ```
+
+### DreamPlace Debug Modes
+
+ECC currently uses two different DreamPlace modes during development:
+
+- **Default mode**: `ecc-dreamplace` is installed into `.venv` from a wheel. Runtime imports resolve to
+  `.venv/lib/python3.11/site-packages/dreamplace/`.
+- **Source debug mode**: Debugger startup prepends
+  `chipcompiler/thirdparty/ecc-dreamplace` to `PYTHONPATH`, so `import dreamplace`
+  resolves to the submodule source tree instead.
+
+Use the default mode for normal development and release-like validation. Use source
+debug mode when you need breakpoints and stepping to land in
+`chipcompiler/thirdparty/ecc-dreamplace/dreamplace/*.py`.
+
+#### Default Mode
+
+- `uv sync --frozen --all-groups --python 3.11` keeps the runtime aligned with the locked wheel.
+- LSP configuration such as `python.analysis.extraPaths` can improve source navigation, but it does not change runtime imports.
+- Python breakpoints land in the files that are actually imported at runtime, which are normally under `.venv/lib/python3.11/site-packages/dreamplace/`.
+
+#### Source Debug Mode
+
+This mode keeps the installed wheel untouched and only overrides module resolution for
+the debug session.
+
+1. Build and install DreamPlace operators into the source tree:
+
+   ```bash
+   bazel run //bazel/scripts:install_dreamplace
+   ```
+
+2. Launch the debugger with `PYTHONPATH` pointing at the submodule root:
+
+   ```json
+   {
+     "name": "ECC Debug (dreamplace source)",
+     "type": "debugpy",
+     "request": "launch",
+     "program": "${workspaceFolder}/chipcompiler/cli/main.py",
+     "cwd": "${workspaceFolder}",
+     "python": "${workspaceFolder}/.venv/bin/python",
+     "justMyCode": false,
+     "subProcess": true,
+     "console": "integratedTerminal",
+     "env": {
+       "PYTHONPATH": "${workspaceFolder}/chipcompiler/thirdparty/ecc-dreamplace:${env:PYTHONPATH}"
+     }
+   }
+   ```
+
+This works because `chipcompiler/thirdparty/ecc-dreamplace` contains the `dreamplace/`
+package root. When it appears before `site-packages` on `PYTHONPATH`, Python imports
+the submodule source tree first.
+
+`subProcess: true` is recommended because ECC flow steps run in `multiprocessing.Process`.
+
+#### Behavior And Limits
+
+- Breakpoints in `chipcompiler/thirdparty/ecc-dreamplace/dreamplace/*.py` will hit in source debug mode.
+- Source edits only take effect in source debug mode. In default mode, runtime still uses the installed wheel copy.
+- This override is aimed at Python code. It does not provide C++ or `.so` source-level debugging.
+- If source debug mode fails with missing DreamPlace operators, rerun `bazel run //bazel/scripts:install_dreamplace`.
+- If you only need editor navigation and not runtime overrides, prefer LSP-only configuration such as `python.analysis.extraPaths`.
+
+#### Optional LSP-Only Navigation
+
+If you want jump-to-definition into the submodule source while keeping runtime behavior
+unchanged, add the source roots to your IDE configuration instead of `PYTHONPATH`:
+
+```json
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/chipcompiler/thirdparty/ecc-dreamplace",
+    "${workspaceFolder}/chipcompiler/thirdparty/ecc-tools"
+  ]
+}
 ```
 
-Artifacts output to `dist/wheel/` (shared with ECC wheel). Requirements same as ECC wheel build, plus `torch` in venv.
+This improves indexing and navigation only. Debugger and runtime imports still follow
+the installed interpreter environment.
 
-Common failures:
-- torch lib dir not found: run `uv sync --frozen --all-groups --extra dreamplace --python 3.11`
-- auditwheel not found: run `uv sync --frozen --all-groups --python 3.11 --all-extras`
-
-### Standalone Executable
-```bash
-source .venv/bin/activate
-bazel build //:server_bundle
-```
-
-Output in `bazel-bin/server_bundle/`.
 
 ## Code Quality
 
@@ -220,13 +295,13 @@ def test_run_step():
 
 ## Integrating a Thirdparty Tool into the Build System
 
-ECC uses a dual-build strategy: **uv workspace** for dev, **Bazel** (+ Nix) for release. Reference `ecc-dreamplace` as a working example.
+ECC uses a dual-build strategy: **uv-managed Python deps** for dev, **Bazel** (+ Nix) for release. Reference `ecc-dreamplace` as a working example.
 
 **Principle**: Avoid modifying the thirdparty tool's own build system (CMakeLists, setup.py, etc.). Prefer solving build issues from the Bazel side or ECC's build configuration (cache entries, env vars, wrapper scripts).
 
 ### 1. Python deps
 
-Add to uv workspace in root `pyproject.toml` (`[tool.uv.workspace].members`, `[tool.uv.sources]`, `[project.optional-dependencies]`), then `uv lock`.
+Add the package to root `pyproject.toml`, choose either a local workspace source or a locked wheel URL under `[tool.uv.sources]`, then `uv lock`.
 
 ### 2. Dev build
 

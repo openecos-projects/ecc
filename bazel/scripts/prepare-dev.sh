@@ -13,7 +13,7 @@ cd "$WS"
 
 echo "==> Setting up Python venv..."
 if [[ "${SKIP_VENV:-}" != "1" ]]; then
-    uv sync --frozen --all-groups --extra dreamplace --python 3.11
+    uv sync --frozen --all-groups --python 3.11
     source .venv/bin/activate
 else
     echo "    Skipped (SKIP_VENV=1)"
