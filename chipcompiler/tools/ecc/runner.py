@@ -70,26 +70,26 @@ def save_data(workspace: Workspace,
     if ecc_module is None:
         return FALSE
     
-    ecc_module.def_save(def_path=step.output["def"])
-    ecc_module.verilog_save(output_verilog=step.output["verilog"])
-    ecc_module.gds_save(output_path=step.output["gds"])
-    ecc_module.json_save(path=step.output["json"])
-    ecc_module.feature_sammry(json_path=step.feature["db"])
+    ecc_module.def_save(def_path=step.output.get("def", ""))
+    ecc_module.verilog_save(output_verilog=step.output.get("verilog", ""))
+    ecc_module.gds_save(output_path=step.output.get("gds", ""))
+    ecc_module.json_save(path=step.out.get("json", ""))
+    ecc_module.feature_sammry(json_path=step.feature.get("summary", ""))
     if feature_step:
         ecc_module.feature_step(step=step.name,
-                            json_path=step.feature["step"])
+                            json_path=step.feature.get("step", ""))
     
-    ecc_module.report_summary(path=step.report["db"])
+    ecc_module.report_summary(path=step.report.get("db", ""))
     
     # report timing
-    ecc_module.init_sta(output_dir=step.data["sta"],
+    ecc_module.init_sta(output_dir=step.data.get("sta", ""),
                     top_module=workspace.design.top_module,
                     lib_paths=workspace.pdk.libs,
                     sdc_path=workspace.pdk.sdc)
     ecc_module.report_timing()
     
     # update parameters
-    db_json = json_read(step.feature["db"])
+    db_json = json_read(step.feature.get("db", ""))
     if len(db_json) > 0: 
         from chipcompiler.data.parameter import update_parameters, save_parameter
         die_bounding_width = db_json.get("Design Layout", {}).get("die_bounding_width", 0)
@@ -674,6 +674,7 @@ def run_harden(workspace: Workspace,
         
         eda_inst.write_abstract_lef(output_lef_path=step.output.get("lef", ""))
         eda_inst.write_timing_model(output_lib_path=step.output.get("lib", ""))
+        eda_inst.gds_save(output_path=step.output.get("gds", ""), is_harden=True)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
         

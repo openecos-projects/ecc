@@ -146,9 +146,9 @@ class ECCToolsModule:
         """save def file"""
         self.ecc.def_save(def_name=def_path)
 
-    def gds_save(self, output_path: str):
+    def gds_save(self, output_path: str, is_harden: bool = False):
         """save gds file"""
-        self.ecc.gds_save(output_path)
+        self.ecc.gds_save(output_path, is_harden)
 
     def tcl_save(self, output_path: str):
         """save tcl file"""
