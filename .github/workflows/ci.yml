@@ -48,12 +48,22 @@ jobs:
           repository-cache: true
 
       - name: Install Python dependencies
-        run: uv sync --frozen --all-groups --python 3.11
+        run: uv sync --frozen --all-groups --extra dreamplace --python 3.11
 
       - name: Install release wheels for native toolchains
         run: |
           uv pip install --python .venv/bin/python --no-deps "${ECC_DREAMPLACE_WHEEL_URL}"
           uv pip install --python .venv/bin/python --no-deps "${ECC_TOOLS_WHEEL_URL}"
+
+      - name: Smoke test native toolchain wheels
+        run: |
+          .venv/bin/python - <<'PY'
+          import ecc_tools_bin.ecc_py  # noqa: F401
+          from dreamplace.Params import Params  # noqa: F401
+          from dreamplace.Placer import PlacementEngine  # noqa: F401
+
+          print("ecc-tools and ecc-dreamplace imports passed")
+          PY
 
       # - name: Ruff format check
       #   run: uv run ruff format --check chipcompiler test
