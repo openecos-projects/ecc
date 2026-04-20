@@ -13,7 +13,7 @@ bazel run //:prepare_dev
 ```
 
 This runs two steps:
-1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv and installs the locked `ecc-dreamplace` wheel
+1. `uv sync --frozen --all-groups --python 3.11` — creates the Python venv and installs the locked `ecc-dreamplace` and `ecc-tools` wheels
 2. Builds and extracts the ECC runtime bundle → `chipcompiler/tools/ecc/bin/`
 3. Builds and installs DreamPlace operators (source build, dev only) → `chipcompiler/thirdparty/ecc-dreamplace/dreamplace/ops/`
 
@@ -92,7 +92,7 @@ Common failures:
 
 DreamPlace has its own standalone build, CI/CD, and release pipeline.
 
-- **Default dev mode**: `uv sync --frozen --all-groups --python 3.11` installs the locked DreamPlace wheel into `.venv`.
+- **Default dev mode**: `uv sync --frozen --all-groups --python 3.11` installs the locked DreamPlace and ECC-Tools wheels into `.venv`.
   `bazel run //:prepare_dev` still builds the source-tree operators so source debug mode can override imports when needed.
 
 - **Release mode**: A pre-built wheel is downloaded from

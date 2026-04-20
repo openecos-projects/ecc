@@ -70,11 +70,6 @@ build-backend.wheel-exclude = [
   "chipcompiler/thirdparty/**",
 ]
 
-[tool.uv.workspace]
-members = [
-  "chipcompiler/thirdparty/ecc-tools",
-]
-
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
@@ -82,7 +77,7 @@ explicit = true
 
 [tool.uv.sources]
 ecc-dreamplace = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" }
-ecc-tools = { workspace = true }
+ecc-tools = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha/ecc_tools-0.1.0a0-py3-none-manylinux_2_34_x86_64.whl" }
 torch = { index = "pytorch-cpu" }
 
 [tool.ruff]
