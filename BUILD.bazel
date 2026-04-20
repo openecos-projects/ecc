@@ -1,26 +1,4 @@
-load("@ecos-bazel//rules:python_packaging.bzl", "python_pyinstaller_bundle")
-
 package(default_visibility = ["//visibility:public"])
-
-exports_files([
-    "ecc.spec",
-])
-
-python_pyinstaller_bundle(
-    name = "server_bundle",
-    spec_file = "ecc.spec",
-    srcs = [
-        "README.md",
-        "pyproject.toml",
-        "uv.lock",
-        "//chipcompiler:chipcompiler_python_sources",
-        "//chipcompiler:chipcompiler_runtime_data",
-    ],
-    runtime_bundle = "//chipcompiler/thirdparty:ecc_bundle",
-    output_name = "chipcompiler",
-    pyinstaller = "//bazel:pyinstaller",
-)
-
 
 alias(
     name = "prepare_dev",

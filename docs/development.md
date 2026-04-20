@@ -313,7 +313,7 @@ If the tool has compiled artifacts (`.so`, generated configs):
 
 ### 3. Release build
 
-Add runtime artifacts to `//chipcompiler:chipcompiler_runtime_data` (consumed by `raw_wheel` and `server_bundle`). For Nix, add to flake build inputs.
+Add runtime artifacts to `//chipcompiler:chipcompiler_runtime_data` (consumed by `raw_wheel`). For Nix, add to flake build inputs.
 
 ### 4. Bazel sandbox deps
 
