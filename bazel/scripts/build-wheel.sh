@@ -52,7 +52,7 @@ echo "[wheel] running smoke test"
 smoke_dir="$(mktemp -d)"
 trap 'rm -rf "$smoke_dir"' EXIT
 
-"$PYTHON3" -m pip install --target "$smoke_dir/site" "$final_whl"
+"$PYTHON3" -m pip install --no-deps --target "$smoke_dir/site" "$final_whl"
 PYTHONPATH="$smoke_dir/site" "$PYTHON3" -c "
 import chipcompiler
 from chipcompiler.tools.ecc.module import ECCToolsModule
