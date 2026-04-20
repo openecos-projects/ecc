@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
@@ -60,22 +61,48 @@ class DreamplaceModule:
         log_name = "dreamplace_legalization.log" if legalize_only else "dreamplace_placement.log"
         return os.path.join(self.result_dir, log_name)
 
+    @contextmanager
+    def _configure_root_logging(self, legalize_only: bool):
+        root_logger = logging.getLogger()
+        original_handlers = root_logger.handlers[:]
+        original_level = root_logger.level
+
+        log_file = self.step.log.get("file") or self._log_path(legalize_only)
+        os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
+
+        file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter("[%(levelname)-7s] %(message)s"))
+        root_logger.addHandler(file_handler)
+        if original_level > logging.INFO:
+            root_logger.setLevel(logging.INFO)
+
+        try:
+            yield
+        finally:
+            root_logger.removeHandler(file_handler)
+            file_handler.close()
+            root_logger.setLevel(original_level)
+            for handler in original_handlers:
+                if handler not in root_logger.handlers:
+                    root_logger.addHandler(handler)
+
     def _run(self, legalize_only: bool) -> bool:
         from dreamplace.Params import Params
         from dreamplace.Placer import PlacementEngine
-        
-        params = self._build_params(Params, legalize_only=legalize_only)
 
-        engine = PlacementEngine(params)
-        engine.setup_rawdb(ecc_module=self.ecc_module)
-        ppa = engine.run()
+        with self._configure_root_logging(legalize_only):
+            params = self._build_params(Params, legalize_only=legalize_only)
 
-        if ppa.get("hpwl") == float("inf"):
-            LOGGER = logging.getLogger(__name__)
-            LOGGER.error("dreamplace failed for %s", self.step.name)
-            return False
+            engine = PlacementEngine(params)
+            engine.setup_rawdb(ecc_module=self.ecc_module)
+            ppa = engine.run()
 
-        return True
+            if ppa.get("hpwl") == float("inf"):
+                LOGGER = logging.getLogger(__name__)
+                LOGGER.error("dreamplace failed for %s", self.step.name)
+                return False
+
+            return True
 
     def run_placement(self) -> bool:
         return self._run(legalize_only=False)
