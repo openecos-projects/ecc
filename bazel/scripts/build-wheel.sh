@@ -58,9 +58,15 @@ echo "[wheel] running smoke test"
 smoke_dir="$(mktemp -d)"
 trap 'rm -rf "$smoke_dir"' EXIT
 
-# Run uv pip install from the workspace root so it reads pyproject.toml / tool.uv.sources
-"$UV" pip install --python "$PYTHON3" --target "$smoke_dir/site" "$final_whl"
-PYTHONPATH="$smoke_dir/site" "$PYTHON3" -c "
+# Create a temp venv so uv pip install runs in project mode (reads pyproject.toml / tool.uv.sources).
+# Using --target skips project config reading, which breaks ecc-dreamplace/ecc-tools resolution.
+"$PYTHON3" -m venv "$smoke_dir/venv"
+venv_python="$smoke_dir/venv/bin/python"
+
+cd "$WS"
+"$UV" pip install --python "$venv_python" "$final_whl"
+
+"$venv_python" -c "
 import chipcompiler
 from chipcompiler.tools.ecc.module import ECCToolsModule
 assert chipcompiler.__version__ == '0.1.0', f'unexpected version: {chipcompiler.__version__}'
