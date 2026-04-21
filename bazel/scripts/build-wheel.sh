@@ -60,7 +60,8 @@ trap 'rm -rf "$smoke_dir"' EXIT
 
 # Create a temp venv so uv pip install runs in project mode (reads pyproject.toml / tool.uv.sources).
 # Using --target skips project config reading, which breaks ecc-dreamplace/ecc-tools resolution.
-"$PYTHON3" -m venv "$smoke_dir/venv"
+# Use uv venv (not python -m venv) because hermetic Python lacks ensurepip.
+"$UV" venv --python "$PYTHON3" "$smoke_dir/venv"
 venv_python="$smoke_dir/venv/bin/python"
 
 cd "$WS"
