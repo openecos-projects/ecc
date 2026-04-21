@@ -53,19 +53,21 @@ final_whl="$out_dir/$(basename "$raw_whl")"
 echo "[wheel] ecc wheel is pure Python (ecc_py bindings come from ecc-tools wheel)"
 echo "[wheel] skipping auditwheel — no native code in this wheel"
 
-# Smoke test: verify the Python package is importable (with deps resolved via uv)
+# Smoke test: verify the Python package is importable
 echo "[wheel] running smoke test"
 smoke_dir="$(mktemp -d)"
 trap 'rm -rf "$smoke_dir"' EXIT
 
-# Create a temp venv so uv pip install runs in project mode (reads pyproject.toml / tool.uv.sources).
-# Using --target skips project config reading, which breaks ecc-dreamplace/ecc-tools resolution.
-# Use uv venv (not python -m venv) because hermetic Python lacks ensurepip.
+# Use a temp venv (via uv) because hermetic Python lacks ensurepip.
 "$UV" venv --python "$PYTHON3" "$smoke_dir/venv"
 venv_python="$smoke_dir/venv/bin/python"
 
-cd "$WS"
-"$UV" pip install --python "$venv_python" "$final_whl"
+# ecc-dreamplace and ecc-tools are not on PyPI; install them from GitHub URLs first,
+# then install the local ecc wheel so uv resolves the remaining PyPI deps.
+"$UV" pip install --python "$venv_python" \
+    "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha/ecc_tools-0.1.0a0-py3-none-manylinux_2_34_x86_64.whl" \
+    "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" \
+    "$final_whl"
 
 "$venv_python" -c "
 import chipcompiler
