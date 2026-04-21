@@ -1,26 +1,4 @@
-load("@ecos-bazel//rules:python_packaging.bzl", "python_pyinstaller_bundle")
-
 package(default_visibility = ["//visibility:public"])
-
-exports_files([
-    "ecc.spec",
-])
-
-python_pyinstaller_bundle(
-    name = "server_bundle",
-    spec_file = "ecc.spec",
-    srcs = [
-        "README.md",
-        "pyproject.toml",
-        "uv.lock",
-        "//chipcompiler:chipcompiler_python_sources",
-        "//chipcompiler:chipcompiler_runtime_data",
-    ],
-    runtime_bundle = "//chipcompiler/thirdparty:ecc_bundle",
-    output_name = "chipcompiler",
-    pyinstaller = "//bazel:pyinstaller",
-)
-
 
 alias(
     name = "prepare_dev",
@@ -34,14 +12,12 @@ genrule(
         "README.md",
         "//chipcompiler:chipcompiler_python_sources",
         "//chipcompiler:chipcompiler_runtime_data",
-        "//chipcompiler/thirdparty:ecc_bundle",
     ],
     outs = ["raw_wheel/ecc-0.1.0-py3-none-any.whl"],
     tools = ["@multitool//tools/uv"],
     cmd = """
         set -euo pipefail
         UV="$(execpath @multitool//tools/uv)"
-        BUNDLE="$(location //chipcompiler/thirdparty:ecc_bundle)"
         STAGE=$$(mktemp -d)
         trap 'rm -rf "$$STAGE"' EXIT
         for src in $(locations pyproject.toml) \
@@ -51,7 +27,6 @@ genrule(
             mkdir -p "$$STAGE/$$(dirname "$$src")"
             cp "$$src" "$$STAGE/$$src"
         done
-        tar -xf "$$BUNDLE" -C "$$STAGE"
         "$$UV" build --wheel --directory "$$STAGE" --out-dir "$$STAGE/_dist" --cache-dir "$$STAGE/.uv-cache"
         cp "$$STAGE"/_dist/*.whl "$@"
     """,
