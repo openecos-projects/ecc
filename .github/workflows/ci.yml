@@ -17,7 +17,7 @@ permissions:
 env:
   UV_PYTHON_PREFERENCE: only-managed
   ECC_DREAMPLACE_WHEEL_URL: https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl
-  ECC_TOOLS_WHEEL_URL: https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha/ecc_tools-0.1.0a0-py3-none-manylinux_2_34_x86_64.whl
+  ECC_TOOLS_WHEEL_URL: https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.1/ecc_tools-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl
 
 jobs:
   ci:
