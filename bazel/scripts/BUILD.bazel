@@ -22,11 +22,13 @@ sh_binary(
     srcs = ["build-wheel.sh"],
     data = [
         "//:raw_wheel",
+        "@multitool//tools/uv",
         "@python_3_11//:python3",
     ],
     args = [
         "$(rlocationpath //:raw_wheel)",
         "$(rlocationpath @python_3_11//:python3)",
+        "$(rlocationpath @multitool//tools/uv)",
     ],
 )
 

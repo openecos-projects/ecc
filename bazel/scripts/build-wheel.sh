@@ -35,6 +35,12 @@ if [[ ! -x "$PYTHON3" ]]; then
     exit 1
 fi
 
+UV="$RF/$3"
+if [[ ! -x "$UV" ]]; then
+    echo "ERROR: uv not found in runfiles: $UV" >&2
+    exit 1
+fi
+
 out_root="$WS/dist/wheel"
 out_dir="$out_root/repaired"
 mkdir -p "$out_dir"
@@ -47,15 +53,17 @@ final_whl="$out_dir/$(basename "$raw_whl")"
 echo "[wheel] ecc wheel is pure Python (ecc_py bindings come from ecc-tools wheel)"
 echo "[wheel] skipping auditwheel — no native code in this wheel"
 
-# Smoke test: verify the Python package is importable
+# Smoke test: verify the Python package is importable (with deps resolved via uv)
 echo "[wheel] running smoke test"
 smoke_dir="$(mktemp -d)"
 trap 'rm -rf "$smoke_dir"' EXIT
 
-"$PYTHON3" -m pip install --no-deps --target "$smoke_dir/site" "$final_whl"
+# Run uv pip install from the workspace root so it reads pyproject.toml / tool.uv.sources
+"$UV" pip install --python "$PYTHON3" --target "$smoke_dir/site" "$final_whl"
 PYTHONPATH="$smoke_dir/site" "$PYTHON3" -c "
 import chipcompiler
 from chipcompiler.tools.ecc.module import ECCToolsModule
+assert chipcompiler.__version__ == '0.1.0', f'unexpected version: {chipcompiler.__version__}'
 print('ecc wheel smoke test passed: chipcompiler package importable')
 "
 
