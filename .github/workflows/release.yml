@@ -45,7 +45,7 @@ jobs:
 
       - name: Setup Bazel
         run: |
-          curl -fsSL https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 \
+          curl -fsSL https://github.com/bazelbuild/bazelisk/releases/download/v1.27.0/bazelisk-linux-amd64 \
             -o /usr/local/bin/bazel
           chmod +x /usr/local/bin/bazel
 
