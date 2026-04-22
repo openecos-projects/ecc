@@ -10,6 +10,7 @@ on:
       - 'test/**'
       - 'pyproject.toml'
       - 'BUILD.bazel'
+      - '.bazelversion'
       - 'bazel/**'
       - 'MODULE.bazel'
       - '.github/workflows/ci.yml'
@@ -64,6 +65,7 @@ jobs:
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.14.0
         with:
+          bazelisk-version: "1.27.0"
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}
           repository-cache: true
