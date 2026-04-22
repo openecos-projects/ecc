@@ -4,7 +4,7 @@ requires = [ "uv-build>=0.8.5" ]
 
 [project]
 name = "ecc"
-version = "0.1.0"
+version = "0.1.0-alpha"
 readme = "README.md"
 authors = [
   { name = "Emin", email = "me@emin.chat" },

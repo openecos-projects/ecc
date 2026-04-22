@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to release (e.g., v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    name: Check Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag_name || github.ref }}
+
+      - name: Check version
+        uses: ./.github/actions/check-version
+        with:
+          expected_tag: ${{ github.event.inputs.tag_name || github.ref_name }}
+
+  build:
+    name: Build Wheel
+    needs: check-version
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_34_x86_64
+    steps:
+      - name: Install git
+        run: dnf install -y git
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag_name || github.ref }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+          enable-cache: true
+
+      - name: Build wheel
+        run: bazel run //:build_wheel
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecc-wheel
+          path: |
+            dist/wheel/repaired/*.whl
+            dist/wheel/SHA256SUMS
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag_name || github.ref }}
+          fetch-depth: 0
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-wheel
+          path: dist/wheel
+
+      - name: Determine tag version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FULL_TAG="${{ github.event.inputs.tag_name }}"
+            TAG_VERSION="${FULL_TAG#v}"
+          else
+            FULL_TAG="${GITHUB_REF_NAME}"
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "full_tag=$FULL_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          {
+            if [[ -n "$PREV_TAG" ]]; then
+              echo "## Changes"
+              echo ""
+              git log --oneline --no-merges "${PREV_TAG}..HEAD" | sed 's/^/- /'
+              echo ""
+            fi
+            echo "## Checksums"
+            echo ""
+            echo '```'
+            cat dist/wheel/SHA256SUMS
+            echo '```'
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.full_tag }}" \
+            --title "ecc ${{ steps.version.outputs.full_tag }}" \
+            --notes-file release-notes.md \
+            dist/wheel/repaired/*.whl \
+            dist/wheel/SHA256SUMS

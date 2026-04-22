@@ -13,7 +13,7 @@ genrule(
         "//chipcompiler:chipcompiler_python_sources",
         "//chipcompiler:chipcompiler_runtime_data",
     ],
-    outs = ["raw_wheel/ecc-0.1.0-py3-none-any.whl"],
+    outs = ["raw_wheel/ecc-0.1.0a0-py3-none-any.whl"],
     tools = ["@multitool//tools/uv"],
     cmd = """
         set -euo pipefail

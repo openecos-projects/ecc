@@ -3,9 +3,19 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
+    paths:
+      - 'chipcompiler/**'
+      - 'test/**'
+      - 'pyproject.toml'
+      - 'BUILD.bazel'
+      - 'bazel/**'
+      - 'MODULE.bazel'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/auto-tag.yml'
+      - '.github/actions/**'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -20,8 +30,19 @@ env:
   ECC_TOOLS_WHEEL_URL: https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.1/ecc_tools-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl
 
 jobs:
+  check-version:
+    name: Check Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check version
+        uses: ./.github/actions/check-version
+
   ci:
     name: Checks And Build
+    needs: check-version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
