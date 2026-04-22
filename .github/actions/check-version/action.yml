@@ -1,5 +1,5 @@
 name: Check ECC Version Consistency
-description: Verify pyproject.toml version matches chipcompiler/__version__. Optionally verify a tag matches the version.
+description: Verify pyproject.toml, MODULE.bazel, and chipcompiler/__version__ all match. Optionally verify a tag matches the version.
 
 inputs:
   expected_tag:
@@ -19,6 +19,12 @@ runs:
         m = re.search(r'^version\s*=\s*\"([^\"]+)\"', text, re.MULTILINE)
         print(m.group(1) if m else '')
         ")
+        MODULE_VER=$(python3 -c "
+        import re, pathlib
+        text = pathlib.Path('MODULE.bazel').read_text()
+        m = re.search(r'version\s*=\s*\"([^\"]+)\"', text)
+        print(m.group(1) if m else '')
+        ")
         INIT_VER=$(python3 -c "
         import sys, importlib.util
         sys.path.insert(0, '.')
@@ -28,7 +34,13 @@ runs:
         print(mod.__version__)
         ")
         echo "pyproject.toml version: $PY_VER"
+        echo "MODULE.bazel version: $MODULE_VER"
         echo "chipcompiler/__version__: $INIT_VER"
+
+        [[ "$PY_VER" == "$MODULE_VER" ]] || {
+          echo "ERROR: version mismatch. pyproject.toml='$PY_VER' MODULE.bazel='$MODULE_VER'"
+          exit 1
+        }
         [[ "$PY_VER" == "$INIT_VER" ]] || {
           echo "ERROR: version mismatch. pyproject.toml='$PY_VER' chipcompiler/__version__='$INIT_VER'"
           exit 1

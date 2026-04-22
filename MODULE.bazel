@@ -1,6 +1,6 @@
 module(
     name = "ecc",
-    version = "0.0.0",
+    version = "0.1.0-alpha",
 )
 
 bazel_dep(name = "rules_python", version = "1.7.0")
