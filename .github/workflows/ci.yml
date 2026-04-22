@@ -3,9 +3,16 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
+    paths:
+      - 'chipcompiler/**'
+      - 'test/**'
+      - 'pyproject.toml'
+      - 'BUILD.bazel'
+      - 'bazel/**'
+      - 'MODULE.bazel'
+      - '.github/workflows/ci.yml'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
