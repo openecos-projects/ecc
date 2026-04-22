@@ -79,7 +79,7 @@ print('ecc wheel smoke test passed: chipcompiler package importable')
 
 (
     cd "$out_dir"
-    sha256sum ./*.whl > "$out_root/SHA256SUMS"
+    sha256sum -- *.whl > "$out_root/SHA256SUMS"
 )
 
 echo "[wheel] done"
