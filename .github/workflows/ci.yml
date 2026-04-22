@@ -34,29 +34,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify pyproject.toml matches chipcompiler/__version__
-        run: |
-          PY_VER=$(python3 -c "
-          import re, pathlib
-          text = pathlib.Path('pyproject.toml').read_text()
-          m = re.search(r'^version\s*=\s*\"([^\"]+)\"', text, re.MULTILINE)
-          print(m.group(1) if m else '')
-          ")
-          INIT_VER=$(python3 -c "
-          import sys, importlib.util
-          sys.path.insert(0, '.')
-          spec = importlib.util.spec_from_file_location('chipcompiler', 'chipcompiler/__init__.py')
-          mod = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(mod)
-          print(mod.__version__)
-          ")
-          echo "pyproject.toml version: $PY_VER"
-          echo "chipcompiler/__version__: $INIT_VER"
-          [[ "$PY_VER" == "$INIT_VER" ]] || {
-            echo "ERROR: version mismatch. pyproject.toml='$PY_VER' chipcompiler/__version__='$INIT_VER'"
-            exit 1
-          }
-          echo "Version check passed: $PY_VER"
+      - name: Check version
+        uses: ./.github/actions/check-version
 
   ci:
     name: Checks And Build

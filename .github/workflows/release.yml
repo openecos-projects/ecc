@@ -22,37 +22,10 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag_name || github.ref }}
 
-      - name: Verify version consistency
-        run: |
-          PY_VER=$(python3 -c "
-          import re, pathlib
-          text = pathlib.Path('pyproject.toml').read_text()
-          m = re.search(r'^version\s*=\s*\"([^\"]+)\"', text, re.MULTILINE)
-          print(m.group(1) if m else '')
-          ")
-          INIT_VER=$(python3 -c "
-          import re, pathlib, sys
-          sys.path.insert(0, '.')
-          import importlib.util
-          spec = importlib.util.spec_from_file_location('chipcompiler', 'chipcompiler/__init__.py')
-          mod = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(mod)
-          print(mod.__version__)
-          ")
-          echo "pyproject.toml version: $PY_VER"
-          echo "chipcompiler/__version__: $INIT_VER"
-          [[ "$PY_VER" == "$INIT_VER" ]] || {
-            echo "ERROR: version mismatch. pyproject.toml='$PY_VER' chipcompiler/__version__='$INIT_VER'"
-            exit 1
-          }
-          # Verify tag matches version
-          FULL_TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
-          EXPECTED_TAG="v$PY_VER"
-          [[ "$FULL_TAG" == "$EXPECTED_TAG" ]] || {
-            echo "ERROR: tag mismatch. tag='$FULL_TAG' expected='$EXPECTED_TAG'"
-            exit 1
-          }
-          echo "Version check passed: $PY_VER"
+      - name: Check version
+        uses: ./.github/actions/check-version
+        with:
+          expected_tag: ${{ github.event.inputs.tag_name || github.ref_name }}
 
   build:
     name: Build Wheel
