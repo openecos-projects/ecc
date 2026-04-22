@@ -34,7 +34,7 @@ jobs:
     container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
       - name: Install git
-        run: dnf install -y git
+        run: dnf install -y git curl
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,11 +44,10 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.14.0
-        with:
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
+        run: |
+          curl -fsSL https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 \
+            -o /usr/local/bin/bazel
+          chmod +x /usr/local/bin/bazel
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
