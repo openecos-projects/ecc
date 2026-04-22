@@ -72,7 +72,7 @@ venv_python="$smoke_dir/venv/bin/python"
 "$venv_python" -c "
 import chipcompiler
 from chipcompiler.tools.ecc.module import ECCToolsModule
-assert chipcompiler.__version__ == '0.1.0', f'unexpected version: {chipcompiler.__version__}'
+assert chipcompiler.__version__ == '0.1.0-alpha', f'unexpected version: {chipcompiler.__version__}'
 print('ecc wheel smoke test passed: chipcompiler package importable')
 "
 
