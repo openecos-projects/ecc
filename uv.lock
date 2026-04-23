@@ -431,7 +431,7 @@ wheels = [
 
 [[package]]
 name = "ecc"
-version = "0.1.0"
+version = "0.1.0a1"
 source = { editable = "." }
 dependencies = [
     { name = "ecc-dreamplace" },
@@ -471,7 +471,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ecc-dreamplace", url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" },
-    { name = "ecc-tools", url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha/ecc_tools-0.1.0a0-py3-none-manylinux_2_34_x86_64.whl" },
+    { name = "ecc-tools", url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.1/ecc_tools-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" },
     { name = "fastapi", specifier = ">=0.109" },
     { name = "klayout", specifier = ">=0.30.2" },
     { name = "matplotlib", specifier = ">=3.4" },
@@ -533,11 +533,6 @@ wheels = [
     { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:212139c43f825498968eda10309959b99cd93aec0744d182a17bb5d34b53145e" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "auditwheel" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "cairocffi", specifier = ">=0.9.0" },
@@ -559,15 +554,12 @@ requires-dist = [
     { name = "xgboost", specifier = ">=1.5.1" },
 ]
 
-[package.metadata.requires-dev]
-dev = [{ name = "auditwheel" }]
-
 [[package]]
 name = "ecc-tools"
-version = "0.1.0a0"
-source = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha/ecc_tools-0.1.0a0-py3-none-manylinux_2_34_x86_64.whl" }
+version = "0.1.0a1"
+source = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.1/ecc_tools-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" }
 wheels = [
-    { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha/ecc_tools-0.1.0a0-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:ac1370f9ee412332cf9161db74eae959f4e40e1b296f24e428dabe7e1abbadbb" },
+    { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.1/ecc_tools-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:762cef33f7d2bffb9e90e51c7c1c62f9a6bee3cb9ac97c888951351487663288" },
 ]
 
 [[package]]

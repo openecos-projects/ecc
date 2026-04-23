@@ -65,7 +65,7 @@ venv_python="$smoke_dir/venv/bin/python"
 # ecc-dreamplace and ecc-tools are not on PyPI; install them from GitHub URLs first,
 # then install the local ecc wheel so uv resolves the remaining PyPI deps.
 "$UV" pip install --python "$venv_python" \
-    "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha/ecc_tools-0.1.0a0-py3-none-manylinux_2_34_x86_64.whl" \
+    "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.1/ecc_tools-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" \
     "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" \
     "$final_whl"
 
