@@ -4,7 +4,7 @@ requires = [ "uv-build>=0.8.5" ]
 
 [project]
 name = "ecc"
-version = "0.1.0-alpha"
+version = "0.1.0-alpha.1"
 readme = "README.md"
 authors = [
   { name = "Emin", email = "me@emin.chat" },
@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
   "ecc-dreamplace==0.1.0a1",
-  "ecc-tools==0.1.0a0",
+  "ecc-tools==0.1.0a1",
   "fastapi>=0.109",
   "klayout>=0.30.2",
   "matplotlib>=3.4",
@@ -77,7 +77,7 @@ explicit = true
 
 [tool.uv.sources]
 ecc-dreamplace = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" }
-ecc-tools = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha/ecc_tools-0.1.0a0-py3-none-manylinux_2_34_x86_64.whl" }
+ecc-tools = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.1/ecc_tools-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" }
 torch = { index = "pytorch-cpu" }
 
 [tool.ruff]
