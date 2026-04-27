@@ -96,17 +96,21 @@ jobs:
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
           echo "full_tag=$FULL_TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Generate changelog with git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: .github/cliff.toml
+          args: --latest --output release-changelog.md
+          github_token: ${{ github.token }}
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+
       - name: Generate release notes
         id: notes
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           {
-            if [[ -n "$PREV_TAG" ]]; then
-              echo "## Changes"
-              echo ""
-              git log --oneline --no-merges "${PREV_TAG}..HEAD" | sed 's/^/- /'
-              echo ""
-            fi
+            cat release-changelog.md
+            echo ""
             echo "## Checksums"
             echo ""
             echo '```'
