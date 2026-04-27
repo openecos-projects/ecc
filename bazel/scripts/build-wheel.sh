@@ -17,11 +17,6 @@ if [[ $# -lt 1 ]]; then
     exit 1
 fi
 
-if ! command -v sha256sum >/dev/null 2>&1; then
-    echo "ERROR: required command not found: sha256sum" >&2
-    exit 1
-fi
-
 RF="${RUNFILES_DIR:-${BASH_SOURCE[0]}.runfiles}"
 raw_whl="$RF/$1"
 if [[ ! -f "$raw_whl" ]]; then
@@ -77,11 +72,5 @@ assert chipcompiler.__version__ == '${expected_version}', f'unexpected version: 
 print('ecc wheel smoke test passed: chipcompiler package importable')
 "
 
-(
-    cd "$out_dir"
-    sha256sum -- *.whl > "$out_root/SHA256SUMS"
-)
-
 echo "[wheel] done"
 echo "[wheel] wheel:     $out_dir"
-echo "[wheel] checksums: $out_root/SHA256SUMS"

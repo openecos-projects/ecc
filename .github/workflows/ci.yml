@@ -111,4 +111,3 @@ jobs:
           if-no-files-found: ignore
           path: |
             dist/wheel/repaired/*.whl
-            dist/wheel/SHA256SUMS
