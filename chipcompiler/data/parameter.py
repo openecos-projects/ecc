@@ -32,6 +32,74 @@ ICS55_PARAMETERS_TEMPLATE = {
     "Bottom layer" : "MET2",
     "Top layer" : "MET5"
 }
+SG13G2_PARAMETERS_TEMPLATE = {
+    "PDK": "sg13g2",
+    "Design": "",
+    "Top module": "",
+    "Die": {
+        "Size": [],
+        "Area": 0
+    },
+    "Core": {
+        "Size": [],
+        "Area": 0,
+        "Bounding box": "",
+        "Utilitization": 0.65,       
+        "Margin": [17.5, 17.5],      
+        "Aspect ratio": 1
+    },
+    "Max fanout": 20,
+    "Target density": 0.65,
+    "Target overflow": 0.1,
+    "Global right padding": 0,
+    "Cell padding x": 0,
+    "Routability opt flag": 1,
+    "Clock": "",
+    "Frequency max [MHz]": 100,
+    "Bottom layer": "Metal2",        
+    "Top layer": "Metal5",           
+    "Floorplan": {
+        "Tap distance": 0,           
+        "Auto place pin": {
+            "layer": "Metal3", 
+            "width": 300,
+            "height": 600,
+            "sides": []
+        },
+        "Tracks": [
+            {"layer": "Metal1", "x start": 0, "x step": 420, "y start": 0, "y step": 420},
+            {"layer": "Metal2", "x start": 0, "x step": 480, "y start": 0, "y step": 480},  
+            {"layer": "Metal3", "x start": 0, "x step": 420, "y start": 0, "y step": 420},
+            {"layer": "Metal4", "x start": 0, "x step": 480, "y start": 0, "y step": 480},
+            {"layer": "Metal5", "x start": 0, "x step": 420, "y start": 0, "y step": 420},
+        ]
+    },
+    "PDN": {
+        "IO": [
+            {"net name": "VDD", "direction": "INOUT", "is power": True},
+            {"net name": "VSS", "direction": "INOUT", "is power": False}
+        ],
+        "Global connect": [
+            {"net name": "VDD", "instance pin name": "VDD", "is power": True},
+            {"net name": "VSS", "instance pin name": "VSS", "is power": False}
+        ],
+        "Grid": {
+            "layer": "Metal1",
+            "power net": "VDD",
+            "power ground": "VSS",
+            "width": 0.44,
+            "offset": 0
+        },
+        "Stripe": [
+            {"layer": "Metal4", "power net": "VDD", "ground net": "VSS", "width": 1.6, "pitch": 20, "offset": 1},
+            {"layer": "Metal5", "power net": "VDD", "ground net": "VSS", "width": 1.6, "pitch": 20, "offset": 1}
+        ],
+        "Connect layers": [
+            {"layers": ["Metal1", "Metal5"]},
+            {"layers": ["Metal4", "Metal5"]}
+        ]
+    }
+}
 
 ICS55_DESIGN_PARAMETERS = {
     "gcd": {
@@ -62,20 +130,19 @@ def save_parameter(parameter : Parameters) -> bool:
     return json_write(file_path=parameter.path,
                       data=parameter.data)
 
-def get_parameters(pdk_name : str = "", path : str = "") -> Parameters:
-    """
-    Return the Parameters instance based on the given pdk name.
-    """
+def get_parameters(pdk_name: str = "", path: str = "") -> Parameters:
     if os.path.isfile(path):
         return load_parameter(path)
-    
+
     parameters = Parameters()
     parameters.path = path
-    
+
     match pdk_name.lower():
         case "ics55":
             parameters.data = deepcopy(ICS55_PARAMETERS_TEMPLATE)
-            
+        case "sg13g2":
+            parameters.data = deepcopy(SG13G2_PARAMETERS_TEMPLATE)
+
     return parameters
 
 def get_design_parameters(pdk_name : str, design : str = "", path : str = "") -> Parameters:
