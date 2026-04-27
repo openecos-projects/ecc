@@ -64,7 +64,6 @@ jobs:
           name: ecc-wheel
           path: |
             dist/wheel/repaired/*.whl
-            dist/wheel/SHA256SUMS
 
   release:
     name: Create Release
@@ -114,7 +113,10 @@ jobs:
             echo "## Checksums"
             echo ""
             echo '```'
-            cat dist/wheel/SHA256SUMS
+            (
+              cd dist/wheel/repaired
+              sha256sum *.whl
+            )
             echo '```'
           } > release-notes.md
           cat release-notes.md
@@ -126,5 +128,4 @@ jobs:
           gh release create "${{ steps.version.outputs.full_tag }}" \
             --title "ecc ${{ steps.version.outputs.full_tag }}" \
             --notes-file release-notes.md \
-            dist/wheel/repaired/*.whl \
-            dist/wheel/SHA256SUMS
+            dist/wheel/repaired/*.whl
