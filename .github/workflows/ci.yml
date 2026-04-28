@@ -75,7 +75,7 @@ jobs:
           {
             echo '## Coverage Report'
             echo '```'
-            uv run coverage report --skip-covered
+            uv run coverage report
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
 
