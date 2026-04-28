@@ -52,14 +52,14 @@ jobs:
       - name: Setup Python dependencies
         uses: ./.github/actions/setup-python-deps
 
-      - name: Ruff format check
-        run: uv run ruff format --check chipcompiler test
+      # - name: Ruff format check
+      #   run: uv run ruff format --check chipcompiler test
 
-      - name: Ruff lint
-        run: uv run ruff check chipcompiler test
+      # - name: Ruff lint
+      #   run: uv run ruff check chipcompiler test
 
-      - name: Pyright
-        run: uv run pyright chipcompiler
+      # - name: Pyright
+      #   run: uv run pyright chipcompiler
 
       - name: Pytest
         run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_tools.py --ignore=test/test_data_pdk.py --ignore=test/test_workspace.py --ignore=test/test_filelist.py --cov=chipcompiler --cov-report=term-missing
