@@ -1,20 +1,9 @@
 name: Setup Python Dependencies
-description: Checkout, setup Python 3.11, uv, and install project dependencies.
-
-inputs:
-  submodules:
-    description: Whether to checkout with submodules
-    required: false
-    default: 'true'
+description: Setup Python 3.11, uv, and install project dependencies.
 
 runs:
   using: composite
   steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: ${{ inputs.submodules }}
-
     - name: Setup Python
       uses: actions/setup-python@v5
       with:

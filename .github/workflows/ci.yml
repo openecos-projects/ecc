@@ -44,6 +44,11 @@ jobs:
     needs: check-version
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
       - name: Setup Python dependencies
         uses: ./.github/actions/setup-python-deps
 
@@ -64,6 +69,11 @@ jobs:
     needs: check-version
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
       - name: Setup Python dependencies
         uses: ./.github/actions/setup-python-deps
 
