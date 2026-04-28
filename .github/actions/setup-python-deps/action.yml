@@ -1,0 +1,31 @@
+name: Setup Python Dependencies
+description: Checkout, setup Python 3.11, uv, and install project dependencies.
+
+inputs:
+  submodules:
+    description: Whether to checkout with submodules
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: ${{ inputs.submodules }}
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: latest
+        enable-cache: "true"
+
+    - name: Install Python dependencies
+      shell: bash
+      run: uv sync --frozen --all-groups --python 3.11

@@ -27,8 +27,6 @@ permissions:
 
 env:
   UV_PYTHON_PREFERENCE: only-managed
-  ECC_DREAMPLACE_WHEEL_URL: https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl
-  ECC_TOOLS_WHEEL_URL: https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.1/ecc_tools-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl
 
 jobs:
   check-version:
@@ -46,24 +44,8 @@ jobs:
     needs: check-version
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: latest
-          enable-cache: "true"
-
-      - name: Install Python dependencies
-        run: uv sync --frozen --all-groups --python 3.11
+      - name: Setup Python dependencies
+        uses: ./.github/actions/setup-python-deps
 
       - name: Ruff format check
         run: uv run ruff format --check chipcompiler test
@@ -82,21 +64,8 @@ jobs:
     needs: check-version
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: latest
-          enable-cache: "true"
+      - name: Setup Python dependencies
+        uses: ./.github/actions/setup-python-deps
 
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.14.0
@@ -105,9 +74,6 @@ jobs:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}
           repository-cache: true
-
-      - name: Install Python dependencies
-        run: uv sync --frozen --all-groups --python 3.11
 
       - name: Smoke test native toolchain wheels
         run: |
