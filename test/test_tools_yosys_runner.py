@@ -86,7 +86,7 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
     assert check_calls[0]["env"] == runtime_env
     assert len(run_calls) == 1
     assert run_calls[0]["cmd"] == ["yosys", "yosys_synthesis.tcl"]
-    assert run_calls[0]["cwd"] == str(script_dir)
+    assert run_calls[0]["cwd"] == step.script["dir"]
     assert run_calls[0]["env"] == runtime_env
     assert ("run yosys", StateEnum.Success) in updates
     assert ("analysis", StateEnum.Success) in updates
