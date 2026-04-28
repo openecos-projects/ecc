@@ -2,27 +2,7 @@
 
 ECC is the EDA toolchain component of ECOS Studio, orchestrating EDA tools (Yosys, ECC-Tools, OpenROAD, Magic, KLayout) for RTL-to-GDS flows. See `docs/architecture.md` for architecture details and `docs/development.md` for workflows.
 
-# Commands
-
-```bash
-# Setup
-uv sync --frozen --all-groups --all-extras --python 3.11
-
-# Test
-uv run pytest test/
-uv run pytest test/ --cov=chipcompiler --cov-report=term-missing
-
-# Code quality
-uv run ruff format chipcompiler/ test/
-uv run ruff check chipcompiler/ test/
-uv run pyright chipcompiler/
-
-# Bazel
-bazel build //chipcompiler/thirdparty:ecc_py_cmake       # Build ECC-Tools
-bazel run //bazel/scripts:install_dreamplace              # Build + install DreamPlace .so to source tree (via @ecc-dreamplace module)
-bazel run //bazel/scripts:clean_dreamplace                # Remove installed DreamPlace artifacts
-bazel run //bazel/scripts:prepare_dev                     # Full dev environment setup
-```
+For setup, testing, code quality, and Bazel commands, see [docs/development.md](docs/development.md).
 
 # Workflow
 
