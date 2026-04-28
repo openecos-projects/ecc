@@ -33,10 +33,10 @@ def test_get_parameters_returns_independent_copies():
     second = get_parameters("ics55")
 
     first.data["Design"] = "mutated"
-    first.data["Floorplan"]["Tracks"][0]["x step"] = 999
+    first.data["Core"]["Margin"][0] = 999
 
     assert second.data["Design"] == ""
-    assert second.data["Floorplan"]["Tracks"][0]["x step"] == 200
+    assert second.data["Core"]["Margin"][0] == 2
 
 
 def test_ics55_template_has_dreamplace_padding_defaults():

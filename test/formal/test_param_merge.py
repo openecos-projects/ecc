@@ -269,7 +269,7 @@ def test_merge_against_real_template_preserves_untouched() -> None:
 
     update_parameters(source, target)
 
-    for key in ["PDK", "Core", "Floorplan", "PDN", "Cell padding x"]:
+    for key in ["PDK", "Core", "Die", "Cell padding x"]:
         assert target[key] == original[key], f"Key '{key}' was modified but should be preserved"
 
 
@@ -277,19 +277,17 @@ def test_merge_against_real_template_list_replace() -> None:
     """Concrete: list override replaces entirely, not appends."""
     template = get_parameters("ics55")
     target: dict[str, object] = deepcopy(template.data)
-    original_tracks_len: int = len(target["Floorplan"]["Tracks"])  # type: ignore[index]
+    original_core_size_len: int = len(target["Core"]["Size"])  # type: ignore[index]
 
-    new_tracks: list[dict[str, object]] = [
-        {"layer": "MET1", "x start": 0, "x step": 100, "y start": 0, "y step": 100}
-    ]
-    source: dict[str, object] = {"Floorplan": {"Tracks": new_tracks}}
+    new_core_size: list[int] = [100, 200]
+    source: dict[str, object] = {"Core": {"Size": new_core_size}}
 
     update_parameters(source, target)
 
-    assert target["Floorplan"]["Tracks"] == new_tracks, "List should be replaced entirely"  # type: ignore[index]
-    assert len(target["Floorplan"]["Tracks"]) == 1, (  # type: ignore[index]
-        f"Expected 1 track, got {len(target['Floorplan']['Tracks'])} "  # type: ignore[index]
-        f"(original had {original_tracks_len})"
+    assert target["Core"]["Size"] == new_core_size, "List should be replaced entirely"  # type: ignore[index]
+    assert len(target["Core"]["Size"]) == 2, (  # type: ignore[index]
+        f"Expected 2 elements, got {len(target['Core']['Size'])} "  # type: ignore[index]
+        f"(original had {original_core_size_len})"
     )
 
 
