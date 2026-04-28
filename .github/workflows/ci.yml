@@ -67,22 +67,17 @@ jobs:
       #   run: uv run pyright chipcompiler
 
       - name: Pytest
-        run: |
-          uv run pytest test/ \
-            --ignore=test/test_harden.py \
-            --ignore=test/test_tools.py \
-            --cov=chipcompiler \
-            --cov-report=term-missing \
-            --cov-report=term:skip-covered \
-            | tee pytest-output.txt
+        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_tools.py --cov=chipcompiler --cov-report=
 
-      - name: Publish test summary
+      - name: Publish coverage summary
         if: always()
         run: |
-          echo '## Pytest Results' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -30 pytest-output.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo '## Coverage Report'
+            echo '```'
+            uv run coverage report --skip-covered
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
 
   build-wheel:
     name: Build
