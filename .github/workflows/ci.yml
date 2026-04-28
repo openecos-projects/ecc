@@ -52,6 +52,11 @@ jobs:
       - name: Setup Python dependencies
         uses: ./.github/actions/setup-python-deps
 
+      - name: Setup PDK
+        run: |
+          git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git chipcompiler/thirdparty/icsprout55-pdk
+          cd chipcompiler/thirdparty/icsprout55-pdk && make unzip
+
       # - name: Ruff format check
       #   run: uv run ruff format --check chipcompiler test
 
@@ -62,7 +67,7 @@ jobs:
       #   run: uv run pyright chipcompiler
 
       - name: Pytest
-        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_tools.py --ignore=test/test_data_pdk.py --ignore=test/test_workspace.py --ignore=test/test_filelist.py --cov=chipcompiler --cov-report=term-missing
+        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_tools.py --cov=chipcompiler --cov-report=term-missing
 
   build-wheel:
     name: Build

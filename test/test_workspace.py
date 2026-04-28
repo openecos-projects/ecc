@@ -7,7 +7,7 @@ from chipcompiler.data import create_workspace, load_workspace
 
 
 def _create_minimal_ics55_pdk(root: Path) -> Path:
-    tech_path = root / "prtech" / "techLEF" / "N551P6M.lef"
+    tech_path = root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
     tech_path.parent.mkdir(parents=True, exist_ok=True)
     tech_path.write_text("VERSION 5.8 ;\n")
 
