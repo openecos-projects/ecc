@@ -54,7 +54,7 @@ def test_create_workspace_persists_pdk_root_in_parameters(tmp_path):
     assert workspace.pdk.root == resolved_root
     assert workspace.parameters.data.get("PDK Root") == resolved_root
 
-    parameters_data = json.loads((workspace_dir / "parameters.json").read_text())
+    parameters_data = json.loads((workspace_dir / "home" / "parameters.json").read_text())
     assert parameters_data.get("PDK Root") == resolved_root
 
 

@@ -6,10 +6,6 @@ import pytest
 
 from chipcompiler.data.pdk import get_pdk
 
-import os, sys
-current_dir = os.path.split(os.path.abspath(__file__))[0]
-root = current_dir.rsplit('/', 1)[0]
-sys.path.append(root)
 
 def _create_minimal_ics55_pdk(root: Path) -> Path:
     """Create the minimal ICS55 directory tree required by get_pdk()."""
@@ -48,8 +44,7 @@ def test_get_pdk_uses_namespaced_env(tmp_path, monkeypatch):
     monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
     monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
 
-    pdk = get_pdk(pdk_name= "ics55", 
-                  pdk_root="{}/../icsprout55-pdk".format(root))
+    pdk = get_pdk(pdk_name="ics55", pdk_root="")
 
     assert pdk.root == str(env_root.resolve())
 
@@ -59,8 +54,7 @@ def test_get_pdk_uses_legacy_env_when_namespaced_missing(tmp_path, monkeypatch):
     monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
     monkeypatch.setenv("ICS55_PDK_ROOT", str(legacy_root))
 
-    pdk = get_pdk(pdk_name= "ics55", 
-                  pdk_root="{}/../icsprout55-pdk".format(root))
+    pdk = get_pdk(pdk_name="ics55", pdk_root="")
 
     assert pdk.root == str(legacy_root.resolve())
 
