@@ -41,8 +41,35 @@ jobs:
       - name: Check version
         uses: ./.github/actions/check-version
 
-  ci:
-    name: Checks And Build
+  pytest:
+    name: Test
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+          enable-cache: "true"
+
+      - name: Install Python dependencies
+        run: uv sync --frozen --all-groups --python 3.11
+
+      - name: Pytest
+        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_tools.py --ignore=test/test_data_pdk.py --ignore=test/test_workspace.py --ignore=test/test_filelist.py --cov=chipcompiler --cov-report=term-missing
+
+  build-wheel:
+    name: Build
     needs: check-version
     runs-on: ubuntu-latest
     steps:
@@ -97,9 +124,7 @@ jobs:
       # - name: Pyright
       #   run: uv run pyright chipcompiler
 
-      - name: Pytest
-        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_tools.py --ignore=test/test_data_pdk.py --ignore=test/test_workspace.py --ignore=test/test_filelist.py --cov=chipcompiler --cov-report=term-missing
-
+      
       - name: Build distributable wheel
         run: bazel run //:build_wheel
 
