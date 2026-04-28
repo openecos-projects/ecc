@@ -74,7 +74,7 @@ def save_data(workspace: Workspace,
     ecc_module.verilog_save(output_verilog=step.output.get("verilog", ""))
     ecc_module.gds_save(output_path=step.output.get("gds", ""))
     ecc_module.json_save(path=step.output.get("json", ""))
-    ecc_module.feature_sammry(json_path=step.feature.get("summary", ""))
+    ecc_module.feature_sammry(json_path=step.feature.get("db", ""))
     if feature_step:
         ecc_module.feature_step(step=step.name,
                             json_path=step.feature.get("step", ""))
