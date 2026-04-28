@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 import os
-import time
-
 import subprocess
 
 from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
@@ -75,7 +73,6 @@ def run_step(workspace: Workspace,
                 env=yosys_env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                timeout=600
             )
 
         if os.path.exists(step.output["verilog"]):
@@ -98,10 +95,6 @@ def run_step(workspace: Workspace,
             )
             return False
 
-    except subprocess.TimeoutExpired:
-        sub_flow.update_step(step_name="run yosys", state=StateEnum.Imcomplete)
-        print("Error: Yosys synthesis timed out")
-        return False
     except Exception as e:
         sub_flow.update_step(step_name="run yosys", state=StateEnum.Imcomplete)
         print(f"Error running yosys: {e}")
