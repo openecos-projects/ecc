@@ -3,7 +3,7 @@ description: Verify pyproject.toml, MODULE.bazel, and chipcompiler/__version__ a
 
 inputs:
   expected_tag:
-    description: 'Expected tag (e.g., v0.1.0). If provided, also verify the tag matches the version.'
+    description: 'Expected tag (e.g., v0.1.0-alpha.2). If provided, also verify the tag matches the version.'
     required: false
     default: ''
 
