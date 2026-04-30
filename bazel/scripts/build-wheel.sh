@@ -53,16 +53,44 @@ echo "[wheel] running smoke test"
 smoke_dir="$(mktemp -d)"
 trap 'rm -rf "$smoke_dir"' EXIT
 
-# Use a temp venv (via uv) because hermetic Python lacks ensurepip.
-"$UV" venv --python "$PYTHON3" "$smoke_dir/venv"
 venv_python="$smoke_dir/venv/bin/python"
 
-# ecc-dreamplace and ecc-tools are not on PyPI; install them from GitHub URLs first,
-# then install the local ecc wheel so uv resolves the remaining PyPI deps.
-"$UV" pip install --python "$venv_python" \
-    "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.1/ecc_tools-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" \
-    "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" \
-    "$final_whl"
+# Use a temp venv (via uv) because hermetic Python lacks ensurepip.
+"$UV" venv --python "$PYTHON3" "$smoke_dir/venv"
+
+# ecc-dreamplace and ecc-tools are not on PyPI. Install them from the same
+# pinned source URLs used by the main project, then install the local ecc wheel
+# so uv resolves the remaining PyPI deps against the final artifact.
+"$PYTHON3" - "$WS/pyproject.toml" "$smoke_dir/requirements.txt" <<'PY'
+import pathlib
+import sys
+import tomllib
+
+project = tomllib.loads(pathlib.Path(sys.argv[1]).read_text())
+requirements = pathlib.Path(sys.argv[2])
+sources = project["tool"]["uv"]["sources"]
+dependencies = project["project"]["dependencies"]
+
+def pinned_url(name: str) -> str:
+    dependency = next(dep for dep in dependencies if dep.startswith(f"{name}=="))
+    version = dependency.split("==", 1)[1]
+    url = sources[name]["url"]
+    wheel_name = name.replace("-", "_")
+    if f"{wheel_name}-{version}" not in url:
+        raise SystemExit(f"{name} dependency {version} does not match source URL: {url}")
+    return url
+
+requirements.write_text(
+    "\n".join(
+        [
+            pinned_url("ecc-tools"),
+            pinned_url("ecc-dreamplace"),
+        ],
+    )
+    + "\n",
+)
+PY
+"$UV" pip install --python "$venv_python" -r "$smoke_dir/requirements.txt" "$final_whl"
 
 expected_version=$(grep -E '^version\s*=' "$WS/pyproject.toml" | head -n1 | sed 's/.*"\([^"]*\)".*/\1/')
 "$venv_python" -c "
