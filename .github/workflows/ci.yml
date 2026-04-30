@@ -57,6 +57,16 @@ jobs:
           git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git chipcompiler/thirdparty/icsprout55-pdk
           cd chipcompiler/thirdparty/icsprout55-pdk && make unzip
 
+      - name: Setup OSS CAD Suite
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Yosys
+        run: |
+          yosys -V
+          yosys -p "plugin -i slang"
+
       # - name: Ruff format check
       #   run: uv run ruff format --check chipcompiler test
 
@@ -67,7 +77,7 @@ jobs:
       #   run: uv run pyright chipcompiler
 
       - name: Pytest
-        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_tools.py --cov=chipcompiler --cov-report=
+        run: uv run pytest test/ --ignore=test/test_harden.py --cov=chipcompiler --cov-report=
 
       - name: Publish coverage summary
         if: always()
