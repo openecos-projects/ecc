@@ -24,6 +24,9 @@ def read_flow_json(run_dir: str) -> dict | None:
 
 def get_run_status(flow_data: dict) -> str:
     steps = flow_data.get("steps", [])
+    if not isinstance(steps, list):
+        steps = []
+    steps = [s for s in steps if isinstance(s, dict)]
     if not steps:
         return "unstart"
     for step in steps:
