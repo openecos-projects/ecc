@@ -26,6 +26,13 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
   - Supports file paths, +incdir directives, comments, quoted paths
   - Parser implementation: `chipcompiler/utility/filelist.py`
 
+### CLI Specifications
+
+- **[CLI Design](specification/cli-design.md)** - Progressive-disclosure CLI design and roadmap
+  - Grep-friendly summary lines with disclosure commands
+  - Project, run, step, metric, artifact, issue, and config object model
+  - Phased roadmap for project setup, debug, traceability, and exploration
+
 ## Quick Navigation
 
 ### I want to...
