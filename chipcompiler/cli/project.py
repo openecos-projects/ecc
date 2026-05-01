@@ -144,7 +144,7 @@ def run_project(project_dir: str, overwrite: bool = False,
     if overwrite and os.path.exists(run_dir):
         shutil.rmtree(run_dir)
 
-    rtl_mode, origin_verilog, input_filelist = resolve_rtl(cfg)
+    _, origin_verilog, input_filelist = resolve_rtl(cfg)
     parameters = to_parameters(cfg)
     pdk_root = resolve_pdk_root(cfg)
 

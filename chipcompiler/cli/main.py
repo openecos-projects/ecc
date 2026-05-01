@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 
@@ -202,7 +203,6 @@ def _cmd_metrics(args, project_dir: str, project: str | None) -> int:
 
 
 def _run_dir(project_dir: str) -> str:
-    import os
     return os.path.join(project_dir, "runs", "default")
 
 

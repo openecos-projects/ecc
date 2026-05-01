@@ -115,20 +115,16 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
     elif cfg.pdk_name not in SUPPORTED_PDK_NAMES:
         errors.append(f"unsupported pdk.name: {cfg.pdk_name}")
 
-    if cfg.pdk_root:
-        resolved_root = _resolve_path(cfg.project_dir, cfg.pdk_root)
-        if not os.path.isdir(resolved_root):
-            errors.append(f"pdk.root is not a directory: {cfg.pdk_root}")
+    pdk_root = _resolve_pdk_root(cfg)
+    if pdk_root:
+        if not os.path.isdir(pdk_root):
+            errors.append(f"pdk.root is not a directory: {cfg.pdk_root or '$(env)'}")
         else:
-            pdk_err = _validate_pdk_contents(cfg.pdk_name, resolved_root)
+            pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root)
             if pdk_err:
                 errors.append(pdk_err)
-    elif not _pdk_root_from_env():
-        errors.append("pdk.root is required")
     else:
-        pdk_err = _validate_pdk_contents(cfg.pdk_name, _pdk_root_from_env())
-        if pdk_err:
-            errors.append(pdk_err)
+        errors.append("pdk.root is required")
 
     if not cfg.flow_preset:
         errors.append("flow.preset is required")
@@ -195,6 +191,10 @@ def _resolve_path(project_dir: str, path: str) -> str:
 
 
 def resolve_pdk_root(cfg: ProjectConfig) -> str:
+    return _resolve_pdk_root(cfg)
+
+
+def _resolve_pdk_root(cfg: ProjectConfig) -> str:
     if not cfg.pdk_root:
         return _pdk_root_from_env()
     return _resolve_path(cfg.project_dir, cfg.pdk_root)

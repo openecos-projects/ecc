@@ -349,7 +349,6 @@ def build_metrics_lines(run_dir: str, step_token: str | None = None,
         )], 0
 
     lines = []
-    rc = 0
     for token, path in sorted(metrics_files.items()):
         data = read_metrics(path)
         if not data:
@@ -363,47 +362,40 @@ def build_metrics_lines(run_dir: str, step_token: str | None = None,
                 source=os.path.relpath(path, run_dir),
                 inspect=disclosure_cmd(f"ecc metrics {token} --json", project),
             ))
-    return lines, rc
+    return lines, 0
 
 
-def build_metrics_json(run_dir: str, step_token: str | None = None,
-                       project: str | None = None) -> tuple[dict, int]:
-    err = _check_requested_step(run_dir, step_token, project)
-    if err is not None:
-        return err, 1
-
-    metrics_files = discover_metrics(run_dir, step_token)
-    all_metrics = []
-    for token, path in sorted(metrics_files.items()):
-        data = read_metrics(path)
-        for raw_key, value in data.items():
-            all_metrics.append({
-                "metric": normalize_metric_key(raw_key),
-                "step": token,
-                "value": value,
-                "source": os.path.relpath(path, run_dir),
-            })
-    return {"metrics": all_metrics}, 0
-
-
-def build_metrics_jsonl(run_dir: str, step_token: str | None = None,
-                        project: str | None = None) -> tuple[list[dict], int]:
+def _collect_metrics(run_dir: str, step_token: str | None,
+                     project: str | None) -> tuple[list[dict], int]:
     err = _check_requested_step(run_dir, step_token, project)
     if err is not None:
         return [err], 1
 
     metrics_files = discover_metrics(run_dir, step_token)
-    objects = []
+    items = []
     for token, path in sorted(metrics_files.items()):
         data = read_metrics(path)
         for raw_key, value in data.items():
-            objects.append({
+            items.append({
                 "metric": normalize_metric_key(raw_key),
                 "step": token,
                 "value": value,
                 "source": os.path.relpath(path, run_dir),
             })
-    return objects, 0
+    return items, 0
+
+
+def build_metrics_json(run_dir: str, step_token: str | None = None,
+                       project: str | None = None) -> tuple[dict, int]:
+    items, rc = _collect_metrics(run_dir, step_token, project)
+    if rc != 0:
+        return items[0], 1
+    return {"metrics": items}, 0
+
+
+def build_metrics_jsonl(run_dir: str, step_token: str | None = None,
+                        project: str | None = None) -> tuple[list[dict], int]:
+    return _collect_metrics(run_dir, step_token, project)
 
 
 def _check_requested_step(run_dir: str, step_token: str | None,
