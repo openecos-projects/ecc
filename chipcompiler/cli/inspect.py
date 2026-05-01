@@ -3,6 +3,7 @@ import os
 import re
 
 from chipcompiler.cli.output import (
+    disclosure_cmd,
     normalize_metric_key,
     normalize_state,
     normalize_step_name,
@@ -27,7 +28,9 @@ def get_run_status(flow_data: dict) -> str:
         return "unstart"
     for step in steps:
         state = normalize_state(step.get("state", ""))
-        if state in ("incomplete", "invalid", "ongoing"):
+        if state == "ongoing":
+            return "ongoing"
+        if state in ("incomplete", "invalid"):
             return "failed"
     all_success = all(normalize_state(s.get("state", "")) == "success" for s in steps)
     if all_success:
@@ -37,7 +40,7 @@ def get_run_status(flow_data: dict) -> str:
 
 
 def build_status_lines(run_dir: str, project: str | None = None) -> tuple[list[str], int]:
-    from chipcompiler.cli.output import disclosure_cmd, format_line
+    from chipcompiler.cli.output import format_line
 
     flow_data = read_flow_json(run_dir)
     if flow_data is None:
@@ -169,7 +172,7 @@ def read_log_file(path: str) -> list[str]:
 
 def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
                     project: str | None = None) -> tuple[list[str], int]:
-    from chipcompiler.cli.output import disclosure_cmd, format_line
+    from chipcompiler.cli.output import format_line
 
     if step_token is None:
         lines = []
@@ -310,7 +313,7 @@ def read_metrics(path: str) -> dict:
 
 def build_metrics_lines(run_dir: str, step_token: str | None = None,
                         project: str | None = None) -> tuple[list[str], int]:
-    from chipcompiler.cli.output import disclosure_cmd, format_line
+    from chipcompiler.cli.output import format_line
 
     metrics_files = discover_metrics(run_dir, step_token)
     if not metrics_files:
@@ -408,7 +411,7 @@ def _check_requested_step(run_dir: str, step_token: str | None,
         return {
             "status": "missing",
             "metric_step": step_token,
-            "log_cmd": f"ecc log {step_token} --errors",
+            "log_cmd": disclosure_cmd(f"ecc log {step_token} --errors", project),
         }
     return None
 
