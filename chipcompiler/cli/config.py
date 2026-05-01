@@ -138,6 +138,18 @@ def resolve_rtl(cfg: ProjectConfig) -> tuple[str, str, str]:
         return ("filelist", "", rtl_path)
     if suffix in RTL_SUFFIXES:
         return ("rtl", rtl_path, "")
+
+    if os.path.isfile(rtl_path):
+        try:
+            from chipcompiler.utility.filelist import parse_filelist, validate_filelist
+
+            parse_filelist(rtl_path)
+            _, missing = validate_filelist(rtl_path)
+            if not missing:
+                return ("filelist", "", rtl_path)
+        except Exception:
+            pass
+
     return ("rtl", rtl_path, "")
 
 
@@ -145,3 +157,9 @@ def _resolve_path(project_dir: str, path: str) -> str:
     if os.path.isabs(path):
         return path
     return os.path.join(project_dir, path)
+
+
+def resolve_pdk_root(cfg: ProjectConfig) -> str:
+    if not cfg.pdk_root:
+        return ""
+    return _resolve_path(cfg.project_dir, cfg.pdk_root)
