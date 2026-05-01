@@ -43,12 +43,12 @@ python3Packages.buildPythonPackage {
       fi
     done
 
-    # This package should expose only the dedicated `cli` entrypoint.
+    # This package should expose only the dedicated `ecc` entrypoint.
     rm -f "$out/bin/chipcompiler"
   '';
 
   postFixup = ''
-    wrapProgram "$out/bin/cli" \
+    wrapProgram "$out/bin/ecc" \
       --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}" \
       --prefix PATH : "${yosysWithSlang}/bin"
   '';
@@ -88,6 +88,6 @@ python3Packages.buildPythonPackage {
     license = lib.licenses.mulan-psl2;
     platforms = lib.platforms.linux;
     maintainers = [ ];
-    mainProgram = "cli";
+    mainProgram = "ecc";
   };
 }
