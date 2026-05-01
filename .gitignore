@@ -183,4 +183,6 @@ requirements_lock.txt
 
 chipcompiler/tools/ecc_dreamplace/dreamplace
 
-.agents/
+humanize/
+humanize-*
+docs/superpowers/
