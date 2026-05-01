@@ -41,6 +41,13 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     pdk = data.get("pdk", {})
     flow = data.get("flow", {})
 
+    if not isinstance(design, dict):
+        design = {}
+    if not isinstance(pdk, dict):
+        pdk = {}
+    if not isinstance(flow, dict):
+        flow = {}
+
     project_dir = os.path.dirname(os.path.abspath(config_path))
 
     try:
