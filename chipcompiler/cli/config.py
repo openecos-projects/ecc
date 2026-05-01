@@ -187,6 +187,9 @@ def resolve_pdk_root(cfg: ProjectConfig) -> str:
 def _pdk_root_from_env() -> str:
     for key in ("CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
         val = os.environ.get(key, "").strip()
-        if val and os.path.isdir(val):
+        if not val:
+            continue
+        val = os.path.normpath(val)
+        if os.path.isdir(val):
             return val
     return ""
