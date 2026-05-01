@@ -137,7 +137,7 @@ def run_project(project_dir: str, overwrite: bool = False,
             error="run_exists",
             run="default",
             workspace=run_dir,
-            overwrite="ecc run --overwrite",
+            overwrite=disclosure_cmd("ecc run --overwrite", project),
         ), file=sys.stderr)
         return [], 1
 

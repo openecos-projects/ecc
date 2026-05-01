@@ -26,8 +26,13 @@ class ProjectConfig:
 
 
 def load_project_config(config_path: str) -> ProjectConfig:
-    with open(config_path, "rb") as f:
-        data = tomllib.load(f)
+    try:
+        with open(config_path, "rb") as f:
+            data = tomllib.load(f)
+    except tomllib.TOMLDecodeError as exc:
+        cfg = ProjectConfig(config_path=config_path)
+        cfg._toml_error = str(exc)
+        return cfg
     return _parse_config(data, config_path)
 
 
@@ -71,6 +76,10 @@ def find_config_path(project_dir: str) -> str | None:
 
 
 def validate_project_config(cfg: ProjectConfig) -> list[str]:
+    toml_error = getattr(cfg, "_toml_error", None)
+    if toml_error:
+        return [f"malformed ecc.toml: {toml_error}"]
+
     errors = []
 
     if not cfg.design_name:
