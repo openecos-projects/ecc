@@ -22,11 +22,15 @@ def read_flow_json(run_dir: str) -> dict | None:
         return None
 
 
-def get_run_status(flow_data: dict) -> str:
+def _safe_steps(flow_data: dict) -> list[dict]:
     steps = flow_data.get("steps", [])
     if not isinstance(steps, list):
-        steps = []
-    steps = [s for s in steps if isinstance(s, dict)]
+        return []
+    return [s for s in steps if isinstance(s, dict)]
+
+
+def get_run_status(flow_data: dict) -> str:
+    steps = _safe_steps(flow_data)
     if not steps:
         return "unstart"
     for step in steps:
@@ -67,7 +71,7 @@ def build_status_lines(run_dir: str, project: str | None = None) -> tuple[list[s
         log=disclosure_cmd("ecc log", project),
     ))
 
-    for step in flow_data.get("steps", []):
+    for step in _safe_steps(flow_data):
         step_token = normalize_step_name(step.get("name", ""))
         lines.append(format_line(
             step=step_token,
@@ -88,7 +92,7 @@ def build_status_json(run_dir: str) -> tuple[dict, int]:
 
     run_status = get_run_status(flow_data)
     steps = []
-    for step in flow_data.get("steps", []):
+    for step in _safe_steps(flow_data):
         steps.append({
             "step": normalize_step_name(step.get("name", "")),
             "tool": step.get("tool", ""),
@@ -107,7 +111,7 @@ def build_status_jsonl(run_dir: str) -> tuple[list[dict], int]:
     run_status = get_run_status(flow_data)
     objects = [{"kind": "run", "run": "default", "status": run_status, "workspace": run_dir}]
 
-    for step in flow_data.get("steps", []):
+    for step in _safe_steps(flow_data):
         objects.append({
             "kind": "step",
             "step": normalize_step_name(step.get("name", "")),
