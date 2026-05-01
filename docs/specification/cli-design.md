@@ -391,7 +391,6 @@ Success criteria:
 - [ ] `ecc diagnose`
 - [ ] `ecc artifacts`
 - [ ] `ecc config --resolved`
-- [ ] `ecc open`
 - [ ] Run tags and run comparison basics
 - [ ] Structured issue and artifact metadata
 
