@@ -1,5 +1,6 @@
 import json
 import re
+import shlex
 import sys
 
 
@@ -19,7 +20,7 @@ def format_line(**fields) -> str:
 
 def disclosure_cmd(command: str, project: str | None = None) -> str:
     if project:
-        return f"{command} --project {project}"
+        return f"{command} --project {shlex.quote(project)}"
     return command
 
 
