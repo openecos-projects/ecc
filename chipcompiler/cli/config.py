@@ -55,10 +55,15 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     except (TypeError, ValueError):
         freq = 0.0
 
+    rtl_raw = design.get("rtl", [])
+    if not isinstance(rtl_raw, list):
+        rtl_raw = []
+    design_rtl = [v for v in rtl_raw if isinstance(v, str)]
+
     cfg = ProjectConfig(
         design_name=design.get("name", ""),
         design_top=design.get("top", ""),
-        design_rtl=design.get("rtl", []),
+        design_rtl=design_rtl,
         design_clock_port=design.get("clock_port", ""),
         design_frequency_mhz=freq,
         pdk_name=pdk.get("name", ""),
