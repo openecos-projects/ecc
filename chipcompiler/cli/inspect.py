@@ -180,11 +180,11 @@ def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
         step_dirs = discover_step_dirs(run_dir)
         for token in sorted(step_dirs):
             step_logs = discover_logs(run_dir, token)
-            if step_logs:
+            for lf in step_logs:
                 lines.append(format_line(
                     step=token,
-                    logs=len(step_logs),
-                    log=disclosure_cmd(f"ecc log {token} --errors", project),
+                    log=os.path.relpath(lf, run_dir),
+                    inspect=disclosure_cmd(f"ecc log {token} --errors", project),
                 ))
 
         if not lines:
