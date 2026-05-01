@@ -5,6 +5,7 @@ import sys
 from chipcompiler.cli.config import (
     find_config_path,
     load_project_config,
+    resolve_pdk_root,
     resolve_rtl,
     to_parameters,
     validate_project_config,
@@ -144,16 +145,27 @@ def run_project(project_dir: str, overwrite: bool = False,
 
     rtl_mode, origin_verilog, input_filelist = resolve_rtl(cfg)
     parameters = to_parameters(cfg)
+    pdk_root = resolve_pdk_root(cfg)
 
-    workspace = create_workspace(
-        directory=run_dir,
-        origin_def="",
-        origin_verilog=origin_verilog,
-        pdk=cfg.pdk_name,
-        parameters=parameters,
-        input_filelist=input_filelist,
-        pdk_root=cfg.pdk_root,
-    )
+    try:
+        workspace = create_workspace(
+            directory=run_dir,
+            origin_def="",
+            origin_verilog=origin_verilog,
+            pdk=cfg.pdk_name,
+            parameters=parameters,
+            input_filelist=input_filelist,
+            pdk_root=pdk_root,
+        )
+    except Exception as exc:
+        print(format_line(
+            error="workspace_failed",
+            run="default",
+            workspace=run_dir,
+            reason=str(exc),
+        ), file=sys.stderr)
+        return [], 1
+
     if workspace is None:
         print(format_line(
             error="workspace_failed",
@@ -162,20 +174,29 @@ def run_project(project_dir: str, overwrite: bool = False,
         ), file=sys.stderr)
         return [], 1
 
-    engine_flow = EngineFlow(workspace=workspace)
-    if not engine_flow.has_init():
-        for step, tool, state in build_rtl2gds_flow():
-            engine_flow.add_step(step=step, tool=tool, state=state)
+    try:
+        engine_flow = EngineFlow(workspace=workspace)
+        if not engine_flow.has_init():
+            for step, tool, state in build_rtl2gds_flow():
+                engine_flow.add_step(step=step, tool=tool, state=state)
 
-    engine_flow.create_step_workspaces()
+        engine_flow.create_step_workspaces()
 
-    if not engine_flow.run_steps():
+        if not engine_flow.run_steps():
+            print(format_line(
+                run="default",
+                status="failed",
+                workspace=run_dir,
+                status_cmd=disclosure_cmd("ecc status", project),
+                log=disclosure_cmd("ecc log --errors", project),
+            ), file=sys.stderr)
+            return [], 1
+    except Exception as exc:
         print(format_line(
+            error="flow_failed",
             run="default",
-            status="failed",
             workspace=run_dir,
-            status_cmd=disclosure_cmd("ecc status", project),
-            log=disclosure_cmd("ecc log --errors", project),
+            reason=str(exc),
         ), file=sys.stderr)
         return [], 1
 
