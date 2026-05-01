@@ -108,7 +108,7 @@ def normalize_metric_key(raw_key: str) -> str:
     if raw_key in known:
         return known[raw_key]
     s = raw_key.lower()
-    s = re.sub(r'[\s\[\]μm^]+', '_', s)
+    s = re.sub(r'[\s\[\]μ^]+', '_', s)
     s = re.sub(r'_+', '_', s)
     s = s.strip('_')
     return s

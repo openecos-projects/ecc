@@ -60,16 +60,19 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         rtl_raw = []
     design_rtl = [v for v in rtl_raw if isinstance(v, str)]
 
+    def _str(val, default=""):
+        return val if isinstance(val, str) else default
+
     cfg = ProjectConfig(
-        design_name=design.get("name", ""),
-        design_top=design.get("top", ""),
+        design_name=_str(design.get("name", "")),
+        design_top=_str(design.get("top", "")),
         design_rtl=design_rtl,
-        design_clock_port=design.get("clock_port", ""),
+        design_clock_port=_str(design.get("clock_port", "")),
         design_frequency_mhz=freq,
-        pdk_name=pdk.get("name", ""),
-        pdk_root=pdk.get("root", ""),
-        flow_preset=flow.get("preset", ""),
-        flow_run=flow.get("run", "default"),
+        pdk_name=_str(pdk.get("name", "")),
+        pdk_root=_str(pdk.get("root", "")),
+        flow_preset=_str(flow.get("preset", "")),
+        flow_run=_str(flow.get("run", "default"), "default"),
         config_path=config_path,
         project_dir=project_dir,
     )
