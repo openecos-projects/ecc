@@ -240,6 +240,17 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
+    def test_check_fails_non_numeric_frequency(self, tmp_path):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content = content.replace("frequency_mhz = 100.0", 'frequency_mhz = "fast"')
+        with open(toml_path, "w") as f:
+            f.write(content)
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+
     def test_check_json_output(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
@@ -452,6 +463,38 @@ class TestLog:
 
         rc = cli_main.run(["log", "--project", project_dir])
         assert rc == 0
+        out = capsys.readouterr().out
+        assert 'inspect="ecc log' in out
+
+    def test_log_no_step_discovers_step_logs(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("Error: bad\n")
+
+        rc = cli_main.run(["log", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "step=synthesis" in out
+        assert 'log="ecc log synthesis --errors' in out
+
+    def test_log_no_step_global_logs_have_disclosure(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        log_dir = os.path.join(run_dir, "log")
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, "flow.log"), "w") as f:
+            f.write("content\n")
+
+        rc = cli_main.run(["log", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        for line in out.strip().split("\n"):
+            if line.strip():
+                assert _has_disclosure(line), f"Missing disclosure in: {line}"
 
     def test_log_unknown_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -572,6 +615,35 @@ class TestMetrics:
         out = capsys.readouterr().out
         assert "status=missing" in out
         assert 'log="ecc log cts --errors' in out
+
+    def test_metrics_json_unknown_step(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        os.makedirs(os.path.join(project_dir, "runs", "default"), exist_ok=True)
+
+        rc = cli_main.run(["metrics", "nonexistent", "--json", "--project", project_dir])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["status"] == "unknown_step"
+        assert data["step"] == "nonexistent"
+
+    def test_metrics_json_missing_file(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(os.path.join(run_dir, "CTS_ecc", "analysis"), exist_ok=True)
+
+        rc = cli_main.run(["metrics", "cts", "--json", "--project", project_dir])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["status"] == "missing"
+
+    def test_metrics_jsonl_unknown_step(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        os.makedirs(os.path.join(project_dir, "runs", "default"), exist_ok=True)
+
+        rc = cli_main.run(["metrics", "nonexistent", "--jsonl", "--project", project_dir])
+        assert rc == 1
+        objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
+        assert objects[0]["status"] == "unknown_step"
 
 
 # ===========================================================================

@@ -187,12 +187,12 @@ def _cmd_metrics(args, project_dir: str, project: str | None) -> int:
     run_dir = _run_dir(project_dir)
 
     if getattr(args, "jsonl", False):
-        objects, rc = build_metrics_jsonl(run_dir, args.step)
+        objects, rc = build_metrics_jsonl(run_dir, args.step, project)
         emit_jsonl(objects)
         return rc
 
     if getattr(args, "json", False):
-        obj, rc = build_metrics_json(run_dir, args.step)
+        obj, rc = build_metrics_json(run_dir, args.step, project)
         emit_json(obj)
         return rc
 
