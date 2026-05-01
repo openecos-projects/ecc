@@ -104,7 +104,7 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         resolved_root = _resolve_path(cfg.project_dir, cfg.pdk_root)
         if not os.path.isdir(resolved_root):
             errors.append(f"pdk.root is not a directory: {cfg.pdk_root}")
-    else:
+    elif not _pdk_root_from_env():
         errors.append("pdk.root is required")
 
     if not cfg.flow_preset:
@@ -163,6 +163,7 @@ def resolve_rtl(cfg: ProjectConfig) -> tuple[str, str, str]:
 
 
 def _resolve_path(project_dir: str, path: str) -> str:
+    path = os.path.expandvars(os.path.expanduser(path))
     if os.path.isabs(path):
         return path
     return os.path.join(project_dir, path)
@@ -170,5 +171,13 @@ def _resolve_path(project_dir: str, path: str) -> str:
 
 def resolve_pdk_root(cfg: ProjectConfig) -> str:
     if not cfg.pdk_root:
-        return ""
+        return _pdk_root_from_env()
     return _resolve_path(cfg.project_dir, cfg.pdk_root)
+
+
+def _pdk_root_from_env() -> str:
+    for key in ("CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
+        val = os.environ.get(key, "").strip()
+        if val and os.path.isdir(val):
+            return val
+    return ""
