@@ -116,8 +116,16 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         resolved_root = _resolve_path(cfg.project_dir, cfg.pdk_root)
         if not os.path.isdir(resolved_root):
             errors.append(f"pdk.root is not a directory: {cfg.pdk_root}")
+        else:
+            pdk_err = _validate_pdk_contents(cfg.pdk_name, resolved_root)
+            if pdk_err:
+                errors.append(pdk_err)
     elif not _pdk_root_from_env():
         errors.append("pdk.root is required")
+    else:
+        pdk_err = _validate_pdk_contents(cfg.pdk_name, _pdk_root_from_env())
+        if pdk_err:
+            errors.append(pdk_err)
 
     if not cfg.flow_preset:
         errors.append("flow.preset is required")
@@ -187,6 +195,17 @@ def resolve_pdk_root(cfg: ProjectConfig) -> str:
     if not cfg.pdk_root:
         return _pdk_root_from_env()
     return _resolve_path(cfg.project_dir, cfg.pdk_root)
+
+
+def _validate_pdk_contents(pdk_name: str, pdk_root: str) -> str | None:
+    if not pdk_root:
+        return None
+    try:
+        from chipcompiler.data.pdk import get_pdk
+        get_pdk(pdk_name, pdk_root)
+        return None
+    except ValueError as exc:
+        return str(exc)
 
 
 def _pdk_root_from_env() -> str:
