@@ -39,6 +39,7 @@ def init_project(name: str, project: str | None = None) -> tuple[list[str], int]
 
     project_dir = os.path.abspath(name)
     config_path = os.path.join(project_dir, "ecc.toml")
+    design_name = os.path.basename(project_dir)
 
     if os.path.exists(config_path):
         print(format_line(
@@ -53,7 +54,7 @@ def init_project(name: str, project: str | None = None) -> tuple[list[str], int]
     os.makedirs(os.path.join(project_dir, "runs"), exist_ok=True)
 
     with open(config_path, "w") as f:
-        f.write(DEFAULT_TOML.format(name=name))
+        f.write(DEFAULT_TOML.format(name=design_name))
 
     project_arg = project or name
     line = format_line(

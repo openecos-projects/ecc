@@ -142,6 +142,14 @@ class TestInit:
         rc = cli_main.run(["init", ""])
         assert rc == 1
 
+    def test_init_uses_basename_for_design_name(self, tmp_path):
+        project_path = str(tmp_path / "subdir" / "mydesign")
+        rc = cli_main.run(["init", project_path])
+        assert rc == 0
+        toml = (tmp_path / "subdir" / "mydesign" / "ecc.toml").read_text()
+        assert 'name = "mydesign"' in toml
+        assert "rtl/mydesign.v" in toml
+
 
 # ===========================================================================
 # AC-2: ecc check
