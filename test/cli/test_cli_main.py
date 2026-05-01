@@ -479,7 +479,8 @@ class TestLog:
         assert rc == 0
         out = capsys.readouterr().out
         assert "step=synthesis" in out
-        assert 'log="ecc log synthesis --errors' in out
+        assert "Synthesis_yosys/log/synthesis.log" in out
+        assert 'inspect="ecc log synthesis --errors' in out
 
     def test_log_no_step_global_logs_have_disclosure(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
