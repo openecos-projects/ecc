@@ -60,8 +60,13 @@ def _add_project_arg(parser: argparse.ArgumentParser) -> None:
 
 
 def run(argv: Sequence[str] | None = None) -> int:
+    raw = list(argv) if argv is not None else sys.argv[1:]
+
+    if _is_legacy_args(raw):
+        return _run_legacy(raw)
+
     parser = build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    args = parser.parse_args(raw)
 
     if args.command is None:
         parser.print_help()
@@ -204,6 +209,74 @@ def _cmd_metrics(args, project_dir: str, project: str | None) -> int:
 def _run_dir(project_dir: str) -> str:
     import os
     return os.path.join(project_dir, "runs", "default")
+
+
+_LEGACY_FLAGS = {"--workspace", "--rtl", "--design", "--top", "--clock", "--pdk-root", "--freq"}
+
+
+def _is_legacy_args(args: list[str]) -> bool:
+    return any(a in _LEGACY_FLAGS for a in args)
+
+
+def _run_legacy(argv: list[str]) -> int:
+    import argparse
+
+    from chipcompiler.data import create_workspace, get_parameters
+    from chipcompiler.engine import EngineFlow
+    from chipcompiler.rtl2gds import build_rtl2gds_flow
+
+    parser = argparse.ArgumentParser(
+        prog="ecc",
+        description="Legacy parameter-only invocation (use 'ecc run' for project-based flows)",
+    )
+    parser.add_argument("--workspace", required=True)
+    parser.add_argument("--rtl", required=True)
+    parser.add_argument("--design", required=True)
+    parser.add_argument("--top", required=True)
+    parser.add_argument("--clock", required=True)
+    parser.add_argument("--pdk-root", required=True)
+    parser.add_argument("--freq", type=float, default=100.0)
+    args = parser.parse_args(argv)
+
+    parameters = get_parameters("ics55")
+    parameters.data.update({
+        "PDK": "ics55",
+        "Design": args.design,
+        "Top module": args.top,
+        "Clock": args.clock,
+        "Frequency max [MHz]": args.freq,
+    })
+
+    try:
+        workspace = create_workspace(
+            directory=args.workspace,
+            origin_def="",
+            origin_verilog=args.rtl,
+            pdk="ics55",
+            parameters=parameters,
+            input_filelist="",
+            pdk_root=args.pdk_root,
+        )
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    if workspace is None:
+        print("Error: failed to create workspace", file=sys.stderr)
+        return 1
+
+    engine_flow = EngineFlow(workspace=workspace)
+    if not engine_flow.has_init():
+        for step, tool, state in build_rtl2gds_flow():
+            engine_flow.add_step(step=step, tool=tool, state=state)
+
+    engine_flow.create_step_workspaces()
+
+    if not engine_flow.run_steps():
+        print("Error: flow execution failed", file=sys.stderr)
+        return 1
+
+    return 0
 
 
 def main() -> None:
