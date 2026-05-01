@@ -176,6 +176,13 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", str(tmp_path)])
         assert rc == 1
 
+    def test_check_fails_malformed_toml(self, tmp_path, capsys):
+        project_dir = tmp_path / "bad"
+        project_dir.mkdir()
+        (project_dir / "ecc.toml").write_text("[design\ninvalid {{{")
+        rc = cli_main.run(["check", "--project", str(project_dir)])
+        assert rc == 1
+
     def test_check_fails_missing_rtl(self, tmp_path):
         project_dir = _create_valid_project(tmp_path)
         toml_path = os.path.join(project_dir, "ecc.toml")

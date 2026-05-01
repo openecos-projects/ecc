@@ -237,8 +237,20 @@ def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
     return result, 0
 
 
-def build_log_jsonl(run_dir: str, step_token: str, errors_only: bool,
+def build_log_jsonl(run_dir: str, step_token: str | None, errors_only: bool,
                     project: str | None = None) -> tuple[list[dict], int]:
+    if step_token is None:
+        objects = []
+        for lf in discover_logs(run_dir):
+            objects.append({"log": os.path.relpath(lf, run_dir)})
+        step_dirs = discover_step_dirs(run_dir)
+        for token in sorted(step_dirs):
+            for lf in discover_logs(run_dir, token):
+                objects.append({"step": token, "log": os.path.relpath(lf, run_dir)})
+        if not objects:
+            return [{"log_status": "no_logs", "workspace": run_dir}], 0
+        return objects, 0
+
     step_dirs = discover_step_dirs(run_dir)
     if step_token not in step_dirs:
         return [{"step": step_token, "status": "unknown_step"}], 1
