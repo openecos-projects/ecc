@@ -38,12 +38,17 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
 
     project_dir = os.path.dirname(os.path.abspath(config_path))
 
+    try:
+        freq = float(design.get("frequency_mhz", 0))
+    except (TypeError, ValueError):
+        freq = 0.0
+
     cfg = ProjectConfig(
         design_name=design.get("name", ""),
         design_top=design.get("top", ""),
         design_rtl=design.get("rtl", []),
         design_clock_port=design.get("clock_port", ""),
-        design_frequency_mhz=float(design.get("frequency_mhz", 0)),
+        design_frequency_mhz=freq,
         pdk_name=pdk.get("name", ""),
         pdk_root=pdk.get("root", ""),
         flow_preset=flow.get("preset", ""),
