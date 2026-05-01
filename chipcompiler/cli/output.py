@@ -6,7 +6,8 @@ import sys
 
 def format_field(key: str, value) -> str:
     if isinstance(value, str) and re.search(r'\s', value):
-        return f'{key}="{value}"'
+        escaped = value.replace('\\', '\\\\').replace('"', '\\"')
+        return f'{key}="{escaped}"'
     return f"{key}={value}"
 
 
