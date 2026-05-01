@@ -189,7 +189,7 @@ def run_project(project_dir: str, overwrite: bool = False,
                 status="failed",
                 workspace=run_dir,
                 status_cmd=disclosure_cmd("ecc status", project),
-                log=disclosure_cmd("ecc log --errors", project),
+                log=disclosure_cmd("ecc log", project),
             ), file=sys.stderr)
             return [], 1
     except Exception as exc:
