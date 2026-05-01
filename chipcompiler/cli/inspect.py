@@ -28,8 +28,11 @@ def get_run_status(flow_data: dict) -> str:
         state = normalize_state(step.get("state", ""))
         if state in ("incomplete", "invalid", "ongoing"):
             return "failed"
-    all_done = all(normalize_state(s.get("state", "")) == "success" for s in steps)
-    return "success" if all_done else "failed"
+    all_success = all(normalize_state(s.get("state", "")) == "success" for s in steps)
+    if all_success:
+        return "success"
+    all_unstart = all(normalize_state(s.get("state", "")) == "unstart" for s in steps)
+    return "unstart" if all_unstart else "failed"
 
 
 def build_status_lines(run_dir: str, project: str | None = None) -> tuple[list[str], int]:
