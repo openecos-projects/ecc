@@ -15,7 +15,8 @@ def read_flow_json(run_dir: str) -> dict | None:
         return None
     try:
         with open(path) as f:
-            return json.load(f)
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
     except (json.JSONDecodeError, OSError):
         return None
 
