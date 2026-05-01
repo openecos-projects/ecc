@@ -54,6 +54,10 @@ def _install_flow_mocks(monkeypatch):
         "chipcompiler.cli.project.build_rtl2gds_flow",
         lambda: [("Synthesis", "yosys", "Unstart")],
     )
+    monkeypatch.setattr(
+        "chipcompiler.cli.config._validate_pdk_contents",
+        lambda name, root: None,
+    )
 
     return capture
 
@@ -157,8 +161,12 @@ class TestInit:
 
 
 class TestCheck:
-    def test_check_passes_valid_config(self, tmp_path, capsys):
+    def test_check_passes_valid_config(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda name, root: None,
+        )
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
@@ -166,6 +174,10 @@ class TestCheck:
 
     def test_check_from_inside_project_dir(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda name, root: None,
+        )
         monkeypatch.chdir(project_dir)
         rc = cli_main.run(["check"])
         assert rc == 0
@@ -266,8 +278,12 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_json_output(self, tmp_path, capsys):
+    def test_check_json_output(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda name, root: None,
+        )
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 0
         out = capsys.readouterr().out
@@ -677,8 +693,12 @@ class TestDisclosureCommands:
             if line.strip():
                 assert _has_disclosure(line), f"Missing disclosure in: {line}"
 
-    def test_check_lines_have_disclosure(self, tmp_path, capsys):
+    def test_check_lines_have_disclosure(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda name, root: None,
+        )
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
