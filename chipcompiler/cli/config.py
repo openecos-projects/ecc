@@ -119,6 +119,8 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         rtl_path = _resolve_path(cfg.project_dir, cfg.design_rtl[0])
         if not os.path.exists(rtl_path):
             errors.append(f"rtl path does not exist: {cfg.design_rtl[0]}")
+        elif os.path.isdir(rtl_path):
+            errors.append(f"rtl path must be a file, not a directory: {cfg.design_rtl[0]}")
 
     return errors
 

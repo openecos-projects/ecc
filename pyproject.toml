@@ -36,6 +36,7 @@ dependencies = [
   "tqdm>=4.67.1",
   "uvicorn>=0.27",
 ]
+scripts.cli = "chipcompiler.cli.main:main"
 scripts.ecc = "chipcompiler.cli.main:main"
 
 [dependency-groups]
