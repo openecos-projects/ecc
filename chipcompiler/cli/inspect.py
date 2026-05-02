@@ -141,7 +141,7 @@ def build_status_jsonl(run_dir: str, run_id: str | None = None) -> tuple[list[di
     flow_data = read_flow_json(run_dir)
     display_run = run_id or "default"
     if flow_data is None:
-        return [{"run": display_run, "status": "missing", "workspace": run_dir}], 1
+        return [{"kind": "run", "run": display_run, "status": "missing", "workspace": run_dir}], 1
 
     if flow_data is CORRUPT_FLOW_JSON:
         return [{"kind": "run", "run": display_run, "status": "corrupt", "workspace": run_dir}], 1

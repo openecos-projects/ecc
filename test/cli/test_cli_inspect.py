@@ -1380,3 +1380,44 @@ run = "default"
         data = json.loads(capsys.readouterr().out)
         rtl_item = next(i for i in data["config"] if i["key"] == "design.rtl.0")
         assert rtl_item["resolved"] == str(rtl_dir / "gcd.v")
+
+
+# ===========================================================================
+# Regression tests for Codex Round 5 code review (Round 6)
+# ===========================================================================
+
+
+class TestPendingStepDiagnose:
+    def test_pending_step_creates_issue(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Pending", "runtime": ""},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["log", "output", "analysis", "config"],
+                         files={"log/cts.log": "ok\n",
+                                "output/design.def": "def",
+                                "analysis/CTS_metrics.json": '{"freq": 100}',
+                                "config/cts_config.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "issue=pending_step" in out
+        assert "status=pending" in out
+
+
+class TestMissingRunJsonlKind:
+    def test_missing_run_jsonl_has_kind(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(run_dir, exist_ok=True)
+
+        rc = cli_main.run(["status", "--jsonl", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        data = [json.loads(line) for line in out.strip().split("\n") if line.strip()]
+        assert data[0]["kind"] == "run"
+        assert data[0]["status"] == "missing"
+
