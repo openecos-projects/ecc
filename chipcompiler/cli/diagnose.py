@@ -128,6 +128,10 @@ def build_diagnose_issues(run_dir: str, step_token: str | None = None,
             issues.append(_make_issue("failed_step", "error", display_run,
                                       step=token, status=state,
                                       project=project, run_id=run_id))
+        elif state == "pending":
+            issues.append(_make_issue("pending_step", "warning", display_run,
+                                      step=token, status=state,
+                                      project=project, run_id=run_id))
         elif state == "ongoing":
             issues.append(_make_issue("ongoing_step", "warning", display_run,
                                       step=token, status=state,
