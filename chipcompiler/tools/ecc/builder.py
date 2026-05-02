@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 import os
 import stat
+from contextlib import suppress
 from chipcompiler.data import WorkspaceStep, Workspace, Parameters, StepEnum, StateEnum
 
 def build_step(workspace: Workspace,
@@ -215,13 +216,24 @@ def build_step_config(workspace: Workspace,
 
     def _ensure_writable(path: str):
         """Make files writable after copying from read-only sources."""
+        def _chmod_owner_writable(target: str, is_dir: bool = False):
+            mode = os.stat(target).st_mode | stat.S_IWUSR
+            if is_dir:
+                mode |= stat.S_IXUSR
+            os.chmod(target, mode)
+
+        with suppress(OSError):
+            _chmod_owner_writable(path, is_dir=True)
+
         for root, dirs, files in os.walk(path):
-            for name in dirs + files:
+            for name in dirs:
                 target = os.path.join(root, name)
-                try:
-                    os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)
-                except OSError:
-                    pass
+                with suppress(OSError):
+                    _chmod_owner_writable(target, is_dir=True)
+            for name in files:
+                target = os.path.join(root, name)
+                with suppress(OSError):
+                    _chmod_owner_writable(target)
     
     def _update_flow():
         # read config

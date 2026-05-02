@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import stat
+from contextlib import suppress
 from copy import deepcopy
 from pathlib import Path
 
@@ -77,6 +80,11 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     # then copy it to the destination specified by step.config["dreamplace"]
     param_src = Path(__file__).resolve().parent / "configs" / "dreamplace.json"
     shutil.copy2(param_src, step.config["dreamplace"])
+    with suppress(OSError):
+        os.chmod(
+            step.config["dreamplace"],
+            os.stat(step.config["dreamplace"]).st_mode | stat.S_IWUSR,
+        )
 
     params = json_read(step.config["dreamplace"])
 
