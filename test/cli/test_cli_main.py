@@ -803,3 +803,43 @@ class TestEdgeCases:
     def test_no_command_returns_nonzero(self, capsys):
         rc = cli_main.run([])
         assert rc == 1
+
+
+class TestCheckFilelistValidation:
+    def test_check_fails_filelist_with_missing_sources(self, tmp_path, monkeypatch):
+        from chipcompiler.cli.config import _validate_pdk_contents
+        monkeypatch.setattr(_validate_pdk_contents, "__wrapped__",
+                            lambda *a, **k: None, raising=False)
+        monkeypatch.setattr("chipcompiler.cli.config._validate_pdk_contents",
+                            lambda *a, **k: None)
+
+        project_dir = tmp_path / "flproj"
+        project_dir.mkdir()
+        (project_dir / "rtl").mkdir()
+        (project_dir / "rtl" / "gcd.v").write_text("module gcd; endmodule")
+
+        filelist = project_dir / "rtl" / "files.f"
+        filelist.write_text("gcd.v\nmissing.v\nother_missing.v\n")
+
+        pdk_root = tmp_path / "ics55"
+        pdk_root.mkdir()
+
+        toml = f'''[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/files.f"]
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "{pdk_root}"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+'''
+        (project_dir / "ecc.toml").write_text(toml)
+        rc = cli_main.run(["check", "--project", str(project_dir)])
+        assert rc == 1
+

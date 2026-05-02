@@ -140,6 +140,14 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
             errors.append(f"rtl path does not exist: {cfg.design_rtl[0]}")
         elif os.path.isdir(rtl_path):
             errors.append(f"rtl path must be a file, not a directory: {cfg.design_rtl[0]}")
+        else:
+            suffix = os.path.splitext(rtl_path)[1].lower()
+            FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
+            if suffix in FILELIST_SUFFIXES:
+                from chipcompiler.utility.filelist import validate_filelist
+                _, missing = validate_filelist(rtl_path)
+                if missing:
+                    errors.append(f"filelist references missing files: {', '.join(missing)}")
 
     return errors
 
