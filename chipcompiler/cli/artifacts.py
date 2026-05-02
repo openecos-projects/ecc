@@ -14,7 +14,6 @@ def discover_artifacts(run_dir: str, step_token: str | None = None,
                        run_id: str | None = None,
                        project_dir: str | None = None) -> tuple[list[dict], int]:
     from chipcompiler.cli.inspect import discover_step_dirs
-    from chipcompiler.cli.output import format_line
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     step_dirs = discover_step_dirs(run_dir)
@@ -50,89 +49,5 @@ def discover_artifacts(run_dir: str, step_token: str | None = None,
 
     if not artifacts:
         return [], 0
-
-    return artifacts, 0
-
-
-def build_artifacts_lines(run_dir: str, step_token: str | None = None,
-                          project: str | None = None,
-                          run_id: str | None = None,
-                          project_dir: str | None = None) -> tuple[list[str], int]:
-    from chipcompiler.cli.output import format_line
-
-    artifacts, rc = discover_artifacts(run_dir, step_token, project, run_id, project_dir)
-    if rc != 0:
-        if artifacts and artifacts[0].get("status") == "unknown_step":
-            s = artifacts[0]["step"]
-            return [format_line(
-                step=s,
-                status="unknown_step",
-                status_cmd=disclosure_cmd("ecc status", project, run_id),
-            )], 1
-        return [], rc
-
-    if not artifacts:
-        if step_token is not None:
-            return [format_line(
-                step=step_token,
-                artifacts_status="none",
-                status_cmd=disclosure_cmd("ecc status", project, run_id),
-                log=disclosure_cmd(f"ecc log {step_token} --errors", project, run_id),
-            )], 0
-        return [format_line(
-            artifacts_status="none",
-            workspace=run_dir,
-            status_cmd=disclosure_cmd("ecc status", project, run_id),
-        )], 0
-
-    lines = []
-    for a in artifacts:
-        line_fields = {
-            "artifact": os.path.basename(a["path"]),
-            "step": a["step"],
-            "role": a["role"],
-            "path": a["path"],
-            "inspect": disclosure_cmd(f"ecc artifacts {a['step']} --json", project, run_id),
-        }
-        if a["role"] == "analysis":
-            line_fields["metrics"] = disclosure_cmd(f"ecc metrics {a['step']}", project, run_id)
-        if a["role"] == "log":
-            line_fields["inspect"] = disclosure_cmd(f"ecc log {a['step']} --errors", project, run_id)
-        if a["role"] in ("output", "report", "analysis", "log"):
-            line_fields["config"] = disclosure_cmd(f"ecc config {a['step']} --resolved", project, run_id)
-        lines.append(format_line(**line_fields))
-    return lines, 0
-
-
-def build_artifacts_json(run_dir: str, step_token: str | None = None,
-                         project: str | None = None,
-                         run_id: str | None = None,
-                         project_dir: str | None = None) -> tuple[dict, int]:
-    artifacts, rc = discover_artifacts(run_dir, step_token, project, run_id, project_dir)
-    if rc != 0:
-        if artifacts and artifacts[0].get("status") == "unknown_step":
-            return {"status": "unknown_step", "step": artifacts[0]["step"]}, 1
-        return {}, rc
-
-    if not artifacts:
-        if step_token is not None:
-            return {"artifacts_status": "none", "step": step_token}, 0
-        return {"artifacts_status": "none"}, 0
-
-    return {"artifacts": artifacts}, 0
-
-
-def build_artifacts_jsonl(run_dir: str, step_token: str | None = None,
-                          project: str | None = None,
-                          run_id: str | None = None,
-                          project_dir: str | None = None) -> tuple[list[dict], int]:
-    artifacts, rc = discover_artifacts(run_dir, step_token, project, run_id, project_dir)
-    if rc != 0:
-        return artifacts, rc
-
-    if not artifacts:
-        if step_token is not None:
-            return [{"artifacts_status": "none", "step": step_token}], 0
-        return [{"artifacts_status": "none"}], 0
 
     return artifacts, 0
