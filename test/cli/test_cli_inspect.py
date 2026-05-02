@@ -1155,7 +1155,7 @@ class TestDiagnoseIssueSpecificEvidence:
         issue = data["records"][0]
         assert issue["issue"] == "invalid_flow_json"
         assert "evidence" in issue
-        assert "run_cmd" in issue
+        assert "start_cmd" in issue
 
 
 class TestCleanDiagnoseOutput:
@@ -1176,7 +1176,7 @@ class TestCleanDiagnoseOutput:
         assert rc == 0
         out = capsys.readouterr().out
         assert "status=clean" in out
-        assert "status_cmd=" in out
+        assert "inspect=" in out
         assert "artifacts=" in out
         assert "config=" in out
 
@@ -1197,7 +1197,7 @@ class TestCleanDiagnoseOutput:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["status"] == "clean"
-        assert "status_cmd" in data["records"][0]
+        assert "inspect_cmd" in data["records"][0]
         assert "artifacts" in data["records"][0]
         assert "config" in data["records"][0]
 

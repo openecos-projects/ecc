@@ -11,11 +11,12 @@ def render_text(records: tuple[dict, ...], file=None) -> None:
         for key, value in record.items():
             if value is None:
                 continue
+            display_key = key[:-4] if key.endswith("_cmd") else key
             if isinstance(value, str) and any(c.isspace() for c in value):
                 escaped = value.replace('\\', '\\\\').replace('"', '\\"')
-                parts.append(f'{key}="{escaped}"')
+                parts.append(f'{display_key}="{escaped}"')
             else:
-                parts.append(f"{key}={value}")
+                parts.append(f"{display_key}={value}")
         print(" ".join(parts), file=target)
 
 

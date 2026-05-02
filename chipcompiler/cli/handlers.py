@@ -3,6 +3,7 @@ import os
 import shutil
 
 from chipcompiler.cli.types import CommandContext, CommandResult
+from chipcompiler.cli.records import error_record
 from chipcompiler.cli.output import (
     disclosure_cmd,
     normalize_metric_key,
@@ -28,7 +29,7 @@ def status(args, ctx: CommandContext) -> CommandResult:
             "run": display_run,
             "status": "missing",
             "workspace": ctx.run_dir,
-            "run_cmd": disclosure_cmd("ecc run", project),
+            "start_cmd": disclosure_cmd("ecc run", project),
         }])
 
     if flow_data is CORRUPT_FLOW_JSON:
@@ -36,7 +37,7 @@ def status(args, ctx: CommandContext) -> CommandResult:
             "run": display_run,
             "status": "corrupt",
             "workspace": ctx.run_dir,
-            "status_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
             "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
         }])
 
@@ -45,7 +46,7 @@ def status(args, ctx: CommandContext) -> CommandResult:
         "run": display_run,
         "status": run_status,
         "workspace": ctx.run_dir,
-        "status_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
         "metrics_cmd": disclosure_cmd("ecc metrics", project, ctx.run_id),
         "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
     }]
@@ -177,7 +178,7 @@ def metrics(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.ok([{
             "metrics_status": "none",
             "workspace": ctx.run_dir,
-            "status_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
         }])
 
     records = []
@@ -223,7 +224,7 @@ def artifacts(args, ctx: CommandContext) -> CommandResult:
             return CommandResult.err([{
                 "step": artifact_records[0]["step"],
                 "status": "unknown_step",
-                "status_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+                "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
             }])
         return CommandResult.err(artifact_records)
 
@@ -232,13 +233,13 @@ def artifacts(args, ctx: CommandContext) -> CommandResult:
             return CommandResult.ok([{
                 "step": step_token,
                 "artifacts_status": "none",
-                "status_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+                "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
                 "log": disclosure_cmd(f"ecc log {step_token} --errors", project, ctx.run_id),
             }])
         return CommandResult.ok([{
             "artifacts_status": "none",
             "workspace": ctx.run_dir,
-            "status_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
         }])
 
     records = []
@@ -285,15 +286,15 @@ def config(args, ctx: CommandContext) -> CommandResult:
                 "inspect": disclosure_cmd("ecc status", project, ctx.run_id),
             }])
         if status == "missing_config":
-            return CommandResult.err([{
-                "status": "missing_config",
-                "inspect": disclosure_cmd("ecc check", project),
-            }])
+            return CommandResult.err([error_record(
+                "missing_config",
+                inspect=disclosure_cmd("ecc check", project),
+            )])
         if status == "invalid_config":
-            return CommandResult.err([{
-                "status": "invalid_config",
-                "inspect": disclosure_cmd("ecc check", project),
-            }])
+            return CommandResult.err([error_record(
+                "invalid_config",
+                inspect=disclosure_cmd("ecc check", project),
+            )])
         return CommandResult.err(items)
 
     if not items:
@@ -345,7 +346,7 @@ def diagnose(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.ok([{
             "status": "clean",
             "run": display_run,
-            "status_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
             "artifacts": disclosure_cmd("ecc artifacts", project, ctx.run_id),
             "config": disclosure_cmd("ecc config --resolved", project, ctx.run_id),
         }])
@@ -353,7 +354,7 @@ def diagnose(args, ctx: CommandContext) -> CommandResult:
     has_error = any(i.get("severity") == "error" for i in issues)
     text_keys = (
         "issue", "severity", "run", "step", "status", "count",
-        "evidence", "log", "artifacts", "config", "run_cmd",
+        "evidence", "log", "artifacts", "config", "start_cmd",
     )
     records = []
     for issue in issues:
@@ -425,11 +426,11 @@ def check(args, ctx: CommandContext) -> CommandResult:
 
     config_path = find_config_path(ctx.project_dir)
     if config_path is None:
-        return CommandResult.err([{
-            "status": "missing_config",
-            "path": os.path.join(ctx.project_dir, "ecc.toml"),
-            "inspect": disclosure_cmd("ecc check", project),
-        }])
+        return CommandResult.err([error_record(
+            "missing_config",
+            path=os.path.join(ctx.project_dir, "ecc.toml"),
+            inspect=disclosure_cmd("ecc check", project),
+        )])
 
     cfg = load_project_config(config_path)
     errors = validate_project_config(cfg)
@@ -452,7 +453,7 @@ def check(args, ctx: CommandContext) -> CommandResult:
         "config": "ecc.toml",
         "run_dir": "runs/default",
         "run": disclosure_cmd("ecc run", project),
-        "status_cmd": disclosure_cmd("ecc status", project),
+        "inspect_cmd": disclosure_cmd("ecc status", project),
     }]
 
     if cfg.design_rtl:
@@ -567,7 +568,7 @@ def run(args, ctx: CommandContext) -> CommandResult:
                 "run": "default",
                 "status": "failed",
                 "workspace": run_dir,
-                "status_cmd": disclosure_cmd("ecc status", project),
+                "inspect_cmd": disclosure_cmd("ecc status", project),
                 "log": disclosure_cmd("ecc log", project),
             }])
     except Exception as exc:
@@ -583,7 +584,7 @@ def run(args, ctx: CommandContext) -> CommandResult:
         "run": "default",
         "status": "success",
         "workspace": run_dir,
-        "status_cmd": disclosure_cmd("ecc status", project),
+        "inspect_cmd": disclosure_cmd("ecc status", project),
         "metrics_cmd": disclosure_cmd("ecc metrics", project),
         "log_cmd": disclosure_cmd("ecc log", project),
     }])
