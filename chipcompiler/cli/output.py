@@ -19,10 +19,14 @@ def format_line(**fields) -> str:
     return " ".join(parts)
 
 
-def disclosure_cmd(command: str, project: str | None = None) -> str:
+def disclosure_cmd(command: str, project: str | None = None,
+                   run_id: str | None = None) -> str:
+    parts = [command]
     if project:
-        return f"{command} --project {shlex.quote(project)}"
-    return command
+        parts.append(f"--project {shlex.quote(project)}")
+    if run_id:
+        parts.append(f"--run-id {shlex.quote(run_id)}")
+    return " ".join(parts)
 
 
 def emit_text(lines: list[str], file=None) -> None:
