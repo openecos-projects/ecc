@@ -1,22 +1,5 @@
-import json
 import re
 import shlex
-import sys
-
-
-def format_field(key: str, value) -> str:
-    if isinstance(value, str) and any(c.isspace() for c in value):
-        escaped = value.replace('\\', '\\\\').replace('"', '\\"')
-        return f'{key}="{escaped}"'
-    return f"{key}={value}"
-
-
-def format_line(**fields) -> str:
-    parts = []
-    for key, value in fields.items():
-        if value is not None:
-            parts.append(format_field(key, value))
-    return " ".join(parts)
 
 
 def disclosure_cmd(command: str, project: str | None = None,
@@ -27,23 +10,6 @@ def disclosure_cmd(command: str, project: str | None = None,
     if run_id:
         parts.append(f"--run-id {shlex.quote(run_id)}")
     return " ".join(parts)
-
-
-def emit_text(lines: list[str], file=None) -> None:
-    target = file or sys.stdout
-    for line in lines:
-        print(line, file=target)
-
-
-def emit_json(obj: dict, file=None) -> None:
-    target = file or sys.stdout
-    print(json.dumps(obj, ensure_ascii=False), file=target)
-
-
-def emit_jsonl(objects: list[dict], file=None) -> None:
-    target = file or sys.stdout
-    for obj in objects:
-        print(json.dumps(obj, ensure_ascii=False), file=target)
 
 
 def normalize_step_name(internal: str) -> str:

@@ -48,10 +48,10 @@ def _install_flow_mocks(monkeypatch):
         capture["create_kwargs"] = kwargs
         return workspace_obj
 
-    monkeypatch.setattr("chipcompiler.cli.project.create_workspace", fake_create_workspace)
-    monkeypatch.setattr("chipcompiler.cli.project.EngineFlow", DummyFlow)
+    monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
+    monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
-        "chipcompiler.cli.project.build_rtl2gds_flow",
+        "chipcompiler.rtl2gds.build_rtl2gds_flow",
         lambda: [("Synthesis", "yosys", "Unstart")],
     )
     monkeypatch.setattr(
@@ -288,8 +288,9 @@ class TestCheck:
         assert rc == 0
         out = capsys.readouterr().out
         data = json.loads(out)
-        assert data["status"] == "pass"
-        assert data["design"] == "gcd"
+        assert "records" in data
+        assert data["records"][0]["status"] == "checked"
+        assert data["records"][0]["project"] == "gcd"
 
 
 # ===========================================================================
@@ -356,7 +357,7 @@ class TestRun:
         def fake_create(**kwargs):
             return None
 
-        monkeypatch.setattr("chipcompiler.cli.project.create_workspace", fake_create)
+        monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 1
 
@@ -395,9 +396,12 @@ class TestStatus:
         rc = cli_main.run(["status", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        assert data["run"] == "default"
-        assert data["status"] == "success"
-        assert len(data["steps"]) == 2
+        assert "records" in data
+        records = data["records"]
+        assert records[0]["run"] == "default"
+        assert records[0]["status"] == "success"
+        step_records = [r for r in records if "step" in r]
+        assert len(step_records) == 2
 
     def test_status_jsonl(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -408,8 +412,8 @@ class TestStatus:
         assert rc == 0
         lines = capsys.readouterr().out.strip().split("\n")
         objects = [json.loads(ln) for ln in lines]
-        assert objects[0]["kind"] == "run"
-        assert objects[1]["kind"] == "step"
+        assert "run" in objects[0]
+        assert "step" in objects[1]
 
     def test_status_normalizes_step_names(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -596,8 +600,9 @@ class TestMetrics:
         )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        assert len(data["metrics"]) == 1
-        assert data["metrics"][0]["metric"] == "cell_number"
+        assert "records" in data
+        assert len(data["records"]) == 1
+        assert data["records"][0]["metric"] == "cell_number"
 
     def test_metrics_jsonl(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -655,8 +660,8 @@ class TestMetrics:
         rc = cli_main.run(["metrics", "nonexistent", "--json", "--project", project_dir])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
-        assert data["status"] == "unknown_step"
-        assert data["step"] == "nonexistent"
+        assert data["records"][0]["status"] == "unknown_step"
+        assert data["records"][0]["step"] == "nonexistent"
 
     def test_metrics_json_missing_file(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -666,7 +671,7 @@ class TestMetrics:
         rc = cli_main.run(["metrics", "cts", "--json", "--project", project_dir])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
-        assert data["status"] == "missing"
+        assert data["records"][0]["status"] == "missing"
 
     def test_metrics_jsonl_unknown_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)

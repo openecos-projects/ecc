@@ -13,7 +13,6 @@ def build_project_config_items(project_dir: str, run_dir: str,
         resolve_pdk_root,
         validate_project_config,
     )
-    from chipcompiler.cli.output import format_line
 
     config_path = find_config_path(project_dir)
     if config_path is None:
@@ -135,90 +134,5 @@ def build_step_config_items(run_dir: str, step_token: str | None,
         return [{"kind": "config", "scope": "step", "step": step_token,
                  "config_status": "none",
                  "artifacts": disclosure_cmd(f"ecc artifacts {step_token}", project, run_id)}], 0
-
-    return items, 0
-
-
-def build_config_lines(items: list[dict], project: str | None = None,
-                       run_id: str | None = None) -> tuple[list[str], int]:
-    from chipcompiler.cli.output import format_line
-
-    if not items:
-        return [], 0
-
-    first = items[0]
-    if first.get("config_status") == "none":
-        return [format_line(
-            step=first["step"],
-            config_status="none",
-            artifacts=first.get("artifacts"),
-        )], 0
-
-    status = first.get("status")
-    if status == "unknown_step":
-        return [format_line(
-            step=first.get("step", ""),
-            status="unknown_step",
-            inspect=disclosure_cmd("ecc status", project, run_id),
-        )], 1
-    if status == "missing_config":
-        return [format_line(
-            status="missing_config",
-            inspect=disclosure_cmd("ecc check", project),
-        )], 1
-    if status == "invalid_config":
-        return [format_line(
-            status="invalid_config",
-            inspect=disclosure_cmd("ecc check", project),
-        )], 1
-
-    lines = []
-    for item in items:
-        if item.get("scope") == "project":
-            line = format_line(
-                config=item["key"],
-                scope="project",
-                value=item["value"],
-                resolved=item.get("resolved"),
-                source=item["source"],
-                inspect=item.get("inspect_cmd"),
-            )
-        else:
-            line = format_line(
-                config=os.path.basename(item["path"]),
-                scope="step",
-                step=item["step"],
-                role=item["role"],
-                run=item.get("run", "default"),
-                path=item["path"],
-                source=item["source"],
-                inspect=item.get("inspect_cmd"),
-            )
-        lines.append(line)
-    return lines, 0
-
-
-def build_config_json(items: list[dict]) -> tuple[dict, int]:
-    if items and items[0].get("status") in ("unknown_step", "missing_config", "invalid_config"):
-        return items[0], 1
-
-    if items and items[0].get("config_status") == "none":
-        return items[0], 0
-
-    if not items:
-        return {"config_status": "none"}, 0
-
-    return {"config": items}, 0
-
-
-def build_config_jsonl(items: list[dict]) -> tuple[list[dict], int]:
-    if items and items[0].get("status") in ("unknown_step", "missing_config", "invalid_config"):
-        return items, 1
-
-    if items and items[0].get("config_status") == "none":
-        return items, 0
-
-    if not items:
-        return [{"config_status": "none"}], 0
 
     return items, 0

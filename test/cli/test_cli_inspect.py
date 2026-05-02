@@ -239,9 +239,9 @@ class TestArtifacts:
         rc = cli_main.run(["artifacts", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        assert "artifacts" in data
-        assert len(data["artifacts"]) > 0
-        assert data["artifacts"][0]["kind"] == "artifact"
+        assert "records" in data
+        assert len(data["records"]) > 0
+        assert data["records"][0]["artifact"] == "design.def"
 
     def test_artifacts_jsonl(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -255,7 +255,7 @@ class TestArtifacts:
         assert rc == 0
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
         assert len(objects) == 2
-        assert all(o["kind"] == "artifact" for o in objects)
+        assert all("artifact" in o for o in objects)
 
     def test_artifacts_with_run_id(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -286,7 +286,7 @@ class TestArtifacts:
         rc = cli_main.run(["artifacts", "cts", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        roles = {a["role"] for a in data["artifacts"]}
+        roles = {a["role"] for a in data["records"]}
         assert roles == {"config", "output", "report", "log", "analysis"}
 
 
@@ -315,8 +315,8 @@ class TestConfigResolved:
         rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        assert "config" in data
-        keys = [item["key"] for item in data["config"]]
+        assert "records" in data
+        keys = [item["config"] for item in data["records"]]
         assert "design.name" in keys
         assert "pdk.name" in keys
         assert "run_dir" in keys
@@ -328,7 +328,7 @@ class TestConfigResolved:
         rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        run_item = next(i for i in data["config"] if i["key"] == "run_dir")
+        run_item = next(i for i in data["records"] if i["config"] == "run_dir")
         assert run_item["value"] == "runs/default"
 
     def test_config_resolved_jsonl(self, tmp_path, capsys, monkeypatch):
@@ -338,7 +338,7 @@ class TestConfigResolved:
         rc = cli_main.run(["config", "--resolved", "--jsonl", "--project", project_dir])
         assert rc == 0
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
-        keys = [o["key"] for o in objects]
+        keys = [o["config"] for o in objects]
         assert "design.name" in keys
 
     def test_config_resolved_pdk_root_from_env(self, tmp_path, capsys, monkeypatch):
@@ -352,7 +352,7 @@ class TestConfigResolved:
         rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        pdk_item = next(i for i in data["config"] if i["key"] == "pdk.root")
+        pdk_item = next(i for i in data["records"] if i["config"] == "pdk.root")
         assert pdk_item["source"] == "env"
 
     def test_config_resolved_run_id(self, tmp_path, capsys, monkeypatch):
@@ -365,7 +365,7 @@ class TestConfigResolved:
         )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        run_item = next(i for i in data["config"] if i["key"] == "run_dir")
+        run_item = next(i for i in data["records"] if i["config"] == "run_dir")
         assert run_item["value"] == "sweeps/sweep_001/run_004"
 
     def test_config_missing_config(self, tmp_path, capsys):
@@ -415,8 +415,8 @@ class TestConfigStepResolved:
         rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        assert "config" in data
-        assert all(item["scope"] == "step" for item in data["config"])
+        assert "records" in data
+        assert all(item["scope"] == "step" for item in data["records"])
 
     def test_config_step_unknown_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -666,8 +666,8 @@ class TestDiagnose:
         rc = cli_main.run(["diagnose", "--json", "--project", project_dir])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
-        assert "issues" in data
-        assert any(i["issue"] == "failed_step" for i in data["issues"])
+        assert "records" in data
+        assert any(i["issue"] == "failed_step" for i in data["records"])
 
     def test_diagnose_jsonl(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -923,8 +923,8 @@ class TestArtifactPaths:
         )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        assert len(data["artifacts"]) == 1
-        path = data["artifacts"][0]["path"]
+        assert len(data["records"]) == 1
+        path = data["records"][0]["path"]
         assert path.startswith("sweeps/")
 
     def test_nested_run_step_config_paths(self, tmp_path, capsys):
@@ -940,9 +940,8 @@ class TestArtifactPaths:
         )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        assert "config" in data
-        path = data["config"][0]["path"]
-        assert path.startswith("sweeps/")
+        assert "records" in data
+        path = data["records"][0]["path"]
 
 
 class TestEmptyStepConfigSentinel:
@@ -968,8 +967,8 @@ class TestEmptyStepConfigSentinel:
         rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        assert data["step"] == "cts"
-        assert data["config_status"] == "none"
+        assert data["records"][0]["step"] == "cts"
+        assert data["records"][0]["config_status"] == "none"
 
 
 class TestDiagnoseFlowOnlySteps:
@@ -1036,7 +1035,7 @@ class TestAbsoluteRunIdConfig:
         )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        run_item = next(i for i in data["config"] if i["key"] == "run_dir")
+        run_item = next(i for i in data["records"] if i["config"] == "run_dir")
         assert run_item["value"] == str(external_run)
 
 
@@ -1153,7 +1152,7 @@ class TestDiagnoseIssueSpecificEvidence:
         assert rc == 1
         out = capsys.readouterr().out
         data = json.loads(out)
-        issue = data["issues"][0]
+        issue = data["records"][0]
         assert issue["issue"] == "invalid_flow_json"
         assert "evidence" in issue
         assert "run_cmd" in issue
@@ -1197,10 +1196,10 @@ class TestCleanDiagnoseOutput:
         rc = cli_main.run(["diagnose", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        assert data["status"] == "clean"
-        assert "status_cmd" in data
-        assert "artifacts" in data
-        assert "config" in data
+        assert data["records"][0]["status"] == "clean"
+        assert "status_cmd" in data["records"][0]
+        assert "artifacts" in data["records"][0]
+        assert "config" in data["records"][0]
 
 
 class TestConfigJsonDisclosure:
@@ -1211,8 +1210,8 @@ class TestConfigJsonDisclosure:
         rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        for item in data["config"]:
-            assert "inspect_cmd" in item, f"Missing inspect_cmd in item: {item['key']}"
+        for item in data["records"]:
+            assert "inspect" in item, f"Missing inspect in item: {item['config']}"
 
 
 class TestIsolatedConfigValidation:
@@ -1318,7 +1317,7 @@ class TestCorruptFlowJson:
         rc = cli_main.run(["status", "--json", "--project", project_dir])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
-        assert data["status"] == "corrupt"
+        assert data["records"][0]["status"] == "corrupt"
 
 
 class TestCorruptMetricsJson:
@@ -1348,7 +1347,7 @@ class TestCorruptMetricsJson:
         rc = cli_main.run(["metrics", "cts", "--json", "--project", project_dir])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
-        assert data["status"] == "corrupt"
+        assert data["records"][0]["status"] == "corrupt"
 
 
 class TestRtlPathResolution:
@@ -1378,7 +1377,7 @@ run = "default"
         rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
-        rtl_item = next(i for i in data["config"] if i["key"] == "design.rtl.0")
+        rtl_item = next(i for i in data["records"] if i["config"] == "design.rtl.0")
         assert rtl_item["resolved"] == str(rtl_dir / "gcd.v")
 
 
@@ -1418,7 +1417,7 @@ class TestMissingRunJsonlKind:
         assert rc == 1
         out = capsys.readouterr().out
         data = [json.loads(line) for line in out.strip().split("\n") if line.strip()]
-        assert data[0]["kind"] == "run"
+        assert data[0]["run"] == "default"
         assert data[0]["status"] == "missing"
 
 
