@@ -24,7 +24,7 @@ ECOS Chip Compiler 是一个**开源芯片设计自动化解决方案**，集成
 GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-studio) 仓库。
 
 **使用方式：**
-- **CLI (`cli`)** - 命令行流程执行
+- **CLI (`ecc`)** - 面向项目的命令行流程执行
 - **Python API** - 将 `chipcompiler` 作为库使用
 
 
@@ -32,22 +32,40 @@ GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-s
 
 ### CLI 流程运行
 
-可以使用 `nix run .#cli -- ...` 直接创建 workspace 并执行完整 RTL2GDS 流程。
+可以使用 `nix run .#cli -- ...` 创建 ECC 项目，校验 `ecc.toml`，并执行完整 RTL2GDS 流程。
 
 ```bash
-nix run .#cli -- --workspace ./ws \
-                --rtl ./rtl/top.v \
-                --design top \
-                --top top \
-                --clock clk \
-                --pdk-root /path/to/ics55
-nix run .#cli -- --workspace ./ws \
-                --rtl ./rtl/filelist.f \
-                --design top \
-                --top top \
-                --clock clk \
-                --pdk-root /path/to/ics55 \
-                --freq 200
+nix run .#cli -- init gcd
+cp ./rtl/gcd.v gcd/rtl/gcd.v
+```
+
+编辑 `gcd/ecc.toml`：
+
+```toml
+[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/gcd.v"]
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "/path/to/ics55"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+```
+
+然后校验并运行：
+
+```bash
+nix run .#cli -- check --project gcd
+nix run .#cli -- run --project gcd
+nix run .#cli -- status --project gcd
+nix run .#cli -- metrics --project gcd
+nix run .#cli -- log --project gcd
 ```
 
 ## 功能特性
