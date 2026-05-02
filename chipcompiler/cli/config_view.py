@@ -7,11 +7,10 @@ def build_project_config_items(project_dir: str, run_dir: str,
                                project: str | None = None,
                                run_id: str | None = None) -> tuple[list[dict], int]:
     from chipcompiler.cli.config import (
-        SUPPORTED_FLOW_PRESETS,
-        SUPPORTED_PDK_NAMES,
         find_config_path,
         load_project_config,
         resolve_pdk_root,
+        validate_project_config,
     )
     from chipcompiler.cli.output import format_line
 
@@ -23,13 +22,8 @@ def build_project_config_items(project_dir: str, run_dir: str,
     if getattr(cfg, "_toml_error", None):
         return [{"kind": "error", "status": "invalid_config"}], 1
 
-    if not cfg.design_name or not cfg.design_top or not cfg.flow_preset:
-        return [{"kind": "error", "status": "invalid_config"}], 1
-
-    if cfg.pdk_name and cfg.pdk_name not in SUPPORTED_PDK_NAMES:
-        return [{"kind": "error", "status": "invalid_config"}], 1
-
-    if cfg.flow_preset and cfg.flow_preset not in SUPPORTED_FLOW_PRESETS:
+    errors = validate_project_config(cfg)
+    if errors:
         return [{"kind": "error", "status": "invalid_config"}], 1
 
     pdk_root = resolve_pdk_root(cfg)
@@ -80,7 +74,10 @@ def build_project_config_items(project_dir: str, run_dir: str,
     })
 
     # Run directory
-    run_dir_value = os.path.relpath(run_dir, project_dir) if not os.path.isabs(run_dir) else run_dir
+    try:
+        run_dir_value = os.path.relpath(run_dir, project_dir)
+    except ValueError:
+        run_dir_value = run_dir
     items.append({
         "kind": "config",
         "scope": "project",
@@ -157,11 +154,11 @@ def build_config_lines(items: list[dict], project: str | None = None,
         if items[0].get("status") == "missing_config":
             return [format_line(
                 status="missing_config",
-                inspect=disclosure_cmd("ecc check", project, run_id),
+                inspect=disclosure_cmd("ecc check", project),
             )], 1
         return [format_line(
             status="invalid_config",
-            inspect=disclosure_cmd("ecc check", project, run_id),
+            inspect=disclosure_cmd("ecc check", project),
         )], 1
 
     lines = []

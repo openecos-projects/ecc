@@ -77,6 +77,13 @@ def _has_disclosure(line: str) -> bool:
     return '"ecc ' in line or "=ecc " in line
 
 
+def _mock_pdk_validation(monkeypatch):
+    monkeypatch.setattr(
+        "chipcompiler.cli.config._validate_pdk_contents",
+        lambda name, root: None,
+    )
+
+
 # ===========================================================================
 # AC-1: Run-id resolution
 # ===========================================================================
@@ -106,7 +113,7 @@ class TestRunIdResolution:
 
     def test_status_relative_path_run_id(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        run_dir = os.path.join(project_dir, "runs", "sweeps", "sweep_001", "run_004")
+        run_dir = os.path.join(project_dir, "sweeps", "sweep_001", "run_004")
         _create_flow_json(run_dir)
 
         rc = cli_main.run(
@@ -252,7 +259,7 @@ class TestArtifacts:
 
     def test_artifacts_with_run_id(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        run_dir = os.path.join(project_dir, "runs", "sweeps", "sweep_001", "run_004")
+        run_dir = os.path.join(project_dir, "sweeps", "sweep_001", "run_004")
         _create_flow_json(run_dir)
         _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
                          files={"output/design.def": "def content"})
@@ -289,7 +296,8 @@ class TestArtifacts:
 
 
 class TestConfigResolved:
-    def test_config_resolved_project(self, tmp_path, capsys):
+    def test_config_resolved_project(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
         project_dir = _create_valid_project(tmp_path)
 
         rc = cli_main.run(["config", "--resolved", "--project", project_dir])
@@ -300,7 +308,8 @@ class TestConfigResolved:
         assert "config=pdk.name" in out
         assert "config=run_dir" in out
 
-    def test_config_resolved_json(self, tmp_path, capsys):
+    def test_config_resolved_json(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
         project_dir = _create_valid_project(tmp_path)
 
         rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
@@ -312,7 +321,18 @@ class TestConfigResolved:
         assert "pdk.name" in keys
         assert "run_dir" in keys
 
-    def test_config_resolved_jsonl(self, tmp_path, capsys):
+    def test_config_resolved_default_run_dir_value(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = _create_valid_project(tmp_path)
+
+        rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        run_item = next(i for i in data["config"] if i["key"] == "run_dir")
+        assert run_item["value"] == "runs/default"
+
+    def test_config_resolved_jsonl(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
         project_dir = _create_valid_project(tmp_path)
 
         rc = cli_main.run(["config", "--resolved", "--jsonl", "--project", project_dir])
@@ -322,6 +342,7 @@ class TestConfigResolved:
         assert "design.name" in keys
 
     def test_config_resolved_pdk_root_from_env(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
         pdk_root = tmp_path / "ics55_env"
         pdk_root.mkdir()
         monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(pdk_root))
@@ -334,7 +355,8 @@ class TestConfigResolved:
         pdk_item = next(i for i in data["config"] if i["key"] == "pdk.root")
         assert pdk_item["source"] == "env"
 
-    def test_config_resolved_run_id(self, tmp_path, capsys):
+    def test_config_resolved_run_id(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
         project_dir = _create_valid_project(tmp_path)
 
         rc = cli_main.run(
@@ -344,7 +366,7 @@ class TestConfigResolved:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         run_item = next(i for i in data["config"] if i["key"] == "run_dir")
-        assert "sweep_001" in run_item["value"] or "sweep_001" in run_item.get("resolved", "")
+        assert run_item["value"] == "sweeps/sweep_001/run_004"
 
     def test_config_missing_config(self, tmp_path, capsys):
         project_dir = tmp_path / "empty_project"
@@ -366,7 +388,8 @@ class TestConfigResolved:
 
 
 class TestConfigStepResolved:
-    def test_config_step_lists_files(self, tmp_path, capsys):
+    def test_config_step_lists_files(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
@@ -381,7 +404,8 @@ class TestConfigStepResolved:
         assert "scope=step" in out
         assert "cts_default_config.json" in out
 
-    def test_config_step_json(self, tmp_path, capsys):
+    def test_config_step_json(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
@@ -762,7 +786,8 @@ class TestDisclosure:
             if line.strip():
                 assert _has_disclosure(line), f"Missing disclosure in: {line}"
 
-    def test_config_resolved_lines_have_disclosure(self, tmp_path, capsys):
+    def test_config_resolved_lines_have_disclosure(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
         project_dir = _create_valid_project(tmp_path)
 
         rc = cli_main.run(["config", "--resolved", "--project", project_dir])
@@ -836,7 +861,8 @@ class TestReadOnly:
         )
         assert before_mtime == after_mtime
 
-    def test_no_persistent_metadata_files(self, tmp_path, capsys):
+    def test_no_persistent_metadata_files(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
@@ -872,7 +898,7 @@ class TestRunIdDisclosure:
 
     def test_project_relative_run_id_resolves(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        run_dir = os.path.join(project_dir, "runs", "sweeps", "sweep_001", "run_004")
+        run_dir = os.path.join(project_dir, "sweeps", "sweep_001", "run_004")
         _create_flow_json(run_dir)
 
         rc = cli_main.run(
@@ -886,7 +912,7 @@ class TestRunIdDisclosure:
 class TestArtifactPaths:
     def test_nested_run_artifact_paths(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        run_dir = os.path.join(project_dir, "runs", "sweeps", "sweep_001", "run_004")
+        run_dir = os.path.join(project_dir, "sweeps", "sweep_001", "run_004")
         _create_flow_json(run_dir)
         _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
                          files={"output/design.def": "def content"})
@@ -899,11 +925,11 @@ class TestArtifactPaths:
         data = json.loads(capsys.readouterr().out)
         assert len(data["artifacts"]) == 1
         path = data["artifacts"][0]["path"]
-        assert path.startswith("runs/")
+        assert path.startswith("sweeps/")
 
     def test_nested_run_step_config_paths(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        run_dir = os.path.join(project_dir, "runs", "sweeps", "sweep_001", "run_004")
+        run_dir = os.path.join(project_dir, "sweeps", "sweep_001", "run_004")
         _create_flow_json(run_dir)
         _create_step_dir(run_dir, "CTS", "ecc", subdirs=["config"],
                          files={"config/cts_config.json": "{}"})
@@ -916,12 +942,100 @@ class TestArtifactPaths:
         data = json.loads(capsys.readouterr().out)
         assert "config" in data
         path = data["config"][0]["path"]
-        assert path.startswith("runs/")
+        assert path.startswith("sweeps/")
 
 
 class TestConfigValidation:
-    def test_semantically_invalid_toml_returns_nonzero(self, tmp_path, capsys):
-        project_dir = tmp_path / "bad_project"
+    def test_invalid_unsupported_flow_run(self, tmp_path, capsys):
+        project_dir = tmp_path / "bad_flow_run"
+        project_dir.mkdir()
+        (project_dir / "ecc.toml").write_text('''[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/gcd.v"]
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "/tmp/nonexistent"
+
+[flow]
+preset = "rtl2gds"
+run = "custom"
+''')
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
+
+    def test_invalid_empty_clock_port(self, tmp_path, capsys):
+        project_dir = tmp_path / "bad_clock"
+        project_dir.mkdir()
+        (project_dir / "rtl").mkdir()
+        (project_dir / "rtl" / "gcd.v").write_text("module gcd; endmodule")
+        (project_dir / "ecc.toml").write_text('''[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/gcd.v"]
+clock_port = ""
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "/tmp/nonexistent"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+''')
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
+
+    def test_invalid_zero_frequency(self, tmp_path, capsys):
+        project_dir = tmp_path / "bad_freq"
+        project_dir.mkdir()
+        (project_dir / "rtl").mkdir()
+        (project_dir / "rtl" / "gcd.v").write_text("module gcd; endmodule")
+        (project_dir / "ecc.toml").write_text('''[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/gcd.v"]
+clock_port = "clk"
+frequency_mhz = 0
+
+[pdk]
+name = "ics55"
+root = "/tmp/nonexistent"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+''')
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
+
+    def test_invalid_empty_rtl(self, tmp_path, capsys):
+        project_dir = tmp_path / "bad_rtl"
+        project_dir.mkdir()
+        (project_dir / "ecc.toml").write_text('''[design]
+name = "gcd"
+top = "gcd"
+rtl = []
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "/tmp/nonexistent"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+''')
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
+
+    def test_invalid_config_no_run_id_in_check_disclosure(self, tmp_path, capsys):
+        project_dir = tmp_path / "bad_no_runid"
         project_dir.mkdir()
         (project_dir / "ecc.toml").write_text('''[design]
 name = ""
@@ -938,9 +1052,11 @@ root = ""
 preset = "unknown"
 run = "default"
 ''')
-
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--resolved", "--run-id", "run_123",
+                           "--project", str(project_dir)])
         assert rc == 1
+        out = capsys.readouterr().out
+        assert "--run-id" not in out
 
 
 class TestEmptyStepConfigSentinel:

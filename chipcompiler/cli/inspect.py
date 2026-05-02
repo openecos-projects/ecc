@@ -21,7 +21,7 @@ def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, s
         return run_id, run_id
 
     if os.sep in run_id or "/" in run_id:
-        return os.path.join(project_dir, "runs", run_id), run_id
+        return os.path.join(project_dir, run_id), run_id
 
     return os.path.join(project_dir, "runs", run_id), run_id
 
