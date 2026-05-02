@@ -180,7 +180,7 @@ def build_config_lines(items: list[dict], project: str | None = None,
                 value=item["value"],
                 resolved=item.get("resolved"),
                 source=item["source"],
-                inspect=disclosure_cmd("ecc config --resolved --json", project, run_id),
+                inspect=item.get("inspect_cmd"),
             )
         else:
             line = format_line(
