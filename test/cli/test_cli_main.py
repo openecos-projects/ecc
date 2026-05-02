@@ -934,3 +934,10 @@ class TestMissingConfigErrorRecord:
         assert "kind=error" in out
         assert "error=missing_config" in out
 
+    def test_check_missing_config_has_disclosure_command(self, tmp_path, capsys):
+        rc = cli_main.run(["check", "--project", str(tmp_path), "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        record = data["records"][0]
+        assert "inspect" in record or "inspect_cmd" in record
+
