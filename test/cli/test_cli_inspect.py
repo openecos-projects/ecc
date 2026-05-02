@@ -375,6 +375,37 @@ class TestConfigResolved:
         rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
         assert rc == 1
 
+    def test_config_missing_config_json_has_kind_error(self, tmp_path, capsys):
+        project_dir = tmp_path / "empty_project"
+        project_dir.mkdir()
+
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        record = data["records"][0]
+        assert record["kind"] == "error"
+        assert record["error"] == "missing_config"
+
+    def test_config_missing_config_jsonl_has_kind_error(self, tmp_path, capsys):
+        project_dir = tmp_path / "empty_project"
+        project_dir.mkdir()
+
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--jsonl"])
+        assert rc == 1
+        record = json.loads(capsys.readouterr().out.strip())
+        assert record["kind"] == "error"
+        assert record["error"] == "missing_config"
+
+    def test_config_missing_config_text_has_kind_error(self, tmp_path, capsys):
+        project_dir = tmp_path / "empty_project"
+        project_dir.mkdir()
+
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "kind=error" in out
+        assert "error=missing_config" in out
+
     def test_config_requires_resolved(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
 
