@@ -85,6 +85,7 @@ def build_diagnose_issues(run_dir: str, step_token: str | None = None,
                           project: str | None = None,
                           run_id: str | None = None) -> tuple[list[dict], int]:
     from chipcompiler.cli.inspect import (
+        CORRUPT_FLOW_JSON,
         discover_step_dirs,
         read_flow_json,
         _safe_steps,
@@ -97,11 +98,12 @@ def build_diagnose_issues(run_dir: str, step_token: str | None = None,
     flow_data = read_flow_json(run_dir)
 
     if flow_data is None:
-        if os.path.isfile(os.path.join(run_dir, "home", "flow.json")):
-            issues.append(_make_issue("invalid_flow_json", "error", display_run,
-                                      project=project, run_id=run_id))
-            return issues, 1
         issues.append(_make_issue("missing_run", "error", display_run,
+                                  project=project, run_id=run_id))
+        return issues, 1
+
+    if flow_data is CORRUPT_FLOW_JSON:
+        issues.append(_make_issue("invalid_flow_json", "error", display_run,
                                   project=project, run_id=run_id))
         return issues, 1
 
