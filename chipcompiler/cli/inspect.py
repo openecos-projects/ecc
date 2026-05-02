@@ -10,6 +10,16 @@ from chipcompiler.cli.output import (
 )
 
 
+def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
+    if not run_id or run_id == "default":
+        return os.path.join(project_dir, "runs", "default"), None
+
+    if os.path.isabs(run_id):
+        return run_id, run_id
+
+    return os.path.join(project_dir, "runs", run_id), run_id
+
+
 def read_flow_json(run_dir: str) -> dict | None:
     path = os.path.join(run_dir, "home", "flow.json")
     if not os.path.isfile(path):
@@ -46,13 +56,14 @@ def get_run_status(flow_data: dict) -> str:
     return "unstart" if all_unstart else "failed"
 
 
-def build_status_lines(run_dir: str, project: str | None = None) -> tuple[list[str], int]:
+def build_status_lines(run_dir: str, project: str | None = None,
+                       run_id: str | None = None) -> tuple[list[str], int]:
     from chipcompiler.cli.output import format_line
 
     flow_data = read_flow_json(run_dir)
     if flow_data is None:
         line = format_line(
-            run="default",
+            run=run_id or "default",
             status="missing",
             workspace=run_dir,
             run_cmd=disclosure_cmd("ecc run", project),
@@ -63,12 +74,12 @@ def build_status_lines(run_dir: str, project: str | None = None) -> tuple[list[s
     lines = []
 
     lines.append(format_line(
-        run="default",
+        run=run_id or "default",
         status=run_status,
         workspace=run_dir,
-        status_cmd=disclosure_cmd("ecc status", project),
-        metrics=disclosure_cmd("ecc metrics", project),
-        log=disclosure_cmd("ecc log", project),
+        status_cmd=disclosure_cmd("ecc status", project, run_id),
+        metrics=disclosure_cmd("ecc metrics", project, run_id),
+        log=disclosure_cmd("ecc log", project, run_id),
     ))
 
     for step in _safe_steps(flow_data):
@@ -78,17 +89,18 @@ def build_status_lines(run_dir: str, project: str | None = None) -> tuple[list[s
             tool=step.get("tool", ""),
             status=normalize_state(step.get("state", "")),
             runtime=step.get("runtime", "") or None,
-            metrics=disclosure_cmd(f"ecc metrics {step_token}", project),
-            log=disclosure_cmd(f"ecc log {step_token} --errors", project),
+            metrics=disclosure_cmd(f"ecc metrics {step_token}", project, run_id),
+            log=disclosure_cmd(f"ecc log {step_token} --errors", project, run_id),
         ))
 
     return lines, 0
 
 
-def build_status_json(run_dir: str) -> tuple[dict, int]:
+def build_status_json(run_dir: str, run_id: str | None = None) -> tuple[dict, int]:
     flow_data = read_flow_json(run_dir)
+    display_run = run_id or "default"
     if flow_data is None:
-        return {"run": "default", "status": "missing", "workspace": run_dir}, 1
+        return {"run": display_run, "status": "missing", "workspace": run_dir}, 1
 
     run_status = get_run_status(flow_data)
     steps = []
@@ -100,16 +112,17 @@ def build_status_json(run_dir: str) -> tuple[dict, int]:
             "runtime": step.get("runtime", ""),
         })
 
-    return {"run": "default", "status": run_status, "workspace": run_dir, "steps": steps}, 0
+    return {"run": display_run, "status": run_status, "workspace": run_dir, "steps": steps}, 0
 
 
-def build_status_jsonl(run_dir: str) -> tuple[list[dict], int]:
+def build_status_jsonl(run_dir: str, run_id: str | None = None) -> tuple[list[dict], int]:
     flow_data = read_flow_json(run_dir)
+    display_run = run_id or "default"
     if flow_data is None:
-        return [{"run": "default", "status": "missing", "workspace": run_dir}], 1
+        return [{"run": display_run, "status": "missing", "workspace": run_dir}], 1
 
     run_status = get_run_status(flow_data)
-    objects = [{"kind": "run", "run": "default", "status": run_status, "workspace": run_dir}]
+    objects = [{"kind": "run", "run": display_run, "status": run_status, "workspace": run_dir}]
 
     for step in _safe_steps(flow_data):
         objects.append({
@@ -178,7 +191,8 @@ def read_log_file(path: str) -> list[str]:
 
 
 def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
-                    project: str | None = None) -> tuple[list[str], int]:
+                    project: str | None = None,
+                    run_id: str | None = None) -> tuple[list[str], int]:
     from chipcompiler.cli.output import format_line
 
     if step_token is None:
@@ -188,7 +202,7 @@ def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
         for lf in global_logs:
             lines.append(format_line(
                 log=os.path.relpath(lf, run_dir),
-                inspect=disclosure_cmd("ecc log", project),
+                inspect=disclosure_cmd("ecc log", project, run_id),
             ))
 
         step_dirs = discover_step_dirs(run_dir)
@@ -198,7 +212,7 @@ def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
                 lines.append(format_line(
                     step=token,
                     log=os.path.relpath(lf, run_dir),
-                    inspect=disclosure_cmd(f"ecc log {token} --errors", project),
+                    inspect=disclosure_cmd(f"ecc log {token} --errors", project, run_id),
                 ))
 
         if not lines:
@@ -215,7 +229,7 @@ def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
         return [format_line(
             step=step_token,
             status="unknown_step",
-            inspect=disclosure_cmd("ecc status", project),
+            inspect=disclosure_cmd("ecc status", project, run_id),
         )], 1
 
     log_files = discover_logs(run_dir, step_token)
@@ -223,7 +237,7 @@ def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
         return [format_line(
             step=step_token,
             log_status="missing",
-            log=disclosure_cmd(f"ecc log {step_token} --errors", project),
+            log=disclosure_cmd(f"ecc log {step_token} --errors", project, run_id),
         )], 1
 
     matched_lines = []
@@ -237,7 +251,7 @@ def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
         return [format_line(
             step=step_token,
             log_status="no_matching_lines",
-            log=disclosure_cmd(f"ecc log {step_token}", project),
+            log=disclosure_cmd(f"ecc log {step_token}", project, run_id),
         )], 0
 
     result = []
@@ -246,13 +260,14 @@ def build_log_lines(run_dir: str, step_token: str | None, errors_only: bool,
             step=step_token,
             source=os.path.relpath(lf, run_dir),
             line=line,
-            log=disclosure_cmd(f"ecc log {step_token} --errors", project),
+            log=disclosure_cmd(f"ecc log {step_token} --errors", project, run_id),
         ))
     return result, 0
 
 
 def build_log_jsonl(run_dir: str, step_token: str | None, errors_only: bool,
-                    project: str | None = None) -> tuple[list[dict], int]:
+                    project: str | None = None,
+                    run_id: str | None = None) -> tuple[list[dict], int]:
     if step_token is None:
         objects = []
         for lf in discover_logs(run_dir):
@@ -319,7 +334,8 @@ def read_metrics(path: str) -> dict:
 
 
 def build_metrics_lines(run_dir: str, step_token: str | None = None,
-                        project: str | None = None) -> tuple[list[str], int]:
+                        project: str | None = None,
+                        run_id: str | None = None) -> tuple[list[str], int]:
     from chipcompiler.cli.output import format_line
 
     metrics_files = discover_metrics(run_dir, step_token)
@@ -335,17 +351,17 @@ def build_metrics_lines(run_dir: str, step_token: str | None = None,
                                      f"{_internal_from_token(step_token)}_metrics.json"),
                         run_dir,
                     ),
-                    log=disclosure_cmd(f"ecc log {step_token} --errors", project),
+                    log=disclosure_cmd(f"ecc log {step_token} --errors", project, run_id),
                 )], 1
             return [format_line(
                 step=step_token,
                 status="unknown_step",
-                inspect=disclosure_cmd("ecc status", project),
+                inspect=disclosure_cmd("ecc status", project, run_id),
             )], 1
         return [format_line(
             metrics_status="none",
             workspace=run_dir,
-            status_cmd=disclosure_cmd("ecc status", project),
+            status_cmd=disclosure_cmd("ecc status", project, run_id),
         )], 0
 
     lines = []
@@ -360,14 +376,15 @@ def build_metrics_lines(run_dir: str, step_token: str | None = None,
                 step=token,
                 value=value,
                 source=os.path.relpath(path, run_dir),
-                inspect=disclosure_cmd(f"ecc metrics {token} --json", project),
+                inspect=disclosure_cmd(f"ecc metrics {token} --json", project, run_id),
             ))
     return lines, 0
 
 
 def _collect_metrics(run_dir: str, step_token: str | None,
-                     project: str | None) -> tuple[list[dict], int]:
-    err = _check_requested_step(run_dir, step_token, project)
+                     project: str | None,
+                     run_id: str | None = None) -> tuple[list[dict], int]:
+    err = _check_requested_step(run_dir, step_token, project, run_id)
     if err is not None:
         return [err], 1
 
@@ -386,20 +403,23 @@ def _collect_metrics(run_dir: str, step_token: str | None,
 
 
 def build_metrics_json(run_dir: str, step_token: str | None = None,
-                       project: str | None = None) -> tuple[dict, int]:
-    items, rc = _collect_metrics(run_dir, step_token, project)
+                       project: str | None = None,
+                       run_id: str | None = None) -> tuple[dict, int]:
+    items, rc = _collect_metrics(run_dir, step_token, project, run_id)
     if rc != 0:
         return items[0], 1
     return {"metrics": items}, 0
 
 
 def build_metrics_jsonl(run_dir: str, step_token: str | None = None,
-                        project: str | None = None) -> tuple[list[dict], int]:
-    return _collect_metrics(run_dir, step_token, project)
+                        project: str | None = None,
+                        run_id: str | None = None) -> tuple[list[dict], int]:
+    return _collect_metrics(run_dir, step_token, project, run_id)
 
 
 def _check_requested_step(run_dir: str, step_token: str | None,
-                          project: str | None = None) -> dict | None:
+                          project: str | None = None,
+                          run_id: str | None = None) -> dict | None:
     if step_token is None:
         return None
     step_dirs = discover_step_dirs(run_dir)
@@ -410,7 +430,7 @@ def _check_requested_step(run_dir: str, step_token: str | None,
         return {
             "status": "missing",
             "metric_step": step_token,
-            "log_cmd": disclosure_cmd(f"ecc log {step_token} --errors", project),
+            "log_cmd": disclosure_cmd(f"ecc log {step_token} --errors", project, run_id),
         }
     return None
 
