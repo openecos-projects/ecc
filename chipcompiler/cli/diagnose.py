@@ -56,7 +56,7 @@ def _make_issue(issue: str, severity: str, run: str,
     cmd_kwargs = {"project": project, "run_id": run_id}
     if issue in ("missing_run", "invalid_flow_json"):
         obj["evidence"] = disclosure_cmd("ecc status", **cmd_kwargs)
-        obj["run_cmd"] = disclosure_cmd("ecc run", project=project)
+        obj["start_cmd"] = disclosure_cmd("ecc run", project=project)
     elif issue == "log_errors":
         obj["evidence"] = disclosure_cmd(f"ecc log {step} --errors", **cmd_kwargs)
         obj["artifacts"] = disclosure_cmd(f"ecc artifacts {step}", **cmd_kwargs)

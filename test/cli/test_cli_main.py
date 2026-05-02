@@ -436,7 +436,7 @@ class TestStatus:
         assert rc == 1
         out = capsys.readouterr().out
         assert "status=missing" in out
-        assert 'run_cmd="ecc run' in out
+        assert 'start="ecc run' in out
 
     def test_status_invalid_flow_json(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -881,4 +881,56 @@ run = "default"
         (project_dir / "ecc.toml").write_text(toml)
         rc = cli_main.run(["check", "--project", str(project_dir)])
         assert rc == 1
+
+
+class TestRendererCmdStripping:
+    def test_text_strips_cmd_suffix(self):
+        from chipcompiler.cli.render import render_text
+        from io import StringIO
+        buf = StringIO()
+        render_text(({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},), file=buf)
+        line = buf.getvalue().strip()
+        assert "inspect=" in line
+        assert "log=" in line
+        assert "inspect_cmd=" not in line
+        assert "log_cmd=" not in line
+
+    def test_json_preserves_cmd_keys(self):
+        from chipcompiler.cli.render import render_json
+        from chipcompiler.cli.types import CommandResult
+        from io import StringIO
+        buf = StringIO()
+        result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))
+        render_json(result, file=buf)
+        data = json.loads(buf.getvalue())
+        assert "inspect_cmd" in data["records"][0]
+        assert "log_cmd" in data["records"][0]
+
+    def test_jsonl_preserves_cmd_keys(self):
+        from chipcompiler.cli.render import render_jsonl
+        from chipcompiler.cli.types import CommandResult
+        from io import StringIO
+        buf = StringIO()
+        result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))
+        render_jsonl(result, file=buf)
+        record = json.loads(buf.getvalue().strip())
+        assert "inspect_cmd" in record
+        assert "log_cmd" in record
+
+
+class TestMissingConfigErrorRecord:
+    def test_check_missing_config_has_kind_error_json(self, tmp_path, capsys):
+        rc = cli_main.run(["check", "--project", str(tmp_path), "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        record = data["records"][0]
+        assert record["kind"] == "error"
+        assert record["error"] == "missing_config"
+
+    def test_check_missing_config_has_kind_error_text(self, tmp_path, capsys):
+        rc = cli_main.run(["check", "--project", str(tmp_path)])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "kind=error" in out
+        assert "error=missing_config" in out
 
