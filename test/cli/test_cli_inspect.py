@@ -1040,6 +1040,19 @@ class TestAbsoluteRunIdConfig:
         assert run_item["value"] == str(external_run)
 
 
+class TestConfigTextUsesItemInspectCmd:
+    def test_run_dir_text_uses_status_command(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = _create_valid_project(tmp_path)
+
+        rc = cli_main.run(["config", "--resolved", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        run_dir_line = [l for l in out.strip().split("\n") if "config=run_dir" in l][0]
+        assert "ecc status" in run_dir_line
+        assert "ecc config --resolved --json" not in run_dir_line
+
+
 class TestDiagnoseIssueSpecificEvidence:
     def test_log_errors_uses_log_command(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -1115,6 +1128,36 @@ class TestDiagnoseIssueSpecificEvidence:
         config_line = [l for l in out.strip().split("\n") if "issue=config_unavailable" in l][0]
         assert "ecc config cts --resolved" in config_line
 
+    def test_invalid_flow_json_has_evidence(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
+        with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
+            f.write("NOT VALID JSON{{{")
+
+        rc = cli_main.run(["diagnose", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "issue=invalid_flow_json" in out
+        assert "evidence=" in out
+        assert "ecc status" in out
+
+    def test_invalid_flow_json_json_has_evidence(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
+        with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
+            f.write("NOT VALID JSON{{{")
+
+        rc = cli_main.run(["diagnose", "--json", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        issue = data["issues"][0]
+        assert issue["issue"] == "invalid_flow_json"
+        assert "evidence" in issue
+        assert "run_cmd" in issue
+
 
 class TestCleanDiagnoseOutput:
     def test_clean_has_status_and_disclosure_commands(self, tmp_path, capsys):
@@ -1173,28 +1216,42 @@ class TestConfigJsonDisclosure:
 
 
 class TestIsolatedConfigValidation:
+    @staticmethod
+    def _valid_toml(tmp_path, **overrides):
+        pdk_dir = tmp_path / "pdk"
+        pdk_dir.mkdir(exist_ok=True)
+        rtl_dir = tmp_path / "rtl"
+        rtl_dir.mkdir(exist_ok=True)
+        (rtl_dir / "gcd.v").write_text("module gcd; endmodule")
+        defaults = {
+            "name": "gcd", "top": "gcd", "rtl": '["rtl/gcd.v"]',
+            "clock_port": "clk", "frequency_mhz": "100.0",
+            "pdk_name": "ics55", "pdk_root": str(pdk_dir),
+            "flow_preset": "rtl2gds", "flow_run": "default",
+        }
+        defaults.update(overrides)
+        return f'''[design]
+name = "{defaults['name']}"
+top = "{defaults['top']}"
+rtl = {defaults['rtl']}
+clock_port = "{defaults['clock_port']}"
+frequency_mhz = {defaults['frequency_mhz']}
+
+[pdk]
+name = "{defaults['pdk_name']}"
+root = "{defaults['pdk_root']}"
+
+[flow]
+preset = "{defaults['flow_preset']}"
+run = "{defaults['flow_run']}"
+'''
+
     def test_unsupported_flow_run_rejected(self, tmp_path, capsys, monkeypatch):
         _mock_pdk_validation(monkeypatch)
         project_dir = tmp_path / "bad_run"
         project_dir.mkdir()
-        rtl_dir = project_dir / "rtl"
-        rtl_dir.mkdir()
-        (rtl_dir / "gcd.v").write_text("module gcd; endmodule")
-        (project_dir / "ecc.toml").write_text('''[design]
-name = "gcd"
-top = "gcd"
-rtl = ["rtl/gcd.v"]
-clock_port = "clk"
-frequency_mhz = 100.0
-
-[pdk]
-name = "ics55"
-root = "/tmp/nonexistent"
-
-[flow]
-preset = "rtl2gds"
-run = "custom"
-''')
+        toml = self._valid_toml(tmp_path, flow_run="custom")
+        (project_dir / "ecc.toml").write_text(toml)
         rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
         assert rc == 1
 
@@ -1202,24 +1259,8 @@ run = "custom"
         _mock_pdk_validation(monkeypatch)
         project_dir = tmp_path / "bad_clock"
         project_dir.mkdir()
-        rtl_dir = project_dir / "rtl"
-        rtl_dir.mkdir()
-        (rtl_dir / "gcd.v").write_text("module gcd; endmodule")
-        (project_dir / "ecc.toml").write_text('''[design]
-name = "gcd"
-top = "gcd"
-rtl = ["rtl/gcd.v"]
-clock_port = ""
-frequency_mhz = 100.0
-
-[pdk]
-name = "ics55"
-root = "/tmp/nonexistent"
-
-[flow]
-preset = "rtl2gds"
-run = "default"
-''')
+        toml = self._valid_toml(tmp_path, clock_port="")
+        (project_dir / "ecc.toml").write_text(toml)
         rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
         assert rc == 1
 
@@ -1227,24 +1268,8 @@ run = "default"
         _mock_pdk_validation(monkeypatch)
         project_dir = tmp_path / "bad_freq"
         project_dir.mkdir()
-        rtl_dir = project_dir / "rtl"
-        rtl_dir.mkdir()
-        (rtl_dir / "gcd.v").write_text("module gcd; endmodule")
-        (project_dir / "ecc.toml").write_text('''[design]
-name = "gcd"
-top = "gcd"
-rtl = ["rtl/gcd.v"]
-clock_port = "clk"
-frequency_mhz = 0
-
-[pdk]
-name = "ics55"
-root = "/tmp/nonexistent"
-
-[flow]
-preset = "rtl2gds"
-run = "default"
-''')
+        toml = self._valid_toml(tmp_path, frequency_mhz="0")
+        (project_dir / "ecc.toml").write_text(toml)
         rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
         assert rc == 1
 
@@ -1252,20 +1277,7 @@ run = "default"
         _mock_pdk_validation(monkeypatch)
         project_dir = tmp_path / "bad_rtl"
         project_dir.mkdir()
-        (project_dir / "ecc.toml").write_text('''[design]
-name = "gcd"
-top = "gcd"
-rtl = []
-clock_port = "clk"
-frequency_mhz = 100.0
-
-[pdk]
-name = "ics55"
-root = "/tmp/nonexistent"
-
-[flow]
-preset = "rtl2gds"
-run = "default"
-''')
+        toml = self._valid_toml(tmp_path, rtl="[]")
+        (project_dir / "ecc.toml").write_text(toml)
         rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
         assert rc == 1
