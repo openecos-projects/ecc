@@ -852,3 +852,165 @@ class TestReadOnly:
         assert not os.path.exists(os.path.join(project_dir, "resolved_config.json"))
         assert not os.path.exists(os.path.join(run_dir, "issues.json"))
         assert not os.path.exists(os.path.join(run_dir, "artifacts.json"))
+
+
+# ===========================================================================
+# Regression tests for Codex review findings (Round 1)
+# ===========================================================================
+
+
+class TestRunIdDisclosure:
+    def test_explicit_default_preserved_in_disclosure(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir)
+
+        rc = cli_main.run(["status", "--run-id", "default", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "--run-id default" in out
+
+    def test_project_relative_run_id_resolves(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "sweeps", "sweep_001", "run_004")
+        _create_flow_json(run_dir)
+
+        rc = cli_main.run(
+            ["status", "--run-id", "sweeps/sweep_001/run_004", "--project", project_dir]
+        )
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "run=sweeps/sweep_001/run_004" in out
+
+
+class TestArtifactPaths:
+    def test_nested_run_artifact_paths(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "sweeps", "sweep_001", "run_004")
+        _create_flow_json(run_dir)
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
+                         files={"output/design.def": "def content"})
+
+        rc = cli_main.run(
+            ["artifacts", "--run-id", "sweeps/sweep_001/run_004",
+             "--json", "--project", project_dir]
+        )
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data["artifacts"]) == 1
+        path = data["artifacts"][0]["path"]
+        assert path.startswith("runs/")
+
+    def test_nested_run_step_config_paths(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "sweeps", "sweep_001", "run_004")
+        _create_flow_json(run_dir)
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["config"],
+                         files={"config/cts_config.json": "{}"})
+
+        rc = cli_main.run(
+            ["config", "cts", "--resolved", "--run-id", "sweeps/sweep_001/run_004",
+             "--json", "--project", project_dir]
+        )
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "config" in data
+        path = data["config"][0]["path"]
+        assert path.startswith("runs/")
+
+
+class TestConfigValidation:
+    def test_semantically_invalid_toml_returns_nonzero(self, tmp_path, capsys):
+        project_dir = tmp_path / "bad_project"
+        project_dir.mkdir()
+        (project_dir / "ecc.toml").write_text('''[design]
+name = ""
+top = ""
+rtl = []
+clock_port = ""
+frequency_mhz = 0
+
+[pdk]
+name = "unsupported"
+root = ""
+
+[flow]
+preset = "unknown"
+run = "default"
+''')
+
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
+
+
+class TestEmptyStepConfigSentinel:
+    def test_step_no_config_emits_sentinel_text(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir)
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+
+        rc = cli_main.run(["config", "cts", "--resolved", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "step=cts" in out
+        assert "config_status=none" in out
+        assert "artifacts=" in out
+
+    def test_step_no_config_emits_sentinel_json(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir)
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+
+        rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["step"] == "cts"
+        assert data["config_status"] == "none"
+
+
+class TestDiagnoseFlowOnlySteps:
+    def test_flow_step_without_directory_emits_issues(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+        ])
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "issue=failed_step" in out
+        assert "step=cts" in out
+        assert "issue=unknown_step" not in out
+
+    def test_flow_step_without_dir_reports_missing_artifacts(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "issue=missing_artifacts" in out
+        assert "issue=missing_metrics" in out
+        assert "issue=config_unavailable" in out
+
+
+class TestConfigRoleDisclosure:
+    def test_config_artifact_has_disclosure(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir)
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["config"],
+                         files={"config/cts_config.json": "{}"})
+
+        rc = cli_main.run(["artifacts", "cts", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        for line in out.strip().split("\n"):
+            if line.strip():
+                assert _has_disclosure(line), f"Missing disclosure in: {line}"

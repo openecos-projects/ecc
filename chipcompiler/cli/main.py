@@ -254,16 +254,16 @@ def _cmd_artifacts(args, project_dir: str, project: str | None) -> int:
     run_dir, run_id = _resolve_run(project_dir, getattr(args, "run_id", None))
 
     if getattr(args, "jsonl", False):
-        objects, rc = build_artifacts_jsonl(run_dir, args.step, project, run_id)
+        objects, rc = build_artifacts_jsonl(run_dir, args.step, project, run_id, project_dir)
         emit_jsonl(objects)
         return rc
 
     if getattr(args, "json", False):
-        obj, rc = build_artifacts_json(run_dir, args.step, project, run_id)
+        obj, rc = build_artifacts_json(run_dir, args.step, project, run_id, project_dir)
         emit_json(obj)
         return rc
 
-    lines, rc = build_artifacts_lines(run_dir, args.step, project, run_id)
+    lines, rc = build_artifacts_lines(run_dir, args.step, project, run_id, project_dir)
     emit_text(lines)
     return rc
 
@@ -281,7 +281,7 @@ def _cmd_config(args, project_dir: str, project: str | None) -> int:
     run_dir, run_id = _resolve_run(project_dir, getattr(args, "run_id", None))
 
     if args.step is not None:
-        items, rc = build_step_config_items(run_dir, args.step, project, run_id)
+        items, rc = build_step_config_items(run_dir, args.step, project, run_id, project_dir)
     else:
         items, rc = build_project_config_items(project_dir, run_dir, project, run_id)
 
