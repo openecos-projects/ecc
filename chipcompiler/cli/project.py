@@ -142,10 +142,13 @@ def run_project(project_dir: str, overwrite: bool = False,
         return [], 1
 
     if overwrite and os.path.exists(run_dir):
-        def _remove_readonly(func, path, _):
-            os.chmod(path, 0o700)
-            func(path)
-        shutil.rmtree(run_dir, onerror=_remove_readonly)
+        for root, dirs, files in os.walk(run_dir):
+            for d in dirs:
+                os.chmod(os.path.join(root, d), 0o755)
+            for f in files:
+                os.chmod(os.path.join(root, f), 0o644)
+        os.chmod(run_dir, 0o755)
+        shutil.rmtree(run_dir)
 
     _, origin_verilog, input_filelist = resolve_rtl(cfg)
     parameters = to_parameters(cfg)
