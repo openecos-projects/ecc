@@ -405,6 +405,8 @@ class TestConfigResolved:
         out = capsys.readouterr().out
         assert "kind=error" in out
         assert "error=missing_config" in out
+        assert 'inspect="ecc check --project ' in out
+        assert str(project_dir) in out
 
     def test_config_requires_resolved(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
