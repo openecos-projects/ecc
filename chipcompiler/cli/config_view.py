@@ -7,6 +7,7 @@ def build_project_config_items(project_dir: str, run_dir: str,
                                project: str | None = None,
                                run_id: str | None = None) -> tuple[list[dict], int]:
     from chipcompiler.cli.config import (
+        _resolve_path,
         find_config_path,
         load_project_config,
         resolve_pdk_root,
@@ -55,7 +56,7 @@ def build_project_config_items(project_dir: str, run_dir: str,
 
     # RTL entries
     for i, rtl in enumerate(cfg.design_rtl):
-        rtl_resolved = os.path.normpath(os.path.join(project_dir, rtl))
+        rtl_resolved = os.path.normpath(_resolve_path(project_dir, rtl))
         items.append({
             "kind": "config",
             "scope": "project",

@@ -1281,3 +1281,102 @@ run = "{defaults['flow_run']}"
         (project_dir / "ecc.toml").write_text(toml)
         rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
         assert rc == 1
+
+
+# ===========================================================================
+# Regression tests for Codex Round 4 code review (Round 5)
+# ===========================================================================
+
+
+class TestCorruptFlowJson:
+    def test_corrupt_flow_json_status_reports_corrupt(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
+        with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
+            f.write("BROKEN{{{")
+        rc = cli_main.run(["status", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "corrupt" in out
+
+    def test_missing_flow_json_status_reports_missing(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(run_dir, exist_ok=True)
+        rc = cli_main.run(["status", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "missing" in out
+
+    def test_corrupt_flow_json_json_reports_corrupt(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
+        with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
+            f.write("BROKEN{{{")
+        rc = cli_main.run(["status", "--json", "--project", project_dir])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["status"] == "corrupt"
+
+
+class TestCorruptMetricsJson:
+    def test_malformed_metrics_reports_corrupt_text(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["analysis"],
+                         files={"analysis/CTS_metrics.json": "NOT JSON{{{"})
+        rc = cli_main.run(["metrics", "cts", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "corrupt" in out
+
+    def test_malformed_metrics_reports_corrupt_json(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["analysis"],
+                         files={"analysis/CTS_metrics.json": "NOT JSON{{{"})
+        rc = cli_main.run(["metrics", "cts", "--json", "--project", project_dir])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["status"] == "corrupt"
+
+
+class TestRtlPathResolution:
+    def test_absolute_rtl_resolved_correctly(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        rtl_dir = tmp_path / "external_rtl"
+        rtl_dir.mkdir()
+        (rtl_dir / "gcd.v").write_text("module gcd; endmodule")
+        (project_dir / "ecc.toml").write_text(f'''[design]
+name = "gcd"
+top = "gcd"
+rtl = ["{rtl_dir / "gcd.v"}"]
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "{tmp_path / "pdk"}"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+''')
+        (tmp_path / "pdk").mkdir(exist_ok=True)
+        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        rtl_item = next(i for i in data["config"] if i["key"] == "design.rtl.0")
+        assert rtl_item["resolved"] == str(rtl_dir / "gcd.v")

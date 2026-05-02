@@ -26,7 +26,10 @@ def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, s
     return os.path.join(project_dir, "runs", run_id), run_id
 
 
-def read_flow_json(run_dir: str) -> dict | None:
+CORRUPT_FLOW_JSON = "CORRUPT"
+
+
+def read_flow_json(run_dir: str) -> dict | str | None:
     path = os.path.join(run_dir, "home", "flow.json")
     if not os.path.isfile(path):
         return None
@@ -35,7 +38,7 @@ def read_flow_json(run_dir: str) -> dict | None:
             data = json.load(f)
         return data if isinstance(data, dict) else None
     except (json.JSONDecodeError, OSError):
-        return None
+        return CORRUPT_FLOW_JSON
 
 
 def _safe_steps(flow_data: dict) -> list[dict]:
@@ -76,6 +79,16 @@ def build_status_lines(run_dir: str, project: str | None = None,
         )
         return [line], 1
 
+    if flow_data is CORRUPT_FLOW_JSON:
+        line = format_line(
+            run=run_id or "default",
+            status="corrupt",
+            workspace=run_dir,
+            status_cmd=disclosure_cmd("ecc status", project, run_id),
+            log=disclosure_cmd("ecc log", project, run_id),
+        )
+        return [line], 1
+
     run_status = get_run_status(flow_data)
     lines = []
 
@@ -108,6 +121,9 @@ def build_status_json(run_dir: str, run_id: str | None = None) -> tuple[dict, in
     if flow_data is None:
         return {"run": display_run, "status": "missing", "workspace": run_dir}, 1
 
+    if flow_data is CORRUPT_FLOW_JSON:
+        return {"run": display_run, "status": "corrupt", "workspace": run_dir}, 1
+
     run_status = get_run_status(flow_data)
     steps = []
     for step in _safe_steps(flow_data):
@@ -126,6 +142,9 @@ def build_status_jsonl(run_dir: str, run_id: str | None = None) -> tuple[list[di
     display_run = run_id or "default"
     if flow_data is None:
         return [{"run": display_run, "status": "missing", "workspace": run_dir}], 1
+
+    if flow_data is CORRUPT_FLOW_JSON:
+        return [{"kind": "run", "run": display_run, "status": "corrupt", "workspace": run_dir}], 1
 
     run_status = get_run_status(flow_data)
     objects = [{"kind": "run", "run": display_run, "status": run_status, "workspace": run_dir}]
@@ -331,12 +350,13 @@ def discover_metrics(run_dir: str, step_token: str | None = None) -> dict[str, s
     return result
 
 
-def read_metrics(path: str) -> dict:
+def read_metrics(path: str) -> dict | None:
     try:
         with open(path) as f:
-            return json.load(f)
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
     except (json.JSONDecodeError, OSError):
-        return {}
+        return None
 
 
 def build_metrics_lines(run_dir: str, step_token: str | None = None,
@@ -371,9 +391,17 @@ def build_metrics_lines(run_dir: str, step_token: str | None = None,
         )], 0
 
     lines = []
+    has_corrupt = False
     for token, path in sorted(metrics_files.items()):
         data = read_metrics(path)
-        if not data:
+        if data is None:
+            has_corrupt = True
+            lines.append(format_line(
+                metric_step=token,
+                status="corrupt",
+                path=os.path.relpath(path, run_dir),
+                log=disclosure_cmd(f"ecc log {token} --errors", project, run_id),
+            ))
             continue
         for raw_key, value in data.items():
             norm_key = normalize_metric_key(raw_key)
@@ -384,7 +412,7 @@ def build_metrics_lines(run_dir: str, step_token: str | None = None,
                 source=os.path.relpath(path, run_dir),
                 inspect=disclosure_cmd(f"ecc metrics {token} --json", project, run_id),
             ))
-    return lines, 0
+    return lines, 1 if has_corrupt else 0
 
 
 def _collect_metrics(run_dir: str, step_token: str | None,
@@ -398,6 +426,9 @@ def _collect_metrics(run_dir: str, step_token: str | None,
     items = []
     for token, path in sorted(metrics_files.items()):
         data = read_metrics(path)
+        if data is None:
+            return [{"status": "corrupt", "metric_step": token,
+                     "log_cmd": disclosure_cmd(f"ecc log {token} --errors", project, run_id)}], 1
         for raw_key, value in data.items():
             items.append({
                 "metric": normalize_metric_key(raw_key),
