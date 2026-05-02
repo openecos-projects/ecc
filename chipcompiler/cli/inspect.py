@@ -186,32 +186,25 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
     return result
 
 
+def _list_files(directory: str) -> list[str]:
+    if not os.path.isdir(directory):
+        return []
+    return sorted(
+        os.path.join(directory, f)
+        for f in os.listdir(directory)
+        if os.path.isfile(os.path.join(directory, f))
+    )
+
+
 def discover_logs(run_dir: str, step_token: str | None = None) -> list[str]:
     if step_token is None:
-        log_dir = os.path.join(run_dir, "log")
-        if os.path.isdir(log_dir):
-            return sorted(
-                os.path.join(log_dir, f)
-                for f in os.listdir(log_dir)
-                if os.path.isfile(os.path.join(log_dir, f))
-            )
-        return []
+        return _list_files(os.path.join(run_dir, "log"))
 
     step_dirs = discover_step_dirs(run_dir)
     if step_token not in step_dirs:
         return []
 
-    log_dir = os.path.join(step_dirs[step_token], "log")
-    if not os.path.isdir(log_dir):
-        return []
-
-    return sorted(
-        os.path.join(log_dir, f)
-        for f in os.listdir(log_dir)
-        if os.path.isfile(os.path.join(log_dir, f))
-    )
-
-
+    return _list_files(os.path.join(step_dirs[step_token], "log"))
 
 
 def read_log_file(path: str) -> list[str]:

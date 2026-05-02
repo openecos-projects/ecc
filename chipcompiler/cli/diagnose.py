@@ -54,10 +54,7 @@ def _make_issue(issue: str, severity: str, run: str,
         obj["count"] = count
 
     cmd_kwargs = {"project": project, "run_id": run_id}
-    if issue == "missing_run":
-        obj["evidence"] = disclosure_cmd("ecc status", **cmd_kwargs)
-        obj["run_cmd"] = disclosure_cmd("ecc run", project=project)
-    elif issue == "invalid_flow_json":
+    if issue in ("missing_run", "invalid_flow_json"):
         obj["evidence"] = disclosure_cmd("ecc status", **cmd_kwargs)
         obj["run_cmd"] = disclosure_cmd("ecc run", project=project)
     elif issue == "log_errors":
@@ -195,27 +192,10 @@ def build_diagnose_lines(run_dir: str, step_token: str | None = None,
         )], 0
 
     lines = []
+    text_keys = ("issue", "severity", "run", "step", "status", "count",
+                 "evidence", "log", "artifacts", "config", "run_cmd")
     for issue in issues:
-        fields = {}
-        fields["issue"] = issue["issue"]
-        fields["severity"] = issue["severity"]
-        fields["run"] = issue["run"]
-        if "step" in issue:
-            fields["step"] = issue["step"]
-        if "status" in issue:
-            fields["status"] = issue["status"]
-        if "count" in issue:
-            fields["count"] = issue["count"]
-        if "evidence" in issue:
-            fields["evidence"] = issue["evidence"]
-        if "log" in issue:
-            fields["log"] = issue["log"]
-        if "artifacts" in issue:
-            fields["artifacts"] = issue["artifacts"]
-        if "config" in issue:
-            fields["config"] = issue["config"]
-        if "run_cmd" in issue:
-            fields["run_cmd"] = issue["run_cmd"]
+        fields = {k: issue[k] for k in text_keys if k in issue}
         lines.append(format_line(**fields))
 
     return lines, _exit_code(issues)

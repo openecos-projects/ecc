@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 SUPPORTED_PDK_NAMES = {"ics55"}
 SUPPORTED_FLOW_PRESETS = {"rtl2gds"}
 SUPPORTED_FLOW_RUNS = {"default"}
+FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
+RTL_SUFFIXES = {".v", ".sv", ".svh", ".vh"}
 
 
 @dataclass
@@ -142,7 +144,6 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
             errors.append(f"rtl path must be a file, not a directory: {cfg.design_rtl[0]}")
         else:
             suffix = os.path.splitext(rtl_path)[1].lower()
-            FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
             if suffix in FILELIST_SUFFIXES:
                 from chipcompiler.utility.filelist import validate_filelist
                 try:
@@ -171,9 +172,6 @@ def resolve_rtl(cfg: ProjectConfig) -> tuple[str, str, str]:
 
     rtl_path = _resolve_path(cfg.project_dir, cfg.design_rtl[0])
     suffix = os.path.splitext(rtl_path)[1].lower()
-
-    FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
-    RTL_SUFFIXES = {".v", ".sv", ".svh", ".vh"}
 
     if suffix in FILELIST_SUFFIXES:
         return ("filelist", "", rtl_path)
