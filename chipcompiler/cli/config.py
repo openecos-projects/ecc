@@ -145,9 +145,12 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
             FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
             if suffix in FILELIST_SUFFIXES:
                 from chipcompiler.utility.filelist import validate_filelist
-                _, missing = validate_filelist(rtl_path)
-                if missing:
-                    errors.append(f"filelist references missing files: {', '.join(missing)}")
+                try:
+                    _, missing = validate_filelist(rtl_path)
+                    if missing:
+                        errors.append(f"filelist references missing files: {', '.join(missing)}")
+                except (ValueError, OSError) as e:
+                    errors.append(f"invalid filelist {cfg.design_rtl[0]}: {e}")
 
     return errors
 

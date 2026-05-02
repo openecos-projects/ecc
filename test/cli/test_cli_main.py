@@ -843,3 +843,37 @@ run = "default"
         rc = cli_main.run(["check", "--project", str(project_dir)])
         assert rc == 1
 
+    def test_check_fails_invalid_filelist_directive(self, tmp_path, monkeypatch):
+        from chipcompiler.cli.config import _validate_pdk_contents
+        monkeypatch.setattr("chipcompiler.cli.config._validate_pdk_contents",
+                            lambda *a, **k: None)
+
+        project_dir = tmp_path / "flproj2"
+        project_dir.mkdir()
+        (project_dir / "rtl").mkdir()
+
+        filelist = project_dir / "rtl" / "files.f"
+        filelist.write_text("gcd.v\n-f other.f\n")
+
+        pdk_root = tmp_path / "ics55"
+        pdk_root.mkdir()
+
+        toml = f'''[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/files.f"]
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "{pdk_root}"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+'''
+        (project_dir / "ecc.toml").write_text(toml)
+        rc = cli_main.run(["check", "--project", str(project_dir)])
+        assert rc == 1
+
