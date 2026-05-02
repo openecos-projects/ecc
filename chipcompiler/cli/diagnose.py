@@ -57,8 +57,20 @@ def _make_issue(issue: str, severity: str, run: str,
     if issue == "missing_run":
         obj["evidence"] = disclosure_cmd("ecc status", **cmd_kwargs)
         obj["run_cmd"] = disclosure_cmd("ecc run", project=project)
+    elif issue == "log_errors":
+        obj["evidence"] = disclosure_cmd(f"ecc log {step} --errors", **cmd_kwargs)
+        obj["artifacts"] = disclosure_cmd(f"ecc artifacts {step}", **cmd_kwargs)
+    elif issue == "missing_metrics":
+        obj["evidence"] = disclosure_cmd(f"ecc metrics {step} --json", **cmd_kwargs)
+        obj["log"] = disclosure_cmd(f"ecc log {step} --errors", **cmd_kwargs)
+    elif issue == "missing_artifacts":
+        obj["evidence"] = disclosure_cmd(f"ecc artifacts {step}", **cmd_kwargs)
+        obj["config"] = disclosure_cmd(f"ecc config {step} --resolved", **cmd_kwargs)
+    elif issue == "config_unavailable":
+        obj["evidence"] = disclosure_cmd(f"ecc config {step} --resolved", **cmd_kwargs)
+        obj["artifacts"] = disclosure_cmd(f"ecc artifacts {step}", **cmd_kwargs)
     elif step:
-        obj["evidence"] = disclosure_cmd(f"ecc status", **cmd_kwargs)
+        obj["evidence"] = disclosure_cmd("ecc status", **cmd_kwargs)
         obj["log"] = disclosure_cmd(f"ecc log {step} --errors", **cmd_kwargs)
         obj["artifacts"] = disclosure_cmd(f"ecc artifacts {step}", **cmd_kwargs)
         obj["config"] = disclosure_cmd(f"ecc config {step} --resolved", **cmd_kwargs)
@@ -166,9 +178,11 @@ def build_diagnose_lines(run_dir: str, step_token: str | None = None,
     if not issues:
         display_run = run_id or "default"
         return [format_line(
-            diagnose="clean",
+            status="clean",
             run=display_run,
-            evidence=disclosure_cmd("ecc status", project, run_id),
+            status_cmd=disclosure_cmd("ecc status", project, run_id),
+            artifacts=disclosure_cmd("ecc artifacts", project, run_id),
+            config=disclosure_cmd("ecc config --resolved", project, run_id),
         )], 0
 
     lines = []
@@ -198,12 +212,22 @@ def build_diagnose_lines(run_dir: str, step_token: str | None = None,
     return lines, _exit_code(issues)
 
 
+def _clean_object(run_id, project, run_id_val):
+    return {
+        "status": "clean",
+        "run": run_id or "default",
+        "status_cmd": disclosure_cmd("ecc status", project, run_id_val),
+        "artifacts": disclosure_cmd("ecc artifacts", project, run_id_val),
+        "config": disclosure_cmd("ecc config --resolved", project, run_id_val),
+    }
+
+
 def build_diagnose_json(run_dir: str, step_token: str | None = None,
                         project: str | None = None,
                         run_id: str | None = None) -> tuple[dict, int]:
     issues, _ = build_diagnose_issues(run_dir, step_token, project, run_id)
     if not issues:
-        return {"diagnose": "clean", "run": run_id or "default"}, 0
+        return _clean_object(run_id, project, run_id), 0
     return {"issues": issues}, _exit_code(issues)
 
 
@@ -212,5 +236,5 @@ def build_diagnose_jsonl(run_dir: str, step_token: str | None = None,
                          run_id: str | None = None) -> tuple[list[dict], int]:
     issues, _ = build_diagnose_issues(run_dir, step_token, project, run_id)
     if not issues:
-        return [{"diagnose": "clean", "run": run_id or "default"}], 0
+        return [_clean_object(run_id, project, run_id)], 0
     return issues, _exit_code(issues)

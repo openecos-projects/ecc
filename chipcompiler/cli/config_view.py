@@ -40,6 +40,8 @@ def build_project_config_items(project_dir: str, run_dir: str,
         ("flow.run", cfg.flow_run, cfg.flow_run, "ecc.toml"),
     ]
 
+    inspect = disclosure_cmd("ecc config --resolved --json", project, run_id)
+
     for key, value, resolved, source in entries:
         items.append({
             "kind": "config",
@@ -48,6 +50,7 @@ def build_project_config_items(project_dir: str, run_dir: str,
             "value": value,
             "resolved": resolved,
             "source": source,
+            "inspect_cmd": inspect,
         })
 
     # RTL entries
@@ -60,6 +63,7 @@ def build_project_config_items(project_dir: str, run_dir: str,
             "value": rtl,
             "resolved": rtl_resolved,
             "source": "ecc.toml",
+            "inspect_cmd": inspect,
         })
 
     # PDK root with resolution
@@ -71,13 +75,18 @@ def build_project_config_items(project_dir: str, run_dir: str,
         "value": cfg.pdk_root or "",
         "resolved": pdk_root,
         "source": pdk_source,
+        "inspect_cmd": inspect,
     })
 
     # Run directory
     try:
-        run_dir_value = os.path.relpath(run_dir, project_dir)
+        run_dir_rel = os.path.relpath(run_dir, project_dir)
     except ValueError:
+        run_dir_rel = run_dir
+    if run_dir_rel.startswith(".."):
         run_dir_value = run_dir
+    else:
+        run_dir_value = run_dir_rel
     items.append({
         "kind": "config",
         "scope": "project",
@@ -85,6 +94,7 @@ def build_project_config_items(project_dir: str, run_dir: str,
         "value": run_dir_value,
         "resolved": os.path.abspath(run_dir),
         "source": "resolved",
+        "inspect_cmd": disclosure_cmd("ecc status", project, run_id),
     })
 
     return items, 0

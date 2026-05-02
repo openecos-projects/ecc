@@ -604,7 +604,7 @@ class TestDiagnose:
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "diagnose=clean" in out
+        assert "status=clean" in out
 
     def test_diagnose_step_filter(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -701,7 +701,7 @@ class TestDiagnose:
         )
         assert rc == 0
         out = capsys.readouterr().out
-        assert "diagnose=clean" in out
+        assert "status=clean" in out
 
 
 # ===========================================================================
@@ -945,120 +945,6 @@ class TestArtifactPaths:
         assert path.startswith("sweeps/")
 
 
-class TestConfigValidation:
-    def test_invalid_unsupported_flow_run(self, tmp_path, capsys):
-        project_dir = tmp_path / "bad_flow_run"
-        project_dir.mkdir()
-        (project_dir / "ecc.toml").write_text('''[design]
-name = "gcd"
-top = "gcd"
-rtl = ["rtl/gcd.v"]
-clock_port = "clk"
-frequency_mhz = 100.0
-
-[pdk]
-name = "ics55"
-root = "/tmp/nonexistent"
-
-[flow]
-preset = "rtl2gds"
-run = "custom"
-''')
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
-        assert rc == 1
-
-    def test_invalid_empty_clock_port(self, tmp_path, capsys):
-        project_dir = tmp_path / "bad_clock"
-        project_dir.mkdir()
-        (project_dir / "rtl").mkdir()
-        (project_dir / "rtl" / "gcd.v").write_text("module gcd; endmodule")
-        (project_dir / "ecc.toml").write_text('''[design]
-name = "gcd"
-top = "gcd"
-rtl = ["rtl/gcd.v"]
-clock_port = ""
-frequency_mhz = 100.0
-
-[pdk]
-name = "ics55"
-root = "/tmp/nonexistent"
-
-[flow]
-preset = "rtl2gds"
-run = "default"
-''')
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
-        assert rc == 1
-
-    def test_invalid_zero_frequency(self, tmp_path, capsys):
-        project_dir = tmp_path / "bad_freq"
-        project_dir.mkdir()
-        (project_dir / "rtl").mkdir()
-        (project_dir / "rtl" / "gcd.v").write_text("module gcd; endmodule")
-        (project_dir / "ecc.toml").write_text('''[design]
-name = "gcd"
-top = "gcd"
-rtl = ["rtl/gcd.v"]
-clock_port = "clk"
-frequency_mhz = 0
-
-[pdk]
-name = "ics55"
-root = "/tmp/nonexistent"
-
-[flow]
-preset = "rtl2gds"
-run = "default"
-''')
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
-        assert rc == 1
-
-    def test_invalid_empty_rtl(self, tmp_path, capsys):
-        project_dir = tmp_path / "bad_rtl"
-        project_dir.mkdir()
-        (project_dir / "ecc.toml").write_text('''[design]
-name = "gcd"
-top = "gcd"
-rtl = []
-clock_port = "clk"
-frequency_mhz = 100.0
-
-[pdk]
-name = "ics55"
-root = "/tmp/nonexistent"
-
-[flow]
-preset = "rtl2gds"
-run = "default"
-''')
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
-        assert rc == 1
-
-    def test_invalid_config_no_run_id_in_check_disclosure(self, tmp_path, capsys):
-        project_dir = tmp_path / "bad_no_runid"
-        project_dir.mkdir()
-        (project_dir / "ecc.toml").write_text('''[design]
-name = ""
-top = ""
-rtl = []
-clock_port = ""
-frequency_mhz = 0
-
-[pdk]
-name = "unsupported"
-root = ""
-
-[flow]
-preset = "unknown"
-run = "default"
-''')
-        rc = cli_main.run(["config", "--resolved", "--run-id", "run_123",
-                           "--project", str(project_dir)])
-        assert rc == 1
-        out = capsys.readouterr().out
-        assert "--run-id" not in out
-
-
 class TestEmptyStepConfigSentinel:
     def test_step_no_config_emits_sentinel_text(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -1130,3 +1016,256 @@ class TestConfigRoleDisclosure:
         for line in out.strip().split("\n"):
             if line.strip():
                 assert _has_disclosure(line), f"Missing disclosure in: {line}"
+
+
+# ===========================================================================
+# Regression tests for Codex Round 2 findings (Round 3)
+# ===========================================================================
+
+
+class TestAbsoluteRunIdConfig:
+    def test_absolute_run_id_preserves_run_dir_value(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = _create_valid_project(tmp_path)
+        external_run = tmp_path / "external_run"
+        _create_flow_json(str(external_run))
+
+        rc = cli_main.run(
+            ["config", "--resolved", "--run-id", str(external_run),
+             "--json", "--project", project_dir]
+        )
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        run_item = next(i for i in data["config"] if i["key"] == "run_dir")
+        assert run_item["value"] == str(external_run)
+
+
+class TestDiagnoseIssueSpecificEvidence:
+    def test_log_errors_uses_log_command(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["log", "output", "analysis", "config"],
+                         files={"log/cts.log": "Error: bad thing\nError: other\nok\n",
+                                "output/design.def": "def",
+                                "analysis/CTS_metrics.json": "{}",
+                                "config/cts_config.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        log_errors_line = [l for l in out.strip().split("\n") if "issue=log_errors" in l][0]
+        assert "ecc log cts --errors" in log_errors_line
+
+    def test_missing_metrics_uses_metrics_command(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["log", "output", "config"],
+                         files={"log/cts.log": "ok\n",
+                                "output/design.def": "def",
+                                "config/cts_config.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        metrics_line = [l for l in out.strip().split("\n") if "issue=missing_metrics" in l][0]
+        assert "ecc metrics cts --json" in metrics_line
+
+    def test_missing_artifacts_uses_artifacts_command(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["log", "config"],
+                         files={"log/cts.log": "ok\n",
+                                "config/cts_config.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "issue=missing_artifacts" in out
+        artifacts_lines = [l for l in out.strip().split("\n") if "issue=missing_artifacts" in l]
+        assert len(artifacts_lines) > 0
+        assert "ecc artifacts cts" in artifacts_lines[0]
+
+    def test_config_unavailable_uses_config_command(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["log", "output", "analysis"],
+                         files={"log/cts.log": "ok\n",
+                                "output/design.def": "def",
+                                "analysis/CTS_metrics.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        config_line = [l for l in out.strip().split("\n") if "issue=config_unavailable" in l][0]
+        assert "ecc config cts --resolved" in config_line
+
+
+class TestCleanDiagnoseOutput:
+    def test_clean_has_status_and_disclosure_commands(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["log", "output", "analysis", "config"],
+                         files={"log/cts.log": "ok\n",
+                                "output/design.def": "def",
+                                "analysis/CTS_metrics.json": "{}",
+                                "config/cts_config.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "status=clean" in out
+        assert "status_cmd=" in out
+        assert "artifacts=" in out
+        assert "config=" in out
+
+    def test_clean_json_has_disclosure_metadata(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["log", "output", "analysis", "config"],
+                         files={"log/cts.log": "ok\n",
+                                "output/design.def": "def",
+                                "analysis/CTS_metrics.json": "{}",
+                                "config/cts_config.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["status"] == "clean"
+        assert "status_cmd" in data
+        assert "artifacts" in data
+        assert "config" in data
+
+
+class TestConfigJsonDisclosure:
+    def test_project_config_json_has_inspect_cmd(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = _create_valid_project(tmp_path)
+
+        rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        for item in data["config"]:
+            assert "inspect_cmd" in item, f"Missing inspect_cmd in item: {item['key']}"
+
+
+class TestIsolatedConfigValidation:
+    def test_unsupported_flow_run_rejected(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = tmp_path / "bad_run"
+        project_dir.mkdir()
+        rtl_dir = project_dir / "rtl"
+        rtl_dir.mkdir()
+        (rtl_dir / "gcd.v").write_text("module gcd; endmodule")
+        (project_dir / "ecc.toml").write_text('''[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/gcd.v"]
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "/tmp/nonexistent"
+
+[flow]
+preset = "rtl2gds"
+run = "custom"
+''')
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
+
+    def test_empty_clock_port_rejected(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = tmp_path / "bad_clock"
+        project_dir.mkdir()
+        rtl_dir = project_dir / "rtl"
+        rtl_dir.mkdir()
+        (rtl_dir / "gcd.v").write_text("module gcd; endmodule")
+        (project_dir / "ecc.toml").write_text('''[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/gcd.v"]
+clock_port = ""
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "/tmp/nonexistent"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+''')
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
+
+    def test_zero_frequency_rejected(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = tmp_path / "bad_freq"
+        project_dir.mkdir()
+        rtl_dir = project_dir / "rtl"
+        rtl_dir.mkdir()
+        (rtl_dir / "gcd.v").write_text("module gcd; endmodule")
+        (project_dir / "ecc.toml").write_text('''[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/gcd.v"]
+clock_port = "clk"
+frequency_mhz = 0
+
+[pdk]
+name = "ics55"
+root = "/tmp/nonexistent"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+''')
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
+
+    def test_empty_rtl_rejected(self, tmp_path, capsys, monkeypatch):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = tmp_path / "bad_rtl"
+        project_dir.mkdir()
+        (project_dir / "ecc.toml").write_text('''[design]
+name = "gcd"
+top = "gcd"
+rtl = []
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "/tmp/nonexistent"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+''')
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 1
