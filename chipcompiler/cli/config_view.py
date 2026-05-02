@@ -7,6 +7,8 @@ def build_project_config_items(project_dir: str, run_dir: str,
                                project: str | None = None,
                                run_id: str | None = None) -> tuple[list[dict], int]:
     from chipcompiler.cli.config import (
+        SUPPORTED_FLOW_PRESETS,
+        SUPPORTED_PDK_NAMES,
         find_config_path,
         load_project_config,
         resolve_pdk_root,
@@ -19,6 +21,15 @@ def build_project_config_items(project_dir: str, run_dir: str,
 
     cfg = load_project_config(config_path)
     if getattr(cfg, "_toml_error", None):
+        return [{"kind": "error", "status": "invalid_config"}], 1
+
+    if not cfg.design_name or not cfg.design_top or not cfg.flow_preset:
+        return [{"kind": "error", "status": "invalid_config"}], 1
+
+    if cfg.pdk_name and cfg.pdk_name not in SUPPORTED_PDK_NAMES:
+        return [{"kind": "error", "status": "invalid_config"}], 1
+
+    if cfg.flow_preset and cfg.flow_preset not in SUPPORTED_FLOW_PRESETS:
         return [{"kind": "error", "status": "invalid_config"}], 1
 
     pdk_root = resolve_pdk_root(cfg)
@@ -69,11 +80,12 @@ def build_project_config_items(project_dir: str, run_dir: str,
     })
 
     # Run directory
+    run_dir_value = os.path.relpath(run_dir, project_dir) if not os.path.isabs(run_dir) else run_dir
     items.append({
         "kind": "config",
         "scope": "project",
         "key": "run_dir",
-        "value": os.path.relpath(run_dir, project_dir) if not os.path.isabs(run_dir) else run_dir,
+        "value": run_dir_value,
         "resolved": os.path.abspath(run_dir),
         "source": "resolved",
     })
@@ -83,9 +95,11 @@ def build_project_config_items(project_dir: str, run_dir: str,
 
 def build_step_config_items(run_dir: str, step_token: str | None,
                             project: str | None = None,
-                            run_id: str | None = None) -> tuple[list[dict], int]:
+                            run_id: str | None = None,
+                            project_dir: str | None = None) -> tuple[list[dict], int]:
     from chipcompiler.cli.inspect import discover_step_dirs
 
+    base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     step_dirs = discover_step_dirs(run_dir)
 
     if step_token not in step_dirs:
@@ -105,10 +119,15 @@ def build_step_config_items(run_dir: str, step_token: str | None,
                     "step": step_token,
                     "role": "config",
                     "run": display_run,
-                    "path": os.path.relpath(fpath, os.path.dirname(os.path.dirname(run_dir))),
+                    "path": os.path.relpath(fpath, base_dir),
                     "source": "step_config",
                     "inspect_cmd": disclosure_cmd(f"ecc artifacts {step_token} --json", project, run_id),
                 })
+
+    if not items:
+        return [{"kind": "config", "scope": "step", "step": step_token,
+                 "config_status": "none",
+                 "artifacts": disclosure_cmd(f"ecc artifacts {step_token}", project, run_id)}], 0
 
     return items, 0
 
@@ -119,6 +138,14 @@ def build_config_lines(items: list[dict], project: str | None = None,
 
     if not items:
         return [], 0
+
+    if items[0].get("config_status") == "none":
+        s = items[0]
+        return [format_line(
+            step=s["step"],
+            config_status="none",
+            artifacts=s.get("artifacts"),
+        )], 0
 
     if items[0].get("status") in ("unknown_step", "missing_config", "invalid_config"):
         if items[0].get("status") == "unknown_step":
@@ -167,6 +194,9 @@ def build_config_json(items: list[dict]) -> tuple[dict, int]:
     if items and items[0].get("status") in ("unknown_step", "missing_config", "invalid_config"):
         return items[0], 1
 
+    if items and items[0].get("config_status") == "none":
+        return items[0], 0
+
     if not items:
         return {"config_status": "none"}, 0
 
@@ -176,6 +206,9 @@ def build_config_json(items: list[dict]) -> tuple[dict, int]:
 def build_config_jsonl(items: list[dict]) -> tuple[list[dict], int]:
     if items and items[0].get("status") in ("unknown_step", "missing_config", "invalid_config"):
         return items, 1
+
+    if items and items[0].get("config_status") == "none":
+        return items, 0
 
     if not items:
         return [{"config_status": "none"}], 0

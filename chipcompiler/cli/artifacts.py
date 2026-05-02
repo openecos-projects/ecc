@@ -11,10 +11,12 @@ def _role_from_dirname(dirname: str) -> str:
 
 def discover_artifacts(run_dir: str, step_token: str | None = None,
                        project: str | None = None,
-                       run_id: str | None = None) -> tuple[list[dict], int]:
+                       run_id: str | None = None,
+                       project_dir: str | None = None) -> tuple[list[dict], int]:
     from chipcompiler.cli.inspect import discover_step_dirs
     from chipcompiler.cli.output import format_line
 
+    base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     step_dirs = discover_step_dirs(run_dir)
 
     if step_token is not None:
@@ -41,7 +43,7 @@ def discover_artifacts(run_dir: str, step_token: str | None = None,
                         "step": token,
                         "role": role,
                         "run": run_id or "default",
-                        "path": os.path.relpath(fpath, os.path.dirname(os.path.dirname(run_dir))),
+                        "path": os.path.relpath(fpath, base_dir),
                         "exists": True,
                         "inspect_cmd": disclosure_cmd(f"ecc artifacts {token} --json", project, run_id),
                     })
@@ -57,10 +59,11 @@ def discover_artifacts(run_dir: str, step_token: str | None = None,
 
 def build_artifacts_lines(run_dir: str, step_token: str | None = None,
                           project: str | None = None,
-                          run_id: str | None = None) -> tuple[list[str], int]:
+                          run_id: str | None = None,
+                          project_dir: str | None = None) -> tuple[list[str], int]:
     from chipcompiler.cli.output import format_line
 
-    artifacts, rc = discover_artifacts(run_dir, step_token, project, run_id)
+    artifacts, rc = discover_artifacts(run_dir, step_token, project, run_id, project_dir)
     if rc != 0:
         if artifacts and artifacts[0].get("status") == "unknown_step":
             s = artifacts[0]["step"]
@@ -92,6 +95,7 @@ def build_artifacts_lines(run_dir: str, step_token: str | None = None,
             "step": a["step"],
             "role": a["role"],
             "path": a["path"],
+            "inspect": disclosure_cmd(f"ecc artifacts {a['step']} --json", project, run_id),
         }
         if a["role"] == "analysis":
             line_fields["metrics"] = disclosure_cmd(f"ecc metrics {a['step']}", project, run_id)
@@ -105,8 +109,9 @@ def build_artifacts_lines(run_dir: str, step_token: str | None = None,
 
 def build_artifacts_json(run_dir: str, step_token: str | None = None,
                          project: str | None = None,
-                         run_id: str | None = None) -> tuple[dict, int]:
-    artifacts, rc = discover_artifacts(run_dir, step_token, project, run_id)
+                         run_id: str | None = None,
+                         project_dir: str | None = None) -> tuple[dict, int]:
+    artifacts, rc = discover_artifacts(run_dir, step_token, project, run_id, project_dir)
     if rc != 0:
         if artifacts and artifacts[0].get("status") == "unknown_step":
             return {"status": "unknown_step", "step": artifacts[0]["step"]}, 1
@@ -122,8 +127,9 @@ def build_artifacts_json(run_dir: str, step_token: str | None = None,
 
 def build_artifacts_jsonl(run_dir: str, step_token: str | None = None,
                           project: str | None = None,
-                          run_id: str | None = None) -> tuple[list[dict], int]:
-    artifacts, rc = discover_artifacts(run_dir, step_token, project, run_id)
+                          run_id: str | None = None,
+                          project_dir: str | None = None) -> tuple[list[dict], int]:
+    artifacts, rc = discover_artifacts(run_dir, step_token, project, run_id, project_dir)
     if rc != 0:
         return artifacts, rc
 

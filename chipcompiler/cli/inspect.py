@@ -11,11 +11,17 @@ from chipcompiler.cli.output import (
 
 
 def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
-    if not run_id or run_id == "default":
+    if not run_id:
         return os.path.join(project_dir, "runs", "default"), None
+
+    if run_id == "default":
+        return os.path.join(project_dir, "runs", "default"), "default"
 
     if os.path.isabs(run_id):
         return run_id, run_id
+
+    if os.sep in run_id or "/" in run_id:
+        return os.path.join(project_dir, "runs", run_id), run_id
 
     return os.path.join(project_dir, "runs", run_id), run_id
 

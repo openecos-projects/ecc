@@ -93,8 +93,11 @@ def build_diagnose_issues(run_dir: str, step_token: str | None = None,
     steps = _safe_steps(flow_data)
     step_dirs = discover_step_dirs(run_dir)
 
+    flow_tokens = {normalize_step_name(s.get("name", "")) for s in steps}
+    known_tokens = flow_tokens | set(step_dirs.keys())
+
     if step_token is not None:
-        if step_token not in step_dirs:
+        if step_token not in known_tokens:
             issues.append(_make_issue("unknown_step", "error", display_run,
                                       step=step_token, project=project, run_id=run_id))
             return issues, 1
@@ -135,6 +138,13 @@ def build_diagnose_issues(run_dir: str, step_token: str | None = None,
             if not _has_config_files(step_dirs[token]):
                 issues.append(_make_issue("config_unavailable", "info", display_run,
                                           step=token, project=project, run_id=run_id))
+        else:
+            issues.append(_make_issue("missing_metrics", "warning", display_run,
+                                      step=token, project=project, run_id=run_id))
+            issues.append(_make_issue("missing_artifacts", "warning", display_run,
+                                      step=token, project=project, run_id=run_id))
+            issues.append(_make_issue("config_unavailable", "info", display_run,
+                                      step=token, project=project, run_id=run_id))
 
     return issues, 0
 
