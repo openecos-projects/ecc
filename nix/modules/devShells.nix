@@ -4,7 +4,6 @@
     default = pkgs.mkShell {
       inputsFrom = [
         inputs'.infra.packages.iedaUnstable
-        pkgs.ecc-tools
         pkgs.chipcompiler
       ];
       nativeBuildInputs = with pkgs; [ uv bazel_8 bazel-buildtools ];

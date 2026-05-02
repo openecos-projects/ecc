@@ -32,7 +32,6 @@
       ];
       systems = [
         "x86_64-linux"
-        "aarch64-linux"
       ];
       flake.overlays.default = overlay;
       perSystem =
@@ -57,7 +56,6 @@
           };
           packages = {
             inherit (pkgs)
-              ecc-tools
               chipcompiler
               cli
               ;
