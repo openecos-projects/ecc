@@ -28,7 +28,6 @@ def build_project_config_items(project_dir: str, run_dir: str,
         return [{"kind": "error", "status": "invalid_config"}], 1
 
     pdk_root = resolve_pdk_root(cfg)
-    display_run = run_id or "default"
 
     items = []
     entries = [
@@ -147,26 +146,27 @@ def build_config_lines(items: list[dict], project: str | None = None,
     if not items:
         return [], 0
 
-    if items[0].get("config_status") == "none":
-        s = items[0]
+    first = items[0]
+    if first.get("config_status") == "none":
         return [format_line(
-            step=s["step"],
+            step=first["step"],
             config_status="none",
-            artifacts=s.get("artifacts"),
+            artifacts=first.get("artifacts"),
         )], 0
 
-    if items[0].get("status") in ("unknown_step", "missing_config", "invalid_config"):
-        if items[0].get("status") == "unknown_step":
-            return [format_line(
-                step=items[0].get("step", ""),
-                status="unknown_step",
-                inspect=disclosure_cmd("ecc status", project, run_id),
-            )], 1
-        if items[0].get("status") == "missing_config":
-            return [format_line(
-                status="missing_config",
-                inspect=disclosure_cmd("ecc check", project),
-            )], 1
+    status = first.get("status")
+    if status == "unknown_step":
+        return [format_line(
+            step=first.get("step", ""),
+            status="unknown_step",
+            inspect=disclosure_cmd("ecc status", project, run_id),
+        )], 1
+    if status == "missing_config":
+        return [format_line(
+            status="missing_config",
+            inspect=disclosure_cmd("ecc check", project),
+        )], 1
+    if status == "invalid_config":
         return [format_line(
             status="invalid_config",
             inspect=disclosure_cmd("ecc check", project),

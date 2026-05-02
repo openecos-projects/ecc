@@ -8,6 +8,7 @@ from chipcompiler.cli.config import (
     load_project_config,
     resolve_project_dir,
 )
+from chipcompiler.cli.inspect import resolve_run_dir
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -185,7 +186,7 @@ def _cmd_status(args, project_dir: str, project: str | None) -> int:
     from chipcompiler.cli.inspect import build_status_json, build_status_jsonl, build_status_lines
     from chipcompiler.cli.output import emit_json, emit_jsonl, emit_text
 
-    run_dir, run_id = _resolve_run(project_dir, getattr(args, "run_id", None))
+    run_dir, run_id = resolve_run_dir(project_dir, args.run_id)
 
     if getattr(args, "jsonl", False):
         objects, rc = build_status_jsonl(run_dir, run_id)
@@ -206,7 +207,7 @@ def _cmd_log(args, project_dir: str, project: str | None) -> int:
     from chipcompiler.cli.inspect import build_log_jsonl, build_log_lines
     from chipcompiler.cli.output import emit_jsonl, emit_text
 
-    run_dir, run_id = _resolve_run(project_dir, getattr(args, "run_id", None))
+    run_dir, run_id = resolve_run_dir(project_dir, args.run_id)
 
     if getattr(args, "jsonl", False):
         objects, rc = build_log_jsonl(run_dir, args.step, args.errors, project, run_id)
@@ -226,7 +227,7 @@ def _cmd_metrics(args, project_dir: str, project: str | None) -> int:
     )
     from chipcompiler.cli.output import emit_json, emit_jsonl, emit_text
 
-    run_dir, run_id = _resolve_run(project_dir, getattr(args, "run_id", None))
+    run_dir, run_id = resolve_run_dir(project_dir, args.run_id)
 
     if getattr(args, "jsonl", False):
         objects, rc = build_metrics_jsonl(run_dir, args.step, project, run_id)
@@ -251,7 +252,7 @@ def _cmd_artifacts(args, project_dir: str, project: str | None) -> int:
     )
     from chipcompiler.cli.output import emit_json, emit_jsonl, emit_text
 
-    run_dir, run_id = _resolve_run(project_dir, getattr(args, "run_id", None))
+    run_dir, run_id = resolve_run_dir(project_dir, args.run_id)
 
     if getattr(args, "jsonl", False):
         objects, rc = build_artifacts_jsonl(run_dir, args.step, project, run_id, project_dir)
@@ -278,7 +279,7 @@ def _cmd_config(args, project_dir: str, project: str | None) -> int:
     )
     from chipcompiler.cli.output import emit_json, emit_jsonl, emit_text
 
-    run_dir, run_id = _resolve_run(project_dir, getattr(args, "run_id", None))
+    run_dir, run_id = resolve_run_dir(project_dir, args.run_id)
 
     if args.step is not None:
         items, rc = build_step_config_items(run_dir, args.step, project, run_id, project_dir)
@@ -309,7 +310,7 @@ def _cmd_diagnose(args, project_dir: str, project: str | None) -> int:
     )
     from chipcompiler.cli.output import emit_json, emit_jsonl, emit_text
 
-    run_dir, run_id = _resolve_run(project_dir, getattr(args, "run_id", None))
+    run_dir, run_id = resolve_run_dir(project_dir, args.run_id)
 
     if getattr(args, "jsonl", False):
         objects, rc = build_diagnose_jsonl(run_dir, args.step, project, run_id)
@@ -325,15 +326,6 @@ def _cmd_diagnose(args, project_dir: str, project: str | None) -> int:
     if lines:
         emit_text(lines)
     return rc
-
-
-def _resolve_run(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
-    from chipcompiler.cli.inspect import resolve_run_dir
-    return resolve_run_dir(project_dir, run_id)
-
-
-def _run_dir(project_dir: str) -> str:
-    return os.path.join(project_dir, "runs", "default")
 
 
 def main() -> None:

@@ -48,9 +48,6 @@ def discover_artifacts(run_dir: str, step_token: str | None = None,
                         "inspect_cmd": disclosure_cmd(f"ecc artifacts {token} --json", project, run_id),
                     })
 
-    if not artifacts and step_token is not None:
-        return [], 0
-
     if not artifacts:
         return [], 0
 

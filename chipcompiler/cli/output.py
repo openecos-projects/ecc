@@ -116,7 +116,3 @@ def normalize_metric_key(raw_key: str) -> str:
     s = re.sub(r'_+', '_', s)
     s = s.strip('_')
     return s
-
-
-def step_dir_name(step_name: str, tool: str) -> str:
-    return f"{step_name}_{tool}"
