@@ -162,6 +162,15 @@ def build_status_jsonl(run_dir: str, run_id: str | None = None) -> tuple[list[di
 
 
 ERROR_PATTERNS = re.compile(r"(error|failed|traceback)", re.IGNORECASE)
+_CLEAN_SUMMARY = re.compile(r"^\s*\d+\s+(error|failed)|^no\s+(error|failed)", re.IGNORECASE)
+
+
+def filter_errors(lines: list[str]) -> list[str]:
+    result = []
+    for line in lines:
+        if ERROR_PATTERNS.search(line) and not _CLEAN_SUMMARY.search(line):
+            result.append(line)
+    return result
 
 
 def discover_step_dirs(run_dir: str) -> dict[str, str]:
@@ -203,8 +212,6 @@ def discover_logs(run_dir: str, step_token: str | None = None) -> list[str]:
     )
 
 
-def filter_errors(lines: list[str]) -> list[str]:
-    return [line for line in lines if ERROR_PATTERNS.search(line)]
 
 
 def read_log_file(path: str) -> list[str]:

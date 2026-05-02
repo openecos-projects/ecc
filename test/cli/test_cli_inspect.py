@@ -1421,3 +1421,42 @@ class TestMissingRunJsonlKind:
         assert data[0]["kind"] == "run"
         assert data[0]["status"] == "missing"
 
+
+class TestLogErrorMatching:
+    def test_clean_summary_not_counted_as_error(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["log", "output", "analysis", "config"],
+                         files={"log/cts.log": "CTS completed successfully\n0 errors\nNo errors found\n0 failed checks\n",
+                                "output/design.def": "def",
+                                "analysis/CTS_metrics.json": '{"freq": 100}',
+                                "config/cts_config.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "log_errors" not in out
+
+    def test_real_errors_still_detected(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, [
+            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        ])
+        _create_step_dir(run_dir, "CTS", "ecc",
+                         subdirs=["log", "output", "analysis", "config"],
+                         files={"log/cts.log": "CTS completed\nError: bad thing\nTraceback (most recent call):\n0 errors\n",
+                                "output/design.def": "def",
+                                "analysis/CTS_metrics.json": '{"freq": 100}',
+                                "config/cts_config.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "issue=log_errors" in out
+        assert "count=2" in out
+
