@@ -19,6 +19,7 @@ from chipcompiler.cli.progress import (
     _RESET,
     RunProgressRenderer,
     latest_log_line,
+    run_flow_with_progress,
     sanitize_log_line,
     should_enable_run_progress,
     style,
@@ -26,6 +27,7 @@ from chipcompiler.cli.progress import (
     truncate_to_width,
 )
 from chipcompiler.cli.types import CommandContext, OutputMode
+from chipcompiler.data import StateEnum
 
 
 class FakeTTYStderr:
@@ -376,9 +378,6 @@ def _make_flow(ws, steps, run_step_fn):
 
 class TestRunFlowWithProgress:
     def test_success_summary_format(self, tmp_path):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         flow = _make_flow(
             _make_ws(str(tmp_path)),
             [_make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))],
@@ -393,9 +392,6 @@ class TestRunFlowWithProgress:
         assert "status=success" not in output
 
     def test_stops_on_failure(self):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         call_count = [0]
 
         def fake_run_step(self, s):
@@ -416,9 +412,6 @@ class TestRunFlowWithProgress:
         assert call_count[0] == 2
 
     def test_summary_includes_inspect_detail_line(self):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         flow = _make_flow(
             _make_ws(),
             [_make_step("Synthesis", "yosys", "/tmp/synth.log")],
@@ -431,9 +424,6 @@ class TestRunFlowWithProgress:
         assert "  inspect: ecc log synthesis --errors --project myproject\n" in plain
 
     def test_summary_includes_log_detail_line(self, tmp_path):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         log_file = tmp_path / "synth.log"
         log_file.write_text("content\n")
 
@@ -449,9 +439,6 @@ class TestRunFlowWithProgress:
         assert "  log:" in output
 
     def test_step_headers_emitted(self):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         flow = _make_flow(
             _make_ws(),
             [
@@ -469,9 +456,6 @@ class TestRunFlowWithProgress:
         assert "> floorplan (ecc)\n" in plain
 
     def test_run_header_emitted(self, tmp_path):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         flow = _make_flow(
             _make_ws(str(tmp_path)),
             [_make_step("Synthesis", "yosys")],
@@ -485,9 +469,6 @@ class TestRunFlowWithProgress:
         assert "workspace=" in output
 
     def test_block_separator_between_steps(self):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         flow = _make_flow(
             _make_ws(),
             [
@@ -507,9 +488,6 @@ class TestRunFlowWithProgress:
         assert "\n\n" in between
 
     def test_failure_summary_includes_status(self):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         def fake_run_step(self, s):
             if s.name == "Synthesis":
                 return StateEnum.Success
@@ -529,9 +507,6 @@ class TestRunFlowWithProgress:
         assert "incomplete" in plain
 
     def test_transient_line_shows_log_content(self, tmp_path):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         log_file = tmp_path / "synth.log"
 
         def fake_run_step(self, s):
@@ -558,9 +533,6 @@ class TestRunFlowWithProgress:
         assert log_pos < summary_pos
 
     def test_transient_shows_waiting_when_no_log(self):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         def fake_run_step(self, s):
             time.sleep(1.0)
             return StateEnum.Success
@@ -578,9 +550,6 @@ class TestRunFlowWithProgress:
         assert "  log: waiting for log..." in plain
 
     def test_log_section_markers_emitted(self, tmp_path):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         sections = []
         flow = _make_flow(
             _make_ws(str(tmp_path), log_section_fn=lambda self, msg: sections.append(msg)),
@@ -596,9 +565,6 @@ class TestRunFlowWithProgress:
         assert sections.index("yosys - begin step - Synthesis") < sections.index("yosys - end step - Synthesis")
 
     def test_log_section_markers_around_run_step(self, tmp_path):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         call_order = []
 
         def fake_run_step(self, s):
@@ -620,8 +586,6 @@ class TestRunFlowWithProgress:
         assert begin_idx < run_idx < end_idx
 
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         def raising_run_step(self, s):
             raise RuntimeError("tool crashed")
 
@@ -639,9 +603,6 @@ class TestRunFlowWithProgress:
         assert "\r\x1b[K" in output
 
     def test_color_enabled_for_tty_text(self, monkeypatch):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         monkeypatch.delenv("NO_COLOR", raising=False)
         monkeypatch.setenv("TERM", "xterm-256color")
 
@@ -657,9 +618,6 @@ class TestRunFlowWithProgress:
         assert "\x1b[36m" in output  # cyan for step header
 
     def test_color_disabled_for_non_tty(self):
-        from chipcompiler.data import StateEnum
-        from chipcompiler.cli.progress import run_flow_with_progress
-
         flow = _make_flow(
             _make_ws(),
             [_make_step("Synthesis", "yosys")],
