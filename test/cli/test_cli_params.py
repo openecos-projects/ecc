@@ -542,3 +542,240 @@ class TestScopedTomlEdit:
         with open(toml_path) as f:
             after = f.read()
         assert "# my design" in after
+
+    def test_set_same_key_twice_has_one_assignment(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+
+        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        capsys.readouterr()
+
+        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            content = f.read()
+        assert content.count("target_density") == 1
+        assert "0.7" in content
+        assert "0.65" not in content
+
+    def test_set_then_show_still_works(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+
+        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        capsys.readouterr()
+
+        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["value"] == 0.7
+
+
+class TestNativeTomlTypeValidation:
+    def test_check_rejects_float_for_int(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.synth]\nmax_fanout = 16.5\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 1
+
+    def test_check_rejects_bool_for_int(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.synth]\nmax_fanout = true\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 1
+
+    def test_check_rejects_float_in_list_int(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.floorplan]\ncore_margin = [2.5, 3]\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 1
+
+    def test_check_accepts_valid_int(self, tmp_path, capsys, monkeypatch):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.synth]\nmax_fanout = 16\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda pdk_root, pdk_name: [],
+        )
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 0
+
+
+class TestCliProvenance:
+    def test_run_set_reports_cli_source_in_config(self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+
+        project_dir = _create_valid_project(tmp_path)
+        workspace_obj = SimpleNamespace(name="workspace")
+
+        def fake_create(**kwargs):
+            run_dir = kwargs["directory"]
+            os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
+            return workspace_obj
+
+        monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", type(
+            "DummyFlow", (), {
+                "__init__": lambda self, workspace: None,
+                "has_init": lambda self: False,
+                "add_step": lambda self, **kw: None,
+                "create_step_workspaces": lambda self: None,
+                "run_steps": lambda self: True,
+            },
+        ))
+        monkeypatch.setattr(
+            "chipcompiler.rtl2gds.build_rtl2gds_flow",
+            lambda: [("Synthesis", "yosys", "Unstart")],
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda name, root: None,
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.progress.should_enable_run_progress",
+            lambda *a, **kw: False,
+        )
+
+        rc = cli_main.run([
+            "run", "--project", project_dir,
+            "--set", "synth.max_fanout=16",
+        ])
+        assert rc == 0
+        capsys.readouterr()
+
+        # Verify provenance file was written
+        provenance = os.path.join(
+            project_dir, "runs", "default", "home", "cli-param-overrides.json"
+        )
+        assert os.path.isfile(provenance)
+        with open(provenance) as f:
+            data = json.load(f)
+        assert data["synth.max_fanout"] == 16
+
+    def test_config_resolved_shows_cli_source(self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+
+        project_dir = _create_valid_project(tmp_path)
+        workspace_obj = SimpleNamespace(name="workspace")
+
+        def fake_create(**kwargs):
+            run_dir = kwargs["directory"]
+            os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
+            return workspace_obj
+
+        monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", type(
+            "DummyFlow", (), {
+                "__init__": lambda self, workspace: None,
+                "has_init": lambda self: False,
+                "add_step": lambda self, **kw: None,
+                "create_step_workspaces": lambda self: None,
+                "run_steps": lambda self: True,
+            },
+        ))
+        monkeypatch.setattr(
+            "chipcompiler.rtl2gds.build_rtl2gds_flow",
+            lambda: [("Synthesis", "yosys", "Unstart")],
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda name, root: None,
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.progress.should_enable_run_progress",
+            lambda *a, **kw: False,
+        )
+
+        # Run with --set
+        rc = cli_main.run([
+            "run", "--project", project_dir,
+            "--set", "synth.max_fanout=16",
+        ])
+        assert rc == 0
+        capsys.readouterr()
+
+        # Now inspect config --resolved
+        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        param_records = [r for r in data["records"] if r.get("kind") == "param"]
+        fanout = next(r for r in param_records if r["key"] == "synth.max_fanout")
+        assert fanout["value"] == 16
+        assert fanout["source"] == "cli"
+
+    def test_config_resolved_toml_plus_cli_precedence(self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+
+        project_dir = _create_valid_project(tmp_path)
+        workspace_obj = SimpleNamespace(name="workspace")
+
+        # Set a TOML override first
+        cli_main.run(["param", "set", "synth.max_fanout", "16", "--project", project_dir])
+        capsys.readouterr()
+
+        def fake_create(**kwargs):
+            run_dir = kwargs["directory"]
+            os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
+            return workspace_obj
+
+        monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", type(
+            "DummyFlow", (), {
+                "__init__": lambda self, workspace: None,
+                "has_init": lambda self: False,
+                "add_step": lambda self, **kw: None,
+                "create_step_workspaces": lambda self: None,
+                "run_steps": lambda self: True,
+            },
+        ))
+        monkeypatch.setattr(
+            "chipcompiler.rtl2gds.build_rtl2gds_flow",
+            lambda: [("Synthesis", "yosys", "Unstart")],
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda name, root: None,
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.progress.should_enable_run_progress",
+            lambda *a, **kw: False,
+        )
+
+        # Run with different CLI override
+        rc = cli_main.run([
+            "run", "--project", project_dir,
+            "--set", "synth.max_fanout=32",
+        ])
+        assert rc == 0
+        capsys.readouterr()
+
+        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        param_records = [r for r in data["records"] if r.get("kind") == "param"]
+        fanout = next(r for r in param_records if r["key"] == "synth.max_fanout")
+        assert fanout["value"] == 32
+        assert fanout["source"] == "cli"

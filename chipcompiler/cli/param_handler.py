@@ -322,76 +322,71 @@ def _remove_param_from_toml(config_path: str, key: str) -> bool:
 
 def _apply_scoped_param_edit(text: str, group: str, name: str, value: object) -> str:
     value_str = _format_toml_value(value)
-    line_re = re.compile(rf"^(\s*){re.escape(name)}\s*=")
 
-    section_pattern = re.compile(rf"^\[params\.{re.escape(group)}\]\s*$", re.MULTILINE)
-    m = section_pattern.search(text)
-
-    if m:
-        section_start = m.start()
-        next_section = re.search(r"^\[", text[m.end():], re.MULTILINE)
-        section_end = m.end() + next_section.start() if next_section else len(text)
-        section_text = text[section_start:section_end]
-
-        key_match = line_re.search(section_text, re.MULTILINE)
-        if key_match:
-            prefix = key_match.group(1)
-            old_line = key_match.group(0)
-            new_line = f"{prefix}{name} = {value_str}"
-            updated_section = section_text[:key_match.start()] + new_line + section_text[key_match.end():]
-            return text[:section_start] + updated_section + text[section_end:]
-        else:
-            last_newline = section_text.rstrip().rfind("\n")
-            if last_newline == -1:
-                insert_at = len(section_text)
-            else:
-                insert_at = last_newline + 1
-            new_line = f"\n{name} = {value_str}"
-            updated_section = section_text[:insert_at] + new_line + "\n" + section_text[insert_at:]
-            return text[:section_start] + updated_section + text[section_end:]
-
-    params_section = re.search(r"^\[params\]\s*$", text, re.MULTILINE)
-    if params_section:
-        insert_text = f"\n\n[params.{group}]\n{name} = {value_str}"
-        after_params = params_section.end()
-        next_sec = re.search(r"^\[", text[after_params:], re.MULTILINE)
+    section_header = f"[params.{group}]"
+    header_idx = text.find(section_header)
+    if header_idx == -1:
+        header_idx = text.find("[params]")
+        if header_idx == -1:
+            return text.rstrip() + f"\n\n[params.{group}]\n{name} = {value_str}\n"
+        after_header = text.find("\n", header_idx)
+        insert = f"\n\n[params.{group}]\n{name} = {value_str}"
+        if after_header == -1:
+            return text + insert + "\n"
+        next_sec = re.search(r"^\[", text[after_header:], re.MULTILINE)
         if next_sec:
-            insert_at = after_params + next_sec.start()
-            return text[:insert_at] + insert_text + "\n" + text[insert_at:]
-        else:
-            return text + insert_text + "\n"
+            pos = after_header + next_sec.start()
+            return text[:pos] + insert + "\n" + text[pos:]
+        return text + insert + "\n"
 
-    return text.rstrip() + f"\n\n[params.{group}]\n{name} = {value_str}\n"
+    after_header = text.find("\n", header_idx + len(section_header))
+    if after_header == -1:
+        return text + f"\n{name} = {value_str}\n"
+    after_header += 1
+
+    next_sec = re.search(r"^\[", text[after_header:], re.MULTILINE)
+    section_end = after_header + next_sec.start() if next_sec else len(text)
+
+    section_body = text[after_header:section_end]
+    key_pattern = re.compile(rf"^{re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
+    key_match = key_pattern.search(section_body)
+
+    if key_match:
+        new_line = f"{name} = {value_str}"
+        new_body = section_body[:key_match.start()] + new_line + section_body[key_match.end():]
+        return text[:after_header] + new_body + text[section_end:]
+    else:
+        insert = f"{name} = {value_str}\n"
+        return text[:after_header] + insert + text[after_header:]
 
 
 def _remove_scoped_param_key(text: str, group: str, name: str) -> str | None:
-    section_pattern = re.compile(rf"^\[params\.{re.escape(group)}\]\s*$", re.MULTILINE)
-    m = section_pattern.search(text)
-    if not m:
+    section_header = f"[params.{group}]"
+    header_idx = text.find(section_header)
+    if header_idx == -1:
         return None
 
-    section_start = m.start()
-    next_section = re.search(r"^\[", text[m.end():], re.MULTILINE)
-    section_end = m.end() + next_section.start() if next_section else len(text)
-    section_text = text[section_start:section_end]
+    after_header = text.find("\n", header_idx + len(section_header))
+    if after_header == -1:
+        return None
+    after_header += 1
 
-    line_re = re.compile(rf"^\s*{re.escape(name)}\s*=[^\n]*\n?", re.MULTILINE)
-    line_match = line_re.search(section_text)
-    if not line_match:
+    next_sec = re.search(r"^\[", text[after_header:], re.MULTILINE)
+    section_end = after_header + next_sec.start() if next_sec else len(text)
+
+    section_body = text[after_header:section_end]
+    key_pattern = re.compile(rf"^{re.escape(name)}\s*=[^\n]*\n?", re.MULTILINE)
+    key_match = key_pattern.search(section_body)
+    if not key_match:
         return None
 
-    remaining = section_text[:line_match.start()] + section_text[line_match.end():]
-    key_lines = [l for l in remaining.split("\n")
-                 if l.strip() and not l.strip().startswith(f"[params.{group}")]
-    if not key_lines:
-        result = text[:section_start] + text[section_end:]
-        if result.endswith("\n\n"):
-            result = result[:-1]
-        return result
+    new_body = section_body[:key_match.start()] + section_body[key_match.end():]
+    remaining_keys = [l for l in new_body.strip().split("\n") if l.strip()]
+    if not remaining_keys:
+        result = text[:header_idx].rstrip("\n") + "\n" + text[section_end:].lstrip("\n")
+        return result if result.strip() else None
     else:
-        header = f"[params.{group}]\n"
-        new_section = header + remaining[remaining.index("]") + 1:]
-        return text[:section_start] + new_section + text[section_end:]
+        return text[:after_header] + new_body + text[section_end:]
 
 
 def _format_toml_value(val: object) -> str:
