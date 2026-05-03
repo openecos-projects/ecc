@@ -270,15 +270,22 @@ class TestRunProgressRenderer:
         assert "  log: \n" in output
         assert "  inspect: ecc log placement --errors\n" in output
 
-    def test_finish_step_clears_transient(self):
+    def test_finish_step_clears_transient_to_clean_line(self):
         buf = FakeTTYStderr(True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.running("transient log")
         r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", True)
         output = "".join(buf.written)
-        clear_pos = output.find("\r\x1b[K")
-        summary_pos = output.find("✓")
-        assert clear_pos < summary_pos
+        # The final clear before the summary must move to a clean line
+        assert "\r\x1b[K\n✓ synthesis" in output
+
+    def test_finish_step_non_success_clears_transient_to_clean_line(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80)
+        r.running("transient log")
+        r.finish_step("placement", "dreamplace", "incomplete", "0:00:00", "", "cmd", False)
+        output = "".join(buf.written)
+        assert "\r\x1b[K\n✗ placement" in output
 
     def test_running_with_color(self):
         buf = FakeTTYStderr(True)
