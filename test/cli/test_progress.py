@@ -1,6 +1,4 @@
 import io
-import os
-import sys
 
 import pytest
 
@@ -183,29 +181,45 @@ class TestRunProgressRenderer:
 # -- run_flow_with_progress --
 
 
+def _make_ws(directory="/tmp", log_section_fn=None):
+    if log_section_fn:
+        logger = type("L", (), {
+            "info": lambda *a, **k: None,
+            "log_section": log_section_fn,
+            "log_separator": lambda *a, **k: None,
+        })()
+    else:
+        logger = type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})()
+    return type("WS", (), {
+        "home": type("Home", (), {"reset": lambda self: None})(),
+        "logger": logger,
+        "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
+        "directory": directory,
+    })()
+
+
+def _make_step(name, tool, log_file=""):
+    return type("WSS", (), {"name": name, "tool": tool, "log": {"file": log_file}})()
+
+
+def _make_flow(ws, steps, run_step_fn):
+    return type("EF", (), {
+        "workspace": ws,
+        "workspace_steps": steps,
+        "run_step": run_step_fn,
+    })()
+
+
 class TestRunFlowWithProgress:
     def test_mirrors_run_steps_success(self, tmp_path):
         from chipcompiler.data import StateEnum
         from chipcompiler.cli.progress import run_flow_with_progress
 
-        ws = type("WS", (), {
-            "home": type("Home", (), {"reset": lambda self: None})(),
-            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-            "directory": str(tmp_path),
-        })()
-
-        ws_step = type("WSS", (), {
-            "name": "Synthesis",
-            "tool": "yosys",
-            "log": {"file": str(tmp_path / "synth.log")},
-        })()
-
-        flow = type("EF", (), {
-            "workspace": ws,
-            "workspace_steps": [ws_step],
-            "run_step": lambda self, s: StateEnum.Success,
-        })()
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))],
+            lambda self, s: StateEnum.Success,
+        )
 
         buf = FakeTTYStderr(True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
@@ -218,24 +232,6 @@ class TestRunFlowWithProgress:
         from chipcompiler.data import StateEnum
         from chipcompiler.cli.progress import run_flow_with_progress
 
-        ws = type("WS", (), {
-            "home": type("Home", (), {"reset": lambda self: None})(),
-            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-            "directory": "/tmp",
-        })()
-
-        ws_step1 = type("WSS", (), {
-            "name": "Synthesis",
-            "tool": "yosys",
-            "log": {"file": ""},
-        })()
-        ws_step2 = type("WSS", (), {
-            "name": "Floorplan",
-            "tool": "ecc",
-            "log": {"file": ""},
-        })()
-
         call_count = [0]
 
         def fake_run_step(self, s):
@@ -244,39 +240,26 @@ class TestRunFlowWithProgress:
                 return StateEnum.Success
             return StateEnum.Imcomplete
 
-        flow = type("EF", (), {
-            "workspace": ws,
-            "workspace_steps": [ws_step1, ws_step2],
-            "run_step": fake_run_step,
-        })()
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("Synthesis", "yosys"), _make_step("Floorplan", "ecc")],
+            fake_run_step,
+        )
 
         buf = FakeTTYStderr(True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is False
-        assert call_count[0] == 2  # Floorplan ran but didn't continue beyond it
+        assert call_count[0] == 2
 
     def test_summary_includes_inspect(self):
         from chipcompiler.data import StateEnum
         from chipcompiler.cli.progress import run_flow_with_progress
 
-        ws = type("WS", (), {
-            "home": type("Home", (), {"reset": lambda self: None})(),
-            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-            "directory": "/tmp",
-        })()
-
-        ws_step = type("WSS", (), {
-            "name": "Synthesis",
-            "tool": "yosys",
-            "log": {"file": "/tmp/synth.log"},
-        })()
-
-        flow = type("EF", (), {
-            "workspace": ws,
-            "workspace_steps": [ws_step],
-            "run_step": lambda self, s: StateEnum.Success,
-        })()
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("Synthesis", "yosys", "/tmp/synth.log")],
+            lambda self, s: StateEnum.Success,
+        )
 
         buf = FakeTTYStderr(True)
         run_flow_with_progress(flow, _make_ctx(), "myproject", buf)
@@ -290,24 +273,11 @@ class TestRunFlowWithProgress:
         log_file = tmp_path / "synth.log"
         log_file.write_text("content\n")
 
-        ws = type("WS", (), {
-            "home": type("Home", (), {"reset": lambda self: None})(),
-            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-            "directory": str(tmp_path),
-        })()
-
-        ws_step = type("WSS", (), {
-            "name": "Synthesis",
-            "tool": "yosys",
-            "log": {"file": str(log_file)},
-        })()
-
-        flow = type("EF", (), {
-            "workspace": ws,
-            "workspace_steps": [ws_step],
-            "run_step": lambda self, s: StateEnum.Success,
-        })()
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys", str(log_file))],
+            lambda self, s: StateEnum.Success,
+        )
 
         buf = FakeTTYStderr(True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
@@ -326,24 +296,11 @@ class TestRunFlowWithProgress:
             time.sleep(1.0)
             return StateEnum.Success
 
-        ws = type("WS", (), {
-            "home": type("Home", (), {"reset": lambda self: None})(),
-            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-            "directory": str(tmp_path),
-        })()
-
-        ws_step = type("WSS", (), {
-            "name": "Synthesis",
-            "tool": "yosys",
-            "log": {"file": str(log_file)},
-        })()
-
-        flow = type("EF", (), {
-            "workspace": ws,
-            "workspace_steps": [ws_step],
-            "run_step": fake_run_step,
-        })()
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys", str(log_file))],
+            fake_run_step,
+        )
 
         buf = FakeTTYStderr(True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
@@ -352,12 +309,11 @@ class TestRunFlowWithProgress:
         output = "".join(buf.written)
         assert "Synthesizing module top" in output
 
-        # Transient running line uses the contract prefix and appears before summary
         running_pos = output.find("running step=synthesis tool=yosys")
         summary_pos = output.find("step=synthesis")
         assert running_pos >= 0, "Missing transient running line with contract prefix"
         assert summary_pos >= 0, "Missing summary line"
-        assert running_pos < summary_pos, "Transient line should appear before summary"
+        assert running_pos < summary_pos
 
     def test_transient_shows_waiting_when_no_log(self):
         import time
@@ -368,24 +324,11 @@ class TestRunFlowWithProgress:
             time.sleep(1.0)
             return StateEnum.Success
 
-        ws = type("WS", (), {
-            "home": type("Home", (), {"reset": lambda self: None})(),
-            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-            "directory": "/tmp",
-        })()
-
-        ws_step = type("WSS", (), {
-            "name": "Synthesis",
-            "tool": "yosys",
-            "log": {"file": "/tmp/nonexistent_synth.log"},
-        })()
-
-        flow = type("EF", (), {
-            "workspace": ws,
-            "workspace_steps": [ws_step],
-            "run_step": fake_run_step,
-        })()
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("Synthesis", "yosys", "/tmp/nonexistent_synth.log")],
+            fake_run_step,
+        )
 
         buf = FakeTTYStderr(True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
@@ -399,38 +342,18 @@ class TestRunFlowWithProgress:
         from chipcompiler.cli.progress import run_flow_with_progress
 
         sections = []
-
-        ws = type("WS", (), {
-            "home": type("Home", (), {"reset": lambda self: None})(),
-            "logger": type("L", (), {
-                "info": lambda *a, **k: None,
-                "log_section": lambda self, msg: sections.append(msg),
-                "log_separator": lambda *a, **k: None,
-            })(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-            "directory": str(tmp_path),
-        })()
-
-        ws_step = type("WSS", (), {
-            "name": "Synthesis",
-            "tool": "yosys",
-            "log": {"file": ""},
-        })()
-
-        flow = type("EF", (), {
-            "workspace": ws,
-            "workspace_steps": [ws_step],
-            "run_step": lambda self, s: StateEnum.Success,
-        })()
+        flow = _make_flow(
+            _make_ws(str(tmp_path), log_section_fn=lambda self, msg: sections.append(msg)),
+            [_make_step("Synthesis", "yosys")],
+            lambda self, s: StateEnum.Success,
+        )
 
         buf = FakeTTYStderr(True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
 
         assert "yosys - begin step - Synthesis" in sections
         assert "yosys - end step - Synthesis" in sections
-        begin_idx = sections.index("yosys - begin step - Synthesis")
-        end_idx = sections.index("yosys - end step - Synthesis")
-        assert begin_idx < end_idx
+        assert sections.index("yosys - begin step - Synthesis") < sections.index("yosys - end step - Synthesis")
 
     def test_log_section_markers_around_run_step(self, tmp_path):
         from chipcompiler.data import StateEnum
@@ -438,32 +361,15 @@ class TestRunFlowWithProgress:
 
         call_order = []
 
-        ws = type("WS", (), {
-            "home": type("Home", (), {"reset": lambda self: None})(),
-            "logger": type("L", (), {
-                "info": lambda *a, **k: None,
-                "log_section": lambda self, msg: call_order.append(("section", msg)),
-                "log_separator": lambda *a, **k: None,
-            })(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-            "directory": str(tmp_path),
-        })()
-
-        ws_step = type("WSS", (), {
-            "name": "Floorplan",
-            "tool": "ecc",
-            "log": {"file": ""},
-        })()
-
         def fake_run_step(self, s):
             call_order.append(("run_step", s.name))
             return StateEnum.Success
 
-        flow = type("EF", (), {
-            "workspace": ws,
-            "workspace_steps": [ws_step],
-            "run_step": fake_run_step,
-        })()
+        flow = _make_flow(
+            _make_ws(str(tmp_path), log_section_fn=lambda self, msg: call_order.append(("section", msg))),
+            [_make_step("Floorplan", "ecc")],
+            fake_run_step,
+        )
 
         buf = FakeTTYStderr(True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
@@ -476,32 +382,15 @@ class TestRunFlowWithProgress:
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
         from chipcompiler.cli.progress import run_flow_with_progress
 
-        def fake_run_step(self, s):
-            raise RuntimeError("tool crashed")
-
-        ws = type("WS", (), {
-            "home": type("Home", (), {"reset": lambda self: None})(),
-            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-            "directory": str(tmp_path),
-        })()
-
-        ws_step = type("WSS", (), {
-            "name": "Synthesis",
-            "tool": "yosys",
-            "log": {"file": ""},
-        })()
-
-        flow = type("EF", (), {
-            "workspace": ws,
-            "workspace_steps": [ws_step],
-            "run_step": fake_run_step,
-        })()
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys")],
+            lambda self, s: (_ for _ in ()).throw(RuntimeError("tool crashed")),
+        )
 
         buf = FakeTTYStderr(True)
         with pytest.raises(RuntimeError, match="tool crashed"):
             run_flow_with_progress(flow, _make_ctx(), None, buf)
 
-        # The transient line must be cleared even after an exception
         output = "".join(buf.written)
         assert "\r\x1b[K" in output

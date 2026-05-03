@@ -81,12 +81,10 @@ class RunProgressRenderer:
 
 
 def _poll_log(renderer, log_path, step_token, tool, stop_event, interval=0.5):
+    prefix = f"running step={step_token} tool={tool}"
     while not stop_event.is_set():
         line = latest_log_line(log_path)
-        if line:
-            renderer.running(f"running step={step_token} tool={tool} | {line}")
-        else:
-            renderer.running(f"running step={step_token} tool={tool} | waiting for log...")
+        renderer.running(f"{prefix} | {line}" if line else f"{prefix} | waiting for log...")
         stop_event.wait(interval)
 
 
@@ -135,7 +133,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         seconds = int(elapsed % 60)
         runtime = f"{hours}:{minutes:02d}:{seconds:02d}"
 
-        status = normalize_state(state.value) if hasattr(state, "value") else str(state)
+        status = normalize_state(state.value)
 
         rel_log = ""
         if log_path:
