@@ -98,7 +98,9 @@ def build_project_config_items(project_dir: str, run_dir: str,
 
     # Parameter records with source information
     from chipcompiler.cli.params import resolve_parameters
-    cli_provenance = _load_cli_provenance(run_dir)
+    cli_provenance, prov_error = _load_cli_provenance(run_dir)
+    if prov_error:
+        return [{"kind": "error", "status": "invalid_config", "reason": prov_error}], 1
     resolved_params, _ = resolve_parameters(
         toml_overrides=cfg.params_overrides,
         cli_overrides=cli_provenance,
@@ -123,19 +125,24 @@ def build_project_config_items(project_dir: str, run_dir: str,
     return items, 0
 
 
-def _load_cli_provenance(run_dir: str) -> dict[str, object]:
+def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
     import json
     provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
     if not os.path.isfile(provenance_path):
-        return {}
+        return {}, None
     try:
         with open(provenance_path) as f:
             data = json.load(f)
-        if isinstance(data, dict):
-            return data
-    except (json.JSONDecodeError, OSError):
-        pass
-    return {}
+    except (json.JSONDecodeError, OSError) as exc:
+        return {}, f"invalid CLI parameter provenance: {exc}"
+    if not isinstance(data, dict):
+        return {}, "invalid CLI parameter provenance: expected object"
+    from chipcompiler.cli.params import parse_cli_overrides
+    items = [f"{k}={v}" for k, v in data.items()]
+    validated, errors = parse_cli_overrides(items)
+    if errors:
+        return {}, f"invalid CLI parameter provenance: {errors[0]}"
+    return validated, None
 
 
 def build_step_config_items(run_dir: str, step_token: str | None,

@@ -21,7 +21,9 @@ from chipcompiler.cli.types import CommandContext, CommandResult, OutputMode
 
 
 def param_list(args, ctx: CommandContext) -> CommandResult:
-    toml_overrides = _load_toml_overrides(ctx.project_dir)
+    toml_overrides, param_errors = _load_toml_overrides(ctx.project_dir)
+    if param_errors:
+        return CommandResult.err([error_record("invalid_param_config", reason=e) for e in param_errors])
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides)
     project = ctx.project
 
@@ -61,7 +63,9 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
             param=key,
         )], exit_code=1)
 
-    toml_overrides = _load_toml_overrides(ctx.project_dir)
+    toml_overrides, param_errors = _load_toml_overrides(ctx.project_dir)
+    if param_errors:
+        return CommandResult.err([error_record("invalid_param_config", reason=e) for e in param_errors])
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides)
     rp = next(r for r in resolved if r.param == key)
 
@@ -164,7 +168,9 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
 
 
 def param_diff(args, ctx: CommandContext) -> CommandResult:
-    toml_overrides = _load_toml_overrides(ctx.project_dir)
+    toml_overrides, param_errors = _load_toml_overrides(ctx.project_dir)
+    if param_errors:
+        return CommandResult.err([error_record("invalid_param_config", reason=e) for e in param_errors])
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides)
 
     records = []
@@ -283,14 +289,15 @@ def _find_config_path(project_dir: str) -> str | None:
     return path if os.path.isfile(path) else None
 
 
-def _load_toml_overrides(project_dir: str) -> dict[str, object]:
+def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]]:
     config_path = _find_config_path(project_dir)
     if config_path is None:
-        return {}
+        return {}, []
 
     from chipcompiler.cli.config import load_project_config
     cfg = load_project_config(config_path)
-    return cfg.params_overrides
+    errors = list(getattr(cfg, "_param_errors", []))
+    return cfg.params_overrides, errors
 
 
 def _write_param_to_toml(config_path: str, key: str, value: object) -> None:
@@ -348,11 +355,12 @@ def _apply_scoped_param_edit(text: str, group: str, name: str, value: object) ->
     section_end = after_header + next_sec.start() if next_sec else len(text)
 
     section_body = text[after_header:section_end]
-    key_pattern = re.compile(rf"^{re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
+    key_pattern = re.compile(rf"^(\s*){re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
     key_match = key_pattern.search(section_body)
 
     if key_match:
-        new_line = f"{name} = {value_str}"
+        indent = key_match.group(1)
+        new_line = f"{indent}{name} = {value_str}"
         new_body = section_body[:key_match.start()] + new_line + section_body[key_match.end():]
         return text[:after_header] + new_body + text[section_end:]
     else:
@@ -375,7 +383,7 @@ def _remove_scoped_param_key(text: str, group: str, name: str) -> str | None:
     section_end = after_header + next_sec.start() if next_sec else len(text)
 
     section_body = text[after_header:section_end]
-    key_pattern = re.compile(rf"^{re.escape(name)}\s*=[^\n]*\n?", re.MULTILINE)
+    key_pattern = re.compile(rf"^\s*{re.escape(name)}\s*=[^\n]*\n?", re.MULTILINE)
     key_match = key_pattern.search(section_body)
     if not key_match:
         return None
