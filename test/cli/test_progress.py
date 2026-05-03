@@ -182,17 +182,14 @@ class TestRunProgressRenderer:
 
 
 def _make_ws(directory="/tmp", log_section_fn=None):
-    if log_section_fn:
-        logger = type("L", (), {
-            "info": lambda *a, **k: None,
-            "log_section": log_section_fn,
-            "log_separator": lambda *a, **k: None,
-        })()
-    else:
-        logger = type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})()
+    section_fn = log_section_fn or (lambda self, msg: None)
     return type("WS", (), {
         "home": type("Home", (), {"reset": lambda self: None})(),
-        "logger": logger,
+        "logger": type("L", (), {
+            "info": lambda *a, **k: None,
+            "log_section": section_fn,
+            "log_separator": lambda *a, **k: None,
+        })(),
         "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
         "directory": directory,
     })()
@@ -382,10 +379,13 @@ class TestRunFlowWithProgress:
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
         from chipcompiler.cli.progress import run_flow_with_progress
 
+        def raising_run_step(self, s):
+            raise RuntimeError("tool crashed")
+
         flow = _make_flow(
             _make_ws(str(tmp_path)),
             [_make_step("Synthesis", "yosys")],
-            lambda self, s: (_ for _ in ()).throw(RuntimeError("tool crashed")),
+            raising_run_step,
         )
 
         buf = FakeTTYStderr(True)
