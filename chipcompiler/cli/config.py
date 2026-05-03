@@ -26,6 +26,8 @@ class ProjectConfig:
     config_path: str = ""
     project_dir: str = ""
 
+    params_overrides: dict[str, object] = field(default_factory=dict)
+
 
 def load_project_config(config_path: str) -> ProjectConfig:
     try:
@@ -78,6 +80,13 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         config_path=config_path,
         project_dir=project_dir,
     )
+
+    params_raw = data.get("params")
+    if isinstance(params_raw, dict):
+        from chipcompiler.cli.params import parse_toml_params
+        flat, _ = parse_toml_params(params_raw)
+        cfg.params_overrides = flat
+
     return cfg
 
 
