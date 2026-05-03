@@ -374,6 +374,13 @@ def init(args, ctx: CommandContext) -> CommandResult:
     config_path = os.path.join(project_dir, "ecc.toml")
     design_name = os.path.basename(project_dir)
 
+    if os.path.isfile(project_dir):
+        return CommandResult.err([{
+            "kind": "error",
+            "error": "path_is_file",
+            "path": project_dir,
+        }])
+
     if os.path.exists(config_path):
         return CommandResult.err([{
             "kind": "error",

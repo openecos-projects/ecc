@@ -164,5 +164,24 @@ def build_diagnose_issues(run_dir: str, step_token: str | None = None,
             issues.append(_make_issue("config_unavailable", "info", display_run,
                                       step=token, project=project, run_id=run_id))
 
+    dir_only_tokens = set(step_dirs.keys()) - flow_tokens
+    if step_token is not None:
+        dir_only_tokens &= {step_token}
+    for token in sorted(dir_only_tokens):
+        error_count = _count_log_errors(run_dir, token)
+        if error_count > 0:
+            issues.append(_make_issue("log_errors", "error", display_run,
+                                      step=token, count=error_count,
+                                      project=project, run_id=run_id))
+        if not _has_metrics(run_dir, token):
+            issues.append(_make_issue("missing_metrics", "warning", display_run,
+                                      step=token, project=project, run_id=run_id))
+        if not _has_investigation_files(step_dirs[token]):
+            issues.append(_make_issue("missing_artifacts", "warning", display_run,
+                                      step=token, project=project, run_id=run_id))
+        if not _has_config_files(step_dirs[token]):
+            issues.append(_make_issue("config_unavailable", "info", display_run,
+                                      step=token, project=project, run_id=run_id))
+
     has_error = any(i.get("severity") == "error" for i in issues)
     return issues, 1 if has_error else 0
