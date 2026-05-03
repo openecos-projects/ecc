@@ -64,7 +64,7 @@ def get_run_status(flow_data: dict) -> str:
 
 
 ERROR_PATTERNS = re.compile(r"(error|failed|traceback)", re.IGNORECASE)
-_CLEAN_SUMMARY = re.compile(r"^\s*\d+\s+(error|failed)|^no\s+(error|failed)", re.IGNORECASE)
+_CLEAN_SUMMARY = re.compile(r"^\s*0\s+(error|failed|warning)|^no\s+(error|failed|warning)", re.IGNORECASE)
 
 
 def filter_errors(lines: list[str]) -> list[str]:
