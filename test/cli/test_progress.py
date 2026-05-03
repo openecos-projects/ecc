@@ -1,12 +1,28 @@
 import io
+import re
+import time
 
 import pytest
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def _strip_ansi(text):
+    return _ANSI_RE.sub("", text)
+
 from chipcompiler.cli.progress import (
+    _BOLD,
+    _CYAN,
+    _DIM,
+    _GREEN,
+    _RED,
+    _RESET,
     RunProgressRenderer,
     latest_log_line,
     sanitize_log_line,
     should_enable_run_progress,
+    style,
+    supports_color,
     truncate_to_width,
 )
 from chipcompiler.cli.types import CommandContext, OutputMode
@@ -35,6 +51,47 @@ def _make_ctx(mode=OutputMode.TEXT):
         run_id=None,
         output_mode=mode,
     )
+
+
+# -- supports_color --
+
+
+class TestSupportsColor:
+    def test_enabled_text_tty(self):
+        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT) is True
+
+    def test_disabled_non_tty(self):
+        assert supports_color(FakeTTYStderr(False), OutputMode.TEXT) is False
+
+    def test_disabled_no_isattr(self):
+        assert supports_color(io.StringIO(), OutputMode.TEXT) is False
+
+    def test_disabled_no_color(self):
+        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"NO_COLOR": "1"}) is False
+
+    def test_disabled_term_dumb(self):
+        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "dumb"}) is False
+
+    def test_disabled_json(self):
+        assert supports_color(FakeTTYStderr(True), OutputMode.JSON) is False
+
+    def test_disabled_jsonl(self):
+        assert supports_color(FakeTTYStderr(True), OutputMode.JSONL) is False
+
+    def test_enabled_with_clean_env(self):
+        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "xterm-256color"}) is True
+
+
+# -- style --
+
+
+class TestStyle:
+    def test_applies_code_when_enabled(self):
+        result = style("hello", _GREEN, True)
+        assert result == f"{_GREEN}hello{_RESET}"
+
+    def test_passthrough_when_disabled(self):
+        assert style("hello", _GREEN, False) == "hello"
 
 
 # -- should_enable_run_progress --
@@ -144,23 +201,13 @@ class TestLatestLogLine:
 
 
 class TestRunProgressRenderer:
-    def test_running_writes_carriage_return_clear(self):
+    def test_running_writes_log_prefix(self):
         buf = FakeTTYStderr(True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.running("working...")
         output = "".join(buf.written)
         assert output.startswith("\r\x1b[K")
-        assert "working..." in output
-
-    def test_summary_clears_transient_first(self):
-        buf = FakeTTYStderr(True)
-        r = RunProgressRenderer(buf, width_fn=lambda: 80)
-        r.running("transient")
-        r.summary("done")
-        output = "".join(buf.written)
-        # After transient, clear should be written before summary
-        assert "\r\x1b[K" in output
-        assert "done\n" in output
+        assert "  log: working..." in output
 
     def test_clear_noop_without_transient(self):
         buf = FakeTTYStderr(True)
@@ -170,12 +217,121 @@ class TestRunProgressRenderer:
 
     def test_truncates_long_running_text(self):
         buf = FakeTTYStderr(True)
-        r = RunProgressRenderer(buf, width_fn=lambda: 10)
+        r = RunProgressRenderer(buf, width_fn=lambda: 20)
         r.running("x" * 100)
         output = "".join(buf.written)
-        # \r\x1b[K + truncated text (10 chars max)
         display = output.replace("\r\x1b[K", "")
-        assert len(display) <= 10
+        assert len(display) <= 20
+
+    def test_start_step_emits_header(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80)
+        r.start_step("synthesis", "yosys")
+        output = "".join(buf.written)
+        assert "> synthesis (yosys)\n" in output
+
+    def test_start_step_separator_after_first(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80)
+        r.start_step("synthesis", "yosys")
+        r.start_step("floorplan", "ecc")
+        output = "".join(buf.written)
+        assert "\n> floorplan (ecc)\n" in output
+
+    def test_start_step_no_separator_before_first(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80)
+        r.start_step("synthesis", "yosys")
+        output = "".join(buf.written)
+        assert not output.startswith("\n")
+
+    def test_start_run_emits_header(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80)
+        r.start_run("default", "/tmp/runs/default")
+        output = "".join(buf.written)
+        assert "[run] default workspace=/tmp/runs/default\n" in output
+
+    def test_finish_step_success(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80)
+        r.finish_step("synthesis", "yosys", "success", "0:00:06", "output/synth.log", "ecc log synthesis --errors", True)
+        output = "".join(buf.written)
+        assert "✓ synthesis (yosys) 0:00:06\n" in output
+        assert "  log: output/synth.log\n" in output
+        assert "  inspect: ecc log synthesis --errors\n" in output
+
+    def test_finish_step_non_success(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80)
+        r.finish_step("placement", "dreamplace", "incomplete", "0:00:00", "", "ecc log placement --errors", False)
+        output = "".join(buf.written)
+        assert "✗ placement (dreamplace) incomplete 0:00:00\n" in output
+        assert "  log: \n" in output
+        assert "  inspect: ecc log placement --errors\n" in output
+
+    def test_finish_step_clears_transient(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80)
+        r.running("transient log")
+        r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", True)
+        output = "".join(buf.written)
+        clear_pos = output.find("\r\x1b[K")
+        summary_pos = output.find("✓")
+        assert clear_pos < summary_pos
+
+    def test_running_with_color(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
+        r.running("working...")
+        output = "".join(buf.written)
+        assert _DIM in output
+        assert "log:" in output
+
+    def test_running_without_color(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80, color=False)
+        r.running("working...")
+        output = "".join(buf.written)
+        assert _DIM not in output
+
+    def test_no_color_codes_when_disabled(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80, color=False)
+        r.start_run("default", "/tmp")
+        r.start_step("synthesis", "yosys")
+        r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", True)
+        output = "".join(buf.written)
+        for code in (_BOLD, _DIM, _CYAN, _GREEN, _RED):
+            assert code not in output
+
+    def test_start_step_with_color(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
+        r.start_step("synthesis", "yosys")
+        output = "".join(buf.written)
+        assert _CYAN in output
+
+    def test_start_run_with_color(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
+        r.start_run("default", "/tmp")
+        output = "".join(buf.written)
+        assert _BOLD in output
+
+    def test_finish_step_success_with_color(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
+        r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", True)
+        output = "".join(buf.written)
+        assert _GREEN in output
+
+    def test_finish_step_non_success_with_color(self):
+        buf = FakeTTYStderr(True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
+        r.finish_step("placement", "dreamplace", "incomplete", "0:00:00", "", "cmd", False)
+        output = "".join(buf.written)
+        assert _RED in output
 
 
 # -- run_flow_with_progress --
@@ -208,7 +364,7 @@ def _make_flow(ws, steps, run_step_fn):
 
 
 class TestRunFlowWithProgress:
-    def test_mirrors_run_steps_success(self, tmp_path):
+    def test_success_summary_format(self, tmp_path):
         from chipcompiler.data import StateEnum
         from chipcompiler.cli.progress import run_flow_with_progress
 
@@ -222,8 +378,8 @@ class TestRunFlowWithProgress:
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         output = "".join(buf.written)
-        assert "step=synthesis" in output
-        assert "status=success" in output
+        assert "✓ synthesis (yosys)" in output
+        assert "status=success" not in output
 
     def test_stops_on_failure(self):
         from chipcompiler.data import StateEnum
@@ -248,7 +404,7 @@ class TestRunFlowWithProgress:
         assert result is False
         assert call_count[0] == 2
 
-    def test_summary_includes_inspect(self):
+    def test_summary_includes_inspect_detail_line(self):
         from chipcompiler.data import StateEnum
         from chipcompiler.cli.progress import run_flow_with_progress
 
@@ -260,10 +416,10 @@ class TestRunFlowWithProgress:
 
         buf = FakeTTYStderr(True)
         run_flow_with_progress(flow, _make_ctx(), "myproject", buf)
-        output = "".join(buf.written)
-        assert "ecc log synthesis --errors" in output
+        plain = _strip_ansi("".join(buf.written))
+        assert "  inspect: ecc log synthesis --errors --project myproject\n" in plain
 
-    def test_summary_includes_log_path(self, tmp_path):
+    def test_summary_includes_log_detail_line(self, tmp_path):
         from chipcompiler.data import StateEnum
         from chipcompiler.cli.progress import run_flow_with_progress
 
@@ -279,10 +435,89 @@ class TestRunFlowWithProgress:
         buf = FakeTTYStderr(True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
-        assert "log=" in output
+        assert "  log:" in output
+
+    def test_step_headers_emitted(self):
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        flow = _make_flow(
+            _make_ws(),
+            [
+                _make_step("Synthesis", "yosys"),
+                _make_step("Floorplan", "ecc"),
+            ],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        assert result is True
+        plain = _strip_ansi("".join(buf.written))
+        assert "> synthesis (yosys)\n" in plain
+        assert "> floorplan (ecc)\n" in plain
+
+    def test_run_header_emitted(self, tmp_path):
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys")],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(True)
+        run_flow_with_progress(flow, _make_ctx(), None, buf)
+        output = "".join(buf.written)
+        assert "[run]" in output
+        assert "workspace=" in output
+
+    def test_block_separator_between_steps(self):
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        flow = _make_flow(
+            _make_ws(),
+            [
+                _make_step("Synthesis", "yosys"),
+                _make_step("Floorplan", "ecc"),
+            ],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        assert result is True
+        output = "".join(buf.written)
+        synth_summary = output.find("✓ synthesis")
+        fp_header = output.find("> floorplan")
+        between = output[synth_summary:fp_header]
+        assert "\n\n" in between
+
+    def test_failure_summary_includes_status(self):
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        def fake_run_step(self, s):
+            if s.name == "Synthesis":
+                return StateEnum.Success
+            return StateEnum.Imcomplete
+
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("Synthesis", "yosys"), _make_step("Floorplan", "ecc")],
+            fake_run_step,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        assert result is False
+        plain = _strip_ansi("".join(buf.written))
+        assert "✗ floorplan (ecc)" in plain
+        assert "incomplete" in plain
 
     def test_transient_line_shows_log_content(self, tmp_path):
-        import time
         from chipcompiler.data import StateEnum
         from chipcompiler.cli.progress import run_flow_with_progress
 
@@ -302,18 +537,16 @@ class TestRunFlowWithProgress:
         buf = FakeTTYStderr(True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
+        plain = _strip_ansi("".join(buf.written))
+        assert "Synthesizing module top" in plain
 
-        output = "".join(buf.written)
-        assert "Synthesizing module top" in output
-
-        running_pos = output.find("running step=synthesis tool=yosys")
-        summary_pos = output.find("step=synthesis")
-        assert running_pos >= 0, "Missing transient running line with contract prefix"
-        assert summary_pos >= 0, "Missing summary line"
-        assert running_pos < summary_pos
+        log_pos = plain.find("Synthesizing module top")
+        summary_pos = plain.find("✓ synthesis")
+        assert log_pos >= 0
+        assert summary_pos >= 0
+        assert log_pos < summary_pos
 
     def test_transient_shows_waiting_when_no_log(self):
-        import time
         from chipcompiler.data import StateEnum
         from chipcompiler.cli.progress import run_flow_with_progress
 
@@ -330,9 +563,8 @@ class TestRunFlowWithProgress:
         buf = FakeTTYStderr(True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
-
-        output = "".join(buf.written)
-        assert "running step=synthesis tool=yosys | waiting for log..." in output
+        plain = _strip_ansi("".join(buf.written))
+        assert "  log: waiting for log..." in plain
 
     def test_log_section_markers_emitted(self, tmp_path):
         from chipcompiler.data import StateEnum
@@ -394,3 +626,37 @@ class TestRunFlowWithProgress:
 
         output = "".join(buf.written)
         assert "\r\x1b[K" in output
+
+    def test_color_enabled_for_tty_text(self, monkeypatch):
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.setenv("TERM", "xterm-256color")
+
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("Synthesis", "yosys")],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(True)
+        run_flow_with_progress(flow, _make_ctx(), None, buf)
+        output = "".join(buf.written)
+        assert "\x1b[36m" in output  # cyan for step header
+
+    def test_color_disabled_for_non_tty(self):
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("Synthesis", "yosys")],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(False)
+        run_flow_with_progress(flow, _make_ctx(), None, buf)
+        output = "".join(buf.written)
+        for code in (_BOLD, _CYAN, _GREEN, _RED, _DIM):
+            assert code not in output
