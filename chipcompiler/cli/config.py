@@ -84,8 +84,10 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     params_raw = data.get("params")
     if isinstance(params_raw, dict):
         from chipcompiler.cli.params import parse_toml_params
-        flat, _ = parse_toml_params(params_raw)
+        flat, param_errors = parse_toml_params(params_raw)
         cfg.params_overrides = flat
+        if param_errors:
+            cfg._param_errors = param_errors
 
     return cfg
 
@@ -107,6 +109,11 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         return [f"malformed ecc.toml: {toml_error}"]
 
     errors = []
+
+    param_errors = getattr(cfg, "_param_errors", None)
+    if param_errors:
+        for pe in param_errors:
+            errors.append(f"invalid params: {pe}")
 
     if not cfg.design_name:
         errors.append("design.name is required")
