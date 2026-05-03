@@ -52,7 +52,7 @@ def get_run_status(flow_data: dict) -> str:
         return "unstart"
     for step in steps:
         state = normalize_state(step.get("state", ""))
-        if state == "ongoing":
+        if state in ("ongoing", "pending"):
             return "ongoing"
         if state in ("incomplete", "invalid"):
             return "failed"
