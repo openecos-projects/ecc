@@ -58,7 +58,7 @@ def _make_ctx(mode=OutputMode.TEXT):
 
 class TestSupportsColor:
     def test_enabled_text_tty(self):
-        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT) is True
+        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "xterm-256color"}) is True
 
     def test_disabled_non_tty(self):
         assert supports_color(FakeTTYStderr(False), OutputMode.TEXT) is False
@@ -311,6 +311,10 @@ class TestRunProgressRenderer:
         r.start_step("synthesis", "yosys")
         output = "".join(buf.written)
         assert _CYAN in output
+        # Cyan sequence must appear before the `>` marker in raw output
+        cyan_pos = output.find(_CYAN)
+        marker_pos = output.find(">")
+        assert cyan_pos < marker_pos
 
     def test_start_run_with_color(self):
         buf = FakeTTYStderr(True)

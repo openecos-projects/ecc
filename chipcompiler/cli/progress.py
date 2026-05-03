@@ -115,8 +115,8 @@ class RunProgressRenderer:
         self.clear()
         if self._step_started:
             self._stream.write("\n")
-        step_name = style(f"{step} ({tool})", _CYAN, self._color)
-        self._stream.write(f"> {step_name}\n")
+        header = style(f"> {step} ({tool})", _CYAN, self._color)
+        self._stream.write(f"{header}\n")
         self._stream.flush()
         self._step_started = True
 
