@@ -779,3 +779,159 @@ class TestCliProvenance:
         fanout = next(r for r in param_records if r["key"] == "synth.max_fanout")
         assert fanout["value"] == 32
         assert fanout["source"] == "cli"
+
+
+class TestParamHandlersRejectInvalidToml:
+    """Param list/show/diff must return errors when ecc.toml has invalid [params.*]."""
+
+    def _write_invalid_toml(self, project_dir):
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.synth]\nmax_fanout = 16.5\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+    def test_param_list_rejects_invalid_toml(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        self._write_invalid_toml(project_dir)
+        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["error"] == "invalid_param_config"
+
+    def test_param_show_rejects_invalid_toml(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        self._write_invalid_toml(project_dir)
+        rc = cli_main.run(["param", "show", "synth.max_fanout", "--project", project_dir, "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["error"] == "invalid_param_config"
+
+    def test_param_diff_rejects_invalid_toml(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        self._write_invalid_toml(project_dir)
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["error"] == "invalid_param_config"
+
+
+class TestIndentedTomlKeys:
+    """Scoped TOML edit must handle indented assignment lines."""
+
+    def test_set_replaces_indented_key(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.place]\n  target_density = 0.65\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        assert after.count("target_density") == 1
+        assert "0.7" in after
+
+    def test_set_then_show_indented(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.place]\n  target_density = 0.65\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["value"] == 0.7
+
+    def test_unset_removes_indented_key(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.place]\n  target_density = 0.65\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        assert "target_density" not in after
+
+    def test_set_indented_preserves_other_sections(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.place]\n  target_density = 0.65\n\n[flow]\npreset = "rtl2gds"\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        assert 'preset = "rtl2gds"' in after
+        assert after.count("target_density") == 1
+
+
+class TestMalformedCliProvenance:
+    """config --resolved must error on malformed/invalid CLI provenance."""
+
+    def _setup_run_dir(self, project_dir):
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
+        return run_dir
+
+    def test_malformed_json_provenance_fails(self, tmp_path, capsys, monkeypatch):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = self._setup_run_dir(project_dir)
+        with open(os.path.join(run_dir, "home", "cli-param-overrides.json"), "w") as f:
+            f.write("not valid json{")
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda pdk_root, pdk_name: [],
+        )
+        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["error"] == "invalid_config"
+
+    def test_non_dict_provenance_fails(self, tmp_path, capsys, monkeypatch):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = self._setup_run_dir(project_dir)
+        with open(os.path.join(run_dir, "home", "cli-param-overrides.json"), "w") as f:
+            json.dump([1, 2, 3], f)
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda pdk_root, pdk_name: [],
+        )
+        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        assert rc == 1
+
+    def test_unknown_key_in_provenance_fails(self, tmp_path, capsys, monkeypatch):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = self._setup_run_dir(project_dir)
+        with open(os.path.join(run_dir, "home", "cli-param-overrides.json"), "w") as f:
+            json.dump({"nonexistent.param": 42}, f)
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda pdk_root, pdk_name: [],
+        )
+        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["error"] == "invalid_config"

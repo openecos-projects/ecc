@@ -314,10 +314,14 @@ def config(args, ctx: CommandContext) -> CommandResult:
                 inspect=disclosure_cmd("ecc check", project),
             )])
         if status == "invalid_config":
-            return CommandResult.err([error_record(
+            reason = first.get("reason")
+            rec = error_record(
                 "invalid_config",
                 inspect=disclosure_cmd("ecc check", project),
-            )])
+            )
+            if reason:
+                rec["reason"] = reason
+            return CommandResult.err([rec])
         return CommandResult.err(items)
 
     if not items:
