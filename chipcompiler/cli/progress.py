@@ -101,7 +101,7 @@ class RunProgressRenderer:
 
     def clear(self):
         if self._has_transient:
-            self._stream.write("\r\x1b[K")
+            self._stream.write("\r\x1b[K\n")
             self._stream.flush()
             self._has_transient = False
 
