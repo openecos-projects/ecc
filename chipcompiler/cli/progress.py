@@ -84,9 +84,9 @@ def _poll_log(renderer, log_path, step_token, tool, stop_event, interval=0.5):
     while not stop_event.is_set():
         line = latest_log_line(log_path)
         if line:
-            renderer.running(f"  {step_token} ({tool}) | {line}")
+            renderer.running(f"running step={step_token} tool={tool} | {line}")
         else:
-            renderer.running(f"  {step_token} ({tool}) | waiting for log...")
+            renderer.running(f"running step={step_token} tool={tool} | waiting for log...")
         stop_event.wait(interval)
 
 
@@ -117,11 +117,12 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
 
         start = time.time()
 
-        state = engine_flow.run_step(workspace_step)
-
-        stop_event.set()
-        monitor.join(timeout=2.0)
-        renderer.clear()
+        try:
+            state = engine_flow.run_step(workspace_step)
+        finally:
+            stop_event.set()
+            monitor.join(timeout=2.0)
+            renderer.clear()
 
         log_flow(workspace=engine_flow.workspace)
         engine_flow.workspace.logger.log_section(

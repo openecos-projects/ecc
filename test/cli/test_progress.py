@@ -352,10 +352,10 @@ class TestRunFlowWithProgress:
         output = "".join(buf.written)
         assert "Synthesizing module top" in output
 
-        # Transient running line appears before summary line
-        running_pos = output.find("\r\x1b[K  synthesis (yosys)")
+        # Transient running line uses the contract prefix and appears before summary
+        running_pos = output.find("running step=synthesis tool=yosys")
         summary_pos = output.find("step=synthesis")
-        assert running_pos >= 0, "Missing transient running line"
+        assert running_pos >= 0, "Missing transient running line with contract prefix"
         assert summary_pos >= 0, "Missing summary line"
         assert running_pos < summary_pos, "Transient line should appear before summary"
 
@@ -392,7 +392,7 @@ class TestRunFlowWithProgress:
         assert result is True
 
         output = "".join(buf.written)
-        assert "waiting for log..." in output
+        assert "running step=synthesis tool=yosys | waiting for log..." in output
 
     def test_log_section_markers_emitted(self, tmp_path):
         from chipcompiler.data import StateEnum
@@ -472,3 +472,36 @@ class TestRunFlowWithProgress:
         run_idx = call_order.index(("run_step", "Floorplan"))
         end_idx = call_order.index(("section", "ecc - end step - Floorplan"))
         assert begin_idx < run_idx < end_idx
+
+    def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        def fake_run_step(self, s):
+            raise RuntimeError("tool crashed")
+
+        ws = type("WS", (), {
+            "home": type("Home", (), {"reset": lambda self: None})(),
+            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
+            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
+            "directory": str(tmp_path),
+        })()
+
+        ws_step = type("WSS", (), {
+            "name": "Synthesis",
+            "tool": "yosys",
+            "log": {"file": ""},
+        })()
+
+        flow = type("EF", (), {
+            "workspace": ws,
+            "workspace_steps": [ws_step],
+            "run_step": fake_run_step,
+        })()
+
+        buf = FakeTTYStderr(True)
+        with pytest.raises(RuntimeError, match="tool crashed"):
+            run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        # The transient line must be cleared even after an exception
+        output = "".join(buf.written)
+        assert "\r\x1b[K" in output
