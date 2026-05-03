@@ -98,7 +98,11 @@ def build_project_config_items(project_dir: str, run_dir: str,
 
     # Parameter records with source information
     from chipcompiler.cli.params import resolve_parameters
-    resolved_params, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
+    cli_provenance = _load_cli_provenance(run_dir)
+    resolved_params, _ = resolve_parameters(
+        toml_overrides=cfg.params_overrides,
+        cli_overrides=cli_provenance,
+    )
     for rp in resolved_params:
         maps_to = rp.schema.maps_to
         if isinstance(maps_to, str):
@@ -117,6 +121,21 @@ def build_project_config_items(project_dir: str, run_dir: str,
         })
 
     return items, 0
+
+
+def _load_cli_provenance(run_dir: str) -> dict[str, object]:
+    import json
+    provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
+    if not os.path.isfile(provenance_path):
+        return {}
+    try:
+        with open(provenance_path) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, OSError):
+        pass
+    return {}
 
 
 def build_step_config_items(run_dir: str, step_token: str | None,

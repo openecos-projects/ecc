@@ -465,7 +465,10 @@ def parse_toml_params(params_table: dict) -> tuple[dict[str, object], list[str]]
                 if isinstance(value, str):
                     parsed = parse_value(value, schema)
                 else:
-                    parsed = value
+                    parsed, type_err = _validate_toml_type(value, schema)
+                    if type_err:
+                        errors.append(type_err)
+                        continue
             except ValueError as exc:
                 errors.append(str(exc))
                 continue

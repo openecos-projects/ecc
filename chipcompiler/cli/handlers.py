@@ -627,6 +627,14 @@ def run(args, ctx: CommandContext) -> CommandResult:
             "workspace": run_dir,
         }])
 
+    # Persist CLI parameter provenance for config --resolved inspection
+    if cli_overrides:
+        import json as _json
+        provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
+        os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
+        with open(provenance_path, "w") as _f:
+            _json.dump(cli_overrides, _f)
+
     try:
         engine_flow = EngineFlow(workspace=workspace)
         if not engine_flow.has_init():
