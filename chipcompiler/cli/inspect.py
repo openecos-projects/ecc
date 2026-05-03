@@ -111,7 +111,7 @@ def discover_logs(run_dir: str, step_token: str | None = None) -> list[str]:
 
 def read_log_file(path: str) -> list[str]:
     try:
-        with open(path) as f:
+        with open(path, errors="replace") as f:
             return f.read().splitlines()
     except OSError:
         return []
