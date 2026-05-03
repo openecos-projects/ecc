@@ -313,3 +313,162 @@ class TestRunFlowWithProgress:
         run_flow_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         assert "log=" in output
+
+    def test_transient_line_shows_log_content(self, tmp_path):
+        import time
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        log_file = tmp_path / "synth.log"
+
+        def fake_run_step(self, s):
+            log_file.write_text("Synthesizing module top\n")
+            time.sleep(1.0)
+            return StateEnum.Success
+
+        ws = type("WS", (), {
+            "home": type("Home", (), {"reset": lambda self: None})(),
+            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
+            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
+            "directory": str(tmp_path),
+        })()
+
+        ws_step = type("WSS", (), {
+            "name": "Synthesis",
+            "tool": "yosys",
+            "log": {"file": str(log_file)},
+        })()
+
+        flow = type("EF", (), {
+            "workspace": ws,
+            "workspace_steps": [ws_step],
+            "run_step": fake_run_step,
+        })()
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        assert result is True
+
+        output = "".join(buf.written)
+        assert "Synthesizing module top" in output
+
+        # Transient running line appears before summary line
+        running_pos = output.find("\r\x1b[K  synthesis (yosys)")
+        summary_pos = output.find("step=synthesis")
+        assert running_pos >= 0, "Missing transient running line"
+        assert summary_pos >= 0, "Missing summary line"
+        assert running_pos < summary_pos, "Transient line should appear before summary"
+
+    def test_transient_shows_waiting_when_no_log(self):
+        import time
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        def fake_run_step(self, s):
+            time.sleep(1.0)
+            return StateEnum.Success
+
+        ws = type("WS", (), {
+            "home": type("Home", (), {"reset": lambda self: None})(),
+            "logger": type("L", (), {"info": lambda *a, **k: None, "log_section": lambda *a, **k: None, "log_separator": lambda *a, **k: None})(),
+            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
+            "directory": "/tmp",
+        })()
+
+        ws_step = type("WSS", (), {
+            "name": "Synthesis",
+            "tool": "yosys",
+            "log": {"file": "/tmp/nonexistent_synth.log"},
+        })()
+
+        flow = type("EF", (), {
+            "workspace": ws,
+            "workspace_steps": [ws_step],
+            "run_step": fake_run_step,
+        })()
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        assert result is True
+
+        output = "".join(buf.written)
+        assert "waiting for log..." in output
+
+    def test_log_section_markers_emitted(self, tmp_path):
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        sections = []
+
+        ws = type("WS", (), {
+            "home": type("Home", (), {"reset": lambda self: None})(),
+            "logger": type("L", (), {
+                "info": lambda *a, **k: None,
+                "log_section": lambda self, msg: sections.append(msg),
+                "log_separator": lambda *a, **k: None,
+            })(),
+            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
+            "directory": str(tmp_path),
+        })()
+
+        ws_step = type("WSS", (), {
+            "name": "Synthesis",
+            "tool": "yosys",
+            "log": {"file": ""},
+        })()
+
+        flow = type("EF", (), {
+            "workspace": ws,
+            "workspace_steps": [ws_step],
+            "run_step": lambda self, s: StateEnum.Success,
+        })()
+
+        buf = FakeTTYStderr(True)
+        run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        assert "yosys - begin step - Synthesis" in sections
+        assert "yosys - end step - Synthesis" in sections
+        begin_idx = sections.index("yosys - begin step - Synthesis")
+        end_idx = sections.index("yosys - end step - Synthesis")
+        assert begin_idx < end_idx
+
+    def test_log_section_markers_around_run_step(self, tmp_path):
+        from chipcompiler.data import StateEnum
+        from chipcompiler.cli.progress import run_flow_with_progress
+
+        call_order = []
+
+        ws = type("WS", (), {
+            "home": type("Home", (), {"reset": lambda self: None})(),
+            "logger": type("L", (), {
+                "info": lambda *a, **k: None,
+                "log_section": lambda self, msg: call_order.append(("section", msg)),
+                "log_separator": lambda *a, **k: None,
+            })(),
+            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
+            "directory": str(tmp_path),
+        })()
+
+        ws_step = type("WSS", (), {
+            "name": "Floorplan",
+            "tool": "ecc",
+            "log": {"file": ""},
+        })()
+
+        def fake_run_step(self, s):
+            call_order.append(("run_step", s.name))
+            return StateEnum.Success
+
+        flow = type("EF", (), {
+            "workspace": ws,
+            "workspace_steps": [ws_step],
+            "run_step": fake_run_step,
+        })()
+
+        buf = FakeTTYStderr(True)
+        run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        begin_idx = call_order.index(("section", "ecc - begin step - Floorplan"))
+        run_idx = call_order.index(("run_step", "Floorplan"))
+        end_idx = call_order.index(("section", "ecc - end step - Floorplan"))
+        assert begin_idx < run_idx < end_idx

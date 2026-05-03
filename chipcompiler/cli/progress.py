@@ -1,6 +1,8 @@
 import os
 import re
 import shutil
+import threading
+import time
 
 from chipcompiler.cli.types import OutputMode
 
@@ -78,6 +80,16 @@ class RunProgressRenderer:
         self._stream.flush()
 
 
+def _poll_log(renderer, log_path, step_token, tool, stop_event, interval=0.5):
+    while not stop_event.is_set():
+        line = latest_log_line(log_path)
+        if line:
+            renderer.running(f"  {step_token} ({tool}) | {line}")
+        else:
+            renderer.running(f"  {step_token} ({tool}) | waiting for log...")
+        stop_event.wait(interval)
+
+
 def run_flow_with_progress(engine_flow, ctx, project, stderr):
     from chipcompiler.data import StateEnum, log_flow
 
@@ -91,12 +103,32 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         tool = workspace_step.tool
         log_path = workspace_step.log.get("file", "")
 
-        start = __import__("time").time()
+        engine_flow.workspace.logger.log_section(
+            f"{workspace_step.tool} - begin step - {workspace_step.name}"
+        )
+
+        stop_event = threading.Event()
+        monitor = threading.Thread(
+            target=_poll_log,
+            args=(renderer, log_path, step_token, tool, stop_event),
+            daemon=True,
+        )
+        monitor.start()
+
+        start = time.time()
 
         state = engine_flow.run_step(workspace_step)
-        log_flow(workspace=engine_flow.workspace)
 
-        elapsed = __import__("time").time() - start
+        stop_event.set()
+        monitor.join(timeout=2.0)
+        renderer.clear()
+
+        log_flow(workspace=engine_flow.workspace)
+        engine_flow.workspace.logger.log_section(
+            f"{workspace_step.tool} - end step - {workspace_step.name}"
+        )
+
+        elapsed = time.time() - start
         hours = int(elapsed // 3600)
         minutes = int((elapsed % 3600) // 60)
         seconds = int(elapsed % 60)
