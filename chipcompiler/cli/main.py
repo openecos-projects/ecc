@@ -27,6 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_project_arg(run_parser)
     run_parser.add_argument("--overwrite", action="store_true",
                             help="Remove existing runs/default before running")
+    run_parser.add_argument("--json", action="store_true", help="JSON output")
+    run_parser.add_argument("--jsonl", action="store_true", help="JSONL output")
 
     # ecc status
     status_parser = subparsers.add_parser("status", help="Show run and step status")

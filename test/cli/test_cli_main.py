@@ -20,6 +20,7 @@ class DummyFlow:
         self.added_steps = []
         self.create_called = False
         self.run_called = False
+        self.workspace_steps = []
         DummyFlow.instances.append(self)
 
     def has_init(self):
@@ -34,6 +35,11 @@ class DummyFlow:
     def run_steps(self):
         self.run_called = True
         return self.run_steps_value
+
+    def run_step(self, workspace_step):
+        from chipcompiler.data import StateEnum
+        self.run_called = True
+        return StateEnum.Success if self.run_steps_value else StateEnum.Imcomplete
 
 
 def _install_flow_mocks(monkeypatch):
@@ -368,6 +374,53 @@ class TestRun:
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 1
+
+    def test_run_json_uses_non_progress_path(self, tmp_path, monkeypatch, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        _install_flow_mocks(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "records" in data
+        assert data["records"][0]["status"] == "success"
+        assert DummyFlow.instances[0].run_called
+
+    def test_run_jsonl_uses_non_progress_path(self, tmp_path, monkeypatch, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        _install_flow_mocks(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--jsonl"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        objects = [json.loads(ln) for ln in out.strip().split("\n")]
+        assert any("status" in obj for obj in objects)
+        assert DummyFlow.instances[0].run_called
+
+    def test_run_json_no_progress_on_stderr(self, tmp_path, monkeypatch, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        _install_flow_mocks(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "step=" not in err
+
+    def test_run_preserves_final_records(self, tmp_path, monkeypatch, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        _install_flow_mocks(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        record = data["records"][0]
+        assert record["run"] == "default"
+        assert record["status"] == "success"
+        assert "inspect_cmd" in record
+        assert "metrics_cmd" in record
+        assert "log_cmd" in record
 
 
 # ===========================================================================
