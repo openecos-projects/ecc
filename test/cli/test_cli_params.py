@@ -163,7 +163,7 @@ class TestParamUnset:
         rc = cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "no_override" in out
+        assert "no override" in out
 
 
 class TestParamDiff:
@@ -377,3 +377,168 @@ class TestConfigResolved:
         density = next(r for r in param_records if r["key"] == "place.target_density")
         assert density["value"] == 0.65
         assert density["source"] == "ecc.toml"
+
+
+class TestTomlValidationErrors:
+    def _create_project_with_invalid_param(self, tmp_path):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.synth]\nmax_fanout = "not_an_int"\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+        return project_dir
+
+    def test_check_fails_invalid_param_type(self, tmp_path, capsys):
+        project_dir = self._create_project_with_invalid_param(tmp_path)
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        reasons = [r.get("reason", "") for r in data["records"]]
+        assert any("params" in r for r in reasons)
+
+    def test_check_fails_unknown_param_key(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.bogus]\nkey = 5\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 1
+
+    def test_run_fails_invalid_param_type(self, tmp_path):
+        project_dir = self._create_project_with_invalid_param(tmp_path)
+        rc = cli_main.run(["run", "--project", project_dir])
+        assert rc == 1
+
+
+class TestPrettyOutput:
+    def test_param_list_default_is_grouped_text(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        rc = cli_main.run(["param", "list", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "place" in out
+        assert "place.target_density" in out
+
+    def test_param_list_plain_is_one_line_per_record(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        lines = [l for l in out.strip().split("\n") if l.strip()]
+        assert len(lines) == 12
+        assert "\033[" not in out
+
+    def test_param_show_default_is_pretty(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "place.target_density" in out
+        assert "source" in out
+        assert "default" in out
+
+    def test_param_set_default_is_pretty(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        rc = cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "0.65" in out
+
+    def test_param_diff_default_is_pretty(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        capsys.readouterr()
+        rc = cli_main.run(["param", "diff", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "place.target_density" in out
+
+
+class TestResolvedListValues:
+    def test_param_list_json_has_value_and_source(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        records = data["records"]
+        density = next(r for r in records if r["param"] == "place.target_density")
+        assert density["value"] == 0.65
+        assert density["source"] == "ecc.toml"
+        assert "default" in density
+        assert "maps_to" in density
+        assert "inspect" in density
+
+    def test_param_list_default_source_when_no_overrides(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        for r in data["records"]:
+            assert r["source"] == "default"
+
+
+class TestDiffFiltering:
+    def test_diff_only_shows_values_that_differ(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        records = data["records"]
+        assert len(records) == 1
+        assert records[0]["param"] == "place.target_density"
+        assert records[0]["value"] == 0.65
+        assert records[0]["default"] != 0.65
+
+    def test_diff_clean_when_set_to_default(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        schema_default = 0.3
+        cli_main.run(["param", "set", "place.target_density", str(schema_default), "--project", project_dir])
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0].get("diff_status") == "clean"
+
+
+class TestScopedTomlEdit:
+    def test_set_preserves_unrelated_sections(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            original = f.read()
+
+        cli_main.run(["param", "set", "synth.max_fanout", "16", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        design_section = original[original.index("[design]"):original.index("[pdk]")]
+        assert design_section in after
+
+    def test_set_preserves_comments(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content = content.replace("[design]", "[design]\n# my design")
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "synth.max_fanout", "16", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        assert "# my design" in after

@@ -205,6 +205,39 @@ class TestSourceAwareResolution:
         resolved, errors = resolve_parameters(toml_overrides=toml)
         assert len(errors) > 0
 
+    def test_float_rejected_for_int_schema(self):
+        toml = {"synth.max_fanout": 16.5}
+        resolved, errors = resolve_parameters(toml_overrides=toml)
+        assert len(errors) > 0
+
+    def test_bool_rejected_for_int_schema(self):
+        toml = {"synth.max_fanout": True}
+        resolved, errors = resolve_parameters(toml_overrides=toml)
+        assert len(errors) > 0
+
+    def test_int_accepted_for_float_schema(self):
+        toml = {"place.target_density": 1}
+        resolved, errors = resolve_parameters(toml_overrides=toml)
+        # 1 converts to 1.0 which is out of range for target_density
+        assert len(errors) > 0  # range validation catches it
+
+    def test_int_in_range_accepted_for_float_schema(self):
+        toml = {"floorplan.core_util": 1}
+        resolved, errors = resolve_parameters(toml_overrides=toml)
+        assert errors == []
+        util = next(r for r in resolved if r.param == "floorplan.core_util")
+        assert util.value == 1.0
+
+    def test_float_in_list_int_rejected(self):
+        toml = {"floorplan.core_margin": [2.5, 3]}
+        resolved, errors = resolve_parameters(toml_overrides=toml)
+        assert len(errors) > 0
+
+    def test_str_rejected_for_int_schema(self):
+        toml = {"synth.max_fanout": "abc"}
+        resolved, errors = resolve_parameters(toml_overrides=toml)
+        assert len(errors) > 0
+
 
 class TestBackendMapping:
     def test_flat_key_mapping(self):

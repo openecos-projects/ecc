@@ -288,19 +288,64 @@ class ResolvedParam:
     schema: ParamSchema
 
 
-def _coerce_toml_value(value: object, schema: ParamSchema) -> tuple[object, str | None]:
-    if schema.type == "int" and isinstance(value, str):
-        try:
-            return int(value), None
-        except ValueError:
-            return value, f"expected int for {schema.param}, got '{value}'"
-    if schema.type == "float" and isinstance(value, (int, float)):
-        return float(value), None
-    if schema.type == "float" and isinstance(value, str):
-        try:
+def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str | None]:
+    ptype = schema.type
+    key = schema.param
+
+    if ptype == "int":
+        if isinstance(value, bool) or not isinstance(value, int):
+            return value, f"expected int for {key}, got {type(value).__name__}"
+        return value, None
+
+    if ptype == "float":
+        if isinstance(value, bool):
+            return value, f"expected float for {key}, got bool"
+        if isinstance(value, (int, float)):
             return float(value), None
-        except ValueError:
-            return value, f"expected float for {schema.param}, got '{value}'"
+        return value, f"expected float for {key}, got {type(value).__name__}"
+
+    if ptype == "bool":
+        if isinstance(value, bool):
+            return value, None
+        if isinstance(value, str):
+            low = value.lower()
+            if low in ("true", "1", "yes"):
+                return True, None
+            if low in ("false", "0", "no"):
+                return False, None
+        return value, f"expected bool for {key}, got {type(value).__name__}"
+
+    if ptype == "str":
+        if isinstance(value, str):
+            return value, None
+        return value, f"expected str for {key}, got {type(value).__name__}"
+
+    if ptype == "list[int]":
+        if not isinstance(value, list):
+            return value, f"expected list for {key}, got {type(value).__name__}"
+        for i, v in enumerate(value):
+            if isinstance(v, bool) or not isinstance(v, int):
+                return value, f"expected list[int] for {key}, element {i} is {type(v).__name__}"
+        return value, None
+
+    if ptype == "list[float]":
+        if not isinstance(value, list):
+            return value, f"expected list for {key}, got {type(value).__name__}"
+        for i, v in enumerate(value):
+            if isinstance(v, bool):
+                return value, f"expected list[float] for {key}, element {i} is bool"
+            if not isinstance(v, (int, float)):
+                return value, f"expected list[float] for {key}, element {i} is {type(v).__name__}"
+        return [float(v) for v in value], None
+
+    if ptype == "list[str]":
+        if not isinstance(value, list):
+            return value, f"expected list for {key}, got {type(value).__name__}"
+        for i, v in enumerate(value):
+            if not isinstance(v, str):
+                return value, f"expected list[str] for {key}, element {i} is {type(v).__name__}"
+        return value, None
+
     return value, None
 
 
@@ -326,7 +371,7 @@ def resolve_parameters(
             ))
         elif key in toml_overrides:
             value = toml_overrides[key]
-            value, coerce_err = _coerce_toml_value(value, schema)
+            value, coerce_err = _validate_toml_type(value, schema)
             if coerce_err:
                 errors.append(coerce_err)
             val_errors = validate_value(value, schema)

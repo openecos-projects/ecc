@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 from chipcompiler.cli.commands import build_context, dispatch
 from chipcompiler.cli.render import render_result
+from chipcompiler.cli.types import OutputMode
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -132,6 +133,30 @@ def _add_project_arg(parser: argparse.ArgumentParser) -> None:
                         help="Project directory (default: current directory)")
 
 
+def _render_param_text(args, result) -> None:
+    from chipcompiler.cli.param_handler import (
+        render_param_diff_text,
+        render_param_list_text,
+        render_param_set_text,
+        render_param_show_text,
+    )
+    if result.exit_code != 0:
+        render_result(result, OutputMode.PLAIN)
+        return
+
+    subcmd = getattr(args, "param_command", None)
+    if subcmd == "list":
+        render_param_list_text(result.records)
+    elif subcmd == "show":
+        render_param_show_text(result.records)
+    elif subcmd in ("set", "unset"):
+        render_param_set_text(result.records)
+    elif subcmd == "diff":
+        render_param_diff_text(result.records)
+    else:
+        render_result(result, OutputMode.PLAIN)
+
+
 def run(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -142,7 +167,12 @@ def run(argv: Sequence[str] | None = None) -> int:
 
     ctx = build_context(args)
     result = dispatch(args, ctx)
-    render_result(result, ctx.output_mode)
+
+    if args.command == "param" and ctx.output_mode == OutputMode.TEXT:
+        _render_param_text(args, result)
+    else:
+        render_result(result, ctx.output_mode)
+
     return result.exit_code
 
 
