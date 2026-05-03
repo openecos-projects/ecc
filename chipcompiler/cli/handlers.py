@@ -12,6 +12,29 @@ from chipcompiler.cli.output import (
 )
 
 
+def param(args, ctx: CommandContext) -> CommandResult:
+    from chipcompiler.cli.param_handler import (
+        param_diff,
+        param_list,
+        param_set,
+        param_show,
+        param_unset,
+    )
+
+    subcmd = getattr(args, "param_command", None)
+    if subcmd == "list":
+        return param_list(args, ctx)
+    if subcmd == "show":
+        return param_show(args, ctx)
+    if subcmd == "set":
+        return param_set(args, ctx)
+    if subcmd == "unset":
+        return param_unset(args, ctx)
+    if subcmd == "diff":
+        return param_diff(args, ctx)
+    return CommandResult.err([error_record("missing_subcommand")], exit_code=1)
+
+
 def status(args, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.inspect import (
         CORRUPT_FLOW_JSON,
@@ -310,7 +333,19 @@ def config(args, ctx: CommandContext) -> CommandResult:
 
     records = []
     for item in items:
-        if item.get("scope") == "project":
+        if item.get("kind") == "param":
+            records.append({
+                "kind": "param",
+                "config": item["key"],
+                "key": item["key"],
+                "scope": "project",
+                "value": item["value"],
+                "default": item.get("default"),
+                "source": item["source"],
+                "maps_to": item.get("maps_to"),
+                "inspect": item.get("inspect_cmd"),
+            })
+        elif item.get("scope") == "project":
             records.append({
                 "config": item["key"],
                 "scope": "project",
@@ -510,6 +545,22 @@ def run(args, ctx: CommandContext) -> CommandResult:
             })
         return CommandResult.err(records)
 
+    # Parse and validate --set overrides before workspace creation
+    cli_overrides = {}
+    raw_sets = getattr(args, "param_set", [])
+    if raw_sets:
+        from chipcompiler.cli.params import parse_cli_overrides
+        cli_overrides, set_errors = parse_cli_overrides(raw_sets)
+        if set_errors:
+            records = []
+            for err in set_errors:
+                records.append({
+                    "kind": "error",
+                    "error": "invalid_parameter",
+                    "reason": err,
+                })
+            return CommandResult.err(records)
+
     run_dir = os.path.join(project_dir, "runs", "default")
     flow_json = os.path.join(run_dir, "home", "flow.json")
 
@@ -534,6 +585,20 @@ def run(args, ctx: CommandContext) -> CommandResult:
     _, origin_verilog, input_filelist = resolve_rtl(cfg)
     parameters = to_parameters(cfg)
     pdk_root = resolve_pdk_root(cfg)
+
+    # Merge resolved parameter overrides into workspace parameters
+    if cfg.params_overrides or cli_overrides:
+        from chipcompiler.cli.params import (
+            build_backend_overrides,
+            resolve_parameters,
+        )
+        resolved, _ = resolve_parameters(
+            toml_overrides=cfg.params_overrides,
+            cli_overrides=cli_overrides,
+        )
+        backend_overrides = build_backend_overrides(resolved)
+        from chipcompiler.data.parameter import update_parameters
+        update_parameters(backend_overrides, parameters)
 
     try:
         workspace = create_workspace(

@@ -4,6 +4,7 @@ from enum import Enum
 
 class OutputMode(Enum):
     TEXT = "text"
+    PLAIN = "plain"
     JSON = "json"
     JSONL = "jsonl"
 

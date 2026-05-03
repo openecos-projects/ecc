@@ -85,6 +85,45 @@ def build_parser() -> argparse.ArgumentParser:
     diagnose_parser.add_argument("--run-id", default=None, dest="run_id",
                                  help="Run workspace selector")
 
+    # ecc param
+    param_parser = subparsers.add_parser("param", help="Manage EDA parameters")
+    param_sub = param_parser.add_subparsers(dest="param_command")
+
+    def _add_param_flags(p):
+        _add_project_arg(p)
+        p.add_argument("--json", action="store_true", help="JSON output")
+        p.add_argument("--jsonl", action="store_true", help="JSONL output")
+        p.add_argument("--plain", action="store_true", help="Plain key-value output")
+
+    # ecc param list
+    param_list = param_sub.add_parser("list", help="List all parameters")
+    _add_param_flags(param_list)
+
+    # ecc param show
+    param_show = param_sub.add_parser("show", help="Show parameter details")
+    _add_param_flags(param_show)
+    param_show.add_argument("key", help="Parameter key (e.g. place.target_density)")
+
+    # ecc param set
+    param_set = param_sub.add_parser("set", help="Set a persistent parameter override")
+    _add_param_flags(param_set)
+    param_set.add_argument("key", help="Parameter key")
+    param_set.add_argument("value", help="Parameter value")
+
+    # ecc param unset
+    param_unset = param_sub.add_parser("unset", help="Remove a persistent override")
+    _add_param_flags(param_unset)
+    param_unset.add_argument("key", help="Parameter key")
+
+    # ecc param diff
+    param_diff = param_sub.add_parser("diff", help="Show overrides that differ from defaults")
+    _add_param_flags(param_diff)
+
+    # ecc run --set
+    run_parser.add_argument("--set", action="append", default=[], dest="param_set",
+                            help="Set parameter override (repeatable, e.g. --set place.target_density=0.65)")
+    run_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
+
     return parser
 
 

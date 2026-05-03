@@ -14,6 +14,8 @@ def build_context(args) -> CommandContext:
         mode = OutputMode.JSONL
     elif getattr(args, "json", False):
         mode = OutputMode.JSON
+    elif getattr(args, "plain", False):
+        mode = OutputMode.PLAIN
     else:
         mode = OutputMode.TEXT
 
@@ -28,6 +30,8 @@ def build_context(args) -> CommandContext:
 
 def dispatch(args, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli import handlers
+    if args.command == "param":
+        return handlers.param(args, ctx)
     handler = getattr(handlers, args.command, None)
     if handler is None:
         return CommandResult.err([], exit_code=1)

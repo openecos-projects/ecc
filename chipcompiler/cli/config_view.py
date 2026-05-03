@@ -96,6 +96,26 @@ def build_project_config_items(project_dir: str, run_dir: str,
         "inspect_cmd": disclosure_cmd("ecc status", project, run_id),
     })
 
+    # Parameter records with source information
+    from chipcompiler.cli.params import resolve_parameters
+    resolved_params, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
+    for rp in resolved_params:
+        maps_to = rp.schema.maps_to
+        if isinstance(maps_to, str):
+            mapping = maps_to
+        else:
+            mapping = ", ".join(f"{k}.{v}" for k, v in maps_to.items())
+        items.append({
+            "kind": "param",
+            "scope": "project",
+            "key": rp.param,
+            "value": rp.value,
+            "default": rp.default,
+            "source": rp.source,
+            "maps_to": mapping,
+            "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project),
+        })
+
     return items, 0
 
 
