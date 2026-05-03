@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 
 from chipcompiler.cli.types import CommandContext, CommandResult
 from chipcompiler.cli.records import error_record
@@ -569,7 +570,17 @@ def run(args, ctx: CommandContext) -> CommandResult:
 
         engine_flow.create_step_workspaces()
 
-        if not engine_flow.run_steps():
+        from chipcompiler.cli.progress import (
+            run_flow_with_progress,
+            should_enable_run_progress,
+        )
+
+        if should_enable_run_progress(ctx, sys.stderr):
+            flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+        else:
+            flow_ok = engine_flow.run_steps()
+
+        if not flow_ok:
             return CommandResult.err([{
                 "run": "default",
                 "status": "failed",
