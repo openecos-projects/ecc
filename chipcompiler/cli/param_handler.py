@@ -78,6 +78,9 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
         "applies": schema.applies,
         "maps_to": _maps_to_str(schema.maps_to),
         "description": schema.description,
+        "inspect": disclosure_cmd(f"ecc param show {rp.param}", ctx.project),
+        "set": disclosure_cmd(f"ecc param set {rp.param}", ctx.project),
+        "run": disclosure_cmd(f"ecc run --set {rp.param}=<value>", ctx.project),
     }
     if schema.range is not None:
         record["range"] = f"[{schema.range[0]}, {schema.range[1]}]"
@@ -240,7 +243,8 @@ def render_param_show_text(records, file=None):
 
     print(f"  {r['param']}", file=target)
     for field in ("value", "default", "source", "type", "applies",
-                  "maps_to", "description", "range", "choices", "unit"):
+                  "maps_to", "description", "range", "choices", "unit",
+                  "inspect", "set", "run"):
         val = r.get(field)
         if val is not None:
             label = field.replace("_", " ")
@@ -327,34 +331,44 @@ def _remove_param_from_toml(config_path: str, key: str) -> bool:
     return True
 
 
+_TABLE_HEADER_RE = re.compile(r"^[ \t]*\[([^\]]+)\][ \t]*(?:#.*)?$", re.MULTILINE)
+
+
+def _find_table_span(text: str, table_name: str) -> tuple[int, int] | None:
+    """Return (body_start, body_end) for a TOML table, or None."""
+    for m in _TABLE_HEADER_RE.finditer(text):
+        if m.group(1).strip() == table_name:
+            header_end = m.end()
+            nl = text.find("\n", header_end)
+            if nl == -1:
+                body_start = len(text)
+            else:
+                body_start = nl + 1
+            next_header = _TABLE_HEADER_RE.search(text, body_start)
+            body_end = next_header.start() if next_header else len(text)
+            return body_start, body_end
+    return None
+
+
 def _apply_scoped_param_edit(text: str, group: str, name: str, value: object) -> str:
     value_str = _format_toml_value(value)
+    target_table = f"params.{group}"
 
-    section_header = f"[params.{group}]"
-    header_idx = text.find(section_header)
-    if header_idx == -1:
-        header_idx = text.find("[params]")
-        if header_idx == -1:
-            return text.rstrip() + f"\n\n[params.{group}]\n{name} = {value_str}\n"
-        after_header = text.find("\n", header_idx)
-        insert = f"\n\n[params.{group}]\n{name} = {value_str}"
-        if after_header == -1:
-            return text + insert + "\n"
-        next_sec = re.search(r"^\[", text[after_header:], re.MULTILINE)
-        if next_sec:
-            pos = after_header + next_sec.start()
+    span = _find_table_span(text, target_table)
+    if span is None:
+        params_span = _find_table_span(text, "params")
+        if params_span is None:
+            return text.rstrip() + f"\n\n[{target_table}]\n{name} = {value_str}\n"
+        body_start, body_end = params_span
+        insert = f"\n\n[{target_table}]\n{name} = {value_str}"
+        next_header = _TABLE_HEADER_RE.search(text, body_start)
+        if next_header:
+            pos = next_header.start()
             return text[:pos] + insert + "\n" + text[pos:]
         return text + insert + "\n"
 
-    after_header = text.find("\n", header_idx + len(section_header))
-    if after_header == -1:
-        return text + f"\n{name} = {value_str}\n"
-    after_header += 1
-
-    next_sec = re.search(r"^\[", text[after_header:], re.MULTILINE)
-    section_end = after_header + next_sec.start() if next_sec else len(text)
-
-    section_body = text[after_header:section_end]
+    body_start, body_end = span
+    section_body = text[body_start:body_end]
     key_pattern = re.compile(rf"^(\s*){re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
     key_match = key_pattern.search(section_body)
 
@@ -362,27 +376,21 @@ def _apply_scoped_param_edit(text: str, group: str, name: str, value: object) ->
         indent = key_match.group(1)
         new_line = f"{indent}{name} = {value_str}"
         new_body = section_body[:key_match.start()] + new_line + section_body[key_match.end():]
-        return text[:after_header] + new_body + text[section_end:]
+        return text[:body_start] + new_body + text[body_end:]
     else:
         insert = f"{name} = {value_str}\n"
-        return text[:after_header] + insert + text[after_header:]
+        return text[:body_start] + insert + text[body_start:]
 
 
 def _remove_scoped_param_key(text: str, group: str, name: str) -> str | None:
-    section_header = f"[params.{group}]"
-    header_idx = text.find(section_header)
-    if header_idx == -1:
+    target_table = f"params.{group}"
+
+    span = _find_table_span(text, target_table)
+    if span is None:
         return None
 
-    after_header = text.find("\n", header_idx + len(section_header))
-    if after_header == -1:
-        return None
-    after_header += 1
-
-    next_sec = re.search(r"^\[", text[after_header:], re.MULTILINE)
-    section_end = after_header + next_sec.start() if next_sec else len(text)
-
-    section_body = text[after_header:section_end]
+    body_start, body_end = span
+    section_body = text[body_start:body_end]
     key_pattern = re.compile(rf"^\s*{re.escape(name)}\s*=[^\n]*\n?", re.MULTILINE)
     key_match = key_pattern.search(section_body)
     if not key_match:
@@ -391,10 +399,18 @@ def _remove_scoped_param_key(text: str, group: str, name: str) -> str | None:
     new_body = section_body[:key_match.start()] + section_body[key_match.end():]
     remaining_keys = [l for l in new_body.strip().split("\n") if l.strip()]
     if not remaining_keys:
-        result = text[:header_idx].rstrip("\n") + "\n" + text[section_end:].lstrip("\n")
+        header_match = None
+        for m in _TABLE_HEADER_RE.finditer(text):
+            if m.group(1).strip() == target_table:
+                header_match = m
+                break
+        if header_match is None:
+            return None
+        header_start = header_match.start()
+        result = text[:header_start].rstrip("\n") + "\n" + text[body_end:].lstrip("\n")
         return result if result.strip() else None
     else:
-        return text[:after_header] + new_body + text[section_end:]
+        return text[:body_start] + new_body + text[body_end:]
 
 
 def _format_toml_value(val: object) -> str:

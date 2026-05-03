@@ -935,3 +935,126 @@ class TestMalformedCliProvenance:
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["error"] == "invalid_config"
+
+
+class TestParamShowDisclosureCommands:
+    """param show must include disclosure command fields."""
+
+    def test_show_json_has_disclosure_commands(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        record = data["records"][0]
+        assert "inspect" in record
+        assert "set" in record
+        assert "run" in record
+        assert "ecc param show place.target_density" in record["inspect"]
+
+    def test_show_text_has_disclosure_commands(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "ecc param show place.target_density" in out
+        assert "ecc param set place.target_density" in out
+        assert "ecc run --set place.target_density" in out
+
+
+class TestSafeTomlSectionParsing:
+    """Scoped TOML edits must handle comments and indented headers safely."""
+
+    def test_set_ignores_commented_section_header(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n# [params.place]\n# target_density = 0.65\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        assert "[params.place]" in after
+        assert "target_density = 0.7" in after
+
+    def test_set_ignores_indented_next_section_header(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.place]\ntarget_density = 0.65\n\n  [flow]\npreset = "rtl2gds"\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        assert after.count("target_density") == 1
+        assert "0.7" in after
+        assert 'preset = "rtl2gds"' in after
+
+    def test_set_then_show_after_commented_header(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n# [params.place]\n# target_density = 0.65\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["value"] == 0.7
+
+    def test_unset_ignores_commented_section_header(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n# [params.place]\n# target_density = 0.65\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        rc = cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
+        assert rc == 0
+        capsys.readouterr()
+        with open(toml_path) as f:
+            after = f.read()
+        assert "target_density" in after
+
+
+class TestListDefaultDiffFiltering:
+    """param diff must not report list values equal to defaults."""
+
+    def test_list_default_not_in_diff(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        cli_main.run(["param", "set", "floorplan.core_margin", "[2,2]", "--project", project_dir])
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0].get("diff_status") == "clean"
+
+    def test_list_changed_value_in_diff(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        cli_main.run(["param", "set", "floorplan.core_margin", "[4,4]", "--project", project_dir])
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data["records"]) >= 1
+        margin = next((r for r in data["records"] if r.get("param") == "floorplan.core_margin"), None)
+        assert margin is not None
+        assert margin["value"] == [4, 4]
