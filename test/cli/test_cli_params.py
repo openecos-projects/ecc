@@ -378,6 +378,25 @@ class TestConfigResolved:
         assert density["value"] == 0.65
         assert density["source"] == "ecc.toml"
 
+    def test_config_resolved_seeds_design_frequency(self, tmp_path, monkeypatch, capsys):
+        project_dir = _create_valid_project(tmp_path, freq=200.0)
+        monkeypatch.setattr(
+            "chipcompiler.cli.config._validate_pdk_contents",
+            lambda name, root: None,
+        )
+        run_dir = os.path.join(project_dir, "runs", "default")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump({"steps": []}, f)
+
+        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        param_records = [r for r in data["records"] if r.get("kind") == "param"]
+        freq = next(r for r in param_records if r["key"] == "design.frequency_mhz")
+        assert freq["value"] == 200.0
+
 
 class TestTomlValidationErrors:
     def _create_project_with_invalid_param(self, tmp_path):
