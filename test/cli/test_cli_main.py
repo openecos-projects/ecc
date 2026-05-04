@@ -518,12 +518,13 @@ class TestLog:
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
             f.write("Info: running\nError: bad thing\nWarning: meh\nTraceback: crash\n")
 
-        rc = cli_main.run(["log", "synthesis", "--errors", "--project", project_dir])
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "Error: bad thing" in out
         assert "Traceback: crash" in out
-        assert "Info: running" not in out
+        assert "Warning: meh" in out
+        assert "Info: running" in out
 
     def test_log_step_errors_jsonl(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -552,7 +553,7 @@ class TestLog:
         rc = cli_main.run(["log", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert 'inspect="ecc log' in out
+        assert 'ecc log' in out
 
     def test_log_no_step_discovers_step_logs(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -566,9 +567,9 @@ class TestLog:
         rc = cli_main.run(["log", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "step=synthesis" in out
+        assert "synthesis" in out
         assert "Synthesis_yosys/log/synthesis.log" in out
-        assert 'inspect="ecc log synthesis --errors' in out
+        assert "ecc log synthesis" in out
 
     def test_log_no_step_global_logs_have_disclosure(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -581,9 +582,7 @@ class TestLog:
         rc = cli_main.run(["log", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        for line in out.strip().split("\n"):
-            if line.strip():
-                assert _has_disclosure(line), f"Missing disclosure in: {line}"
+        assert "ecc log" in out
 
     def test_log_unknown_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -704,7 +703,7 @@ class TestMetrics:
         assert rc == 1
         out = capsys.readouterr().out
         assert "status=missing" in out
-        assert 'log="ecc log cts --errors' in out
+        assert 'log="ecc log cts' in out
 
     def test_metrics_json_unknown_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -802,13 +801,11 @@ class TestDisclosureCommands:
             f.write("Error: something failed\n")
 
         rc = cli_main.run(
-            ["log", "synthesis", "--errors", "--project", project_dir]
+            ["log", "synthesis", "--project", project_dir]
         )
         assert rc == 0
         out = capsys.readouterr().out
-        for line in out.strip().split("\n"):
-            if line.strip():
-                assert _has_disclosure(line), f"Missing disclosure in: {line}"
+        assert "ecc log synthesis" in out
 
     def test_project_arg_propagated_to_disclosure(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -993,4 +990,346 @@ class TestMissingConfigErrorRecord:
         data = json.loads(capsys.readouterr().out)
         record = data["records"][0]
         assert "inspect" in record or "inspect_cmd" in record
+
+
+# ===========================================================================
+# Log output refactoring integration tests
+# ===========================================================================
+
+
+class TestLogDefaultShowsAllContent:
+    """AC-1: Default ecc log <step> renders complete log content."""
+
+    def test_default_shows_all_lines(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("INFO: starting\nsome output\nError: bad\nWarning: meh\n")
+
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "INFO: starting" in out
+        assert "some output" in out
+        assert "Error: bad" in out
+        assert "Warning: meh" in out
+
+    def test_default_includes_header(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("ok\n")
+
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[log]" in out
+        assert "step=synthesis" in out
+        assert "source:" in out
+
+    def test_blank_lines_preserved(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("line1\n\nline3\n")
+
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "line1" in out
+        assert "line3" in out
+
+
+class TestLogTracebackComplete:
+    """AC-2: Python traceback blocks remain complete and contiguous."""
+
+    def test_traceback_complete_in_default_output(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write(
+                "INFO: before\n"
+                "Traceback (most recent call last):\n"
+                '  File "app.py", line 42, in run\n'
+                "    result = compute()\n"
+                "        ^^^^^^^^^\n"
+                "ValueError: invalid value\n"
+                "INFO: after\n"
+            )
+
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Traceback (most recent call last):" in out
+        assert 'File "app.py", line 42' in out
+        assert "result = compute()" in out
+        assert "^^^^^^^^^" in out
+        assert "ValueError: invalid value" in out
+
+    def test_traceback_complete_in_jsonl(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write(
+                "Traceback (most recent call last):\n"
+                '  File "a.py", line 1\n'
+                "ValueError: fail\n"
+            )
+
+        rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
+        assert objects[0]["kind"] == "traceback"
+        assert objects[1]["kind"] == "traceback"
+        assert objects[2]["kind"] == "error"
+
+
+class TestLogPlainMode:
+    """AC-5: --plain emits full-content stable line records."""
+
+    def test_plain_has_all_fields(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("Error: bad\nINFO: ok\n")
+
+        rc = cli_main.run(["log", "synthesis", "--plain", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        lines = [l for l in out.strip().split("\n") if l.strip()]
+        assert len(lines) == 2
+        assert "step=synthesis" in lines[0]
+        assert "line_no=1" in lines[0]
+        assert "kind=error" in lines[0]
+        assert "line_no=2" in lines[1]
+        assert "kind=info" in lines[1]
+
+    def test_plain_no_ansi(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("Error: bad\n")
+
+        rc = cli_main.run(["log", "synthesis", "--plain", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "\x1b[" not in out
+
+
+class TestLogJsonlMode:
+    """AC-6: --jsonl emits full-content structured log objects."""
+
+    def test_jsonl_per_line_objects(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("Error: bad\nINFO: ok\nplain\n")
+
+        rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
+        assert len(objects) == 3
+        for obj in objects:
+            assert "step" in obj
+            assert "source" in obj
+            assert "line_no" in obj
+            assert "kind" in obj
+            assert "line" in obj
+            assert "inspect_cmd" in obj
+
+    def test_jsonl_no_ansi(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("Error: bad\n")
+
+        rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "\x1b[" not in out
+
+
+class TestLogListingMode:
+    """AC-7: ecc log without step lists available logs."""
+
+    def test_listing_shows_logs(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("content\n")
+
+        rc = cli_main.run(["log", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "synthesis" in out
+        assert "ecc log synthesis" in out
+
+    def test_listing_no_logs_returns_no_log_status(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(run_dir, exist_ok=True)
+
+        rc = cli_main.run(["log", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "no_logs" in out
+
+    def test_listing_jsonl_records(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("content\n")
+
+        rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        assert any("step" in o for o in objects)
+
+
+class TestLogErrorCases:
+    """AC-9: Error cases are structured and readable."""
+
+    def test_unknown_step_returns_nonzero(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(run_dir, exist_ok=True)
+
+        rc = cli_main.run(["log", "nonexistent", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "unknown_step" in out
+
+    def test_unknown_step_json(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(run_dir, exist_ok=True)
+
+        rc = cli_main.run(["log", "nonexistent", "--jsonl", "--project", project_dir])
+        assert rc == 1
+        record = json.loads(capsys.readouterr().out.strip())
+        assert record["status"] == "unknown_step"
+
+    def test_known_step_no_logs_returns_nonzero(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(os.path.join(run_dir, "Synthesis_yosys"), exist_ok=True)
+
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "missing" in out
+
+    def test_known_step_no_logs_json(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(os.path.join(run_dir, "Synthesis_yosys"), exist_ok=True)
+
+        rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
+        assert rc == 1
+        record = json.loads(capsys.readouterr().out.strip())
+        assert record["log_status"] == "missing"
+
+    def test_empty_log_returns_zero(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("")
+
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "empty" in out
+
+
+class TestLogNoErrorsInDisclosure:
+    """AC-8: Disclosure commands do not include --errors."""
+
+    def test_listing_disclosure_no_errors(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("ok\n")
+
+        rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "--errors" not in out
+
+    def test_step_log_inspect_no_errors(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("ok\n")
+
+        rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "--errors" not in out
+
+    def test_status_disclosure_no_errors(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir)
+
+        rc = cli_main.run(["status", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "--errors" not in out
+
+    def test_metrics_disclosure_no_errors(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
+        os.makedirs(analysis_dir, exist_ok=True)
+        with open(os.path.join(analysis_dir, "Synthesis_metrics.json"), "w") as f:
+            json.dump({"Cell number": 100}, f)
+
+        rc = cli_main.run(["metrics", "synthesis", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "--errors" not in out
+
+    def test_artifacts_log_disclosure_no_errors(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir)
+        log_dir = os.path.join(run_dir, "CTS_ecc", "log")
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, "cts.log"), "w") as f:
+            f.write("log content\n")
+
+        rc = cli_main.run(["artifacts", "cts", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "--errors" not in out
 

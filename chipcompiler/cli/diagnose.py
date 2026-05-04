@@ -58,11 +58,11 @@ def _make_issue(issue: str, severity: str, run: str,
         obj["evidence"] = disclosure_cmd("ecc status", **cmd_kwargs)
         obj["start_cmd"] = disclosure_cmd("ecc run", project=project)
     elif issue == "log_errors":
-        obj["evidence"] = disclosure_cmd(f"ecc log {step} --errors", **cmd_kwargs)
+        obj["evidence"] = disclosure_cmd(f"ecc log {step}", **cmd_kwargs)
         obj["artifacts"] = disclosure_cmd(f"ecc artifacts {step}", **cmd_kwargs)
     elif issue == "missing_metrics":
         obj["evidence"] = disclosure_cmd(f"ecc metrics {step} --json", **cmd_kwargs)
-        obj["log"] = disclosure_cmd(f"ecc log {step} --errors", **cmd_kwargs)
+        obj["log"] = disclosure_cmd(f"ecc log {step}", **cmd_kwargs)
     elif issue == "missing_artifacts":
         obj["evidence"] = disclosure_cmd(f"ecc artifacts {step}", **cmd_kwargs)
         obj["config"] = disclosure_cmd(f"ecc config {step} --resolved", **cmd_kwargs)
@@ -71,7 +71,7 @@ def _make_issue(issue: str, severity: str, run: str,
         obj["artifacts"] = disclosure_cmd(f"ecc artifacts {step}", **cmd_kwargs)
     elif step:
         obj["evidence"] = disclosure_cmd("ecc status", **cmd_kwargs)
-        obj["log"] = disclosure_cmd(f"ecc log {step} --errors", **cmd_kwargs)
+        obj["log"] = disclosure_cmd(f"ecc log {step}", **cmd_kwargs)
         obj["artifacts"] = disclosure_cmd(f"ecc artifacts {step}", **cmd_kwargs)
         obj["config"] = disclosure_cmd(f"ecc config {step} --resolved", **cmd_kwargs)
 

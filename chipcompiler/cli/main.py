@@ -43,7 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     log_parser = subparsers.add_parser("log", help="Inspect step logs")
     _add_project_arg(log_parser)
     log_parser.add_argument("step", nargs="?", default=None, help="Step name")
-    log_parser.add_argument("--errors", action="store_true", help="Filter error lines")
+    log_parser.add_argument("--errors", action="store_true",
+                            help=argparse.SUPPRESS)
+    log_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
     log_parser.add_argument("--jsonl", action="store_true", help="JSONL output")
     log_parser.add_argument("--run-id", default=None, dest="run_id",
                             help="Run workspace selector")
@@ -157,6 +159,53 @@ def _render_param_text(args, result) -> None:
         render_result(result, OutputMode.PLAIN)
 
 
+def _should_colorize():
+    import os
+    if not sys.stdout.isatty():
+        return False
+    if os.environ.get("NO_COLOR") is not None:
+        return False
+    if os.environ.get("TERM", "") == "dumb":
+        return False
+    return True
+
+
+def _render_log_text(args, result) -> None:
+    from chipcompiler.cli.log_view import (
+        render_log_listing_pretty,
+        render_log_pretty,
+    )
+
+    if result.exit_code != 0:
+        render_result(result, OutputMode.PLAIN)
+        return
+
+    records = result.records
+    if not records:
+        return
+
+    first = records[0]
+
+    # Status/sentinel records (no_logs, empty, etc.)
+    if "log_status" in first or "status" in first:
+        render_result(result, OutputMode.PLAIN)
+        return
+
+    color = _should_colorize()
+
+    # Step mode: records have line_no and kind
+    if "line_no" in first:
+        step = first["step"]
+        source = first["source"]
+        lines = [r["line"] for r in records]
+        inspect_cmd = first.get("inspect_cmd", "")
+        render_log_pretty(step, source, lines, inspect_cmd, color=color)
+        return
+
+    # Listing mode
+    render_log_listing_pretty(list(records), color=color)
+
+
 def run(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -170,6 +219,8 @@ def run(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "param" and ctx.output_mode == OutputMode.TEXT:
         _render_param_text(args, result)
+    elif args.command == "log" and ctx.output_mode == OutputMode.TEXT:
+        _render_log_text(args, result)
     else:
         render_result(result, ctx.output_mode)
 
