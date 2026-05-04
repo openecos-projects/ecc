@@ -101,8 +101,11 @@ def build_project_config_items(project_dir: str, run_dir: str,
     cli_provenance, prov_error = _load_cli_provenance(run_dir)
     if prov_error:
         return [{"kind": "error", "status": "invalid_config", "reason": prov_error}], 1
+    toml_overrides = dict(cfg.params_overrides)
+    if "design.frequency_mhz" not in toml_overrides and cfg.design_frequency_mhz > 0:
+        toml_overrides["design.frequency_mhz"] = cfg.design_frequency_mhz
     resolved_params, _ = resolve_parameters(
-        toml_overrides=cfg.params_overrides,
+        toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
     )
     for rp in resolved_params:
