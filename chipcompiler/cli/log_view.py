@@ -193,10 +193,8 @@ def render_log_listing_pretty(
 ) -> None:
     target = file or sys.stdout
 
-    if color:
-        target.write(f"{_BOLD}[logs]{_RESET}\n")
-    else:
-        target.write("[logs]\n")
+    log_tag = style("[logs]", BOLD, color)
+    target.write(f"{log_tag}\n")
 
     for rec in records:
         step = rec.get("step", "")
@@ -204,10 +202,10 @@ def render_log_listing_pretty(
         inspect = rec.get("inspect_cmd") or rec.get("inspect", "")
 
         if step:
-            step_label = f"  {_CYAN}{step}{_RESET}" if color else f"  {step}"
+            step_label = f"  {style(step, CYAN, color)}" if color else f"  {step}"
         else:
             step_label = ""
 
         target.write(f"{step_label}  {source}\n")
-        inspect_label = f"  {_DIM}inspect:{_RESET}" if color else "  inspect:"
+        inspect_label = f"  {style('inspect:', DIM, color)}" if color else "  inspect:"
         target.write(f"{inspect_label} {inspect}\n")
