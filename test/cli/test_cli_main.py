@@ -1538,3 +1538,51 @@ class TestLogErrorsDeprecation:
         assert objects[1]["kind"] == "error"
         assert "\x1b[" not in capsys.readouterr().out
 
+
+class TestCorruptFlowJson:
+    """Non-dict flow.json must be reported as corrupt, not missing."""
+
+    def test_array_flow_json_is_corrupt(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump([], f)
+
+        rc = cli_main.run(["status", "--json", "--project", project_dir])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0].get("status") == "corrupt"
+
+    def test_string_flow_json_is_corrupt(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump("bad", f)
+
+        rc = cli_main.run(["status", "--json", "--project", project_dir])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0].get("status") == "corrupt"
+
+
+class TestFlowOnlyStepMetrics:
+    """Step in flow.json but no step directory should report missing, not unknown."""
+
+    def test_metrics_flow_only_step_is_missing(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump({"steps": [{"name": "CTS", "state": "unstart"}]}, f)
+
+        rc = cli_main.run(["metrics", "cts", "--json", "--project", project_dir])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0].get("status") == "missing"
+        assert data["records"][0].get("status") != "unknown_step"
+
