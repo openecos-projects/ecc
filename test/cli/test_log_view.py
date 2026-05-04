@@ -160,6 +160,24 @@ class TestTracebackAnnotation:
         assert annotated[1].kind == LineKind.PLAIN
         assert annotated[2].kind == LineKind.TRACEBACK
 
+    def test_exception_classified_as_error(self):
+        lines = [
+            "Traceback (most recent call last):",
+            '  File "a.py", line 1',
+            "Exception: something went wrong",
+        ]
+        annotated = annotate_log_lines(lines)
+        assert annotated[2].kind == LineKind.ERROR
+
+    def test_keyboard_interrupt_classified_as_plain(self):
+        lines = [
+            "Traceback (most recent call last):",
+            '  File "a.py", line 1',
+            "KeyboardInterrupt",
+        ]
+        annotated = annotate_log_lines(lines)
+        assert annotated[2].kind == LineKind.PLAIN
+
 
 class TestAnnotateLineNumbers:
     def test_line_numbers_start_at_one(self):
@@ -312,7 +330,22 @@ class TestPlainRenderer:
         assert "line_no=1" in line
         assert "kind=plain" in line
         assert "line=ok" in line
-        assert "inspect=ecc log cts" in line
+        assert "inspect_cmd=" in line
+
+    def test_values_with_spaces_are_quoted(self):
+        from io import StringIO
+        buf = StringIO()
+        render_log_plain("cts", "log/cts.log", ["line with spaces"], "ecc log cts --project /tmp/a b", file=buf)
+        line = buf.getvalue().strip()
+        assert 'line="line with spaces"' in line
+        assert 'inspect_cmd="ecc log cts --project /tmp/a b"' in line
+
+    def test_values_with_backslashes_escaped(self):
+        from io import StringIO
+        buf = StringIO()
+        render_log_plain("cts", "log/cts.log", ['path\\to\\file'], "ecc log cts", file=buf)
+        line = buf.getvalue().strip()
+        assert 'line="path\\\\to\\\\file"' in line
 
     def test_no_ansi_in_plain(self):
         from io import StringIO
