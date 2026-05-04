@@ -17,6 +17,7 @@ _ERROR_RE = re.compile(r"error", re.IGNORECASE)
 _WARNING_RE = re.compile(r"warn(?:ing)?", re.IGNORECASE)
 _INFO_RE = re.compile(r"^(?:INFO(?:\s*:|\s*\]|:root:)|\[INFO\s*\])")
 _SECTION_RE = re.compile(r"^[-=]{3,}$")
+_EXCEPTION_RE = re.compile(r"^[A-Za-z_][\w.]*:\s")
 
 
 def classify_line(line: str, in_traceback: bool = False) -> LineKind:
@@ -28,6 +29,8 @@ def classify_line(line: str, in_traceback: bool = False) -> LineKind:
             return LineKind.PLAIN
         if line.startswith("  ") or line.startswith("\t"):
             return LineKind.TRACEBACK
+        if _EXCEPTION_RE.match(stripped):
+            return LineKind.ERROR
         if _ERROR_RE.search(stripped):
             return LineKind.ERROR
         return LineKind.PLAIN
@@ -122,18 +125,6 @@ _KIND_COLOR = {
 }
 
 
-def _should_colorize(stream) -> bool:
-    import os
-    from chipcompiler.cli.types import OutputMode
-    if not hasattr(stream, "isatty") or not stream.isatty():
-        return False
-    if os.environ.get("NO_COLOR") is not None:
-        return False
-    if os.environ.get("TERM", "") == "dumb":
-        return False
-    return True
-
-
 def render_log_pretty(
     step: str,
     source: str,
@@ -167,6 +158,14 @@ def render_log_pretty(
         target.write(f"  inspect: {inspect_cmd}\n")
 
 
+def _format_value(value) -> str:
+    s = str(value)
+    if any(c.isspace() for c in s) or '\\' in s or '"' in s:
+        escaped = s.replace('\\', '\\\\').replace('"', '\\"')
+        return f'"{escaped}"'
+    return s
+
+
 def render_log_plain(
     step: str,
     source: str,
@@ -179,9 +178,8 @@ def render_log_plain(
     records = build_log_records(step, source, lines, inspect_cmd)
     for rec in records:
         parts = []
-        for key in ("step", "source", "line_no", "kind", "line"):
-            parts.append(f"{key}={rec[key]}")
-        parts.append(f"inspect={rec['inspect_cmd']}")
+        for key in ("step", "source", "line_no", "kind", "line", "inspect_cmd"):
+            parts.append(f"{key}={_format_value(rec[key])}")
         target.write(" ".join(parts) + "\n")
 
 

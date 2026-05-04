@@ -92,7 +92,6 @@ def log(args, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.inspect import (
         discover_logs,
         discover_step_dirs,
-        read_log_file,
     )
     from chipcompiler.cli.log_view import build_log_records
 
@@ -149,7 +148,17 @@ def log(args, ctx: CommandContext) -> CommandResult:
     all_records = []
     for lf in log_files:
         source = os.path.relpath(lf, ctx.run_dir)
-        raw = read_log_file(lf)
+        try:
+            with open(lf, errors="replace") as f:
+                raw = f.read().splitlines()
+        except OSError as exc:
+            return CommandResult.err([{
+                "step": step_token,
+                "log_status": "unreadable",
+                "source": source,
+                "error": str(exc),
+                "inspect_cmd": inspect_cmd,
+            }])
         if not raw:
             continue
         all_records.extend(build_log_records(step_token, source, raw, inspect_cmd))

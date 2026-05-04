@@ -176,6 +176,9 @@ def _render_log_text(args, result) -> None:
         render_log_pretty,
     )
 
+    if getattr(args, "errors", False):
+        print("warning: --errors is deprecated and no longer filters output", file=sys.stderr)
+
     if result.exit_code != 0:
         render_result(result, OutputMode.PLAIN)
         return
@@ -195,11 +198,26 @@ def _render_log_text(args, result) -> None:
 
     # Step mode: records have line_no and kind
     if "line_no" in first:
-        step = first["step"]
-        source = first["source"]
-        lines = [r["line"] for r in records]
         inspect_cmd = first.get("inspect_cmd", "")
-        render_log_pretty(step, source, lines, inspect_cmd, color=color)
+        current_source = None
+        current_lines = []
+        current_step = first["step"]
+        for rec in records:
+            src = rec["source"]
+            if src != current_source:
+                if current_source is not None:
+                    render_log_pretty(
+                        current_step, current_source, current_lines,
+                        inspect_cmd, color=color,
+                    )
+                current_source = src
+                current_lines = []
+            current_lines.append(rec["line"])
+        if current_source is not None:
+            render_log_pretty(
+                current_step, current_source, current_lines,
+                inspect_cmd, color=color,
+            )
         return
 
     # Listing mode

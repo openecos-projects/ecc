@@ -3,6 +3,8 @@ import os
 import re
 from types import SimpleNamespace
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 # ---------------------------------------------------------------------------
@@ -1332,4 +1334,107 @@ class TestLogNoErrorsInDisclosure:
         assert rc == 0
         out = capsys.readouterr().out
         assert "--errors" not in out
+
+
+class TestLogUnreadableFile:
+    """AC-9: Unreadable log files return non-zero with OS error."""
+
+    def test_unreadable_log_returns_nonzero(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        log_path = os.path.join(step_dir, "synthesis.log")
+        with open(log_path, "w") as f:
+            f.write("content\n")
+        os.chmod(log_path, 0o000)
+
+        try:
+            rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+            assert rc == 1
+            out = capsys.readouterr().out
+            assert "unreadable" in out
+        finally:
+            os.chmod(log_path, 0o644)
+
+    def test_unreadable_log_jsonl(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        log_path = os.path.join(step_dir, "synthesis.log")
+        with open(log_path, "w") as f:
+            f.write("content\n")
+        os.chmod(log_path, 0o000)
+
+        try:
+            rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
+            assert rc == 1
+            record = json.loads(capsys.readouterr().out.strip())
+            assert record["log_status"] == "unreadable"
+            assert "source" in record
+            assert "error" in record
+        finally:
+            os.chmod(log_path, 0o644)
+
+
+class TestLogMultiSource:
+    """AC-1: Multiple log files per step shown with separate source headers."""
+
+    def test_multi_source_pretty(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "a.log"), "w") as f:
+            f.write("from A\n")
+        with open(os.path.join(step_dir, "b.log"), "w") as f:
+            f.write("from B\n")
+
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "a.log" in out
+        assert "b.log" in out
+        assert "from A" in out
+        assert "from B" in out
+
+
+class TestLogErrorsDeprecation:
+    """AC-8: --errors is deprecated with visible notice."""
+
+    def test_errors_hidden_from_help(self, tmp_path, capsys):
+        with pytest.raises(SystemExit):
+            cli_main.run(["log", "--help"])
+
+    def test_errors_emits_deprecation_warning(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("ok\n")
+
+        rc = cli_main.run(["log", "synthesis", "--errors", "--project", project_dir])
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "deprecated" in err
+
+    def test_errors_jsonl_still_full_records(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("INFO: running\nError: bad\n")
+
+        rc = cli_main.run(
+            ["log", "synthesis", "--errors", "--jsonl", "--project", project_dir]
+        )
+        assert rc == 0
+        objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
+        assert len(objects) == 2
+        assert objects[0]["kind"] == "info"
+        assert objects[1]["kind"] == "error"
+        assert "\x1b[" not in capsys.readouterr().out
 
