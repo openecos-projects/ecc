@@ -69,7 +69,7 @@ def test_key_spelling_matches_template() -> None:
 # Known parameter -> config mappings with both defaults.
 # (param_key, param_default, config_default, description)
 PARAM_CONFIG_DEFAULTS: list[tuple[str, float, float, str]] = [
-    ("Target density", 0.3, 0.8, "dreamplace.target_density"),
+    ("Target density", 0.8, 0.8, "dreamplace.target_density"),
     ("Target overflow", 0.1, 0.1, "dreamplace.stop_overflow"),
     ("Cell padding x", 600, 600, "dreamplace.cell_padding_x"),
     ("Routability opt flag", 1, 0, "dreamplace.routability_opt_flag"),
