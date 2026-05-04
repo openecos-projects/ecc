@@ -82,10 +82,7 @@ def build_project_config_items(project_dir: str, run_dir: str,
         run_dir_rel = os.path.relpath(run_dir, project_dir)
     except ValueError:
         run_dir_rel = run_dir
-    if run_dir_rel.startswith(".."):
-        run_dir_value = run_dir
-    else:
-        run_dir_value = run_dir_rel
+    run_dir_value = run_dir if run_dir_rel.startswith("..") else run_dir_rel
     items.append({
         "kind": "config",
         "scope": "project",
@@ -108,12 +105,8 @@ def build_project_config_items(project_dir: str, run_dir: str,
         toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
     )
+    from chipcompiler.cli.param_handler import _maps_to_str
     for rp in resolved_params:
-        maps_to = rp.schema.maps_to
-        if isinstance(maps_to, str):
-            mapping = maps_to
-        else:
-            mapping = ", ".join(f"{k}.{v}" for k, v in maps_to.items())
         items.append({
             "kind": "param",
             "scope": "project",
@@ -121,7 +114,7 @@ def build_project_config_items(project_dir: str, run_dir: str,
             "value": rp.value,
             "default": rp.default,
             "source": rp.source,
-            "maps_to": mapping,
+            "maps_to": _maps_to_str(rp.schema.maps_to),
             "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project),
         })
 

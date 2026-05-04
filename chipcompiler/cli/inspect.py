@@ -50,17 +50,16 @@ def get_run_status(flow_data: dict) -> str:
     steps = _safe_steps(flow_data)
     if not steps:
         return "unstart"
-    for step in steps:
-        state = normalize_state(step.get("state", ""))
-        if state in ("ongoing", "pending"):
-            return "ongoing"
-        if state in ("incomplete", "invalid"):
-            return "failed"
-    all_success = all(normalize_state(s.get("state", "")) == "success" for s in steps)
-    if all_success:
+    states = {normalize_state(s.get("state", "")) for s in steps}
+    if states & {"ongoing", "pending"}:
+        return "ongoing"
+    if states & {"incomplete", "invalid"}:
+        return "failed"
+    if states == {"success"}:
         return "success"
-    all_unstart = all(normalize_state(s.get("state", "")) == "unstart" for s in steps)
-    return "unstart" if all_unstart else "failed"
+    if states == {"unstart"}:
+        return "unstart"
+    return "failed"
 
 
 ERROR_PATTERNS = re.compile(r"(error|failed|traceback)", re.IGNORECASE)

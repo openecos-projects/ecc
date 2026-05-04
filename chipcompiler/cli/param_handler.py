@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 
 from chipcompiler.cli.output import disclosure_cmd
 from chipcompiler.cli.params import (
@@ -198,7 +199,6 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
 
 def render_param_result(result, mode: OutputMode, file=None) -> bool:
     """Render param-specific output. Returns True if handled, False otherwise."""
-    import sys
     target = file or sys.stdout
 
     if mode == OutputMode.JSON:
@@ -218,7 +218,6 @@ def render_param_result(result, mode: OutputMode, file=None) -> bool:
 
 
 def render_param_list_text(records, file=None):
-    import sys
     target = file or sys.stdout
     groups: dict[str, list] = {}
     for r in records:
@@ -237,7 +236,6 @@ def render_param_list_text(records, file=None):
 
 
 def render_param_show_text(records, file=None):
-    import sys
     target = file or sys.stdout
     r = records[0]
 
@@ -252,7 +250,6 @@ def render_param_show_text(records, file=None):
 
 
 def render_param_set_text(records, file=None):
-    import sys
     target = file or sys.stdout
     r = records[0]
     status = r.get("status", "")
@@ -268,7 +265,6 @@ def render_param_set_text(records, file=None):
 
 
 def render_param_diff_text(records, file=None):
-    import sys
     target = file or sys.stdout
     if len(records) == 1 and records[0].get("diff_status") == "clean":
         print("  No overrides.", file=target)
@@ -294,11 +290,12 @@ def _find_config_path(project_dir: str) -> str | None:
 
 
 def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]]:
+    from chipcompiler.cli.config import load_project_config
+
     config_path = _find_config_path(project_dir)
     if config_path is None:
         return {}, []
 
-    from chipcompiler.cli.config import load_project_config
     cfg = load_project_config(config_path)
     errors = list(getattr(cfg, "_param_errors", []))
     toml_error = getattr(cfg, "_toml_error", None)
@@ -465,9 +462,7 @@ def _remove_scoped_param_key(text: str, group: str, name: str) -> str | None:
 def _format_toml_value(val: object) -> str:
     if isinstance(val, bool):
         return "true" if val else "false"
-    if isinstance(val, int):
-        return str(val)
-    if isinstance(val, float):
+    if isinstance(val, (int, float)):
         return str(val)
     if isinstance(val, str):
         escaped = val.replace("\\", "\\\\").replace('"', '\\"')

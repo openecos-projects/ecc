@@ -1,5 +1,6 @@
 import enum
 import re
+import sys
 
 
 class LineKind(enum.Enum):
@@ -137,16 +138,13 @@ def render_log_pretty(
     file=None,
     color: bool = True,
 ) -> None:
-    import sys
     target = file or sys.stdout
     annotated = annotate_log_lines(lines)
 
-    if color:
-        target.write(f"{_BOLD}[log]{_RESET} step={step}\n")
-        target.write(f"  {_DIM}source:{_RESET} {source}\n")
-    else:
-        target.write(f"[log] step={step}\n")
-        target.write(f"  source: {source}\n")
+    log_tag = f"{_BOLD}[log]{_RESET}" if color else "[log]"
+    source_label = f"  {_DIM}source:{_RESET}" if color else "  source:"
+    target.write(f"{log_tag} step={step}\n")
+    target.write(f"{source_label} {source}\n")
 
     for ll in annotated:
         label = _KIND_LABEL[ll.kind]
@@ -156,10 +154,8 @@ def render_log_pretty(
         else:
             target.write(f"  {label} {ll.text}\n")
 
-    if color:
-        target.write(f"  {_DIM}inspect:{_RESET} {inspect_cmd}\n")
-    else:
-        target.write(f"  inspect: {inspect_cmd}\n")
+    inspect_label = f"  {_DIM}inspect:{_RESET}" if color else "  inspect:"
+    target.write(f"{inspect_label} {inspect_cmd}\n")
 
 
 def _format_value(value) -> str:
@@ -184,7 +180,6 @@ def render_log_plain(
     inspect_cmd: str,
     file=None,
 ) -> None:
-    import sys
     target = file or sys.stdout
     records = build_log_records(step, source, lines, inspect_cmd)
     for rec in records:
@@ -192,7 +187,6 @@ def render_log_plain(
 
 
 def render_log_records_plain(records, file=None) -> None:
-    import sys
     target = file or sys.stdout
     for rec in records:
         _render_plain_record(rec, target)
@@ -203,7 +197,6 @@ def render_log_listing_pretty(
     file=None,
     color: bool = True,
 ) -> None:
-    import sys
     target = file or sys.stdout
 
     if color:
@@ -217,16 +210,10 @@ def render_log_listing_pretty(
         inspect = rec.get("inspect_cmd") or rec.get("inspect", "")
 
         if step:
-            if color:
-                target.write(f"  {_CYAN}{step}{_RESET}  {source}\n")
-                target.write(f"  {_DIM}inspect:{_RESET} {inspect}\n")
-            else:
-                target.write(f"  {step}  {source}\n")
-                target.write(f"  inspect: {inspect}\n")
+            step_label = f"  {_CYAN}{step}{_RESET}" if color else f"  {step}"
         else:
-            if color:
-                target.write(f"  {source}\n")
-                target.write(f"  {_DIM}inspect:{_RESET} {inspect}\n")
-            else:
-                target.write(f"  {source}\n")
-                target.write(f"  inspect: {inspect}\n")
+            step_label = ""
+
+        target.write(f"{step_label}  {source}\n")
+        inspect_label = f"  {_DIM}inspect:{_RESET}" if color else "  inspect:"
+        target.write(f"{inspect_label} {inspect}\n")

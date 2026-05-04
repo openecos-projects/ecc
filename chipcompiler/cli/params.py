@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -192,11 +191,7 @@ def is_known_key(key: str) -> bool:
 
 
 def validate_schema_record(schema: ParamSchema) -> list[str]:
-    errors: list[str] = []
-    for f in _REQUIRED_FIELDS:
-        if not getattr(schema, f, None):
-            errors.append(f"missing required field: {f}")
-    return errors
+    return [f"missing required field: {f}" for f in _REQUIRED_FIELDS if not getattr(schema, f, None)]
 
 
 # ---------------------------------------------------------------------------
@@ -229,31 +224,22 @@ def parse_value(raw: str, schema: ParamSchema) -> object:
     if ptype == "str":
         return raw
 
-    if ptype == "list[int]":
+    if ptype in ("list[int]", "list[float]", "list[str]"):
         stripped = raw.strip("[]() ")
         if not stripped:
             return []
         parts = [p.strip() for p in stripped.split(",")]
-        try:
-            return [int(p) for p in parts if p]
-        except ValueError:
-            raise ValueError(f"expected list[int] for {schema.param}, got '{raw}'")
-
-    if ptype == "list[float]":
-        stripped = raw.strip("[]() ")
-        if not stripped:
-            return []
-        parts = [p.strip() for p in stripped.split(",")]
-        try:
-            return [float(p) for p in parts if p]
-        except ValueError:
-            raise ValueError(f"expected list[float] for {schema.param}, got '{raw}'")
-
-    if ptype == "list[str]":
-        stripped = raw.strip("[]() ")
-        if not stripped:
-            return []
-        return [p.strip() for p in stripped.split(",") if p.strip()]
+        if ptype == "list[int]":
+            try:
+                return [int(p) for p in parts if p]
+            except ValueError:
+                raise ValueError(f"expected list[int] for {schema.param}, got '{raw}'")
+        if ptype == "list[float]":
+            try:
+                return [float(p) for p in parts if p]
+            except ValueError:
+                raise ValueError(f"expected list[float] for {schema.param}, got '{raw}'")
+        return [p for p in parts if p]
 
     raise ValueError(f"unsupported type '{ptype}' for {schema.param}")
 
