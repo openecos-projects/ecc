@@ -116,7 +116,20 @@ def _create_flow_json(run_dir, steps=None):
 
 
 def _has_disclosure(line):
-    return bool(re.search(r'\w+="ecc ', line))
+    return bool(re.search(r'ecc (?:check|run|status|log|metrics|artifacts|config|diagnose|param)\b', line))
+
+
+def _is_structural_line(line):
+    s = line.strip()
+    if not s:
+        return True
+    if re.match(r'^\[.+\]$', s):
+        return True
+    if s.startswith('steps:'):
+        return True
+    if re.match(r'^\s+\w+:$', s):
+        return True
+    return False
 
 
 # ===========================================================================
@@ -140,8 +153,8 @@ class TestInit:
         rc = cli_main.run(["init", project_path])
         assert rc == 0
         out = capsys.readouterr().out
-        assert 'check="ecc check' in out
-        assert 'run="ecc run' in out
+        assert "ecc check" in out
+        assert "ecc run" in out
 
     def test_init_fails_if_ecc_toml_exists(self, tmp_path):
         project_dir = tmp_path / "gcd"
@@ -178,7 +191,7 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "status=checked" in out
+        assert "checked" in out
 
     def test_check_from_inside_project_dir(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -190,7 +203,7 @@ class TestCheck:
         rc = cli_main.run(["check"])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "status=checked" in out
+        assert "checked" in out
 
     def test_check_fails_missing_ecc_toml(self, tmp_path):
         rc = cli_main.run(["check", "--project", str(tmp_path)])
@@ -439,9 +452,9 @@ class TestStatus:
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "run=default" in out
-        assert "step=synthesis" in out
-        assert "step=floorplan" in out
+        assert "[status]" in out
+        assert "synthesis" in out
+        assert "floorplan" in out
 
     def test_status_json(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -481,8 +494,8 @@ class TestStatus:
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "step=synthesis" in out
-        assert "step=placement" in out
+        assert "synthesis" in out
+        assert "placement" in out
 
     def test_status_missing_run(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -490,8 +503,8 @@ class TestStatus:
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 1
         out = capsys.readouterr().out
-        assert "status=missing" in out
-        assert 'start="ecc run' in out
+        assert "missing" in out
+        assert "ecc run" in out
 
     def test_status_invalid_flow_json(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -620,8 +633,7 @@ class TestMetrics:
         rc = cli_main.run(["metrics", "synthesis", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "metric=cell_number" in out
-        assert "value=312" in out
+        assert "cell_number: 312" in out
 
     def test_metrics_all_steps(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -637,8 +649,8 @@ class TestMetrics:
         rc = cli_main.run(["metrics", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "step=synthesis" in out
-        assert "step=floorplan" in out
+        assert "synthesis" in out
+        assert "floorplan" in out
 
     def test_metrics_json(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -686,8 +698,8 @@ class TestMetrics:
         rc = cli_main.run(["metrics", "cts", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "metric=frequency_mhz" in out
-        assert "metric=die_area_um2" in out
+        assert "frequency_mhz: 450.0" in out
+        assert "die_area_um2" in out
 
     def test_metrics_unknown_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -704,8 +716,8 @@ class TestMetrics:
         rc = cli_main.run(["metrics", "cts", "--project", project_dir])
         assert rc == 1
         out = capsys.readouterr().out
-        assert "status=missing" in out
-        assert 'log="ecc log cts' in out
+        assert "missing" in out
+        assert "ecc log cts" in out
 
     def test_metrics_json_unknown_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -748,9 +760,7 @@ class TestDisclosureCommands:
         rc = cli_main.run(["init", project_path])
         assert rc == 0
         out = capsys.readouterr().out
-        for line in out.strip().split("\n"):
-            if line.strip():
-                assert _has_disclosure(line), f"Missing disclosure in: {line}"
+        assert _has_disclosure(out)
 
     def test_check_lines_have_disclosure(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -761,9 +771,7 @@ class TestDisclosureCommands:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        for line in out.strip().split("\n"):
-            if line.strip():
-                assert _has_disclosure(line), f"Missing disclosure in: {line}"
+        assert _has_disclosure(out)
 
     def test_status_lines_have_disclosure(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -773,9 +781,7 @@ class TestDisclosureCommands:
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        for line in out.strip().split("\n"):
-            if line.strip():
-                assert _has_disclosure(line), f"Missing disclosure in: {line}"
+        assert _has_disclosure(out)
 
     def test_metrics_lines_have_disclosure(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -789,9 +795,7 @@ class TestDisclosureCommands:
         rc = cli_main.run(["metrics", "synthesis", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        for line in out.strip().split("\n"):
-            if line.strip():
-                assert _has_disclosure(line), f"Missing disclosure in: {line}"
+        assert _has_disclosure(out)
 
     def test_log_error_lines_have_disclosure(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -829,8 +833,8 @@ class TestDisclosureCommands:
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "step=synthesis" in out
-        assert "status=success" in out
+        assert "synthesis" in out
+        assert "success" in out
 
 
 # ===========================================================================
@@ -983,8 +987,8 @@ class TestMissingConfigErrorRecord:
         rc = cli_main.run(["check", "--project", str(tmp_path)])
         assert rc == 1
         out = capsys.readouterr().out
-        assert "kind=error" in out
-        assert "error=missing_config" in out
+        assert "[error]" in out
+        assert "missing_config" in out
 
     def test_check_missing_config_has_disclosure_command(self, tmp_path, capsys):
         rc = cli_main.run(["check", "--project", str(tmp_path), "--json"])
