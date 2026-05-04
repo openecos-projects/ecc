@@ -1103,7 +1103,7 @@ class TestDiagnoseIssueSpecificEvidence:
         assert rc == 1
         out = capsys.readouterr().out
         log_errors_line = [l for l in out.strip().split("\n") if "issue=log_errors" in l][0]
-        assert "ecc log cts --errors" in log_errors_line
+        assert "ecc log cts" in log_errors_line
 
     def test_missing_metrics_uses_metrics_command(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)

@@ -82,7 +82,7 @@ def status(args, ctx: CommandContext) -> CommandResult:
             "status": normalize_state(step.get("state", "")),
             "runtime": step.get("runtime", "") or None,
             "metrics_cmd": disclosure_cmd(f"ecc metrics {step_token}", project, ctx.run_id),
-            "log_cmd": disclosure_cmd(f"ecc log {step_token} --errors", project, ctx.run_id),
+            "log_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
         })
 
     return CommandResult.ok(records)
@@ -92,12 +92,11 @@ def log(args, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.inspect import (
         discover_logs,
         discover_step_dirs,
-        filter_errors,
         read_log_file,
     )
+    from chipcompiler.cli.log_view import build_log_records
 
     step_token = args.step
-    errors_only = args.errors
     project = ctx.project
 
     if step_token is None:
@@ -106,7 +105,7 @@ def log(args, ctx: CommandContext) -> CommandResult:
         for lf in discover_logs(ctx.run_dir):
             records.append({
                 "log": os.path.relpath(lf, ctx.run_dir),
-                "inspect": disclosure_cmd("ecc log", project, ctx.run_id),
+                "inspect_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
             })
 
         step_dirs = discover_step_dirs(ctx.run_dir)
@@ -114,8 +113,8 @@ def log(args, ctx: CommandContext) -> CommandResult:
             for lf in discover_logs(ctx.run_dir, token):
                 records.append({
                     "step": token,
-                    "log": os.path.relpath(lf, ctx.run_dir),
-                    "inspect": disclosure_cmd(f"ecc log {token} --errors", project, ctx.run_id),
+                    "source": os.path.relpath(lf, ctx.run_dir),
+                    "inspect_cmd": disclosure_cmd(f"ecc log {token}", project, ctx.run_id),
                 })
 
         if not records:
@@ -131,7 +130,7 @@ def log(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err([{
             "step": step_token,
             "status": "unknown_step",
-            "inspect": disclosure_cmd("ecc status", project, ctx.run_id),
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
         }])
 
     log_files = discover_logs(ctx.run_dir, step_token)
@@ -139,32 +138,30 @@ def log(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err([{
             "step": step_token,
             "log_status": "missing",
-            "log_cmd": disclosure_cmd(f"ecc log {step_token} --errors", project, ctx.run_id),
+            "source": os.path.relpath(
+                os.path.join(step_dirs[step_token], "log"), ctx.run_dir,
+            ),
+            "inspect_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
         }])
 
-    matched_lines = []
-    for lf in log_files:
-        raw = read_log_file(lf)
-        filtered = filter_errors(raw) if errors_only else raw
-        for line in filtered:
-            matched_lines.append((lf, line))
+    inspect_cmd = disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id)
 
-    if not matched_lines:
+    all_records = []
+    for lf in log_files:
+        source = os.path.relpath(lf, ctx.run_dir)
+        raw = read_log_file(lf)
+        if not raw:
+            continue
+        all_records.extend(build_log_records(step_token, source, raw, inspect_cmd))
+
+    if not all_records:
         return CommandResult.ok([{
             "step": step_token,
-            "log_status": "no_matching_lines",
-            "log_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
+            "log_status": "empty",
+            "inspect_cmd": inspect_cmd,
         }])
 
-    records = []
-    for lf, line in matched_lines:
-        records.append({
-            "step": step_token,
-            "source": os.path.relpath(lf, ctx.run_dir),
-            "line": line,
-            "log_cmd": disclosure_cmd(f"ecc log {step_token} --errors", project, ctx.run_id),
-        })
-    return CommandResult.ok(records)
+    return CommandResult.ok(all_records)
 
 
 def metrics(args, ctx: CommandContext) -> CommandResult:
@@ -191,7 +188,7 @@ def metrics(args, ctx: CommandContext) -> CommandResult:
                                      f"{_internal_from_token(step_token)}_metrics.json"),
                         ctx.run_dir,
                     ),
-                    "log": disclosure_cmd(f"ecc log {step_token} --errors", project, ctx.run_id),
+                    "log": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
                 }])
             return CommandResult.err([{
                 "step": step_token,
@@ -214,7 +211,7 @@ def metrics(args, ctx: CommandContext) -> CommandResult:
                 "metric_step": token,
                 "status": "corrupt",
                 "path": os.path.relpath(path, ctx.run_dir),
-                "log_cmd": disclosure_cmd(f"ecc log {token} --errors", project, ctx.run_id),
+                "log_cmd": disclosure_cmd(f"ecc log {token}", project, ctx.run_id),
             })
             continue
         for raw_key, value in data.items():
@@ -257,7 +254,7 @@ def artifacts(args, ctx: CommandContext) -> CommandResult:
                 "step": step_token,
                 "artifacts_status": "none",
                 "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                "log": disclosure_cmd(f"ecc log {step_token} --errors", project, ctx.run_id),
+                "log": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
             }])
         return CommandResult.ok([{
             "artifacts_status": "none",
@@ -277,7 +274,7 @@ def artifacts(args, ctx: CommandContext) -> CommandResult:
         if a["role"] == "analysis":
             line_fields["metrics"] = disclosure_cmd(f"ecc metrics {a['step']}", project, ctx.run_id)
         if a["role"] == "log":
-            line_fields["inspect"] = disclosure_cmd(f"ecc log {a['step']} --errors", project, ctx.run_id)
+            line_fields["inspect"] = disclosure_cmd(f"ecc log {a['step']}", project, ctx.run_id)
         if a["role"] in ("output", "report", "analysis", "log"):
             line_fields["config"] = disclosure_cmd(f"ecc config {a['step']} --resolved", project, ctx.run_id)
         records.append(line_fields)

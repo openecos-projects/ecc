@@ -204,7 +204,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
             except ValueError:
                 rel_log = log_path
 
-        inspect = disclosure_cmd(f"ecc log {step_token} --errors", project)
+        inspect = disclosure_cmd(f"ecc log {step_token}", project)
 
         is_success = state == StateEnum.Success
         renderer.finish_step(step_token, tool, status, runtime, rel_log, inspect, is_success)

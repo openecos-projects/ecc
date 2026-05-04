@@ -421,7 +421,7 @@ class TestRunFlowWithProgress:
         buf = FakeTTYStderr(True)
         run_flow_with_progress(flow, _make_ctx(), "myproject", buf)
         plain = _strip_ansi("".join(buf.written))
-        assert "  inspect: ecc log synthesis --errors --project myproject\n" in plain
+        assert "  inspect: ecc log synthesis --project myproject\n" in plain
 
     def test_summary_includes_log_detail_line(self, tmp_path):
         log_file = tmp_path / "synth.log"
