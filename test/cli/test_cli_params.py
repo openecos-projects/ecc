@@ -4,7 +4,7 @@ import os
 from chipcompiler.cli import main as cli_main
 
 
-def _create_valid_project(tmp_path, name="gcd", pdk_root=None):
+def _create_valid_project(tmp_path, name="gcd", pdk_root=None, freq=100.0):
     project_dir = tmp_path / name
     project_dir.mkdir(exist_ok=True)
     (project_dir / "rtl").mkdir(exist_ok=True)
@@ -23,7 +23,7 @@ name = "{name}"
 top = "{name}"
 rtl = ["rtl/gcd.v"]
 clock_port = "clk"
-frequency_mhz = 100.0
+frequency_mhz = {freq}
 
 [pdk]
 name = "ics55"
@@ -229,7 +229,7 @@ class TestRunSet:
         assert rc == 0
 
         params = capture["kwargs"]["parameters"]
-        assert params.get("Target density") == 0.65
+        assert params.get("DreamPlace", {}).get("target_density") == 0.65
 
     def test_run_set_rejects_unknown_key(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -482,7 +482,10 @@ class TestResolvedListValues:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         for r in data["records"]:
-            assert r["source"] == "default"
+            if r["param"] == "design.frequency_mhz":
+                assert r["source"] == "ecc.toml"
+            else:
+                assert r["source"] == "default"
 
 
 class TestDiffFiltering:
@@ -1058,3 +1061,78 @@ class TestListDefaultDiffFiltering:
         margin = next((r for r in data["records"] if r.get("param") == "floorplan.core_margin"), None)
         assert margin is not None
         assert margin["value"] == [4, 4]
+
+
+class TestZeroFrequencyRejected:
+    """ecc param set design.frequency_mhz 0 must be rejected."""
+
+    def test_set_zero_rejected(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        rc = cli_main.run(["param", "set", "design.frequency_mhz", "0", "--project", project_dir])
+        assert rc == 1
+
+    def test_cli_set_zero_rejected(self, tmp_path):
+        project_dir = _create_valid_project(tmp_path)
+        rc = cli_main.run([
+            "run", "--project", project_dir,
+            "--set", "design.frequency_mhz=0",
+        ])
+        assert rc == 1
+
+
+class TestDesignFrequencySeeded:
+    """ecc param list/show must reflect [design] frequency_mhz."""
+
+    def test_list_shows_design_frequency(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path, freq=200.0)
+        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        freq = next(r for r in data["records"] if r["param"] == "design.frequency_mhz")
+        assert freq["value"] == 200.0
+
+    def test_show_shows_design_frequency(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path, freq=200.0)
+        rc = cli_main.run(["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["value"] == 200.0
+
+    def test_param_override_beats_design_frequency(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path, freq=200.0)
+        cli_main.run(["param", "set", "design.frequency_mhz", "300", "--project", project_dir])
+        capsys.readouterr()
+        rc = cli_main.run(["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["value"] == 300.0
+        assert data["records"][0]["source"] == "ecc.toml"
+
+
+class TestMalformedTomlRejected:
+    """ecc param list/show/diff must reject syntactically malformed ecc.toml."""
+
+    def _write_malformed_toml(self, project_dir):
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "w") as f:
+            f.write('[design\nname = "gcd"\n')
+
+    def test_param_list_rejects_malformed(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        self._write_malformed_toml(project_dir)
+        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["error"] == "invalid_param_config"
+
+    def test_param_show_rejects_malformed(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        self._write_malformed_toml(project_dir)
+        rc = cli_main.run(["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"])
+        assert rc == 1
+
+    def test_param_diff_rejects_malformed(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        self._write_malformed_toml(project_dir)
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        assert rc == 1

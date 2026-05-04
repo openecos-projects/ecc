@@ -57,7 +57,7 @@ class TestSchemaRegistry:
 
     def test_cli_keys_map_to_backend_names(self):
         density = lookup_schema("place.target_density")
-        assert density.maps_to == "Target density"
+        assert density.maps_to == {"DreamPlace": "target_density"}
 
         fanout = lookup_schema("synth.max_fanout")
         assert fanout.maps_to == "Max fanout"
@@ -247,7 +247,7 @@ class TestBackendMapping:
             source="cli", schema=schema,
         )
         result = build_backend_overrides([rp])
-        assert result == {"Target density": 0.65}
+        assert result == {"DreamPlace": {"target_density": 0.65}}
 
     def test_nested_key_mapping(self):
         schema = lookup_schema("floorplan.core_util")

@@ -301,7 +301,13 @@ def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]
     from chipcompiler.cli.config import load_project_config
     cfg = load_project_config(config_path)
     errors = list(getattr(cfg, "_param_errors", []))
-    return cfg.params_overrides, errors
+    toml_error = getattr(cfg, "_toml_error", None)
+    if toml_error:
+        errors.insert(0, f"malformed ecc.toml: {toml_error}")
+    overrides = dict(cfg.params_overrides)
+    if "design.frequency_mhz" not in overrides and cfg.design_frequency_mhz > 0:
+        overrides["design.frequency_mhz"] = cfg.design_frequency_mhz
+    return overrides, errors
 
 
 def _write_param_to_toml(config_path: str, key: str, value: object) -> None:
