@@ -356,6 +356,44 @@ def _find_table_span(text: str, table_name: str) -> tuple[int, int] | None:
     return None
 
 
+def _extend_multiline_value(text: str, match_end: int) -> int:
+    """Extend match end past continuation lines for multiline TOML values.
+
+    After matching `key = ...` on one line, consume subsequent lines if the
+    value has unclosed brackets (arrays or inline tables).
+    """
+    line_start = text.rfind("\n", 0, match_end) + 1
+    matched_line = text[line_start:match_end]
+
+    depth = 0
+    eq_pos = matched_line.find("=")
+    if eq_pos >= 0:
+        for ch in matched_line[eq_pos + 1:]:
+            if ch in ("[", "{"):
+                depth += 1
+            elif ch in ("]", "}"):
+                depth -= 1
+
+    if depth <= 0:
+        return match_end
+
+    pos = match_end
+    while pos < len(text) and depth > 0:
+        ch = text[pos]
+        if ch in ("[", "{"):
+            depth += 1
+        elif ch in ("]", "}"):
+            depth -= 1
+        pos += 1
+
+    while pos < len(text) and text[pos] in (" ", "\t"):
+        pos += 1
+    if pos < len(text) and text[pos] == "\n":
+        pos += 1
+
+    return pos
+
+
 def _apply_scoped_param_edit(text: str, group: str, name: str, value: object) -> str:
     value_str = _format_toml_value(value)
     target_table = f"params.{group}"
@@ -380,8 +418,9 @@ def _apply_scoped_param_edit(text: str, group: str, name: str, value: object) ->
 
     if key_match:
         indent = key_match.group(1)
+        end = _extend_multiline_value(section_body, key_match.end())
         new_line = f"{indent}{name} = {value_str}"
-        new_body = section_body[:key_match.start()] + new_line + section_body[key_match.end():]
+        new_body = section_body[:key_match.start()] + new_line + section_body[end:]
         return text[:body_start] + new_body + text[body_end:]
     else:
         insert = f"{name} = {value_str}\n"
@@ -402,7 +441,11 @@ def _remove_scoped_param_key(text: str, group: str, name: str) -> str | None:
     if not key_match:
         return None
 
-    new_body = section_body[:key_match.start()] + section_body[key_match.end():]
+    end = _extend_multiline_value(section_body, key_match.end())
+    # Consume trailing newline after multiline value
+    if section_body[end:end + 1] == "\n":
+        end += 1
+    new_body = section_body[:key_match.start()] + section_body[end:]
     remaining_keys = [l for l in new_body.strip().split("\n") if l.strip()]
     if not remaining_keys:
         header_match = None

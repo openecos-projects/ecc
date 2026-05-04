@@ -891,7 +891,76 @@ class TestIndentedTomlKeys:
         assert after.count("target_density") == 1
 
 
-class TestMalformedCliProvenance:
+class TestMultilineTomlValues:
+    """Scoped TOML edit must handle multiline array values."""
+
+    def test_set_replaces_multiline_array(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "floorplan.core_margin", "[4, 4]", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        assert "2," not in after
+        assert after.count("core_margin") == 1
+        assert "[4, 4]" in after
+
+    def test_unset_removes_multiline_array(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "unset", "floorplan.core_margin", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        assert "core_margin" not in after
+
+    def test_set_multiline_then_show(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "floorplan.core_margin", "[4, 4]", "--project", project_dir])
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "show", "floorplan.core_margin", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["value"] == [4, 4]
+
+    def test_set_preserves_adjacent_key_after_multiline(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += '\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n  core_util = 0.5\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        cli_main.run(["param", "set", "floorplan.core_margin", "[4, 4]", "--project", project_dir])
+        capsys.readouterr()
+
+        with open(toml_path) as f:
+            after = f.read()
+        assert "core_util = 0.5" in after
+        assert after.count("core_margin") == 1
     """config --resolved must error on malformed/invalid CLI provenance."""
 
     def _setup_run_dir(self, project_dir):
