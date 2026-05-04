@@ -22,17 +22,17 @@ def param(args, ctx: CommandContext) -> CommandResult:
     )
 
     subcmd = getattr(args, "param_command", None)
-    if subcmd == "list":
-        return param_list(args, ctx)
-    if subcmd == "show":
-        return param_show(args, ctx)
-    if subcmd == "set":
-        return param_set(args, ctx)
-    if subcmd == "unset":
-        return param_unset(args, ctx)
-    if subcmd == "diff":
-        return param_diff(args, ctx)
-    return CommandResult.err([error_record("missing_subcommand")], exit_code=1)
+    handlers = {
+        "list": param_list,
+        "show": param_show,
+        "set": param_set,
+        "unset": param_unset,
+        "diff": param_diff,
+    }
+    handler = handlers.get(subcmd)
+    if handler is None:
+        return CommandResult.err([error_record("missing_subcommand")], exit_code=1)
+    return handler(args, ctx)
 
 
 def status(args, ctx: CommandContext) -> CommandResult:
@@ -496,16 +496,13 @@ def check(args, ctx: CommandContext) -> CommandResult:
     errors = validate_project_config(cfg)
 
     if errors:
-        records = []
-        for err in errors:
-            records.append({
-                "check": "config",
-                "status": "fail",
-                "reason": err,
-                "source": "ecc.toml",
-                "inspect": disclosure_cmd("ecc check --json", project),
-            })
-        return CommandResult.err(records)
+        return CommandResult.err([{
+            "check": "config",
+            "status": "fail",
+            "reason": err,
+            "source": "ecc.toml",
+            "inspect": disclosure_cmd("ecc check --json", project),
+        } for err in errors])
 
     records = [{
         "project": cfg.design_name,
@@ -554,14 +551,11 @@ def run(args, ctx: CommandContext) -> CommandResult:
     cfg = load_project_config(config_path)
     errors = validate_project_config(cfg)
     if errors:
-        records = []
-        for err in errors:
-            records.append({
-                "kind": "error",
-                "error": "config_error",
-                "reason": err,
-            })
-        return CommandResult.err(records)
+        return CommandResult.err([{
+            "kind": "error",
+            "error": "config_error",
+            "reason": err,
+        } for err in errors])
 
     # Parse and validate --set overrides before workspace creation
     cli_overrides = {}
@@ -570,14 +564,11 @@ def run(args, ctx: CommandContext) -> CommandResult:
         from chipcompiler.cli.params import parse_cli_overrides
         cli_overrides, set_errors = parse_cli_overrides(raw_sets)
         if set_errors:
-            records = []
-            for err in set_errors:
-                records.append({
-                    "kind": "error",
-                    "error": "invalid_parameter",
-                    "reason": err,
-                })
-            return CommandResult.err(records)
+            return CommandResult.err([{
+                "kind": "error",
+                "error": "invalid_parameter",
+                "reason": err,
+            } for err in set_errors])
 
     run_dir = os.path.join(project_dir, "runs", "default")
     flow_json = os.path.join(run_dir, "home", "flow.json")
@@ -647,11 +638,11 @@ def run(args, ctx: CommandContext) -> CommandResult:
 
     # Persist CLI parameter provenance for config --resolved inspection
     if cli_overrides:
-        import json as _json
+        import json
         provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
         os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
         with open(provenance_path, "w") as _f:
-            _json.dump(cli_overrides, _f)
+            json.dump(cli_overrides, _f)
 
     try:
         engine_flow = EngineFlow(workspace=workspace)

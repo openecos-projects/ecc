@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 
@@ -147,21 +148,22 @@ def _render_param_text(args, result) -> None:
         render_result(result, OutputMode.PLAIN)
         return
 
+    renderers = {
+        "list": render_param_list_text,
+        "show": render_param_show_text,
+        "set": render_param_set_text,
+        "unset": render_param_set_text,
+        "diff": render_param_diff_text,
+    }
     subcmd = getattr(args, "param_command", None)
-    if subcmd == "list":
-        render_param_list_text(result.records)
-    elif subcmd == "show":
-        render_param_show_text(result.records)
-    elif subcmd in ("set", "unset"):
-        render_param_set_text(result.records)
-    elif subcmd == "diff":
-        render_param_diff_text(result.records)
+    renderer = renderers.get(subcmd)
+    if renderer:
+        renderer(result.records)
     else:
         render_result(result, OutputMode.PLAIN)
 
 
 def _should_colorize():
-    import os
     if not sys.stdout.isatty():
         return False
     if os.environ.get("NO_COLOR") is not None:

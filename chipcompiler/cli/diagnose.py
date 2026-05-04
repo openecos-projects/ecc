@@ -78,6 +78,26 @@ def _make_issue(issue: str, severity: str, run: str,
     return obj
 
 
+def _check_step_artifacts(
+    issues: list[dict], run_dir: str, token: str, step_path: str,
+    display_run: str, project: str | None, run_id: str | None,
+) -> None:
+    error_count = _count_log_errors(run_dir, token)
+    if error_count > 0:
+        issues.append(_make_issue("log_errors", "error", display_run,
+                                  step=token, count=error_count,
+                                  project=project, run_id=run_id))
+    if not _has_metrics(run_dir, token):
+        issues.append(_make_issue("missing_metrics", "warning", display_run,
+                                  step=token, project=project, run_id=run_id))
+    if not _has_investigation_files(step_path):
+        issues.append(_make_issue("missing_artifacts", "warning", display_run,
+                                  step=token, project=project, run_id=run_id))
+    if not _has_config_files(step_path):
+        issues.append(_make_issue("config_unavailable", "info", display_run,
+                                  step=token, project=project, run_id=run_id))
+
+
 def build_diagnose_issues(run_dir: str, step_token: str | None = None,
                           project: str | None = None,
                           run_id: str | None = None) -> tuple[list[dict], int]:
@@ -115,6 +135,7 @@ def build_diagnose_issues(run_dir: str, step_token: str | None = None,
             issues.append(_make_issue("unknown_step", "error", display_run,
                                       step=step_token, project=project, run_id=run_id))
             return issues, 1
+
     for s in steps:
         token = normalize_step_name(s.get("name", ""))
         if step_token is not None and token != step_token:
@@ -139,23 +160,10 @@ def build_diagnose_issues(run_dir: str, step_token: str | None = None,
                                       project=project, run_id=run_id))
 
         if token in step_dirs:
-            error_count = _count_log_errors(run_dir, token)
-            if error_count > 0:
-                issues.append(_make_issue("log_errors", "error", display_run,
-                                          step=token, count=error_count,
-                                          project=project, run_id=run_id))
-
-            if not _has_metrics(run_dir, token):
-                issues.append(_make_issue("missing_metrics", "warning", display_run,
-                                          step=token, project=project, run_id=run_id))
-
-            if not _has_investigation_files(step_dirs[token]):
-                issues.append(_make_issue("missing_artifacts", "warning", display_run,
-                                          step=token, project=project, run_id=run_id))
-
-            if not _has_config_files(step_dirs[token]):
-                issues.append(_make_issue("config_unavailable", "info", display_run,
-                                          step=token, project=project, run_id=run_id))
+            _check_step_artifacts(
+                issues, run_dir, token, step_dirs[token],
+                display_run, project, run_id,
+            )
         else:
             issues.append(_make_issue("missing_metrics", "warning", display_run,
                                       step=token, project=project, run_id=run_id))
@@ -168,20 +176,10 @@ def build_diagnose_issues(run_dir: str, step_token: str | None = None,
     if step_token is not None:
         dir_only_tokens &= {step_token}
     for token in sorted(dir_only_tokens):
-        error_count = _count_log_errors(run_dir, token)
-        if error_count > 0:
-            issues.append(_make_issue("log_errors", "error", display_run,
-                                      step=token, count=error_count,
-                                      project=project, run_id=run_id))
-        if not _has_metrics(run_dir, token):
-            issues.append(_make_issue("missing_metrics", "warning", display_run,
-                                      step=token, project=project, run_id=run_id))
-        if not _has_investigation_files(step_dirs[token]):
-            issues.append(_make_issue("missing_artifacts", "warning", display_run,
-                                      step=token, project=project, run_id=run_id))
-        if not _has_config_files(step_dirs[token]):
-            issues.append(_make_issue("config_unavailable", "info", display_run,
-                                      step=token, project=project, run_id=run_id))
+        _check_step_artifacts(
+            issues, run_dir, token, step_dirs[token],
+            display_run, project, run_id,
+        )
 
     has_error = any(i.get("severity") == "error" for i in issues)
     return issues, 1 if has_error else 0
