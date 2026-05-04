@@ -34,7 +34,7 @@ def read_flow_json(run_dir: str) -> dict | str | None:
     try:
         with open(path) as f:
             data = json.load(f)
-        return data if isinstance(data, dict) else None
+        return data if isinstance(data, dict) else CORRUPT_FLOW_JSON
     except (json.JSONDecodeError, OSError):
         return CORRUPT_FLOW_JSON
 
@@ -86,6 +86,13 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
             token = normalize_step_name(name)
             result[token] = full
     return result
+
+
+def get_flow_step_names(run_dir: str) -> set[str]:
+    flow_data = read_flow_json(run_dir)
+    if not isinstance(flow_data, dict):
+        return set()
+    return {normalize_step_name(s.get("name", "")) for s in _safe_steps(flow_data) if s.get("name")}
 
 
 def _list_files(directory: str) -> list[str]:

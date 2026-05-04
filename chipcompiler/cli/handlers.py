@@ -178,6 +178,7 @@ def metrics(args, ctx: CommandContext) -> CommandResult:
         _internal_from_token,
         discover_metrics,
         discover_step_dirs,
+        get_flow_step_names,
         read_metrics,
     )
 
@@ -188,6 +189,7 @@ def metrics(args, ctx: CommandContext) -> CommandResult:
     if not metrics_files:
         if step_token is not None:
             step_dirs = discover_step_dirs(ctx.run_dir)
+            flow_steps = get_flow_step_names(ctx.run_dir)
             if step_token in step_dirs:
                 return CommandResult.err([{
                     "metric_step": step_token,
@@ -197,6 +199,12 @@ def metrics(args, ctx: CommandContext) -> CommandResult:
                                      f"{_internal_from_token(step_token)}_metrics.json"),
                         ctx.run_dir,
                     ),
+                    "log": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
+                }])
+            if step_token in flow_steps:
+                return CommandResult.err([{
+                    "metric_step": step_token,
+                    "status": "missing",
                     "log": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
                 }])
             return CommandResult.err([{
