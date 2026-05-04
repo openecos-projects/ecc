@@ -1246,6 +1246,38 @@ class TestLogListingMode:
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
         assert any("step" in o for o in objects)
 
+    def test_listing_plain_step_logs(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("content\n")
+
+        rc = cli_main.run(["log", "--plain", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "step=synthesis" in out
+        assert "source=" in out
+        assert "inspect_cmd=" in out
+        assert "line_no=" not in out
+
+    def test_listing_plain_run_level_logs(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        log_dir = os.path.join(run_dir, "log")
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, "flow.log"), "w") as f:
+            f.write("log content\n")
+
+        rc = cli_main.run(["log", "--plain", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "log=" in out
+        assert "inspect_cmd=" in out
+        assert "line_no=" not in out
+        assert "kind=" not in out
+
 
 class TestLogErrorCases:
     """AC-9: Error cases are structured and readable."""
