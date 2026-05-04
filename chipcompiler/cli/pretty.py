@@ -17,9 +17,11 @@ RESET = "\x1b[0m"
 # --- Color gating ---
 
 
-def supports_color(file=None, env=None):
+def supports_color(file=None, env=None, mode=None):
     if env is None:
         env = os.environ
+    if mode is not None and mode != OutputMode.TEXT:
+        return False
     target = file or sys.stdout
     if not hasattr(target, "isatty") or not target.isatty():
         return False
@@ -412,21 +414,21 @@ def render_diagnose(records, file=None, color=True):
 
 def render_error(records, file=None, color=True):
     target = file or sys.stdout
-    first = records[0]
-    error = first.get("error", first.get("kind", "error"))
-    reason = first.get("reason", "")
     target.write(f"{render_header('error', color)}\n")
-    target.write(f"  {status_style(error, color)}")
-    if reason:
-        target.write(f" {reason}")
-    target.write("\n")
-    for key, value in first.items():
-        if key in ("kind", "error", "reason"):
-            continue
-        if value is None:
-            continue
-        dk = display_key(key)
-        target.write(render_field(dk, value, color, dim_label=True) + "\n")
+    for record in records:
+        error = record.get("error", record.get("kind", "error"))
+        reason = record.get("reason", "")
+        target.write(f"  {status_style(error, color)}")
+        if reason:
+            target.write(f" {reason}")
+        target.write("\n")
+        for key, value in record.items():
+            if key in ("kind", "error", "reason"):
+                continue
+            if value is None:
+                continue
+            dk = display_key(key)
+            target.write(render_field(dk, value, color, dim_label=True) + "\n")
     target.write("\n")
 
 

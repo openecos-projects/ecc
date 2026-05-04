@@ -104,13 +104,7 @@ def build_log_records(
 
 # --- Pretty rendering ---
 
-_BOLD = "\x1b[1m"
-_DIM = "\x1b[2m"
-_RED = "\x1b[31m"
-_YELLOW = "\x1b[33m"
-_CYAN = "\x1b[36m"
-_BLUE = "\x1b[34m"
-_RESET = "\x1b[0m"
+from chipcompiler.cli.pretty import BOLD, DIM, RED, YELLOW, BLUE, CYAN, RESET, style
 
 _KIND_LABEL = {
     LineKind.ERROR: "error",
@@ -122,11 +116,11 @@ _KIND_LABEL = {
 }
 
 _KIND_COLOR = {
-    LineKind.ERROR: _RED,
-    LineKind.WARNING: _YELLOW,
-    LineKind.TRACEBACK: _YELLOW,
-    LineKind.INFO: _BLUE,
-    LineKind.SECTION: _CYAN,
+    LineKind.ERROR: RED,
+    LineKind.WARNING: YELLOW,
+    LineKind.TRACEBACK: YELLOW,
+    LineKind.INFO: BLUE,
+    LineKind.SECTION: CYAN,
 }
 
 
@@ -141,8 +135,8 @@ def render_log_pretty(
     target = file or sys.stdout
     annotated = annotate_log_lines(lines)
 
-    log_tag = f"{_BOLD}[log]{_RESET}" if color else "[log]"
-    source_label = f"  {_DIM}source:{_RESET}" if color else "  source:"
+    log_tag = style("[log]", BOLD, color)
+    source_label = f"  {style('source:', DIM, color)}" if color else "  source:"
     target.write(f"{log_tag} step={step}\n")
     target.write(f"{source_label} {source}\n")
 
@@ -150,11 +144,11 @@ def render_log_pretty(
         label = _KIND_LABEL[ll.kind]
         if color and ll.kind in _KIND_COLOR:
             code = _KIND_COLOR[ll.kind]
-            target.write(f"  {code}{label}{_RESET} {ll.text}\n")
+            target.write(f"  {code}{label}{RESET} {ll.text}\n")
         else:
             target.write(f"  {label} {ll.text}\n")
 
-    inspect_label = f"  {_DIM}inspect:{_RESET}" if color else "  inspect:"
+    inspect_label = f"  {style('inspect:', DIM, color)}" if color else "  inspect:"
     target.write(f"{inspect_label} {inspect_cmd}\n")
 
 
