@@ -240,7 +240,7 @@ def _render_log_plain(result) -> None:
         render_log_records_plain(records)
         return
 
-    render_log_records_plain(records)
+    render_result(result, OutputMode.PLAIN)
 
 
 def run(argv: Sequence[str] | None = None) -> int:
