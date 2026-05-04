@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     log_parser.add_argument("step", nargs="?", default=None, help="Step name")
     log_parser.add_argument("--errors", action="store_true",
                             help=argparse.SUPPRESS)
+    log_parser.add_argument("--json", action="store_true", help="JSON output")
     log_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
     log_parser.add_argument("--jsonl", action="store_true", help="JSONL output")
     log_parser.add_argument("--run-id", default=None, dest="run_id",

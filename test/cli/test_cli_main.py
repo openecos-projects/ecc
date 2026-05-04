@@ -1206,6 +1206,37 @@ class TestLogJsonlMode:
         assert "\x1b[" not in out
 
 
+class TestLogJsonMode:
+    """ecc log --json must produce JSON envelope output."""
+
+    def test_json_step_output(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("Error: bad\nINFO: ok\n")
+
+        rc = cli_main.run(["log", "synthesis", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "records" in data
+        assert len(data["records"]) == 2
+
+    def test_json_listing_output(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("content\n")
+
+        rc = cli_main.run(["log", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "records" in data
+
+
 class TestLogListingMode:
     """AC-7: ecc log without step lists available logs."""
 

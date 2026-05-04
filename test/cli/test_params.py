@@ -243,7 +243,7 @@ class TestBackendMapping:
     def test_flat_key_mapping(self):
         schema = lookup_schema("place.target_density")
         rp = ResolvedParam(
-            param="place.target_density", value=0.65, default=0.3,
+            param="place.target_density", value=0.65, default=0.8,
             source="cli", schema=schema,
         )
         result = build_backend_overrides([rp])

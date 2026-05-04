@@ -86,7 +86,7 @@ class TestParamShow:
         data = json.loads(capsys.readouterr().out)
         record = data["records"][0]
         assert record["param"] == "place.target_density"
-        assert record["default"] == 0.3
+        assert record["default"] == 0.8
         assert "source" in record
         assert "maps_to" in record
 
@@ -505,7 +505,7 @@ class TestDiffFiltering:
 
     def test_diff_clean_when_set_to_default(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        schema_default = 0.3
+        schema_default = 0.8
         cli_main.run(["param", "set", "place.target_density", str(schema_default), "--project", project_dir])
         capsys.readouterr()
 
