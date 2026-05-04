@@ -1095,6 +1095,26 @@ class TestLogTracebackComplete:
         assert objects[1]["kind"] == "traceback"
         assert objects[2]["kind"] == "error"
 
+    def test_keyboard_interrupt_jsonl_classified_as_error(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write(
+                "Traceback (most recent call last):\n"
+                '  File "a.py", line 1\n'
+                "KeyboardInterrupt\n"
+            )
+
+        rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
+        assert objects[0]["kind"] == "traceback"
+        assert objects[1]["kind"] == "traceback"
+        assert objects[2]["kind"] == "error"
+        assert objects[2]["line"] == "KeyboardInterrupt"
+
 
 class TestLogPlainMode:
     """AC-5: --plain emits full-content stable line records."""
@@ -1130,6 +1150,23 @@ class TestLogPlainMode:
         assert rc == 0
         out = capsys.readouterr().out
         assert "\x1b[" not in out
+
+    def test_plain_stable_quoting_for_special_chars(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write('key=value path\\to\\file "quoted text"\n')
+
+        rc = cli_main.run(["log", "synthesis", "--plain", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "\x1b[" not in out
+        lines = [l for l in out.strip().split("\n") if l.strip()]
+        assert len(lines) == 1
+        assert 'line="key=value' in lines[0]
+        assert 'inspect_cmd=' in lines[0]
 
 
 class TestLogJsonlMode:
