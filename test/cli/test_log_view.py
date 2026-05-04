@@ -458,3 +458,34 @@ class TestListingPrettyRenderer:
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=False)
         assert "ecc log synthesis" in buf.getvalue()
+
+    def test_listing_color_enabled_no_crash(self):
+        from io import StringIO
+        records = [
+            {"step": "synthesis", "source": "Synthesis_yosys/log/synthesis.log", "inspect_cmd": "ecc log synthesis"},
+        ]
+        buf = StringIO()
+        render_log_listing_pretty(records, file=buf, color=True)
+        out = buf.getvalue()
+        assert "[logs]" in out
+        assert "synthesis" in out
+        assert "Synthesis_yosys/log/synthesis.log" in out
+        assert "ecc log synthesis" in out
+
+    def test_listing_color_enabled_has_ansi(self):
+        from io import StringIO
+        records = [
+            {"step": "synthesis", "source": "Synthesis_yosys/log/synthesis.log", "inspect_cmd": "ecc log synthesis"},
+        ]
+        buf = StringIO()
+        render_log_listing_pretty(records, file=buf, color=True)
+        assert "\x1b[" in buf.getvalue()
+
+    def test_listing_color_disabled_no_ansi(self):
+        from io import StringIO
+        records = [
+            {"step": "synthesis", "source": "Synthesis_yosys/log/synthesis.log", "inspect_cmd": "ecc log synthesis"},
+        ]
+        buf = StringIO()
+        render_log_listing_pretty(records, file=buf, color=False)
+        assert "\x1b[" not in buf.getvalue()
