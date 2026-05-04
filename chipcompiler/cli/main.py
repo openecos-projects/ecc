@@ -18,11 +18,13 @@ def build_parser() -> argparse.ArgumentParser:
     # ecc init
     init_parser = subparsers.add_parser("init", help="Create a new project skeleton")
     init_parser.add_argument("name", help="Project name")
+    init_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
 
     # ecc check
     check_parser = subparsers.add_parser("check", help="Validate project configuration")
     _add_project_arg(check_parser)
     check_parser.add_argument("--json", action="store_true", help="JSON output")
+    check_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
 
     # ecc run
     run_parser = subparsers.add_parser("run", help="Execute the complete flow")
@@ -37,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_project_arg(status_parser)
     status_parser.add_argument("--json", action="store_true", help="JSON output")
     status_parser.add_argument("--jsonl", action="store_true", help="JSONL output")
+    status_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
     status_parser.add_argument("--run-id", default=None, dest="run_id",
                                help="Run workspace selector")
 
@@ -58,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     metrics_parser.add_argument("step", nargs="?", default=None, help="Step name")
     metrics_parser.add_argument("--json", action="store_true", help="JSON output")
     metrics_parser.add_argument("--jsonl", action="store_true", help="JSONL output")
+    metrics_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
     metrics_parser.add_argument("--run-id", default=None, dest="run_id",
                                 help="Run workspace selector")
 
@@ -67,6 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     artifacts_parser.add_argument("step", nargs="?", default=None, help="Step name")
     artifacts_parser.add_argument("--json", action="store_true", help="JSON output")
     artifacts_parser.add_argument("--jsonl", action="store_true", help="JSONL output")
+    artifacts_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
     artifacts_parser.add_argument("--run-id", default=None, dest="run_id",
                                   help="Run workspace selector")
 
@@ -78,6 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
                                help="Show resolved configuration")
     config_parser.add_argument("--json", action="store_true", help="JSON output")
     config_parser.add_argument("--jsonl", action="store_true", help="JSONL output")
+    config_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
     config_parser.add_argument("--run-id", default=None, dest="run_id",
                                help="Run workspace selector")
 
@@ -87,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     diagnose_parser.add_argument("step", nargs="?", default=None, help="Step name")
     diagnose_parser.add_argument("--json", action="store_true", help="JSON output")
     diagnose_parser.add_argument("--jsonl", action="store_true", help="JSONL output")
+    diagnose_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
     diagnose_parser.add_argument("--run-id", default=None, dest="run_id",
                                  help="Run workspace selector")
 
@@ -137,15 +144,17 @@ def _add_project_arg(parser: argparse.ArgumentParser) -> None:
                         help="Project directory (default: current directory)")
 
 
-def _render_param_text(args, result) -> None:
+def _render_param_text(args, result, color=True) -> None:
     from chipcompiler.cli.param_handler import (
         render_param_diff_text,
         render_param_list_text,
         render_param_set_text,
         render_param_show_text,
     )
+    from chipcompiler.cli.pretty import render_error
+
     if result.exit_code != 0:
-        render_result(result, OutputMode.PLAIN)
+        render_error(result.records, color=color)
         return
 
     renderers = {
@@ -173,17 +182,18 @@ def _should_colorize():
     return True
 
 
-def _render_log_text(args, result) -> None:
+def _render_log_text(args, result, color=True) -> None:
     from chipcompiler.cli.log_view import (
         render_log_listing_pretty,
         render_log_pretty,
     )
+    from chipcompiler.cli.pretty import render_error, render_generic_block
 
     if getattr(args, "errors", False):
         print("warning: --errors is deprecated and no longer filters output", file=sys.stderr)
 
     if result.exit_code != 0:
-        render_result(result, OutputMode.PLAIN)
+        render_error(result.records, color=color)
         return
 
     records = result.records
@@ -194,10 +204,8 @@ def _render_log_text(args, result) -> None:
 
     # Status/sentinel records (no_logs, empty, etc.)
     if "log_status" in first or "status" in first:
-        render_result(result, OutputMode.PLAIN)
+        render_generic_block(records, color=color, tag="log")
         return
-
-    color = _should_colorize()
 
     # Step mode: records have line_no and kind
     if "line_no" in first:
@@ -257,14 +265,16 @@ def run(argv: Sequence[str] | None = None) -> int:
     ctx = build_context(args)
     result = dispatch(args, ctx)
 
+    color = _should_colorize()
+
     if args.command == "param" and ctx.output_mode == OutputMode.TEXT:
-        _render_param_text(args, result)
+        _render_param_text(args, result, color=color)
     elif args.command == "log" and ctx.output_mode == OutputMode.TEXT:
-        _render_log_text(args, result)
+        _render_log_text(args, result, color=color)
     elif args.command == "log" and ctx.output_mode == OutputMode.PLAIN:
         _render_log_plain(result)
     else:
-        render_result(result, ctx.output_mode)
+        render_result(result, ctx.output_mode, command=args.command, color=color)
 
     return result.exit_code
 
