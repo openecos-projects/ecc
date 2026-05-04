@@ -169,14 +169,32 @@ class TestTracebackAnnotation:
         annotated = annotate_log_lines(lines)
         assert annotated[2].kind == LineKind.ERROR
 
-    def test_keyboard_interrupt_classified_as_plain(self):
+    def test_keyboard_interrupt_classified_as_error(self):
         lines = [
             "Traceback (most recent call last):",
             '  File "a.py", line 1',
             "KeyboardInterrupt",
         ]
         annotated = annotate_log_lines(lines)
-        assert annotated[2].kind == LineKind.PLAIN
+        assert annotated[2].kind == LineKind.ERROR
+
+    def test_system_exit_classified_as_error(self):
+        lines = [
+            "Traceback (most recent call last):",
+            '  File "a.py", line 1',
+            "SystemExit: 1",
+        ]
+        annotated = annotate_log_lines(lines)
+        assert annotated[2].kind == LineKind.ERROR
+
+    def test_stop_iteration_classified_as_error(self):
+        lines = [
+            "Traceback (most recent call last):",
+            '  File "a.py", line 1',
+            "StopIteration",
+        ]
+        annotated = annotate_log_lines(lines)
+        assert annotated[2].kind == LineKind.ERROR
 
 
 class TestAnnotateLineNumbers:
@@ -346,6 +364,13 @@ class TestPlainRenderer:
         render_log_plain("cts", "log/cts.log", ['path\\to\\file'], "ecc log cts", file=buf)
         line = buf.getvalue().strip()
         assert 'line="path\\\\to\\\\file"' in line
+
+    def test_values_with_equals_quoted(self):
+        from io import StringIO
+        buf = StringIO()
+        render_log_plain("cts", "log/cts.log", ["key=value"], "ecc log cts", file=buf)
+        line = buf.getvalue().strip()
+        assert 'line="key=value"' in line
 
     def test_no_ansi_in_plain(self):
         from io import StringIO

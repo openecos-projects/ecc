@@ -224,6 +224,25 @@ def _render_log_text(args, result) -> None:
     render_log_listing_pretty(list(records), color=color)
 
 
+def _render_log_plain(result) -> None:
+    from chipcompiler.cli.log_view import render_log_records_plain
+
+    records = result.records
+    if not records:
+        return
+    first = records[0]
+
+    if "log_status" in first or "status" in first:
+        render_result(result, OutputMode.PLAIN)
+        return
+
+    if "line_no" in first:
+        render_log_records_plain(records)
+        return
+
+    render_log_records_plain(records)
+
+
 def run(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -239,6 +258,8 @@ def run(argv: Sequence[str] | None = None) -> int:
         _render_param_text(args, result)
     elif args.command == "log" and ctx.output_mode == OutputMode.TEXT:
         _render_log_text(args, result)
+    elif args.command == "log" and ctx.output_mode == OutputMode.PLAIN:
+        _render_log_plain(result)
     else:
         render_result(result, ctx.output_mode)
 

@@ -17,7 +17,11 @@ _ERROR_RE = re.compile(r"error", re.IGNORECASE)
 _WARNING_RE = re.compile(r"warn(?:ing)?", re.IGNORECASE)
 _INFO_RE = re.compile(r"^(?:INFO(?:\s*:|\s*\]|:root:)|\[INFO\s*\])")
 _SECTION_RE = re.compile(r"^[-=]{3,}$")
-_EXCEPTION_RE = re.compile(r"^[A-Za-z_][\w.]*:\s")
+_EXCEPTION_RE = re.compile(
+    r"^[A-Za-z_][\w.]*:\s"
+    r"|^[A-Za-z_]\w*(?:Error|Exception|Warning|Interrupt|Exit|Iteration)$"
+    r"|^(?:KeyboardInterrupt|SystemExit|StopIteration|GeneratorExit)$"
+)
 
 
 def classify_line(line: str, in_traceback: bool = False) -> LineKind:
@@ -160,10 +164,17 @@ def render_log_pretty(
 
 def _format_value(value) -> str:
     s = str(value)
-    if any(c.isspace() for c in s) or '\\' in s or '"' in s:
+    if any(c.isspace() for c in s) or '\\' in s or '"' in s or '=' in s:
         escaped = s.replace('\\', '\\\\').replace('"', '\\"')
         return f'"{escaped}"'
     return s
+
+
+def _render_plain_record(rec, target):
+    parts = []
+    for key in ("step", "source", "line_no", "kind", "line", "inspect_cmd"):
+        parts.append(f"{key}={_format_value(rec.get(key, ''))}")
+    target.write(" ".join(parts) + "\n")
 
 
 def render_log_plain(
@@ -177,10 +188,14 @@ def render_log_plain(
     target = file or sys.stdout
     records = build_log_records(step, source, lines, inspect_cmd)
     for rec in records:
-        parts = []
-        for key in ("step", "source", "line_no", "kind", "line", "inspect_cmd"):
-            parts.append(f"{key}={_format_value(rec[key])}")
-        target.write(" ".join(parts) + "\n")
+        _render_plain_record(rec, target)
+
+
+def render_log_records_plain(records, file=None) -> None:
+    import sys
+    target = file or sys.stdout
+    for rec in records:
+        _render_plain_record(rec, target)
 
 
 def render_log_listing_pretty(
