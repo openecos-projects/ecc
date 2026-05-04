@@ -173,13 +173,8 @@ def _render_param_text(args, result, color=True) -> None:
 
 
 def _should_colorize():
-    if not sys.stdout.isatty():
-        return False
-    if os.environ.get("NO_COLOR") is not None:
-        return False
-    if os.environ.get("TERM", "") == "dumb":
-        return False
-    return True
+    from chipcompiler.cli.pretty import supports_color
+    return supports_color(file=sys.stdout)
 
 
 def _render_log_text(args, result, color=True) -> None:

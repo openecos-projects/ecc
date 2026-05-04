@@ -4,34 +4,17 @@ import shutil
 import threading
 import time
 
+from chipcompiler.cli.pretty import BOLD, DIM, CYAN, GREEN, RED, RESET, style as _style
 from chipcompiler.cli.types import OutputMode
-
-_BOLD = "\x1b[1m"
-_DIM = "\x1b[2m"
-_CYAN = "\x1b[36m"
-_GREEN = "\x1b[32m"
-_RED = "\x1b[31m"
-_RESET = "\x1b[0m"
 
 
 def supports_color(stream, mode, env=None):
-    if env is None:
-        env = os.environ
-    if not hasattr(stream, "isatty") or not stream.isatty():
-        return False
-    if mode != OutputMode.TEXT:
-        return False
-    if env.get("NO_COLOR") is not None:
-        return False
-    if env.get("TERM", "") == "dumb":
-        return False
-    return True
+    from chipcompiler.cli.pretty import supports_color as _supports_color
+    return _supports_color(file=stream, mode=mode, env=env)
 
 
 def style(text, code, enabled):
-    if not enabled:
-        return text
-    return f"{code}{text}{_RESET}"
+    return _style(text, code, enabled)
 
 
 def should_enable_run_progress(ctx, stderr):
@@ -94,7 +77,7 @@ class RunProgressRenderer:
         width = self._width_fn()
         visible = truncate_to_width(f"  log: {text}", width)
         if self._color and visible.startswith("  log:"):
-            visible = f"  {_DIM}log:{_RESET}{visible[6:]}"
+            visible = f"  {DIM}log:{RESET}{visible[6:]}"
         self._stream.write(f"\r\x1b[K{visible}")
         self._stream.flush()
         self._has_transient = True
@@ -107,7 +90,7 @@ class RunProgressRenderer:
 
     def start_run(self, name, workspace):
         self.clear()
-        run_label = style("[run]", _BOLD, self._color)
+        run_label = style("[run]", BOLD, self._color)
         self._stream.write(f"{run_label} {name} workspace={workspace}\n")
         self._stream.flush()
 
@@ -115,7 +98,7 @@ class RunProgressRenderer:
         self.clear()
         if self._step_started:
             self._stream.write("\n")
-        header = style(f"> {step} ({tool})", _CYAN, self._color)
+        header = style(f"> {step} ({tool})", CYAN, self._color)
         self._stream.write(f"{header}\n")
         self._stream.flush()
         self._step_started = True
@@ -123,15 +106,15 @@ class RunProgressRenderer:
     def finish_step(self, step, tool, status, runtime, log_path, inspect_cmd, success):
         self.clear()
         if success:
-            line = style(f"✓ {step} ({tool}) {runtime}", _GREEN, self._color)
+            line = style(f"✓ {step} ({tool}) {runtime}", GREEN, self._color)
         else:
-            sym = style("✗", _RED, self._color)
-            status_styled = style(status, _RED, self._color)
+            sym = style("✗", RED, self._color)
+            status_styled = style(status, RED, self._color)
             line = f"{sym} {step} ({tool}) {status_styled} {runtime}"
         self._stream.write(f"{line}\n")
-        log_label = style("  log:", _DIM, self._color)
+        log_label = style("  log:", DIM, self._color)
         self._stream.write(f"{log_label} {log_path}\n")
-        inspect_label = style("  inspect:", _DIM, self._color)
+        inspect_label = style("  inspect:", DIM, self._color)
         self._stream.write(f"{inspect_label} {inspect_cmd}\n")
         self._stream.flush()
 

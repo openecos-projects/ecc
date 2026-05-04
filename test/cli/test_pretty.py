@@ -1,3 +1,4 @@
+import io
 import json
 import os
 
@@ -412,3 +413,87 @@ class TestJsonUnchanged:
         assert "\x1b[" not in out
         objects = [json.loads(l) for l in out.strip().split("\n")]
         assert any("metric" in o for o in objects)
+
+
+# ---------------------------------------------------------------------------
+# Regression: multi-record error rendering (Codex Round 1 finding)
+# ---------------------------------------------------------------------------
+
+
+class TestMultiRecordError:
+    def test_render_error_two_records(self):
+        from chipcompiler.cli.pretty import render_error
+
+        buf = io.StringIO()
+        records = [
+            {"error": "missing", "reason": "file not found"},
+            {"error": "corrupt", "reason": "bad format"},
+        ]
+        render_error(records, file=buf, color=False)
+        out = buf.getvalue()
+        assert "[error]" in out
+        assert "missing" in out
+        assert "file not found" in out
+        assert "corrupt" in out
+        assert "bad format" in out
+
+    def test_render_error_three_records_all_shown(self):
+        from chipcompiler.cli.pretty import render_error
+
+        buf = io.StringIO()
+        records = [
+            {"kind": "error", "reason": "a"},
+            {"kind": "error", "reason": "b"},
+            {"kind": "error", "reason": "c"},
+        ]
+        render_error(records, file=buf, color=False)
+        out = buf.getvalue()
+        assert out.count("error") >= 3
+        for reason in ("a", "b", "c"):
+            assert reason in out
+
+
+# ---------------------------------------------------------------------------
+# Shared color policy tests (Codex Round 1 finding)
+# ---------------------------------------------------------------------------
+
+
+class TestSharedColorPolicy:
+    def test_pretty_supports_color_no_color_env(self):
+        from chipcompiler.cli.pretty import supports_color
+
+        env = {"NO_COLOR": "1"}
+        assert not supports_color(env=env)
+
+    def test_pretty_supports_color_dumb_term(self):
+        from chipcompiler.cli.pretty import supports_color
+
+        env = {"TERM": "dumb"}
+        assert not supports_color(env=env)
+
+    def test_pretty_supports_color_non_tty(self):
+        from chipcompiler.cli.pretty import supports_color
+
+        assert not supports_color(file=io.StringIO())
+
+    def test_pretty_supports_color_machine_mode(self):
+        from chipcompiler.cli.pretty import supports_color
+        from chipcompiler.cli.types import OutputMode
+
+        assert not supports_color(mode=OutputMode.JSON)
+        assert not supports_color(mode=OutputMode.PLAIN)
+
+    def test_progress_supports_color_delegates(self):
+        from chipcompiler.cli.progress import supports_color
+
+        assert not supports_color(io.StringIO(), None, env={"NO_COLOR": "1"})
+        assert not supports_color(io.StringIO(), None, env={"TERM": "dumb"})
+
+    def test_log_view_uses_shared_constants(self):
+        from chipcompiler.cli import log_view
+        from chipcompiler.cli import pretty
+
+        assert log_view.BOLD is pretty.BOLD
+        assert log_view.RED is pretty.RED
+        assert log_view.CYAN is pretty.CYAN
+        assert log_view.RESET is pretty.RESET

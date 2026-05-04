@@ -10,13 +10,8 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 def _strip_ansi(text):
     return _ANSI_RE.sub("", text)
 
+from chipcompiler.cli.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.progress import (
-    _BOLD,
-    _CYAN,
-    _DIM,
-    _GREEN,
-    _RED,
-    _RESET,
     RunProgressRenderer,
     latest_log_line,
     run_flow_with_progress,
@@ -89,11 +84,11 @@ class TestSupportsColor:
 
 class TestStyle:
     def test_applies_code_when_enabled(self):
-        result = style("hello", _GREEN, True)
-        assert result == f"{_GREEN}hello{_RESET}"
+        result = style("hello", GREEN, True)
+        assert result == f"{GREEN}hello{RESET}"
 
     def test_passthrough_when_disabled(self):
-        assert style("hello", _GREEN, False) == "hello"
+        assert style("hello", GREEN, False) == "hello"
 
 
 # -- should_enable_run_progress --
@@ -294,7 +289,7 @@ class TestRunProgressRenderer:
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
         r.running("working...")
         output = "".join(buf.written)
-        assert _DIM in output
+        assert DIM in output
         assert "log:" in output
 
     def test_running_without_color(self):
@@ -302,7 +297,7 @@ class TestRunProgressRenderer:
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=False)
         r.running("working...")
         output = "".join(buf.written)
-        assert _DIM not in output
+        assert DIM not in output
 
     def test_no_color_codes_when_disabled(self):
         buf = FakeTTYStderr(True)
@@ -311,7 +306,7 @@ class TestRunProgressRenderer:
         r.start_step("synthesis", "yosys")
         r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", True)
         output = "".join(buf.written)
-        for code in (_BOLD, _DIM, _CYAN, _GREEN, _RED):
+        for code in (BOLD, DIM, CYAN, GREEN, RED):
             assert code not in output
 
     def test_start_step_with_color(self):
@@ -319,9 +314,9 @@ class TestRunProgressRenderer:
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
         r.start_step("synthesis", "yosys")
         output = "".join(buf.written)
-        assert _CYAN in output
+        assert CYAN in output
         # Cyan sequence must appear before the `>` marker in raw output
-        cyan_pos = output.find(_CYAN)
+        cyan_pos = output.find(CYAN)
         marker_pos = output.find(">")
         assert cyan_pos < marker_pos
 
@@ -330,21 +325,21 @@ class TestRunProgressRenderer:
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
         r.start_run("default", "/tmp")
         output = "".join(buf.written)
-        assert _BOLD in output
+        assert BOLD in output
 
     def test_finish_step_success_with_color(self):
         buf = FakeTTYStderr(True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
         r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", True)
         output = "".join(buf.written)
-        assert _GREEN in output
+        assert GREEN in output
 
     def test_finish_step_non_success_with_color(self):
         buf = FakeTTYStderr(True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
         r.finish_step("placement", "dreamplace", "incomplete", "0:00:00", "", "cmd", False)
         output = "".join(buf.written)
-        assert _RED in output
+        assert RED in output
 
 
 # -- run_flow_with_progress --
@@ -627,5 +622,5 @@ class TestRunFlowWithProgress:
         buf = FakeTTYStderr(False)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
-        for code in (_BOLD, _CYAN, _GREEN, _RED, _DIM):
+        for code in (BOLD, CYAN, GREEN, RED, DIM):
             assert code not in output
