@@ -593,9 +593,13 @@ def run(args, ctx: CommandContext) -> CommandResult:
     if args.overwrite and os.path.exists(run_dir):
         for root, dirs, files in os.walk(run_dir):
             for d in dirs:
-                os.chmod(os.path.join(root, d), 0o755)
+                dp = os.path.join(root, d)
+                if not os.path.islink(dp):
+                    os.chmod(dp, 0o755)
             for f in files:
-                os.chmod(os.path.join(root, f), 0o644)
+                fp = os.path.join(root, f)
+                if not os.path.islink(fp):
+                    os.chmod(fp, 0o644)
         os.chmod(run_dir, 0o755)
         shutil.rmtree(run_dir)
 
