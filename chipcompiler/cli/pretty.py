@@ -49,25 +49,6 @@ def display_key(key):
 # --- Value formatting ---
 
 
-def format_value(value):
-    s = str(value)
-    if any(c.isspace() for c in s) or "\\" in s or '"' in s or "=" in s:
-        escaped = s.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return s
-
-
-# --- Plain key-value formatting (stable, parseable) ---
-
-
-def format_plain_value(value):
-    s = str(value)
-    if any(c.isspace() for c in s) or "\\" in s or '"' in s or "=" in s:
-        escaped = s.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return s
-
-
 # --- Pretty block rendering ---
 
 

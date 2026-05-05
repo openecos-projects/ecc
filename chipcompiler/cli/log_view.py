@@ -152,18 +152,12 @@ def render_log_pretty(
     target.write(f"{inspect_label} {inspect_cmd}\n")
 
 
-def _format_value(value) -> str:
-    s = str(value)
-    if any(c.isspace() for c in s) or '\\' in s or '"' in s or '=' in s:
-        escaped = s.replace('\\', '\\\\').replace('"', '\\"')
-        return f'"{escaped}"'
-    return s
-
-
 def _render_plain_record(rec, target):
+    from chipcompiler.cli.render import _plain_value
+
     parts = []
     for key in ("step", "source", "line_no", "kind", "line", "inspect_cmd"):
-        parts.append(f"{key}={_format_value(rec.get(key, ''))}")
+        parts.append(f"{key}={_plain_value(rec.get(key, ''))}")
     target.write(" ".join(parts) + "\n")
 
 
