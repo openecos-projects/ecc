@@ -93,6 +93,7 @@ def log(args, ctx: CommandContext) -> CommandResult:
         discover_logs,
         discover_step_dirs,
     )
+    from chipcompiler.cli.inspect import get_flow_step_names
     from chipcompiler.cli.log_view import build_log_records
 
     step_token = args.step
@@ -126,6 +127,13 @@ def log(args, ctx: CommandContext) -> CommandResult:
 
     step_dirs = discover_step_dirs(ctx.run_dir)
     if step_token not in step_dirs:
+        flow_steps = get_flow_step_names(ctx.run_dir)
+        if step_token in flow_steps:
+            return CommandResult.err([{
+                "step": step_token,
+                "log_status": "missing",
+                "inspect_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
+            }])
         return CommandResult.err([{
             "step": step_token,
             "status": "unknown_step",

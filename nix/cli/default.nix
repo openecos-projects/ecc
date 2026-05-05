@@ -46,6 +46,11 @@ python3Packages.buildPythonPackage {
     wrapProgram "$out/bin/ecc" \
       --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}" \
       --prefix PATH : "${yosysWithSlang}/bin"
+    if [ -e "$out/bin/cli" ]; then
+      wrapProgram "$out/bin/cli" \
+        --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}" \
+        --prefix PATH : "${yosysWithSlang}/bin"
+    fi
   '';
 
   build-system = with python3Packages; [ uv-build ];
