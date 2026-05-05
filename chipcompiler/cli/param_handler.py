@@ -417,6 +417,8 @@ def _apply_scoped_param_edit(text: str, group: str, name: str, value: object) ->
         indent = key_match.group(1)
         end = _extend_multiline_value(section_body, key_match.end())
         new_line = f"{indent}{name} = {value_str}"
+        if end > key_match.end():
+            new_line += "\n"
         new_body = section_body[:key_match.start()] + new_line + section_body[end:]
         return text[:body_start] + new_body + text[body_end:]
     else:

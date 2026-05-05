@@ -980,6 +980,10 @@ class TestMultilineTomlValues:
             after = f.read()
         assert "core_util = 0.5" in after
         assert after.count("core_margin") == 1
+        for line in after.splitlines():
+            assert "core_margin" not in line or "core_util" not in line, (
+                f"multiline replacement concatenated keys on one line: {line!r}"
+            )
     """config --resolved must error on malformed/invalid CLI provenance."""
 
     def _setup_run_dir(self, project_dir):
