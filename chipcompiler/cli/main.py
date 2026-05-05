@@ -283,7 +283,22 @@ _LEGACY_FLAGS = {"--workspace", "--rtl", "--design", "--top", "--clock", "--pdk-
 
 
 def _is_legacy_args(args: list[str]) -> bool:
-    return any(a in _LEGACY_FLAGS for a in args)
+    for a in args:
+        if a in _LEGACY_FLAGS:
+            return True
+        if "=" in a:
+            flag = a.split("=", 1)[0]
+            if flag in _LEGACY_FLAGS:
+                return True
+    return False
+
+
+def _resolve_rtl_input(rtl_path: str) -> tuple[str, str]:
+    normalized = os.path.abspath(os.path.expanduser(rtl_path))
+    suffix = os.path.splitext(normalized)[1].lower()
+    if suffix in {".f", ".fl", ".filelist"}:
+        return ("", normalized)
+    return (normalized, "")
 
 
 def _run_legacy(argv: list[str]) -> int:
@@ -315,14 +330,16 @@ def _run_legacy(argv: list[str]) -> int:
         "Frequency max [MHz]": args.freq,
     })
 
+    origin_verilog, input_filelist = _resolve_rtl_input(args.rtl)
+
     try:
         workspace = create_workspace(
             directory=args.workspace,
             origin_def="",
-            origin_verilog=args.rtl,
+            origin_verilog=origin_verilog,
             pdk="ics55",
             parameters=parameters,
-            input_filelist="",
+            input_filelist=input_filelist,
             pdk_root=args.pdk_root,
         )
     except Exception as exc:
