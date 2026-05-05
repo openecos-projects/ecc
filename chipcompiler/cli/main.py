@@ -312,6 +312,30 @@ def _resolve_rtl_input(rtl_path: str) -> tuple[str, str]:
     return (normalized, "")
 
 
+def _validate_legacy_args(args) -> str | None:
+    if not str(args.workspace).strip():
+        return "--workspace must not be empty"
+    if not str(args.design).strip():
+        return "--design must not be empty"
+    if not str(args.top).strip():
+        return "--top must not be empty"
+    if not str(args.clock).strip():
+        return "--clock must not be empty"
+    rtl_path = os.path.abspath(os.path.expanduser(args.rtl))
+    if not os.path.exists(rtl_path):
+        return f"--rtl path does not exist: {rtl_path}"
+    if not os.path.isfile(rtl_path):
+        return f"--rtl must point to a file: {rtl_path}"
+    pdk_root = os.path.abspath(os.path.expanduser(args.pdk_root))
+    if not os.path.exists(pdk_root):
+        return f"--pdk-root path does not exist: {pdk_root}"
+    if not os.path.isdir(pdk_root):
+        return f"--pdk-root must point to a directory: {pdk_root}"
+    if args.freq <= 0:
+        return "--freq must be greater than 0"
+    return None
+
+
 def _run_legacy(argv: list[str]) -> int:
     import argparse as _argparse
 
@@ -331,6 +355,11 @@ def _run_legacy(argv: list[str]) -> int:
     parser.add_argument("--pdk-root", required=True)
     parser.add_argument("--freq", type=float, default=100.0)
     args = parser.parse_args(argv)
+
+    err = _validate_legacy_args(args)
+    if err:
+        print(f"Error: {err}", file=sys.stderr)
+        return 1
 
     parameters = get_parameters("ics55")
     parameters.data.update({
