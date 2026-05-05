@@ -294,10 +294,21 @@ def _is_legacy_args(args: list[str]) -> bool:
 
 
 def _resolve_rtl_input(rtl_path: str) -> tuple[str, str]:
+    from chipcompiler.utility.filelist import parse_filelist, validate_filelist
+
     normalized = os.path.abspath(os.path.expanduser(rtl_path))
     suffix = os.path.splitext(normalized)[1].lower()
     if suffix in {".f", ".fl", ".filelist"}:
         return ("", normalized)
+    if suffix in {".v", ".sv", ".svh", ".vh"}:
+        return (normalized, "")
+    try:
+        parse_filelist(normalized)
+        _, missing = validate_filelist(normalized)
+        if not missing:
+            return ("", normalized)
+    except Exception:
+        pass
     return (normalized, "")
 
 
