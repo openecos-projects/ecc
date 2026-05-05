@@ -236,13 +236,8 @@ def _render_log_plain(result) -> None:
     records = result.records
     if not records:
         return
-    first = records[0]
 
-    if "log_status" in first or "status" in first:
-        render_result(result, OutputMode.PLAIN)
-        return
-
-    if "line_no" in first:
+    if "line_no" in records[0]:
         render_log_records_plain(records)
         return
 

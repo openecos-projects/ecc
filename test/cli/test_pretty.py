@@ -12,15 +12,14 @@ from chipcompiler.cli.pretty import (
     RESET,
     YELLOW,
     display_key,
-    format_plain_value,
     render_header,
     status_style,
     style,
     supports_color,
 )
 from chipcompiler.cli.render import _plain_value, render_plain
-from chipcompiler.cli.types import CommandResult
 from io import StringIO
+from chipcompiler.cli.types import CommandResult
 
 
 # ---------------------------------------------------------------------------
