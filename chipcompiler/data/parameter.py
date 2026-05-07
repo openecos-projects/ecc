@@ -22,7 +22,7 @@ ICS55_PARAMETERS_TEMPLATE = {
         "Aspect ratio" : 1
     },
     "Max fanout" : 20,
-    "Target density" : 0.8,
+    "Target density" : 0.2,
     "Target overflow" : 0.1,
     "Global right padding": 0,
     "Cell padding x": 600,
