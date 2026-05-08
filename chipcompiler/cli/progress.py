@@ -4,8 +4,11 @@ import shutil
 import threading
 import time
 
-from chipcompiler.cli.pretty import BOLD, DIM, CYAN, GREEN, RED, RESET, style as _style
+from chipcompiler.cli.log_view import LineKind, extract_error_context
+from chipcompiler.cli.output import disclosure_cmd, normalize_step_name, normalize_state
+from chipcompiler.cli.pretty import BOLD, DIM, CYAN, GREEN, RED, RESET, YELLOW, BLUE, style as _style
 from chipcompiler.cli.types import OutputMode
+from chipcompiler.data import StateEnum, log_flow
 
 
 def supports_color(stream, mode, env=None):
@@ -43,6 +46,62 @@ def truncate_to_width(text, width):
     if width <= 3:
         return text[:width]
     return text[: width - 3] + "..."
+
+
+# --- Failure context block formatting ---
+
+_KIND_LABEL_COMPACT = {
+    LineKind.ERROR: "ERROR",
+    LineKind.WARNING: "WARN ",
+    LineKind.TRACEBACK: "TRACE",
+    LineKind.INFO: "INFO ",
+    LineKind.SECTION: "-----",
+    LineKind.PLAIN: "     ",
+}
+
+_KIND_COLOR_CONTEXT = {
+    LineKind.ERROR: RED,
+    LineKind.WARNING: YELLOW,
+    LineKind.TRACEBACK: YELLOW,
+    LineKind.INFO: BLUE,
+    LineKind.SECTION: CYAN,
+}
+
+
+def format_error_context(log_path, context_lines, log_cmd, color=True):
+    """Format a failure context block for interactive progress output.
+
+    Args:
+        log_path: Relative path to the failed step's log file.
+        context_lines: List of LogLine objects from extract_error_context().
+        log_cmd: Full disclosure command (e.g. 'ecc log synth --project p').
+        color: Whether to emit ANSI color codes.
+    """
+    lines = []
+    lines.append(f"error: {log_path}")
+
+    if context_lines:
+        max_no = max(ll.line_no for ll in context_lines)
+        width = max(len(str(max_no)), 4)
+    else:
+        width = 4
+
+    for ll in context_lines:
+        no = str(ll.line_no).rjust(width)
+        label = _KIND_LABEL_COMPACT[ll.kind]
+
+        if color and ll.kind in _KIND_COLOR_CONTEXT:
+            code = _KIND_COLOR_CONTEXT[ll.kind]
+            if ll.kind == LineKind.ERROR:
+                lines.append(f"  {no} {code}{label} {ll.text}{RESET}")
+            else:
+                lines.append(f"  {no} {code}{label}{RESET} {ll.text}")
+        else:
+            lines.append(f"  {no} {label} {ll.text}")
+
+    lines.append(f"For more log info: {log_cmd}")
+    lines.append(f'command="{log_cmd}"')
+    return "\n".join(lines) + "\n"
 
 
 def latest_log_line(path):
@@ -118,6 +177,11 @@ class RunProgressRenderer:
         self._stream.write(f"{inspect_label} {inspect_cmd}\n")
         self._stream.flush()
 
+    def render_failure_context(self, block):
+        """Write a pre-formatted failure context block to the progress stream."""
+        self._stream.write(block)
+        self._stream.flush()
+
 
 def _poll_log(renderer, log_path, stop_event, interval=0.5):
     while not stop_event.is_set():
@@ -127,10 +191,6 @@ def _poll_log(renderer, log_path, stop_event, interval=0.5):
 
 
 def run_flow_with_progress(engine_flow, ctx, project, stderr):
-    from chipcompiler.data import StateEnum, log_flow
-
-    from chipcompiler.cli.output import disclosure_cmd, normalize_step_name, normalize_state
-
     color = supports_color(stderr, ctx.output_mode)
     renderer = RunProgressRenderer(stderr, color=color)
     engine_flow.workspace.home.reset()
@@ -193,6 +253,26 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         renderer.finish_step(step_token, tool, status, runtime, rel_log, inspect, is_success)
 
         if not is_success:
+            _maybe_render_failure_context(renderer, log_path, rel_log, step_token,
+                                          project, ctx.run_id, color)
             return False
 
     return True
+
+
+def _maybe_render_failure_context(renderer, log_path, rel_log, step_token,
+                                  project, run_id, color):
+    if not log_path or not os.path.isfile(log_path):
+        return
+    try:
+        with open(log_path, "r", errors="replace") as f:
+            log_lines = f.readlines()
+    except OSError:
+        return
+    if not log_lines:
+        return
+
+    ctx_lines = extract_error_context(log_lines)
+    full_cmd = disclosure_cmd(f"ecc log {step_token}", project, run_id)
+    block = format_error_context(rel_log, ctx_lines, full_cmd, color=color)
+    renderer.render_failure_context(block)

@@ -5,6 +5,7 @@ from chipcompiler.cli.log_view import (
     annotate_log_lines,
     build_log_records,
     classify_line,
+    extract_error_context,
     render_log_listing_pretty,
     render_log_plain,
     render_log_pretty,
@@ -327,6 +328,193 @@ class TestPrettyRenderer:
         render_log_pretty("cts", "log/cts.log", lines, "ecc log cts", file=buf, color=True)
         out = buf.getvalue()
         assert "\x1b[33m" in out
+
+
+# ---------------------------------------------------------------------------
+# Full error line coloring (AC-2)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorLineFullColoring:
+    def test_error_label_and_message_both_red(self):
+        from io import StringIO
+        buf = StringIO()
+        render_log_pretty("cts", "log/cts.log", ["Error: something failed"], "ecc log cts", file=buf, color=True)
+        out = buf.getvalue()
+
+        red_idx = out.find("\x1b[31m")
+        assert red_idx >= 0
+        reset_idx = out.find("\x1b[0m", red_idx)
+        assert reset_idx > red_idx
+        between = out[red_idx:reset_idx]
+        assert "error" in between
+        assert "something failed" in between
+
+    def test_error_message_content_not_default_after_label(self):
+        from io import StringIO
+        buf = StringIO()
+        render_log_pretty("cts", "log/cts.log", ["Error: critical failure"], "ecc log cts", file=buf, color=True)
+        out = buf.getvalue()
+        idx = out.find("error")
+        after_label = out[idx:]
+        assert "critical failure" in after_label
+
+    def test_warning_line_keeps_label_only_color(self):
+        from io import StringIO
+        buf = StringIO()
+        render_log_pretty("cts", "log/cts.log", ["Warning: check this"], "ecc log cts", file=buf, color=True)
+        out = buf.getvalue()
+        assert "\x1b[33m" in out
+        assert "Warning: check this" in out
+
+    def test_info_plain_section_unchanged(self):
+        from io import StringIO
+        buf = StringIO()
+        lines = ["INFO: running", "some plain text", "---"]
+        render_log_pretty("cts", "log/cts.log", lines, "ecc log cts", file=buf, color=True)
+        out = buf.getvalue()
+        assert "\x1b[34m" in out
+        assert "some plain text" in out
+        assert "---" in out
+
+    def test_error_line_no_ansi_when_color_disabled(self):
+        from io import StringIO
+        buf = StringIO()
+        render_log_pretty("cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False)
+        out = buf.getvalue()
+        assert "\x1b[" not in out
+
+    def test_non_error_lines_not_colored_red(self):
+        from io import StringIO
+        lines = ["Warning: meh", "INFO: ok", "plain", "---"]
+        buf = StringIO()
+        render_log_pretty("cts", "log/cts.log", lines, "ecc log cts", file=buf, color=True)
+        out = buf.getvalue()
+        red_count = out.count("\x1b[31m")
+        assert red_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Context extraction (AC-3, AC-4)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractErrorContextAnchor:
+    def test_last_error_wins(self):
+        lines = ["INFO: start", "Error: first", "plain", "Error: last", "INFO: end"]
+        result = extract_error_context(lines, max_lines=50)
+        kinds = [ll.kind for ll in result]
+        assert LineKind.ERROR in kinds
+        anchor_texts = [ll.text for ll in result if ll.kind == LineKind.ERROR]
+        assert "Error: last" in anchor_texts
+
+    def test_traceback_when_no_error(self):
+        lines = [
+            "INFO: start",
+            "Traceback (most recent call last):",
+            '  File "a.py", line 1',
+            "RuntimeError: boom",
+        ]
+        result = extract_error_context(lines, max_lines=50)
+        kinds = [ll.kind for ll in result]
+        assert LineKind.TRACEBACK in kinds
+
+    def test_failed_keyword_when_no_error_or_traceback(self):
+        lines = ["INFO: start", "step failed: timeout", "plain after"]
+        result = extract_error_context(lines, max_lines=50)
+        texts = [ll.text for ll in result]
+        assert any("failed" in t.lower() for t in texts)
+
+    def test_last_nonempty_when_no_failure(self):
+        lines = ["INFO: start", "some output", "final output"]
+        result = extract_error_context(lines, max_lines=50)
+        assert result[-1].text == "final output"
+
+    def test_empty_input(self):
+        assert extract_error_context([], max_lines=50) == []
+
+
+class TestExtractErrorContextWindow:
+    def test_max_50_lines(self):
+        lines = [f"line {i}" for i in range(100)]
+        lines[80] = "Error: failure at 80"
+        result = extract_error_context(lines, max_lines=50)
+        assert len(result) <= 50
+
+    def test_preserves_line_numbers(self):
+        lines = [f"line {i}" for i in range(100)]
+        lines[30] = "Error: mid"
+        result = extract_error_context(lines, max_lines=50)
+        line_nos = [ll.line_no for ll in result]
+        assert line_nos == sorted(line_nos)
+        for ll in result:
+            assert ll.line_no >= 1
+            assert ll.text == lines[ll.line_no - 1]
+
+    def test_preserves_order(self):
+        lines = [f"line {i}" for i in range(10)]
+        lines[5] = "Error: mid"
+        result = extract_error_context(lines, max_lines=50)
+        line_nos = [ll.line_no for ll in result]
+        assert line_nos == sorted(line_nos)
+
+    def test_fewer_than_max_returns_all(self):
+        lines = ["one", "Error: two", "three"]
+        result = extract_error_context(lines, max_lines=50)
+        assert len(result) == 3
+
+    def test_anchor_last_error_not_first(self):
+        lines = ["Error: first", "plain", "Error: last", "plain"]
+        result = extract_error_context(lines, max_lines=50)
+        error_lines = [ll for ll in result if ll.kind == LineKind.ERROR]
+        assert len(error_lines) >= 1
+
+
+class TestExtractErrorContextTraceback:
+    def test_traceback_includes_stack_frames(self):
+        lines = [
+            "INFO: before",
+            "Traceback (most recent call last):",
+            '  File "a.py", line 10, in f',
+            '  File "b.py", line 20, in g',
+            "ValueError: bad value",
+            "INFO: after",
+        ]
+        result = extract_error_context(lines, max_lines=50)
+        kinds = [ll.kind for ll in result]
+        assert LineKind.TRACEBACK in kinds
+        traceback_texts = [ll.text for ll in result if ll.kind == LineKind.TRACEBACK]
+        assert any("File" in t for t in traceback_texts)
+
+    def test_final_exception_visible_in_window(self):
+        lines = ["line " + str(i) for i in range(60)]
+        lines[52] = "Traceback (most recent call last):"
+        lines[53] = '  File "a.py", line 1, in run'
+        lines[54] = "ValueError: final exception"
+        lines[55] = "line 55"
+        result = extract_error_context(lines, max_lines=50)
+        texts = [ll.text for ll in result]
+        assert "ValueError: final exception" in texts
+
+    def test_traceback_context_not_exceed_max(self):
+        lines = ["line " + str(i) for i in range(100)]
+        lines[60] = "Traceback (most recent call last):"
+        for i in range(61, 75):
+            lines[i] = f'  File "mod{i}.py", line {i}'
+        lines[75] = "RuntimeError: deep traceback"
+        result = extract_error_context(lines, max_lines=50)
+        assert len(result) <= 50
+
+    def test_traceback_lines_in_order(self):
+        lines = [
+            "Traceback (most recent call last):",
+            '  File "a.py", line 1',
+            '  File "b.py", line 2',
+            "ValueError: boom",
+        ]
+        result = extract_error_context(lines, max_lines=50)
+        line_nos = [ll.line_no for ll in result]
+        assert line_nos == sorted(line_nos)
 
 
 class TestPlainRenderer:
