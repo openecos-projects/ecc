@@ -806,3 +806,36 @@ class TestFailureContextIntegration:
         plain = _strip_ansi("".join(buf.written))
         assert "log:" in plain
         assert "inspect:" in plain
+
+    def test_context_block_no_blank_lines_between_rows(self, tmp_path):
+        log_file = tmp_path / "synth.log"
+        log_file.write_text("line one\nline two\nError: boom\nline four\n")
+
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys", str(log_file))],
+            lambda self, s: StateEnum.Imcomplete,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        assert result is False
+        raw = "".join(buf.written)
+        section_start = raw.find("error:")
+        section_end = raw.find("command=", section_start)
+        assert section_start >= 0
+        assert section_end > section_start
+        block = raw[section_start:section_end]
+        plain_block = _strip_ansi(block)
+        context_rows = [
+            l for l in plain_block.split("\n")
+            if l.strip() and not l.startswith("error:")
+            and not l.startswith("For")
+        ]
+        assert len(context_rows) > 0
+        for row in context_rows:
+            assert row.startswith(" ")
+            assert row.strip() != ""
+            stripped = row.strip()
+            assert "\n" not in stripped
+            assert "\r" not in stripped
