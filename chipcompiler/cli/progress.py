@@ -266,9 +266,10 @@ def _maybe_render_failure_context(renderer, log_path, rel_log, step_token,
         return
     try:
         with open(log_path, "r", errors="replace") as f:
-            log_lines = f.readlines()
+            raw = f.read()
     except OSError:
         return
+    log_lines = raw.splitlines()
     if not log_lines:
         return
 
