@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from chipcompiler.cli.log_view import (
@@ -745,9 +747,41 @@ class TestTailLinesForLog:
         assert "\x1b[" not in " ".join(result)
         assert "valid" in result
 
+    def test_osc_sequences_stripped(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("\x1b]0;window title\x07message\n")
+        result = tail_lines_for_log(str(log_file))
+        assert result == ["message"]
+
+    def test_dcs_sequences_stripped(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("\x1bP$data\x1b\\visible\n")
+        result = tail_lines_for_log(str(log_file))
+        assert result == ["visible"]
+
+    def test_bel_and_backspace_stripped(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("a\x07b\x08c\ndone\n")
+        result = tail_lines_for_log(str(log_file))
+        assert result == ["abc", "done"]
+
+    def test_unreadable_file_returns_empty(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("content\n")
+        os.chmod(str(log_file), 0o000)
+        try:
+            result = tail_lines_for_log(str(log_file))
+            assert result == []
+        finally:
+            os.chmod(str(log_file), 0o644)
+
 
 class TestListingTailRendering:
-    def test_tail_block_appears_for_readable_log(self):
+    def test_tail_block_header_with_indented_lines(self):
         from io import StringIO
         records = [
             {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
@@ -756,8 +790,11 @@ class TestListingTailRendering:
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=False, tail_map=tail_map)
         out = buf.getvalue()
-        assert "tail: line 1" in out
-        assert "tail: line 2" in out
+        lines = out.split("\n")
+        tail_idx = next(i for i, l in enumerate(lines) if l.strip() == "tail:")
+        assert "line 1" in lines[tail_idx + 1]
+        assert "line 2" in lines[tail_idx + 2]
+        assert lines[tail_idx + 1].startswith("      ")
 
     def test_inspect_remains_below_tail(self):
         from io import StringIO
@@ -806,7 +843,7 @@ class TestListingTailRendering:
         assert "tail:" not in out
         assert "inspect:" in out
 
-    def test_run_level_entry_labeled_without_step(self):
+    def test_run_level_entry_labeled_run(self):
         from io import StringIO
         records = [
             {"log": "log/flow.log", "inspect_cmd": "ecc log"},
@@ -814,5 +851,5 @@ class TestListingTailRendering:
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=False)
         out = buf.getvalue()
-        assert "log/flow.log" in out
+        assert "  run  log/flow.log" in out
         assert "inspect:" in out

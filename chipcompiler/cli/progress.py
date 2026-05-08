@@ -27,13 +27,19 @@ def should_enable_run_progress(ctx, stderr):
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)")
+_DCS_RE = re.compile(r"\x1bP.*?(?:\x1b\\)")
 _CONTROL_RE = re.compile(r"[\r\n\t]+")
+_C0_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MULTI_SPACE_RE = re.compile(r" {2,}")
 
 
 def sanitize_log_line(line):
-    stripped = _ANSI_RE.sub("", line)
+    stripped = _OSC_RE.sub("", line)
+    stripped = _DCS_RE.sub("", stripped)
+    stripped = _ANSI_RE.sub("", stripped)
     stripped = _CONTROL_RE.sub(" ", stripped)
+    stripped = _C0_RE.sub("", stripped)
     stripped = _MULTI_SPACE_RE.sub(" ", stripped)
     return stripped.strip()
 
