@@ -821,21 +821,19 @@ class TestFailureContextIntegration:
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         raw = "".join(buf.written)
-        section_start = raw.find("error:")
-        section_end = raw.find("command=", section_start)
-        assert section_start >= 0
-        assert section_end > section_start
-        block = raw[section_start:section_end]
+
+        header_pos = raw.find("error:")
+        footer_pos = raw.find("For more log info:", header_pos)
+        assert header_pos >= 0
+        assert footer_pos > header_pos
+
+        block = raw[header_pos:footer_pos]
         plain_block = _strip_ansi(block)
-        context_rows = [
-            l for l in plain_block.split("\n")
-            if l.strip() and not l.startswith("error:")
-            and not l.startswith("For")
-        ]
-        assert len(context_rows) > 0
-        for row in context_rows:
-            assert row.startswith(" ")
-            assert row.strip() != ""
-            stripped = row.strip()
-            assert "\n" not in stripped
-            assert "\r" not in stripped
+        all_lines = plain_block.rstrip("\n").split("\n")
+
+        body_lines = [l for l in all_lines if not l.startswith("error:")]
+        assert len(body_lines) > 0
+
+        for i, line in enumerate(body_lines):
+            assert line.strip() != "", f"blank line at index {i} in context block: {body_lines!r}"
+            assert line.startswith(" "), f"context row not indented at index {i}: {line!r}"
