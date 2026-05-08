@@ -75,6 +75,7 @@ let
       sed -i 's/^[[:space:]]*CMAKE_POLICY(SET CMP0048 OLD)/CMAKE_POLICY(SET CMP0048 NEW)/' thirdparty/Limbo/limbo/thirdparty/lemon/CMakeLists.txt
       sed -i 's/static void  thread_hold();/static void thread_hold(int sig);/; s/static void thread_hold ()/static void thread_hold(int sig)/' thirdparty/Limbo/limbo/thirdparty/CThreadPool/thpool.c
       sed -i 's/i1\.center() < i2\.center()/(i1.low() + i1.high()) < (i2.low() + i2.high())/' dreamplace/ops/place_io/src/Interval.h
+      sed -i '/import stat/d; /nctugr_bin = "%s\/NCTUgr"/,+2d' dreamplace/ops/nctugr_binary/nctugr_binary.py
     '';
 
     installPhase = ''
@@ -104,6 +105,16 @@ buildPythonPackage {
 
   preBuild = ''
     cp -r ${runtime}/dreamplace/. dreamplace/
+    rm -rf thirdparty
+    cp -r ${runtime}/thirdparty thirdparty
+    chmod +x thirdparty/NCTUgr.ICCAD2012/NCTUgr
+  '';
+
+  postInstall = ''
+    site_packages="$out/${python.sitePackages}"
+    rm -rf "$site_packages/thirdparty"
+    cp -r ${runtime}/thirdparty "$site_packages/thirdparty"
+    chmod +x "$site_packages/thirdparty/NCTUgr.ICCAD2012/NCTUgr"
   '';
 
   dependencies = [
