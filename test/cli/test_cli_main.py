@@ -1590,3 +1590,271 @@ class TestFlowOnlyStepMetrics:
         assert data["records"][0].get("status") == "missing"
         assert data["records"][0].get("status") != "unknown_step"
 
+
+class TestLogListingFlowOrder:
+    """Listing step logs follow flow.json order, not alphabetical."""
+
+    def _setup_steps_with_flow(self, tmp_path, step_names, extra_dirs=None):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir, steps=[
+            {"name": n, "tool": "ecc", "state": "Success"} for n in step_names
+        ])
+        all_dirs = list(step_names) + (extra_dirs or [])
+        tool_map = {
+            "Synthesis": "yosys", "Floorplan": "ecc", "fixFanout": "ecc",
+            "place": "ecc", "CTS": "ecc", "legalization": "ecc",
+            "route": "ecc", "drc": "ecc", "filler": "ecc",
+        }
+        for name in all_dirs:
+            tool = tool_map.get(name, "ecc")
+            step_dir = os.path.join(run_dir, f"{name}_{tool}", "log")
+            os.makedirs(step_dir, exist_ok=True)
+            with open(os.path.join(step_dir, f"{name.lower()}.log"), "w") as f:
+                f.write(f"log from {name}\n")
+        return project_dir
+
+    def test_steps_follow_flow_json_order(self, tmp_path, capsys):
+        project_dir = self._setup_steps_with_flow(
+            tmp_path,
+            ["Synthesis", "Floorplan", "CTS"],
+        )
+        rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        steps = [r.get("step") for r in records if "step" in r]
+        assert steps == ["synthesis", "floorplan", "cts"]
+
+    def test_run_level_logs_before_step_logs(self, tmp_path, capsys):
+        project_dir = self._setup_steps_with_flow(
+            tmp_path,
+            ["Synthesis", "CTS"],
+        )
+        run_dir = os.path.join(project_dir, "runs", "default")
+        log_dir = os.path.join(run_dir, "log")
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, "flow.log"), "w") as f:
+            f.write("run-level log\n")
+        rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        run_indices = [i for i, r in enumerate(records) if "log" in r and "step" not in r]
+        step_indices = [i for i, r in enumerate(records) if "step" in r]
+        assert run_indices, "expected at least one run-level record"
+        assert step_indices, "expected at least one step record"
+        assert max(run_indices) < min(step_indices)
+
+    def test_extra_steps_after_flow_steps(self, tmp_path, capsys):
+        project_dir = self._setup_steps_with_flow(
+            tmp_path,
+            ["Synthesis", "CTS"],
+            extra_dirs=["Floorplan"],
+        )
+        rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        steps = [r.get("step") for r in records if "step" in r]
+        synth_idx = steps.index("synthesis")
+        cts_idx = steps.index("cts")
+        fp_idx = steps.index("floorplan")
+        assert synth_idx < cts_idx
+        assert cts_idx < fp_idx
+
+    def test_extra_steps_sorted_alphabetically(self, tmp_path, capsys):
+        project_dir = self._setup_steps_with_flow(
+            tmp_path,
+            ["Synthesis"],
+            extra_dirs=["Floorplan", "CTS"],
+        )
+        rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        steps = [r.get("step") for r in records if "step" in r]
+        extras = [s for s in steps if s != "synthesis"]
+        assert extras == sorted(extras)
+
+    def test_missing_flow_json_falls_back_to_alphabetical(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        os.makedirs(run_dir, exist_ok=True)
+        for name in ["CTS_ecc", "Floorplan_ecc", "Synthesis_yosys"]:
+            step_dir = os.path.join(run_dir, name, "log")
+            os.makedirs(step_dir, exist_ok=True)
+            with open(os.path.join(step_dir, "test.log"), "w") as f:
+                f.write("content\n")
+        rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        steps = [r.get("step") for r in records if "step" in r]
+        assert steps == sorted(steps)
+
+    def test_corrupt_flow_json_falls_back_to_alphabetical(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            f.write("not valid json{{{")
+        for name in ["CTS_ecc", "Floorplan_ecc", "Synthesis_yosys"]:
+            step_dir = os.path.join(run_dir, name, "log")
+            os.makedirs(step_dir, exist_ok=True)
+            with open(os.path.join(step_dir, "test.log"), "w") as f:
+                f.write("content\n")
+        rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        steps = [r.get("step") for r in records if "step" in r]
+        assert steps == sorted(steps)
+
+
+class TestLogListingTailPreview:
+    """Tail preview shows up to 10 lines in default pretty text mode."""
+
+    def test_listing_shows_tail_lines(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        log_path = os.path.join(step_dir, "synthesis.log")
+        lines = [f"log line {i}" for i in range(15)]
+        with open(log_path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        rc = cli_main.run(["log", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "log line 14" in out
+        assert "tail:" in out
+
+    def test_listing_tail_max_10_lines(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        log_path = os.path.join(step_dir, "synthesis.log")
+        lines = [f"line {i}" for i in range(20)]
+        with open(log_path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        rc = cli_main.run(["log", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        tail_lines = [l for l in out.split("\n") if "tail:" in l]
+        assert len(tail_lines) == 10
+
+    def test_empty_log_no_tail_block(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        log_path = os.path.join(step_dir, "synthesis.log")
+        with open(log_path, "w") as f:
+            f.write("")
+        rc = cli_main.run(["log", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "tail:" not in out
+        assert "inspect:" in out
+
+    def test_inspect_visible_below_tail(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        log_path = os.path.join(step_dir, "synthesis.log")
+        with open(log_path, "w") as f:
+            f.write("content line\n")
+        rc = cli_main.run(["log", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        tail_pos = out.find("tail:")
+        inspect_pos = out.find("inspect:")
+        assert tail_pos < inspect_pos
+
+
+class TestLogListingMachineModeNoTail:
+    """Machine modes must not include tail data."""
+
+    def test_plain_no_tail(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("line 1\nline 2\nline 3\n")
+        rc = cli_main.run(["log", "--plain", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "tail=" not in out
+
+    def test_json_no_tail(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("line 1\nline 2\n")
+        rc = cli_main.run(["log", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        for rec in data["records"]:
+            assert "tail" not in rec
+
+    def test_jsonl_no_tail(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("line 1\nline 2\n")
+        rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        for rec in records:
+            assert "tail" not in rec
+
+
+class TestLogStepUnchanged:
+    """ecc log <step> full output must remain unchanged."""
+
+    def test_step_shows_all_lines_not_tail(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        lines = [f"line {i}" for i in range(20)]
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("\n".join(lines) + "\n")
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "line 0" in out
+        assert "line 19" in out
+
+    def test_step_plain_unchanged(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("a\nb\nc\n")
+        rc = cli_main.run(["log", "synthesis", "--plain", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "line_no=1" in out
+        assert "line_no=2" in out
+        assert "line_no=3" in out
+        assert "tail" not in out
+
+    def test_step_jsonl_unchanged(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
+            f.write("a\nb\n")
+        rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
+        assert rc == 0
+        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        assert len(records) == 2
+        for rec in records:
+            assert "tail" not in rec
+

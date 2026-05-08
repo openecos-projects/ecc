@@ -177,10 +177,11 @@ def _should_colorize():
     return supports_color(file=sys.stdout)
 
 
-def _render_log_text(args, result, color=True) -> None:
+def _render_log_text(args, result, color=True, run_dir=None) -> None:
     from chipcompiler.cli.log_view import (
         render_log_listing_pretty,
         render_log_pretty,
+        tail_lines_for_log,
     )
     from chipcompiler.cli.pretty import render_error, render_generic_block
 
@@ -226,8 +227,20 @@ def _render_log_text(args, result, color=True) -> None:
             )
         return
 
-    # Listing mode
-    render_log_listing_pretty(list(records), color=color)
+    # Listing mode: compute tail previews only for pretty text output
+    tail_map = None
+    if run_dir:
+        tail_map = {}
+        for rec in records:
+            source = rec.get("source") or rec.get("log", "")
+            if not source:
+                continue
+            full_path = os.path.join(run_dir, source)
+            lines = tail_lines_for_log(full_path)
+            if lines:
+                tail_map[source] = lines
+
+    render_log_listing_pretty(list(records), color=color, tail_map=tail_map)
 
 
 def _render_log_plain(result) -> None:
@@ -265,7 +278,7 @@ def run(argv: Sequence[str] | None = None) -> int:
     if args.command == "param" and ctx.output_mode == OutputMode.TEXT:
         _render_param_text(args, result, color=color)
     elif args.command == "log" and ctx.output_mode == OutputMode.TEXT:
-        _render_log_text(args, result, color=color)
+        _render_log_text(args, result, color=color, run_dir=ctx.run_dir)
     elif args.command == "log" and ctx.output_mode == OutputMode.PLAIN:
         _render_log_plain(result)
     else:
