@@ -92,8 +92,9 @@ def log(args, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.inspect import (
         discover_logs,
         discover_step_dirs,
+        get_flow_step_names,
+        listing_step_order,
     )
-    from chipcompiler.cli.inspect import get_flow_step_names
     from chipcompiler.cli.log_view import build_log_records
 
     step_token = args.step
@@ -108,8 +109,7 @@ def log(args, ctx: CommandContext) -> CommandResult:
                 "inspect_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
             })
 
-        step_dirs = discover_step_dirs(ctx.run_dir)
-        for token in sorted(step_dirs):
+        for token in listing_step_order(ctx.run_dir):
             for lf in discover_logs(ctx.run_dir, token):
                 records.append({
                     "step": token,

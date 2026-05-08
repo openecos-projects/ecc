@@ -677,3 +677,142 @@ class TestListingPrettyRenderer:
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=False)
         assert "\x1b[" not in buf.getvalue()
+
+
+class TestTailLinesForLog:
+    def test_returns_last_10_non_empty(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        lines = [f"line {i}" for i in range(15)]
+        log_file.write_text("\n".join(lines))
+        result = tail_lines_for_log(str(log_file))
+        assert len(result) == 10
+        assert result[0] == "line 5"
+        assert result[-1] == "line 14"
+
+    def test_fewer_than_10_returns_all(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("a\nb\nc\n")
+        result = tail_lines_for_log(str(log_file))
+        assert result == ["a", "b", "c"]
+
+    def test_empty_lines_omitted(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("a\n\n\nb\n\n\nc\n")
+        result = tail_lines_for_log(str(log_file))
+        assert result == ["a", "b", "c"]
+
+    def test_preserves_order(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("first\nmiddle\nlast\n")
+        result = tail_lines_for_log(str(log_file))
+        assert result == ["first", "middle", "last"]
+
+    def test_ansi_stripped(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("\x1b[31mred text\x1b[0m\nnormal\n")
+        result = tail_lines_for_log(str(log_file))
+        assert result == ["red text", "normal"]
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        result = tail_lines_for_log(str(tmp_path / "nonexistent.log"))
+        assert result == []
+
+    def test_empty_file_returns_empty(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("")
+        result = tail_lines_for_log(str(log_file))
+        assert result == []
+
+    def test_blank_only_file_returns_empty(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("   \n\n\t\n   \n")
+        result = tail_lines_for_log(str(log_file))
+        assert result == []
+
+    def test_ansi_control_sequences_stripped(self, tmp_path):
+        from chipcompiler.cli.log_view import tail_lines_for_log
+        log_file = tmp_path / "test.log"
+        log_file.write_text("\x1b[31mred\x1b[0m\n\x1b[2Kclear\nvalid\n")
+        result = tail_lines_for_log(str(log_file))
+        assert "\x1b[" not in " ".join(result)
+        assert "valid" in result
+
+
+class TestListingTailRendering:
+    def test_tail_block_appears_for_readable_log(self):
+        from io import StringIO
+        records = [
+            {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
+        ]
+        tail_map = {"synth.log": ["line 1", "line 2"]}
+        buf = StringIO()
+        render_log_listing_pretty(records, file=buf, color=False, tail_map=tail_map)
+        out = buf.getvalue()
+        assert "tail: line 1" in out
+        assert "tail: line 2" in out
+
+    def test_inspect_remains_below_tail(self):
+        from io import StringIO
+        records = [
+            {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
+        ]
+        tail_map = {"synth.log": ["preview"]}
+        buf = StringIO()
+        render_log_listing_pretty(records, file=buf, color=False, tail_map=tail_map)
+        out = buf.getvalue()
+        tail_pos = out.find("tail:")
+        inspect_pos = out.find("inspect:")
+        assert tail_pos < inspect_pos
+
+    def test_no_tail_block_when_empty(self):
+        from io import StringIO
+        records = [
+            {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
+        ]
+        tail_map = {"synth.log": []}
+        buf = StringIO()
+        render_log_listing_pretty(records, file=buf, color=False, tail_map=tail_map)
+        out = buf.getvalue()
+        assert "tail:" not in out
+        assert "inspect:" in out
+
+    def test_no_tail_block_when_source_not_in_map(self):
+        from io import StringIO
+        records = [
+            {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
+        ]
+        buf = StringIO()
+        render_log_listing_pretty(records, file=buf, color=False, tail_map={})
+        out = buf.getvalue()
+        assert "tail:" not in out
+        assert "inspect:" in out
+
+    def test_no_tail_block_when_tail_map_is_none(self):
+        from io import StringIO
+        records = [
+            {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
+        ]
+        buf = StringIO()
+        render_log_listing_pretty(records, file=buf, color=False, tail_map=None)
+        out = buf.getvalue()
+        assert "tail:" not in out
+        assert "inspect:" in out
+
+    def test_run_level_entry_labeled_without_step(self):
+        from io import StringIO
+        records = [
+            {"log": "log/flow.log", "inspect_cmd": "ecc log"},
+        ]
+        buf = StringIO()
+        render_log_listing_pretty(records, file=buf, color=False)
+        out = buf.getvalue()
+        assert "log/flow.log" in out
+        assert "inspect:" in out

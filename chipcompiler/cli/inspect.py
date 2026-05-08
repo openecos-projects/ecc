@@ -168,3 +168,24 @@ def _internal_from_token(token: str) -> str:
         "filler": "filler",
     }
     return reverse.get(token, token)
+
+
+def listing_step_order(run_dir: str) -> list[str]:
+    """Return step tokens in flow.json order, with undiscovered extras alphabetically after."""
+    step_dirs = discover_step_dirs(run_dir)
+    if not step_dirs:
+        return []
+
+    flow_data = read_flow_json(run_dir)
+    if isinstance(flow_data, dict):
+        flow_tokens = [
+            normalize_step_name(s.get("name", ""))
+            for s in _safe_steps(flow_data)
+            if s.get("name")
+        ]
+        flow_set = set(flow_tokens)
+        result = [t for t in flow_tokens if t in step_dirs]
+        result.extend(sorted(t for t in step_dirs if t not in flow_set))
+        return result
+
+    return sorted(step_dirs)

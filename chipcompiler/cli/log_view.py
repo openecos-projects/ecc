@@ -182,10 +182,25 @@ def render_log_records_plain(records, file=None) -> None:
         _render_plain_record(rec, target)
 
 
+def tail_lines_for_log(path: str, max_lines: int = 10) -> list[str]:
+    """Return up to max_lines non-empty sanitized lines from the end of a log file."""
+    try:
+        with open(path, errors="replace") as f:
+            raw = f.read().splitlines()
+    except OSError:
+        return []
+
+    from chipcompiler.cli.progress import sanitize_log_line
+    sanitized = [sanitize_log_line(line) for line in raw]
+    non_empty = [line for line in sanitized if line]
+    return non_empty[-max_lines:]
+
+
 def render_log_listing_pretty(
     records: list[dict],
     file=None,
     color: bool = True,
+    tail_map: dict | None = None,
 ) -> None:
     target = file or sys.stdout
 
@@ -203,6 +218,14 @@ def render_log_listing_pretty(
             step_label = ""
 
         target.write(f"{step_label}  {source}\n")
+
+        if tail_map and source in tail_map:
+            tail_lines = tail_map[source]
+            if tail_lines:
+                tail_label = f"  {style('tail:', DIM, color)}" if color else "  tail:"
+                for tl in tail_lines:
+                    target.write(f"{tail_label} {tl}\n")
+
         inspect_label = f"  {style('inspect:', DIM, color)}" if color else "  inspect:"
         target.write(f"{inspect_label} {inspect}\n")
 
