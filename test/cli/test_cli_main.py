@@ -1737,8 +1737,10 @@ class TestLogListingTailPreview:
         rc = cli_main.run(["log", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        tail_lines = [l for l in out.split("\n") if "tail:" in l]
-        assert len(tail_lines) == 10
+        output_lines = out.split("\n")
+        tail_header_idx = next(i for i, l in enumerate(output_lines) if l.strip() == "tail:")
+        tail_content = [l for l in output_lines[tail_header_idx + 1:] if l.startswith("      ") and "inspect:" not in l]
+        assert len(tail_content) == 10
 
     def test_empty_log_no_tail_block(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -1857,4 +1859,29 @@ class TestLogStepUnchanged:
         assert len(records) == 2
         for rec in records:
             assert "tail" not in rec
+
+
+class TestLogListingUnreadable:
+    """Unreadable logs in listing mode must omit tail, keep path+inspect, no traceback."""
+
+    def test_unreadable_step_log_in_listing(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        os.makedirs(step_dir, exist_ok=True)
+        log_path = os.path.join(step_dir, "synthesis.log")
+        with open(log_path, "w") as f:
+            f.write("content\n")
+        os.chmod(log_path, 0o000)
+
+        try:
+            rc = cli_main.run(["log", "--project", project_dir])
+            assert rc == 0
+            out = capsys.readouterr().out
+            assert "tail:" not in out
+            assert "Synthesis_yosys" in out
+            assert "inspect:" in out
+            assert "Traceback" not in out
+        finally:
+            os.chmod(log_path, 0o644)
 

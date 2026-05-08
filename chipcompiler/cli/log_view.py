@@ -213,18 +213,18 @@ def render_log_listing_pretty(
         inspect = rec.get("inspect_cmd") or rec.get("inspect", "")
 
         if step:
-            step_label = f"  {style(step, CYAN, color)}" if color else f"  {step}"
+            label = f"  {style(step, CYAN, color)}" if color else f"  {step}"
         else:
-            step_label = ""
+            label = f"  {style('run', CYAN, color)}" if color else "  run"
 
-        target.write(f"{step_label}  {source}\n")
+        target.write(f"{label}  {source}\n")
 
         if tail_map and source in tail_map:
             tail_lines = tail_map[source]
             if tail_lines:
-                tail_label = f"  {style('tail:', DIM, color)}" if color else "  tail:"
+                target.write(f"    {style('tail:', DIM, color)}\n" if color else "    tail:\n")
                 for tl in tail_lines:
-                    target.write(f"{tail_label} {tl}\n")
+                    target.write(f"      {tl}\n")
 
         inspect_label = f"  {style('inspect:', DIM, color)}" if color else "  inspect:"
         target.write(f"{inspect_label} {inspect}\n")
