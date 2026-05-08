@@ -43,7 +43,10 @@ let
     inherit version;
     src = rootSrc;
 
-    patches = [ ./use-nix-built-rust-libraries.patch ];
+    patches = [
+      ./use-nix-built-rust-libraries.patch
+      ./fix-ino-output-summary-init.patch
+    ];
 
     postPatch = ''
       substituteInPlace src/operation/iIR/source/iir-rust/CMakeLists.txt \
