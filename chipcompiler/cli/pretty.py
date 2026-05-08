@@ -399,7 +399,7 @@ def render_error(records, file=None, color=True):
     for record in records:
         error = record.get("error", record.get("kind", "error"))
         reason = record.get("reason", "")
-        target.write(f"  {status_style(error, color)}")
+        target.write(f"  {style(error, RED, color)}")
         if reason:
             target.write(f" {reason}")
         target.write("\n")

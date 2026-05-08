@@ -13,6 +13,7 @@ def _strip_ansi(text):
 from chipcompiler.cli.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.progress import (
     RunProgressRenderer,
+    format_error_context,
     latest_log_line,
     run_flow_with_progress,
     sanitize_log_line,
@@ -21,6 +22,7 @@ from chipcompiler.cli.progress import (
     supports_color,
     truncate_to_width,
 )
+from chipcompiler.cli.log_view import LineKind, LogLine
 from chipcompiler.cli.types import CommandContext, OutputMode
 from chipcompiler.data import StateEnum
 
@@ -105,6 +107,10 @@ class TestShouldEnableRunProgress:
 
     def test_disabled_jsonl(self):
         ctx = _make_ctx(OutputMode.JSONL)
+        assert should_enable_run_progress(ctx, FakeTTYStderr(True)) is False
+
+    def test_disabled_plain(self):
+        ctx = _make_ctx(OutputMode.PLAIN)
         assert should_enable_run_progress(ctx, FakeTTYStderr(True)) is False
 
     def test_disabled_no_tty(self):
@@ -624,3 +630,179 @@ class TestRunFlowWithProgress:
         output = "".join(buf.written)
         for code in (BOLD, CYAN, GREEN, RED, DIM):
             assert code not in output
+
+
+# ---------------------------------------------------------------------------
+# Failure context block formatting (AC-5)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatErrorContext:
+    def test_first_line_is_error_log_path(self):
+        ctx_lines = [LogLine(10, LineKind.ERROR, "Error: something")]
+        out = format_error_context("log/synthesis.log", ctx_lines, "ecc log synthesis", color=False)
+        assert out.startswith("error: log/synthesis.log")
+
+    def test_includes_numbered_context_lines(self):
+        ctx_lines = [
+            LogLine(8, LineKind.INFO, "INFO: before"),
+            LogLine(9, LineKind.WARNING, "Warning: careful"),
+            LogLine(10, LineKind.ERROR, "Error: failed"),
+        ]
+        out = format_error_context("log/synthesis.log", ctx_lines, "ecc log synthesis", color=False)
+        for ll in ctx_lines:
+            assert str(ll.line_no) in out
+            assert ll.text in out
+
+    def test_compact_kind_labels(self):
+        ctx_lines = [
+            LogLine(5, LineKind.ERROR, "bad"),
+            LogLine(6, LineKind.WARNING, "meh"),
+            LogLine(7, LineKind.TRACEBACK, "  File ..."),
+            LogLine(8, LineKind.INFO, "ok"),
+        ]
+        out = format_error_context("log/p.log", ctx_lines, "ecc log step", color=False)
+        assert "ERROR" in out
+        assert "WARN" in out
+        assert "TRACE" in out
+        assert "INFO" in out
+
+    def test_footer_includes_for_more_log_info(self):
+        ctx_lines = [LogLine(1, LineKind.ERROR, "failed")]
+        out = format_error_context("log/p.log", ctx_lines, "ecc log synthesis --project myproj", color=False)
+        assert "For more log info:" in out
+        assert "ecc log synthesis --project myproj" in out
+
+    def test_footer_includes_command_grep_field(self):
+        ctx_lines = [LogLine(1, LineKind.ERROR, "failed")]
+        log_cmd = "ecc log synthesis --project myproj --run-id abc123"
+        out = format_error_context("log/p.log", ctx_lines, log_cmd, color=False)
+        assert 'command="ecc log synthesis --project myproj --run-id abc123"' in out
+
+    def test_project_and_run_id_preserved_in_footer(self):
+        ctx_lines = [LogLine(1, LineKind.ERROR, "failed")]
+        log_cmd = "ecc log synthesis --project /path/to/proj --run-id run42"
+        out = format_error_context("log/p.log", ctx_lines, log_cmd, color=False)
+        assert "--project /path/to/proj" in out
+        assert "--run-id run42" in out
+
+    def test_color_gating_no_ansi_when_disabled(self):
+        ctx_lines = [LogLine(10, LineKind.ERROR, "Error: bad")]
+        out = format_error_context("log/p.log", ctx_lines, "ecc log step", color=False)
+        assert "\x1b[" not in out
+
+    def test_color_gating_ansi_when_enabled(self):
+        ctx_lines = [LogLine(10, LineKind.ERROR, "Error: bad")]
+        out = format_error_context("log/p.log", ctx_lines, "ecc log step", color=True)
+        assert "\x1b[" in out
+
+    def test_line_number_padding_consistent(self):
+        ctx_lines = [
+            LogLine(1, LineKind.PLAIN, "first"),
+            LogLine(10, LineKind.ERROR, "error"),
+            LogLine(100, LineKind.PLAIN, "hundred"),
+        ]
+        out = format_error_context("log/p.log", ctx_lines, "ecc log step", color=False)
+        lines = out.strip().split("\n")
+        context_lines = [l for l in lines if l.strip() and not l.startswith("error:") and not l.startswith("For") and not l.startswith("command=")]
+        for line in context_lines:
+            assert line.startswith(" ")
+
+    def test_empty_context(self):
+        out = format_error_context("log/p.log", [], "ecc log step", color=False)
+        assert "error: log/p.log" in out
+        assert "For more log info:" in out
+
+
+# ---------------------------------------------------------------------------
+# Failure context progress integration (AC-6)
+# ---------------------------------------------------------------------------
+
+
+class TestFailureContextIntegration:
+    def test_failed_step_prints_context_block(self, tmp_path):
+        log_file = tmp_path / "synth.log"
+        log_file.write_text("line 1\nline 2\nError: something failed\nline 4\n")
+
+        def fail_step(self, s):
+            return StateEnum.Imcomplete
+
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys", str(log_file))],
+            fail_step,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        assert result is False
+        plain = _strip_ansi("".join(buf.written))
+        assert "error:" in plain
+        assert "For more log info:" in plain
+        assert 'command="' in plain
+
+    def test_successful_step_no_context_block(self, tmp_path):
+        log_file = tmp_path / "synth.log"
+        log_file.write_text("line 1\nline 2\nall good\n")
+
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys", str(log_file))],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        assert result is True
+        plain = _strip_ansi("".join(buf.written))
+        assert "error:" not in plain
+        assert "For more log info:" not in plain
+
+    def test_missing_log_no_context_block(self):
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("Synthesis", "yosys", "/nonexistent/synth.log")],
+            lambda self, s: StateEnum.Imcomplete,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        assert result is False
+        plain = _strip_ansi("".join(buf.written))
+        assert "error:" not in plain
+        assert "For more log info:" not in plain
+        assert "log:" in plain
+        assert "inspect:" in plain
+
+    def test_empty_log_no_context_block(self, tmp_path):
+        log_file = tmp_path / "empty.log"
+        log_file.write_text("")
+
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys", str(log_file))],
+            lambda self, s: StateEnum.Imcomplete,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        assert result is False
+        plain = _strip_ansi("".join(buf.written))
+        assert "For more log info:" not in plain
+
+    def test_existing_log_and_inspect_lines_remain(self, tmp_path):
+        log_file = tmp_path / "synth.log"
+        log_file.write_text("line 1\nError: fail\nline 3\n")
+
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Synthesis", "yosys", str(log_file))],
+            lambda self, s: StateEnum.Imcomplete,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        assert result is False
+        plain = _strip_ansi("".join(buf.written))
+        assert "log:" in plain
+        assert "inspect:" in plain

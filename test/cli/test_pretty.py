@@ -453,6 +453,65 @@ class TestMultiRecordError:
 
 
 # ---------------------------------------------------------------------------
+# Error code coloring (AC-1)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorCodeColoring:
+    def test_arbitrary_error_code_colored_red(self):
+        from chipcompiler.cli.pretty import render_error
+
+        buf = io.StringIO()
+        render_error([{"error": "missing_config", "reason": "no config found"}], file=buf, color=True)
+        out = buf.getvalue()
+        assert RED in out
+        assert "missing_config" in out
+
+    def test_multiple_arbitrary_codes_colored_red(self):
+        from chipcompiler.cli.pretty import render_error
+
+        buf = io.StringIO()
+        records = [
+            {"error": "workspace_failed", "reason": "bad state"},
+            {"error": "config_error", "reason": "invalid toml"},
+            {"error": "invalid_parameter", "reason": "bad value"},
+        ]
+        render_error(records, file=buf, color=True)
+        out = buf.getvalue()
+        for code in ("workspace_failed", "config_error", "invalid_parameter"):
+            assert code in out
+        assert RED in out
+
+    def test_error_preserves_secondary_fields(self):
+        from chipcompiler.cli.pretty import render_error
+
+        buf = io.StringIO()
+        render_error([{"error": "missing_config", "path": "/tmp/x", "reason": "gone"}], file=buf, color=True)
+        out = buf.getvalue()
+        assert "path:" in out
+        assert "/tmp/x" in out
+        assert "gone" in out
+
+    def test_error_no_ansi_when_color_disabled(self):
+        from chipcompiler.cli.pretty import render_error
+
+        buf = io.StringIO()
+        render_error([{"error": "missing_config", "reason": "bad"}], file=buf, color=False)
+        out = buf.getvalue()
+        assert "\x1b[" not in out
+        assert "missing_config" in out
+
+    def test_unknown_error_code_not_white_by_default(self):
+        """Unknown error codes should still be red, not white or default."""
+        from chipcompiler.cli.pretty import render_error
+
+        buf = io.StringIO()
+        render_error([{"error": "unknown_code_xyz"}], file=buf, color=True)
+        out = buf.getvalue()
+        assert RED in out
+
+
+# ---------------------------------------------------------------------------
 # Shared color policy tests (Codex Round 1 finding)
 # ---------------------------------------------------------------------------
 

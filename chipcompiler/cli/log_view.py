@@ -2,6 +2,9 @@ import enum
 import re
 import sys
 
+from chipcompiler.cli.pretty import BOLD, DIM, RED, YELLOW, BLUE, CYAN, RESET, style
+from chipcompiler.cli.render import _plain_value
+
 
 class LineKind(enum.Enum):
     ERROR = "error"
@@ -104,8 +107,6 @@ def build_log_records(
 
 # --- Pretty rendering ---
 
-from chipcompiler.cli.pretty import BOLD, DIM, RED, YELLOW, BLUE, CYAN, RESET, style
-
 _KIND_LABEL = {
     LineKind.ERROR: "error",
     LineKind.WARNING: "warn ",
@@ -144,7 +145,10 @@ def render_log_pretty(
         label = _KIND_LABEL[ll.kind]
         if color and ll.kind in _KIND_COLOR:
             code = _KIND_COLOR[ll.kind]
-            target.write(f"  {code}{label}{RESET} {ll.text}\n")
+            if ll.kind == LineKind.ERROR:
+                target.write(f"  {code}{label} {ll.text}{RESET}\n")
+            else:
+                target.write(f"  {code}{label}{RESET} {ll.text}\n")
         else:
             target.write(f"  {label} {ll.text}\n")
 
@@ -153,8 +157,6 @@ def render_log_pretty(
 
 
 def _render_plain_record(rec, target):
-    from chipcompiler.cli.render import _plain_value
-
     parts = []
     for key in ("step", "source", "line_no", "kind", "line", "inspect_cmd"):
         parts.append(f"{key}={_plain_value(rec.get(key, ''))}")
@@ -203,3 +205,55 @@ def render_log_listing_pretty(
         target.write(f"{step_label}  {source}\n")
         inspect_label = f"  {style('inspect:', DIM, color)}" if color else "  inspect:"
         target.write(f"{inspect_label} {inspect}\n")
+
+
+# --- Context extraction ---
+
+
+def extract_error_context(lines: list[str], max_lines: int = 50) -> list:
+    """Extract at most max_lines log lines around the failure anchor.
+
+    Anchor priority: last error > last traceback > last \"failed\" > last non-empty.
+    """
+    if not lines:
+        return []
+
+    annotated = annotate_log_lines(lines)
+    total = len(annotated)
+
+    anchor_idx = _find_context_anchor(annotated)
+
+    if total <= max_lines:
+        return annotated
+
+    half = max_lines // 2
+    start = max(0, anchor_idx - half)
+    end = min(total, start + max_lines)
+    if end - start < max_lines:
+        start = max(0, end - max_lines)
+
+    return annotated[start:end]
+
+
+def _find_context_anchor(annotated):
+    # Priority 1: last error line
+    for i in range(len(annotated) - 1, -1, -1):
+        if annotated[i].kind == LineKind.ERROR:
+            return i
+
+    # Priority 2: last traceback line
+    for i in range(len(annotated) - 1, -1, -1):
+        if annotated[i].kind == LineKind.TRACEBACK:
+            return i
+
+    # Priority 3: last line containing "failed"
+    for i in range(len(annotated) - 1, -1, -1):
+        if "failed" in annotated[i].text.lower():
+            return i
+
+    # Priority 4: last non-empty line
+    for i in range(len(annotated) - 1, -1, -1):
+        if annotated[i].text.strip():
+            return i
+
+    return len(annotated) - 1
