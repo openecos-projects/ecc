@@ -470,7 +470,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ecc-dreamplace", url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" },
+    { name = "ecc-dreamplace", url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.2/ecc_dreamplace-0.1.0a2-py3-none-manylinux_2_34_x86_64.whl" },
     { name = "ecc-tools", url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.2/ecc_tools-0.1.0a2-py3-none-manylinux_2_34_x86_64.whl" },
     { name = "fastapi", specifier = ">=0.109" },
     { name = "klayout", specifier = ">=0.30.2" },
@@ -506,8 +506,8 @@ dev = [
 
 [[package]]
 name = "ecc-dreamplace"
-version = "0.1.0a1"
-source = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl" }
+version = "0.1.0a2"
+source = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.2/ecc_dreamplace-0.1.0a2-py3-none-manylinux_2_34_x86_64.whl" }
 dependencies = [
     { name = "cairocffi" },
     { name = "configspace" },
@@ -530,7 +530,7 @@ dependencies = [
     { name = "xgboost" },
 ]
 wheels = [
-    { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.1/ecc_dreamplace-0.1.0a1-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:212139c43f825498968eda10309959b99cd93aec0744d182a17bb5d34b53145e" },
+    { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.2/ecc_dreamplace-0.1.0a2-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:fad0e489bfba62f79c193e2e0ec5051a492768e2a3d6099aa5e604c08abb191f" },
 ]
 
 [package.metadata]
