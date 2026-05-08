@@ -4,9 +4,9 @@ import shutil
 import threading
 import time
 
-from chipcompiler.cli.log_view import LineKind, extract_error_context
+from chipcompiler.cli.log_view import LineKind, _KIND_COLOR, _KIND_LABEL, extract_error_context
 from chipcompiler.cli.output import disclosure_cmd, normalize_step_name, normalize_state
-from chipcompiler.cli.pretty import BOLD, DIM, CYAN, GREEN, RED, RESET, YELLOW, BLUE, style as _style
+from chipcompiler.cli.pretty import BOLD, DIM, CYAN, GREEN, RED, RESET, style as _style
 from chipcompiler.cli.types import OutputMode
 from chipcompiler.data import StateEnum, log_flow
 
@@ -50,22 +50,7 @@ def truncate_to_width(text, width):
 
 # --- Failure context block formatting ---
 
-_KIND_LABEL_COMPACT = {
-    LineKind.ERROR: "ERROR",
-    LineKind.WARNING: "WARN ",
-    LineKind.TRACEBACK: "TRACE",
-    LineKind.INFO: "INFO ",
-    LineKind.SECTION: "-----",
-    LineKind.PLAIN: "     ",
-}
-
-_KIND_COLOR_CONTEXT = {
-    LineKind.ERROR: RED,
-    LineKind.WARNING: YELLOW,
-    LineKind.TRACEBACK: YELLOW,
-    LineKind.INFO: BLUE,
-    LineKind.SECTION: CYAN,
-}
+_KIND_LABEL_COMPACT = {k: v.upper() for k, v in _KIND_LABEL.items()}
 
 
 def format_error_context(log_path, context_lines, log_cmd, color=True):
@@ -90,8 +75,8 @@ def format_error_context(log_path, context_lines, log_cmd, color=True):
         no = str(ll.line_no).rjust(width)
         label = _KIND_LABEL_COMPACT[ll.kind]
 
-        if color and ll.kind in _KIND_COLOR_CONTEXT:
-            code = _KIND_COLOR_CONTEXT[ll.kind]
+        if color and ll.kind in _KIND_COLOR:
+            code = _KIND_COLOR[ll.kind]
             if ll.kind == LineKind.ERROR:
                 lines.append(f"  {no} {code}{label} {ll.text}{RESET}")
             else:
