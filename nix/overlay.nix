@@ -1,5 +1,6 @@
 final: prev: {
   ecc-tools-python = prev.python3Packages.callPackage ./python/ecc-tools {
+    callPackages = prev.callPackages;
     gflags = prev.gflags;
     onnxruntime = prev.onnxruntime;
   };
