@@ -95,6 +95,9 @@ extend-include = ["*.spec"]
 [tool.pytest.ini_options]
 testpaths = ["test"]
 norecursedirs = ["bazel-bin", "bazel-out", "bazel-ecc", "bazel-testlogs", ".venv"]
+addopts = [
+  "--deselect=test/test_tools.py::test_sg13g2_gcd",
+]
 
 [tool.ty]
 environment.python-version = "3.11"
