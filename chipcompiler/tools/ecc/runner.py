@@ -210,6 +210,10 @@ def run_step(workspace: Workspace,
             state = run_rcx(workspace=workspace,
                             step=step, 
                             ecc_module=ecc_module)
+        case StepEnum.STA.value:
+            state = run_sta(workspace=workspace,
+                            step=step, 
+                            ecc_module=ecc_module)
                 
     return state
 
@@ -762,5 +766,41 @@ def run_rcx(workspace: Workspace,
                                  state=StateEnum.Success) 
         
             result = True
+        
+    return result
+
+
+def run_sta(workspace: Workspace,
+            step: WorkspaceStep,
+            ecc_module : ECCToolsModule = None) -> bool:
+    """
+    run sta
+    """
+    result = False
+    
+    sub_flow = EccSubFlow(workspace=workspace,
+                          workspace_step=step)
+    
+    eda_inst = get_eda_instance(workspace=workspace,
+                                step=step,
+                                ecc_module = ecc_module)
+    
+    if eda_inst is not None:
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+        
+        # eda_inst.init_sta(output_dir=step.data["sta"],
+        #                   top_module=workspace.design.top_module,
+        #                   lib_paths=workspace.pdk.libs,
+        #                   sdc_path=workspace.pdk.sdc)
+        
+        eda_inst.run_sta(step.data.get(StepEnum.STA.value, ""))
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Success)
+        
+        save_data(workspace=workspace, step=step, ecc_module=eda_inst, feature_step=False)
+        
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
+                             state=StateEnum.Success) 
+    
+        result = True
         
     return result

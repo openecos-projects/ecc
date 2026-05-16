@@ -292,11 +292,6 @@ def build_step_config(workspace: Workspace,
         config = json_read(step.config[f"{StepEnum.CTS.value}"])
         
         # parameters
-        if len(workspace.pdk.buffers) > 0:
-            config["root_buffer_type"] = workspace.pdk.buffers[0]
-        else:
-            config["root_buffer_type"] = ""
-        
         config["buffer_type"] = workspace.pdk.buffers
         
         # write back
