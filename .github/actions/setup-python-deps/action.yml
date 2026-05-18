@@ -1,0 +1,20 @@
+name: Setup Python Dependencies
+description: Setup Python 3.11, uv, and install project dependencies.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: latest
+        enable-cache: "true"
+
+    - name: Install Python dependencies
+      shell: bash
+      run: uv sync --frozen --all-groups --python 3.11

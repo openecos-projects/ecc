@@ -1,0 +1,37 @@
+{
+    "thread_num": 64,
+    "output" : "",
+    "mapping_file" : "",
+    "corners" : [
+        {
+            "name" : "TYPICAL",
+            "ecc_tf" : "./TYP.json",
+            "itf_file" : "./TYP.itf ",
+            "captab_file" : "./TYP.captab"
+        },
+        {
+            "name" : "RCbest",
+            "ecc_tf" : "./RCbest.json",
+            "itf_file" : "./RCbest.itf ",
+            "captab_file" : "./RCbest.captab"
+        },
+        {
+            "name" : "RCworst",
+            "ecc_tf" : "./RCworst.json",
+            "itf_file" : "./RCworst.itf ",
+            "captab_file" : "./RCworst.captab"
+        },
+        {
+            "name" : "Cbest",
+            "ecc_tf" : "./Cbest.json",
+            "itf_file" : "./Cbest.itf ",
+            "captab_file" : "./Cbest.captab"
+        },
+        {
+            "name" : "Cworst",
+            "ecc_tf" : "./Cworst.json",
+            "itf_file" : "./Cworst.itf ",
+            "captab_file" : "./Cworst.captab"
+        }
+    ]
+}

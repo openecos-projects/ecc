@@ -127,7 +127,7 @@
         "Grid" : {
             "layer" : "MET1",
             "power net" : "VDD",
-            "power ground" : "VSS",
+            "ground net" : "VSS",
             "width" : 0.16,
             "offset" : 0
         },
@@ -153,7 +153,7 @@
             {
                 "layers" : [
                     "MET1",
-                    "MET5"
+                    "MET4"
                 ]
             },
             {

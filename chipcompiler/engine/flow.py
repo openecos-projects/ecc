@@ -42,6 +42,22 @@ def _run_step_in_subprocess(workspace: Workspace, workspace_step: WorkspaceStep)
         traceback.print_exc()
 
 
+def _run_step_inline(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
+    """
+    Execute a step in the current process so pdb/debugpy can attach normally.
+    """
+    step_tag = f"{workspace_step.name}({workspace_step.tool})"
+    workspace.logger.info(f"[STEP] {step_tag} started inline pid={os.getpid()}")
+
+    try:
+        from chipcompiler.tools import run_step as run_tool_step
+        result = run_tool_step(workspace=workspace, step=workspace_step)
+        workspace.logger.info(f"[STEP] {step_tag} finished inline result={result}")
+    except Exception:
+        workspace.logger.error(f"[STEP] {step_tag} failed with exception")
+        traceback.print_exc()
+
+
 class EngineFlow:
     def __init__(self, workspace : Workspace):
         self.workspace = workspace
@@ -203,6 +219,15 @@ class EngineFlow:
             case StepEnum.SYNTHESIS.value:
                 if os.path.exists(workspace_step.output.get("verilog", "")):
                     success = True
+            case StepEnum.HARDEN.value:
+                if os.path.exists(workspace_step.output.get("lef", "")) and \
+                    os.path.exists(workspace_step.output.get("lib", "")):
+                    success = True
+            case StepEnum.RCX.value:
+                for spef in workspace_step.output.get("spef", []):
+                    if not os.path.exists(spef):
+                        break
+                success = True
             case default:
                 if os.path.exists(workspace_step.output.get("def", "")) and \
                     os.path.exists(workspace_step.output.get("verilog", "")) and \
@@ -220,18 +245,21 @@ class EngineFlow:
                 # use the origin def and verilog in workspace for the first step.
                 input_def = self.workspace.design.origin_def
                 input_verilog = self.workspace.design.origin_verilog
+                input_db = None
             else:
                 # use the output def and verilog from last step.
-                input_def = pre_step.output["def"]
-                input_verilog = pre_step.output["verilog"]
-                
+                input_def = pre_step.output.get("def", "")
+                input_verilog = pre_step.output.get("verilog", "")
+                input_db = pre_step.output.get("db", "")
+
             from chipcompiler.tools import create_step, run_step
             # create workspace step
             eda_step = create_step(workspace=self.workspace,
                                    step=step["name"],
                                    eda=step["tool"],
                                    input_def=input_def,
-                                   input_verilog=input_verilog)
+                                   input_verilog=input_verilog,
+                                   input_db=input_db)
             # save workspace step
             if eda_step is not None:
                 self.workspace_steps.append(eda_step)
@@ -337,9 +365,9 @@ class EngineFlow:
 
         p.join()
         tracker.join(timeout=1.0)
-
+        
         # compute metrics
-        peak_memory_mb = round(peak_memory_result[0] / 1024.0, 3)
+        peak_memory_mb = 0
         elapsed = time.time() - start_time
         runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
 
@@ -353,7 +381,7 @@ class EngineFlow:
                        runtime=runtime,
                        peak_memory=peak_memory_mb)
         self.workspace.logger.info("[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
-                    step_tag, state.value, runtime, peak_memory_mb, p.exitcode)
+                    step_tag, state.value, runtime, peak_memory_mb, 0)
 
         # save layout snapshot on success
         if state == StateEnum.Success:

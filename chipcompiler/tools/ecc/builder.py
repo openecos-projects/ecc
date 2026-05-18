@@ -8,6 +8,7 @@ def build_step(workspace: Workspace,
                step_name: str,
                input_def : str,
                input_verilog : str,
+               input_db : str | None = None,
                output_def : str | None = None,
                output_verilog : str | None = None,
                output_gds : str | None = None,
@@ -40,13 +41,15 @@ def build_step(workspace: Workspace,
         f"{StepEnum.TIMING_OPT_HOLD.value}": f"{step.directory}/config/to_default_config_hold.json",
         f"{StepEnum.TIMING_OPT_SETUP.value}": f"{step.directory}/config/to_default_config_setup.json",
         f"{StepEnum.LEGALIZATION.value}": f"{step.directory}/config/pl_default_config.json",
-        f"{StepEnum.FILLER.value}": f"{step.directory}/config/pl_default_config.json"
+        f"{StepEnum.FILLER.value}": f"{step.directory}/config/pl_default_config.json",
+        f"{StepEnum.RCX.value}": f"{step.directory}/config/rcx.json"
     }
     
     # build input paths
     step.input = {
         "def": input_def,
-        "verilog": input_verilog
+        "verilog": input_verilog,
+        "db": input_db
     }  
     
     # build output paths
@@ -56,15 +59,23 @@ def build_step(workspace: Workspace,
         output_verilog = f"{step.directory}/output/{workspace.design.name}_{step.name}.v"
     if output_gds is None:
         output_gds = f"{step.directory}/output/{workspace.design.name}_{step.name}.gds"
+    output_db = f"{step.directory}/output/{workspace.design.name}_{step.name}_db"
     output_image = f"{step.directory}/output/{workspace.design.name}_{step.name}.png"
     output_json = f"{step.directory}/output/{workspace.design.name}_{step.name}.json"
+    output_lef = f"{step.directory}/output/{workspace.design.name}_{step.name}.lef"
+    output_lib = f"{step.directory}/output/{workspace.design.name}_{step.name}.lib"
+    output_spef = []
     step.output = {
         "dir": f"{step.directory}/output",
         "def": output_def,
         "verilog": output_verilog,
         "gds": output_gds,
+        "db": output_db,
         "image": output_image,
-        "json" : output_json
+        "json" : output_json,
+        "lef" : output_lef,
+        "lib" : output_lib,
+        "spef" : output_spef
     }
     
     # build data paths
@@ -82,7 +93,8 @@ def build_step(workspace: Workspace,
         f"{StepEnum.TIMING_OPT_SETUP.value}": f"{step.directory}/data/to",
         f"{StepEnum.ROUTING.value}": f"{step.directory}/data/rt",
         f"{StepEnum.STA.value}": f"{step.directory}/data/sta",
-        f"{StepEnum.DRC.value}": f"{step.directory}/data/drc"
+        f"{StepEnum.DRC.value}": f"{step.directory}/data/drc",
+        f"{StepEnum.RCX.value}": f"{step.directory}/data/rcx"
     }
     
     # build feature paths
@@ -280,11 +292,6 @@ def build_step_config(workspace: Workspace,
         config = json_read(step.config[f"{StepEnum.CTS.value}"])
         
         # parameters
-        if len(workspace.pdk.buffers) > 0:
-            config["root_buffer_type"] = workspace.pdk.buffers[0]
-        else:
-            config["root_buffer_type"] = ""
-        
         config["buffer_type"] = workspace.pdk.buffers
         
         # write back
@@ -332,6 +339,32 @@ def build_step_config(workspace: Workspace,
         # write back
         json_write(step.config[f"{StepEnum.ROUTING.value}"], config)
         
+    def _update_rcx():
+        # read config
+        config = json_read(step.config[f"{StepEnum.RCX.value}"])
+        
+        # parameters
+        config["output"] = step.output.get(f"dir", "")
+        config["mapping_file"] = workspace.pdk.mapping_file
+        
+        # update spef output path
+        output_spef_files = []
+        for corner in workspace.pdk.corners:
+            corner_name = corner.get("name", "")
+            if corner_name != "":
+                output_spef = f"{step.output.get('dir', '')}/{workspace.design.name}_{corner_name}.spef"
+                corner["spef_file"] = output_spef
+                output_spef_files.append(output_spef)
+                
+                if corner_name == "TYPICAL":
+                    workspace.pdk.spef = output_spef
+        
+        config["corners"] = workspace.pdk.corners
+        step.output["spef"] = output_spef_files
+        
+        # write back
+        json_write(step.config[f"{StepEnum.RCX.value}"], config)
+        
     # copy files to origin folder
     import shutil
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -354,3 +387,4 @@ def build_step_config(workspace: Workspace,
     _update_hold()
     _update_setup()
     _update_router()
+    _update_rcx()

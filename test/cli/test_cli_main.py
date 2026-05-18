@@ -53,7 +53,6 @@ def _common_args(workspace, rtl, pdk_root):
 def _install_cli_mocks(monkeypatch):
     capture = {
         "create_kwargs": None,
-        "log_workspace_calls": 0,
     }
     workspace_obj = SimpleNamespace(name="workspace")
 
@@ -65,14 +64,9 @@ def _install_cli_mocks(monkeypatch):
         capture["create_kwargs"] = kwargs
         return workspace_obj
 
-    def fake_log_workspace(workspace):
-        assert workspace is workspace_obj
-        capture["log_workspace_calls"] += 1
-
     monkeypatch.setattr(cli_main, "create_workspace", fake_create_workspace)
     monkeypatch.setattr(cli_main, "EngineFlow", DummyFlow)
     monkeypatch.setattr(cli_main, "build_rtl2gds_flow", lambda: [("Synthesis", "yosys", "Unstart")])
-    monkeypatch.setattr(cli_main, "log_workspace", fake_log_workspace)
 
     return capture
 
@@ -97,7 +91,6 @@ def test_cli_rtl_mode_calls_create_workspace_correctly(tmp_path, monkeypatch):
     assert capture["create_kwargs"]["parameters"]["Frequency max [MHz]"] == 100.0
     assert DummyFlow.instances[0].create_called is True
     assert DummyFlow.instances[0].run_called is True
-    assert capture["log_workspace_calls"] == 1
 
 
 def test_cli_filelist_mode_calls_create_workspace_correctly(tmp_path, monkeypatch):

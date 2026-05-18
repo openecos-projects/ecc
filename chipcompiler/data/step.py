@@ -30,6 +30,7 @@ class StepEnum(Enum):
     RCX = "RCX"
     ABSTRACT_LEF = "Abstract lef"
     MERGE = "GDS merge"
+    HARDEN = "Harden"
 
 class StateEnum(Enum):
     """flow running state"""

@@ -22,6 +22,21 @@ def _abspath(path: str) -> str:
     return os.path.abspath(path)
 
 
+def _split_stdcell_macro_libs(lib_files: list[str]) -> tuple[list[str], list[str]]:
+    """Split known ICS55 stdcell libraries from macro libraries."""
+    stdcell_libs = []
+    macro_libs = []
+
+    for lib in lib_files:
+        name = os.path.basename(lib)
+        if name.startswith("ICS55_"):
+            macro_libs.append(lib)
+        else:
+            stdcell_libs.append(lib)
+
+    return stdcell_libs, macro_libs
+
+
 def generate_global_var_tcl(workspace: Workspace,
                            step: WorkspaceStep) -> str:
     """Generate global_var.tcl content dynamically from workspace configuration."""
@@ -66,11 +81,12 @@ def generate_global_var_tcl(workspace: Workspace,
     tie_low_port = pdk.tie_low_port if pdk.tie_low_port else ""
     tie_high_cell = pdk.tie_high_cell if pdk.tie_high_cell else ""
     tie_high_port = pdk.tie_high_port if pdk.tie_high_port else ""
+    abc_driver_cell = pdk.abc_driver_cell if pdk.abc_driver_cell else "BUFX4H7L"
+    abc_load = pdk.abc_load if pdk.abc_load else 0.015
 
     lib_files = workspace.pdk.libs if workspace.pdk.libs else []
-    lib_files_all = " ".join(lib_files) if lib_files else ""
-
-    lib_stdcell = lib_files.copy() #TODO: Distinguish between stdcell and other libraries?
+    lib_stdcell, lib_macro = _split_stdcell_macro_libs(lib_files)
+    lib_files_all = " ".join(lib_stdcell + lib_macro) if lib_files else ""
     lib_stdcell_all = " ".join(lib_stdcell) if lib_stdcell else ""
 
     filelist = workspace.design.input_filelist if workspace.design.input_filelist else workspace.parameters.data.get("File list", "")
@@ -112,6 +128,8 @@ set tie_low_cell            {_tcl_quote(tie_low_cell) if tie_low_cell else '""'}
 set tie_low_port            {_tcl_quote(tie_low_port) if tie_low_port else '""'}
 set tie_high_cell           {_tcl_quote(tie_high_cell) if tie_high_cell else '""'}
 set tie_high_port           {_tcl_quote(tie_high_port) if tie_high_port else '""'}
+set abc_driver_cell         {_tcl_quote(abc_driver_cell)}
+set abc_load                {abc_load}
 
 # Library files
 set lib_stdcell_list        [split {_tcl_quote(lib_stdcell_all) if lib_stdcell_all else '""'}]
@@ -139,6 +157,7 @@ def build_step(workspace: Workspace,
                step_name: str,
                input_def: str,
                input_verilog: str,
+               input_db : str | None = None,
                output_def: str = None,
                output_verilog: str = None,
                output_gds: str = None) -> WorkspaceStep:
@@ -171,6 +190,7 @@ def build_step(workspace: Workspace,
         "dir": f"{step.directory}/output",
         "def": output_def,
         "verilog": output_verilog,
+        "fixed_verilog": f"{step.directory}/output/{workspace.design.name}_{step.name}_fixed.v",
         "json": f"{step.directory}/output/{workspace.design.name}_{step.name}.json",
         "report": f"{step.directory}/output/{workspace.design.name}_{step.name}.rpt",
         "image": f"{step.directory}/output/{workspace.design.name}_{step.name}.png"

@@ -24,6 +24,9 @@ class EccSubFlowEnum(Enum):
     run_routing = "run routing"
     run_filler = "run filler"
     run_DRC = "run DRC"
+    run_harden = "run harden"
+    run_rcx = "run rcx"
+    run_sta = "run sta"
 
 import time
 
@@ -124,7 +127,19 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_DRC.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                # steps.append(subflow_template(EccSubFlowEnum.analysis.value))
+                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
+                
+            case StepEnum.HARDEN:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.run_harden.value))
+                
+            case StepEnum.RCX:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.run_rcx.value))
+                
+            case StepEnum.STA:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.run_sta.value))
                 
         self.workspace_step.subflow["steps"] = steps
         

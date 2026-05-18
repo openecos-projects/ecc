@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
+import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for multi-threading
 import matplotlib.pyplot as plt
+
+if not hasattr(np, "Inf"):
+    np.Inf = np.inf
 
 def plot_csv_map(input_path : str, output_path : str=None) -> bool:
     """

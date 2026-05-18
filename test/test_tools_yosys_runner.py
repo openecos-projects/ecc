@@ -60,12 +60,11 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
         })
         return True
 
-    def fake_run(cmd, cwd, env, stdout, stderr, timeout):
+    def fake_run(cmd, cwd, env, stdout, stderr):
         run_calls.append({
             "cmd": list(cmd),
             "cwd": cwd,
             "env": env,
-            "timeout": timeout,
         })
         if cmd == ["yosys", "yosys_synthesis.tcl"]:
             output_file.write_text("module top(); endmodule\n")
@@ -87,6 +86,7 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
     assert check_calls[0]["env"] == runtime_env
     assert len(run_calls) == 1
     assert run_calls[0]["cmd"] == ["yosys", "yosys_synthesis.tcl"]
+    assert run_calls[0]["cwd"] == step.script["dir"]
     assert run_calls[0]["env"] == runtime_env
     assert ("run yosys", StateEnum.Success) in updates
     assert ("analysis", StateEnum.Success) in updates
@@ -108,7 +108,7 @@ def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
         log_file.write("Error: yosys slang plugin check failed.\n")
         return False
 
-    def fake_run(cmd, cwd, env, stdout, stderr, timeout):
+    def fake_run(cmd, cwd, env, stdout, stderr):
         run_calls.append(list(cmd))
         raise AssertionError("Synthesis should not run when slang check fails")
 

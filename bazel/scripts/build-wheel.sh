@@ -17,21 +17,6 @@ if [[ $# -lt 1 ]]; then
     exit 1
 fi
 
-if ! command -v sha256sum >/dev/null 2>&1; then
-    echo "ERROR: required command not found: sha256sum" >&2
-    exit 1
-fi
-
-auditwheel_bin=""
-if [[ -x "${WS}/.venv/bin/auditwheel" ]]; then
-    auditwheel_bin="${WS}/.venv/bin/auditwheel"
-elif command -v auditwheel >/dev/null 2>&1; then
-    auditwheel_bin="$(command -v auditwheel)"
-else
-    echo "ERROR: auditwheel not found. Install dev deps: uv sync --frozen --all-groups --python 3.11" >&2
-    exit 1
-fi
-
 RF="${RUNFILES_DIR:-${BASH_SOURCE[0]}.runfiles}"
 raw_whl="$RF/$1"
 if [[ ! -f "$raw_whl" ]]; then
@@ -45,72 +30,75 @@ if [[ ! -x "$PYTHON3" ]]; then
     exit 1
 fi
 
+UV="$RF/$3"
+if [[ ! -x "$UV" ]]; then
+    echo "ERROR: uv not found in runfiles: $UV" >&2
+    exit 1
+fi
+
 out_root="$WS/dist/wheel"
-raw_out="$out_root/raw"
-repair_out="$out_root/repaired"
-report_out="$out_root/reports"
-mkdir -p "$raw_out" "$repair_out" "$report_out"
-# Clean only ecc wheels (not ecc_dreamplace) to preserve prior dreamplace build
-rm -f "$raw_out"/ecc-*.whl "$repair_out"/ecc-*.whl
-show_report="$report_out/show.txt"
-: > "$show_report"
+out_dir="$out_root/repaired"
+mkdir -p "$out_dir"
+# Clean only ecc wheels to preserve prior build
+rm -f "$out_dir"/ecc-*.whl
 
-smoke_dir="$(mktemp -d)"
-cleanup() { rm -rf "$smoke_dir"; }
-trap cleanup EXIT
+cp "$raw_whl" "$out_dir/"
+final_whl="$out_dir/$(basename "$raw_whl")"
 
-cp "$raw_whl" "$raw_out/"
-local_raw_whl="$raw_out/$(basename "$raw_whl")"
+echo "[wheel] ecc wheel is pure Python (ecc_py bindings come from ecc-tools wheel)"
+echo "[wheel] skipping auditwheel — no native code in this wheel"
 
-echo "[wheel] running auditwheel show/repair"
-if [[ ! -f "$local_raw_whl" ]]; then
-    echo "ERROR: raw wheel not found after copy: $local_raw_whl" >&2
-    exit 1
-fi
-
-for whl in "$local_raw_whl"; do
-    {
-        echo "=== $(basename "$whl") ==="
-        "$auditwheel_bin" show "$whl"
-        echo
-    } >> "$show_report"
-    "$auditwheel_bin" repair "$whl" -w "$repair_out"
-done
-
-# Find only the ecc repaired wheel (not ecc_dreamplace)
-shopt -s nullglob
-repaired_wheels=("$repair_out"/ecc-*.whl)
-if [[ ${#repaired_wheels[@]} -eq 0 ]]; then
-    echo "ERROR: no repaired ecc wheel found in $repair_out" >&2
-    exit 1
-fi
-shopt -u nullglob
-
+# Smoke test: verify the Python package is importable
 echo "[wheel] running smoke test"
-"$PYTHON3" -m pip install --target "$smoke_dir/site" "${repaired_wheels[@]}"
-PYTHONPATH="$smoke_dir/site" "$PYTHON3" -c "
-from chipcompiler.tools.ecc.bin import ecc_py
+smoke_dir="$(mktemp -d)"
+trap 'rm -rf "$smoke_dir"' EXIT
 
-required = ['flow_init', 'flow_exit', 'db_init', 'def_init', 'lef_init', 'def_save',
-            'run_placer', 'run_cts', 'run_rt', 'run_drc', 'run_filler',
-            'init_floorplan', 'report_db', 'feature_summary']
-missing = [f for f in required if not callable(getattr(ecc_py, f, None))]
-assert not missing, f'missing or non-callable bindings: {missing}'
+venv_python="$smoke_dir/venv/bin/python"
 
+# Use a temp venv (via uv) because hermetic Python lacks ensurepip.
+"$UV" venv --python "$PYTHON3" "$smoke_dir/venv"
+
+# ecc-dreamplace and ecc-tools are not on PyPI. Install them from the same
+# pinned source URLs used by the main project, then install the local ecc wheel
+# so uv resolves the remaining PyPI deps against the final artifact.
+"$PYTHON3" - "$WS/pyproject.toml" "$smoke_dir/requirements.txt" <<'PY'
+import pathlib
+import sys
+import tomllib
+
+project = tomllib.loads(pathlib.Path(sys.argv[1]).read_text())
+requirements = pathlib.Path(sys.argv[2])
+sources = project["tool"]["uv"]["sources"]
+dependencies = project["project"]["dependencies"]
+
+def pinned_url(name: str) -> str:
+    dependency = next(dep for dep in dependencies if dep.startswith(f"{name}=="))
+    version = dependency.split("==", 1)[1]
+    url = sources[name]["url"]
+    wheel_name = name.replace("-", "_")
+    if f"{wheel_name}-{version}" not in url:
+        raise SystemExit(f"{name} dependency {version} does not match source URL: {url}")
+    return url
+
+requirements.write_text(
+    "\n".join(
+        [
+            pinned_url("ecc-tools"),
+            pinned_url("ecc-dreamplace"),
+        ],
+    )
+    + "\n",
+)
+PY
+"$UV" pip install --python "$venv_python" -r "$smoke_dir/requirements.txt" "$final_whl"
+
+expected_version=$(grep -E '^version\s*=' "$WS/pyproject.toml" | head -n1 | sed 's/.*"\([^"]*\)".*/\1/')
+"$venv_python" -c "
+import chipcompiler
 from chipcompiler.tools.ecc.module import ECCToolsModule
-m = ECCToolsModule()
-assert m.ecc is ecc_py
-
-print(f'ecc_py smoke test passed: {len(required)} bindings verified')
+assert chipcompiler.__version__ == '${expected_version}', f'unexpected version: {chipcompiler.__version__} (expected ${expected_version})'
+print('ecc wheel smoke test passed: chipcompiler package importable')
 "
 
-(
-    cd "$repair_out"
-    sha256sum ./*.whl > "$out_root/SHA256SUMS"
-)
-
 echo "[wheel] done"
-echo "[wheel] raw wheels:      $raw_out"
-echo "[wheel] repaired wheels: $repair_out"
-echo "[wheel] report:          $show_report"
-echo "[wheel] checksums:       $out_root/SHA256SUMS"
+echo "[wheel] wheel:     $out_dir"

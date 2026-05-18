@@ -53,15 +53,19 @@ if {[info exists filelist] && $filelist ne ""} {
     puts "Reading SystemVerilog sources from filelist: $filelist"
     yosys read_slang -F $filelist --top $top_design \
             --compat-mode --keep-hierarchy \
-            --allow-use-before-declare --ignore-unknown-modules \
-            --ignore-timing --ignore-initial
+            +define+SYNTHESIS \
+            --allow-use-before-declare \
+            --ignore-timing \
+            -Wduplicate-definition
 } else {
     # Fall back to individual Verilog files
     puts "Reading Verilog sources from rtl files: $rtl_file"
     yosys read_slang {*}$rtl_file --top $top_design \
             --compat-mode --keep-hierarchy \
-            --allow-use-before-declare --ignore-unknown-modules \
-            --ignore-timing --ignore-initial
+            +define+SYNTHESIS \
+            --allow-use-before-declare \
+            --ignore-timing \
+            -Wduplicate-definition
 }
 
 # preserve hierarchy of selected modules/instances
@@ -117,17 +121,17 @@ if {$keep_hierarchy == "false"} {
 # -----------------------------------------------------------------------------
 # Preserve flip-flop names as far as possible
 # split internal nets
+yosys splitnets -driver
 yosys splitnets -format __v
 # rename DFFs from the driven signal
-yosys rename -wire -suffix _reg_p t:*DFF*_P*
-yosys rename -wire -suffix _reg_n t:*DFF*_N*
+yosys rename -wire -suffix _reg t:*DFF*
 # rename all other cells
+yosys select -write ${timing_cell_stat_rpt} t:*DFF*
 yosys autoname t:*DFF* %n
 yosys clean -purge
 
 yosys select -write ${timing_cell_stat_rpt} t:*DFF*
-yosys tee -q -o ${timing_cell_count_rpt} select -count t:*DFF*_P*
-yosys tee -q -a ${timing_cell_count_rpt} select -count t:*DFF*_N*
+yosys tee -q -o ${timing_cell_count_rpt} select -count t:*DFF*
 yosys tee -q -a ${timing_cell_count_rpt} select -count */t:*_DLATCH*_ */t:*_SR*_
 
 # yosys tee -q -o "${generic_stat_json}" stat -json -tech cmos
@@ -158,9 +162,8 @@ set abc_comb_script   [processAbcScript abc-opt.script]
 # Generate abc.constr file dynamically
 set abc_constr_path "${tmp_dir}/abc.constr"
 set abc_constr_file [open $abc_constr_path w]
-set driver_cell {BUFX4H7L}
-puts $abc_constr_file "set_driving_cell ${driver_cell}"
-puts $abc_constr_file "set_load 0.015"
+puts $abc_constr_file "set_driving_cell ${abc_driver_cell}"
+puts $abc_constr_file "set_load ${abc_load}"
 close $abc_constr_file
 
 # call ABC
@@ -172,15 +175,14 @@ yosys clean -purge
 # prep for openROAD
 # yosys write_verilog -norename -noexpr -attr2comment ${tmp_dir}/${top_design}_yosys_debug.v
 
-# yosys splitnets -driver
-yosys splitnets -ports
+yosys splitnets -ports -format __v
 yosys setundef -zero
 yosys clean -purge
 # map constants to tie cells
 yosys hilomap -singleton -hicell {*}$tech_cell_tiehi -locell {*}$tech_cell_tielo
 
 # final reports
-yosys tee -q -o "${synth_stat_json}" stat -json {*}$liberty_args
+yosys tee -q -o "${synth_stat_json}" stat -json -top $top_design {*}$liberty_args
 # yosys tee -q -o "${synth_stat_json}.rpt" stat {*}$liberty_args
 yosys tee -q -o "${synth_check_rpt}" check
 

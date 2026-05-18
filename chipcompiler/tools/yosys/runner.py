@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 import os
-import time
-
 import subprocess
 
 from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
@@ -9,6 +7,52 @@ from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
 from chipcompiler.tools.yosys.utility import check_slang_plugin, get_yosys_runtime
+
+
+def _remove_parameter_overrides(text: str) -> str:
+    """Remove Verilog parameter override blocks of the form #( ... )."""
+    out = []
+    i = 0
+    length = len(text)
+
+    while i < length:
+        if text[i] == "#" and i + 1 < length and text[i + 1] == "(":
+            depth = 0
+            j = i + 1
+            while j < length:
+                if text[j] == "(":
+                    depth += 1
+                elif text[j] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        j += 1
+                        break
+                j += 1
+
+            if depth == 0:
+                i = j
+                continue
+
+        out.append(text[i])
+        i += 1
+
+    return "".join(out)
+
+
+def _write_fixed_netlist(src_path: str, dst_path: str) -> bool:
+    """Write an extra netlist with parameter override blocks removed."""
+    if not src_path or not dst_path or not os.path.exists(src_path):
+        return False
+
+    with open(src_path, "r", encoding="utf-8", errors="ignore") as src:
+        text = src.read()
+
+    fixed = _remove_parameter_overrides(text)
+
+    with open(dst_path, "w", encoding="utf-8") as dst:
+        dst.write(fixed)
+
+    return True
 
 
 def run_step(workspace: Workspace,
@@ -75,11 +119,14 @@ def run_step(workspace: Workspace,
                 env=yosys_env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                timeout=600
             )
 
         if os.path.exists(step.output["verilog"]):
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Success)
+
+            fixed_netlist = step.output.get("fixed_verilog", "")
+            if fixed_netlist:
+                _write_fixed_netlist(step.output["verilog"], fixed_netlist)
             
             build_step_metrics(workspace=workspace, step=step)
             
@@ -98,10 +145,6 @@ def run_step(workspace: Workspace,
             )
             return False
 
-    except subprocess.TimeoutExpired:
-        sub_flow.update_step(step_name="run yosys", state=StateEnum.Imcomplete)
-        print("Error: Yosys synthesis timed out")
-        return False
     except Exception as e:
         sub_flow.update_step(step_name="run yosys", state=StateEnum.Imcomplete)
         print(f"Error running yosys: {e}")

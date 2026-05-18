@@ -45,6 +45,10 @@ def build_step_metrics(workspace: Workspace,
             metrics = build_metrics_drc(workspace, step)
         case StepEnum.FILLER.value:
             metrics = build_metrics_filler(workspace, step)
+            
+    if metrics is None:
+        workspace.logger.info("\nno metrics - %s\n", step.name)
+        return metrics
     
     info = {}        
     data = json_read(step.feature.get("db", ""))

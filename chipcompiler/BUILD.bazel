@@ -48,12 +48,12 @@ py_library(
     ),
     data = [":chipcompiler_runtime_data"],
     deps = [
-        "@pypi//matplotlib",
-        "@pypi//numpy",
-        "@pypi//pandas",
-        "@pypi//pydantic",
-        "@pypi//pyyaml",
-        "@pypi//tqdm",
+        "@ecc_pypi//matplotlib",
+        "@ecc_pypi//numpy",
+        "@ecc_pypi//pandas",
+        "@ecc_pypi//pydantic",
+        "@ecc_pypi//pyyaml",
+        "@ecc_pypi//tqdm",
     ],
 )
 

@@ -59,7 +59,7 @@ topo
 stime
 
 echo "buffering for delay and fanout..."
-buffer -p
+buffer -c -N 32
 echo "resizing cells..."
 upsize {D}
 dnsize {D}
