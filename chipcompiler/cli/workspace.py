@@ -375,7 +375,7 @@ def _create_request_data(args) -> dict:
         "origin_def": args.origin_def or "",
         "origin_verilog": args.origin_verilog or "",
         "filelist": args.filelist or "",
-        "rtl_list": list(args.rtl or []),
+        "rtl_list": _resolve_rtl_flags(args.rtl or []),
     }
 
 
@@ -417,6 +417,14 @@ def _normalize_rtl_list(rtl_list) -> list[str]:
             continue
         seen.add(path)
         result.append(path)
+    return result
+
+
+def _resolve_rtl_flags(rtl_paths: Sequence[str]) -> list[str]:
+    result = []
+    for path in rtl_paths:
+        expanded = os.path.expandvars(os.path.expanduser(str(path)))
+        result.append(os.path.abspath(expanded))
     return result
 
 

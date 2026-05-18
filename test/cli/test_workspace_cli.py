@@ -150,6 +150,9 @@ def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys
     capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     params_path = tmp_path / "params.json"
     params_path.write_text(json.dumps({"Design": "gcd", "Core": {"Margin": [1, 2]}}))
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(project)
 
     rc = cli_main.run(
         [
@@ -186,7 +189,10 @@ def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys
     assert kwargs["origin_verilog"] == "in.v"
     assert kwargs["parameters"] == {"Design": "gcd", "Core": {"Margin": [1, 2]}}
     assert os.path.basename(kwargs["input_filelist"]) == "filelist"
-    assert (ws / "filelist").read_text().splitlines() == ["a.v", "b.v"]
+    assert (ws / "filelist").read_text().splitlines() == [
+        str(project / "a.v"),
+        str(project / "b.v"),
+    ]
 
 
 def test_create_rejects_mixed_input_json_and_field_flags(tmp_path, capsys):
