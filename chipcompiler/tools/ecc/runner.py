@@ -594,6 +594,19 @@ def run_floorplan(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.create_tracks.value,
                              state=StateEnum.Success)
         
+        # Macro Placement
+        json_macro_placement = floorplan_dict.get("Macro Placement", [])
+        if len(json_macro_placement) > 0:
+            for item in json_macro_placement:
+                eda_inst.place_instance(
+                    inst_name=item.get("inst_name", ""),
+                    llx=item.get("llx", 0),
+                    lly=item.get("lly", 0),
+                    orient=item.get("orient", ""),
+                    cellmaster=item.get("cellmaster", ""),
+                    source=item.get("source", ""),
+                )
+        
         # PDN
         json_PDN = floorplan_dict.get("PDN", {})
         
@@ -788,12 +801,14 @@ def run_sta(workspace: Workspace,
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        # eda_inst.init_sta(output_dir=step.data["sta"],
-        #                   top_module=workspace.design.top_module,
-        #                   lib_paths=workspace.pdk.libs,
-        #                   sdc_path=workspace.pdk.sdc)
-        
-        eda_inst.run_sta(step.data.get(StepEnum.STA.value, ""))
+        for spef_file in step.output.get("spef", []):
+            eda_inst.init_sta(output_dir=step.data.get("sta", ""),
+                              top_module=workspace.design.top_module,
+                              lib_paths=workspace.pdk.libs,
+                              sdc_path=workspace.pdk.sdc)
+            eda_inst.read_spef(file_name=spef_file)
+            # eda_inst.report_timing()
+            eda_inst.report_sta(output=step.output.get("dir", ""))
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Success)
         
         save_data(workspace=workspace, step=step, ecc_module=eda_inst, feature_step=False)
