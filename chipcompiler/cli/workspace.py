@@ -174,21 +174,13 @@ def run_flow(args) -> dict:
 
     try:
         workspace, engine_flow = load_workspace_runtime(args.directory)
-        if args.rerun:
-            engine_flow.clear_states()
-
-        for workspace_step in engine_flow.workspace_steps:
-            state = engine_flow.run_step(workspace_step, args.rerun)
-            if _state_value(state) != "Success":
-                return workspace_response(
-                    cmd,
-                    "failed",
-                    data=response_data,
-                    message=[
-                        "run flow failed in step : "
-                        f"{workspace_step.name} ({_state_value(state)})"
-                    ],
-                )
+        if not engine_flow.run_steps(rerun=args.rerun):
+            return workspace_response(
+                cmd,
+                "failed",
+                data=response_data,
+                message=[f"run flow failed : {os.path.abspath(workspace.directory)}"],
+            )
     except WorkspaceValidationError as exc:
         return workspace_response(cmd, "failed", data=response_data, message=[str(exc)])
     except Exception as exc:
@@ -361,6 +353,7 @@ def _create_request_data(args) -> dict:
 
     if has_input:
         data = _read_json_object(args.input_json)
+        _resolve_request_rtl_list(data, _input_json_base_dir(args.input_json))
         return data
 
     parameters = {}
@@ -426,6 +419,24 @@ def _resolve_rtl_flags(rtl_paths: Sequence[str]) -> list[str]:
         expanded = os.path.expandvars(os.path.expanduser(str(path)))
         result.append(os.path.abspath(expanded))
     return result
+
+
+def _resolve_request_rtl_list(data: dict, base_dir: str) -> None:
+    if data.get("filelist"):
+        return
+    rtl_list = data.get("rtl_list")
+    if not rtl_list:
+        return
+    data["rtl_list"] = [
+        path if os.path.isabs(path) else os.path.abspath(os.path.join(base_dir, path))
+        for path in _normalize_rtl_list(rtl_list)
+    ]
+
+
+def _input_json_base_dir(path: str) -> str:
+    if path == "-":
+        return os.getcwd()
+    return os.path.dirname(os.path.abspath(os.path.expanduser(path)))
 
 
 def _write_filelist(directory: str, rtl_paths: list[str]) -> str:

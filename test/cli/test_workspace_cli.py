@@ -15,6 +15,7 @@ class DummyFlow:
         self.added_steps = []
         self.created = False
         self.cleared = False
+        self.run_steps_calls = []
         self.run_calls = []
         self.workspace_steps = [
             SimpleNamespace(name="Synthesis", tool="yosys"),
@@ -33,6 +34,16 @@ class DummyFlow:
 
     def clear_states(self):
         self.cleared = True
+
+    def run_steps(self, rerun=False):
+        self.run_steps_calls.append(rerun)
+        success = True
+        for workspace_step in self.workspace_steps:
+            state = self.run_step(workspace_step, rerun)
+            if state != StateEnum.Success:
+                success = False
+                break
+        return success
 
     def run_step(self, workspace_step, rerun=False):
         name = workspace_step if isinstance(workspace_step, str) else workspace_step.name
@@ -144,6 +155,35 @@ def test_create_input_json_from_stdin(monkeypatch, tmp_path, capsys):
     assert rc == 0
     assert data["response"] == "success"
     assert capture["create_kwargs"]["directory"] == str(ws)
+
+
+def test_create_input_json_resolves_relative_rtl_from_json_dir(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    request_path = project / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "directory": str(ws),
+                "pdk": "ics55",
+                "filelist": "",
+                "rtl_list": ["rtl/top.v"],
+            }
+        )
+    )
+
+    rc = cli_main.run(["workspace", "create", "--input-json", str(request_path), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "success"
+    assert os.path.basename(capture["create_kwargs"]["input_filelist"]) == "filelist"
+    assert (ws / "filelist").read_text().splitlines() == [str(project / "rtl" / "top.v")]
 
 
 def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys):
@@ -311,9 +351,10 @@ def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path
     assert data["cmd"] == "run_flow"
     assert data["response"] == "failed"
     assert data["data"] == {"rerun": True}
-    assert flow.cleared
+    assert not flow.cleared
+    assert flow.run_steps_calls == [True]
     assert flow.run_calls == [("Synthesis", True), ("Floorplan", True)]
-    assert "Floorplan" in data["message"][0]
+    assert str(os.path.abspath(ws)) in data["message"][0]
 
 
 def test_get_info_success_warning_and_exception(monkeypatch, tmp_path, capsys):
