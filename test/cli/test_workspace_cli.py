@@ -1,0 +1,429 @@
+import json
+import os
+from types import SimpleNamespace
+
+from chipcompiler.cli import main as cli_main
+from chipcompiler.data import StateEnum
+
+
+class DummyFlow:
+    instances = []
+    next_run_states = []
+
+    def __init__(self, workspace):
+        self.workspace = workspace
+        self.added_steps = []
+        self.created = False
+        self.cleared = False
+        self.run_calls = []
+        self.workspace_steps = [
+            SimpleNamespace(name="Synthesis", tool="yosys"),
+            SimpleNamespace(name="Floorplan", tool="ecc"),
+        ]
+        DummyFlow.instances.append(self)
+
+    def has_init(self):
+        return False
+
+    def add_step(self, step, tool, state):
+        self.added_steps.append((step, tool, state))
+
+    def create_step_workspaces(self):
+        self.created = True
+
+    def clear_states(self):
+        self.cleared = True
+
+    def run_step(self, workspace_step, rerun=False):
+        name = workspace_step if isinstance(workspace_step, str) else workspace_step.name
+        self.run_calls.append((name, rerun))
+        if DummyFlow.next_run_states:
+            return DummyFlow.next_run_states.pop(0)
+        return StateEnum.Success
+
+    def get_workspace_step(self, name):
+        for step in self.workspace_steps:
+            if step.name == name:
+                return step
+        return None
+
+
+def _response(capsys):
+    out = capsys.readouterr().out
+    return json.loads(out)
+
+
+def _workspace(directory):
+    home = SimpleNamespace(path=os.path.join(directory, "home", "home.json"))
+    return SimpleNamespace(directory=directory, home=home)
+
+
+def _install_runtime_mocks(monkeypatch, tmp_path):
+    capture = {"create_kwargs": None, "loaded": []}
+
+    DummyFlow.instances = []
+    DummyFlow.next_run_states = []
+
+    def fake_create_workspace(**kwargs):
+        capture["create_kwargs"] = kwargs
+        return _workspace(os.path.abspath(kwargs["directory"]))
+
+    def fake_load_workspace(directory):
+        capture["loaded"].append(directory)
+        return _workspace(os.path.abspath(directory))
+
+    monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
+    monkeypatch.setattr("chipcompiler.data.load_workspace", fake_load_workspace)
+    monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
+    monkeypatch.setattr(
+        "chipcompiler.rtl2gds.build_rtl2gds_flow",
+        lambda: [("Synthesis", "yosys", "Unstart")],
+    )
+
+    ws = tmp_path / "workspace"
+    (ws / "home").mkdir(parents=True)
+    (ws / "home" / "parameters.json").write_text("{}")
+    (ws / "home" / "flow.json").write_text('{"steps":[]}')
+    (ws / "home" / "home.json").write_text("{}")
+    return capture, ws
+
+
+def test_create_input_json_success_writes_server_shape(monkeypatch, tmp_path, capsys):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "directory": str(ws),
+                "pdk": "ics55",
+                "pdk_root": "/pdk",
+                "parameters": {"Design": "gcd", "Top module": "gcd"},
+                "origin_def": "",
+                "origin_verilog": "in.v",
+                "filelist": "",
+                "rtl_list": [],
+            }
+        )
+    )
+
+    rc = cli_main.run(["workspace", "create", "--input-json", str(request_path), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data == {
+        "cmd": "create_workspace",
+        "response": "success",
+        "data": {"directory": os.path.abspath(ws), "workspace_id": os.path.abspath(ws)},
+        "message": [f"create workspace success : {os.path.abspath(ws)}"],
+    }
+    assert capture["create_kwargs"]["directory"] == str(ws)
+    assert capture["create_kwargs"]["input_filelist"] == ""
+    assert DummyFlow.instances[0].created
+    assert DummyFlow.instances[0].added_steps == [("Synthesis", "yosys", "Unstart")]
+
+
+def test_create_input_json_from_stdin(monkeypatch, tmp_path, capsys):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "sys.stdin",
+        SimpleNamespace(
+            read=lambda: json.dumps(
+                {
+                    "directory": str(ws),
+                    "pdk": "ics55",
+                    "parameters": {},
+                    "rtl_list": [],
+                }
+            )
+        ),
+    )
+
+    rc = cli_main.run(["workspace", "create", "--input-json", "-", "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "success"
+    assert capture["create_kwargs"]["directory"] == str(ws)
+
+
+def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    params_path = tmp_path / "params.json"
+    params_path.write_text(json.dumps({"Design": "gcd", "Core": {"Margin": [1, 2]}}))
+
+    rc = cli_main.run(
+        [
+            "workspace",
+            "create",
+            "--directory",
+            str(ws),
+            "--pdk",
+            "ics55",
+            "--pdk-root",
+            "/pdk",
+            "--origin-def",
+            "in.def",
+            "--origin-verilog",
+            "in.v",
+            "--rtl",
+            "a.v",
+            "--rtl",
+            "b.v",
+            "--param-json",
+            str(params_path),
+            "--json",
+        ]
+    )
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "success"
+    kwargs = capture["create_kwargs"]
+    assert kwargs["directory"] == str(ws)
+    assert kwargs["pdk"] == "ics55"
+    assert kwargs["pdk_root"] == "/pdk"
+    assert kwargs["origin_def"] == "in.def"
+    assert kwargs["origin_verilog"] == "in.v"
+    assert kwargs["parameters"] == {"Design": "gcd", "Core": {"Margin": [1, 2]}}
+    assert os.path.basename(kwargs["input_filelist"]) == "filelist"
+    assert (ws / "filelist").read_text().splitlines() == ["a.v", "b.v"]
+
+
+def test_create_rejects_mixed_input_json_and_field_flags(tmp_path, capsys):
+    request_path = tmp_path / "request.json"
+    request_path.write_text("{}")
+
+    rc = cli_main.run(
+        [
+            "workspace",
+            "create",
+            "--input-json",
+            str(request_path),
+            "--directory",
+            str(tmp_path / "ws"),
+            "--json",
+        ]
+    )
+
+    data = _response(capsys)
+    assert rc == 1
+    assert data["cmd"] == "create_workspace"
+    assert data["response"] == "error"
+    assert "mutually exclusive" in data["message"][0]
+
+
+def test_invalid_json_input_returns_error(monkeypatch, tmp_path, capsys):
+    _install_runtime_mocks(monkeypatch, tmp_path)
+    request_path = tmp_path / "bad.json"
+    request_path.write_text("{")
+
+    rc = cli_main.run(["workspace", "create", "--input-json", str(request_path), "--json"])
+
+    data = _response(capsys)
+    assert rc == 1
+    assert data["response"] == "error"
+    assert "invalid JSON" in data["message"][0]
+
+
+def test_load_returns_directory_and_workspace_id(monkeypatch, tmp_path, capsys):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    rc = cli_main.run(["workspace", "load", "--directory", str(ws), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data == {
+        "cmd": "load_workspace",
+        "response": "success",
+        "data": {"directory": os.path.abspath(ws), "workspace_id": os.path.abspath(ws)},
+        "message": [f"load workspace success : {os.path.abspath(ws)}"],
+    }
+    assert capture["loaded"] == [str(ws)]
+    assert DummyFlow.instances[0].created
+
+
+def test_load_invalid_old_workspace_layout_fails(tmp_path, capsys):
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+
+    rc = cli_main.run(["workspace", "load", "--directory", str(ws), "--json"])
+
+    data = _response(capsys)
+    assert rc == 1
+    assert data["cmd"] == "load_workspace"
+    assert data["response"] == "failed"
+    assert "invalid workspace directory" in data["message"][0]
+
+
+def test_missing_required_fields_return_json_failed(capsys):
+    rc = cli_main.run(["workspace", "load", "--json"])
+    data = _response(capsys)
+    assert rc == 1
+    assert data["cmd"] == "load_workspace"
+    assert data["response"] == "failed"
+    assert "directory" in data["message"][0]
+
+    rc = cli_main.run(["workspace", "run-step", "--directory", "/missing", "--json"])
+    data = _response(capsys)
+    assert rc == 1
+    assert data["cmd"] == "run_step"
+    assert data["response"] == "failed"
+    assert "step" in data["message"][0]
+
+
+def test_run_step_maps_success_and_failure(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    rc = cli_main.run(
+        ["workspace", "run-step", "--directory", str(ws), "--step", "Synthesis", "--json"]
+    )
+    data = _response(capsys)
+    assert rc == 0
+    assert data["cmd"] == "run_step"
+    assert data["response"] == "success"
+    assert data["data"] == {"step": "Synthesis", "state": "Success"}
+
+    DummyFlow.next_run_states = [StateEnum.Imcomplete]
+    rc = cli_main.run(
+        ["workspace", "run-step", "--directory", str(ws), "--step", "Synthesis", "--json"]
+    )
+    data = _response(capsys)
+    assert rc == 1
+    assert data["response"] == "failed"
+    assert data["data"] == {"step": "Synthesis", "state": "Incomplete"}
+
+
+def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.next_run_states = [StateEnum.Success, StateEnum.Imcomplete]
+
+    rc = cli_main.run(["workspace", "run-flow", "--directory", str(ws), "--rerun", "--json"])
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 1
+    assert data["cmd"] == "run_flow"
+    assert data["response"] == "failed"
+    assert data["data"] == {"rerun": True}
+    assert flow.cleared
+    assert flow.run_calls == [("Synthesis", True), ("Floorplan", True)]
+    assert "Floorplan" in data["message"][0]
+
+
+def test_get_info_success_warning_and_exception(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        "chipcompiler.tools.get_step_info",
+        lambda workspace, step, id: {"path": "/tmp/layout.png"},
+    )
+    rc = cli_main.run(
+        [
+            "workspace",
+            "get-info",
+            "--directory",
+            str(ws),
+            "--step",
+            "Synthesis",
+            "--id",
+            "layout",
+            "--json",
+        ]
+    )
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "success"
+    assert data["data"] == {
+        "step": "Synthesis",
+        "id": "layout",
+        "info": {"path": "/tmp/layout.png"},
+    }
+
+    monkeypatch.setattr("chipcompiler.tools.get_step_info", lambda workspace, step, id: {})
+    rc = cli_main.run(
+        [
+            "workspace",
+            "get-info",
+            "--directory",
+            str(ws),
+            "--step",
+            "Synthesis",
+            "--id",
+            "layout",
+            "--json",
+        ]
+    )
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "warning"
+    assert data["data"]["info"] == {}
+
+    def raise_info(workspace, step, id):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("chipcompiler.tools.get_step_info", raise_info)
+    rc = cli_main.run(
+        [
+            "workspace",
+            "get-info",
+            "--directory",
+            str(ws),
+            "--step",
+            "Synthesis",
+            "--id",
+            "layout",
+            "--json",
+        ]
+    )
+    data = _response(capsys)
+    assert rc == 1
+    assert data["response"] == "error"
+    assert "boom" in data["message"][0]
+
+
+def test_get_info_unknown_step_returns_failed(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    rc = cli_main.run(
+        [
+            "workspace",
+            "get-info",
+            "--directory",
+            str(ws),
+            "--step",
+            "Missing",
+            "--id",
+            "layout",
+            "--json",
+        ]
+    )
+
+    data = _response(capsys)
+    assert rc == 1
+    assert data["cmd"] == "get_info"
+    assert data["response"] == "failed"
+    assert "step not found" in data["message"][0]
+
+
+def test_get_home_returns_path_and_failed_when_missing(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    rc = cli_main.run(["workspace", "get-home", "--directory", str(ws), "--json"])
+    data = _response(capsys)
+    assert rc == 0
+    assert data["cmd"] == "get_home"
+    assert data["response"] == "success"
+    assert data["data"] == {"path": os.path.abspath(ws / "home" / "home.json")}
+
+    (ws / "home" / "home.json").unlink()
+    rc = cli_main.run(["workspace", "get-home", "--directory", str(ws), "--json"])
+    data = _response(capsys)
+    assert rc == 1
+    assert data["response"] == "failed"
+
+
+def test_workspace_module_does_not_import_ecos_server():
+    module_path = os.path.join("chipcompiler", "cli", "workspace.py")
+    with open(module_path, encoding="utf-8") as f:
+        source = f.read()
+    assert "ecos_server" not in source
