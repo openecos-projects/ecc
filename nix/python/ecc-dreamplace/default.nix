@@ -27,7 +27,7 @@
 }:
 
 let
-  version = "0.1.0.0-alpha.2";
+  version = "0.1.0-alpha.2";
 
   rootSrc = fetchFromGitHub {
     owner = "openecos-projects";
