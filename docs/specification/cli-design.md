@@ -46,10 +46,10 @@ Examples:
 
 ```bash
 ecc status
-ecc diagnose step cts
-ecc log step cts --errors
-ecc artifacts step cts
-ecc config step cts --resolved
+ecc diagnose cts
+ecc log cts
+ecc artifacts cts
+ecc config cts --resolved
 ```
 
 ### Disclosure Commands On Summary Lines
@@ -61,13 +61,13 @@ without interpreting natural language paragraphs.
 Use stable `key="command"` fields:
 
 ```text
-step=cts status=failed elapsed=37s wns=-0.083 hold_vios=12 diagnose="ecc diagnose step cts" log="ecc log step cts --errors" config="ecc config step cts --resolved"
+step=cts status=failed runtime=0:00:37 metrics="ecc metrics cts" log="ecc log cts" config="ecc config cts --resolved"
 ```
 
 Do not rely on prose such as:
 
 ```text
-Run ecc diagnose step cts for more details.
+Run ecc diagnose cts for more details.
 ```
 
 The command field names should be stable across releases:
@@ -76,11 +76,11 @@ The command field names should be stable across releases:
 | --- | --- |
 | `inspect` | Show detailed object state |
 | `diagnose` | Explain failures or quality issues |
-| `log` | Show filtered or raw logs |
+| `log` | Show available logs or step log content |
 | `artifacts` | List output artifacts |
 | `config` | Show resolved configuration |
 | `metrics` | Show metrics |
-| `open` | Open a viewer or report |
+| `open` | Open a viewer or report (planned) |
 
 ### Stable Text Output
 
@@ -91,17 +91,19 @@ mode.
 Recommended style:
 
 ```text
-run=baseline status=failed failed_step=routing elapsed=554s diagnose="ecc diagnose run baseline" metrics="ecc metrics run baseline" artifacts="ecc artifacts run baseline"
-step=synthesis status=success elapsed=18s cells=312 area=1840.2 inspect="ecc show step synthesis" log="ecc log step synthesis --errors"
-step=floorplan status=success elapsed=4s util=45.0 die=100x100 inspect="ecc show step floorplan" config="ecc config step floorplan --resolved"
-step=placement status=success elapsed=72s hpwl=18423 overflow=0.02 inspect="ecc show step placement" metrics="ecc metrics step placement"
-step=cts status=failed elapsed=37s wns=-0.083 hold_vios=12 diagnose="ecc diagnose step cts" log="ecc log step cts --errors"
+run=default status=failed workspace=runs/default inspect="ecc status" metrics="ecc metrics" log="ecc log"
+step=synthesis tool=yosys status=success runtime=0:00:18 metrics="ecc metrics synthesis" log="ecc log synthesis"
+step=floorplan tool=ecc status=success runtime=0:00:04 metrics="ecc metrics floorplan" log="ecc log floorplan"
+metric=gp_hpwl step=placement value=18423 source=Placement_ecc/analysis/place_metrics.json inspect="ecc metrics placement --json"
+artifact=design.def step=placement role=output path=runs/default/Placement_ecc/output/design.def inspect="ecc artifacts placement --json" config="ecc config placement --resolved"
 ```
 
-Pretty output may be provided through a separate option:
+Current implementation note: `--plain` provides this stable key-value output.
+The default text mode renders human-oriented pretty output with disclosure
+commands. JSON and JSONL modes are unchanged.
 
 ```bash
-ecc status --pretty
+ecc status --plain
 ```
 
 Pretty output is for humans only and must not be treated as the stable parsing
@@ -121,8 +123,8 @@ Use `--json` for object-level output and `--jsonl` for stream or list output.
 Example:
 
 ```jsonl
-{"kind":"step","step":"synthesis","status":"success","elapsed_s":18,"inspect_cmd":"ecc show step synthesis","log_cmd":"ecc log step synthesis --errors"}
-{"kind":"step","step":"cts","status":"failed","elapsed_s":37,"wns":-0.083,"hold_vios":12,"diagnose_cmd":"ecc diagnose step cts","log_cmd":"ecc log step cts --errors"}
+{"step":"synthesis","tool":"yosys","status":"success","runtime":"0:00:18","metrics_cmd":"ecc metrics synthesis","log_cmd":"ecc log synthesis"}
+{"metric":"gp_hpwl","step":"placement","value":18423,"source":"Placement_ecc/analysis/place_metrics.json","inspect":"ecc metrics placement --json"}
 ```
 
 Text output and JSON output should describe the same objects. The text output is
@@ -180,12 +182,12 @@ ecc init
 ecc check
 ecc run
 ecc status
-ecc diagnose
-ecc metrics
 ecc log
+ecc metrics
 ecc artifacts
 ecc config
-ecc open
+ecc diagnose
+ecc param
 ```
 
 Responsibilities:
@@ -194,14 +196,14 @@ Responsibilities:
 | --- | --- |
 | `ecc init` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
-| `ecc run` | Execute a full flow or selected step range |
+| `ecc run` | Execute the configured default flow |
 | `ecc status` | Summarize run and step state |
 | `ecc diagnose` | Explain failures or QoR problems with evidence |
 | `ecc metrics` | Show run-level or step-level metrics |
-| `ecc log` | Show filtered or raw logs |
-| `ecc artifacts` | List generated files and viewer commands |
+| `ecc log` | Show available logs or complete step log content |
+| `ecc artifacts` | List generated files and disclosure commands |
 | `ecc config` | Show user or resolved configuration |
-| `ecc open` | Open KLayout, reports, or other viewers |
+| `ecc param` | List, inspect, set, unset, and diff parameter overrides |
 
 ### Project-Oriented Entry
 
@@ -220,12 +222,14 @@ gcd/
 ├── ecc.toml
 ├── rtl/
 ├── constraints/
-├── runs/
-└── reports/
+└── runs/
 ```
 
 Command-line arguments may override configuration values, but `ecc.toml` should
 be the primary user-facing interface.
+
+Current implementation supports `--project` on project commands. When omitted,
+the current working directory is treated as the project directory.
 
 ### Step-Level Execution
 
@@ -240,6 +244,14 @@ ecc run --resume
 ecc run --force --step placement
 ```
 
+The current implementation does not yet expose step-range execution flags.
+`ecc run` executes the configured default RTL-to-GDS flow and supports:
+
+```bash
+ecc run --overwrite
+ecc run --set place.target_density=0.65
+```
+
 Each run should have a stable run id and may have a user tag:
 
 ```bash
@@ -248,11 +260,38 @@ ecc run --tag dense_place
 ecc diff baseline dense_place
 ```
 
+The implemented run writer currently creates `runs/default`. Inspection
+commands support `--run-id` for selecting `runs/<id>`, a relative run path, or
+an absolute run directory:
+
+```bash
+ecc status --run-id default
+ecc log cts --run-id run_005
+ecc metrics cts --run-id sweeps/sweep_001/run_004
+```
+
+Run tags and `ecc diff` remain planned work.
+
+### Parameter Management
+
+Parameters are part of the implemented CLI surface. Project-level overrides can
+be stored in `ecc.toml` under `[params]`, set persistently with `ecc param set`,
+or applied to a single run with repeated `ecc run --set key=value` flags.
+
+```bash
+ecc param list
+ecc param show place.target_density
+ecc param set place.target_density 0.65
+ecc param unset place.target_density
+ecc param diff
+ecc run --set synth.max_fanout=16
+```
+
 ## Output Contracts
 
 ### Summary Line Format
 
-Default text output should follow this general shape:
+Stable plain text output should follow this general shape:
 
 ```text
 kind=<object-kind> key=value ... disclosure_key="ecc command ..."
@@ -261,10 +300,10 @@ kind=<object-kind> key=value ... disclosure_key="ecc command ..."
 Examples:
 
 ```text
-run=baseline status=success elapsed=914s metrics="ecc metrics run baseline" artifacts="ecc artifacts run baseline"
-step=routing status=failed elapsed=222s shorts=84 opens=3 drc=87 diagnose="ecc diagnose step routing" log="ecc log step routing --errors" open="ecc open step routing --markers drc"
-metric=wns value=-0.083 unit=ns status=fail source=cts/reports/timing_hold.rpt inspect="ecc show metric wns --step cts"
-artifact=def step=placement path=runs/baseline/placement/output/design.def open="ecc open step placement --artifact def"
+run=default status=success workspace=runs/default inspect="ecc status" metrics="ecc metrics" log="ecc log"
+step=routing tool=ecc status=failed runtime=0:03:42 metrics="ecc metrics routing" log="ecc log routing"
+metric=max_wns step=cts value=-0.083 source=runs/default/CTS_ecc/analysis/CTS_metrics.json inspect="ecc metrics cts --json"
+artifact=design.def step=placement role=output path=runs/default/Placement_ecc/output/design.def inspect="ecc artifacts placement --json" config="ecc config placement --resolved"
 ```
 
 Rules:
@@ -280,13 +319,23 @@ Rules:
 - Prefer relative paths rooted at the project directory.
 - Avoid terminal color as the only status indicator.
 
+Current output modes:
+
+| Mode | Option | Notes |
+| --- | --- | --- |
+| Pretty text | default | Human-oriented grouped output with disclosure commands |
+| Plain text | `--plain` | Stable one-record-per-line key-value output |
+| JSON | `--json` | JSON envelope with `records` |
+| JSONL | `--jsonl` | One JSON object per record |
+
 ### Error Output
 
 Errors should also follow progressive disclosure. A failing command should print
 a concise summary and actionable disclosure commands:
 
 ```text
-error=E2103 status=failed step=routing reason=drc_violations shorts=84 opens=3 diagnose="ecc diagnose step routing" log="ecc log step routing --errors" open="ecc open step routing --markers drc"
+kind=error error=run_exists run=default workspace=runs/default overwrite="ecc run --overwrite"
+step=routing status=unknown_step inspect="ecc status"
 ```
 
 For human readability, a short paragraph may follow, but agents should be able
@@ -297,9 +346,9 @@ to use the first line alone.
 Diagnosis must include evidence, not only suggestions:
 
 ```text
-issue=cts_hold status=fail severity=error wns=-0.083 hold_vios=12 evidence="ecc show issue cts_hold --evidence" log="ecc log step cts --errors"
-evidence=timing_hold_report path=runs/baseline/cts/reports/timing_hold.rpt value=-0.083 inspect="ecc show artifact timing_hold_report"
-action=enable_hold_repair confidence=medium config="ecc config step cts --resolved"
+issue=log_errors severity=error run=default step=cts count=12 evidence="ecc log cts" artifacts="ecc artifacts cts"
+issue=missing_metrics severity=warning run=default step=cts evidence="ecc metrics cts --json" log="ecc log cts"
+issue=config_unavailable severity=info run=default step=cts evidence="ecc config cts --resolved" artifacts="ecc artifacts cts"
 ```
 
 Suggestions should be traceable to metrics, reports, or logs.
@@ -314,28 +363,32 @@ name = "gcd"
 top = "gcd"
 rtl = ["rtl/gcd.v"]
 clock_port = "clk"
-clock_period = "10ns"
+frequency_mhz = 100.0
 
 [pdk]
 name = "ics55"
-root = "$PDK_ROOT"
-
-[floorplan]
-die_area = [0, 0, 100, 100]
-core_util = 45
-aspect_ratio = 1.0
+root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds"
-from = "synthesis"
-to = "gds"
+run = "default"
+
+[params.place]
+target_density = 0.65
 ```
+
+Current validation supports the `ics55` PDK and the `rtl2gds` flow preset.
+`design.rtl` must contain exactly one entry; use a filelist (`.f`, `.fl`, or
+`.filelist`) for multi-source RTL designs. If `pdk.root` is empty, the CLI
+falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or `ICS55_PDK_ROOT`.
 
 The resolved configuration used by each step should be inspectable:
 
 ```bash
 ecc config --resolved
-ecc config step placement --resolved
+ecc config placement --resolved
+ecc param list
+ecc param show place.target_density
 ```
 
 ## AI-Native Behavior
@@ -359,7 +412,7 @@ Agent-oriented commands can then be layered on top:
 
 ```bash
 ecc diagnose
-ecc explain step routing
+ecc explain routing
 ecc suggest --goal "fix hold"
 ecc summarize run latest
 ```
@@ -371,34 +424,38 @@ commands.
 
 ### Phase 1: Project And Run Basics
 
-- [ ] `ecc init`
-- [ ] `ecc check`
-- [ ] `ecc run`
-- [ ] `ecc status`
-- [ ] `ecc log`
-- [ ] `ecc metrics`
-- [ ] Default grep-friendly summary output
-- [ ] `--json` and `--jsonl` for status and metrics
+- [x] `ecc init`
+- [x] `ecc check`
+- [x] `ecc run`
+- [x] `ecc status`
+- [x] `ecc log`
+- [x] `ecc metrics`
+- [x] Stable grep-friendly summary output through `--plain`
+- [x] `--json` and `--jsonl` for status and metrics
 
 Success criteria:
 
-- [ ] A user can create a project, run the default RTL-to-GDS flow, inspect status,
+- [x] A user can create a project, run the default RTL-to-GDS flow, inspect status,
   inspect logs, and read metrics without writing Python.
-- [ ] Every summary line includes at least one disclosure command.
+- [x] Plain summary records include disclosure commands for follow-up
+  inspection.
 
 ### Phase 2: Debug And Traceability
 
-- [ ] `ecc diagnose`
-- [ ] `ecc artifacts`
-- [ ] `ecc config --resolved`
+- [x] `ecc diagnose`
+- [x] `ecc artifacts`
+- [x] `ecc config --resolved`
+- [x] Run selection for inspection commands with `--run-id`
+- [x] Parameter overrides with `ecc param` and `ecc run --set`
 - [ ] Run tags and run comparison basics
-- [ ] Structured issue and artifact metadata
+- [x] Structured issue and artifact metadata
 
 Success criteria:
 
-- [ ] A failed step can be investigated through `ecc status -> ecc diagnose -> ecc
+- [x] A failed step can be investigated through `ecc status -> ecc diagnose -> ecc
   log/artifacts/config`.
-- [ ] Agent frameworks can follow disclosure commands without parsing prose.
+- [x] Agent frameworks can follow disclosure commands from `--plain`, `--json`,
+  or `--jsonl` output without parsing prose.
 
 ### Phase 3: Exploration And Assistance
 
@@ -416,10 +473,11 @@ Success criteria:
 
 ## Compatibility Notes
 
-The current CLI accepts explicit arguments such as `--workspace`, `--rtl`,
-`--design`, `--top`, `--clock`, `--pdk-root`, and `--freq`. The new CLI should
-preserve a migration path for scripted users, but the long-term default should
-be project-oriented and configuration-driven.
+Legacy top-level invocation still accepts explicit arguments such as
+`--workspace`, `--rtl`, `--design`, `--top`, `--clock`, `--pdk-root`, and
+`--freq`. These flags trigger the legacy parameter-only path. The long-term
+default is project-oriented and configuration-driven through `ecc.toml` and
+subcommands such as `ecc run --project <dir>`.
 
 The CLI should remain API-compatible with existing Python users. Changes needed
 for the CLI should be additive and should not force current Python flow scripts
