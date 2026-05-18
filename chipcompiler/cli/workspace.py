@@ -174,6 +174,8 @@ def run_flow(args) -> dict:
 
     try:
         workspace, engine_flow = load_workspace_runtime(args.directory)
+        if args.rerun:
+            engine_flow.clear_states()
         if not engine_flow.run_steps(rerun=args.rerun):
             return workspace_response(
                 cmd,

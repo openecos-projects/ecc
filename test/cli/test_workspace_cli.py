@@ -351,7 +351,7 @@ def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path
     assert data["cmd"] == "run_flow"
     assert data["response"] == "failed"
     assert data["data"] == {"rerun": True}
-    assert not flow.cleared
+    assert flow.cleared
     assert flow.run_steps_calls == [True]
     assert flow.run_calls == [("Synthesis", True), ("Floorplan", True)]
     assert str(os.path.abspath(ws)) in data["message"][0]
