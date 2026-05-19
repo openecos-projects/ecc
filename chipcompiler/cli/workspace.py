@@ -424,7 +424,12 @@ def _resolve_rtl_flags(rtl_paths: Sequence[str]) -> list[str]:
 
 
 def _resolve_request_rtl_list(data: dict, base_dir: str) -> None:
-    if data.get("filelist"):
+    filelist = data.get("filelist")
+    if filelist:
+        path = os.path.expandvars(os.path.expanduser(str(filelist)))
+        data["filelist"] = (
+            path if os.path.isabs(path) else os.path.abspath(os.path.join(base_dir, path))
+        )
         return
     rtl_list = data.get("rtl_list")
     if not rtl_list:

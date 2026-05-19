@@ -186,6 +186,35 @@ def test_create_input_json_resolves_relative_rtl_from_json_dir(
     assert (ws / "filelist").read_text().splitlines() == [str(project / "rtl" / "top.v")]
 
 
+def test_create_input_json_resolves_relative_filelist_from_json_dir(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    request_path = project / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "directory": str(ws),
+                "pdk": "ics55",
+                "filelist": "rtl/files.f",
+                "rtl_list": [],
+            }
+        )
+    )
+    monkeypatch.chdir(tmp_path)
+
+    rc = cli_main.run(["workspace", "create", "--input-json", str(request_path), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "success"
+    assert capture["create_kwargs"]["input_filelist"] == str(project / "rtl" / "files.f")
+
+
 def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys):
     capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     params_path = tmp_path / "params.json"
