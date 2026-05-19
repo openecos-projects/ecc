@@ -29,6 +29,9 @@ class DummyFlow:
 
     def add_step(self, step, tool, state):
         self.added_steps.append((step, tool, state))
+        self.workspace.flow.data.setdefault("steps", []).append(
+            {"name": step, "tool": tool, "state": getattr(state, "value", state)}
+        )
 
     def create_step_workspaces(self):
         if DummyFlow.fail_create_step_workspaces:
@@ -68,13 +71,26 @@ def _response(capsys):
 
 
 def _workspace(directory):
+    design = SimpleNamespace(
+        name="gcd",
+        top_module="gcd",
+        origin_def="",
+        origin_verilog=os.path.join(directory, "origin", "gcd.v"),
+        input_filelist="",
+    )
     home = SimpleNamespace(path=os.path.join(directory, "home", "home.json"))
     flow = SimpleNamespace(path=os.path.join(directory, "home", "flow.json"), data={"steps": []})
     logger = SimpleNamespace(
         log_section=lambda *args, **kwargs: None,
         info=lambda *args, **kwargs: None,
     )
-    return SimpleNamespace(directory=directory, flow=flow, home=home, logger=logger)
+    return SimpleNamespace(
+        directory=directory,
+        flow=flow,
+        home=home,
+        logger=logger,
+        design=design,
+    )
 
 
 def _install_runtime_mocks(monkeypatch, tmp_path):
@@ -372,6 +388,37 @@ def test_passive_workspace_commands_do_not_create_step_workspaces(
     assert rc == 0
     assert data["cmd"] == "get_home"
     assert data["response"] == "success"
+    assert not DummyFlow.instances[0].created
+
+
+def test_get_info_does_not_create_step_workspaces(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.fail_create_step_workspaces = True
+
+    monkeypatch.setattr(
+        "chipcompiler.tools.get_step_info",
+        lambda workspace, step, id: {"path": step.subflow["path"]},
+    )
+    rc = cli_main.run(
+        [
+            "workspace",
+            "get-info",
+            "--directory",
+            str(ws),
+            "--step",
+            "Synthesis",
+            "--id",
+            "subflow",
+            "--json",
+        ]
+    )
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "success"
+    assert data["data"]["info"] == {
+        "path": os.path.abspath(ws / "Synthesis_yosys" / "subflow.json")
+    }
     assert not DummyFlow.instances[0].created
 
 

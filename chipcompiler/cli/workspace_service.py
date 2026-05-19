@@ -204,8 +204,8 @@ def get_workspace_info(directory: str, step: str, info_id: str) -> dict:
         )
 
     try:
-        workspace, engine_flow = load_workspace_runtime(directory)
-        workspace_step = engine_flow.get_workspace_step(step)
+        workspace, _engine_flow = load_workspace_runtime(directory, create_step_workspaces=False)
+        workspace_step = _workspace_step_from_flow(workspace, step)
         if workspace_step is None:
             return workspace_response(
                 cmd,
@@ -301,6 +301,57 @@ def build_flow_for_workspace(workspace, create_step_workspaces: bool = True):
     if create_step_workspaces:
         engine_flow.create_step_workspaces()
     return engine_flow
+
+
+def _workspace_step_from_flow(workspace, name: str):
+    previous_step = None
+    for flow_step in workspace.flow.data.get("steps", []):
+        workspace_step = _build_workspace_step_for_info(workspace, flow_step, previous_step)
+        if flow_step.get("name") == name:
+            return workspace_step
+        if workspace_step is not None:
+            previous_step = workspace_step
+
+    return None
+
+
+def _build_workspace_step_for_info(workspace, flow_step: dict, previous_step):
+    step_name = flow_step.get("name")
+    tool = flow_step.get("tool")
+    if not step_name or not tool:
+        return None
+
+    if previous_step is None:
+        input_def = workspace.design.origin_def
+        input_verilog = workspace.design.origin_verilog
+        input_db = None
+    else:
+        input_def = previous_step.output.get("def", "")
+        input_verilog = previous_step.output.get("verilog", "")
+        input_db = previous_step.output.get("db", "")
+
+    builder = _load_tool_builder(tool)
+    if builder is None or not hasattr(builder, "build_step"):
+        return None
+
+    return builder.build_step(
+        workspace=workspace,
+        step_name=step_name,
+        input_def=input_def,
+        input_verilog=input_verilog,
+        input_db=input_db,
+    )
+
+
+def _load_tool_builder(tool: str):
+    import importlib
+
+    module_alias = {
+        "klayout": "klayout_tool",
+        "dreamplace": "ecc_dreamplace",
+    }
+    module_name = module_alias.get(tool, tool)
+    return importlib.import_module(f"chipcompiler.tools.{module_name}.builder")
 
 
 def _looks_like_old_workspace(directory: str) -> bool:
