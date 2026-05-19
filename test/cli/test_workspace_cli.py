@@ -448,7 +448,7 @@ def test_run_flow_resume_avoids_bulk_home_reset(monkeypatch, tmp_path, capsys):
     assert data["response"] == "success"
     assert data["data"] == {"rerun": False}
     assert not flow.cleared
-    assert flow.run_steps_calls == []
+    assert flow.run_steps_calls == [False]
     assert flow.run_calls == [("Synthesis", False), ("Floorplan", False)]
 
 

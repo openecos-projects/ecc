@@ -107,9 +107,7 @@ def run_workspace_flow(directory: str, rerun: bool) -> dict:
         workspace, engine_flow = load_workspace_runtime(directory)
         if rerun:
             engine_flow.clear_states()
-            ok = engine_flow.run_steps(rerun=True)
-        else:
-            ok = _run_workspace_flow_resume(engine_flow)
+        ok = engine_flow.run_steps(rerun=rerun)
         if not ok:
             return workspace_response(
                 cmd,
@@ -133,24 +131,6 @@ def run_workspace_flow(directory: str, rerun: bool) -> dict:
         data=response_data,
         message=[f"run flow success : {os.path.abspath(workspace.directory)}"],
     )
-
-
-def _run_workspace_flow_resume(engine_flow) -> bool:
-    from chipcompiler.data import StateEnum, log_flow
-
-    for workspace_step in engine_flow.workspace_steps:
-        engine_flow.workspace.logger.log_section(
-            f"{workspace_step.tool} - begin step - {workspace_step.name}"
-        )
-        state = engine_flow.run_step(workspace_step, rerun=False)
-        log_flow(workspace=engine_flow.workspace)
-        engine_flow.workspace.logger.log_section(
-            f"{workspace_step.tool} - end step - {workspace_step.name}"
-        )
-        if state != StateEnum.Success:
-            return False
-
-    return True
 
 
 def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
