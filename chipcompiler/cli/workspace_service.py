@@ -77,7 +77,7 @@ def load_workspace(directory: str) -> dict:
         return workspace_response(cmd, "failed", message=["missing required field: directory"])
 
     try:
-        workspace, _engine_flow = load_workspace_runtime(directory)
+        workspace, _engine_flow = load_workspace_runtime(directory, create_step_workspaces=False)
     except WorkspaceValidationError as exc:
         return workspace_response(cmd, "failed", message=[str(exc)])
     except Exception as exc:
@@ -249,7 +249,7 @@ def get_workspace_home(directory: str) -> dict:
         return workspace_response(cmd, "failed", message=["missing required field: directory"])
 
     try:
-        workspace, _engine_flow = load_workspace_runtime(directory)
+        workspace, _engine_flow = load_workspace_runtime(directory, create_step_workspaces=False)
     except WorkspaceValidationError as exc:
         return workspace_response(cmd, "failed", message=[str(exc)])
     except Exception as exc:
@@ -270,7 +270,7 @@ def get_workspace_home(directory: str) -> dict:
     )
 
 
-def load_workspace_runtime(directory: str):
+def load_workspace_runtime(directory: str, create_step_workspaces: bool = True):
     import chipcompiler.data as data_api
 
     if not directory:
@@ -282,11 +282,14 @@ def load_workspace_runtime(directory: str):
     if workspace is None:
         raise WorkspaceValidationError(f"load workspace failed : {directory}")
 
-    engine_flow = build_flow_for_workspace(workspace)
+    engine_flow = build_flow_for_workspace(
+        workspace,
+        create_step_workspaces=create_step_workspaces,
+    )
     return workspace, engine_flow
 
 
-def build_flow_for_workspace(workspace):
+def build_flow_for_workspace(workspace, create_step_workspaces: bool = True):
     import chipcompiler.engine as engine_api
     import chipcompiler.rtl2gds as rtl2gds_api
 
@@ -295,7 +298,8 @@ def build_flow_for_workspace(workspace):
         for step, tool, state in rtl2gds_api.build_rtl2gds_flow():
             engine_flow.add_step(step=step, tool=tool, state=state)
 
-    engine_flow.create_step_workspaces()
+    if create_step_workspaces:
+        engine_flow.create_step_workspaces()
     return engine_flow
 
 

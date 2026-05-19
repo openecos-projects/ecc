@@ -9,6 +9,7 @@ from chipcompiler.data import StateEnum
 class DummyFlow:
     instances = []
     next_run_states = []
+    fail_create_step_workspaces = False
 
     def __init__(self, workspace):
         self.workspace = workspace
@@ -30,6 +31,8 @@ class DummyFlow:
         self.added_steps.append((step, tool, state))
 
     def create_step_workspaces(self):
+        if DummyFlow.fail_create_step_workspaces:
+            raise RuntimeError("tool setup failed")
         self.created = True
 
     def clear_states(self):
@@ -79,6 +82,7 @@ def _install_runtime_mocks(monkeypatch, tmp_path):
 
     DummyFlow.instances = []
     DummyFlow.next_run_states = []
+    DummyFlow.fail_create_step_workspaces = False
 
     def fake_create_workspace(**kwargs):
         capture["create_kwargs"] = kwargs
@@ -351,7 +355,24 @@ def test_load_returns_directory_and_workspace_id(monkeypatch, tmp_path, capsys):
         "message": [f"load workspace success : {os.path.abspath(ws)}"],
     }
     assert capture["loaded"] == [str(ws)]
-    assert DummyFlow.instances[0].created
+    assert not DummyFlow.instances[0].created
+
+
+def test_passive_workspace_commands_do_not_create_step_workspaces(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.fail_create_step_workspaces = True
+
+    rc = cli_main.run(["workspace", "get-home", "--directory", str(ws), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data["cmd"] == "get_home"
+    assert data["response"] == "success"
+    assert not DummyFlow.instances[0].created
 
 
 def test_load_accepts_workspace_before_flow_initialization(monkeypatch, tmp_path, capsys):
@@ -364,7 +385,7 @@ def test_load_accepts_workspace_before_flow_initialization(monkeypatch, tmp_path
     assert rc == 0
     assert data["response"] == "success"
     assert capture["loaded"] == [str(ws)]
-    assert DummyFlow.instances[0].created
+    assert not DummyFlow.instances[0].created
 
 
 def test_load_invalid_old_workspace_layout_fails(tmp_path, capsys):
