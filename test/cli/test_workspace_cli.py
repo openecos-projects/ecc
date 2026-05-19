@@ -66,7 +66,12 @@ def _response(capsys):
 
 def _workspace(directory):
     home = SimpleNamespace(path=os.path.join(directory, "home", "home.json"))
-    return SimpleNamespace(directory=directory, home=home)
+    flow = SimpleNamespace(path=os.path.join(directory, "home", "flow.json"), data={"steps": []})
+    logger = SimpleNamespace(
+        log_section=lambda *args, **kwargs: None,
+        info=lambda *args, **kwargs: None,
+    )
+    return SimpleNamespace(directory=directory, flow=flow, home=home, logger=logger)
 
 
 def _install_runtime_mocks(monkeypatch, tmp_path):
@@ -429,6 +434,22 @@ def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path
     assert flow.run_steps_calls == [True]
     assert flow.run_calls == [("Synthesis", True), ("Floorplan", True)]
     assert str(os.path.abspath(ws)) in data["message"][0]
+
+
+def test_run_flow_resume_avoids_bulk_home_reset(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    rc = cli_main.run(["workspace", "run-flow", "--directory", str(ws), "--json"])
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 0
+    assert data["cmd"] == "run_flow"
+    assert data["response"] == "success"
+    assert data["data"] == {"rerun": False}
+    assert not flow.cleared
+    assert flow.run_steps_calls == []
+    assert flow.run_calls == [("Synthesis", False), ("Floorplan", False)]
 
 
 def test_get_info_success_warning_and_exception(monkeypatch, tmp_path, capsys):
