@@ -215,6 +215,38 @@ def test_create_input_json_resolves_relative_filelist_from_json_dir(
     assert capture["create_kwargs"]["input_filelist"] == str(project / "rtl" / "files.f")
 
 
+def test_create_input_json_resolves_relative_origin_inputs_from_json_dir(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    request_path = project / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "directory": str(ws),
+                "pdk": "ics55",
+                "origin_def": "inputs/top.def",
+                "origin_verilog": "inputs/top.v",
+                "filelist": "",
+                "rtl_list": [],
+            }
+        )
+    )
+    monkeypatch.chdir(tmp_path)
+
+    rc = cli_main.run(["workspace", "create", "--input-json", str(request_path), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "success"
+    assert capture["create_kwargs"]["origin_def"] == str(project / "inputs" / "top.def")
+    assert capture["create_kwargs"]["origin_verilog"] == str(project / "inputs" / "top.v")
+
+
 def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys):
     capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     params_path = tmp_path / "params.json"
@@ -313,6 +345,19 @@ def test_load_returns_directory_and_workspace_id(monkeypatch, tmp_path, capsys):
         "data": {"directory": os.path.abspath(ws), "workspace_id": os.path.abspath(ws)},
         "message": [f"load workspace success : {os.path.abspath(ws)}"],
     }
+    assert capture["loaded"] == [str(ws)]
+    assert DummyFlow.instances[0].created
+
+
+def test_load_accepts_workspace_before_flow_initialization(monkeypatch, tmp_path, capsys):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    (ws / "home" / "flow.json").unlink()
+
+    rc = cli_main.run(["workspace", "load", "--directory", str(ws), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "success"
     assert capture["loaded"] == [str(ws)]
     assert DummyFlow.instances[0].created
 

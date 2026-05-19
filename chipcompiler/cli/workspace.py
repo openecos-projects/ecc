@@ -355,7 +355,7 @@ def _create_request_data(args) -> dict:
 
     if has_input:
         data = _read_json_object(args.input_json)
-        _resolve_request_rtl_list(data, _input_json_base_dir(args.input_json))
+        _resolve_request_paths(data, _input_json_base_dir(args.input_json))
         return data
 
     parameters = {}
@@ -423,19 +423,30 @@ def _resolve_rtl_flags(rtl_paths: Sequence[str]) -> list[str]:
     return result
 
 
-def _resolve_request_rtl_list(data: dict, base_dir: str) -> None:
+def _resolve_request_path(path: str, base_dir: str) -> str:
+    expanded = os.path.expandvars(os.path.expanduser(str(path)))
+    if not expanded:
+        return ""
+    if os.path.isabs(expanded):
+        return expanded
+    return os.path.abspath(os.path.join(base_dir, expanded))
+
+
+def _resolve_request_paths(data: dict, base_dir: str) -> None:
+    for field in ("origin_def", "origin_verilog", "filelist"):
+        path = data.get(field)
+        if path:
+            data[field] = _resolve_request_path(path, base_dir)
+
     filelist = data.get("filelist")
     if filelist:
-        path = os.path.expandvars(os.path.expanduser(str(filelist)))
-        data["filelist"] = (
-            path if os.path.isabs(path) else os.path.abspath(os.path.join(base_dir, path))
-        )
         return
+
     rtl_list = data.get("rtl_list")
     if not rtl_list:
         return
     data["rtl_list"] = [
-        path if os.path.isabs(path) else os.path.abspath(os.path.join(base_dir, path))
+        _resolve_request_path(path, base_dir)
         for path in _normalize_rtl_list(rtl_list)
     ]
 
@@ -464,7 +475,7 @@ def _looks_like_old_workspace(directory: str) -> bool:
     home = os.path.join(directory, "home")
     return all(
         os.path.isfile(os.path.join(home, filename))
-        for filename in ("parameters.json", "flow.json", "home.json")
+        for filename in ("parameters.json", "home.json")
     )
 
 
