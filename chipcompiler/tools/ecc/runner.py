@@ -789,6 +789,40 @@ def run_sta(workspace: Workspace,
     """
     run sta
     """
+    def spef_type_from_path(spef_file: str) -> str:
+        stem = os.path.splitext(os.path.basename(spef_file))[0]
+        design_prefix = f"{workspace.design.name}_"
+        if stem.startswith(design_prefix):
+            stem = stem[len(design_prefix):]
+        return stem
+
+    def safe_dir_name(name: str) -> str:
+        value = "".join(
+            char if char.isalnum() or char in ("-", "_", ".") else "_"
+            for char in name.strip()
+        )
+        return value or "spef"
+
+    def collect_spef_files() -> list[tuple[str, str]]:
+        spef_files = step.output.get("spef", [])
+        if spef_files:
+            return [
+                (safe_dir_name(spef_type_from_path(spef_file)), spef_file)
+                for spef_file in spef_files
+            ]
+
+        config = json_read(step.config.get(StepEnum.RCX.value, ""))
+        spef_items = []
+        for corner in config.get("corners", []):
+            spef_file = corner.get("spef_file", "")
+            if not spef_file:
+                continue
+
+            spef_type = corner.get("name", "") or spef_type_from_path(spef_file)
+            spef_items.append((safe_dir_name(spef_type), spef_file))
+
+        return spef_items
+
     result = False
     
     sub_flow = EccSubFlow(workspace=workspace,
@@ -800,22 +834,64 @@ def run_sta(workspace: Workspace,
     
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-        
-        for spef_file in step.output.get("spef", []):
-            eda_inst.init_sta(output_dir=step.data.get("sta", ""),
-                              top_module=workspace.design.top_module,
-                              lib_paths=workspace.pdk.libs,
-                              sdc_path=workspace.pdk.sdc)
-            eda_inst.read_spef(file_name=spef_file)
-            # eda_inst.report_timing()
-            eda_inst.report_sta(output=step.output.get("dir", ""))
+
+        spef_items = collect_spef_files()
+        if len(spef_items) <= 0:
+            workspace.logger.error("No SPEF files found for STA")
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
+                                 state=StateEnum.Imcomplete)
+            return False
+
+        for spef_type, spef_file in spef_items:
+            if not os.path.exists(spef_file):
+                workspace.logger.error("SPEF file does not exist: %s", spef_file)
+                sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
+                                     state=StateEnum.Imcomplete)
+                return False
+            if not os.path.exists(step.input.get("verilog", "")):
+                workspace.logger.error("STA netlist does not exist: %s",
+                                       step.input.get("verilog", ""))
+                sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
+                                     state=StateEnum.Imcomplete)
+                return False
+            if len(workspace.pdk.libs) <= 0 \
+                or any(not os.path.exists(lib_path) for lib_path in workspace.pdk.libs):
+                workspace.logger.error("STA liberty file does not exist: %s",
+                                       workspace.pdk.libs)
+                sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
+                                     state=StateEnum.Imcomplete)
+                return False
+            if not os.path.exists(workspace.pdk.sdc):
+                workspace.logger.error("STA SDC does not exist: %s",
+                                       workspace.pdk.sdc)
+                sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
+                                     state=StateEnum.Imcomplete)
+                return False
+
+            report_dir = os.path.join(step.output.get("dir", ""), spef_type)
+            os.makedirs(report_dir, exist_ok=True)
+
+            try:
+                eda_inst.set_design_workspace(report_dir)
+                eda_inst.read_netlist(step.input.get("verilog", ""))
+                eda_inst.read_liberty(workspace.pdk.libs)
+                eda_inst.link_design(workspace.design.top_module)
+                eda_inst.read_sdc(workspace.pdk.sdc)
+                eda_inst.read_spef(file_name=spef_file)
+                eda_inst.report_timing()
+            finally:
+                # release sta
+                eda_inst.release_sta()
+
+            workspace.logger.info("STA report for %s saved to %s",
+                                  spef_file,
+                                  report_dir)
+
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Success)
         
-        save_data(workspace=workspace, step=step, ecc_module=eda_inst, feature_step=False)
+        result = save_data(workspace=workspace, step=step, ecc_module=eda_inst, feature_step=False)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
-    
-        result = True
         
     return result
