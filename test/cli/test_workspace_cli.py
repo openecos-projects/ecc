@@ -543,8 +543,89 @@ def test_get_home_returns_path_and_failed_when_missing(monkeypatch, tmp_path, ca
     assert data["response"] == "failed"
 
 
-def test_workspace_module_does_not_import_ecos_server():
-    module_path = os.path.join("chipcompiler", "cli", "workspace.py")
-    with open(module_path, encoding="utf-8") as f:
-        source = f.read()
-    assert "ecos_server" not in source
+def test_workspace_help_uses_typer_app(capsys):
+    rc = cli_main.run(["workspace", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Usage: ecc workspace" in out
+    assert "create" in out
+    assert "run-flow" in out
+
+
+def test_workspace_create_help_lists_existing_options(capsys):
+    rc = cli_main.run(["workspace", "create", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Usage: ecc workspace create" in out
+    assert "--input-json" in out
+    assert "--directory" in out
+    assert "--param-json" in out
+
+
+def test_workspace_create_rejects_positional_directory(capsys):
+    rc = cli_main.run(["workspace", "create", "gcd"])
+
+    captured = capsys.readouterr()
+    assert rc != 0
+    assert "unexpected extra argument" in captured.err.lower()
+
+
+def test_unknown_workspace_subcommand_returns_nonzero(capsys):
+    rc = cli_main.run(["workspace", "missing-command"])
+
+    captured = capsys.readouterr()
+    assert rc != 0
+    assert "no such command" in captured.err.lower()
+
+
+def test_non_workspace_commands_stay_on_argparse_path(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.config._validate_pdk_contents",
+        lambda name, root: None,
+    )
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "ecc.toml").write_text("[design\n")
+
+    rc = cli_main.run(["check", "--project", str(project_dir)])
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "malformed ecc.toml" in out
+
+
+def test_workspace_modules_keep_runtime_boundaries():
+    module_paths = [
+        os.path.join("chipcompiler", "cli", "workspace_app.py"),
+        os.path.join("chipcompiler", "cli", "workspace_request.py"),
+        os.path.join("chipcompiler", "cli", "workspace_response.py"),
+        os.path.join("chipcompiler", "cli", "workspace_service.py"),
+    ]
+    for module_path in module_paths:
+        assert os.path.exists(module_path)
+
+    with open(os.path.join("chipcompiler", "cli", "main.py"), encoding="utf-8") as f:
+        main_source = f.read()
+    assert "workspace_create.add_argument" not in main_source
+    assert "workspace_run_flow.add_argument" not in main_source
+
+    with open(os.path.join("chipcompiler", "cli", "workspace_service.py"), encoding="utf-8") as f:
+        service_source = f.read()
+    assert "typer" not in service_source
+    assert "print(" not in service_source
+
+
+def test_workspace_modules_do_not_import_ecos_server():
+    module_paths = [
+        os.path.join("chipcompiler", "cli", "workspace_app.py"),
+        os.path.join("chipcompiler", "cli", "workspace_request.py"),
+        os.path.join("chipcompiler", "cli", "workspace_response.py"),
+        os.path.join("chipcompiler", "cli", "workspace_service.py"),
+    ]
+    for module_path in module_paths:
+        assert os.path.exists(module_path)
+        with open(module_path, encoding="utf-8") as f:
+            source = f.read()
+        assert "ecos_server" not in source

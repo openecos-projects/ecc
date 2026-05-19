@@ -136,46 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
         "workspace",
         help="Manage legacy runtime workspaces",
     )
-    workspace_sub = workspace_parser.add_subparsers(dest="workspace_command")
-
-    workspace_create = workspace_sub.add_parser("create", help="Create a legacy workspace")
-    workspace_create.add_argument("--input-json", default=None, dest="input_json",
-                                  help="Read request JSON object from path or '-'")
-    workspace_create.add_argument("--directory", default=None, help="Workspace directory")
-    workspace_create.add_argument("--pdk", default=None, help="PDK name")
-    workspace_create.add_argument("--pdk-root", default=None, dest="pdk_root",
-                                  help="PDK root path")
-    workspace_create.add_argument("--origin-def", default=None, dest="origin_def",
-                                  help="Original DEF input")
-    workspace_create.add_argument("--origin-verilog", default=None, dest="origin_verilog",
-                                  help="Original Verilog input")
-    workspace_create.add_argument("--filelist", default=None, help="Input filelist")
-    workspace_create.add_argument("--rtl", action="append", default=[],
-                                  help="RTL source path, repeatable")
-    workspace_create.add_argument("--param-json", default=None, dest="param_json",
-                                  help="Read parameters JSON object from path or '-'")
-    workspace_create.add_argument("--json", action="store_true", help="JSON output")
-
-    workspace_load = workspace_sub.add_parser("load", help="Load a legacy workspace")
-    _add_workspace_directory_json_args(workspace_load)
-
-    workspace_run_flow = workspace_sub.add_parser("run-flow", help="Run legacy workspace flow")
-    _add_workspace_directory_json_args(workspace_run_flow)
-    workspace_run_flow.add_argument("--rerun", action="store_true",
-                                    help="Clear states before running")
-
-    workspace_run_step = workspace_sub.add_parser("run-step", help="Run one workspace step")
-    _add_workspace_directory_json_args(workspace_run_step)
-    workspace_run_step.add_argument("--step", default="", help="Step name")
-    workspace_run_step.add_argument("--rerun", action="store_true", help="Rerun the step")
-
-    workspace_get_info = workspace_sub.add_parser("get-info", help="Get step info")
-    _add_workspace_directory_json_args(workspace_get_info)
-    workspace_get_info.add_argument("--step", default="", help="Step name")
-    workspace_get_info.add_argument("--id", default="", help="Info id")
-
-    workspace_get_home = workspace_sub.add_parser("get-home", help="Get workspace home path")
-    _add_workspace_directory_json_args(workspace_get_home)
+    workspace_parser.set_defaults(command="workspace")
 
     # ecc run --set
     run_parser.add_argument(
@@ -190,11 +151,6 @@ def build_parser() -> argparse.ArgumentParser:
 def _add_project_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--project", default=None,
                         help="Project directory (default: current directory)")
-
-
-def _add_workspace_directory_json_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--directory", default="", help="Workspace directory")
-    parser.add_argument("--json", action="store_true", help="JSON output")
 
 
 def _render_param_text(args, result, color=True) -> None:
@@ -313,6 +269,10 @@ def _render_log_plain(result) -> None:
 def run(argv: Sequence[str] | None = None) -> int:
     raw = list(argv) if argv is not None else sys.argv[1:]
 
+    if raw and raw[0] == "workspace":
+        from chipcompiler.cli.workspace_app import run_workspace_app
+        return run_workspace_app(raw[1:])
+
     if _is_legacy_args(raw):
         return _run_legacy(raw)
 
@@ -322,17 +282,6 @@ def run(argv: Sequence[str] | None = None) -> int:
     if args.command is None:
         parser.print_help()
         return 1
-
-    if args.command == "workspace":
-        from chipcompiler.cli.workspace import (
-            dispatch as dispatch_workspace,
-        )
-        from chipcompiler.cli.workspace import (
-            render_workspace_response,
-        )
-        result, exit_code = dispatch_workspace(args)
-        render_workspace_response(result, getattr(args, "json", False))
-        return exit_code
 
     ctx = build_context(args)
     result = dispatch(args, ctx)
