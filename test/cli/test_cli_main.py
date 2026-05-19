@@ -1508,8 +1508,9 @@ class TestLogErrorsDeprecation:
     """AC-8: --errors is deprecated with visible notice."""
 
     def test_errors_hidden_from_help(self, tmp_path, capsys):
-        with pytest.raises(SystemExit):
-            cli_main.run(["log", "--help"])
+        rc = cli_main.run(["log", "--help"])
+        assert rc == 0
+        assert "--errors" not in capsys.readouterr().out
 
     def test_errors_emits_deprecation_warning(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -1884,4 +1885,3 @@ class TestLogListingUnreadable:
             assert "Traceback" not in out
         finally:
             os.chmod(log_path, 0o644)
-

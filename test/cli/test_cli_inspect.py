@@ -423,8 +423,9 @@ class TestConfigResolved:
     def test_config_requires_resolved(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
 
-        with pytest.raises(SystemExit):
-            cli_main.run(["config", "--project", project_dir])
+        rc = cli_main.run(["config", "--project", project_dir])
+        assert rc != 0
+        assert "--resolved" in capsys.readouterr().err
 
 
 # ===========================================================================
@@ -1492,4 +1493,3 @@ class TestLogErrorMatching:
         out = capsys.readouterr().out
         assert "log_errors" in out
         assert "count: 2" in out
-
