@@ -585,6 +585,36 @@ def test_workspace_create_help_lists_existing_options(capsys):
     assert "--param-json" in out
 
 
+def test_workspace_json_output_suppresses_runtime_stdout(monkeypatch, tmp_path, capsys):
+    from chipcompiler.cli.workspace_response import workspace_response
+
+    _capture, _ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    def noisy_create(_request):
+        print("lower runtime wrote to stdout")
+        return workspace_response(
+            "create_workspace",
+            "error",
+            message=["create workspace flow failed : boom"],
+        )
+
+    monkeypatch.setattr(
+        "chipcompiler.cli.workspace_app.create_workspace_from_request",
+        noisy_create,
+    )
+
+    rc = cli_main.run(["workspace", "create", "--directory", str(tmp_path / "ws"), "--json"])
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert json.loads(out) == {
+        "cmd": "create_workspace",
+        "response": "error",
+        "data": {},
+        "message": ["create workspace flow failed : boom"],
+    }
+
+
 def test_workspace_create_rejects_positional_directory(capsys):
     rc = cli_main.run(["workspace", "create", "gcd"])
 

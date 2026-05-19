@@ -1,3 +1,6 @@
+import sys
+from collections.abc import Callable
+from contextlib import redirect_stdout
 from typing import Annotated
 
 import click
@@ -47,6 +50,13 @@ def _finish(result: dict, json_output: bool) -> None:
     raise typer.Exit(code=exit_code_for_response(result["response"]))
 
 
+def _call_runtime(callback: Callable[[], dict], json_output: bool) -> dict:
+    if not json_output:
+        return callback()
+    with redirect_stdout(sys.stderr):
+        return callback()
+
+
 @workspace_app.command("create")
 def create_cmd(
     input_json: Annotated[str | None, typer.Option("--input-json")] = None,
@@ -75,7 +85,7 @@ def create_cmd(
     except InputError as exc:
         result = workspace_response("create_workspace", exc.response, message=[str(exc)])
     else:
-        result = create_workspace_from_request(request)
+        result = _call_runtime(lambda: create_workspace_from_request(request), json_output)
     _finish(result, json_output)
 
 
@@ -84,7 +94,7 @@ def load_cmd(
     directory: Annotated[str, typer.Option("--directory")] = "",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    _finish(load_workspace(directory), json_output)
+    _finish(_call_runtime(lambda: load_workspace(directory), json_output), json_output)
 
 
 @workspace_app.command("run-flow")
@@ -93,7 +103,7 @@ def run_flow_cmd(
     rerun: Annotated[bool, typer.Option("--rerun")] = False,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    _finish(run_workspace_flow(directory, rerun), json_output)
+    _finish(_call_runtime(lambda: run_workspace_flow(directory, rerun), json_output), json_output)
 
 
 @workspace_app.command("run-step")
@@ -103,7 +113,8 @@ def run_step_cmd(
     rerun: Annotated[bool, typer.Option("--rerun")] = False,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    _finish(run_workspace_step(directory, step, rerun), json_output)
+    result = _call_runtime(lambda: run_workspace_step(directory, step, rerun), json_output)
+    _finish(result, json_output)
 
 
 @workspace_app.command("get-info")
@@ -113,7 +124,8 @@ def get_info_cmd(
     info_id: Annotated[str, typer.Option("--id")] = "",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    _finish(get_workspace_info(directory, step, info_id), json_output)
+    result = _call_runtime(lambda: get_workspace_info(directory, step, info_id), json_output)
+    _finish(result, json_output)
 
 
 @workspace_app.command("get-home")
@@ -121,4 +133,4 @@ def get_home_cmd(
     directory: Annotated[str, typer.Option("--directory")] = "",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    _finish(get_workspace_home(directory), json_output)
+    _finish(_call_runtime(lambda: get_workspace_home(directory), json_output), json_output)
