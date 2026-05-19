@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, log_flow, log_workspace_step
-from chipcompiler.utility import dict_to_str
 import logging
+
+from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
+
 
 def load_eda_module(eda_tool: str):
     """
@@ -16,10 +16,7 @@ def load_eda_module(eda_tool: str):
             'run_step'
         ]
         
-        for func in functions:
-            if not hasattr(eda_module, func):
-                return False
-        return True
+        return all(hasattr(eda_module, func) for func in functions)
     
     import importlib
 
@@ -43,7 +40,10 @@ def load_eda_module(eda_tool: str):
         return None
 
     if not eda_module.is_eda_exist():
-        logging.error("EDA tool '%s': dependency check failed (is_eda_exist returned False)", eda_tool)
+        logging.error(
+            "EDA tool '%s': dependency check failed (is_eda_exist returned False)",
+            eda_tool,
+        )
         return None
 
     return eda_module
@@ -138,8 +138,22 @@ def get_step_info(workspace: Workspace,
     """
     get step info by step and command id, return dict as resource definition
     """
-    eda_module = load_eda_module(step.tool)
-    if eda_module is None:
+    import importlib
+
+    module_alias = {
+        "klayout": "klayout_tool",
+        "dreamplace": "ecc_dreamplace",
+    }
+    module_name = module_alias.get(step.tool, step.tool)
+
+    try:
+        eda_module = importlib.import_module(f"chipcompiler.tools.{module_name}")
+    except Exception as e:
+        logging.error(f"Error load module {step.tool}: {e}")
+        return None
+
+    if not hasattr(eda_module, "get_step_info"):
+        logging.error("EDA tool '%s': module missing get_step_info", step.tool)
         return None
 
     return eda_module.get_step_info(workspace=workspace,

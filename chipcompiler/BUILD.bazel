@@ -79,7 +79,11 @@ py_library(
 py_library(
     name = "chipcompiler_cli_lib",
     srcs = glob(["cli/**/*.py"]),
-    deps = [":chipcompiler_core"],
+    deps = [
+        ":chipcompiler_core",
+        "@ecc_pypi//click",
+        "@ecc_pypi//typer",
+    ],
 )
 
 py_binary(

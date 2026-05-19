@@ -131,9 +131,18 @@ def build_parser() -> argparse.ArgumentParser:
     param_diff = param_sub.add_parser("diff", help="Show overrides that differ from defaults")
     _add_param_flags(param_diff)
 
+    # ecc workspace
+    workspace_parser = subparsers.add_parser(
+        "workspace",
+        help="Manage legacy runtime workspaces",
+    )
+    workspace_parser.set_defaults(command="workspace")
+
     # ecc run --set
-    run_parser.add_argument("--set", action="append", default=[], dest="param_set",
-                            help="Set parameter override (repeatable, e.g. --set place.target_density=0.65)")
+    run_parser.add_argument(
+        "--set", action="append", default=[], dest="param_set",
+        help="Set parameter override (repeatable, e.g. --set place.target_density=0.65)",
+    )
     run_parser.add_argument("--plain", action="store_true", help="Plain key-value output")
 
     return parser
@@ -260,6 +269,10 @@ def _render_log_plain(result) -> None:
 def run(argv: Sequence[str] | None = None) -> int:
     raw = list(argv) if argv is not None else sys.argv[1:]
 
+    if raw and raw[0] == "workspace":
+        from chipcompiler.cli.workspace_app import run_workspace_app
+        return run_workspace_app(raw[1:])
+
     if _is_legacy_args(raw):
         return _run_legacy(raw)
 
@@ -291,6 +304,8 @@ _LEGACY_FLAGS = {"--workspace", "--rtl", "--design", "--top", "--clock", "--pdk-
 
 
 def _is_legacy_args(args: list[str]) -> bool:
+    if args and args[0] == "workspace":
+        return False
     for a in args:
         if a in _LEGACY_FLAGS:
             return True

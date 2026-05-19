@@ -55,6 +55,7 @@ python3Packages.buildPythonPackage {
     scipy
     torch
     tqdm
+    typer
     uvicorn
     pip
   ]);

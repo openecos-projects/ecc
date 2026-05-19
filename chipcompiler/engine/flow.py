@@ -301,7 +301,8 @@ class EngineFlow:
         run all flow steps
         """
         
-        self.workspace.home.reset() # reset home data before run steps
+        if rerun:
+            self.workspace.home.reset() # reset home data before rerun steps
         
         for workspace_step in self.workspace_steps: 
             self.workspace.logger.log_section(f"{workspace_step.tool} - begin step - {workspace_step.name}")
