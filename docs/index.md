@@ -16,6 +16,11 @@ Welcome to the ChipCompiler documentation center.
   - Adding new EDA tools
   - Debugging and testing
 
+- **[Workspace CLI Guide](workspace-cli.md)** - Legacy runtime workspace command usage
+  - Creating workspaces with PDK, top module, and RTL inputs
+  - Loading, running, rerunning, and inspecting old-style workspaces
+  - JSON input/output contract and common errors
+
 ## Technical Specifications
 
 ### File Format Specifications
@@ -38,6 +43,7 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 ### I want to...
 
 - **Get started with ChipCompiler** → See main [README](../README.md)
+- **Use legacy workspace commands** → [Workspace CLI Guide](workspace-cli.md)
 - **Understand the architecture** → [Architecture](architecture.md)
 - **Set up development environment** → [Development Guide](development.md)
 - **Add new tools** → [Development Guide - Adding EDA Tools](development.md#adding-new-eda-tools)
