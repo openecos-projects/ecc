@@ -53,6 +53,7 @@ def build_context(command_input: CommandInput) -> CommandContext:
 
 def _should_colorize():
     from chipcompiler.cli.pretty import supports_color
+
     return supports_color(file=sys.stdout)
 
 

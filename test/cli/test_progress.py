@@ -4,12 +4,7 @@ import time
 
 import pytest
 
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
-
-
-def _strip_ansi(text):
-    return _ANSI_RE.sub("", text)
-
+from chipcompiler.cli.log_view import LineKind, LogLine
 from chipcompiler.cli.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.progress import (
     RunProgressRenderer,
@@ -22,9 +17,14 @@ from chipcompiler.cli.progress import (
     supports_color,
     truncate_to_width,
 )
-from chipcompiler.cli.log_view import LineKind, LogLine
 from chipcompiler.cli.types import CommandContext, OutputMode
 from chipcompiler.data import StateEnum
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def _strip_ansi(text):
+    return _ANSI_RE.sub("", text)
 
 
 class FakeTTYStderr:
@@ -57,7 +57,9 @@ def _make_ctx(mode=OutputMode.TEXT):
 
 class TestSupportsColor:
     def test_enabled_text_tty(self):
-        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "xterm-256color"}) is True
+        assert (
+            supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "xterm-256color"}) is True
+        )
 
     def test_disabled_non_tty(self):
         assert supports_color(FakeTTYStderr(False), OutputMode.TEXT) is False
@@ -78,7 +80,9 @@ class TestSupportsColor:
         assert supports_color(FakeTTYStderr(True), OutputMode.JSONL) is False
 
     def test_enabled_with_clean_env(self):
-        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "xterm-256color"}) is True
+        assert (
+            supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "xterm-256color"}) is True
+        )
 
 
 # -- style --
@@ -258,7 +262,15 @@ class TestRunProgressRenderer:
     def test_finish_step_success(self):
         buf = FakeTTYStderr(True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
-        r.finish_step("synthesis", "yosys", "success", "0:00:06", "output/synth.log", "ecc log synthesis --errors", True)
+        r.finish_step(
+            "synthesis",
+            "yosys",
+            "success",
+            "0:00:06",
+            "output/synth.log",
+            "ecc log synthesis --errors",
+            True,
+        )
         output = "".join(buf.written)
         assert "✓ synthesis (yosys) 0:00:06\n" in output
         assert "  log: output/synth.log\n" in output
@@ -267,7 +279,15 @@ class TestRunProgressRenderer:
     def test_finish_step_non_success(self):
         buf = FakeTTYStderr(True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
-        r.finish_step("placement", "dreamplace", "incomplete", "0:00:00", "", "ecc log placement --errors", False)
+        r.finish_step(
+            "placement",
+            "dreamplace",
+            "incomplete",
+            "0:00:00",
+            "",
+            "ecc log placement --errors",
+            False,
+        )
         output = "".join(buf.written)
         assert "✗ placement (dreamplace) incomplete 0:00:00\n" in output
         assert "  log: \n" in output
@@ -353,16 +373,24 @@ class TestRunProgressRenderer:
 
 def _make_ws(directory="/tmp", log_section_fn=None):
     section_fn = log_section_fn or (lambda self, msg: None)
-    return type("WS", (), {
-        "home": type("Home", (), {"reset": lambda self: None})(),
-        "logger": type("L", (), {
-            "info": lambda *a, **k: None,
-            "log_section": section_fn,
-            "log_separator": lambda *a, **k: None,
-        })(),
-        "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
-        "directory": directory,
-    })()
+    return type(
+        "WS",
+        (),
+        {
+            "home": type("Home", (), {"reset": lambda self: None})(),
+            "logger": type(
+                "L",
+                (),
+                {
+                    "info": lambda *a, **k: None,
+                    "log_section": section_fn,
+                    "log_separator": lambda *a, **k: None,
+                },
+            )(),
+            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
+            "directory": directory,
+        },
+    )()
 
 
 def _make_step(name, tool, log_file=""):
@@ -370,11 +398,15 @@ def _make_step(name, tool, log_file=""):
 
 
 def _make_flow(ws, steps, run_step_fn):
-    return type("EF", (), {
-        "workspace": ws,
-        "workspace_steps": steps,
-        "run_step": run_step_fn,
-    })()
+    return type(
+        "EF",
+        (),
+        {
+            "workspace": ws,
+            "workspace_steps": steps,
+            "run_step": run_step_fn,
+        },
+    )()
 
 
 class TestRunFlowWithProgress:
@@ -563,7 +595,9 @@ class TestRunFlowWithProgress:
 
         assert "yosys - begin step - Synthesis" in sections
         assert "yosys - end step - Synthesis" in sections
-        assert sections.index("yosys - begin step - Synthesis") < sections.index("yosys - end step - Synthesis")
+        assert sections.index("yosys - begin step - Synthesis") < sections.index(
+            "yosys - end step - Synthesis"
+        )
 
     def test_log_section_markers_around_run_step(self, tmp_path):
         call_order = []
@@ -573,7 +607,9 @@ class TestRunFlowWithProgress:
             return StateEnum.Success
 
         flow = _make_flow(
-            _make_ws(str(tmp_path), log_section_fn=lambda self, msg: call_order.append(("section", msg))),
+            _make_ws(
+                str(tmp_path), log_section_fn=lambda self, msg: call_order.append(("section", msg))
+            ),
             [_make_step("Floorplan", "ecc")],
             fake_run_step,
         )
@@ -669,7 +705,9 @@ class TestFormatErrorContext:
 
     def test_footer_includes_for_more_log_info(self):
         ctx_lines = [LogLine(1, LineKind.ERROR, "failed")]
-        out = format_error_context("log/p.log", ctx_lines, "ecc log synthesis --project myproj", color=False)
+        out = format_error_context(
+            "log/p.log", ctx_lines, "ecc log synthesis --project myproj", color=False
+        )
         assert "For more log info:" in out
         assert "ecc log synthesis --project myproj" in out
 
@@ -704,7 +742,14 @@ class TestFormatErrorContext:
         ]
         out = format_error_context("log/p.log", ctx_lines, "ecc log step", color=False)
         lines = out.strip().split("\n")
-        context_lines = [l for l in lines if l.strip() and not l.startswith("error:") and not l.startswith("For") and not l.startswith("command=")]
+        context_lines = [
+            line
+            for line in lines
+            if line.strip()
+            and not line.startswith("error:")
+            and not line.startswith("For")
+            and not line.startswith("command=")
+        ]
         for line in context_lines:
             assert line.startswith(" ")
 
@@ -831,7 +876,7 @@ class TestFailureContextIntegration:
         plain_block = _strip_ansi(block)
         all_lines = plain_block.rstrip("\n").split("\n")
 
-        body_lines = [l for l in all_lines if not l.startswith("error:")]
+        body_lines = [line for line in all_lines if not line.startswith("error:")]
         assert len(body_lines) > 0
 
         for i, line in enumerate(body_lines):

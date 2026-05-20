@@ -13,7 +13,7 @@ def render_text(records: tuple[dict, ...], file=None) -> None:
                 continue
             display_key = key[:-4] if key.endswith("_cmd") else key
             if isinstance(value, str) and any(c.isspace() for c in value):
-                escaped = value.replace('\\', '\\\\').replace('"', '\\"')
+                escaped = value.replace("\\", "\\\\").replace('"', '\\"')
                 parts.append(f'{display_key}="{escaped}"')
             else:
                 parts.append(f"{display_key}={value}")
@@ -50,8 +50,9 @@ def _plain_value(value) -> str:
     return s
 
 
-def render_result(result: CommandResult, mode: OutputMode, file=None,
-                  command=None, color=True) -> None:
+def render_result(
+    result: CommandResult, mode: OutputMode, file=None, command=None, color=True
+) -> None:
     if mode == OutputMode.JSON:
         render_json(result, file=file)
     elif mode == OutputMode.JSONL:

@@ -2,18 +2,31 @@ import os
 
 from chipcompiler.cli.output import disclosure_cmd
 
-KNOWN_ROLES = {"config", "input", "output", "data", "feature", "report", "log", "script", "analysis"}
+KNOWN_ROLES = {
+    "config",
+    "input",
+    "output",
+    "data",
+    "feature",
+    "report",
+    "log",
+    "script",
+    "analysis",
+}
 
 
 def _role_from_dirname(dirname: str) -> str:
     return dirname if dirname in KNOWN_ROLES else "unknown"
 
 
-def discover_artifacts(run_dir: str, step_token: str | None = None,
-                       project: str | None = None,
-                       run_id: str | None = None,
-                       project_dir: str | None = None) -> tuple[list[dict], int]:
-    from chipcompiler.cli.inspect import discover_step_dirs, read_flow_json, _safe_steps
+def discover_artifacts(
+    run_dir: str,
+    step_token: str | None = None,
+    project: str | None = None,
+    run_id: str | None = None,
+    project_dir: str | None = None,
+) -> tuple[list[dict], int]:
+    from chipcompiler.cli.inspect import _safe_steps, discover_step_dirs, read_flow_json
     from chipcompiler.cli.output import normalize_step_name
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
@@ -27,8 +40,7 @@ def discover_artifacts(run_dir: str, step_token: str | None = None,
 
     if step_token is not None:
         if step_token not in step_dirs and step_token not in flow_tokens:
-            return [{"kind": "error", "step": step_token,
-                      "status": "unknown_step"}], 1
+            return [{"kind": "error", "step": step_token, "status": "unknown_step"}], 1
         if step_token not in step_dirs:
             return [], 0
         tokens = [step_token]
@@ -47,15 +59,19 @@ def discover_artifacts(run_dir: str, step_token: str | None = None,
                 for fname in sorted(files):
                     fpath = os.path.join(root, fname)
                     if os.path.isfile(fpath):
-                        artifacts.append({
-                            "kind": "artifact",
-                            "step": token,
-                            "role": role,
-                            "run": run_id or "default",
-                            "path": os.path.relpath(fpath, base_dir),
-                            "exists": True,
-                            "inspect_cmd": disclosure_cmd(f"ecc artifacts {token} --json", project, run_id),
-                        })
+                        artifacts.append(
+                            {
+                                "kind": "artifact",
+                                "step": token,
+                                "role": role,
+                                "run": run_id or "default",
+                                "path": os.path.relpath(fpath, base_dir),
+                                "exists": True,
+                                "inspect_cmd": disclosure_cmd(
+                                    f"ecc artifacts {token} --json", project, run_id
+                                ),
+                            }
+                        )
 
     if not artifacts:
         return [], 0

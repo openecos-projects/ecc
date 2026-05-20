@@ -175,9 +175,11 @@ def test_non_workspace_command_handler_still_returns_command_result(monkeypatch,
     )
 
     def fake_diagnose(command_input, ctx):
-        return CommandResult.ok([
-            {"command": "diagnose", "input_type": type(command_input).__name__, "status": "ok"},
-        ])
+        return CommandResult.ok(
+            [
+                {"command": "diagnose", "input_type": type(command_input).__name__, "status": "ok"},
+            ]
+        )
 
     monkeypatch.setattr(
         "chipcompiler.cli.command_handlers.inspect.diagnose",

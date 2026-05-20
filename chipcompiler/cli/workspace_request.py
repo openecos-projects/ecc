@@ -104,9 +104,7 @@ def create_request(
         clock,
         freq,
     ]
-    if input_json is not None and (
-        any(flag is not None for flag in field_flags) or bool(rtl)
-    ):
+    if input_json is not None and (any(flag is not None for flag in field_flags) or bool(rtl)):
         raise InputError("--input-json and field flags are mutually exclusive")
     if input_json is not None:
         return create_request_from_json(input_json)
@@ -227,8 +225,7 @@ def _resolve_request_paths(data: dict, base_dir: str) -> None:
     if not rtl_list:
         return
     data["rtl_list"] = [
-        _resolve_request_path(path, base_dir)
-        for path in _normalize_rtl_list(rtl_list)
+        _resolve_request_path(path, base_dir) for path in _normalize_rtl_list(rtl_list)
     ]
 
 

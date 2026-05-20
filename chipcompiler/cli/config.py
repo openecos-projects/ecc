@@ -84,6 +84,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     params_raw = data.get("params")
     if isinstance(params_raw, dict):
         from chipcompiler.cli.params import parse_toml_params
+
         flat, param_errors = parse_toml_params(params_raw)
         cfg.params_overrides = flat
         if param_errors:
@@ -162,6 +163,7 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
             suffix = os.path.splitext(rtl_path)[1].lower()
             if suffix in FILELIST_SUFFIXES:
                 from chipcompiler.utility.filelist import validate_filelist
+
                 try:
                     _, missing = validate_filelist(rtl_path)
                     if missing:
@@ -230,6 +232,7 @@ def _validate_pdk_contents(pdk_name: str, pdk_root: str) -> str | None:
         return None
     try:
         from chipcompiler.data.pdk import get_pdk
+
         get_pdk(pdk_name, pdk_root)
         return None
     except ValueError as exc:

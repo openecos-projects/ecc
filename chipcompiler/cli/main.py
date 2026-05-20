@@ -6,6 +6,7 @@ def run(argv: Sequence[str] | None = None) -> int:
     raw = list(argv) if argv is not None else sys.argv[1:]
 
     from chipcompiler.cli.app import invoke_typer_app
+
     return invoke_typer_app(raw)
 
 

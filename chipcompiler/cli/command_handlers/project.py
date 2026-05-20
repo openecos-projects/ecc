@@ -18,25 +18,33 @@ def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
     design_name = os.path.basename(project_dir)
 
     if os.path.isfile(project_dir):
-        return CommandResult.err([{
-            "kind": "error",
-            "error": "path_is_file",
-            "path": project_dir,
-        }])
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "path_is_file",
+                    "path": project_dir,
+                }
+            ]
+        )
 
     if os.path.exists(config_path):
-        return CommandResult.err([{
-            "kind": "error",
-            "error": "already_exists",
-            "path": config_path,
-        }])
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "already_exists",
+                    "path": config_path,
+                }
+            ]
+        )
 
     os.makedirs(project_dir, exist_ok=True)
     os.makedirs(os.path.join(project_dir, "rtl"), exist_ok=True)
     os.makedirs(os.path.join(project_dir, "constraints"), exist_ok=True)
     os.makedirs(os.path.join(project_dir, "runs"), exist_ok=True)
 
-    default_toml = '''[design]
+    default_toml = """[design]
 name = "{name}"
 top = "{name}"
 rtl = ["rtl/{name}.v"]
@@ -50,19 +58,23 @@ root = ""
 [flow]
 preset = "rtl2gds"
 run = "default"
-'''
+"""
 
     with open(config_path, "w") as f:
         f.write(default_toml.format(name=design_name))
 
     project_arg = ctx.project or name
-    return CommandResult.ok([{
-        "project": name,
-        "status": "created",
-        "path": name,
-        "check": disclosure_cmd("ecc check", project_arg),
-        "run": disclosure_cmd("ecc run", project_arg),
-    }])
+    return CommandResult.ok(
+        [
+            {
+                "project": name,
+                "status": "created",
+                "path": name,
+                "check": disclosure_cmd("ecc check", project_arg),
+                "run": disclosure_cmd("ecc run", project_arg),
+            }
+        ]
+    )
 
 
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
@@ -76,40 +88,53 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 
     config_path = find_config_path(ctx.project_dir)
     if config_path is None:
-        return CommandResult.err([error_record(
-            "missing_config",
-            path=os.path.join(ctx.project_dir, "ecc.toml"),
-            inspect=disclosure_cmd("ecc check", project),
-        )])
+        return CommandResult.err(
+            [
+                error_record(
+                    "missing_config",
+                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
 
     cfg = load_project_config(config_path)
     errors = validate_project_config(cfg)
 
     if errors:
-        return CommandResult.err([{
-            "check": "config",
-            "status": "fail",
-            "reason": err,
-            "source": "ecc.toml",
-            "inspect": disclosure_cmd("ecc check --json", project),
-        } for err in errors])
+        return CommandResult.err(
+            [
+                {
+                    "check": "config",
+                    "status": "fail",
+                    "reason": err,
+                    "source": "ecc.toml",
+                    "inspect": disclosure_cmd("ecc check --json", project),
+                }
+                for err in errors
+            ]
+        )
 
-    records = [{
-        "project": cfg.design_name,
-        "status": "checked",
-        "config": "ecc.toml",
-        "run_dir": "runs/default",
-        "run": disclosure_cmd("ecc run", project),
-        "inspect_cmd": disclosure_cmd("ecc status", project),
-    }]
+    records = [
+        {
+            "project": cfg.design_name,
+            "status": "checked",
+            "config": "ecc.toml",
+            "run_dir": "runs/default",
+            "run": disclosure_cmd("ecc run", project),
+            "inspect_cmd": disclosure_cmd("ecc status", project),
+        }
+    ]
 
     if cfg.design_rtl:
-        records.append({
-            "check": "rtl",
-            "status": "pass",
-            "path": cfg.design_rtl[0],
-            "inspect": disclosure_cmd("ecc check --json", project),
-        })
+        records.append(
+            {
+                "check": "rtl",
+                "status": "pass",
+                "path": cfg.design_rtl[0],
+                "inspect": disclosure_cmd("ecc check --json", project),
+            }
+        )
 
     return CommandResult.ok(records)
 
@@ -132,44 +157,63 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
     config_path = find_config_path(project_dir)
     if config_path is None:
-        return CommandResult.err([{
-            "kind": "error",
-            "error": "missing_config",
-            "path": os.path.join(project_dir, "ecc.toml"),
-        }])
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "missing_config",
+                    "path": os.path.join(project_dir, "ecc.toml"),
+                }
+            ]
+        )
 
     cfg = load_project_config(config_path)
     errors = validate_project_config(cfg)
     if errors:
-        return CommandResult.err([{
-            "kind": "error",
-            "error": "config_error",
-            "reason": err,
-        } for err in errors])
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "config_error",
+                    "reason": err,
+                }
+                for err in errors
+            ]
+        )
 
     cli_overrides = {}
     raw_sets = command_input.param_set
     if raw_sets:
         from chipcompiler.cli.params import parse_cli_overrides
+
         cli_overrides, set_errors = parse_cli_overrides(raw_sets)
         if set_errors:
-            return CommandResult.err([{
-                "kind": "error",
-                "error": "invalid_parameter",
-                "reason": err,
-            } for err in set_errors])
+            return CommandResult.err(
+                [
+                    {
+                        "kind": "error",
+                        "error": "invalid_parameter",
+                        "reason": err,
+                    }
+                    for err in set_errors
+                ]
+            )
 
     run_dir = os.path.join(project_dir, "runs", "default")
     flow_json = os.path.join(run_dir, "home", "flow.json")
 
     if os.path.exists(flow_json) and not command_input.overwrite:
-        return CommandResult.err([{
-            "kind": "error",
-            "error": "run_exists",
-            "run": "default",
-            "workspace": run_dir,
-            "overwrite": disclosure_cmd("ecc run --overwrite", project),
-        }])
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "run_exists",
+                    "run": "default",
+                    "workspace": run_dir,
+                    "overwrite": disclosure_cmd("ecc run --overwrite", project),
+                }
+            ]
+        )
 
     if command_input.overwrite and os.path.exists(run_dir):
         for root, dirs, files in os.walk(run_dir):
@@ -193,12 +237,14 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             build_backend_overrides,
             resolve_parameters,
         )
+
         resolved, _ = resolve_parameters(
             toml_overrides=cfg.params_overrides,
             cli_overrides=cli_overrides,
         )
         backend_overrides = build_backend_overrides(resolved)
         from chipcompiler.data.parameter import update_parameters
+
         update_parameters(backend_overrides, parameters)
 
     try:
@@ -212,24 +258,33 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             pdk_root=pdk_root,
         )
     except Exception as exc:
-        return CommandResult.err([{
-            "kind": "error",
-            "error": "workspace_failed",
-            "run": "default",
-            "workspace": run_dir,
-            "reason": str(exc),
-        }])
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "workspace_failed",
+                    "run": "default",
+                    "workspace": run_dir,
+                    "reason": str(exc),
+                }
+            ]
+        )
 
     if workspace is None:
-        return CommandResult.err([{
-            "kind": "error",
-            "error": "workspace_failed",
-            "run": "default",
-            "workspace": run_dir,
-        }])
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "workspace_failed",
+                    "run": "default",
+                    "workspace": run_dir,
+                }
+            ]
+        )
 
     if cli_overrides:
         import json
+
         provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
         os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
         with open(provenance_path, "w") as _f:
@@ -254,28 +309,39 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             flow_ok = engine_flow.run_steps()
 
         if not flow_ok:
-            return CommandResult.err([{
+            return CommandResult.err(
+                [
+                    {
+                        "run": "default",
+                        "status": "failed",
+                        "workspace": run_dir,
+                        "inspect_cmd": disclosure_cmd("ecc status", project),
+                        "log": disclosure_cmd("ecc log", project),
+                    }
+                ]
+            )
+    except Exception as exc:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "flow_failed",
+                    "run": "default",
+                    "workspace": run_dir,
+                    "reason": str(exc),
+                }
+            ]
+        )
+
+    return CommandResult.ok(
+        [
+            {
                 "run": "default",
-                "status": "failed",
+                "status": "success",
                 "workspace": run_dir,
                 "inspect_cmd": disclosure_cmd("ecc status", project),
-                "log": disclosure_cmd("ecc log", project),
-            }])
-    except Exception as exc:
-        return CommandResult.err([{
-            "kind": "error",
-            "error": "flow_failed",
-            "run": "default",
-            "workspace": run_dir,
-            "reason": str(exc),
-        }])
-
-    return CommandResult.ok([{
-        "run": "default",
-        "status": "success",
-        "workspace": run_dir,
-        "inspect_cmd": disclosure_cmd("ecc status", project),
-        "metrics_cmd": disclosure_cmd("ecc metrics", project),
-        "log_cmd": disclosure_cmd("ecc log", project),
-    }])
-
+                "metrics_cmd": disclosure_cmd("ecc metrics", project),
+                "log_cmd": disclosure_cmd("ecc log", project),
+            }
+        ]
+    )

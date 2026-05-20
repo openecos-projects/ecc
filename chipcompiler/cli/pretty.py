@@ -27,9 +27,7 @@ def supports_color(file=None, env=None, mode=None):
         return False
     if env.get("NO_COLOR") is not None:
         return False
-    if env.get("TERM", "") == "dumb":
-        return False
-    return True
+    return env.get("TERM", "") != "dumb"
 
 
 def style(text, code, enabled=True):
@@ -196,7 +194,9 @@ def render_status(records, file=None, color=True):
     step_records = [r for r in records if "step" in r]
     if step_records:
         target.write("\n")
-        target.write(f"  {style('steps', CYAN if color else None, color)}:\n" if color else "  steps:\n")
+        target.write(
+            f"  {style('steps', CYAN if color else None, color)}:\n" if color else "  steps:\n"
+        )
         for r in step_records:
             step = r.get("step", "")
             tool = r.get("tool", "")
@@ -217,15 +217,21 @@ def render_metrics(records, file=None, color=True):
     target = file or sys.stdout
     first = records[0]
 
-    if first.get("kind") == "error" or first.get("status") in ("missing", "unknown_step", "corrupt"):
+    if first.get("kind") == "error" or first.get("status") in (
+        "missing",
+        "unknown_step",
+        "corrupt",
+    ):
         render_generic_block(records, file=file, color=color, tag="metrics")
         return
 
     if first.get("metrics_status") == "none":
         target.write(f"{render_header('metrics', color)}\n")
-        target.write(f"  No metrics available.\n")
+        target.write("  No metrics available.\n")
         if first.get("inspect_cmd"):
-            target.write(render_field("inspect", first["inspect_cmd"], color, dim_label=True) + "\n")
+            target.write(
+                render_field("inspect", first["inspect_cmd"], color, dim_label=True) + "\n"
+            )
         target.write("\n")
         return
 
@@ -264,9 +270,11 @@ def render_artifacts(records, file=None, color=True):
 
     if first.get("artifacts_status") == "none":
         target.write(f"{render_header('artifacts', color)}\n")
-        target.write(f"  No artifacts found.\n")
+        target.write("  No artifacts found.\n")
         if first.get("inspect_cmd"):
-            target.write(render_field("inspect", first["inspect_cmd"], color, dim_label=True) + "\n")
+            target.write(
+                render_field("inspect", first["inspect_cmd"], color, dim_label=True) + "\n"
+            )
         target.write("\n")
         return
 
@@ -307,10 +315,16 @@ def render_config(records, file=None, color=True):
 
     if first.get("config_status") == "none":
         target.write(f"{render_header('config', color)}\n")
-        msg = f"  No configuration for step {first.get('step', '')}.\n" if first.get("step") else "  No configuration found.\n"
+        msg = (
+            f"  No configuration for step {first.get('step', '')}.\n"
+            if first.get("step")
+            else "  No configuration found.\n"
+        )
         target.write(msg)
         if first.get("artifacts"):
-            target.write(render_field("artifacts", first["artifacts"], color, dim_label=True) + "\n")
+            target.write(
+                render_field("artifacts", first["artifacts"], color, dim_label=True) + "\n"
+            )
         target.write("\n")
         return
 
@@ -329,7 +343,6 @@ def render_config(records, file=None, color=True):
         config = r.get("config", r.get("key", ""))
         value = r.get("value", "")
         source = r.get("source", "")
-        step = r.get("step", "")
 
         if r.get("kind") == "param":
             target.write(f"    {config}: {value}")
@@ -418,9 +431,16 @@ def render_error(records, file=None, color=True):
 
 def _render_disclosure_fields(target, record, color):
     for key in sorted(record.keys()):
-        if not key.endswith("_cmd") and key not in ("inspect", "check", "run",
-                                                      "start_cmd", "log", "config",
-                                                      "artifacts", "metrics"):
+        if not key.endswith("_cmd") and key not in (
+            "inspect",
+            "check",
+            "run",
+            "start_cmd",
+            "log",
+            "config",
+            "artifacts",
+            "metrics",
+        ):
             continue
         value = record.get(key)
         if not value:
@@ -430,8 +450,7 @@ def _render_disclosure_fields(target, record, color):
 
 
 def _render_step_disclosure(target, record, color, indent="      "):
-    for key in ("metrics_cmd", "log_cmd", "log", "artifacts", "config",
-                "start_cmd", "inspect"):
+    for key in ("metrics_cmd", "log_cmd", "log", "artifacts", "config", "start_cmd", "inspect"):
         value = record.get(key)
         if not value:
             continue

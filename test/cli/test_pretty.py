@@ -1,12 +1,11 @@
 import io
 import json
 import os
+from io import StringIO
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.pretty import (
     BOLD,
-    CYAN,
-    DIM,
     GREEN,
     RED,
     RESET,
@@ -18,9 +17,6 @@ from chipcompiler.cli.pretty import (
     supports_color,
 )
 from chipcompiler.cli.render import _plain_value, render_plain
-from io import StringIO
-from chipcompiler.cli.types import CommandResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,6 +58,7 @@ run = "default"
 
 def _create_flow_json(run_dir, steps=None):
     import json as j
+
     home = os.path.join(run_dir, "home")
     os.makedirs(home, exist_ok=True)
     if steps is None:
@@ -103,7 +100,7 @@ class TestPlainQuoting:
         )
         buf = StringIO()
         render_plain(records, file=buf)
-        lines = [l for l in buf.getvalue().strip().split("\n") if l.strip()]
+        lines = [line for line in buf.getvalue().strip().split("\n") if line.strip()]
         assert len(lines) == 2
         assert "a=1" in lines[0]
         assert 'b="two words"' in lines[0]
@@ -241,7 +238,7 @@ class TestPlainFlagAcceptance:
 
     def test_diagnose_plain(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        rc = cli_main.run(["diagnose", "--plain", "--project", project_dir])
+        cli_main.run(["diagnose", "--plain", "--project", project_dir])
         out = capsys.readouterr().out
         assert "\x1b[" not in out
 
@@ -290,10 +287,13 @@ class TestPrettyDefaultOutput:
 
     def test_status_groups_steps(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        _create_flow_json(os.path.join(project_dir, "runs", "default"), [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
+        _create_flow_json(
+            os.path.join(project_dir, "runs", "default"),
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
@@ -319,9 +319,12 @@ class TestPrettyDefaultOutput:
     def test_diagnose_clean_has_header(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
         step_dir = os.path.join(run_dir, "CTS_ecc", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "cts.log"), "w") as f:
@@ -343,10 +346,12 @@ class TestPrettyDefaultOutput:
         from types import SimpleNamespace
 
         DummyFlow_instances = []
+
         class DummyFlow:
             instances = DummyFlow_instances
             has_init_value = False
             run_steps_value = True
+
             def __init__(self, workspace):
                 self.workspace = workspace
                 self.added_steps = []
@@ -354,18 +359,23 @@ class TestPrettyDefaultOutput:
                 self.run_called = False
                 self.workspace_steps = []
                 DummyFlow.instances.append(self)
+
             def has_init(self):
                 return False
+
             def add_step(self, step, tool, state):
                 self.added_steps.append((step, tool, state))
+
             def create_step_workspaces(self):
                 self.create_called = True
+
             def run_steps(self):
                 self.run_called = True
                 return True
 
-        monkeypatch.setattr("chipcompiler.data.create_workspace",
-                            lambda **kw: SimpleNamespace(name="ws"))
+        monkeypatch.setattr(
+            "chipcompiler.data.create_workspace", lambda **kw: SimpleNamespace(name="ws")
+        )
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.build_rtl2gds_flow",
@@ -410,7 +420,7 @@ class TestJsonUnchanged:
         assert rc == 0
         out = capsys.readouterr().out
         assert "\x1b[" not in out
-        objects = [json.loads(l) for l in out.strip().split("\n")]
+        objects = [json.loads(line) for line in out.strip().split("\n")]
         assert any("metric" in o for o in objects)
 
 
@@ -462,7 +472,9 @@ class TestErrorCodeColoring:
         from chipcompiler.cli.pretty import render_error
 
         buf = io.StringIO()
-        render_error([{"error": "missing_config", "reason": "no config found"}], file=buf, color=True)
+        render_error(
+            [{"error": "missing_config", "reason": "no config found"}], file=buf, color=True
+        )
         out = buf.getvalue()
         assert RED in out
         assert "missing_config" in out
@@ -486,7 +498,9 @@ class TestErrorCodeColoring:
         from chipcompiler.cli.pretty import render_error
 
         buf = io.StringIO()
-        render_error([{"error": "missing_config", "path": "/tmp/x", "reason": "gone"}], file=buf, color=True)
+        render_error(
+            [{"error": "missing_config", "path": "/tmp/x", "reason": "gone"}], file=buf, color=True
+        )
         out = buf.getvalue()
         assert "path:" in out
         assert "/tmp/x" in out
@@ -548,8 +562,7 @@ class TestSharedColorPolicy:
         assert not supports_color(io.StringIO(), None, env={"TERM": "dumb"})
 
     def test_log_view_uses_shared_constants(self):
-        from chipcompiler.cli import log_view
-        from chipcompiler.cli import pretty
+        from chipcompiler.cli import log_view, pretty
 
         assert log_view.BOLD is pretty.BOLD
         assert log_view.RED is pretty.RED

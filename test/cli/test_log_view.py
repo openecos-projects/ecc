@@ -1,7 +1,5 @@
 import os
 
-import pytest
-
 from chipcompiler.cli.log_view import (
     LineKind,
     annotate_log_lines,
@@ -64,7 +62,7 @@ class TestClassifyLine:
         assert classify_line('  File "test.py", line 1', in_traceback=True) == LineKind.TRACEBACK
 
     def test_tab_indented_line_in_traceback(self):
-        assert classify_line("\tFile \"test.py\", line 1", in_traceback=True) == LineKind.TRACEBACK
+        assert classify_line('\tFile "test.py", line 1', in_traceback=True) == LineKind.TRACEBACK
 
 
 class TestClassifyDoesNotFilter:
@@ -240,6 +238,7 @@ class TestBuildLogRecords:
 class TestPrettyRenderer:
     def test_header_includes_step_and_source(self):
         from io import StringIO
+
         buf = StringIO()
         render_log_pretty("cts", "log/cts.log", ["ok"], "ecc log cts", file=buf, color=False)
         out = buf.getvalue()
@@ -248,6 +247,7 @@ class TestPrettyRenderer:
 
     def test_all_lines_appear_in_output(self):
         from io import StringIO
+
         lines = ["Error: bad", "INFO: ok", "plain line", "---", "Warning: meh"]
         buf = StringIO()
         render_log_pretty("cts", "log/cts.log", lines, "ecc log cts", file=buf, color=False)
@@ -257,6 +257,7 @@ class TestPrettyRenderer:
 
     def test_traceback_complete_in_output(self):
         from io import StringIO
+
         lines = [
             "INFO: before",
             "Traceback (most recent call last):",
@@ -274,6 +275,7 @@ class TestPrettyRenderer:
 
     def test_inspect_footer(self):
         from io import StringIO
+
         buf = StringIO()
         render_log_pretty("cts", "log/cts.log", ["ok"], "ecc log cts", file=buf, color=False)
         out = buf.getvalue()
@@ -281,18 +283,23 @@ class TestPrettyRenderer:
 
     def test_no_ansi_when_color_disabled(self):
         from io import StringIO
+
         buf = StringIO()
-        render_log_pretty("cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False)
+        render_log_pretty(
+            "cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False
+        )
         assert "\x1b[" not in buf.getvalue()
 
     def test_ansi_when_color_enabled(self):
         from io import StringIO
+
         buf = StringIO()
         render_log_pretty("cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=True)
         assert "\x1b[" in buf.getvalue()
 
     def test_error_colored_red(self):
         from io import StringIO
+
         buf = StringIO()
         render_log_pretty("cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=True)
         out = buf.getvalue()
@@ -300,13 +307,17 @@ class TestPrettyRenderer:
 
     def test_warning_colored_yellow(self):
         from io import StringIO
+
         buf = StringIO()
-        render_log_pretty("cts", "log/cts.log", ["Warning: meh"], "ecc log cts", file=buf, color=True)
+        render_log_pretty(
+            "cts", "log/cts.log", ["Warning: meh"], "ecc log cts", file=buf, color=True
+        )
         out = buf.getvalue()
         assert "\x1b[33m" in out
 
     def test_section_colored_cyan(self):
         from io import StringIO
+
         buf = StringIO()
         render_log_pretty("cts", "log/cts.log", ["---"], "ecc log cts", file=buf, color=True)
         out = buf.getvalue()
@@ -314,6 +325,7 @@ class TestPrettyRenderer:
 
     def test_info_colored_blue(self):
         from io import StringIO
+
         buf = StringIO()
         render_log_pretty("cts", "log/cts.log", ["INFO: ok"], "ecc log cts", file=buf, color=True)
         out = buf.getvalue()
@@ -321,6 +333,7 @@ class TestPrettyRenderer:
 
     def test_traceback_colored_yellow(self):
         from io import StringIO
+
         lines = [
             "Traceback (most recent call last):",
             '  File "a.py", line 1',
@@ -340,8 +353,11 @@ class TestPrettyRenderer:
 class TestErrorLineFullColoring:
     def test_error_label_and_message_both_red(self):
         from io import StringIO
+
         buf = StringIO()
-        render_log_pretty("cts", "log/cts.log", ["Error: something failed"], "ecc log cts", file=buf, color=True)
+        render_log_pretty(
+            "cts", "log/cts.log", ["Error: something failed"], "ecc log cts", file=buf, color=True
+        )
         out = buf.getvalue()
 
         red_idx = out.find("\x1b[31m")
@@ -354,8 +370,11 @@ class TestErrorLineFullColoring:
 
     def test_error_message_content_not_default_after_label(self):
         from io import StringIO
+
         buf = StringIO()
-        render_log_pretty("cts", "log/cts.log", ["Error: critical failure"], "ecc log cts", file=buf, color=True)
+        render_log_pretty(
+            "cts", "log/cts.log", ["Error: critical failure"], "ecc log cts", file=buf, color=True
+        )
         out = buf.getvalue()
         idx = out.find("error")
         after_label = out[idx:]
@@ -363,14 +382,18 @@ class TestErrorLineFullColoring:
 
     def test_warning_line_keeps_label_only_color(self):
         from io import StringIO
+
         buf = StringIO()
-        render_log_pretty("cts", "log/cts.log", ["Warning: check this"], "ecc log cts", file=buf, color=True)
+        render_log_pretty(
+            "cts", "log/cts.log", ["Warning: check this"], "ecc log cts", file=buf, color=True
+        )
         out = buf.getvalue()
         assert "\x1b[33m" in out
         assert "Warning: check this" in out
 
     def test_info_plain_section_unchanged(self):
         from io import StringIO
+
         buf = StringIO()
         lines = ["INFO: running", "some plain text", "---"]
         render_log_pretty("cts", "log/cts.log", lines, "ecc log cts", file=buf, color=True)
@@ -381,13 +404,17 @@ class TestErrorLineFullColoring:
 
     def test_error_line_no_ansi_when_color_disabled(self):
         from io import StringIO
+
         buf = StringIO()
-        render_log_pretty("cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False)
+        render_log_pretty(
+            "cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False
+        )
         out = buf.getvalue()
         assert "\x1b[" not in out
 
     def test_non_error_lines_not_colored_red(self):
         from io import StringIO
+
         lines = ["Warning: meh", "INFO: ok", "plain", "---"]
         buf = StringIO()
         render_log_pretty("cts", "log/cts.log", lines, "ecc log cts", file=buf, color=True)
@@ -522,14 +549,16 @@ class TestExtractErrorContextTraceback:
 class TestPlainRenderer:
     def test_emits_one_record_per_line(self):
         from io import StringIO
+
         lines = ["Error: bad", "INFO: ok", "plain"]
         buf = StringIO()
         render_log_plain("cts", "log/cts.log", lines, "ecc log cts", file=buf)
-        out_lines = [l for l in buf.getvalue().strip().split("\n") if l.strip()]
+        out_lines = [line for line in buf.getvalue().strip().split("\n") if line.strip()]
         assert len(out_lines) == 3
 
     def test_record_has_required_fields(self):
         from io import StringIO
+
         buf = StringIO()
         render_log_plain("cts", "log/cts.log", ["ok"], "ecc log cts", file=buf)
         line = buf.getvalue().strip()
@@ -542,21 +571,26 @@ class TestPlainRenderer:
 
     def test_values_with_spaces_are_quoted(self):
         from io import StringIO
+
         buf = StringIO()
-        render_log_plain("cts", "log/cts.log", ["line with spaces"], "ecc log cts --project /tmp/a b", file=buf)
+        render_log_plain(
+            "cts", "log/cts.log", ["line with spaces"], "ecc log cts --project /tmp/a b", file=buf
+        )
         line = buf.getvalue().strip()
         assert 'line="line with spaces"' in line
         assert 'inspect_cmd="ecc log cts --project /tmp/a b"' in line
 
     def test_values_with_backslashes_escaped(self):
         from io import StringIO
+
         buf = StringIO()
-        render_log_plain("cts", "log/cts.log", ['path\\to\\file'], "ecc log cts", file=buf)
+        render_log_plain("cts", "log/cts.log", ["path\\to\\file"], "ecc log cts", file=buf)
         line = buf.getvalue().strip()
         assert 'line="path\\\\to\\\\file"' in line
 
     def test_values_with_equals_quoted(self):
         from io import StringIO
+
         buf = StringIO()
         render_log_plain("cts", "log/cts.log", ["key=value"], "ecc log cts", file=buf)
         line = buf.getvalue().strip()
@@ -564,12 +598,14 @@ class TestPlainRenderer:
 
     def test_no_ansi_in_plain(self):
         from io import StringIO
+
         buf = StringIO()
         render_log_plain("cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf)
         assert "\x1b[" not in buf.getvalue()
 
     def test_traceback_frames_in_plain(self):
         from io import StringIO
+
         lines = [
             "Traceback (most recent call last):",
             '  File "a.py", line 1',
@@ -577,7 +613,7 @@ class TestPlainRenderer:
         ]
         buf = StringIO()
         render_log_plain("cts", "log/cts.log", lines, "ecc log cts", file=buf)
-        out_lines = [l for l in buf.getvalue().strip().split("\n") if l.strip()]
+        out_lines = [line for line in buf.getvalue().strip().split("\n") if line.strip()]
         assert len(out_lines) == 3
         assert "kind=traceback" in out_lines[0]
         assert "kind=traceback" in out_lines[1]
@@ -595,35 +631,46 @@ class TestColorGuards:
 
         with patch("sys.stdout", FakeNonTTY()):
             buf = io.StringIO()
-            render_log_pretty("cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False)
+            render_log_pretty(
+                "cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False
+            )
             assert "\x1b[" not in buf.getvalue()
 
     def test_no_color_when_no_color_env(self):
-        import os
         import io
+        import os
         from unittest.mock import patch
 
         with patch.dict(os.environ, {"NO_COLOR": "1"}):
             buf = io.StringIO()
-            render_log_pretty("cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False)
+            render_log_pretty(
+                "cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False
+            )
             assert "\x1b[" not in buf.getvalue()
 
     def test_no_color_when_term_dumb(self):
-        import os
         import io
+        import os
         from unittest.mock import patch
 
         with patch.dict(os.environ, {"TERM": "dumb"}):
             buf = io.StringIO()
-            render_log_pretty("cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False)
+            render_log_pretty(
+                "cts", "log/cts.log", ["Error: bad"], "ecc log cts", file=buf, color=False
+            )
             assert "\x1b[" not in buf.getvalue()
 
 
 class TestListingPrettyRenderer:
     def test_listing_header(self):
         from io import StringIO
+
         records = [
-            {"step": "synthesis", "source": "Synthesis_yosys/log/synthesis.log", "inspect_cmd": "ecc log synthesis"},
+            {
+                "step": "synthesis",
+                "source": "Synthesis_yosys/log/synthesis.log",
+                "inspect_cmd": "ecc log synthesis",
+            },
         ]
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=False)
@@ -631,8 +678,13 @@ class TestListingPrettyRenderer:
 
     def test_listing_shows_step_and_source(self):
         from io import StringIO
+
         records = [
-            {"step": "synthesis", "source": "Synthesis_yosys/log/synthesis.log", "inspect_cmd": "ecc log synthesis"},
+            {
+                "step": "synthesis",
+                "source": "Synthesis_yosys/log/synthesis.log",
+                "inspect_cmd": "ecc log synthesis",
+            },
         ]
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=False)
@@ -642,8 +694,13 @@ class TestListingPrettyRenderer:
 
     def test_listing_inspect_cmd(self):
         from io import StringIO
+
         records = [
-            {"step": "synthesis", "source": "Synthesis_yosys/log/synthesis.log", "inspect_cmd": "ecc log synthesis"},
+            {
+                "step": "synthesis",
+                "source": "Synthesis_yosys/log/synthesis.log",
+                "inspect_cmd": "ecc log synthesis",
+            },
         ]
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=False)
@@ -651,8 +708,13 @@ class TestListingPrettyRenderer:
 
     def test_listing_color_enabled_no_crash(self):
         from io import StringIO
+
         records = [
-            {"step": "synthesis", "source": "Synthesis_yosys/log/synthesis.log", "inspect_cmd": "ecc log synthesis"},
+            {
+                "step": "synthesis",
+                "source": "Synthesis_yosys/log/synthesis.log",
+                "inspect_cmd": "ecc log synthesis",
+            },
         ]
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=True)
@@ -664,8 +726,13 @@ class TestListingPrettyRenderer:
 
     def test_listing_color_enabled_has_ansi(self):
         from io import StringIO
+
         records = [
-            {"step": "synthesis", "source": "Synthesis_yosys/log/synthesis.log", "inspect_cmd": "ecc log synthesis"},
+            {
+                "step": "synthesis",
+                "source": "Synthesis_yosys/log/synthesis.log",
+                "inspect_cmd": "ecc log synthesis",
+            },
         ]
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=True)
@@ -673,8 +740,13 @@ class TestListingPrettyRenderer:
 
     def test_listing_color_disabled_no_ansi(self):
         from io import StringIO
+
         records = [
-            {"step": "synthesis", "source": "Synthesis_yosys/log/synthesis.log", "inspect_cmd": "ecc log synthesis"},
+            {
+                "step": "synthesis",
+                "source": "Synthesis_yosys/log/synthesis.log",
+                "inspect_cmd": "ecc log synthesis",
+            },
         ]
         buf = StringIO()
         render_log_listing_pretty(records, file=buf, color=False)
@@ -684,6 +756,7 @@ class TestListingPrettyRenderer:
 class TestTailLinesForLog:
     def test_returns_last_10_non_empty(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         lines = [f"line {i}" for i in range(15)]
         log_file.write_text("\n".join(lines))
@@ -694,6 +767,7 @@ class TestTailLinesForLog:
 
     def test_fewer_than_10_returns_all(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("a\nb\nc\n")
         result = tail_lines_for_log(str(log_file))
@@ -701,6 +775,7 @@ class TestTailLinesForLog:
 
     def test_empty_lines_omitted(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("a\n\n\nb\n\n\nc\n")
         result = tail_lines_for_log(str(log_file))
@@ -708,6 +783,7 @@ class TestTailLinesForLog:
 
     def test_preserves_order(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("first\nmiddle\nlast\n")
         result = tail_lines_for_log(str(log_file))
@@ -715,6 +791,7 @@ class TestTailLinesForLog:
 
     def test_ansi_stripped(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("\x1b[31mred text\x1b[0m\nnormal\n")
         result = tail_lines_for_log(str(log_file))
@@ -722,11 +799,13 @@ class TestTailLinesForLog:
 
     def test_missing_file_returns_empty(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         result = tail_lines_for_log(str(tmp_path / "nonexistent.log"))
         assert result == []
 
     def test_empty_file_returns_empty(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("")
         result = tail_lines_for_log(str(log_file))
@@ -734,6 +813,7 @@ class TestTailLinesForLog:
 
     def test_blank_only_file_returns_empty(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("   \n\n\t\n   \n")
         result = tail_lines_for_log(str(log_file))
@@ -741,6 +821,7 @@ class TestTailLinesForLog:
 
     def test_ansi_control_sequences_stripped(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("\x1b[31mred\x1b[0m\n\x1b[2Kclear\nvalid\n")
         result = tail_lines_for_log(str(log_file))
@@ -749,6 +830,7 @@ class TestTailLinesForLog:
 
     def test_osc_sequences_stripped(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("\x1b]0;window title\x07message\n")
         result = tail_lines_for_log(str(log_file))
@@ -756,6 +838,7 @@ class TestTailLinesForLog:
 
     def test_dcs_sequences_stripped(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("\x1bP$data\x1b\\visible\n")
         result = tail_lines_for_log(str(log_file))
@@ -763,6 +846,7 @@ class TestTailLinesForLog:
 
     def test_bel_and_backspace_stripped(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("a\x07b\x08c\ndone\n")
         result = tail_lines_for_log(str(log_file))
@@ -770,6 +854,7 @@ class TestTailLinesForLog:
 
     def test_unreadable_file_returns_empty(self, tmp_path):
         from chipcompiler.cli.log_view import tail_lines_for_log
+
         log_file = tmp_path / "test.log"
         log_file.write_text("content\n")
         os.chmod(str(log_file), 0o000)
@@ -783,6 +868,7 @@ class TestTailLinesForLog:
 class TestListingTailRendering:
     def test_tail_block_header_with_indented_lines(self):
         from io import StringIO
+
         records = [
             {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
         ]
@@ -791,13 +877,14 @@ class TestListingTailRendering:
         render_log_listing_pretty(records, file=buf, color=False, tail_map=tail_map)
         out = buf.getvalue()
         lines = out.split("\n")
-        tail_idx = next(i for i, l in enumerate(lines) if l.strip() == "tail:")
+        tail_idx = next(index for index, line in enumerate(lines) if line.strip() == "tail:")
         assert "line 1" in lines[tail_idx + 1]
         assert "line 2" in lines[tail_idx + 2]
         assert lines[tail_idx + 1].startswith("      ")
 
     def test_inspect_remains_below_tail(self):
         from io import StringIO
+
         records = [
             {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
         ]
@@ -811,6 +898,7 @@ class TestListingTailRendering:
 
     def test_no_tail_block_when_empty(self):
         from io import StringIO
+
         records = [
             {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
         ]
@@ -823,6 +911,7 @@ class TestListingTailRendering:
 
     def test_no_tail_block_when_source_not_in_map(self):
         from io import StringIO
+
         records = [
             {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
         ]
@@ -834,6 +923,7 @@ class TestListingTailRendering:
 
     def test_no_tail_block_when_tail_map_is_none(self):
         from io import StringIO
+
         records = [
             {"step": "synthesis", "source": "synth.log", "inspect_cmd": "ecc log synthesis"},
         ]
@@ -845,6 +935,7 @@ class TestListingTailRendering:
 
     def test_run_level_entry_labeled_run(self):
         from io import StringIO
+
         records = [
             {"log": "log/flow.log", "inspect_cmd": "ecc log"},
         ]
