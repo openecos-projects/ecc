@@ -2,6 +2,8 @@ import dataclasses
 import json
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.command_inputs import OutputOptions, ProjectOptions
+from chipcompiler.cli.invocation import execute_command
 from chipcompiler.cli.types import CommandResult
 
 
@@ -219,3 +221,52 @@ def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys):
         "key": "place.target_density",
         "project": "gcd",
     }
+
+
+def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
+    from dataclasses import dataclass
+
+    import click
+
+    from chipcompiler.cli.types import OutputMode
+
+    @dataclass(frozen=True)
+    class DummyInput:
+        output: OutputOptions
+        project: ProjectOptions
+
+    def fake_resolve_project_dir(project):
+        return str(tmp_path)
+
+    def fake_resolve_run_dir(project_dir, run_id):
+        return (str(tmp_path / "runs" / "default"), run_id)
+
+    def fake_handler(command_input, ctx):
+        return CommandResult.ok([{"status": "ok"}])
+
+    def fake_renderer(result, ctx, command_input, color):
+        print(f"registry:{ctx.output_mode.value}:{result.records[0]['status']}")
+
+    monkeypatch.setattr("chipcompiler.cli.invocation.resolve_project_dir", fake_resolve_project_dir)
+    monkeypatch.setattr("chipcompiler.cli.invocation.resolve_run_dir", fake_resolve_run_dir)
+    monkeypatch.setitem(
+        __import__("chipcompiler.cli.renderers", fromlist=["RENDERERS"]).RENDERERS,
+        ("custom", OutputMode.TEXT),
+        fake_renderer,
+    )
+
+    rc = cli_main.run(["status", "--help"])
+    assert rc == 0
+    capsys.readouterr()
+
+    try:
+        execute_command(
+            "status",
+            DummyInput(output=OutputOptions(), project=ProjectOptions()),
+            fake_handler,
+            render_key="custom",
+        )
+    except click.exceptions.Exit as exc:
+        assert exc.exit_code == 0
+
+    assert capsys.readouterr().out.strip() == "registry:text:ok"
