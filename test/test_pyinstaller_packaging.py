@@ -60,6 +60,9 @@ def test_ecc_spec_filters_oversized_thirdparty_payloads():
     assert "chipcompiler/thirdparty/ecc-tools" in spec
     assert "thirdparty/ecc-dreamplace/test" in spec
     assert "thirdparty/ecc-dreamplace/docs" in spec
+    assert "torch/test" in spec
+    assert "torch/testing/_internal" in spec
+    assert "torch/bin" in spec
 
 
 def test_pyinstaller_bootstrap_preserves_user_cwd():

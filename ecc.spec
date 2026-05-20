@@ -190,6 +190,12 @@ def filter_collected_payloads(payloads):
         "thirdparty/ecc-dreamplace/test",
         "thirdparty/ecc-dreamplace/docs",
         "thirdparty/ecc-dreamplace/build",
+        "chipcompiler/tools/ecc_dreamplace/dreamplace/test",
+        "chipcompiler/tools/ecc_dreamplace/dreamplace/unittest",
+        "chipcompiler/tools/ecc_dreamplace/dreamplace/benchmarks",
+        "torch/test",
+        "torch/testing/_internal",
+        "torch/bin",
     )
     return [item for item in payloads if not str(item[0]).startswith(excluded_parts)]
 
