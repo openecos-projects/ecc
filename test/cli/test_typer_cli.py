@@ -88,7 +88,7 @@ def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
 
     monkeypatch.setattr("chipcompiler.cli.invocation.resolve_project_dir", fake_resolve_project_dir)
     monkeypatch.setattr("chipcompiler.cli.invocation.resolve_run_dir", fake_resolve_run_dir)
-    monkeypatch.setattr("chipcompiler.cli.handlers.status", fake_status)
+    monkeypatch.setattr("chipcompiler.cli.command_handlers.inspect.status", fake_status)
 
     rc = cli_main.run(["status", "--jsonl", "--json", "--plain"])
 
@@ -122,7 +122,7 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
         seen["param_set"] = command_input.param_set
         return CommandResult.ok([{"status": "ok"}])
 
-    monkeypatch.setattr("chipcompiler.cli.handlers.run", fake_run)
+    monkeypatch.setattr("chipcompiler.cli.command_handlers.project.run", fake_run)
 
     rc = cli_main.run(["run", "--set", "place.target_density=0.65", "--set", "synth.max_fanout=16"])
 
@@ -178,7 +178,7 @@ def test_non_workspace_command_handler_still_returns_command_result(monkeypatch,
         ])
 
     monkeypatch.setattr(
-        "chipcompiler.cli.handlers.diagnose",
+        "chipcompiler.cli.command_handlers.inspect.diagnose",
         fake_diagnose,
     )
 

@@ -2,7 +2,8 @@ from typing import Annotated
 
 import typer
 
-from chipcompiler.cli import handlers as command_handlers
+from chipcompiler.cli.command_handlers import inspect as inspect_handlers
+from chipcompiler.cli.command_handlers import project as project_handlers
 from chipcompiler.cli.command_inputs import (
     CheckInput,
     ConfigInput,
@@ -42,7 +43,7 @@ def init_cmd(
     plain: PlainOption = False,
 ) -> None:
     command_input = InitInput(name=name, output=output_options(False, False, plain))
-    execute_command("init", command_input, command_handlers.init)
+    execute_command("init", command_input, project_handlers.init)
 
 
 def check_cmd(
@@ -54,7 +55,7 @@ def check_cmd(
         output=output_options(json_output, False, plain),
         project=project_options(project),
     )
-    execute_command("check", command_input, command_handlers.check)
+    execute_command("check", command_input, project_handlers.check)
 
 
 def run_cmd(
@@ -77,7 +78,7 @@ def run_cmd(
         overwrite=overwrite,
         param_set=tuple(param_set or ()),
     )
-    execute_command("run", command_input, command_handlers.run)
+    execute_command("run", command_input, project_handlers.run)
 
 
 def status_cmd(
@@ -91,7 +92,7 @@ def status_cmd(
         output=output_options(json_output, jsonl, plain),
         project=project_options(project, run_id),
     )
-    execute_command("status", command_input, command_handlers.status)
+    execute_command("status", command_input, inspect_handlers.status)
 
 
 def log_cmd(
@@ -109,7 +110,7 @@ def log_cmd(
         step=step,
         errors=errors,
     )
-    execute_command("log", command_input, command_handlers.log)
+    execute_command("log", command_input, inspect_handlers.log)
 
 
 def metrics_cmd(
@@ -125,7 +126,7 @@ def metrics_cmd(
         project=project_options(project, run_id),
         step=step,
     )
-    execute_command("metrics", command_input, command_handlers.metrics)
+    execute_command("metrics", command_input, inspect_handlers.metrics)
 
 
 def artifacts_cmd(
@@ -141,7 +142,7 @@ def artifacts_cmd(
         project=project_options(project, run_id),
         step=step,
     )
-    execute_command("artifacts", command_input, command_handlers.artifacts)
+    execute_command("artifacts", command_input, inspect_handlers.artifacts)
 
 
 def config_cmd(
@@ -161,7 +162,7 @@ def config_cmd(
         step=step,
         resolved=resolved,
     )
-    execute_command("config", command_input, command_handlers.config)
+    execute_command("config", command_input, inspect_handlers.config)
 
 
 def diagnose_cmd(
@@ -177,4 +178,4 @@ def diagnose_cmd(
         project=project_options(project, run_id),
         step=step,
     )
-    execute_command("diagnose", command_input, command_handlers.diagnose)
+    execute_command("diagnose", command_input, inspect_handlers.diagnose)
