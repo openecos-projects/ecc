@@ -899,6 +899,9 @@ class ECCToolsModule:
         # self.ecc.link_design(top_module)
         # self.ecc.read_sdc(sdc_path)
 
+    def release_sta(self):
+        return self.ecc.release_sta()
+
     def report_sta(self, output=None):
         if output is None:
             return self.ecc.report_sta()

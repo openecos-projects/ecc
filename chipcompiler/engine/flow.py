@@ -262,6 +262,10 @@ class EngineFlow:
                                    input_db=input_db)
             # save workspace step
             if eda_step is not None:
+                if pre_step is not None \
+                    and pre_step.name == StepEnum.RCX.value \
+                    and eda_step.name == StepEnum.STA.value:
+                    eda_step.output["spef"] = pre_step.output.get("spef", [])
                 self.workspace_steps.append(eda_step)
                 pre_step = eda_step
             else:

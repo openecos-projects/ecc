@@ -340,6 +340,9 @@ def build_step_config(workspace: Workspace,
         json_write(step.config[f"{StepEnum.ROUTING.value}"], config)
         
     def _update_rcx():
+        if step.name != StepEnum.RCX.value:
+            return
+
         # read config
         config = json_read(step.config[f"{StepEnum.RCX.value}"])
         
