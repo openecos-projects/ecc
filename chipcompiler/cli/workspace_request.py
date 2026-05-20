@@ -98,14 +98,15 @@ def create_request(
         origin_def,
         origin_verilog,
         filelist,
-        rtl,
         param_json,
         design,
         top,
         clock,
         freq,
     ]
-    if input_json is not None and any(bool(flag) for flag in field_flags):
+    if input_json is not None and (
+        any(flag is not None for flag in field_flags) or bool(rtl)
+    ):
         raise InputError("--input-json and field flags are mutually exclusive")
     if input_json is not None:
         return create_request_from_json(input_json)

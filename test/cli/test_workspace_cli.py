@@ -352,9 +352,11 @@ def test_create_rejects_mixed_input_json_and_field_flags(tmp_path, capsys):
     for flag, value in (
         ("--directory", str(tmp_path / "ws")),
         ("--design", "gcd"),
+        ("--design", ""),
         ("--top", "gcd"),
         ("--clock", "clk"),
         ("--freq", "100"),
+        ("--freq", "0"),
     ):
         rc = cli_main.run(
             [
