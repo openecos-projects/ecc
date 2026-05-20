@@ -834,17 +834,6 @@ def run_sta(workspace: Workspace,
     
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-<<<<<<< HEAD
-        
-        for spef_file in step.output.get("spef", []):
-            eda_inst.init_sta(output_dir=step.data.get("sta", ""),
-                              top_module=workspace.design.top_module,
-                              lib_paths=workspace.pdk.libs,
-                              sdc_path=workspace.pdk.sdc)
-            eda_inst.read_spef(file_name=spef_file)
-            # eda_inst.report_timing()
-            eda_inst.report_sta(output=step.output.get("dir", ""))
-=======
 
         spef_items = collect_spef_files()
         if len(spef_items) <= 0:
@@ -898,7 +887,6 @@ def run_sta(workspace: Workspace,
                                   spef_file,
                                   report_dir)
 
->>>>>>> 599e7a55db3f9285886a15871cf6dcb61f09af12
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Success)
         
         result = save_data(workspace=workspace, step=step, ecc_module=eda_inst, feature_step=False)
