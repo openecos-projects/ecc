@@ -1,5 +1,4 @@
 import json
-from types import SimpleNamespace
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.types import CommandResult
@@ -120,38 +119,33 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
     assert seen["param_set"] == ["place.target_density=0.65", "synth.max_fanout=16"]
 
 
-def test_legacy_workspace_routes_before_root_typer(monkeypatch):
+def test_workspace_routes_through_root_typer(monkeypatch):
     seen = {}
 
-    def fake_run_legacy(argv):
+    def fake_invoke(argv):
         seen["argv"] = argv
         return 17
 
-    monkeypatch.setattr("chipcompiler.cli.workspace_legacy.run_legacy_workspace", fake_run_legacy)
-
-    rc = cli_main.run(["--workspace", "gcd", "--rtl", "gcd.v"])
-
-    assert rc == 17
-    assert seen["argv"] == ["--workspace", "gcd", "--rtl", "gcd.v"]
-
-
-def test_explicit_workspace_is_not_legacy(monkeypatch):
-    seen = {}
-
-    def fake_workspace_app(argv):
-        seen["argv"] = argv
-        return 19
-
-    monkeypatch.setattr("chipcompiler.cli.workspace_app.run_workspace_app", fake_workspace_app)
-    monkeypatch.setattr(
-        "chipcompiler.cli.workspace_legacy.run_legacy_workspace",
-        lambda argv: (_ for _ in ()).throw(AssertionError("legacy path should not run")),
-    )
+    monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
 
     rc = cli_main.run(["workspace", "create", "--pdk-root", "/pdk"])
 
-    assert rc == 19
-    assert seen["argv"] == ["create", "--pdk-root", "/pdk"]
+    assert rc == 17
+    assert seen["argv"] == ["workspace", "create", "--pdk-root", "/pdk"]
+
+
+def test_old_top_level_workspace_form_is_root_parser_error(capsys):
+    rc = cli_main.run(["--workspace", "gcd", "--rtl", "gcd.v"])
+
+    assert rc != 0
+    assert "no such option" in capsys.readouterr().err.lower()
+
+
+def test_run_workspace_like_flag_is_run_parser_error(capsys):
+    rc = cli_main.run(["run", "--workspace", "gcd"])
+
+    assert rc != 0
+    assert "no such option" in capsys.readouterr().err.lower()
 
 
 def test_non_workspace_command_handler_still_returns_command_result(monkeypatch, tmp_path, capsys):
@@ -173,58 +167,3 @@ def test_non_workspace_command_handler_still_returns_command_result(monkeypatch,
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert data == {"records": [{"command": "diagnose", "status": "ok"}]}
-
-
-def test_legacy_filelist_like_rtl_routes_to_input_filelist(monkeypatch, tmp_path):
-    from chipcompiler.cli.workspace_legacy import run_legacy_workspace
-
-    rtl = tmp_path / "rtl.f"
-    rtl.write_text("gcd.v\n")
-    pdk_root = tmp_path / "pdk"
-    pdk_root.mkdir()
-    capture = {}
-
-    class DummyFlow:
-        def __init__(self, workspace):
-            self.workspace = workspace
-
-        def has_init(self):
-            return True
-
-        def create_step_workspaces(self):
-            pass
-
-        def run_steps(self):
-            return True
-
-    def fake_create_workspace(**kwargs):
-        capture["kwargs"] = kwargs
-        return SimpleNamespace(**kwargs)
-
-    monkeypatch.setattr(
-        "chipcompiler.data.get_parameters",
-        lambda pdk: SimpleNamespace(data={}),
-    )
-    monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
-    monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
-
-    rc = run_legacy_workspace(
-        [
-            "--workspace",
-            str(tmp_path / "ws"),
-            "--rtl",
-            str(rtl),
-            "--design",
-            "gcd",
-            "--top",
-            "gcd",
-            "--clock",
-            "clk",
-            "--pdk-root",
-            str(pdk_root),
-        ],
-    )
-
-    assert rc == 0
-    assert capture["kwargs"]["origin_verilog"] == ""
-    assert capture["kwargs"]["input_filelist"] == str(rtl)
