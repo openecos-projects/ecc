@@ -69,3 +69,15 @@ def test_pyinstaller_bootstrap_preserves_user_cwd():
     assert "ECC_PYINSTALLER_ROOT" in bootstrap
     assert "chipcompiler.cli.main" in bootstrap
     assert "chdir" not in bootstrap
+
+
+def test_bazel_pyinstaller_bundle_contract_is_onedir_tar():
+    build_file = read_repo_file("BUILD.bazel")
+
+    assert 'name = "ecc_pyinstaller_srcs"' in build_file
+    assert 'name = "build_ecc_cli_bundle"' in build_file
+    assert '":ecc_pyinstaller_srcs",\n        "ecc.spec",' in build_file
+    assert 'outs = ["build_ecc_cli_bundle/ecc.tar"]' in build_file
+    assert 'export ECOS_PYINSTALLER_MODE="onedir"' in build_file
+    assert 'tar -cf "$@" -C "$$DIST_DIR/ecc" .' in build_file
+    assert "ECOS_PYINSTALLER_MODE=onefile" not in build_file
