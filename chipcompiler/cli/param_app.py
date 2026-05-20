@@ -11,7 +11,7 @@ from chipcompiler.cli.command_inputs import (
     output_options,
     project_options,
 )
-from chipcompiler.cli.invocation import execute_command
+from chipcompiler.cli.invocation import CommandHandler, CommandInputT, execute_command
 from chipcompiler.cli.options import JsonlOption, JsonOption, PlainOption, ProjectOption
 from chipcompiler.cli.param_handler import param_diff as param_diff_handler
 from chipcompiler.cli.param_handler import param_list as param_list_handler
@@ -29,12 +29,8 @@ param_app = typer.Typer(
 
 def _finish_param(
     param_command: str,
-    project: str | None,
-    json_output: bool,
-    jsonl: bool,
-    plain: bool,
-    command_input,
-    handler,
+    command_input: CommandInputT,
+    handler: CommandHandler[CommandInputT],
 ) -> None:
     execute_command("param", command_input, handler, render_key=f"param:{param_command}")
 
@@ -50,7 +46,7 @@ def list_cmd(
         output=output_options(json_output, jsonl, plain),
         project=project_options(project),
     )
-    _finish_param("list", project, json_output, jsonl, plain, command_input, param_list_handler)
+    _finish_param("list", command_input, param_list_handler)
 
 
 @param_app.command("show")
@@ -66,7 +62,7 @@ def show_cmd(
         project=project_options(project),
         key=key,
     )
-    _finish_param("show", project, json_output, jsonl, plain, command_input, param_show_handler)
+    _finish_param("show", command_input, param_show_handler)
 
 
 @param_app.command("set")
@@ -84,7 +80,7 @@ def set_cmd(
         key=key,
         value=value,
     )
-    _finish_param("set", project, json_output, jsonl, plain, command_input, param_set_handler)
+    _finish_param("set", command_input, param_set_handler)
 
 
 @param_app.command("unset")
@@ -100,7 +96,7 @@ def unset_cmd(
         project=project_options(project),
         key=key,
     )
-    _finish_param("unset", project, json_output, jsonl, plain, command_input, param_unset_handler)
+    _finish_param("unset", command_input, param_unset_handler)
 
 
 @param_app.command("diff")
@@ -114,4 +110,4 @@ def diff_cmd(
         output=output_options(json_output, jsonl, plain),
         project=project_options(project),
     )
-    _finish_param("diff", project, json_output, jsonl, plain, command_input, param_diff_handler)
+    _finish_param("diff", command_input, param_diff_handler)
