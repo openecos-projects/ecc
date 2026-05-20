@@ -118,6 +118,27 @@ EXCLUDES = [
     "pkg_resources",
 ]
 
+EXCLUDED_PAYLOAD_PREFIXES = (
+    "chipcompiler/thirdparty/ecc-tools",
+    "chipcompiler/thirdparty/ecc-dreamplace/test",
+    "chipcompiler/thirdparty/ecc-dreamplace/docs",
+    "chipcompiler/thirdparty/ecc-dreamplace/build",
+    "thirdparty/ecc-dreamplace/test",
+    "thirdparty/ecc-dreamplace/docs",
+    "thirdparty/ecc-dreamplace/build",
+    "chipcompiler/tools/ecc_dreamplace/dreamplace/test",
+    "chipcompiler/tools/ecc_dreamplace/dreamplace/unittest",
+    "chipcompiler/tools/ecc_dreamplace/dreamplace/benchmarks",
+    "torch/test",
+    "torch/testing/_internal",
+    "torch/bin",
+)
+
+EXCLUDED_HIDDENIMPORT_PREFIXES = (
+    "torch.testing._internal",
+    "torch.test",
+)
+
 
 def collect_required_metadata():
     metadata = []
@@ -181,23 +202,37 @@ def collect_platform_runtime_libs():
     return []
 
 
-def filter_collected_payloads(payloads):
-    excluded_parts = (
-        "chipcompiler/thirdparty/ecc-tools",
-        "chipcompiler/thirdparty/ecc-dreamplace/test",
-        "chipcompiler/thirdparty/ecc-dreamplace/docs",
-        "chipcompiler/thirdparty/ecc-dreamplace/build",
-        "thirdparty/ecc-dreamplace/test",
-        "thirdparty/ecc-dreamplace/docs",
-        "thirdparty/ecc-dreamplace/build",
-        "chipcompiler/tools/ecc_dreamplace/dreamplace/test",
-        "chipcompiler/tools/ecc_dreamplace/dreamplace/unittest",
-        "chipcompiler/tools/ecc_dreamplace/dreamplace/benchmarks",
-        "torch/test",
-        "torch/testing/_internal",
-        "torch/bin",
+def payload_path_matches(path, prefix):
+    normalized = str(path).replace("\\", "/")
+    return (
+        normalized == prefix
+        or normalized.startswith(f"{prefix}/")
+        or f"/{prefix}/" in normalized
     )
-    return [item for item in payloads if not str(item[0]).startswith(excluded_parts)]
+
+
+def payload_is_excluded(item):
+    paths = item[:2] if isinstance(item, (tuple, list)) else (item,)
+    return any(
+        payload_path_matches(path, prefix)
+        for path in paths
+        for prefix in EXCLUDED_PAYLOAD_PREFIXES
+    )
+
+
+def filter_collected_payloads(payloads):
+    return [item for item in payloads if not payload_is_excluded(item)]
+
+
+def hiddenimport_is_excluded(module_name):
+    return any(
+        module_name == prefix or module_name.startswith(f"{prefix}.")
+        for prefix in EXCLUDED_HIDDENIMPORT_PREFIXES
+    )
+
+
+def filter_hiddenimports(imports):
+    return [module_name for module_name in imports if not hiddenimport_is_excluded(module_name)]
 
 
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
@@ -227,6 +262,7 @@ hiddenimports.extend(ecc_hiddenimports)
 hiddenimports.extend(klayout_hiddenimports)
 hiddenimports.extend(dreamplace_hiddenimports)
 hiddenimports.extend(torch_hiddenimports)
+hiddenimports = filter_hiddenimports(hiddenimports)
 
 a = Analysis(
     [str(ECC_DIR / "packaging" / "run_ecc.py")],

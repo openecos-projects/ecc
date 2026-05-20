@@ -64,6 +64,7 @@ genrule(
     cmd = """
         set -euo pipefail
 
+        export PYTHON_INTERPRETER=".venv/bin/python"
         export ECOS_PYINSTALLER_MODE="onedir"
         DIST_DIR="$(@D)/dist"
         WORK_DIR="$(@D)/build_ecc_cli_bundle_work"
