@@ -1,12 +1,24 @@
 import os
 import sys
-from types import SimpleNamespace
+from collections.abc import Callable
+from typing import Protocol, TypeVar
 
 import typer
 
-from chipcompiler.cli.commands import build_context, dispatch
+from chipcompiler.cli.command_inputs import OutputOptions, ProjectOptions
+from chipcompiler.cli.config import resolve_project_dir
+from chipcompiler.cli.inspect import resolve_run_dir
 from chipcompiler.cli.render import render_result
-from chipcompiler.cli.types import OutputMode
+from chipcompiler.cli.types import CommandContext, CommandResult, OutputMode
+
+
+class CommandInput(Protocol):
+    output: OutputOptions
+    project: ProjectOptions
+
+
+CommandInputT = TypeVar("CommandInputT", bound=CommandInput)
+CommandHandler = Callable[[CommandInputT, CommandContext], CommandResult]
 
 
 def output_mode(json_output: bool, jsonl: bool, plain: bool) -> OutputMode:
@@ -19,8 +31,26 @@ def output_mode(json_output: bool, jsonl: bool, plain: bool) -> OutputMode:
     return OutputMode.TEXT
 
 
-def command_args(command: str, **kwargs) -> SimpleNamespace:
-    return SimpleNamespace(command=command, **kwargs)
+def build_context(command_input: CommandInput) -> CommandContext:
+    project = command_input.project.project
+    project_dir = resolve_project_dir(project)
+
+    run_id = command_input.project.run_id
+    run_dir, run_id = resolve_run_dir(project_dir, run_id)
+
+    mode = output_mode(
+        command_input.output.json,
+        command_input.output.jsonl,
+        command_input.output.plain,
+    )
+
+    return CommandContext(
+        project_dir=project_dir,
+        project=project,
+        run_dir=run_dir,
+        run_id=run_id,
+        output_mode=mode,
+    )
 
 
 def _should_colorize():
@@ -28,24 +58,30 @@ def _should_colorize():
     return supports_color(file=sys.stdout)
 
 
-def finish_command(args) -> None:
-    ctx = build_context(args)
-    result = dispatch(args, ctx)
+def execute_command(
+    command: str,
+    command_input: CommandInputT,
+    handler: CommandHandler[CommandInputT],
+    render_key: str | None = None,
+) -> None:
+    ctx = build_context(command_input)
+    result = handler(command_input, ctx)
     color = _should_colorize()
+    selected_render_key = render_key or command
 
-    if args.command == "param" and ctx.output_mode == OutputMode.TEXT:
-        _render_param_text(args, result, color=color)
-    elif args.command == "log" and ctx.output_mode == OutputMode.TEXT:
-        _render_log_text(args, result, color=color, run_dir=ctx.run_dir)
-    elif args.command == "log" and ctx.output_mode == OutputMode.PLAIN:
+    if command == "param" and ctx.output_mode == OutputMode.TEXT:
+        _render_param_text(selected_render_key, result, color=color)
+    elif command == "log" and ctx.output_mode == OutputMode.TEXT:
+        _render_log_text(command_input, result, color=color, run_dir=ctx.run_dir)
+    elif command == "log" and ctx.output_mode == OutputMode.PLAIN:
         _render_log_plain(result)
     else:
-        render_result(result, ctx.output_mode, command=args.command, color=color)
+        render_result(result, ctx.output_mode, command=command, color=color)
 
     raise typer.Exit(code=result.exit_code)
 
 
-def _render_param_text(args, result, color=True) -> None:
+def _render_param_text(render_key: str, result, color=True) -> None:
     from chipcompiler.cli.param_handler import (
         render_param_diff_text,
         render_param_list_text,
@@ -65,7 +101,7 @@ def _render_param_text(args, result, color=True) -> None:
         "unset": render_param_set_text,
         "diff": render_param_diff_text,
     }
-    subcmd = getattr(args, "param_command", None)
+    _, _, subcmd = render_key.partition(":")
     renderer = renderers.get(subcmd)
     if renderer:
         renderer(result.records)
@@ -73,7 +109,7 @@ def _render_param_text(args, result, color=True) -> None:
         render_result(result, OutputMode.PLAIN)
 
 
-def _render_log_text(args, result, color=True, run_dir=None) -> None:
+def _render_log_text(command_input: CommandInput, result, color=True, run_dir=None) -> None:
     from chipcompiler.cli.log_view import (
         render_log_listing_pretty,
         render_log_pretty,
@@ -81,7 +117,7 @@ def _render_log_text(args, result, color=True, run_dir=None) -> None:
     )
     from chipcompiler.cli.pretty import render_error, render_generic_block
 
-    if getattr(args, "errors", False):
+    if getattr(command_input, "errors", False):
         print("warning: --errors is deprecated and no longer filters output", file=sys.stderr)
 
     if result.exit_code != 0:

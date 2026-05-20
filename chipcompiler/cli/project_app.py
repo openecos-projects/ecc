@@ -2,7 +2,27 @@ from typing import Annotated
 
 import typer
 
-from chipcompiler.cli.invocation import command_args, finish_command
+from chipcompiler.cli import handlers as command_handlers
+from chipcompiler.cli.command_inputs import (
+    CheckInput,
+    ConfigInput,
+    DiagnoseInput,
+    InitInput,
+    LogInput,
+    RunInput,
+    StatusInput,
+    StepInspectInput,
+    output_options,
+    project_options,
+)
+from chipcompiler.cli.invocation import execute_command
+from chipcompiler.cli.options import (
+    JsonlOption,
+    JsonOption,
+    PlainOption,
+    ProjectOption,
+    RunIdOption,
+)
 
 
 def register_project_commands(app: typer.Typer) -> None:
@@ -19,26 +39,29 @@ def register_project_commands(app: typer.Typer) -> None:
 
 def init_cmd(
     name: Annotated[str, typer.Argument()],
-    plain: Annotated[bool, typer.Option("--plain")] = False,
+    plain: PlainOption = False,
 ) -> None:
-    finish_command(command_args("init", name=name, plain=plain))
+    command_input = InitInput(name=name, output=output_options(False, False, plain))
+    execute_command("init", command_input, command_handlers.init)
 
 
 def check_cmd(
-    project: Annotated[str | None, typer.Option("--project")] = None,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    plain: Annotated[bool, typer.Option("--plain")] = False,
+    project: ProjectOption = None,
+    json_output: JsonOption = False,
+    plain: PlainOption = False,
 ) -> None:
-    finish_command(
-        command_args("check", project=project, json=json_output, jsonl=False, plain=plain),
+    command_input = CheckInput(
+        output=output_options(json_output, False, plain),
+        project=project_options(project),
     )
+    execute_command("check", command_input, command_handlers.check)
 
 
 def run_cmd(
-    project: Annotated[str | None, typer.Option("--project")] = None,
+    project: ProjectOption = None,
     overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    jsonl: Annotated[bool, typer.Option("--jsonl")] = False,
+    json_output: JsonOption = False,
+    jsonl: JsonlOption = False,
     param_set: Annotated[
         list[str] | None,
         typer.Option(
@@ -46,146 +69,112 @@ def run_cmd(
             help="Set parameter override (repeatable, e.g. --set place.target_density=0.65)",
         ),
     ] = None,
-    plain: Annotated[bool, typer.Option("--plain")] = False,
+    plain: PlainOption = False,
 ) -> None:
-    finish_command(
-        command_args(
-            "run",
-            project=project,
-            overwrite=overwrite,
-            json=json_output,
-            jsonl=jsonl,
-            param_set=param_set or [],
-            plain=plain,
-        ),
+    command_input = RunInput(
+        output=output_options(json_output, jsonl, plain),
+        project=project_options(project),
+        overwrite=overwrite,
+        param_set=tuple(param_set or ()),
     )
+    execute_command("run", command_input, command_handlers.run)
 
 
 def status_cmd(
-    project: Annotated[str | None, typer.Option("--project")] = None,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    jsonl: Annotated[bool, typer.Option("--jsonl")] = False,
-    plain: Annotated[bool, typer.Option("--plain")] = False,
-    run_id: Annotated[str | None, typer.Option("--run-id")] = None,
+    project: ProjectOption = None,
+    json_output: JsonOption = False,
+    jsonl: JsonlOption = False,
+    plain: PlainOption = False,
+    run_id: RunIdOption = None,
 ) -> None:
-    finish_command(
-        command_args(
-            "status",
-            project=project,
-            json=json_output,
-            jsonl=jsonl,
-            plain=plain,
-            run_id=run_id,
-        ),
+    command_input = StatusInput(
+        output=output_options(json_output, jsonl, plain),
+        project=project_options(project, run_id),
     )
+    execute_command("status", command_input, command_handlers.status)
 
 
 def log_cmd(
     step: Annotated[str | None, typer.Argument()] = None,
-    project: Annotated[str | None, typer.Option("--project")] = None,
+    project: ProjectOption = None,
     errors: Annotated[bool, typer.Option("--errors", hidden=True)] = False,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    plain: Annotated[bool, typer.Option("--plain")] = False,
-    jsonl: Annotated[bool, typer.Option("--jsonl")] = False,
-    run_id: Annotated[str | None, typer.Option("--run-id")] = None,
+    json_output: JsonOption = False,
+    plain: PlainOption = False,
+    jsonl: JsonlOption = False,
+    run_id: RunIdOption = None,
 ) -> None:
-    finish_command(
-        command_args(
-            "log",
-            step=step,
-            project=project,
-            errors=errors,
-            json=json_output,
-            plain=plain,
-            jsonl=jsonl,
-            run_id=run_id,
-        ),
+    command_input = LogInput(
+        output=output_options(json_output, jsonl, plain),
+        project=project_options(project, run_id),
+        step=step,
+        errors=errors,
     )
+    execute_command("log", command_input, command_handlers.log)
 
 
 def metrics_cmd(
     step: Annotated[str | None, typer.Argument()] = None,
-    project: Annotated[str | None, typer.Option("--project")] = None,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    jsonl: Annotated[bool, typer.Option("--jsonl")] = False,
-    plain: Annotated[bool, typer.Option("--plain")] = False,
-    run_id: Annotated[str | None, typer.Option("--run-id")] = None,
+    project: ProjectOption = None,
+    json_output: JsonOption = False,
+    jsonl: JsonlOption = False,
+    plain: PlainOption = False,
+    run_id: RunIdOption = None,
 ) -> None:
-    finish_command(
-        command_args(
-            "metrics",
-            step=step,
-            project=project,
-            json=json_output,
-            jsonl=jsonl,
-            plain=plain,
-            run_id=run_id,
-        ),
+    command_input = StepInspectInput(
+        output=output_options(json_output, jsonl, plain),
+        project=project_options(project, run_id),
+        step=step,
     )
+    execute_command("metrics", command_input, command_handlers.metrics)
 
 
 def artifacts_cmd(
     step: Annotated[str | None, typer.Argument()] = None,
-    project: Annotated[str | None, typer.Option("--project")] = None,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    jsonl: Annotated[bool, typer.Option("--jsonl")] = False,
-    plain: Annotated[bool, typer.Option("--plain")] = False,
-    run_id: Annotated[str | None, typer.Option("--run-id")] = None,
+    project: ProjectOption = None,
+    json_output: JsonOption = False,
+    jsonl: JsonlOption = False,
+    plain: PlainOption = False,
+    run_id: RunIdOption = None,
 ) -> None:
-    finish_command(
-        command_args(
-            "artifacts",
-            step=step,
-            project=project,
-            json=json_output,
-            jsonl=jsonl,
-            plain=plain,
-            run_id=run_id,
-        ),
+    command_input = StepInspectInput(
+        output=output_options(json_output, jsonl, plain),
+        project=project_options(project, run_id),
+        step=step,
     )
+    execute_command("artifacts", command_input, command_handlers.artifacts)
 
 
 def config_cmd(
     step: Annotated[str | None, typer.Argument()] = None,
     resolved: Annotated[bool, typer.Option("--resolved")] = False,
-    project: Annotated[str | None, typer.Option("--project")] = None,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    jsonl: Annotated[bool, typer.Option("--jsonl")] = False,
-    plain: Annotated[bool, typer.Option("--plain")] = False,
-    run_id: Annotated[str | None, typer.Option("--run-id")] = None,
+    project: ProjectOption = None,
+    json_output: JsonOption = False,
+    jsonl: JsonlOption = False,
+    plain: PlainOption = False,
+    run_id: RunIdOption = None,
 ) -> None:
     if not resolved:
         raise typer.BadParameter("--resolved is required", param_hint="--resolved")
-    finish_command(
-        command_args(
-            "config",
-            step=step,
-            resolved=resolved,
-            project=project,
-            json=json_output,
-            jsonl=jsonl,
-            plain=plain,
-            run_id=run_id,
-        ),
+    command_input = ConfigInput(
+        output=output_options(json_output, jsonl, plain),
+        project=project_options(project, run_id),
+        step=step,
+        resolved=resolved,
     )
+    execute_command("config", command_input, command_handlers.config)
 
 
 def diagnose_cmd(
     step: Annotated[str | None, typer.Argument()] = None,
-    project: Annotated[str | None, typer.Option("--project")] = None,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    jsonl: Annotated[bool, typer.Option("--jsonl")] = False,
-    plain: Annotated[bool, typer.Option("--plain")] = False,
-    run_id: Annotated[str | None, typer.Option("--run-id")] = None,
+    project: ProjectOption = None,
+    json_output: JsonOption = False,
+    jsonl: JsonlOption = False,
+    plain: PlainOption = False,
+    run_id: RunIdOption = None,
 ) -> None:
-    finish_command(
-        command_args(
-            "diagnose",
-            step=step,
-            project=project,
-            json=json_output,
-            jsonl=jsonl,
-            plain=plain,
-            run_id=run_id,
-        ),
+    command_input = DiagnoseInput(
+        output=output_options(json_output, jsonl, plain),
+        project=project_options(project, run_id),
+        step=step,
     )
+    execute_command("diagnose", command_input, command_handlers.diagnose)

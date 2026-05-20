@@ -1,3 +1,4 @@
+import dataclasses
 import json
 
 from chipcompiler.cli import main as cli_main
@@ -76,47 +77,60 @@ def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
     def fake_resolve_run_dir(project_dir, run_id):
         return (str(tmp_path / "runs" / "default"), run_id)
 
-    def fake_dispatch(args, ctx):
+    def fake_status(command_input, ctx):
+        seen["input_type"] = type(command_input).__name__
+        seen["frozen"] = dataclasses.is_dataclass(command_input)
         seen["mode"] = ctx.output_mode.value
-        seen["json"] = args.json
-        seen["jsonl"] = args.jsonl
-        seen["plain"] = args.plain
+        seen["json"] = command_input.output.json
+        seen["jsonl"] = command_input.output.jsonl
+        seen["plain"] = command_input.output.plain
         return CommandResult.ok([{"status": "ok"}])
 
-    monkeypatch.setattr("chipcompiler.cli.commands.resolve_project_dir", fake_resolve_project_dir)
-    monkeypatch.setattr("chipcompiler.cli.commands.resolve_run_dir", fake_resolve_run_dir)
-    monkeypatch.setattr("chipcompiler.cli.invocation.dispatch", fake_dispatch)
+    monkeypatch.setattr("chipcompiler.cli.invocation.resolve_project_dir", fake_resolve_project_dir)
+    monkeypatch.setattr("chipcompiler.cli.invocation.resolve_run_dir", fake_resolve_run_dir)
+    monkeypatch.setattr("chipcompiler.cli.handlers.status", fake_status)
 
     rc = cli_main.run(["status", "--jsonl", "--json", "--plain"])
 
     objects = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert rc == 0
     assert objects == [{"status": "ok"}]
-    assert seen == {"mode": "jsonl", "json": True, "jsonl": True, "plain": True}
+    assert seen == {
+        "input_type": "StatusInput",
+        "frozen": True,
+        "mode": "jsonl",
+        "json": True,
+        "jsonl": True,
+        "plain": True,
+    }
 
 
 def test_run_set_remains_repeatable(monkeypatch, tmp_path):
     seen = {}
 
     monkeypatch.setattr(
-        "chipcompiler.cli.commands.resolve_project_dir",
+        "chipcompiler.cli.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
     )
     monkeypatch.setattr(
-        "chipcompiler.cli.commands.resolve_run_dir",
+        "chipcompiler.cli.invocation.resolve_run_dir",
         lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
     )
 
-    def fake_dispatch(args, ctx):
-        seen["param_set"] = args.param_set
+    def fake_run(command_input, ctx):
+        seen["input_type"] = type(command_input).__name__
+        seen["param_set"] = command_input.param_set
         return CommandResult.ok([{"status": "ok"}])
 
-    monkeypatch.setattr("chipcompiler.cli.invocation.dispatch", fake_dispatch)
+    monkeypatch.setattr("chipcompiler.cli.handlers.run", fake_run)
 
     rc = cli_main.run(["run", "--set", "place.target_density=0.65", "--set", "synth.max_fanout=16"])
 
     assert rc == 0
-    assert seen["param_set"] == ["place.target_density=0.65", "synth.max_fanout=16"]
+    assert seen == {
+        "input_type": "RunInput",
+        "param_set": ("place.target_density=0.65", "synth.max_fanout=16"),
+    }
 
 
 def test_workspace_routes_through_root_typer(monkeypatch):
@@ -150,20 +164,58 @@ def test_run_workspace_like_flag_is_run_parser_error(capsys):
 
 def test_non_workspace_command_handler_still_returns_command_result(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
-        "chipcompiler.cli.commands.resolve_project_dir",
+        "chipcompiler.cli.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
     )
     monkeypatch.setattr(
-        "chipcompiler.cli.commands.resolve_run_dir",
+        "chipcompiler.cli.invocation.resolve_run_dir",
         lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
     )
+
+    def fake_diagnose(command_input, ctx):
+        return CommandResult.ok([
+            {"command": "diagnose", "input_type": type(command_input).__name__, "status": "ok"},
+        ])
+
     monkeypatch.setattr(
-        "chipcompiler.cli.invocation.dispatch",
-        lambda args, ctx: CommandResult.ok([{"command": args.command, "status": "ok"}]),
+        "chipcompiler.cli.handlers.diagnose",
+        fake_diagnose,
     )
 
     rc = cli_main.run(["diagnose", "--json"])
 
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
-    assert data == {"records": [{"command": "diagnose", "status": "ok"}]}
+    assert data == {
+        "records": [{"command": "diagnose", "input_type": "DiagnoseInput", "status": "ok"}],
+    }
+
+
+def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys):
+    seen = {}
+    monkeypatch.setattr(
+        "chipcompiler.cli.invocation.resolve_project_dir",
+        lambda project: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "chipcompiler.cli.invocation.resolve_run_dir",
+        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
+    )
+
+    def fake_show(command_input, ctx):
+        seen["input_type"] = type(command_input).__name__
+        seen["key"] = command_input.key
+        seen["project"] = command_input.project.project
+        return CommandResult.ok([{"param": command_input.key}])
+
+    monkeypatch.setattr("chipcompiler.cli.param_app.param_show_handler", fake_show)
+
+    rc = cli_main.run(["param", "show", "place.target_density", "--project", "gcd", "--json"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == {"records": [{"param": "place.target_density"}]}
+    assert seen == {
+        "input_type": "ParamShowInput",
+        "key": "place.target_density",
+        "project": "gcd",
+    }
