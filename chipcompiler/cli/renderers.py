@@ -2,12 +2,20 @@ import os
 import sys
 from collections.abc import Callable
 
+from chipcompiler.cli.command_inputs import LogInput
 from chipcompiler.cli.invocation import CommandInput
+from chipcompiler.cli.param_handler import (
+    render_param_diff_text,
+    render_param_list_text,
+    render_param_set_text,
+    render_param_show_text,
+)
 from chipcompiler.cli.render import render_result
 from chipcompiler.cli.types import CommandContext, CommandResult, OutputMode
 
 Renderer = Callable[[CommandResult, CommandContext, CommandInput, bool], None]
 RendererKey = tuple[str, OutputMode]
+ParamTextRenderer = Callable[[tuple[dict, ...]], None]
 
 
 def render_command_result(
@@ -26,64 +34,21 @@ def render_command_result(
     render_result(result, ctx.output_mode, command=command, color=color)
 
 
-def _render_param_list_text(
-    result: CommandResult,
-    ctx: CommandContext,
-    command_input: CommandInput,
-    color: bool,
-) -> None:
-    from chipcompiler.cli.param_handler import render_param_list_text
-    from chipcompiler.cli.pretty import render_error
+def _render_param_text(render_text: ParamTextRenderer) -> Renderer:
+    def renderer(
+        result: CommandResult,
+        ctx: CommandContext,
+        command_input: CommandInput,
+        color: bool,
+    ) -> None:
+        from chipcompiler.cli.pretty import render_error
 
-    if result.exit_code != 0:
-        render_error(result.records, color=color)
-        return
-    render_param_list_text(result.records)
+        if result.exit_code != 0:
+            render_error(result.records, color=color)
+            return
+        render_text(result.records)
 
-
-def _render_param_show_text(
-    result: CommandResult,
-    ctx: CommandContext,
-    command_input: CommandInput,
-    color: bool,
-) -> None:
-    from chipcompiler.cli.param_handler import render_param_show_text
-    from chipcompiler.cli.pretty import render_error
-
-    if result.exit_code != 0:
-        render_error(result.records, color=color)
-        return
-    render_param_show_text(result.records)
-
-
-def _render_param_set_text(
-    result: CommandResult,
-    ctx: CommandContext,
-    command_input: CommandInput,
-    color: bool,
-) -> None:
-    from chipcompiler.cli.param_handler import render_param_set_text
-    from chipcompiler.cli.pretty import render_error
-
-    if result.exit_code != 0:
-        render_error(result.records, color=color)
-        return
-    render_param_set_text(result.records)
-
-
-def _render_param_diff_text(
-    result: CommandResult,
-    ctx: CommandContext,
-    command_input: CommandInput,
-    color: bool,
-) -> None:
-    from chipcompiler.cli.param_handler import render_param_diff_text
-    from chipcompiler.cli.pretty import render_error
-
-    if result.exit_code != 0:
-        render_error(result.records, color=color)
-        return
-    render_param_diff_text(result.records)
+    return renderer
 
 
 def _render_log_text(
@@ -99,7 +64,10 @@ def _render_log_text(
     )
     from chipcompiler.cli.pretty import render_error, render_generic_block
 
-    if getattr(command_input, "errors", False):
+    if not isinstance(command_input, LogInput):
+        raise TypeError("log renderer requires LogInput")
+
+    if command_input.errors:
         print("warning: --errors is deprecated and no longer filters output", file=sys.stderr)
 
     if result.exit_code != 0:
@@ -180,12 +148,11 @@ def _render_log_plain(
 
 
 RENDERERS: dict[RendererKey, Renderer] = {
-    ("param:list", OutputMode.TEXT): _render_param_list_text,
-    ("param:show", OutputMode.TEXT): _render_param_show_text,
-    ("param:set", OutputMode.TEXT): _render_param_set_text,
-    ("param:unset", OutputMode.TEXT): _render_param_set_text,
-    ("param:diff", OutputMode.TEXT): _render_param_diff_text,
+    ("param:list", OutputMode.TEXT): _render_param_text(render_param_list_text),
+    ("param:show", OutputMode.TEXT): _render_param_text(render_param_show_text),
+    ("param:set", OutputMode.TEXT): _render_param_text(render_param_set_text),
+    ("param:unset", OutputMode.TEXT): _render_param_text(render_param_set_text),
+    ("param:diff", OutputMode.TEXT): _render_param_text(render_param_diff_text),
     ("log", OutputMode.TEXT): _render_log_text,
     ("log", OutputMode.PLAIN): _render_log_plain,
 }
-
