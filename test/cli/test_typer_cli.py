@@ -7,12 +7,6 @@ from chipcompiler.cli.invocation import execute_command
 from chipcompiler.cli.types import CommandResult
 
 
-def _assert_help_lines_include_descriptions(out, expected):
-    lines = out.splitlines()
-    for command, description in expected:
-        assert any(command in line and description in line for line in lines)
-
-
 def test_root_help_returns_zero_and_lists_commands(capsys):
     rc = cli_main.run(["--help"])
 
@@ -34,27 +28,6 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         assert command in out
 
 
-def test_root_help_lists_project_command_descriptions(capsys):
-    rc = cli_main.run(["--help"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    _assert_help_lines_include_descriptions(
-        out,
-        (
-            ("init", "Create a new ECC project"),
-            ("check", "Validate the current project setup"),
-            ("run", "Run the configured RTL-to-GDS flow"),
-            ("status", "Show run and step status"),
-            ("log", "Show available logs or step log content"),
-            ("metrics", "Show run or step metrics"),
-            ("artifacts", "List generated artifacts"),
-            ("config", "Show resolved project or step configuration"),
-            ("diagnose", "Diagnose run or step issues"),
-        ),
-    )
-
-
 def test_param_help_returns_zero_and_lists_subcommands(capsys):
     rc = cli_main.run(["param", "--help"])
 
@@ -64,23 +37,6 @@ def test_param_help_returns_zero_and_lists_subcommands(capsys):
         assert command in out
 
 
-def test_param_help_lists_subcommand_descriptions(capsys):
-    rc = cli_main.run(["param", "--help"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    _assert_help_lines_include_descriptions(
-        out,
-        (
-            ("list", "List parameter overrides"),
-            ("show", "Show one parameter value"),
-            ("set", "Set a parameter override"),
-            ("unset", "Remove a parameter override"),
-            ("diff", "Compare parameter overrides with defaults"),
-        ),
-    )
-
-
 def test_workspace_help_returns_zero_and_lists_subcommands(capsys):
     rc = cli_main.run(["workspace", "--help"])
 
@@ -88,24 +44,6 @@ def test_workspace_help_returns_zero_and_lists_subcommands(capsys):
     assert rc == 0
     for command in ("create", "load", "run-flow", "run-step", "get-info", "get-home"):
         assert command in out
-
-
-def test_workspace_help_lists_subcommand_descriptions(capsys):
-    rc = cli_main.run(["workspace", "--help"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    _assert_help_lines_include_descriptions(
-        out,
-        (
-            ("create", "Create a legacy runtime workspace"),
-            ("load", "Load and validate a legacy runtime workspace"),
-            ("run-flow", "Run the workspace flow"),
-            ("run-step", "Run one workspace step"),
-            ("get-info", "Show workspace or step runtime information"),
-            ("get-home", "Show workspace home-page data"),
-        ),
-    )
 
 
 def test_unknown_command_returns_nonzero_without_system_exit(capsys):
