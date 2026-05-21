@@ -35,7 +35,7 @@ def _finish_param(
     execute_command("param", command_input, handler, render_key=f"param:{param_command}")
 
 
-@param_app.command("list")
+@param_app.command("list", help="List parameter overrides")
 def list_cmd(
     project: ProjectOption = None,
     json_output: JsonOption = False,
@@ -49,7 +49,7 @@ def list_cmd(
     _finish_param("list", command_input, param_list_handler)
 
 
-@param_app.command("show")
+@param_app.command("show", help="Show one parameter value")
 def show_cmd(
     key: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
@@ -65,7 +65,7 @@ def show_cmd(
     _finish_param("show", command_input, param_show_handler)
 
 
-@param_app.command("set")
+@param_app.command("set", help="Set a parameter override")
 def set_cmd(
     key: Annotated[str, typer.Argument()],
     value: Annotated[str, typer.Argument()],
@@ -83,7 +83,7 @@ def set_cmd(
     _finish_param("set", command_input, param_set_handler)
 
 
-@param_app.command("unset")
+@param_app.command("unset", help="Remove a parameter override")
 def unset_cmd(
     key: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
@@ -99,7 +99,7 @@ def unset_cmd(
     _finish_param("unset", command_input, param_unset_handler)
 
 
-@param_app.command("diff")
+@param_app.command("diff", help="Compare parameter overrides with defaults")
 def diff_cmd(
     project: ProjectOption = None,
     json_output: JsonOption = False,

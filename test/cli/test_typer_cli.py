@@ -64,6 +64,23 @@ def test_param_help_returns_zero_and_lists_subcommands(capsys):
         assert command in out
 
 
+def test_param_help_lists_subcommand_descriptions(capsys):
+    rc = cli_main.run(["param", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    _assert_help_lines_include_descriptions(
+        out,
+        (
+            ("list", "List parameter overrides"),
+            ("show", "Show one parameter value"),
+            ("set", "Set a parameter override"),
+            ("unset", "Remove a parameter override"),
+            ("diff", "Compare parameter overrides with defaults"),
+        ),
+    )
+
+
 def test_workspace_help_returns_zero_and_lists_subcommands(capsys):
     rc = cli_main.run(["workspace", "--help"])
 
