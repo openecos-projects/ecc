@@ -87,7 +87,7 @@ def build_subflow(workspace: Workspace,
 
 def build_config(workspace: Workspace,
                  step: WorkspaceStep) -> dict:
-    cfg = step.config or {}
+    cfg = workspace.config or {}
     info = {
         "config": cfg.get(f"{step.name}", ""),
     }

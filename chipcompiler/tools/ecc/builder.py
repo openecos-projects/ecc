@@ -1,8 +1,15 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
-import stat
-from chipcompiler.data import WorkspaceStep, Workspace, Parameters, StepEnum, StateEnum
+from chipcompiler.data import (
+    WorkspaceStep,
+    Workspace,
+    Parameters,
+    StepEnum,
+    StateEnum,
+    build_workspace_config_paths,
+    update_step_config,
+)
 
 def build_step(workspace: Workspace,
                step_name: str,
@@ -24,26 +31,6 @@ def build_step(workspace: Workspace,
 
     # build step directory
     step.directory = f"{workspace.directory}/{step.name}_{step.tool}"
-    
-    # build config paths    
-    step.config = {
-        "dir": f"{step.directory}/config",
-        "flow": f"{step.directory}/config/flow_config.json",
-        "db": f"{step.directory}/config/db_default_config.json",
-        f"{StepEnum.CTS.value}": f"{step.directory}/config/cts_default_config.json",
-        f"{StepEnum.DRC.value}": f"{step.directory}/config/drc_default_config.json",
-        f"{StepEnum.FLOORPLAN.value}": f"{step.directory}/config/fp_default_config.json",
-        f"{StepEnum.NETLIST_OPT.value}": f"{step.directory}/config/no_default_config_fixfanout.json",
-        f"{StepEnum.PLACEMENT.value}": f"{step.directory}/config/pl_default_config.json",
-        f"{StepEnum.PNP.value}": f"{step.directory}/config/pnp_default_config.json",
-        f"{StepEnum.ROUTING.value}": f"{step.directory}/config/rt_default_config.json",
-        f"{StepEnum.TIMING_OPT_DRV.value}": f"{step.directory}/config/to_default_config_drv.json",
-        f"{StepEnum.TIMING_OPT_HOLD.value}": f"{step.directory}/config/to_default_config_hold.json",
-        f"{StepEnum.TIMING_OPT_SETUP.value}": f"{step.directory}/config/to_default_config_setup.json",
-        f"{StepEnum.LEGALIZATION.value}": f"{step.directory}/config/pl_default_config.json",
-        f"{StepEnum.FILLER.value}": f"{step.directory}/config/pl_default_config.json",
-        f"{StepEnum.RCX.value}": f"{step.directory}/config/rcx.json"
-    }
     
     # build input paths
     step.input = {
@@ -177,7 +164,6 @@ def build_step_space(step: WorkspaceStep) -> None:
     import os
     
     os.makedirs(step.directory, exist_ok=True)
-    os.makedirs(step.config.get("dir", f"{step.directory}/config"), exist_ok=True)
     os.makedirs(step.output.get("dir", f"{step.directory}/output"), exist_ok=True)
     os.makedirs(step.data.get("dir", f"{step.directory}/data"), exist_ok=True)
     os.makedirs(step.feature.get("dir", f"{step.directory}/feature"), exist_ok=True)
@@ -209,185 +195,22 @@ def build_step_config(workspace: Workspace,
     
     build_checklist(workspace=workspace,
                     workspace_step=step)
-    
-    # update config by parameters
-    from chipcompiler.utility import json_read, json_write
 
-    def _ensure_writable(path: str):
-        """Make files writable after copying from read-only sources."""
-        for root, dirs, files in os.walk(path):
-            for name in dirs + files:
-                target = os.path.join(root, name)
-                try:
-                    os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)
-                except OSError:
-                    pass
-    
-    def _update_flow():
-        # read config
-        config = json_read(step.config["flow"])
-        
-        # parameters
-        config["ConfigPath"]["idb_path"] = step.config["db"]
-        config["ConfigPath"]["ifp_path"] = step.config[f"{StepEnum.FLOORPLAN.value}"]
-        config["ConfigPath"]["ipl_path"] = step.config[f"{StepEnum.PLACEMENT.value}"]
-        config["ConfigPath"]["irt_path"] = step.config[f"{StepEnum.ROUTING.value}"]
-        config["ConfigPath"]["idrc_path"] = step.config[f"{StepEnum.DRC.value}"]
-        config["ConfigPath"]["icts_path"] = step.config[f"{StepEnum.CTS.value}"]
-        config["ConfigPath"]["ito_path"] = step.config[f"{StepEnum.TIMING_OPT_DRV.value}"]
-        config["ConfigPath"]["ipnp_path"] = step.config[f"{StepEnum.PNP.value}"]
-        
-        # write back
-        json_write(step.config["flow"], config)
-        
-    def _update_db():
-        # read config
-        config = json_read(step.config["db"])
-        
-        # parameters
-        config["INPUT"]["tech_lef_path"] = workspace.pdk.tech
-        config["INPUT"]["lef_paths"] = workspace.pdk.lefs
-        config["INPUT"]["lib_path"] = workspace.pdk.libs
-        config["INPUT"]["sdc_path"] = workspace.pdk.sdc
-        config["INPUT"]["spef"] = workspace.pdk.spef
-        config["INPUT"]["def_path"] = step.input["def"]
-        config["INPUT"]["verilog_path"] = step.input["verilog"]
-        config["OUTPUT"]["output_dir_path"] = step.output["dir"]
-        config["LayerSettings"]["routing_layer_1st"] = workspace.parameters.data.get("Bottom layer", "")
-        
-        # write back
-        json_write(step.config["db"], config)
-    
-    def _update_fixfanout():
-        # read config
-        config = json_read(step.config[f"{StepEnum.NETLIST_OPT.value}"])
-        
-        # parameters
-        if len(workspace.pdk.buffers) > 0:
-            config["insert_buffer"] = workspace.pdk.buffers[0]
-        else:
-            config["insert_buffer"] = ""
-        
-        config["max_fanout"] = workspace.parameters.data.get("Max fanout", 32)
-        
-        # write back
-        json_write(step.config[f"{StepEnum.NETLIST_OPT.value}"], config)
-        
-    def _update_placement():
-        # read config
-        config = json_read(step.config[f"{StepEnum.PLACEMENT.value}"])
-        
-        # parameters
-        config["PL"]["BUFFER"]["buffer_type"] = workspace.pdk.buffers
-        config["PL"]["Filler"]["first_iter"] = workspace.pdk.fillers
-        config["PL"]["Filler"]["second_iter"] = workspace.pdk.fillers
-        
-        config["PL"]["GP"]["global_right_padding"] = workspace.parameters.data.get("Global right padding", 0)
-        
-        # write back
-        json_write(step.config[f"{StepEnum.PLACEMENT.value}"], config)
-        
-    def _update_cts():
-        # read config
-        config = json_read(step.config[f"{StepEnum.CTS.value}"])
-        
-        # parameters
-        config["buffer_type"] = workspace.pdk.buffers
-        
-        # write back
-        json_write(step.config[f"{StepEnum.CTS.value}"], config)
-        
-    def _update_drv():
-        # read config
-        config = json_read(step.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
-        
-        # parameters
-        config["DRV_insert_buffers"] = workspace.pdk.buffers
-        
-        # write back
-        json_write(step.config[f"{StepEnum.TIMING_OPT_DRV.value}"], config)
-        
-    def _update_hold():
-        # read config
-        config = json_read(step.config[f"{StepEnum.TIMING_OPT_HOLD.value}"])
-        
-        # parameters
-        config["hold_insert_buffers"] = workspace.pdk.buffers
-        
-        # write back
-        json_write(step.config[f"{StepEnum.TIMING_OPT_HOLD.value}"], config)
-        
-    def _update_setup():
-        # read config
-        config = json_read(step.config[f"{StepEnum.TIMING_OPT_SETUP.value}"])
-        
-        # parameters
-        config["setup_insert_buffers"] = workspace.pdk.buffers
-        
-        # write back
-        json_write(step.config[f"{StepEnum.TIMING_OPT_SETUP.value}"], config)
-        
-    def _update_router():
-        # read config
-        config = json_read(step.config[f"{StepEnum.ROUTING.value}"])
-        
-        # parameters
-        config["RT"]["-temp_directory_path"] = step.data.get(f"{StepEnum.ROUTING.value}", "")
-        config["RT"]["-bottom_routing_layer"] = workspace.parameters.data.get("Bottom layer", "")
-        config["RT"]["-top_routing_layer"] = workspace.parameters.data.get("Top layer", "")
-        
-        # write back
-        json_write(step.config[f"{StepEnum.ROUTING.value}"], config)
-        
-    def _update_rcx():
-        if step.name != StepEnum.RCX.value:
-            return
+    if not workspace.config:
+        workspace.config = build_workspace_config_paths(workspace)
 
-        # read config
-        config = json_read(step.config[f"{StepEnum.RCX.value}"])
-        
-        # parameters
-        config["output"] = step.output.get(f"dir", "")
-        config["mapping_file"] = workspace.pdk.mapping_file
-        
-        # update spef output path
-        output_spef_files = []
-        for corner in workspace.pdk.corners:
-            corner_name = corner.get("name", "")
-            if corner_name != "":
-                output_spef = f"{step.output.get('dir', '')}/{workspace.design.name}_{corner_name}.spef"
-                corner["spef_file"] = output_spef
-                output_spef_files.append(output_spef)
-                
-                if corner_name == "TYPICAL":
-                    workspace.pdk.spef = output_spef
-        
-        config["corners"] = workspace.pdk.corners
-        step.output["spef"] = output_spef_files
-        
-        # write back
-        json_write(step.config[f"{StepEnum.RCX.value}"], config)
-        
-    # copy files to origin folder
-    import shutil
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    default_dir = os.path.abspath(os.path.join(current_dir, 'configs'))
-    shutil.copytree(default_dir, step.config["dir"], dirs_exist_ok=True)
-    _ensure_writable(step.config["dir"])
-    
     # reload parameters
     from chipcompiler.data import load_parameter
     parameter = load_parameter(workspace.parameters.path)
     workspace.parameters = parameter
     
-    # update config by parameters
-    _update_flow()    
-    _update_db()
-    _update_fixfanout()
-    _update_placement()
-    _update_cts()
-    _update_drv()
-    _update_hold()
-    _update_setup()
-    _update_router()
-    _update_rcx()
+    update_step_config(workspace=workspace, step=step)
+
+    if step.name == StepEnum.RCX.value:
+        from chipcompiler.utility import json_read
+        rcx_config = json_read(workspace.config[f"{StepEnum.RCX.value}"])
+        step.output["spef"] = [
+            corner.get("spef_file", "")
+            for corner in rcx_config.get("corners", [])
+            if corner.get("spef_file", "")
+        ]

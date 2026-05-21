@@ -174,10 +174,6 @@ def build_step(workspace: Workspace,
 
     step.directory = f"{workspace.directory}/{step.name}_{step.tool}"
 
-    step.config = {
-        "dir": f"{step.directory}/config",
-    }
-
     step.input = {
         "verilog": input_verilog,
     }
@@ -248,7 +244,6 @@ def build_step_space(step: WorkspaceStep) -> None:
     Create the workspace directories for the given step.
     """
     os.makedirs(step.directory, exist_ok=True)
-    os.makedirs(step.config.get("dir", f"{step.directory}/config"), exist_ok=True)
     os.makedirs(step.output.get("dir", f"{step.directory}/output"), exist_ok=True)
     os.makedirs(step.data.get("dir", f"{step.directory}/data"), exist_ok=True)
     os.makedirs(step.data.get("tmp", f"{step.directory}/data/tmp"), exist_ok=True)

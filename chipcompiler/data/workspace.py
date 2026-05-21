@@ -13,6 +13,7 @@ from .parameter import (
 from .home import HomeData
 
 from .pdk import get_pdk, PDK
+from .step import StepEnum
 from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
     
@@ -46,6 +47,7 @@ class Workspace:
     parameters : Parameters = field(default_factory=Parameters) # design parameters
     flow : Flow = field(default_factory=Flow) # design flow for this workspace
     home : HomeData = field(default_factory=HomeData) # home data for this workspace
+    config : dict = field(default_factory=dict) # workspace-level config paths
     
     # logger
     logger : Logger = field(default_factory=Logger) # logger for this workspace
@@ -64,7 +66,6 @@ class WorkspaceStep:
     version : str = "" # eda tool version
 
     # Paths for this step
-    config : dict = field(default_factory=dict) # config path about this step
     input : dict = field(default_factory=dict) # input path about this step
     output : dict = field(default_factory=dict) # output path about this step
     data : dict = field(default_factory=dict) # data path about this step
@@ -86,7 +87,6 @@ def log_workspace_step(step : WorkspaceStep, logger : Logger):
     logger.info(f"step eda version  : {step.version}")
     logger.info(f"step subworkspace : {step.directory}")
     
-    logger.info("\nconfig - \n%s", dict_to_str(step.config))
     logger.info("\ninput - \n%s", dict_to_str(step.input))
     logger.info("\noutput - \n%s", dict_to_str(step.output))
     logger.info("\ndata - \n%s", dict_to_str(step.data))
@@ -98,6 +98,182 @@ def log_workspace_step(step : WorkspaceStep, logger : Logger):
     logger.info("\nsubflow - \n%s", dict_to_str(step.subflow))
     logger.info("\nchecklist - \n%s", dict_to_str(step.checklist))
     logger.log_separator()
+
+
+def build_workspace_config_paths(workspace: Workspace) -> dict:
+    """Build workspace-level config file paths."""
+    config_dir = f"{workspace.directory}/config"
+    return {
+        "dir": config_dir,
+        "flow": f"{config_dir}/flow_config.json",
+        "db": f"{config_dir}/db_default_config.json",
+        f"{StepEnum.CTS.value}": f"{config_dir}/cts_default_config.json",
+        f"{StepEnum.DRC.value}": f"{config_dir}/drc_default_config.json",
+        f"{StepEnum.FLOORPLAN.value}": f"{config_dir}/fp_default_config.json",
+        f"{StepEnum.NETLIST_OPT.value}": f"{config_dir}/no_default_config_fixfanout.json",
+        f"{StepEnum.PLACEMENT.value}": f"{config_dir}/pl_default_config.json",
+        f"{StepEnum.PNP.value}": f"{config_dir}/pnp_default_config.json",
+        f"{StepEnum.ROUTING.value}": f"{config_dir}/rt_default_config.json",
+        f"{StepEnum.TIMING_OPT_DRV.value}": f"{config_dir}/to_default_config_drv.json",
+        f"{StepEnum.TIMING_OPT_HOLD.value}": f"{config_dir}/to_default_config_hold.json",
+        f"{StepEnum.TIMING_OPT_SETUP.value}": f"{config_dir}/to_default_config_setup.json",
+        f"{StepEnum.LEGALIZATION.value}": f"{config_dir}/pl_default_config.json",
+        f"{StepEnum.FILLER.value}": f"{config_dir}/pl_default_config.json",
+        f"{StepEnum.RCX.value}": f"{config_dir}/rcx.json",
+        "dreamplace": f"{config_dir}/dreamplace.json",
+    }
+
+
+def _ensure_writable(path: str):
+    import os
+    import stat
+
+    for root, dirs, files in os.walk(path):
+        for name in dirs + files:
+            target = os.path.join(root, name)
+            try:
+                os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)
+            except OSError:
+                pass
+
+
+def _copy_missing_files(src_dir: str, dst_dir: str):
+    import os
+    import shutil
+
+    os.makedirs(dst_dir, exist_ok=True)
+    for name in os.listdir(src_dir):
+        src = os.path.join(src_dir, name)
+        dst = os.path.join(dst_dir, name)
+        if os.path.isfile(src) and not os.path.exists(dst):
+            shutil.copy2(src, dst)
+
+
+def init_workspace_config(workspace: Workspace) -> None:
+    """Create workspace-level configs and write static fields once."""
+    import os
+    import shutil
+    from copy import deepcopy
+    from chipcompiler.utility import json_read, json_write
+
+    if not workspace.config:
+        workspace.config = build_workspace_config_paths(workspace)
+
+    config_dir = workspace.config["dir"]
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = current_dir.rsplit("/", 1)[0]
+    ecc_config_dir = os.path.join(root_dir, "tools", "ecc", "configs")
+    dreamplace_config = os.path.join(
+        root_dir,
+        "tools",
+        "ecc_dreamplace",
+        "configs",
+        "dreamplace.json",
+    )
+
+    _copy_missing_files(ecc_config_dir, config_dir)
+    if not os.path.exists(workspace.config["dreamplace"]):
+        shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
+    _ensure_writable(config_dir)
+
+    flow = json_read(workspace.config["flow"])
+    flow["ConfigPath"]["idb_path"] = workspace.config["db"]
+    flow["ConfigPath"]["ifp_path"] = workspace.config[f"{StepEnum.FLOORPLAN.value}"]
+    flow["ConfigPath"]["ipl_path"] = workspace.config[f"{StepEnum.PLACEMENT.value}"]
+    flow["ConfigPath"]["irt_path"] = workspace.config[f"{StepEnum.ROUTING.value}"]
+    flow["ConfigPath"]["idrc_path"] = workspace.config[f"{StepEnum.DRC.value}"]
+    flow["ConfigPath"]["icts_path"] = workspace.config[f"{StepEnum.CTS.value}"]
+    flow["ConfigPath"]["ito_path"] = workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"]
+    flow["ConfigPath"]["ipnp_path"] = workspace.config[f"{StepEnum.PNP.value}"]
+    json_write(workspace.config["flow"], flow)
+
+    db = json_read(workspace.config["db"])
+    db["INPUT"]["tech_lef_path"] = workspace.pdk.tech
+    db["INPUT"]["lef_paths"] = workspace.pdk.lefs
+    db["INPUT"]["lib_path"] = workspace.pdk.libs
+    db["INPUT"]["sdc_path"] = workspace.pdk.sdc
+    db["INPUT"]["spef"] = workspace.pdk.spef
+    db["LayerSettings"]["routing_layer_1st"] = workspace.parameters.data.get("Bottom layer", "")
+    json_write(workspace.config["db"], db)
+
+    fixfanout = json_read(workspace.config[f"{StepEnum.NETLIST_OPT.value}"])
+    fixfanout["insert_buffer"] = workspace.pdk.buffers[0] if len(workspace.pdk.buffers) > 0 else ""
+    fixfanout["max_fanout"] = workspace.parameters.data.get("Max fanout", 32)
+    json_write(workspace.config[f"{StepEnum.NETLIST_OPT.value}"], fixfanout)
+
+    placement = json_read(workspace.config[f"{StepEnum.PLACEMENT.value}"])
+    placement["PL"]["BUFFER"]["buffer_type"] = workspace.pdk.buffers
+    placement["PL"]["Filler"]["first_iter"] = workspace.pdk.fillers
+    placement["PL"]["Filler"]["second_iter"] = workspace.pdk.fillers
+    placement["PL"]["GP"]["global_right_padding"] = workspace.parameters.data.get(
+        "Global right padding", 0
+    )
+    json_write(workspace.config[f"{StepEnum.PLACEMENT.value}"], placement)
+
+    cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
+    cts["buffer_type"] = workspace.pdk.buffers
+    json_write(workspace.config[f"{StepEnum.CTS.value}"], cts)
+
+    drv = json_read(workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
+    drv["DRV_insert_buffers"] = workspace.pdk.buffers
+    json_write(workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"], drv)
+
+    hold = json_read(workspace.config[f"{StepEnum.TIMING_OPT_HOLD.value}"])
+    hold["hold_insert_buffers"] = workspace.pdk.buffers
+    json_write(workspace.config[f"{StepEnum.TIMING_OPT_HOLD.value}"], hold)
+
+    setup = json_read(workspace.config[f"{StepEnum.TIMING_OPT_SETUP.value}"])
+    setup["setup_insert_buffers"] = workspace.pdk.buffers
+    json_write(workspace.config[f"{StepEnum.TIMING_OPT_SETUP.value}"], setup)
+
+    router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
+    router["RT"]["-bottom_routing_layer"] = workspace.parameters.data.get("Bottom layer", "")
+    router["RT"]["-top_routing_layer"] = workspace.parameters.data.get("Top layer", "")
+    json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
+
+    rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
+    rcx["mapping_file"] = workspace.pdk.mapping_file
+    corners = deepcopy(workspace.pdk.corners)
+    rcx["corners"] = corners
+    json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
+
+    dreamplace = json_read(workspace.config["dreamplace"])
+    dreamplace["lef_input"] = [workspace.pdk.tech, *workspace.pdk.lefs]
+    dreamplace["base_design_name"] = workspace.design.name
+    dreamplace_overrides = workspace.parameters.data.get("DreamPlace", {})
+    if isinstance(dreamplace_overrides, dict):
+        for key, value in dreamplace_overrides.items():
+            dreamplace[key] = deepcopy(value)
+    json_write(workspace.config["dreamplace"], dreamplace)
+
+
+def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
+    """Update only step-dependent workspace config fields."""
+    from chipcompiler.utility import json_read, json_write
+
+    if not workspace.config:
+        workspace.config = build_workspace_config_paths(workspace)
+
+    db = json_read(workspace.config["db"])
+    db["INPUT"]["def_path"] = step.input.get("def", "")
+    db["INPUT"]["verilog_path"] = step.input.get("verilog", "")
+    db["OUTPUT"]["output_dir_path"] = step.output.get("dir", "")
+    json_write(workspace.config["db"], db)
+
+    if step.name == StepEnum.ROUTING.value:
+        router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
+        router["RT"]["-temp_directory_path"] = step.data.get(f"{StepEnum.ROUTING.value}", "")
+        json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
+
+    if step.name == StepEnum.RCX.value:
+        rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
+        rcx_output_dir = step.output.get("dir", "")
+        rcx["output"] = rcx_output_dir
+        for corner in rcx.get("corners", []):
+            corner_name = corner.get("name", "")
+            if corner_name:
+                corner["spef_file"] = f"{rcx_output_dir}/{workspace.design.name}_{corner_name}.spef"
+        json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
     
 
 def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=None) -> str:
@@ -302,6 +478,7 @@ def create_workspace(directory : str,
     
     # update path
     workspace.directory = directory
+    workspace.config = build_workspace_config_paths(workspace)
     
     # create logger first (needed for copy operations)
     os.makedirs(f"{directory}/log", exist_ok=True)
@@ -311,6 +488,7 @@ def create_workspace(directory : str,
     # update orign files to workspace origin folder
     import shutil
     os.makedirs(f"{directory}/origin", exist_ok=True)
+    os.makedirs(workspace.config["dir"], exist_ok=True)
     if os.path.exists(origin_def):
         shutil.copy(origin_def, f"{directory}/origin/{os.path.basename(origin_def)}")
         workspace.design.origin_def = f"{directory}/origin/{os.path.basename(origin_def)}"
@@ -352,6 +530,8 @@ def create_workspace(directory : str,
         shutil.copy(workspace.pdk.spef, f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}")
         workspace.pdk.spef = f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}"
 
+    init_workspace_config(workspace)
+
     # set home data
     os.makedirs(f"{directory}/home", exist_ok=True)
     workspace.flow.path = f"{directory}/home/flow.json"
@@ -380,6 +560,7 @@ def load_workspace(directory : str) -> Workspace:
     # create workspace instance
     workspace = Workspace()
     workspace.directory = directory
+    workspace.config = build_workspace_config_paths(workspace)
 
     parameters = load_parameter(f"{directory}/home/parameters.json")
     if len(parameters.data)<=0:
@@ -423,6 +604,7 @@ def load_workspace(directory : str) -> Workspace:
         
     # set home data
     os.makedirs(f"{directory}/home", exist_ok=True)
+    os.makedirs(workspace.config["dir"], exist_ok=True)
     workspace.flow.path = f"{directory}/home/flow.json"
     workspace.home.init(path=f"{directory}/home/home.json")
     workspace.home.set_flow(workspace.flow.path)
@@ -444,6 +626,7 @@ def log_workspace(workspace : Workspace):
     
     workspace.logger.log_section("workspace info") 
     workspace.logger.info("workspace      : %s", workspace.directory)
+    workspace.logger.info("config         : %s", workspace.config.get("dir", ""))
     workspace.logger.info("PDK            : %s", workspace.pdk.name)
     workspace.logger.info("design         : %s", workspace.design.name)
     workspace.logger.info("top module     : %s", workspace.design.top_module)

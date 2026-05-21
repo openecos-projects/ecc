@@ -19,8 +19,8 @@ def create_db_engine(workspace: Workspace,
     def load_data():
         eda_inst = ECCToolsModule()
         
-        eda_inst.init_config(flow_config=step.config["flow"],
-                             db_config=step.config["db"],
+        eda_inst.init_config(flow_config=workspace.config["flow"],
+                             db_config=workspace.config["db"],
                              output_dir=step.data["dir"],
                              feature_dir=step.feature["dir"])
     
@@ -35,8 +35,8 @@ def create_db_engine(workspace: Workspace,
     def load_design():
         eda_inst = ECCToolsModule()
     
-        eda_inst.init_config(flow_config=step.config["flow"],
-                             db_config=step.config["db"],
+        eda_inst.init_config(flow_config=workspace.config["flow"],
+                             db_config=workspace.config["db"],
                              output_dir=step.data["dir"],
                              feature_dir=step.feature["dir"])
 
@@ -250,7 +250,7 @@ def run_net_opt(workspace: Workspace,
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_net_opt(config=step.config[f"{StepEnum.NETLIST_OPT.value}"])
+        eda_inst.run_net_opt(config=workspace.config[f"{StepEnum.NETLIST_OPT.value}"])
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_net_optimization.value, state=StateEnum.Success)
         
@@ -280,7 +280,7 @@ def run_placement(workspace: Workspace,
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_placement(config=step.config[f"{StepEnum.PLACEMENT.value}"])
+        eda_inst.run_placement(config=workspace.config[f"{StepEnum.PLACEMENT.value}"])
         eda_inst.feature_placement_map(json_path=step.feature["map"])
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
@@ -311,13 +311,13 @@ def run_cts(workspace: Workspace,
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_cts(config=step.config[f"{StepEnum.CTS.value}"],
+        eda_inst.run_cts(config=workspace.config[f"{StepEnum.CTS.value}"],
                          output=step.data[f"{StepEnum.CTS.value}"])
         
         eda_inst.report_cts(output=step.data[f"{StepEnum.CTS.value}"])
         
         # Post-CTS legalization is handled by the following DreamPlace legalization step.
-        # eda_inst.run_legalize(config=step.config[f"{StepEnum.LEGALIZATION.value}"])
+        # eda_inst.run_legalize(config=workspace.config[f"{StepEnum.LEGALIZATION.value}"])
         
         eda_inst.feature_cts_map(json_path=step.feature["map"])
         
@@ -353,7 +353,7 @@ def run_timing_opt_drv(workspace: Workspace,
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_timing_opt_drv(config=step.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
+        eda_inst.run_timing_opt_drv(config=workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_drv.value, state=StateEnum.Success)
         
@@ -383,7 +383,7 @@ def run_timing_opt_hold(workspace: Workspace,
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_timing_opt_hold(config=step.config[f"{StepEnum.TIMING_OPT_HOLD.value}"])
+        eda_inst.run_timing_opt_hold(config=workspace.config[f"{StepEnum.TIMING_OPT_HOLD.value}"])
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_hold.value, state=StateEnum.Success)
         
@@ -414,13 +414,13 @@ def run_routing(workspace: Workspace,
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        if eda_inst.is_rt_timing_enable(config=step.config[f"{StepEnum.ROUTING.value}"]):
+        if eda_inst.is_rt_timing_enable(config=workspace.config[f"{StepEnum.ROUTING.value}"]):
             eda_inst.init_sta(output_dir=step.data["sta"],
                               top_module=workspace.design.top_module,
                               lib_paths=workspace.pdk.libs,
                               sdc_path=workspace.pdk.sdc)
             
-        eda_inst.run_routing(config=step.config[f"{StepEnum.ROUTING.value}"])
+        eda_inst.run_routing(config=workspace.config[f"{StepEnum.ROUTING.value}"])
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_routing.value, state=StateEnum.Success)
         
@@ -454,7 +454,7 @@ def run_drc(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         eda_inst.init_drc(output_dir=step.data[f"{StepEnum.DRC.value}"])
-        eda_inst.run_drc(config=step.config[f"{StepEnum.DRC.value}"],
+        eda_inst.run_drc(config=workspace.config[f"{StepEnum.DRC.value}"],
                          report_path=step.report["step"])
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
@@ -491,7 +491,7 @@ def run_legalization(workspace: Workspace,
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_legalize(config=step.config[f"{StepEnum.LEGALIZATION.value}"])
+        eda_inst.run_legalize(config=workspace.config[f"{StepEnum.LEGALIZATION.value}"])
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_legalization.value, state=StateEnum.Success)
         
@@ -522,7 +522,7 @@ def run_filler(workspace: Workspace,
     if eda_inst is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_filler(config=step.config[f"{StepEnum.FILLER.value}"])
+        eda_inst.run_filler(config=workspace.config[f"{StepEnum.FILLER.value}"])
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
         
@@ -580,7 +580,7 @@ def run_floorplan(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value,
                              state=StateEnum.Success)
         
-        floorplan_dict = json_read(step.config.get(StepEnum.FLOORPLAN.value, ""))
+        floorplan_dict = json_read(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
         
         # create tracks
         json_floorplan = floorplan_dict.get("Floorplan", {})
@@ -742,7 +742,7 @@ def run_rcx(workspace: Workspace,
     run rcx
     """
     def run_jsons_to_itf(eda_inst : ECCToolsModule) -> bool:
-        config=json_read(step.config.get(StepEnum.RCX.value, ""))
+        config=json_read(workspace.config.get(StepEnum.RCX.value, ""))
         corners_dict = config.get("corners", [])
         for item in corners_dict:
             json_file = item.get("ecc_tf", "")
@@ -769,7 +769,7 @@ def run_rcx(workspace: Workspace,
             sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete)
             result = False
         else:
-            eda_inst.run_rcx(config=step.config.get(StepEnum.RCX.value, ""))
+            eda_inst.run_rcx(config=workspace.config.get(StepEnum.RCX.value, ""))
             eda_inst.report_rcx(step.output.get("dir", ""))
             sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
             
@@ -811,7 +811,7 @@ def run_sta(workspace: Workspace,
                 for spef_file in spef_files
             ]
 
-        config = json_read(step.config.get(StepEnum.RCX.value, ""))
+        config = json_read(workspace.config.get(StepEnum.RCX.value, ""))
         spef_items = []
         for corner in config.get("corners", []):
             spef_file = corner.get("spef_file", "")

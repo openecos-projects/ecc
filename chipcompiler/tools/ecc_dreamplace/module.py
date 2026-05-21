@@ -30,7 +30,7 @@ class DreamplaceModule:
         self.input_verilog = input_verilog
         self.output_def = output_def
         self.output_verilog = output_verilog
-        self.param_path = step.config["dreamplace"]
+        self.param_path = workspace.config["dreamplace"]
         self.result_dir = step.data.get(step.name, step.data["dir"])
 
     def _build_params(self, params_cls, legalize_only: bool):

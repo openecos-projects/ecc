@@ -80,7 +80,7 @@ def create_step(workspace : Workspace,
     eda_module.build_step_space(step)
     
     # update config
-    eda_module.build_step_config(workspace, step)
+    # eda_module.build_step_config(workspace, step)
     
     return step
 
