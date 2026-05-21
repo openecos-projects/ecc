@@ -11,7 +11,6 @@ EXCLUDED_PAYLOAD_PREFIXES = (
     "chipcompiler/tools/ecc_dreamplace/dreamplace/benchmarks",
     "torch/test",
     "torch/testing/_internal",
-    "torch/bin",
 )
 
 EXCLUDED_HIDDENIMPORT_PREFIXES = (

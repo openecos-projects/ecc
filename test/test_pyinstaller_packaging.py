@@ -26,6 +26,23 @@ def test_pyinstaller_payload_filter_excludes_oversized_paths():
     assert filter_collected_payloads(payloads) == [payloads[-1]]
 
 
+def test_pyinstaller_payload_filter_keeps_torch_runtime_binaries():
+    payloads = [
+        (
+            "/venv/site-packages/torch/bin/torch_shm_manager",
+            "torch/bin/torch_shm_manager",
+            "BINARY",
+        ),
+        (
+            "/venv/site-packages/torch/bin/torch_shm_manager",
+            "/home/runner/work/ecc/.venv/lib/python3.11/site-packages/torch/bin/torch_shm_manager",
+            "BINARY",
+        ),
+    ]
+
+    assert filter_collected_payloads(payloads) == payloads
+
+
 def test_pyinstaller_hiddenimport_filter_keeps_public_torch_imports():
     hiddenimports = [
         "torch",

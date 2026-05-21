@@ -164,6 +164,7 @@ jobs:
           mkdir -p dist/pyinstaller-smoke
           tar -xf bazel-bin/build_ecc_cli_bundle/ecc.tar -C dist/pyinstaller-smoke
           dist/pyinstaller-smoke/ecc --help
+          test -x dist/pyinstaller-smoke/_internal/torch/bin/torch_shm_manager
 
       - name: Upload PyInstaller artifact
         if: always()
