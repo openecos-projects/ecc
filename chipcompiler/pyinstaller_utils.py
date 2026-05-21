@@ -15,6 +15,9 @@ EXCLUDED_PAYLOAD_PREFIXES = (
 )
 
 EXCLUDED_HIDDENIMPORT_PREFIXES = (
+    "torch.distributed._shard.checkpoint",
+    "torch.distributed._sharded_tensor",
+    "torch.distributed._sharding_spec",
     "torch.testing._internal",
     "torch.test",
 )
