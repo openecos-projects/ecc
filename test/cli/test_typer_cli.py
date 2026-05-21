@@ -7,6 +7,12 @@ from chipcompiler.cli.invocation import execute_command
 from chipcompiler.cli.types import CommandResult
 
 
+def _assert_help_lines_include_descriptions(out, expected):
+    lines = out.splitlines()
+    for command, description in expected:
+        assert any(command in line and description in line for line in lines)
+
+
 def test_root_help_returns_zero_and_lists_commands(capsys):
     rc = cli_main.run(["--help"])
 
@@ -26,6 +32,27 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "workspace",
     ):
         assert command in out
+
+
+def test_root_help_lists_project_command_descriptions(capsys):
+    rc = cli_main.run(["--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    _assert_help_lines_include_descriptions(
+        out,
+        (
+            ("init", "Create a new ECC project"),
+            ("check", "Validate the current project setup"),
+            ("run", "Run the configured RTL-to-GDS flow"),
+            ("status", "Show run and step status"),
+            ("log", "Show available logs or step log content"),
+            ("metrics", "Show run or step metrics"),
+            ("artifacts", "List generated artifacts"),
+            ("config", "Show resolved project or step configuration"),
+            ("diagnose", "Diagnose run or step issues"),
+        ),
+    )
 
 
 def test_param_help_returns_zero_and_lists_subcommands(capsys):

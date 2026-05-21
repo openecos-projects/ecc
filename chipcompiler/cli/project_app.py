@@ -27,15 +27,15 @@ from chipcompiler.cli.options import (
 
 
 def register_project_commands(app: typer.Typer) -> None:
-    app.command("init")(init_cmd)
-    app.command("check")(check_cmd)
-    app.command("run")(run_cmd)
-    app.command("status")(status_cmd)
-    app.command("log")(log_cmd)
-    app.command("metrics")(metrics_cmd)
-    app.command("artifacts")(artifacts_cmd)
-    app.command("config")(config_cmd)
-    app.command("diagnose")(diagnose_cmd)
+    app.command("init", help="Create a new ECC project")(init_cmd)
+    app.command("check", help="Validate the current project setup")(check_cmd)
+    app.command("run", help="Run the configured RTL-to-GDS flow")(run_cmd)
+    app.command("status", help="Show run and step status")(status_cmd)
+    app.command("log", help="Show available logs or step log content")(log_cmd)
+    app.command("metrics", help="Show run or step metrics")(metrics_cmd)
+    app.command("artifacts", help="List generated artifacts")(artifacts_cmd)
+    app.command("config", help="Show resolved project or step configuration")(config_cmd)
+    app.command("diagnose", help="Diagnose run or step issues")(diagnose_cmd)
 
 
 def init_cmd(
