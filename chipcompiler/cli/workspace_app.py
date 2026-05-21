@@ -40,7 +40,7 @@ def _call_runtime(callback: Callable[[], dict], json_output: bool) -> dict:
         return callback()
 
 
-@workspace_app.command("create")
+@workspace_app.command("create", help="Create a legacy runtime workspace")
 def create_cmd(
     input_json: Annotated[str | None, typer.Option("--input-json")] = None,
     directory: Annotated[str | None, typer.Option("--directory")] = None,
@@ -80,7 +80,7 @@ def create_cmd(
     _finish(result, json_output)
 
 
-@workspace_app.command("load")
+@workspace_app.command("load", help="Load and validate a legacy runtime workspace")
 def load_cmd(
     directory: Annotated[str, typer.Option("--directory")] = "",
     json_output: Annotated[bool, typer.Option("--json")] = False,
@@ -88,7 +88,7 @@ def load_cmd(
     _finish(_call_runtime(lambda: load_workspace(directory), json_output), json_output)
 
 
-@workspace_app.command("run-flow")
+@workspace_app.command("run-flow", help="Run the workspace flow")
 def run_flow_cmd(
     directory: Annotated[str, typer.Option("--directory")] = "",
     rerun: Annotated[bool, typer.Option("--rerun")] = False,
@@ -97,7 +97,7 @@ def run_flow_cmd(
     _finish(_call_runtime(lambda: run_workspace_flow(directory, rerun), json_output), json_output)
 
 
-@workspace_app.command("run-step")
+@workspace_app.command("run-step", help="Run one workspace step")
 def run_step_cmd(
     directory: Annotated[str, typer.Option("--directory")] = "",
     step: Annotated[str, typer.Option("--step")] = "",
@@ -108,7 +108,7 @@ def run_step_cmd(
     _finish(result, json_output)
 
 
-@workspace_app.command("get-info")
+@workspace_app.command("get-info", help="Show workspace or step runtime information")
 def get_info_cmd(
     directory: Annotated[str, typer.Option("--directory")] = "",
     step: Annotated[str, typer.Option("--step")] = "",
@@ -119,7 +119,7 @@ def get_info_cmd(
     _finish(result, json_output)
 
 
-@workspace_app.command("get-home")
+@workspace_app.command("get-home", help="Show workspace home-page data")
 def get_home_cmd(
     directory: Annotated[str, typer.Option("--directory")] = "",
     json_output: Annotated[bool, typer.Option("--json")] = False,

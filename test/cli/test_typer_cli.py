@@ -73,6 +73,24 @@ def test_workspace_help_returns_zero_and_lists_subcommands(capsys):
         assert command in out
 
 
+def test_workspace_help_lists_subcommand_descriptions(capsys):
+    rc = cli_main.run(["workspace", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    _assert_help_lines_include_descriptions(
+        out,
+        (
+            ("create", "Create a legacy runtime workspace"),
+            ("load", "Load and validate a legacy runtime workspace"),
+            ("run-flow", "Run the workspace flow"),
+            ("run-step", "Run one workspace step"),
+            ("get-info", "Show workspace or step runtime information"),
+            ("get-home", "Show workspace home-page data"),
+        ),
+    )
+
+
 def test_unknown_command_returns_nonzero_without_system_exit(capsys):
     rc = cli_main.run(["missing-command"])
 
