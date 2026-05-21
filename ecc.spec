@@ -13,6 +13,8 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_data_files, copy_metadata
 
+from chipcompiler.pyinstaller_utils import filter_collected_payloads, filter_hiddenimports
+
 ECC_DIR = Path(SPECPATH)
 HOOKS_DIR = ECC_DIR / "hooks"
 CODESIGN_IDENTITY = os.environ.get("APPLE_SIGNING_IDENTITY")
@@ -118,28 +120,6 @@ EXCLUDES = [
     "pkg_resources",
 ]
 
-EXCLUDED_PAYLOAD_PREFIXES = (
-    "chipcompiler/thirdparty/ecc-tools",
-    "chipcompiler/thirdparty/ecc-dreamplace/test",
-    "chipcompiler/thirdparty/ecc-dreamplace/docs",
-    "chipcompiler/thirdparty/ecc-dreamplace/build",
-    "thirdparty/ecc-dreamplace/test",
-    "thirdparty/ecc-dreamplace/docs",
-    "thirdparty/ecc-dreamplace/build",
-    "chipcompiler/tools/ecc_dreamplace/dreamplace/test",
-    "chipcompiler/tools/ecc_dreamplace/dreamplace/unittest",
-    "chipcompiler/tools/ecc_dreamplace/dreamplace/benchmarks",
-    "torch/test",
-    "torch/testing/_internal",
-    "torch/bin",
-)
-
-EXCLUDED_HIDDENIMPORT_PREFIXES = (
-    "torch.testing._internal",
-    "torch.test",
-)
-
-
 def collect_required_metadata():
     metadata = []
     for dist_name in REQUIRED_DISTRIBUTION_METADATA:
@@ -200,39 +180,6 @@ def collect_platform_runtime_libs():
     elif sys.platform == "win32":
         return []
     return []
-
-
-def payload_path_matches(path, prefix):
-    normalized = str(path).replace("\\", "/")
-    return (
-        normalized == prefix
-        or normalized.startswith(f"{prefix}/")
-        or f"/{prefix}/" in normalized
-    )
-
-
-def payload_is_excluded(item):
-    paths = item[:2] if isinstance(item, (tuple, list)) else (item,)
-    return any(
-        payload_path_matches(path, prefix)
-        for path in paths
-        for prefix in EXCLUDED_PAYLOAD_PREFIXES
-    )
-
-
-def filter_collected_payloads(payloads):
-    return [item for item in payloads if not payload_is_excluded(item)]
-
-
-def hiddenimport_is_excluded(module_name):
-    return any(
-        module_name == prefix or module_name.startswith(f"{prefix}.")
-        for prefix in EXCLUDED_HIDDENIMPORT_PREFIXES
-    )
-
-
-def filter_hiddenimports(imports):
-    return [module_name for module_name in imports if not hiddenimport_is_excluded(module_name)]
 
 
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
