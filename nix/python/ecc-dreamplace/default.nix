@@ -27,13 +27,13 @@
 }:
 
 let
-  version = "0.1.0-alpha.2";
+  version = "0.1.0-alpha.3";
 
   rootSrc = fetchFromGitHub {
     owner = "openecos-projects";
     repo = "ecc-dreamplace";
-    rev = "b8606d35455b3a6aae7cd0a5584f4ea389cc223a";
-    hash = "sha256-+eFHxOyt6BwUYZ5MN1DHGu35f7NoL6f4PiAATj9nDrc=";
+    rev = "v${version}";
+    hash = "sha256-PdlwCRTQrIEvbkLkxNPwKHFr527SGYd5GVDmqk4jimw=";
     fetchSubmodules = true;
   };
 
