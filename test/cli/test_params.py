@@ -7,7 +7,6 @@ from chipcompiler.cli.params import (
     build_backend_overrides,
     is_known_key,
     list_groups,
-    list_schemas,
     lookup_schema,
     parse_cli_overrides,
     parse_toml_params,
@@ -40,7 +39,16 @@ class TestSchemaRegistry:
             assert key in params, f"Missing key: {key}"
 
     def test_every_record_has_required_metadata(self):
-        required = ("param", "group", "name", "type", "default", "applies", "maps_to", "description")
+        required = (
+            "param",
+            "group",
+            "name",
+            "type",
+            "default",
+            "applies",
+            "maps_to",
+            "description",
+        )
         for schema in PARAM_REGISTRY:
             for field_name in required:
                 val = getattr(schema, field_name, None)
@@ -73,8 +81,14 @@ class TestSchemaRegistry:
 
     def test_schema_record_missing_required_fields_rejected(self):
         bad = ParamSchema(
-            param="", group="", name="", type="int", default=0,
-            applies="", maps_to="", description="",
+            param="",
+            group="",
+            name="",
+            type="int",
+            default=0,
+            applies="",
+            maps_to="",
+            description="",
         )
         errors = validate_schema_record(bad)
         assert len(errors) > 0
@@ -92,37 +106,58 @@ class TestSchemaRegistry:
 
 
 class TestValueParsing:
-    @pytest.mark.parametrize("raw,ptype,expected", [
-        ("0.65", "float", 0.65),
-        ("42", "int", 42),
-        ("true", "bool", True),
-        ("false", "bool", False),
-        ("MET5", "str", "MET5"),
-        ("1.5,2.5", "list[float]", [1.5, 2.5]),
-        ("1,2,3", "list[int]", [1, 2, 3]),
-        ("a,b,c", "list[str]", ["a", "b", "c"]),
-    ])
+    @pytest.mark.parametrize(
+        "raw,ptype,expected",
+        [
+            ("0.65", "float", 0.65),
+            ("42", "int", 42),
+            ("true", "bool", True),
+            ("false", "bool", False),
+            ("MET5", "str", "MET5"),
+            ("1.5,2.5", "list[float]", [1.5, 2.5]),
+            ("1,2,3", "list[int]", [1, 2, 3]),
+            ("a,b,c", "list[str]", ["a", "b", "c"]),
+        ],
+    )
     def test_parse_value_correct_types(self, raw, ptype, expected):
         schema = lookup_schema("place.target_density")
         schema = ParamSchema(
-            param="test", group="test", name="test", type=ptype,
-            default=None, applies="test", maps_to="test", description="test",
+            param="test",
+            group="test",
+            name="test",
+            type=ptype,
+            default=None,
+            applies="test",
+            maps_to="test",
+            description="test",
         )
         result = parse_value(raw, schema)
         assert result == expected
 
     def test_parse_int_rejects_alpha(self):
         schema = ParamSchema(
-            param="test", group="test", name="test", type="int",
-            default=0, applies="test", maps_to="test", description="test",
+            param="test",
+            group="test",
+            name="test",
+            type="int",
+            default=0,
+            applies="test",
+            maps_to="test",
+            description="test",
         )
         with pytest.raises(ValueError, match="expected int"):
             parse_value("abc", schema)
 
     def test_parse_float_rejects_alpha(self):
         schema = ParamSchema(
-            param="test", group="test", name="test", type="float",
-            default=0.0, applies="test", maps_to="test", description="test",
+            param="test",
+            group="test",
+            name="test",
+            type="float",
+            default=0.0,
+            applies="test",
+            maps_to="test",
+            description="test",
         )
         with pytest.raises(ValueError, match="expected float"):
             parse_value("not_a_number", schema)
@@ -243,8 +278,11 @@ class TestBackendMapping:
     def test_flat_key_mapping(self):
         schema = lookup_schema("place.target_density")
         rp = ResolvedParam(
-            param="place.target_density", value=0.65, default=0.8,
-            source="cli", schema=schema,
+            param="place.target_density",
+            value=0.65,
+            default=0.8,
+            source="cli",
+            schema=schema,
         )
         result = build_backend_overrides([rp])
         assert result == {"DreamPlace": {"target_density": 0.65}}
@@ -252,8 +290,11 @@ class TestBackendMapping:
     def test_nested_key_mapping(self):
         schema = lookup_schema("floorplan.core_util")
         rp = ResolvedParam(
-            param="floorplan.core_util", value=0.45, default=0.4,
-            source="cli", schema=schema,
+            param="floorplan.core_util",
+            value=0.45,
+            default=0.4,
+            source="cli",
+            schema=schema,
         )
         result = build_backend_overrides([rp])
         assert result == {"Core": {"Utilitization": 0.45}}
@@ -261,8 +302,11 @@ class TestBackendMapping:
     def test_nested_list_mapping(self):
         schema = lookup_schema("floorplan.core_margin")
         rp = ResolvedParam(
-            param="floorplan.core_margin", value=(3, 3), default=(2, 2),
-            source="cli", schema=schema,
+            param="floorplan.core_margin",
+            value=(3, 3),
+            default=(2, 2),
+            source="cli",
+            schema=schema,
         )
         result = build_backend_overrides([rp])
         assert result == {"Core": {"Margin": (3, 3)}}
@@ -270,8 +314,11 @@ class TestBackendMapping:
     def test_string_key_mapping(self):
         schema = lookup_schema("route.top_layer")
         rp = ResolvedParam(
-            param="route.top_layer", value="MET4", default="MET5",
-            source="cli", schema=schema,
+            param="route.top_layer",
+            value="MET4",
+            default="MET5",
+            source="cli",
+            schema=schema,
         )
         result = build_backend_overrides([rp])
         assert result == {"Top layer": "MET4"}
@@ -285,8 +332,11 @@ class TestBackendMapping:
         schema = lookup_schema("place.target_density")
         original_default = schema.default
         rp = ResolvedParam(
-            param="place.target_density", value=0.65, default=original_default,
-            source="cli", schema=schema,
+            param="place.target_density",
+            value=0.65,
+            default=original_default,
+            source="cli",
+            schema=schema,
         )
         build_backend_overrides([rp])
         assert schema.default == original_default
@@ -294,10 +344,12 @@ class TestBackendMapping:
 
 class TestCliOverrides:
     def test_repeatable_set(self):
-        result, errors = parse_cli_overrides([
-            "place.target_density=0.65",
-            "synth.max_fanout=16",
-        ])
+        result, errors = parse_cli_overrides(
+            [
+                "place.target_density=0.65",
+                "synth.max_fanout=16",
+            ]
+        )
         assert errors == []
         assert result == {"place.target_density": 0.65, "synth.max_fanout": 16}
 

@@ -3,8 +3,8 @@ import os
 import re
 
 from chipcompiler.cli.output import (
-    normalize_step_name,
     normalize_state,
+    normalize_step_name,
 )
 
 
@@ -63,7 +63,9 @@ def get_run_status(flow_data: dict) -> str:
 
 
 ERROR_PATTERNS = re.compile(r"(error|failed|traceback)", re.IGNORECASE)
-_CLEAN_SUMMARY = re.compile(r"^\s*0\s+(error|failed|warning)|^no\s+(error|failed|warning)", re.IGNORECASE)
+_CLEAN_SUMMARY = re.compile(
+    r"^\s*0\s+(error|failed|warning)|^no\s+(error|failed|warning)", re.IGNORECASE
+)
 
 
 def filter_errors(lines: list[str]) -> list[str]:
@@ -179,9 +181,7 @@ def listing_step_order(run_dir: str) -> list[str]:
     flow_data = read_flow_json(run_dir)
     if isinstance(flow_data, dict):
         flow_tokens = [
-            normalize_step_name(s.get("name", ""))
-            for s in _safe_steps(flow_data)
-            if s.get("name")
+            normalize_step_name(s.get("name", "")) for s in _safe_steps(flow_data) if s.get("name")
         ]
         flow_set = set(flow_tokens)
         result = [t for t in flow_tokens if t in step_dirs]

@@ -2,8 +2,7 @@ import re
 import shlex
 
 
-def disclosure_cmd(command: str, project: str | None = None,
-                   run_id: str | None = None) -> str:
+def disclosure_cmd(command: str, project: str | None = None, run_id: str | None = None) -> str:
     parts = [command]
     if project:
         parts.append(f"--project {shlex.quote(project)}")
@@ -78,7 +77,7 @@ def normalize_metric_key(raw_key: str) -> str:
     if raw_key in known:
         return known[raw_key]
     s = raw_key.lower()
-    s = re.sub(r'[\s\[\]μ^]+', '_', s)
-    s = re.sub(r'_+', '_', s)
-    s = s.strip('_')
+    s = re.sub(r"[\s\[\]μ^]+", "_", s)
+    s = re.sub(r"_+", "_", s)
+    s = s.strip("_")
     return s

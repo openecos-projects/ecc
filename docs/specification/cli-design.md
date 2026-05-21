@@ -473,11 +473,12 @@ Success criteria:
 
 ## Compatibility Notes
 
-Legacy top-level invocation still accepts explicit arguments such as
-`--workspace`, `--rtl`, `--design`, `--top`, `--clock`, `--pdk-root`, and
-`--freq`. These flags trigger the legacy parameter-only path. The long-term
-default is project-oriented and configuration-driven through `ecc.toml` and
-subcommands such as `ecc run --project <dir>`.
+The legacy top-level parameter-only invocation with `--workspace` is no longer
+part of the CLI contract. Use `ecc workspace create --directory <dir>` with
+explicit field flags such as `--design`, `--top`, `--clock`, `--freq`, `--pdk`,
+and `--pdk-root` for one-line old-workspace creation. The long-term default is
+project-oriented and configuration-driven through `ecc.toml` and subcommands
+such as `ecc run --project <dir>`.
 
 The CLI should remain API-compatible with existing Python users. Changes needed
 for the CLI should be additive and should not force current Python flow scripts

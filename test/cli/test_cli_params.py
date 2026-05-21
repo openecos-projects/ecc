@@ -81,7 +81,9 @@ class TestParamShow:
 
     def test_param_show_json(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         record = data["records"][0]
@@ -99,7 +101,9 @@ class TestParamShow:
 class TestParamSet:
     def test_param_set_writes_toml(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        rc = cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "set", "place.target_density", "0.65", "--project", project_dir]
+        )
         assert rc == 0
 
         toml_path = os.path.join(project_dir, "ecc.toml")
@@ -113,7 +117,9 @@ class TestParamSet:
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         record = data["records"][0]
@@ -152,7 +158,9 @@ class TestParamUnset:
         assert rc == 0
         capsys.readouterr()  # flush unset output
 
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         record = data["records"][0]
@@ -200,15 +208,20 @@ class TestRunSet:
             return workspace_obj
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
-        monkeypatch.setattr("chipcompiler.engine.EngineFlow", type(
-            "DummyFlow", (), {
-                "__init__": lambda self, workspace: None,
-                "has_init": lambda self: False,
-                "add_step": lambda self, **kw: None,
-                "create_step_workspaces": lambda self: None,
-                "run_steps": lambda self: True,
-            },
-        ))
+        monkeypatch.setattr(
+            "chipcompiler.engine.EngineFlow",
+            type(
+                "DummyFlow",
+                (),
+                {
+                    "__init__": lambda self, workspace: None,
+                    "has_init": lambda self: False,
+                    "add_step": lambda self, **kw: None,
+                    "create_step_workspaces": lambda self: None,
+                    "run_steps": lambda self: True,
+                },
+            ),
+        )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.build_rtl2gds_flow",
             lambda: [("Synthesis", "yosys", "Unstart")],
@@ -222,10 +235,15 @@ class TestRunSet:
             lambda *a, **kw: False,
         )
 
-        rc = cli_main.run([
-            "run", "--project", project_dir,
-            "--set", "place.target_density=0.65",
-        ])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--set",
+                "place.target_density=0.65",
+            ]
+        )
         assert rc == 0
 
         params = capture["kwargs"]["parameters"]
@@ -233,18 +251,28 @@ class TestRunSet:
 
     def test_run_set_rejects_unknown_key(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        rc = cli_main.run([
-            "run", "--project", project_dir,
-            "--set", "bogus.key=5",
-        ])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--set",
+                "bogus.key=5",
+            ]
+        )
         assert rc == 1
 
     def test_run_set_rejects_invalid_value(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        rc = cli_main.run([
-            "run", "--project", project_dir,
-            "--set", "place.target_density=1.5",
-        ])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--set",
+                "place.target_density=1.5",
+            ]
+        )
         assert rc == 1
 
     def test_run_set_does_not_modify_toml(self, tmp_path, monkeypatch, capsys):
@@ -261,15 +289,20 @@ class TestRunSet:
             return workspace_obj
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
-        monkeypatch.setattr("chipcompiler.engine.EngineFlow", type(
-            "DummyFlow", (), {
-                "__init__": lambda self, workspace: None,
-                "has_init": lambda self: False,
-                "add_step": lambda self, **kw: None,
-                "create_step_workspaces": lambda self: None,
-                "run_steps": lambda self: True,
-            },
-        ))
+        monkeypatch.setattr(
+            "chipcompiler.engine.EngineFlow",
+            type(
+                "DummyFlow",
+                (),
+                {
+                    "__init__": lambda self, workspace: None,
+                    "has_init": lambda self: False,
+                    "add_step": lambda self, **kw: None,
+                    "create_step_workspaces": lambda self: None,
+                    "run_steps": lambda self: True,
+                },
+            ),
+        )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.build_rtl2gds_flow",
             lambda: [("Synthesis", "yosys", "Unstart")],
@@ -283,10 +316,15 @@ class TestRunSet:
             lambda *a, **kw: False,
         )
 
-        cli_main.run([
-            "run", "--project", project_dir,
-            "--set", "place.target_density=0.65",
-        ])
+        cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--set",
+                "place.target_density=0.65",
+            ]
+        )
 
         with open(toml_path) as f:
             current_toml = f.read()
@@ -328,7 +366,7 @@ class TestOutputContracts:
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
-        lines = [l for l in out.strip().split("\n") if l.strip()]
+        lines = [line for line in out.strip().split("\n") if line.strip()]
         assert len(lines) == 12
 
 
@@ -422,7 +460,7 @@ class TestTomlValidationErrors:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.bogus]\nkey = 5\n'
+        content += "\n[params.bogus]\nkey = 5\n"
         with open(toml_path, "w") as f:
             f.write(content)
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
@@ -448,7 +486,7 @@ class TestPrettyOutput:
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
-        lines = [l for l in out.strip().split("\n") if l.strip()]
+        lines = [line for line in out.strip().split("\n") if line.strip()]
         assert len(lines) == 12
         assert "\033[" not in out
 
@@ -463,7 +501,9 @@ class TestPrettyOutput:
 
     def test_param_set_default_is_pretty(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        rc = cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "set", "place.target_density", "0.65", "--project", project_dir]
+        )
         assert rc == 0
         out = capsys.readouterr().out
         assert "0.65" in out
@@ -525,7 +565,9 @@ class TestDiffFiltering:
     def test_diff_clean_when_set_to_default(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         schema_default = 0.2
-        cli_main.run(["param", "set", "place.target_density", str(schema_default), "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "place.target_density", str(schema_default), "--project", project_dir]
+        )
         capsys.readouterr()
 
         rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
@@ -546,7 +588,7 @@ class TestScopedTomlEdit:
 
         with open(toml_path) as f:
             after = f.read()
-        design_section = original[original.index("[design]"):original.index("[pdk]")]
+        design_section = original[original.index("[design]") : original.index("[pdk]")]
         assert design_section in after
 
     def test_set_preserves_comments(self, tmp_path, capsys):
@@ -590,7 +632,9 @@ class TestScopedTomlEdit:
         cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == 0.7
@@ -602,7 +646,7 @@ class TestNativeTomlTypeValidation:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.synth]\nmax_fanout = 16.5\n'
+        content += "\n[params.synth]\nmax_fanout = 16.5\n"
         with open(toml_path, "w") as f:
             f.write(content)
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
@@ -613,7 +657,7 @@ class TestNativeTomlTypeValidation:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.synth]\nmax_fanout = true\n'
+        content += "\n[params.synth]\nmax_fanout = true\n"
         with open(toml_path, "w") as f:
             f.write(content)
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
@@ -624,7 +668,7 @@ class TestNativeTomlTypeValidation:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.floorplan]\ncore_margin = [2.5, 3]\n'
+        content += "\n[params.floorplan]\ncore_margin = [2.5, 3]\n"
         with open(toml_path, "w") as f:
             f.write(content)
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
@@ -635,7 +679,7 @@ class TestNativeTomlTypeValidation:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.synth]\nmax_fanout = 16\n'
+        content += "\n[params.synth]\nmax_fanout = 16\n"
         with open(toml_path, "w") as f:
             f.write(content)
         monkeypatch.setattr(
@@ -659,15 +703,20 @@ class TestCliProvenance:
             return workspace_obj
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
-        monkeypatch.setattr("chipcompiler.engine.EngineFlow", type(
-            "DummyFlow", (), {
-                "__init__": lambda self, workspace: None,
-                "has_init": lambda self: False,
-                "add_step": lambda self, **kw: None,
-                "create_step_workspaces": lambda self: None,
-                "run_steps": lambda self: True,
-            },
-        ))
+        monkeypatch.setattr(
+            "chipcompiler.engine.EngineFlow",
+            type(
+                "DummyFlow",
+                (),
+                {
+                    "__init__": lambda self, workspace: None,
+                    "has_init": lambda self: False,
+                    "add_step": lambda self, **kw: None,
+                    "create_step_workspaces": lambda self: None,
+                    "run_steps": lambda self: True,
+                },
+            ),
+        )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.build_rtl2gds_flow",
             lambda: [("Synthesis", "yosys", "Unstart")],
@@ -681,10 +730,15 @@ class TestCliProvenance:
             lambda *a, **kw: False,
         )
 
-        rc = cli_main.run([
-            "run", "--project", project_dir,
-            "--set", "synth.max_fanout=16",
-        ])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--set",
+                "synth.max_fanout=16",
+            ]
+        )
         assert rc == 0
         capsys.readouterr()
 
@@ -709,15 +763,20 @@ class TestCliProvenance:
             return workspace_obj
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
-        monkeypatch.setattr("chipcompiler.engine.EngineFlow", type(
-            "DummyFlow", (), {
-                "__init__": lambda self, workspace: None,
-                "has_init": lambda self: False,
-                "add_step": lambda self, **kw: None,
-                "create_step_workspaces": lambda self: None,
-                "run_steps": lambda self: True,
-            },
-        ))
+        monkeypatch.setattr(
+            "chipcompiler.engine.EngineFlow",
+            type(
+                "DummyFlow",
+                (),
+                {
+                    "__init__": lambda self, workspace: None,
+                    "has_init": lambda self: False,
+                    "add_step": lambda self, **kw: None,
+                    "create_step_workspaces": lambda self: None,
+                    "run_steps": lambda self: True,
+                },
+            ),
+        )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.build_rtl2gds_flow",
             lambda: [("Synthesis", "yosys", "Unstart")],
@@ -732,10 +791,15 @@ class TestCliProvenance:
         )
 
         # Run with --set
-        rc = cli_main.run([
-            "run", "--project", project_dir,
-            "--set", "synth.max_fanout=16",
-        ])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--set",
+                "synth.max_fanout=16",
+            ]
+        )
         assert rc == 0
         capsys.readouterr()
 
@@ -764,15 +828,20 @@ class TestCliProvenance:
             return workspace_obj
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
-        monkeypatch.setattr("chipcompiler.engine.EngineFlow", type(
-            "DummyFlow", (), {
-                "__init__": lambda self, workspace: None,
-                "has_init": lambda self: False,
-                "add_step": lambda self, **kw: None,
-                "create_step_workspaces": lambda self: None,
-                "run_steps": lambda self: True,
-            },
-        ))
+        monkeypatch.setattr(
+            "chipcompiler.engine.EngineFlow",
+            type(
+                "DummyFlow",
+                (),
+                {
+                    "__init__": lambda self, workspace: None,
+                    "has_init": lambda self: False,
+                    "add_step": lambda self, **kw: None,
+                    "create_step_workspaces": lambda self: None,
+                    "run_steps": lambda self: True,
+                },
+            ),
+        )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.build_rtl2gds_flow",
             lambda: [("Synthesis", "yosys", "Unstart")],
@@ -787,10 +856,15 @@ class TestCliProvenance:
         )
 
         # Run with different CLI override
-        rc = cli_main.run([
-            "run", "--project", project_dir,
-            "--set", "synth.max_fanout=32",
-        ])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--set",
+                "synth.max_fanout=32",
+            ]
+        )
         assert rc == 0
         capsys.readouterr()
 
@@ -810,7 +884,7 @@ class TestParamHandlersRejectInvalidToml:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.synth]\nmax_fanout = 16.5\n'
+        content += "\n[params.synth]\nmax_fanout = 16.5\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
@@ -847,7 +921,7 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.place]\n  target_density = 0.65\n'
+        content += "\n[params.place]\n  target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
@@ -864,14 +938,16 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.place]\n  target_density = 0.65\n'
+        content += "\n[params.place]\n  target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
         cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == 0.7
@@ -881,7 +957,7 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.place]\n  target_density = 0.65\n'
+        content += "\n[params.place]\n  target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
@@ -918,7 +994,7 @@ class TestMultilineTomlValues:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n'
+        content += "\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
@@ -936,7 +1012,7 @@ class TestMultilineTomlValues:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n'
+        content += "\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
@@ -952,14 +1028,16 @@ class TestMultilineTomlValues:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n'
+        content += "\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
         cli_main.run(["param", "set", "floorplan.core_margin", "[4, 4]", "--project", project_dir])
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "show", "floorplan.core_margin", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "floorplan.core_margin", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == [4, 4]
@@ -969,7 +1047,7 @@ class TestMultilineTomlValues:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n  core_util = 0.5\n'
+        content += "\n[params.floorplan]\ncore_margin = [\n  2,\n  2,\n]\n  core_util = 0.5\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
@@ -984,6 +1062,7 @@ class TestMultilineTomlValues:
             assert "core_margin" not in line or "core_util" not in line, (
                 f"multiline replacement concatenated keys on one line: {line!r}"
             )
+
     """config --resolved must error on malformed/invalid CLI provenance."""
 
     def _setup_run_dir(self, project_dir):
@@ -1037,7 +1116,9 @@ class TestParamShowDisclosureCommands:
 
     def test_show_json_has_disclosure_commands(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         record = data["records"][0]
@@ -1064,7 +1145,7 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n# [params.place]\n# target_density = 0.65\n'
+        content += "\n# [params.place]\n# target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
@@ -1099,14 +1180,16 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n# [params.place]\n# target_density = 0.65\n'
+        content += "\n# [params.place]\n# target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
         cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == 0.7
@@ -1116,7 +1199,7 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n# [params.place]\n# target_density = 0.65\n'
+        content += "\n# [params.place]\n# target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
@@ -1150,7 +1233,9 @@ class TestListDefaultDiffFiltering:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert len(data["records"]) >= 1
-        margin = next((r for r in data["records"] if r.get("param") == "floorplan.core_margin"), None)
+        margin = next(
+            (r for r in data["records"] if r.get("param") == "floorplan.core_margin"), None
+        )
         assert margin is not None
         assert margin["value"] == [4, 4]
 
@@ -1165,10 +1250,15 @@ class TestZeroFrequencyRejected:
 
     def test_cli_set_zero_rejected(self, tmp_path):
         project_dir = _create_valid_project(tmp_path)
-        rc = cli_main.run([
-            "run", "--project", project_dir,
-            "--set", "design.frequency_mhz=0",
-        ])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--set",
+                "design.frequency_mhz=0",
+            ]
+        )
         assert rc == 1
 
 
@@ -1185,7 +1275,9 @@ class TestDesignFrequencySeeded:
 
     def test_show_shows_design_frequency(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path, freq=200.0)
-        rc = cli_main.run(["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == 200.0
@@ -1194,7 +1286,9 @@ class TestDesignFrequencySeeded:
         project_dir = _create_valid_project(tmp_path, freq=200.0)
         cli_main.run(["param", "set", "design.frequency_mhz", "300", "--project", project_dir])
         capsys.readouterr()
-        rc = cli_main.run(["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"]
+        )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == 300.0
@@ -1220,7 +1314,9 @@ class TestMalformedTomlRejected:
     def test_param_show_rejects_malformed(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         self._write_malformed_toml(project_dir)
-        rc = cli_main.run(["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"]
+        )
         assert rc == 1
 
     def test_param_diff_rejects_malformed(self, tmp_path, capsys):

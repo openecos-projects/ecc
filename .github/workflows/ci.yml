@@ -8,6 +8,9 @@ on:
     paths:
       - 'chipcompiler/**'
       - 'test/**'
+      - 'ecc.spec'
+      - 'packaging/**'
+      - 'hooks/**'
       - 'pyproject.toml'
       - 'BUILD.bazel'
       - '.bazelversion'
@@ -133,3 +136,43 @@ jobs:
           if-no-files-found: ignore
           path: |
             dist/wheel/repaired/*.whl
+
+  build-pyinstaller:
+    name: Build PyInstaller Bundle
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python dependencies
+        uses: ./.github/actions/setup-python-deps
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-version: "1.27.0"
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Build PyInstaller bundle
+        run: bazel build //:build_ecc_cli_bundle
+
+      - name: Smoke test PyInstaller bundle
+        run: |
+          mkdir -p dist/pyinstaller-smoke
+          tar -xf bazel-bin/build_ecc_cli_bundle/ecc.tar -C dist/pyinstaller-smoke
+          dist/pyinstaller-smoke/ecc --help
+          test -x dist/pyinstaller-smoke/_internal/torch/bin/torch_shm_manager
+
+      - name: Upload PyInstaller artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecc-pyinstaller-linux
+          if-no-files-found: ignore
+          path: |
+            bazel-bin/build_ecc_cli_bundle/ecc.tar

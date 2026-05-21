@@ -4,6 +4,13 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+_DIRECT_PARAMETER_KEYS = {
+    "design": "Design",
+    "top": "Top module",
+    "clock": "Clock",
+    "freq": "Frequency max [MHz]",
+}
+
 
 @dataclass
 class WorkspaceCreateRequest:
@@ -41,10 +48,21 @@ def create_request_from_flags(
     filelist: str | None = None,
     rtl: Sequence[str] | None = None,
     param_json: str | None = None,
+    design: str | None = None,
+    top: str | None = None,
+    clock: str | None = None,
+    freq: float | None = None,
 ) -> WorkspaceCreateRequest:
     parameters = {}
     if param_json:
         parameters = _read_json_object(param_json)
+    parameters = _merge_direct_parameters(
+        parameters,
+        design=design,
+        top=top,
+        clock=clock,
+        freq=freq,
+    )
 
     return WorkspaceCreateRequest(
         directory=directory or "",
@@ -68,6 +86,10 @@ def create_request(
     filelist: str | None = None,
     rtl: Sequence[str] | None = None,
     param_json: str | None = None,
+    design: str | None = None,
+    top: str | None = None,
+    clock: str | None = None,
+    freq: float | None = None,
 ) -> WorkspaceCreateRequest:
     field_flags = [
         directory,
@@ -76,10 +98,13 @@ def create_request(
         origin_def,
         origin_verilog,
         filelist,
-        rtl,
         param_json,
+        design,
+        top,
+        clock,
+        freq,
     ]
-    if input_json is not None and any(bool(flag) for flag in field_flags):
+    if input_json is not None and (any(flag is not None for flag in field_flags) or bool(rtl)):
         raise InputError("--input-json and field flags are mutually exclusive")
     if input_json is not None:
         return create_request_from_json(input_json)
@@ -92,6 +117,10 @@ def create_request(
         filelist=filelist,
         rtl=rtl,
         param_json=param_json,
+        design=design,
+        top=top,
+        clock=clock,
+        freq=freq,
     )
 
 
@@ -133,6 +162,15 @@ def _read_json_object(path: str) -> dict:
     if not isinstance(data, dict):
         raise InputError("JSON input must be an object")
     return data
+
+
+def _merge_direct_parameters(parameters: dict, **direct_values) -> dict:
+    overrides = {
+        _DIRECT_PARAMETER_KEYS[name]: value
+        for name, value in direct_values.items()
+        if value is not None
+    }
+    return {**parameters, **overrides}
 
 
 def _normalize_rtl_list(rtl_list) -> list[str]:
@@ -187,8 +225,7 @@ def _resolve_request_paths(data: dict, base_dir: str) -> None:
     if not rtl_list:
         return
     data["rtl_list"] = [
-        _resolve_request_path(path, base_dir)
-        for path in _normalize_rtl_list(rtl_list)
+        _resolve_request_path(path, base_dir) for path in _normalize_rtl_list(rtl_list)
     ]
 
 

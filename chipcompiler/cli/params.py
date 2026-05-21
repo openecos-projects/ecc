@@ -167,7 +167,16 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
 )
 
 _REGISTRY_INDEX: dict[str, ParamSchema] = {s.param: s for s in PARAM_REGISTRY}
-_REQUIRED_FIELDS = ("param", "group", "name", "type", "default", "applies", "maps_to", "description")
+_REQUIRED_FIELDS = (
+    "param",
+    "group",
+    "name",
+    "type",
+    "default",
+    "applies",
+    "maps_to",
+    "description",
+)
 
 
 def lookup_schema(key: str) -> ParamSchema | None:
@@ -191,12 +200,15 @@ def is_known_key(key: str) -> bool:
 
 
 def validate_schema_record(schema: ParamSchema) -> list[str]:
-    return [f"missing required field: {f}" for f in _REQUIRED_FIELDS if not getattr(schema, f, None)]
+    return [
+        f"missing required field: {f}" for f in _REQUIRED_FIELDS if not getattr(schema, f, None)
+    ]
 
 
 # ---------------------------------------------------------------------------
 # Value parsing
 # ---------------------------------------------------------------------------
+
 
 def parse_value(raw: str, schema: ParamSchema) -> object:
     ptype = schema.type
@@ -204,14 +216,14 @@ def parse_value(raw: str, schema: ParamSchema) -> object:
     if ptype == "int":
         try:
             return int(raw)
-        except ValueError:
-            raise ValueError(f"expected int for {schema.param}, got '{raw}'")
+        except ValueError as exc:
+            raise ValueError(f"expected int for {schema.param}, got '{raw}'") from exc
 
     if ptype == "float":
         try:
             return float(raw)
-        except ValueError:
-            raise ValueError(f"expected float for {schema.param}, got '{raw}'")
+        except ValueError as exc:
+            raise ValueError(f"expected float for {schema.param}, got '{raw}'") from exc
 
     if ptype == "bool":
         low = raw.lower()
@@ -232,13 +244,13 @@ def parse_value(raw: str, schema: ParamSchema) -> object:
         if ptype == "list[int]":
             try:
                 return [int(p) for p in parts if p]
-            except ValueError:
-                raise ValueError(f"expected list[int] for {schema.param}, got '{raw}'")
+            except ValueError as exc:
+                raise ValueError(f"expected list[int] for {schema.param}, got '{raw}'") from exc
         if ptype == "list[float]":
             try:
                 return [float(p) for p in parts if p]
-            except ValueError:
-                raise ValueError(f"expected list[float] for {schema.param}, got '{raw}'")
+            except ValueError as exc:
+                raise ValueError(f"expected list[float] for {schema.param}, got '{raw}'") from exc
         return [p for p in parts if p]
 
     raise ValueError(f"unsupported type '{ptype}' for {schema.param}")
@@ -249,14 +261,15 @@ def validate_value(value: object, schema: ParamSchema) -> list[str]:
 
     if schema.range is not None:
         lo, hi = schema.range
-        if isinstance(value, (int, float)):
-            if value < lo or value > hi:
-                errors.append(f"value {value} out of range [{lo}, {hi}] for {schema.param}")
+        if isinstance(value, (int, float)) and (value < lo or value > hi):
+            errors.append(f"value {value} out of range [{lo}, {hi}] for {schema.param}")
 
     if schema.choices is not None:
         str_val = str(value)
         if str_val not in schema.choices:
-            errors.append(f"value '{str_val}' not in allowed choices {schema.choices} for {schema.param}")
+            errors.append(
+                f"value '{str_val}' not in allowed choices {schema.choices} for {schema.param}"
+            )
 
     return errors
 
@@ -264,6 +277,7 @@ def validate_value(value: object, schema: ParamSchema) -> list[str]:
 # ---------------------------------------------------------------------------
 # Source-aware resolution
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ResolvedParam:
@@ -351,10 +365,15 @@ def resolve_parameters(
             val_errors = validate_value(value, schema)
             if val_errors:
                 errors.extend(val_errors)
-            resolved.append(ResolvedParam(
-                param=key, value=value, default=schema.default,
-                source="cli", schema=schema,
-            ))
+            resolved.append(
+                ResolvedParam(
+                    param=key,
+                    value=value,
+                    default=schema.default,
+                    source="cli",
+                    schema=schema,
+                )
+            )
         elif key in toml_overrides:
             value = toml_overrides[key]
             value, coerce_err = _validate_toml_type(value, schema)
@@ -363,15 +382,25 @@ def resolve_parameters(
             val_errors = validate_value(value, schema)
             if val_errors:
                 errors.extend(val_errors)
-            resolved.append(ResolvedParam(
-                param=key, value=value, default=schema.default,
-                source="ecc.toml", schema=schema,
-            ))
+            resolved.append(
+                ResolvedParam(
+                    param=key,
+                    value=value,
+                    default=schema.default,
+                    source="ecc.toml",
+                    schema=schema,
+                )
+            )
         else:
-            resolved.append(ResolvedParam(
-                param=key, value=schema.default, default=schema.default,
-                source="default", schema=schema,
-            ))
+            resolved.append(
+                ResolvedParam(
+                    param=key,
+                    value=schema.default,
+                    default=schema.default,
+                    source="default",
+                    schema=schema,
+                )
+            )
 
     return resolved, errors
 
@@ -379,6 +408,7 @@ def resolve_parameters(
 # ---------------------------------------------------------------------------
 # Semantic-to-backend mapping
 # ---------------------------------------------------------------------------
+
 
 def build_backend_overrides(resolved: list[ResolvedParam]) -> dict:
     overrides: dict = {}

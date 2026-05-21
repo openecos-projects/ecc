@@ -3,7 +3,6 @@ from collections.abc import Callable
 from contextlib import redirect_stdout
 from typing import Annotated
 
-import click
 import typer
 
 from chipcompiler.cli.workspace_request import InputError, create_request
@@ -29,22 +28,6 @@ workspace_app = typer.Typer(
 )
 
 
-def run_workspace_app(argv: list[str]) -> int:
-    command = typer.main.get_command(workspace_app)
-    try:
-        result = command.main(
-            args=argv,
-            prog_name="ecc workspace",
-            standalone_mode=False,
-        )
-    except click.exceptions.Exit as exc:
-        return int(exc.exit_code or 0)
-    except click.ClickException as exc:
-        exc.show()
-        return int(exc.exit_code or 1)
-    return int(result or 0)
-
-
 def _finish(result: dict, json_output: bool) -> None:
     render_workspace_response(result, json_output)
     raise typer.Exit(code=exit_code_for_response(result["response"]))
@@ -68,6 +51,10 @@ def create_cmd(
     filelist: Annotated[str | None, typer.Option("--filelist")] = None,
     rtl: Annotated[list[str] | None, typer.Option("--rtl")] = None,
     param_json: Annotated[str | None, typer.Option("--param-json")] = None,
+    design: Annotated[str | None, typer.Option("--design")] = None,
+    top: Annotated[str | None, typer.Option("--top")] = None,
+    clock: Annotated[str | None, typer.Option("--clock")] = None,
+    freq: Annotated[float | None, typer.Option("--freq")] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     try:
@@ -81,6 +68,10 @@ def create_cmd(
             filelist=filelist,
             rtl=rtl or [],
             param_json=param_json,
+            design=design,
+            top=top,
+            clock=clock,
+            freq=freq,
         )
     except InputError as exc:
         result = workspace_response("create_workspace", exc.response, message=[str(exc)])

@@ -2,7 +2,7 @@ import enum
 import re
 import sys
 
-from chipcompiler.cli.pretty import BOLD, DIM, RED, YELLOW, BLUE, CYAN, RESET, style
+from chipcompiler.cli.pretty import BLUE, BOLD, CYAN, DIM, RED, RESET, YELLOW, style
 from chipcompiler.cli.render import _plain_value
 
 
@@ -77,9 +77,15 @@ def annotate_log_lines(lines: list[str]) -> list[LogLine]:
         kind = classify_line(text, in_traceback)
         if kind == LineKind.TRACEBACK and text.strip() == _TRACEBACK_HEADER:
             in_traceback = True
-        elif in_traceback and kind == LineKind.ERROR:
-            in_traceback = False
-        elif in_traceback and kind == LineKind.PLAIN and not text.startswith("  ") and not text.startswith("\t") and text.strip():
+        elif (
+            in_traceback
+            and kind == LineKind.ERROR
+            or in_traceback
+            and kind == LineKind.PLAIN
+            and not text.startswith("  ")
+            and not text.startswith("\t")
+            and text.strip()
+        ):
             in_traceback = False
         result.append(LogLine(line_no=i + 1, kind=kind, text=text))
     return result
@@ -94,14 +100,16 @@ def build_log_records(
     annotated = annotate_log_lines(lines)
     records = []
     for ll in annotated:
-        records.append({
-            "step": step,
-            "source": source,
-            "line_no": ll.line_no,
-            "kind": ll.kind.value,
-            "line": ll.text,
-            "inspect_cmd": inspect_cmd,
-        })
+        records.append(
+            {
+                "step": step,
+                "source": source,
+                "line_no": ll.line_no,
+                "kind": ll.kind.value,
+                "line": ll.text,
+                "inspect_cmd": inspect_cmd,
+            }
+        )
     return records
 
 
@@ -191,6 +199,7 @@ def tail_lines_for_log(path: str, max_lines: int = 10) -> list[str]:
         return []
 
     from chipcompiler.cli.progress import sanitize_log_line
+
     sanitized = [sanitize_log_line(line) for line in raw]
     non_empty = [line for line in sanitized if line]
     return non_empty[-max_lines:]

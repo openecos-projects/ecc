@@ -3,8 +3,6 @@ import os
 import re
 from types import SimpleNamespace
 
-import pytest
-
 from chipcompiler.cli import main as cli_main
 
 # ---------------------------------------------------------------------------
@@ -40,6 +38,7 @@ class DummyFlow:
 
     def run_step(self, workspace_step):
         from chipcompiler.data import StateEnum
+
         self.run_called = True
         return StateEnum.Success if self.run_steps_value else StateEnum.Imcomplete
 
@@ -116,20 +115,20 @@ def _create_flow_json(run_dir, steps=None):
 
 
 def _has_disclosure(line):
-    return bool(re.search(r'ecc (?:check|run|status|log|metrics|artifacts|config|diagnose|param)\b', line))
+    return bool(
+        re.search(r"ecc (?:check|run|status|log|metrics|artifacts|config|diagnose|param)\b", line)
+    )
 
 
 def _is_structural_line(line):
     s = line.strip()
     if not s:
         return True
-    if re.match(r'^\[.+\]$', s):
+    if re.match(r"^\[.+\]$", s):
         return True
-    if s.startswith('steps:'):
+    if s.startswith("steps:"):
         return True
-    if re.match(r'^\s+\w+:$', s):
-        return True
-    return False
+    return bool(re.match(r"^\s+\w+:$", s))
 
 
 # ===========================================================================
@@ -326,9 +325,7 @@ class TestRun:
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
-        assert capture["create_kwargs"]["directory"] == os.path.join(
-            project_dir, "runs", "default"
-        )
+        assert capture["create_kwargs"]["directory"] == os.path.join(project_dir, "runs", "default")
 
     def test_run_adds_flow_steps_when_no_init(self, tmp_path, monkeypatch):
         project_dir = _create_valid_project(tmp_path)
@@ -486,10 +483,13 @@ class TestStatus:
     def test_status_normalizes_step_names(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:18"},
-            {"name": "place", "tool": "dreamplace", "state": "Success", "runtime": "0:01:12"},
-        ])
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:18"},
+                {"name": "place", "tool": "dreamplace", "state": "Success", "runtime": "0:01:12"},
+            ],
+        )
 
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
@@ -550,9 +550,7 @@ class TestLog:
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
             f.write("Info: running\nError: bad thing\n")
 
-        rc = cli_main.run(
-            ["log", "synthesis", "--errors", "--jsonl", "--project", project_dir]
-        )
+        rc = cli_main.run(["log", "synthesis", "--errors", "--jsonl", "--project", project_dir])
         assert rc == 0
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
         assert any("Error" in obj["line"] for obj in objects)
@@ -568,7 +566,7 @@ class TestLog:
         rc = cli_main.run(["log", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert 'ecc log' in out
+        assert "ecc log" in out
 
     def test_log_no_step_discovers_step_logs(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -661,9 +659,7 @@ class TestMetrics:
         with open(os.path.join(analysis_dir, "Synthesis_metrics.json"), "w") as f:
             json.dump({"Cell number": 312}, f)
 
-        rc = cli_main.run(
-            ["metrics", "synthesis", "--json", "--project", project_dir]
-        )
+        rc = cli_main.run(["metrics", "synthesis", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
@@ -679,9 +675,7 @@ class TestMetrics:
         with open(os.path.join(analysis_dir, "Synthesis_metrics.json"), "w") as f:
             json.dump({"Cell number": 312, "Cell area": 1840.2}, f)
 
-        rc = cli_main.run(
-            ["metrics", "synthesis", "--jsonl", "--project", project_dir]
-        )
+        rc = cli_main.run(["metrics", "synthesis", "--jsonl", "--project", project_dir])
         assert rc == 0
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
         assert len(objects) == 2
@@ -806,9 +800,7 @@ class TestDisclosureCommands:
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
             f.write("Error: something failed\n")
 
-        rc = cli_main.run(
-            ["log", "synthesis", "--project", project_dir]
-        )
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "ecc log synthesis" in out
@@ -826,9 +818,12 @@ class TestDisclosureCommands:
     def test_output_lowercase_tokens(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:01"},
-        ])
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:01"},
+            ],
+        )
 
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
@@ -846,9 +841,7 @@ class TestPackaging:
     def test_ecc_console_script_in_pyproject(self):
         import tomllib
 
-        project_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(__file__))
-        )
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         pyproject = os.path.join(project_root, "pyproject.toml")
         with open(pyproject, "rb") as f:
             data = tomllib.load(f)
@@ -869,10 +862,11 @@ class TestEdgeCases:
 class TestCheckFilelistValidation:
     def test_check_fails_filelist_with_missing_sources(self, tmp_path, monkeypatch):
         from chipcompiler.cli.config import _validate_pdk_contents
-        monkeypatch.setattr(_validate_pdk_contents, "__wrapped__",
-                            lambda *a, **k: None, raising=False)
-        monkeypatch.setattr("chipcompiler.cli.config._validate_pdk_contents",
-                            lambda *a, **k: None)
+
+        monkeypatch.setattr(
+            _validate_pdk_contents, "__wrapped__", lambda *a, **k: None, raising=False
+        )
+        monkeypatch.setattr("chipcompiler.cli.config._validate_pdk_contents", lambda *a, **k: None)
 
         project_dir = tmp_path / "flproj"
         project_dir.mkdir()
@@ -905,9 +899,7 @@ run = "default"
         assert rc == 1
 
     def test_check_fails_invalid_filelist_directive(self, tmp_path, monkeypatch):
-        from chipcompiler.cli.config import _validate_pdk_contents
-        monkeypatch.setattr("chipcompiler.cli.config._validate_pdk_contents",
-                            lambda *a, **k: None)
+        monkeypatch.setattr("chipcompiler.cli.config._validate_pdk_contents", lambda *a, **k: None)
 
         project_dir = tmp_path / "flproj2"
         project_dir.mkdir()
@@ -941,8 +933,10 @@ run = "default"
 
 class TestRendererCmdStripping:
     def test_text_strips_cmd_suffix(self):
-        from chipcompiler.cli.render import render_text
         from io import StringIO
+
+        from chipcompiler.cli.render import render_text
+
         buf = StringIO()
         render_text(({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},), file=buf)
         line = buf.getvalue().strip()
@@ -952,9 +946,11 @@ class TestRendererCmdStripping:
         assert "log_cmd=" not in line
 
     def test_json_preserves_cmd_keys(self):
+        from io import StringIO
+
         from chipcompiler.cli.render import render_json
         from chipcompiler.cli.types import CommandResult
-        from io import StringIO
+
         buf = StringIO()
         result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))
         render_json(result, file=buf)
@@ -963,9 +959,11 @@ class TestRendererCmdStripping:
         assert "log_cmd" in data["records"][0]
 
     def test_jsonl_preserves_cmd_keys(self):
+        from io import StringIO
+
         from chipcompiler.cli.render import render_jsonl
         from chipcompiler.cli.types import CommandResult
-        from io import StringIO
+
         buf = StringIO()
         result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))
         render_jsonl(result, file=buf)
@@ -1086,11 +1084,7 @@ class TestLogTracebackComplete:
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
-            f.write(
-                "Traceback (most recent call last):\n"
-                '  File "a.py", line 1\n'
-                "ValueError: fail\n"
-            )
+            f.write('Traceback (most recent call last):\n  File "a.py", line 1\nValueError: fail\n')
 
         rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
         assert rc == 0
@@ -1106,9 +1100,7 @@ class TestLogTracebackComplete:
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
             f.write(
-                "Traceback (most recent call last):\n"
-                '  File "a.py", line 1\n'
-                "KeyboardInterrupt\n"
+                'Traceback (most recent call last):\n  File "a.py", line 1\nKeyboardInterrupt\n'
             )
 
         rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
@@ -1134,7 +1126,7 @@ class TestLogPlainMode:
         rc = cli_main.run(["log", "synthesis", "--plain", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        lines = [l for l in out.strip().split("\n") if l.strip()]
+        lines = [line for line in out.strip().split("\n") if line.strip()]
         assert len(lines) == 2
         assert "step=synthesis" in lines[0]
         assert "line_no=1" in lines[0]
@@ -1167,10 +1159,10 @@ class TestLogPlainMode:
         assert rc == 0
         out = capsys.readouterr().out
         assert "\x1b[" not in out
-        lines = [l for l in out.strip().split("\n") if l.strip()]
+        lines = [line for line in out.strip().split("\n") if line.strip()]
         assert len(lines) == 1
         assert 'line="key=value' in lines[0]
-        assert 'inspect_cmd=' in lines[0]
+        assert "inspect_cmd=" in lines[0]
 
 
 class TestLogJsonlMode:
@@ -1278,7 +1270,9 @@ class TestLogListingMode:
 
         rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
         assert rc == 0
-        objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        objects = [
+            json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()
+        ]
         assert any("step" in o for o in objects)
 
     def test_listing_plain_step_logs(self, tmp_path, capsys):
@@ -1508,8 +1502,9 @@ class TestLogErrorsDeprecation:
     """AC-8: --errors is deprecated with visible notice."""
 
     def test_errors_hidden_from_help(self, tmp_path, capsys):
-        with pytest.raises(SystemExit):
-            cli_main.run(["log", "--help"])
+        rc = cli_main.run(["log", "--help"])
+        assert rc == 0
+        assert "--errors" not in capsys.readouterr().out
 
     def test_errors_emits_deprecation_warning(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -1532,9 +1527,7 @@ class TestLogErrorsDeprecation:
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
             f.write("INFO: running\nError: bad\n")
 
-        rc = cli_main.run(
-            ["log", "synthesis", "--errors", "--jsonl", "--project", project_dir]
-        )
+        rc = cli_main.run(["log", "synthesis", "--errors", "--jsonl", "--project", project_dir])
         assert rc == 0
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
         assert len(objects) == 2
@@ -1597,14 +1590,20 @@ class TestLogListingFlowOrder:
     def _setup_steps_with_flow(self, tmp_path, step_names, extra_dirs=None):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, steps=[
-            {"name": n, "tool": "ecc", "state": "Success"} for n in step_names
-        ])
+        _create_flow_json(
+            run_dir, steps=[{"name": n, "tool": "ecc", "state": "Success"} for n in step_names]
+        )
         all_dirs = list(step_names) + (extra_dirs or [])
         tool_map = {
-            "Synthesis": "yosys", "Floorplan": "ecc", "fixFanout": "ecc",
-            "place": "ecc", "CTS": "ecc", "legalization": "ecc",
-            "route": "ecc", "drc": "ecc", "filler": "ecc",
+            "Synthesis": "yosys",
+            "Floorplan": "ecc",
+            "fixFanout": "ecc",
+            "place": "ecc",
+            "CTS": "ecc",
+            "legalization": "ecc",
+            "route": "ecc",
+            "drc": "ecc",
+            "filler": "ecc",
         }
         for name in all_dirs:
             tool = tool_map.get(name, "ecc")
@@ -1621,7 +1620,9 @@ class TestLogListingFlowOrder:
         )
         rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
         assert rc == 0
-        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        records = [
+            json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()
+        ]
         steps = [r.get("step") for r in records if "step" in r]
         assert steps == ["synthesis", "floorplan", "cts"]
 
@@ -1637,7 +1638,9 @@ class TestLogListingFlowOrder:
             f.write("run-level log\n")
         rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
         assert rc == 0
-        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        records = [
+            json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()
+        ]
         run_indices = [i for i, r in enumerate(records) if "log" in r and "step" not in r]
         step_indices = [i for i, r in enumerate(records) if "step" in r]
         assert run_indices, "expected at least one run-level record"
@@ -1652,7 +1655,9 @@ class TestLogListingFlowOrder:
         )
         rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
         assert rc == 0
-        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        records = [
+            json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()
+        ]
         steps = [r.get("step") for r in records if "step" in r]
         synth_idx = steps.index("synthesis")
         cts_idx = steps.index("cts")
@@ -1668,7 +1673,9 @@ class TestLogListingFlowOrder:
         )
         rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
         assert rc == 0
-        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        records = [
+            json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()
+        ]
         steps = [r.get("step") for r in records if "step" in r]
         extras = [s for s in steps if s != "synthesis"]
         assert extras == sorted(extras)
@@ -1684,7 +1691,9 @@ class TestLogListingFlowOrder:
                 f.write("content\n")
         rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
         assert rc == 0
-        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        records = [
+            json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()
+        ]
         steps = [r.get("step") for r in records if "step" in r]
         assert steps == sorted(steps)
 
@@ -1702,7 +1711,9 @@ class TestLogListingFlowOrder:
                 f.write("content\n")
         rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
         assert rc == 0
-        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        records = [
+            json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()
+        ]
         steps = [r.get("step") for r in records if "step" in r]
         assert steps == sorted(steps)
 
@@ -1738,8 +1749,14 @@ class TestLogListingTailPreview:
         assert rc == 0
         out = capsys.readouterr().out
         output_lines = out.split("\n")
-        tail_header_idx = next(i for i, l in enumerate(output_lines) if l.strip() == "tail:")
-        tail_content = [l for l in output_lines[tail_header_idx + 1:] if l.startswith("      ") and "inspect:" not in l]
+        tail_header_idx = next(
+            index for index, line in enumerate(output_lines) if line.strip() == "tail:"
+        )
+        tail_content = [
+            line
+            for line in output_lines[tail_header_idx + 1 :]
+            if line.startswith("      ") and "inspect:" not in line
+        ]
         assert len(tail_content) == 10
 
     def test_empty_log_no_tail_block(self, tmp_path, capsys):
@@ -1809,7 +1826,9 @@ class TestLogListingMachineModeNoTail:
             f.write("line 1\nline 2\n")
         rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
         assert rc == 0
-        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        records = [
+            json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()
+        ]
         for rec in records:
             assert "tail" not in rec
 
@@ -1855,7 +1874,9 @@ class TestLogStepUnchanged:
             f.write("a\nb\n")
         rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
         assert rc == 0
-        records = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()]
+        records = [
+            json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n") if ln.strip()
+        ]
         assert len(records) == 2
         for rec in records:
             assert "tail" not in rec
@@ -1884,4 +1905,3 @@ class TestLogListingUnreadable:
             assert "Traceback" not in out
         finally:
             os.chmod(log_path, 0o644)
-

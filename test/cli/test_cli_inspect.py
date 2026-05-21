@@ -1,10 +1,7 @@
 import json
 import os
 
-import pytest
-
 from chipcompiler.cli import main as cli_main
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -140,9 +137,7 @@ class TestRunIdResolution:
         run_dir = tmp_path / "ecc-run-004"
         _create_flow_json(str(run_dir))
 
-        rc = cli_main.run(
-            ["status", "--run-id", str(run_dir), "--project", project_dir]
-        )
+        rc = cli_main.run(["status", "--run-id", str(run_dir), "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "run:" in out
@@ -159,8 +154,13 @@ class TestRunIdResolution:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "run_005")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "Synthesis", "yosys", subdirs=["log"],
-                         files={"log/synthesis.log": "Error: something failed\n"})
+        _create_step_dir(
+            run_dir,
+            "Synthesis",
+            "yosys",
+            subdirs=["log"],
+            files={"log/synthesis.log": "Error: something failed\n"},
+        )
 
         rc = cli_main.run(
             ["log", "synthesis", "--errors", "--run-id", "run_005", "--project", project_dir]
@@ -172,15 +172,21 @@ class TestRunIdResolution:
     def test_metrics_preserves_run_id(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "run_006")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["analysis"],
-                         files={"analysis/CTS_metrics.json": json.dumps({"Frequency [MHz]": 450.0})})
-
-        rc = cli_main.run(
-            ["metrics", "cts", "--run-id", "run_006", "--project", project_dir]
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
         )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["analysis"],
+            files={"analysis/CTS_metrics.json": json.dumps({"Frequency [MHz]": 450.0})},
+        )
+
+        rc = cli_main.run(["metrics", "cts", "--run-id", "run_006", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "--run-id run_006" in out
@@ -196,9 +202,13 @@ class TestArtifacts:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output", "log"],
-                         files={"output/design.def": "def content",
-                                "log/cts.log": "log content"})
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["output", "log"],
+            files={"output/design.def": "def content", "log/cts.log": "log content"},
+        )
 
         rc = cli_main.run(["artifacts", "--project", project_dir])
         assert rc == 0
@@ -211,8 +221,9 @@ class TestArtifacts:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
-                         files={"output/design.def": "def content"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
+        )
 
         rc = cli_main.run(["artifacts", "cts", "--project", project_dir])
         assert rc == 0
@@ -245,8 +256,9 @@ class TestArtifacts:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
-                         files={"output/design.def": "def content"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
+        )
 
         rc = cli_main.run(["artifacts", "--json", "--project", project_dir])
         assert rc == 0
@@ -259,9 +271,13 @@ class TestArtifacts:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output", "log"],
-                         files={"output/design.def": "def content",
-                                "log/cts.log": "log content"})
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["output", "log"],
+            files={"output/design.def": "def content", "log/cts.log": "log content"},
+        )
 
         rc = cli_main.run(["artifacts", "--jsonl", "--project", project_dir])
         assert rc == 0
@@ -273,8 +289,9 @@ class TestArtifacts:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "sweeps", "sweep_001", "run_004")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
-                         files={"output/design.def": "def content"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
+        )
 
         rc = cli_main.run(
             ["artifacts", "--run-id", "sweeps/sweep_001/run_004", "--project", project_dir]
@@ -287,13 +304,19 @@ class TestArtifacts:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["config", "output", "report", "log", "analysis"],
-                         files={"config/cts_config.json": "{}",
-                                "output/design.def": "def",
-                                "report/timing.rpt": "rpt",
-                                "log/cts.log": "log",
-                                "analysis/CTS_metrics.json": "{}"})
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["config", "output", "report", "log", "analysis"],
+            files={
+                "config/cts_config.json": "{}",
+                "output/design.def": "def",
+                "report/timing.rpt": "rpt",
+                "log/cts.log": "log",
+                "analysis/CTS_metrics.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["artifacts", "cts", "--json", "--project", project_dir])
         assert rc == 0
@@ -372,8 +395,15 @@ class TestConfigResolved:
         project_dir = _create_valid_project(tmp_path)
 
         rc = cli_main.run(
-            ["config", "--resolved", "--run-id", "sweeps/sweep_001/run_004",
-             "--json", "--project", project_dir]
+            [
+                "config",
+                "--resolved",
+                "--run-id",
+                "sweeps/sweep_001/run_004",
+                "--json",
+                "--project",
+                project_dir,
+            ]
         )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
@@ -423,8 +453,9 @@ class TestConfigResolved:
     def test_config_requires_resolved(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
 
-        with pytest.raises(SystemExit):
-            cli_main.run(["config", "--project", project_dir])
+        rc = cli_main.run(["config", "--project", project_dir])
+        assert rc != 0
+        assert "--resolved" in capsys.readouterr().err
 
 
 # ===========================================================================
@@ -438,9 +469,13 @@ class TestConfigStepResolved:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["config"],
-                         files={"config/cts_default_config.json": "{}",
-                                "config/run.tcl": "echo hi"})
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["config"],
+            files={"config/cts_default_config.json": "{}", "config/run.tcl": "echo hi"},
+        )
 
         rc = cli_main.run(["config", "cts", "--resolved", "--project", project_dir])
         assert rc == 0
@@ -454,8 +489,9 @@ class TestConfigStepResolved:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["config"],
-                         files={"config/cts_config.json": "{}"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["config"], files={"config/cts_config.json": "{}"}
+        )
 
         rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
@@ -512,12 +548,19 @@ class TestDiagnose:
     def test_diagnose_failed_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log", "analysis"],
-                         files={"log/cts.log": "Error: failed\n",
-                                "analysis/CTS_metrics.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "analysis"],
+            files={"log/cts.log": "Error: failed\n", "analysis/CTS_metrics.json": "{}"},
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 1
@@ -528,14 +571,24 @@ class TestDiagnose:
     def test_diagnose_ongoing_step_warning(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Ongoing", "runtime": ""},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "running\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Ongoing", "runtime": ""},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "running\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 0
@@ -546,14 +599,24 @@ class TestDiagnose:
     def test_diagnose_unstarted_step_info(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Unstart", "runtime": ""},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Unstart", "runtime": ""},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 0
@@ -564,14 +627,24 @@ class TestDiagnose:
     def test_diagnose_log_errors_count(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "Error: bad thing\nError: other bad\nok line\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "Error: bad thing\nError: other bad\nok line\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 1
@@ -582,13 +655,23 @@ class TestDiagnose:
     def test_diagnose_missing_metrics_warning(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log", "output", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "config"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 0
@@ -599,15 +682,26 @@ class TestDiagnose:
     def test_diagnose_missing_artifacts_warning(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log", "analysis", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "analysis", "config"],
+            files={
+                "log/cts.log": "ok\n",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
         # Remove investigation role dirs to trigger missing_artifacts
         import shutil
+
         shutil.rmtree(os.path.join(run_dir, "CTS_ecc", "analysis"))
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
@@ -619,13 +713,23 @@ class TestDiagnose:
     def test_diagnose_config_unavailable_info(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log", "output", "analysis"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 0
@@ -636,15 +740,24 @@ class TestDiagnose:
     def test_diagnose_clean_run(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": json.dumps({"Frequency [MHz]": 450.0}),
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": json.dumps({"Frequency [MHz]": 450.0}),
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 0
@@ -654,17 +767,28 @@ class TestDiagnose:
     def test_diagnose_step_filter(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "Synthesis", "yosys", subdirs=["output", "log", "analysis", "config"],
-                         files={"output/synth.v": "verilog",
-                                "log/synthesis.log": "ok\n",
-                                "analysis/Synthesis_metrics.json": "{}",
-                                "config/config.json": "{}"})
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log"],
-                         files={"log/cts.log": "Error: failed\n"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+                {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "Synthesis",
+            "yosys",
+            subdirs=["output", "log", "analysis", "config"],
+            files={
+                "output/synth.v": "verilog",
+                "log/synthesis.log": "ok\n",
+                "analysis/Synthesis_metrics.json": "{}",
+                "config/config.json": "{}",
+            },
+        )
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["log"], files={"log/cts.log": "Error: failed\n"}
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 1
@@ -686,11 +810,15 @@ class TestDiagnose:
     def test_diagnose_no_repair_suggestions(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log"],
-                         files={"log/cts.log": "Error: failed\n"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["log"], files={"log/cts.log": "Error: failed\n"}
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 1
@@ -702,11 +830,15 @@ class TestDiagnose:
     def test_diagnose_json(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log"],
-                         files={"log/cts.log": "Error: failed\n"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["log"], files={"log/cts.log": "Error: failed\n"}
+        )
 
         rc = cli_main.run(["diagnose", "--json", "--project", project_dir])
         assert rc == 1
@@ -717,11 +849,15 @@ class TestDiagnose:
     def test_diagnose_jsonl(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log"],
-                         files={"log/cts.log": "Error: failed\n"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["log"], files={"log/cts.log": "Error: failed\n"}
+        )
 
         rc = cli_main.run(["diagnose", "--jsonl", "--project", project_dir])
         assert rc == 1
@@ -731,19 +867,26 @@ class TestDiagnose:
     def test_diagnose_with_run_id(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "run_007")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
-
-        rc = cli_main.run(
-            ["diagnose", "--run-id", "run_007", "--project", project_dir]
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
         )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
+
+        rc = cli_main.run(["diagnose", "--run-id", "run_007", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "clean" in out
@@ -758,11 +901,15 @@ class TestDiagnoseExitCodes:
     def test_error_issue_returns_nonzero(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log"],
-                         files={"log/cts.log": "Error: failed\n"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["log"], files={"log/cts.log": "Error: failed\n"}
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 1
@@ -770,15 +917,24 @@ class TestDiagnoseExitCodes:
     def test_warning_only_returns_zero(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Ongoing", "runtime": ""},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "running\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Ongoing", "runtime": ""},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "running\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 0
@@ -786,15 +942,24 @@ class TestDiagnoseExitCodes:
     def test_clean_run_returns_zero(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 0
@@ -802,9 +967,12 @@ class TestDiagnoseExitCodes:
     def test_failed_step_not_zero(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
-        ])
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+            ],
+        )
         _create_step_dir(run_dir, "CTS", "ecc")
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
@@ -821,8 +989,9 @@ class TestDisclosure:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
-                         files={"output/design.def": "def content"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
+        )
 
         rc = cli_main.run(["artifacts", "cts", "--project", project_dir])
         assert rc == 0
@@ -849,15 +1018,17 @@ class TestDisclosure:
     def test_phase2_disclosure_preserves_run_id(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "run_008")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["log"],
-                         files={"log/cts.log": "Error: fail\n"})
-
-        rc = cli_main.run(
-            ["diagnose", "--run-id", "run_008", "--project", project_dir]
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+            ],
         )
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["log"], files={"log/cts.log": "Error: fail\n"}
+        )
+
+        rc = cli_main.run(["diagnose", "--run-id", "run_008", "--project", project_dir])
         assert rc == 1
         out = capsys.readouterr().out
         assert "--run-id run_008" in out
@@ -866,8 +1037,9 @@ class TestDisclosure:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
-                         files={"output/design.def": "def content"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
+        )
 
         rc = cli_main.run(["artifacts", "cts", "--project", project_dir])
         assert rc == 0
@@ -885,19 +1057,16 @@ class TestReadOnly:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
-                         files={"output/design.def": "original"})
-
-        before_mtime = os.path.getmtime(
-            os.path.join(run_dir, "CTS_ecc", "output", "design.def")
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "original"}
         )
+
+        before_mtime = os.path.getmtime(os.path.join(run_dir, "CTS_ecc", "output", "design.def"))
 
         rc = cli_main.run(["artifacts", "--project", project_dir])
         assert rc == 0
 
-        after_mtime = os.path.getmtime(
-            os.path.join(run_dir, "CTS_ecc", "output", "design.def")
-        )
+        after_mtime = os.path.getmtime(os.path.join(run_dir, "CTS_ecc", "output", "design.def"))
         assert before_mtime == after_mtime
 
     def test_no_persistent_metadata_files(self, tmp_path, capsys, monkeypatch):
@@ -905,8 +1074,9 @@ class TestReadOnly:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
-                         files={"output/design.def": "def content"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
+        )
 
         cli_main.run(["artifacts", "--project", project_dir])
         cli_main.run(["config", "--resolved", "--project", project_dir])
@@ -953,12 +1123,19 @@ class TestArtifactPaths:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "sweeps", "sweep_001", "run_004")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"],
-                         files={"output/design.def": "def content"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
+        )
 
         rc = cli_main.run(
-            ["artifacts", "--run-id", "sweeps/sweep_001/run_004",
-             "--json", "--project", project_dir]
+            [
+                "artifacts",
+                "--run-id",
+                "sweeps/sweep_001/run_004",
+                "--json",
+                "--project",
+                project_dir,
+            ]
         )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
@@ -970,17 +1147,25 @@ class TestArtifactPaths:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "sweeps", "sweep_001", "run_004")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["config"],
-                         files={"config/cts_config.json": "{}"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["config"], files={"config/cts_config.json": "{}"}
+        )
 
         rc = cli_main.run(
-            ["config", "cts", "--resolved", "--run-id", "sweeps/sweep_001/run_004",
-             "--json", "--project", project_dir]
+            [
+                "config",
+                "cts",
+                "--resolved",
+                "--run-id",
+                "sweeps/sweep_001/run_004",
+                "--json",
+                "--project",
+                project_dir,
+            ]
         )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
-        path = data["records"][0]["path"]
 
 
 class TestEmptyStepConfigSentinel:
@@ -1014,9 +1199,12 @@ class TestDiagnoseFlowOnlySteps:
     def test_flow_step_without_directory_emits_issues(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
-        ])
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Incomplete", "runtime": "0:00:04"},
+            ],
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 1
@@ -1028,9 +1216,12 @@ class TestDiagnoseFlowOnlySteps:
     def test_flow_step_without_dir_reports_missing_artifacts(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 0
@@ -1045,8 +1236,9 @@ class TestConfigRoleDisclosure:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["config"],
-                         files={"config/cts_config.json": "{}"})
+        _create_step_dir(
+            run_dir, "CTS", "ecc", subdirs=["config"], files={"config/cts_config.json": "{}"}
+        )
 
         rc = cli_main.run(["artifacts", "cts", "--project", project_dir])
         assert rc == 0
@@ -1067,8 +1259,15 @@ class TestAbsoluteRunIdConfig:
         _create_flow_json(str(external_run))
 
         rc = cli_main.run(
-            ["config", "--resolved", "--run-id", str(external_run),
-             "--json", "--project", project_dir]
+            [
+                "config",
+                "--resolved",
+                "--run-id",
+                str(external_run),
+                "--json",
+                "--project",
+                project_dir,
+            ]
         )
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
@@ -1092,15 +1291,24 @@ class TestDiagnoseIssueSpecificEvidence:
     def test_log_errors_uses_log_command(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "Error: bad thing\nError: other\nok\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "Error: bad thing\nError: other\nok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 1
@@ -1111,14 +1319,23 @@ class TestDiagnoseIssueSpecificEvidence:
     def test_missing_metrics_uses_metrics_command(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "config"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 0
@@ -1129,13 +1346,19 @@ class TestDiagnoseIssueSpecificEvidence:
     def test_missing_artifacts_uses_artifacts_command(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "config"],
+            files={"log/cts.log": "ok\n", "config/cts_config.json": "{}"},
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 0
@@ -1146,14 +1369,23 @@ class TestDiagnoseIssueSpecificEvidence:
     def test_config_unavailable_uses_config_command(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 0
@@ -1196,15 +1428,24 @@ class TestCleanDiagnoseOutput:
     def test_clean_has_status_and_disclosure_commands(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
         assert rc == 0
@@ -1217,15 +1458,24 @@ class TestCleanDiagnoseOutput:
     def test_clean_json_has_disclosure_metadata(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": "{}",
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "--json", "--project", project_dir])
         assert rc == 0
@@ -1257,26 +1507,31 @@ class TestIsolatedConfigValidation:
         rtl_dir.mkdir(exist_ok=True)
         (rtl_dir / "gcd.v").write_text("module gcd; endmodule")
         defaults = {
-            "name": "gcd", "top": "gcd", "rtl": '["rtl/gcd.v"]',
-            "clock_port": "clk", "frequency_mhz": "100.0",
-            "pdk_name": "ics55", "pdk_root": str(pdk_dir),
-            "flow_preset": "rtl2gds", "flow_run": "default",
+            "name": "gcd",
+            "top": "gcd",
+            "rtl": '["rtl/gcd.v"]',
+            "clock_port": "clk",
+            "frequency_mhz": "100.0",
+            "pdk_name": "ics55",
+            "pdk_root": str(pdk_dir),
+            "flow_preset": "rtl2gds",
+            "flow_run": "default",
         }
         defaults.update(overrides)
         return f'''[design]
-name = "{defaults['name']}"
-top = "{defaults['top']}"
-rtl = {defaults['rtl']}
-clock_port = "{defaults['clock_port']}"
-frequency_mhz = {defaults['frequency_mhz']}
+name = "{defaults["name"]}"
+top = "{defaults["top"]}"
+rtl = {defaults["rtl"]}
+clock_port = "{defaults["clock_port"]}"
+frequency_mhz = {defaults["frequency_mhz"]}
 
 [pdk]
-name = "{defaults['pdk_name']}"
-root = "{defaults['pdk_root']}"
+name = "{defaults["pdk_name"]}"
+root = "{defaults["pdk_root"]}"
 
 [flow]
-preset = "{defaults['flow_preset']}"
-run = "{defaults['flow_run']}"
+preset = "{defaults["flow_preset"]}"
+run = "{defaults["flow_run"]}"
 '''
 
     def test_unsupported_flow_run_rejected(self, tmp_path, capsys, monkeypatch):
@@ -1358,12 +1613,19 @@ class TestCorruptMetricsJson:
     def test_malformed_metrics_reports_corrupt_text(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["analysis"],
-                         files={"analysis/CTS_metrics.json": "NOT JSON{{{"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["analysis"],
+            files={"analysis/CTS_metrics.json": "NOT JSON{{{"},
+        )
         rc = cli_main.run(["metrics", "cts", "--project", project_dir])
         assert rc == 1
         out = capsys.readouterr().out
@@ -1372,12 +1634,19 @@ class TestCorruptMetricsJson:
     def test_malformed_metrics_reports_corrupt_json(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["analysis"],
-                         files={"analysis/CTS_metrics.json": "NOT JSON{{{"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["analysis"],
+            files={"analysis/CTS_metrics.json": "NOT JSON{{{"},
+        )
         rc = cli_main.run(["metrics", "cts", "--json", "--project", project_dir])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
@@ -1424,15 +1693,24 @@ class TestPendingStepDiagnose:
     def test_pending_step_creates_issue(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Pending", "runtime": ""},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "ok\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": '{"freq": 100}',
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Pending", "runtime": ""},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": '{"freq": 100}',
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 0
@@ -1459,15 +1737,29 @@ class TestLogErrorMatching:
     def test_clean_summary_not_counted_as_error(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "CTS completed successfully\n0 errors\nNo errors found\n0 failed checks\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": '{"freq": 100}',
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": (
+                    "CTS completed successfully\n"
+                    "0 errors\n"
+                    "No errors found\n"
+                    "0 failed checks\n"
+                ),
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": '{"freq": 100}',
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 0
@@ -1477,19 +1769,32 @@ class TestLogErrorMatching:
     def test_real_errors_still_detected(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir, [
-            {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ])
-        _create_step_dir(run_dir, "CTS", "ecc",
-                         subdirs=["log", "output", "analysis", "config"],
-                         files={"log/cts.log": "CTS completed\nError: bad thing\nTraceback (most recent call):\n0 errors\n",
-                                "output/design.def": "def",
-                                "analysis/CTS_metrics.json": '{"freq": 100}',
-                                "config/cts_config.json": "{}"})
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis", "config"],
+            files={
+                "log/cts.log": (
+                    "CTS completed\n"
+                    "Error: bad thing\n"
+                    "Traceback (most recent call):\n"
+                    "0 errors\n"
+                ),
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": '{"freq": 100}',
+                "config/cts_config.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
         assert rc == 1
         out = capsys.readouterr().out
         assert "log_errors" in out
         assert "count: 2" in out
-

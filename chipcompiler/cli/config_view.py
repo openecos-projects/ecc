@@ -3,9 +3,9 @@ import os
 from chipcompiler.cli.output import disclosure_cmd
 
 
-def build_project_config_items(project_dir: str, run_dir: str,
-                               project: str | None = None,
-                               run_id: str | None = None) -> tuple[list[dict], int]:
+def build_project_config_items(
+    project_dir: str, run_dir: str, project: str | None = None, run_id: str | None = None
+) -> tuple[list[dict], int]:
     from chipcompiler.cli.config import (
         _resolve_path,
         find_config_path,
@@ -42,40 +42,46 @@ def build_project_config_items(project_dir: str, run_dir: str,
     inspect = disclosure_cmd("ecc config --resolved --json", project, run_id)
 
     for key, value, resolved, source in entries:
-        items.append({
-            "kind": "config",
-            "scope": "project",
-            "key": key,
-            "value": value,
-            "resolved": resolved,
-            "source": source,
-            "inspect_cmd": inspect,
-        })
+        items.append(
+            {
+                "kind": "config",
+                "scope": "project",
+                "key": key,
+                "value": value,
+                "resolved": resolved,
+                "source": source,
+                "inspect_cmd": inspect,
+            }
+        )
 
     # RTL entries
     for i, rtl in enumerate(cfg.design_rtl):
         rtl_resolved = os.path.normpath(_resolve_path(project_dir, rtl))
-        items.append({
-            "kind": "config",
-            "scope": "project",
-            "key": f"design.rtl.{i}",
-            "value": rtl,
-            "resolved": rtl_resolved,
-            "source": "ecc.toml",
-            "inspect_cmd": inspect,
-        })
+        items.append(
+            {
+                "kind": "config",
+                "scope": "project",
+                "key": f"design.rtl.{i}",
+                "value": rtl,
+                "resolved": rtl_resolved,
+                "source": "ecc.toml",
+                "inspect_cmd": inspect,
+            }
+        )
 
     # PDK root with resolution
     pdk_source = "ecc.toml" if cfg.pdk_root else "env"
-    items.append({
-        "kind": "config",
-        "scope": "project",
-        "key": "pdk.root",
-        "value": cfg.pdk_root or "",
-        "resolved": pdk_root,
-        "source": pdk_source,
-        "inspect_cmd": inspect,
-    })
+    items.append(
+        {
+            "kind": "config",
+            "scope": "project",
+            "key": "pdk.root",
+            "value": cfg.pdk_root or "",
+            "resolved": pdk_root,
+            "source": pdk_source,
+            "inspect_cmd": inspect,
+        }
+    )
 
     # Run directory
     try:
@@ -83,18 +89,21 @@ def build_project_config_items(project_dir: str, run_dir: str,
     except ValueError:
         run_dir_rel = run_dir
     run_dir_value = run_dir if run_dir_rel.startswith("..") else run_dir_rel
-    items.append({
-        "kind": "config",
-        "scope": "project",
-        "key": "run_dir",
-        "value": run_dir_value,
-        "resolved": os.path.abspath(run_dir),
-        "source": "resolved",
-        "inspect_cmd": disclosure_cmd("ecc status", project, run_id),
-    })
+    items.append(
+        {
+            "kind": "config",
+            "scope": "project",
+            "key": "run_dir",
+            "value": run_dir_value,
+            "resolved": os.path.abspath(run_dir),
+            "source": "resolved",
+            "inspect_cmd": disclosure_cmd("ecc status", project, run_id),
+        }
+    )
 
     # Parameter records with source information
     from chipcompiler.cli.params import resolve_parameters
+
     cli_provenance, prov_error = _load_cli_provenance(run_dir)
     if prov_error:
         return [{"kind": "error", "status": "invalid_config", "reason": prov_error}], 1
@@ -106,23 +115,27 @@ def build_project_config_items(project_dir: str, run_dir: str,
         cli_overrides=cli_provenance,
     )
     from chipcompiler.cli.param_handler import _maps_to_str
+
     for rp in resolved_params:
-        items.append({
-            "kind": "param",
-            "scope": "project",
-            "key": rp.param,
-            "value": rp.value,
-            "default": rp.default,
-            "source": rp.source,
-            "maps_to": _maps_to_str(rp.schema.maps_to),
-            "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project),
-        })
+        items.append(
+            {
+                "kind": "param",
+                "scope": "project",
+                "key": rp.param,
+                "value": rp.value,
+                "default": rp.default,
+                "source": rp.source,
+                "maps_to": _maps_to_str(rp.schema.maps_to),
+                "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project),
+            }
+        )
 
     return items, 0
 
 
 def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
     import json
+
     provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
     if not os.path.isfile(provenance_path):
         return {}, None
@@ -134,6 +147,7 @@ def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
     if not isinstance(data, dict):
         return {}, "invalid CLI parameter provenance: expected object"
     from chipcompiler.cli.params import parse_cli_overrides
+
     items = [f"{k}={v}" for k, v in data.items()]
     validated, errors = parse_cli_overrides(items)
     if errors:
@@ -141,10 +155,13 @@ def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
     return validated, None
 
 
-def build_step_config_items(run_dir: str, step_token: str | None,
-                            project: str | None = None,
-                            run_id: str | None = None,
-                            project_dir: str | None = None) -> tuple[list[dict], int]:
+def build_step_config_items(
+    run_dir: str,
+    step_token: str | None,
+    project: str | None = None,
+    run_id: str | None = None,
+    project_dir: str | None = None,
+) -> tuple[list[dict], int]:
     from chipcompiler.cli.inspect import discover_step_dirs
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
@@ -161,20 +178,30 @@ def build_step_config_items(run_dir: str, step_token: str | None,
         for fname in sorted(os.listdir(config_dir)):
             fpath = os.path.join(config_dir, fname)
             if os.path.isfile(fpath):
-                items.append({
-                    "kind": "config",
-                    "scope": "step",
-                    "step": step_token,
-                    "role": "config",
-                    "run": display_run,
-                    "path": os.path.relpath(fpath, base_dir),
-                    "source": "step_config",
-                    "inspect_cmd": disclosure_cmd(f"ecc artifacts {step_token} --json", project, run_id),
-                })
+                items.append(
+                    {
+                        "kind": "config",
+                        "scope": "step",
+                        "step": step_token,
+                        "role": "config",
+                        "run": display_run,
+                        "path": os.path.relpath(fpath, base_dir),
+                        "source": "step_config",
+                        "inspect_cmd": disclosure_cmd(
+                            f"ecc artifacts {step_token} --json", project, run_id
+                        ),
+                    }
+                )
 
     if not items:
-        return [{"kind": "config", "scope": "step", "step": step_token,
-                 "config_status": "none",
-                 "artifacts": disclosure_cmd(f"ecc artifacts {step_token}", project, run_id)}], 0
+        return [
+            {
+                "kind": "config",
+                "scope": "step",
+                "step": step_token,
+                "config_status": "none",
+                "artifacts": disclosure_cmd(f"ecc artifacts {step_token}", project, run_id),
+            }
+        ], 0
 
     return items, 0

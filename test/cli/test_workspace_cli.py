@@ -275,7 +275,17 @@ def test_create_input_json_resolves_relative_origin_inputs_from_json_dir(
 def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys):
     capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     params_path = tmp_path / "params.json"
-    params_path.write_text(json.dumps({"Design": "gcd", "Core": {"Margin": [1, 2]}}))
+    params_path.write_text(
+        json.dumps(
+            {
+                "Design": "from-json",
+                "Top module": "from_json",
+                "Clock": "json_clk",
+                "Frequency max [MHz]": 50,
+                "Core": {"Margin": [1, 2]},
+            }
+        )
+    )
     project = tmp_path / "project"
     project.mkdir()
     monkeypatch.chdir(project)
@@ -300,6 +310,14 @@ def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys
             "b.v",
             "--param-json",
             str(params_path),
+            "--design",
+            "gcd",
+            "--top",
+            "gcd",
+            "--clock",
+            "clk",
+            "--freq",
+            "100",
             "--json",
         ]
     )
@@ -313,7 +331,13 @@ def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys
     assert kwargs["pdk_root"] == "/pdk"
     assert kwargs["origin_def"] == "in.def"
     assert kwargs["origin_verilog"] == "in.v"
-    assert kwargs["parameters"] == {"Design": "gcd", "Core": {"Margin": [1, 2]}}
+    assert kwargs["parameters"] == {
+        "Design": "gcd",
+        "Top module": "gcd",
+        "Clock": "clk",
+        "Frequency max [MHz]": 100.0,
+        "Core": {"Margin": [1, 2]},
+    }
     assert os.path.basename(kwargs["input_filelist"]) == "filelist"
     assert (ws / "filelist").read_text().splitlines() == [
         str(project / "a.v"),
@@ -325,23 +349,32 @@ def test_create_rejects_mixed_input_json_and_field_flags(tmp_path, capsys):
     request_path = tmp_path / "request.json"
     request_path.write_text("{}")
 
-    rc = cli_main.run(
-        [
-            "workspace",
-            "create",
-            "--input-json",
-            str(request_path),
-            "--directory",
-            str(tmp_path / "ws"),
-            "--json",
-        ]
-    )
+    for flag, value in (
+        ("--directory", str(tmp_path / "ws")),
+        ("--design", "gcd"),
+        ("--design", ""),
+        ("--top", "gcd"),
+        ("--clock", "clk"),
+        ("--freq", "100"),
+        ("--freq", "0"),
+    ):
+        rc = cli_main.run(
+            [
+                "workspace",
+                "create",
+                "--input-json",
+                str(request_path),
+                flag,
+                value,
+                "--json",
+            ]
+        )
 
-    data = _response(capsys)
-    assert rc == 1
-    assert data["cmd"] == "create_workspace"
-    assert data["response"] == "error"
-    assert "mutually exclusive" in data["message"][0]
+        data = _response(capsys)
+        assert rc == 1
+        assert data["cmd"] == "create_workspace"
+        assert data["response"] == "error"
+        assert "mutually exclusive" in data["message"][0]
 
 
 def test_invalid_json_input_returns_error(monkeypatch, tmp_path, capsys):
@@ -651,6 +684,10 @@ def test_workspace_create_help_lists_existing_options(capsys):
     assert "--input-json" in out
     assert "--directory" in out
     assert "--param-json" in out
+    assert "--design" in out
+    assert "--top" in out
+    assert "--clock" in out
+    assert "--freq" in out
 
 
 def test_workspace_json_output_suppresses_runtime_stdout(monkeypatch, tmp_path, capsys):
@@ -729,6 +766,8 @@ def test_workspace_modules_keep_runtime_boundaries():
         main_source = f.read()
     assert "workspace_create.add_argument" not in main_source
     assert "workspace_run_flow.add_argument" not in main_source
+    assert "workspace_app" not in main_source
+    assert "workspace_legacy" not in main_source
 
     with open(os.path.join("chipcompiler", "cli", "workspace_service.py"), encoding="utf-8") as f:
         service_source = f.read()

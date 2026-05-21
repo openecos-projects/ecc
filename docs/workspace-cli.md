@@ -22,7 +22,7 @@ a current workspace between commands.
 ## Command Summary
 
 ```bash
-ecc workspace create --directory gcd --pdk ics55 --pdk-root /path/to/icsprout55-pdk --param-json params.json
+ecc workspace create --directory gcd --pdk ics55 --pdk-root /path/to/icsprout55-pdk --design gcd --top gcd --clock clk --freq 100
 ecc workspace load --directory gcd
 ecc workspace run-flow --directory gcd
 ecc workspace run-flow --directory gcd --rerun
@@ -51,20 +51,14 @@ The minimum practical `create` command needs a workspace directory, a PDK name,
 a PDK root, and design parameters:
 
 ```bash
-cat > params.json <<'JSON'
-{
-  "Design": "gcd",
-  "Top module": "gcd",
-  "Clock": "clk",
-  "Frequency max [MHz]": 100
-}
-JSON
-
 ecc workspace create \
   --directory gcd \
   --pdk ics55 \
   --pdk-root /home/Emin/Workbench/icsprout55-pdk \
-  --param-json params.json
+  --design gcd \
+  --top gcd \
+  --clock clk \
+  --freq 100
 ```
 
 Important parameter meanings:
@@ -72,14 +66,16 @@ Important parameter meanings:
 - `--directory` is the workspace directory to create, for example `gcd`.
 - `--pdk` is the PDK name, for example `ics55`.
 - `--pdk-root` is the filesystem path to the PDK installation.
-- `--param-json` points to a JSON object with ECC parameters.
+- `--design`, `--top`, `--clock`, and `--freq` populate the standard ECC
+  design parameters.
+- `--param-json` points to a JSON object with additional ECC parameters.
 
 `--pdk /path/to/pdk` is wrong: it passes the path as the PDK name. Use
 `--pdk ics55 --pdk-root /path/to/pdk`.
 
-`Top module` is required for flow workspace initialization. There is no separate
-`--top` or `--topname` flag in this command group; pass it through
-`--param-json` or `--input-json`.
+`--param-json` can be combined with the direct design flags. Direct flags take
+precedence when both set the same parameter, so `--top gcd_alt` overrides a
+`"Top module": "gcd"` value from the JSON file.
 
 ## Add RTL Inputs
 
@@ -160,7 +156,7 @@ cat request.json | ecc workspace create --input-json - --json
 ```
 
 `--input-json` is mutually exclusive with the field flags such as `--directory`,
-`--pdk`, `--rtl`, and `--param-json`.
+`--pdk`, `--rtl`, `--param-json`, `--design`, `--top`, `--clock`, and `--freq`.
 
 Relative `origin_def`, `origin_verilog`, `filelist`, and `rtl_list` paths inside
 a JSON file are resolved relative to that JSON file. When reading JSON from
@@ -263,7 +259,7 @@ LEF and Liberty files.
 
 ### `TOP_NAME (workspace.design.top_module) not set`
 
-Pass `Top module` through the parameters object:
+Pass `--top`, or provide `Top module` through the parameters object:
 
 ```json
 {
@@ -275,7 +271,8 @@ Pass `Top module` through the parameters object:
 ```
 
 Then run with `--param-json params.json`, or include the same object as
-`parameters` in `--input-json`.
+`parameters` in `--input-json`. A direct `--top` value overrides the JSON
+parameter.
 
 ### Command Does Not Use The Previous Workspace
 

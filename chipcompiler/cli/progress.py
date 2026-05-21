@@ -4,15 +4,17 @@ import shutil
 import threading
 import time
 
-from chipcompiler.cli.log_view import LineKind, _KIND_COLOR, _KIND_LABEL, extract_error_context
-from chipcompiler.cli.output import disclosure_cmd, normalize_step_name, normalize_state
-from chipcompiler.cli.pretty import BOLD, DIM, CYAN, GREEN, RED, RESET, style as _style
+from chipcompiler.cli.log_view import _KIND_COLOR, _KIND_LABEL, LineKind, extract_error_context
+from chipcompiler.cli.output import disclosure_cmd, normalize_state, normalize_step_name
+from chipcompiler.cli.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
+from chipcompiler.cli.pretty import style as _style
 from chipcompiler.cli.types import OutputMode
 from chipcompiler.data import StateEnum, log_flow
 
 
 def supports_color(stream, mode, env=None):
     from chipcompiler.cli.pretty import supports_color as _supports_color
+
     return _supports_color(file=stream, mode=mode, env=env)
 
 
@@ -99,7 +101,7 @@ def latest_log_line(path):
     if not path or not os.path.isfile(path):
         return None
     try:
-        with open(path, "r", errors="replace") as f:
+        with open(path, errors="replace") as f:
             lines = f.readlines()
     except OSError:
         return None
@@ -244,19 +246,19 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         renderer.finish_step(step_token, tool, status, runtime, rel_log, inspect, is_success)
 
         if not is_success:
-            _maybe_render_failure_context(renderer, log_path, rel_log, step_token,
-                                          project, ctx.run_id, color)
+            _maybe_render_failure_context(
+                renderer, log_path, rel_log, step_token, project, ctx.run_id, color
+            )
             return False
 
     return True
 
 
-def _maybe_render_failure_context(renderer, log_path, rel_log, step_token,
-                                  project, run_id, color):
+def _maybe_render_failure_context(renderer, log_path, rel_log, step_token, project, run_id, color):
     if not log_path or not os.path.isfile(log_path):
         return
     try:
-        with open(log_path, "r", errors="replace") as f:
+        with open(log_path, errors="replace") as f:
             raw = f.read()
     except OSError:
         return
