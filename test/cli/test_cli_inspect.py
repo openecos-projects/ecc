@@ -93,6 +93,17 @@ def _create_dreamplace_workspace_config(run_dir):
     _create_workspace_config(run_dir, {"dreamplace.json": "{}"})
 
 
+def _create_ecc_workspace_config(run_dir, step_config):
+    _create_workspace_config(
+        run_dir,
+        {
+            "flow_config.json": "{}",
+            "db_default_config.json": "{}",
+            step_config: "{}",
+        },
+    )
+
+
 def _has_disclosure(line: str) -> bool:
     return bool(
         '"ecc ' in line
@@ -587,6 +598,42 @@ class TestConfigStepResolved:
         ]
         assert data["records"][0]["source"] == "workspace_config"
 
+    def test_config_workspace_backed_ecc_steps(self, tmp_path, capsys):
+        cases = [
+            ("PNP", "pnp", "pnp_default_config.json"),
+            ("optDrv", "optdrv", "to_default_config_drv.json"),
+            ("optHold", "opthold", "to_default_config_hold.json"),
+            ("optSetup", "optsetup", "to_default_config_setup.json"),
+        ]
+        for step_name, step_token, step_config in cases:
+            project_dir = _create_valid_project(tmp_path, name=f"gcd_{step_token}")
+            run_dir = os.path.join(project_dir, "runs", "default")
+            _create_flow_json(
+                run_dir,
+                [
+                    {
+                        "name": step_name,
+                        "tool": "ecc",
+                        "state": "Success",
+                        "runtime": "0:00:04",
+                    },
+                ],
+            )
+            _create_step_dir(run_dir, step_name, "ecc", subdirs=["output"])
+            _create_ecc_workspace_config(run_dir, step_config)
+
+            rc = cli_main.run(
+                ["config", step_token, "--resolved", "--json", "--project", project_dir]
+            )
+            assert rc == 0
+            data = json.loads(capsys.readouterr().out)
+            assert [item["path"] for item in data["records"]] == [
+                "runs/default/config/flow_config.json",
+                "runs/default/config/db_default_config.json",
+                f"runs/default/config/{step_config}",
+            ]
+            assert all(item["source"] == "workspace_config" for item in data["records"])
+
 
 # ===========================================================================
 # AC-5: ecc diagnose
@@ -895,6 +942,46 @@ class TestDiagnose:
         out = capsys.readouterr().out
         assert "config_unavailable" not in out
         assert "clean" in out
+
+    def test_diagnose_workspace_backed_ecc_steps(self, tmp_path, capsys):
+        cases = [
+            ("PNP", "pnp", "pnp_default_config.json"),
+            ("optDrv", "optdrv", "to_default_config_drv.json"),
+            ("optHold", "opthold", "to_default_config_hold.json"),
+            ("optSetup", "optsetup", "to_default_config_setup.json"),
+        ]
+        for step_name, step_token, step_config in cases:
+            project_dir = _create_valid_project(tmp_path, name=f"gcd_{step_token}")
+            run_dir = os.path.join(project_dir, "runs", "default")
+            _create_flow_json(
+                run_dir,
+                [
+                    {
+                        "name": step_name,
+                        "tool": "ecc",
+                        "state": "Success",
+                        "runtime": "0:00:04",
+                    },
+                ],
+            )
+            _create_step_dir(
+                run_dir,
+                step_name,
+                "ecc",
+                subdirs=["log", "output", "analysis"],
+                files={
+                    f"log/{step_name}.log": "ok\n",
+                    "output/design.def": "def",
+                    f"analysis/{step_name}_metrics.json": "{}",
+                },
+            )
+            _create_ecc_workspace_config(run_dir, step_config)
+
+            rc = cli_main.run(["diagnose", step_token, "--project", project_dir])
+            assert rc == 0
+            out = capsys.readouterr().out
+            assert "config_unavailable" not in out
+            assert "clean" in out
 
     def test_diagnose_step_filter(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
