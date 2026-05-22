@@ -551,6 +551,24 @@ class TestConfigStepResolved:
             "runs/default/config/cts_default_config.json",
         ]
 
+    def test_config_step_workspace_records_inspect_with_config_command(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(run_dir)
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        _create_cts_workspace_config(run_dir)
+
+        rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert all(
+            item["inspect"] == f"ecc config cts --resolved --json --project {project_dir}"
+            for item in data["records"]
+        )
+
     def test_config_step_unknown_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
@@ -1543,6 +1561,57 @@ class TestEmptyStepConfigSentinel:
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["step"] == "cts"
         assert data["records"][0]["config_status"] == "none"
+
+
+class TestDirectoryOnlyStepConfig:
+    def test_dir_only_step_config_infers_tool_from_step_dir(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+            ],
+        )
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        _create_cts_workspace_config(run_dir)
+
+        rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert [item["path"] for item in data["records"]] == [
+            "runs/default/config/flow_config.json",
+            "runs/default/config/db_default_config.json",
+            "runs/default/config/cts_default_config.json",
+        ]
+
+    def test_dir_only_step_diagnose_uses_inferred_tool_for_config(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(
+            run_dir,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "CTS",
+            "ecc",
+            subdirs=["log", "output", "analysis"],
+            files={
+                "log/cts.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/CTS_metrics.json": "{}",
+            },
+        )
+        _create_cts_workspace_config(run_dir)
+
+        rc = cli_main.run(["diagnose", "cts", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "config_unavailable" not in out
+        assert "clean" in out
 
 
 class TestDiagnoseFlowOnlySteps:

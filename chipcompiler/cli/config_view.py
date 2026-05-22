@@ -167,6 +167,7 @@ def build_step_config_items(
         _safe_steps,
         discover_step_dirs,
         read_flow_json,
+        step_dir_tool,
     )
     from chipcompiler.cli.output import normalize_step_name
     from chipcompiler.cli.workspace_config_view import workspace_config_files
@@ -187,6 +188,8 @@ def build_step_config_items(
 
     step_info = flow_step_by_token.get(step_token, {})
     tool = step_info.get("tool")
+    if tool is None and step_token in step_dirs:
+        tool = step_dir_tool(step_dirs[step_token])
 
     items = []
     display_run = run_id or "default"
@@ -201,7 +204,9 @@ def build_step_config_items(
                 "run": display_run,
                 "path": os.path.relpath(fpath, base_dir),
                 "source": "workspace_config",
-                "inspect_cmd": disclosure_cmd(f"ecc artifacts {step_token} --json", project, run_id),
+                "inspect_cmd": disclosure_cmd(
+                    f"ecc config {step_token} --resolved --json", project, run_id
+                ),
             }
         )
 

@@ -153,6 +153,7 @@ def build_diagnose_issues(
         _safe_steps,
         discover_step_dirs,
         read_flow_json,
+        step_dir_tool,
     )
     from chipcompiler.cli.output import normalize_state, normalize_step_name
 
@@ -299,7 +300,7 @@ def build_diagnose_issues(
             issues,
             run_dir,
             token,
-            None,
+            step_dir_tool(step_dirs[token]),
             step_dirs[token],
             display_run,
             project,
