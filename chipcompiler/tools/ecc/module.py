@@ -17,7 +17,7 @@ class ECCToolsModule:
     """
     def __init__(self):
         try:
-            from chipcompiler.tools.ecc.bin import ecc_py as ecc
+            from ecc_tools_bin import ecc_py as ecc
         except ImportError:
             try:
                 from chipcompiler.tools.ecc.bin import ecc_py as ecc
