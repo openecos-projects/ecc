@@ -114,10 +114,12 @@ jobs:
         run: |
           .venv/bin/python - <<'PY'
           import ecc_tools_bin.ecc_py  # noqa: F401
+          from chipcompiler.tools.ecc.module import ECCToolsModule
           from dreamplace.Params import Params  # noqa: F401
           from dreamplace.Placer import PlacementEngine  # noqa: F401
 
-          print("ecc-tools and ecc-dreamplace imports passed")
+          assert ECCToolsModule().get_ecc() is not None
+          print("ecc-tools wrapper and ecc-dreamplace imports passed")
           PY
 
       - name: Build distributable wheel
