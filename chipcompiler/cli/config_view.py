@@ -162,36 +162,48 @@ def build_step_config_items(
     run_id: str | None = None,
     project_dir: str | None = None,
 ) -> tuple[list[dict], int]:
-    from chipcompiler.cli.inspect import discover_step_dirs
+    from chipcompiler.cli.inspect import (
+        CORRUPT_FLOW_JSON,
+        _safe_steps,
+        discover_step_dirs,
+        read_flow_json,
+    )
+    from chipcompiler.cli.output import normalize_step_name
+    from chipcompiler.cli.workspace_config_view import workspace_config_files
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
-    step_dirs = discover_step_dirs(run_dir)
+    flow_data = read_flow_json(run_dir)
+    if flow_data is None:
+        return [{"kind": "error", "status": "unknown_step", "step": step_token}], 1
+    if flow_data is CORRUPT_FLOW_JSON:
+        return [{"kind": "error", "status": "invalid_flow_json"}], 1
 
-    if step_token not in step_dirs:
+    step_dirs = discover_step_dirs(run_dir)
+    steps = _safe_steps(flow_data)
+    flow_step_by_token = {normalize_step_name(s.get("name", "")): s for s in steps}
+
+    if step_token not in flow_step_by_token and step_token not in step_dirs:
         return [{"kind": "error", "status": "unknown_step", "step": step_token}], 1
 
-    config_dir = os.path.join(step_dirs[step_token], "config")
+    step_info = flow_step_by_token.get(step_token, {})
+    tool = step_info.get("tool")
+
     items = []
     display_run = run_id or "default"
 
-    if os.path.isdir(config_dir):
-        for fname in sorted(os.listdir(config_dir)):
-            fpath = os.path.join(config_dir, fname)
-            if os.path.isfile(fpath):
-                items.append(
-                    {
-                        "kind": "config",
-                        "scope": "step",
-                        "step": step_token,
-                        "role": "config",
-                        "run": display_run,
-                        "path": os.path.relpath(fpath, base_dir),
-                        "source": "step_config",
-                        "inspect_cmd": disclosure_cmd(
-                            f"ecc artifacts {step_token} --json", project, run_id
-                        ),
-                    }
-                )
+    for fpath in workspace_config_files(run_dir, step_token, tool):
+        items.append(
+            {
+                "kind": "config",
+                "scope": "step",
+                "step": step_token,
+                "role": "config",
+                "run": display_run,
+                "path": os.path.relpath(fpath, base_dir),
+                "source": "workspace_config",
+                "inspect_cmd": disclosure_cmd(f"ecc artifacts {step_token} --json", project, run_id),
+            }
+        )
 
     if not items:
         return [

@@ -70,6 +70,14 @@ def _create_step_dir(run_dir, step_name, tool, subdirs=None, files=None):
     return step_dir
 
 
+def _create_workspace_config(run_dir, files):
+    config_dir = os.path.join(run_dir, "config")
+    os.makedirs(config_dir, exist_ok=True)
+    for name, content in files.items():
+        with open(os.path.join(config_dir, name), "w") as f:
+            f.write(content)
+
+
 def _has_disclosure(line: str) -> bool:
     return bool(
         '"ecc ' in line
@@ -469,12 +477,14 @@ class TestConfigStepResolved:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        _create_workspace_config(
             run_dir,
-            "CTS",
-            "ecc",
-            subdirs=["config"],
-            files={"config/cts_default_config.json": "{}", "config/run.tcl": "echo hi"},
+            {
+                "flow_config.json": "{}",
+                "db_default_config.json": "{}",
+                "cts_default_config.json": "{}",
+            },
         )
 
         rc = cli_main.run(["config", "cts", "--resolved", "--project", project_dir])
@@ -482,6 +492,8 @@ class TestConfigStepResolved:
         out = capsys.readouterr().out
         assert "step:" in out or "cts" in out
         assert "step:" in out or "step:" in out
+        assert "runs/default/config/flow_config.json" in out
+        assert "runs/default/config/db_default_config.json" in out
         assert "cts_default_config.json" in out
 
     def test_config_step_json(self, tmp_path, capsys, monkeypatch):
@@ -489,15 +501,29 @@ class TestConfigStepResolved:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(run_dir)
-        _create_step_dir(
-            run_dir, "CTS", "ecc", subdirs=["config"], files={"config/cts_config.json": "{}"}
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        _create_workspace_config(
+            run_dir,
+            {
+                "flow_config.json": "{}",
+                "db_default_config.json": "{}",
+                "cts_default_config.json": "{}",
+            },
         )
 
         rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
-        assert all(item["scope"] == "step" for item in data["records"])
+        records = data["records"]
+        assert all(item["scope"] == "step" for item in records)
+        assert all(item["step"] == "cts" for item in records)
+        assert all(item["source"] == "workspace_config" for item in records)
+        assert [item["path"] for item in records] == [
+            "runs/default/config/flow_config.json",
+            "runs/default/config/db_default_config.json",
+            "runs/default/config/cts_default_config.json",
+        ]
 
     def test_config_step_unknown_step(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
@@ -1147,8 +1173,14 @@ class TestArtifactPaths:
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "sweeps", "sweep_001", "run_004")
         _create_flow_json(run_dir)
-        _create_step_dir(
-            run_dir, "CTS", "ecc", subdirs=["config"], files={"config/cts_config.json": "{}"}
+        _create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        _create_workspace_config(
+            run_dir,
+            {
+                "flow_config.json": "{}",
+                "db_default_config.json": "{}",
+                "cts_default_config.json": "{}",
+            },
         )
 
         rc = cli_main.run(
@@ -1166,6 +1198,11 @@ class TestArtifactPaths:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
+        assert [item["path"] for item in data["records"]] == [
+            "sweeps/sweep_001/run_004/config/flow_config.json",
+            "sweeps/sweep_001/run_004/config/db_default_config.json",
+            "sweeps/sweep_001/run_004/config/cts_default_config.json",
+        ]
 
 
 class TestEmptyStepConfigSentinel:
