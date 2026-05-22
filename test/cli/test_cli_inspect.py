@@ -634,6 +634,60 @@ class TestConfigStepResolved:
             ]
             assert all(item["source"] == "workspace_config" for item in data["records"])
 
+    def test_config_sta_uses_rcx_workspace_config(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(
+            run_dir,
+            [
+                {
+                    "name": "STA",
+                    "tool": "ecc",
+                    "state": "Success",
+                    "runtime": "0:00:04",
+                },
+            ],
+        )
+        _create_step_dir(run_dir, "STA", "ecc", subdirs=["output"])
+        _create_ecc_workspace_config(run_dir, "rcx.json")
+
+        rc = cli_main.run(["config", "sta", "--resolved", "--json", "--project", project_dir])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert [item["path"] for item in data["records"]] == [
+            "runs/default/config/flow_config.json",
+            "runs/default/config/db_default_config.json",
+            "runs/default/config/rcx.json",
+        ]
+        assert all(item["source"] == "workspace_config" for item in data["records"])
+
+    def test_config_yosys_synthesis_does_not_report_ieda_flow_config(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(
+            run_dir,
+            [
+                {
+                    "name": "Synthesis",
+                    "tool": "yosys",
+                    "state": "Success",
+                    "runtime": "0:00:05",
+                },
+            ],
+        )
+        _create_step_dir(run_dir, "Synthesis", "yosys", subdirs=["output"])
+        _create_workspace_config(run_dir, {"flow_config.json": "{}"})
+
+        rc = cli_main.run(
+            ["config", "synthesis", "--resolved", "--json", "--project", project_dir]
+        )
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data["records"]) == 1
+        assert data["records"][0]["step"] == "synthesis"
+        assert data["records"][0]["config_status"] == "none"
+        assert "path" not in data["records"][0]
+
 
 # ===========================================================================
 # AC-5: ecc diagnose
@@ -982,6 +1036,72 @@ class TestDiagnose:
             out = capsys.readouterr().out
             assert "config_unavailable" not in out
             assert "clean" in out
+
+    def test_diagnose_sta_uses_rcx_workspace_config(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(
+            run_dir,
+            [
+                {
+                    "name": "STA",
+                    "tool": "ecc",
+                    "state": "Success",
+                    "runtime": "0:00:04",
+                },
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "STA",
+            "ecc",
+            subdirs=["log", "output", "analysis"],
+            files={
+                "log/STA.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/STA_metrics.json": "{}",
+            },
+        )
+        _create_ecc_workspace_config(run_dir, "rcx.json")
+
+        rc = cli_main.run(["diagnose", "sta", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "config_unavailable" not in out
+        assert "clean" in out
+
+    def test_diagnose_yosys_synthesis_reports_config_unavailable(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(
+            run_dir,
+            [
+                {
+                    "name": "Synthesis",
+                    "tool": "yosys",
+                    "state": "Success",
+                    "runtime": "0:00:05",
+                },
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "Synthesis",
+            "yosys",
+            subdirs=["log", "output", "analysis"],
+            files={
+                "log/Synthesis.log": "ok\n",
+                "output/design.v": "verilog",
+                "analysis/Synthesis_metrics.json": "{}",
+            },
+        )
+        _create_workspace_config(run_dir, {"flow_config.json": "{}"})
+
+        rc = cli_main.run(["diagnose", "synthesis", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "config_unavailable" in out
+        assert "info:" in out
 
     def test_diagnose_step_filter(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)

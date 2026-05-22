@@ -18,9 +18,9 @@ _STEP_CONFIG_FILES = {
     ("opthold", "ecc"): ("flow_config.json", "db_default_config.json", "to_default_config_hold.json"),
     ("optsetup", "ecc"): ("flow_config.json", "db_default_config.json", "to_default_config_setup.json"),
     ("rcx", "ecc"): ("flow_config.json", "db_default_config.json", "rcx.json"),
+    ("sta", "ecc"): ("flow_config.json", "db_default_config.json", "rcx.json"),
     ("placement", "dreamplace"): ("dreamplace.json",),
     ("legalization", "dreamplace"): ("dreamplace.json",),
-    ("synthesis", "yosys"): ("flow_config.json",),
 }
 
 
