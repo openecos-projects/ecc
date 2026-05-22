@@ -30,11 +30,10 @@ def _has_metrics(run_dir: str, step_token: str) -> bool:
     return bool(discover_metrics(run_dir, step_token))
 
 
-def _has_config_files(step_path: str) -> bool:
-    config_dir = os.path.join(step_path, "config")
-    if not os.path.isdir(config_dir):
-        return False
-    return any(os.path.isfile(os.path.join(config_dir, f)) for f in os.listdir(config_dir))
+def _has_config_files(run_dir: str, step_token: str, tool: str | None) -> bool:
+    from chipcompiler.cli.workspace_config_view import workspace_config_files
+
+    return bool(workspace_config_files(run_dir, step_token, tool))
 
 
 def _make_issue(
@@ -89,6 +88,7 @@ def _check_step_artifacts(
     issues: list[dict],
     run_dir: str,
     token: str,
+    tool: str | None,
     step_path: str,
     display_run: str,
     project: str | None,
@@ -129,7 +129,7 @@ def _check_step_artifacts(
                 run_id=run_id,
             )
         )
-    if not _has_config_files(step_path):
+    if not _has_config_files(run_dir, token, tool):
         issues.append(
             _make_issue(
                 "config_unavailable",
@@ -252,6 +252,7 @@ def build_diagnose_issues(
                 issues,
                 run_dir,
                 token,
+                s.get("tool"),
                 step_dirs[token],
                 display_run,
                 project,
@@ -278,16 +279,17 @@ def build_diagnose_issues(
                     run_id=run_id,
                 )
             )
-            issues.append(
-                _make_issue(
-                    "config_unavailable",
-                    "info",
-                    display_run,
-                    step=token,
-                    project=project,
-                    run_id=run_id,
+            if not _has_config_files(run_dir, token, s.get("tool")):
+                issues.append(
+                    _make_issue(
+                        "config_unavailable",
+                        "info",
+                        display_run,
+                        step=token,
+                        project=project,
+                        run_id=run_id,
+                    )
                 )
-            )
 
     dir_only_tokens = set(step_dirs.keys()) - flow_tokens
     if step_token is not None:
@@ -297,6 +299,7 @@ def build_diagnose_issues(
             issues,
             run_dir,
             token,
+            None,
             step_dirs[token],
             display_run,
             project,
