@@ -15,6 +15,7 @@ _STEP_CONFIG_FILES = {
     ("filler", "ecc"): ("flow_config.json", "db_default_config.json", "pl_default_config.json"),
     ("rcx", "ecc"): ("flow_config.json", "db_default_config.json", "rcx.json"),
     ("placement", "dreamplace"): ("dreamplace.json",),
+    ("legalization", "dreamplace"): ("dreamplace.json",),
     ("synthesis", "yosys"): ("flow_config.json",),
 }
 

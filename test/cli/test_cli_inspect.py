@@ -89,6 +89,10 @@ def _create_cts_workspace_config(run_dir):
     )
 
 
+def _create_dreamplace_workspace_config(run_dir):
+    _create_workspace_config(run_dir, {"dreamplace.json": "{}"})
+
+
 def _has_disclosure(line: str) -> bool:
     return bool(
         '"ecc ' in line
@@ -553,6 +557,36 @@ class TestConfigStepResolved:
         rc = cli_main.run(["config", "cts", "--resolved", "--project", project_dir])
         assert rc == 0
 
+    def test_config_dreamplace_legalization_uses_dreamplace_config(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        _mock_pdk_validation(monkeypatch)
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(
+            run_dir,
+            [
+                {
+                    "name": "legalization",
+                    "tool": "dreamplace",
+                    "state": "Success",
+                    "runtime": "0:00:04",
+                },
+            ],
+        )
+        _create_step_dir(run_dir, "legalization", "dreamplace", subdirs=["output"])
+        _create_dreamplace_workspace_config(run_dir)
+
+        rc = cli_main.run(
+            ["config", "legalization", "--resolved", "--json", "--project", project_dir]
+        )
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert [item["path"] for item in data["records"]] == [
+            "runs/default/config/dreamplace.json",
+        ]
+        assert data["records"][0]["source"] == "workspace_config"
+
 
 # ===========================================================================
 # AC-5: ecc diagnose
@@ -824,6 +858,39 @@ class TestDiagnose:
         _create_cts_workspace_config(run_dir)
 
         rc = cli_main.run(["diagnose", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "config_unavailable" not in out
+        assert "clean" in out
+
+    def test_diagnose_dreamplace_legalization_uses_dreamplace_config(self, tmp_path, capsys):
+        project_dir = _create_valid_project(tmp_path)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _create_flow_json(
+            run_dir,
+            [
+                {
+                    "name": "legalization",
+                    "tool": "dreamplace",
+                    "state": "Success",
+                    "runtime": "0:00:04",
+                },
+            ],
+        )
+        _create_step_dir(
+            run_dir,
+            "legalization",
+            "dreamplace",
+            subdirs=["log", "output", "analysis"],
+            files={
+                "log/legalization.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/legalization_metrics.json": "{}",
+            },
+        )
+        _create_dreamplace_workspace_config(run_dir)
+
+        rc = cli_main.run(["diagnose", "legalization", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "config_unavailable" not in out
