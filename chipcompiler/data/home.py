@@ -99,17 +99,12 @@ class HomeData:
         self.data : dict = {}
     
         if os.path.exists(self.path):
-            self.data, changed = _read_normalized_home_data(self.path)
-            if changed:
-                self.save()
+            self._repair_or_reload()
         else:
-            self.data = _default_home_data()
-            self.save()
+            self.reset()
             
     def reload(self):
-        self.data, changed = _read_normalized_home_data(self.path)
-        if changed:
-            self.save()
+        self._repair_or_reload()
         
     def reset(self):
         self._update(lambda data: data.clear() or data.update(_default_home_data()))
@@ -138,6 +133,9 @@ class HomeData:
             if changed:
                 json_write(self.path, data)
             self.data = data
+
+    def _repair_or_reload(self) -> None:
+        self._update(lambda data: False)
 
     def _set_path_value(self, key: str, path: str):
         def mutator(data: dict) -> bool:
