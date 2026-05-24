@@ -78,6 +78,12 @@ def _normalize_home_data(data: dict) -> tuple[dict, bool]:
             normalized["monitor"][key] = []
             changed = True
 
+    monitor_length = min(len(normalized["monitor"][key]) for key in _monitor_keys)
+    for key in _monitor_keys:
+        if len(normalized["monitor"][key]) != monitor_length:
+            normalized["monitor"][key] = normalized["monitor"][key][:monitor_length]
+            changed = True
+
     if isinstance(data, dict) and normalized != data:
         changed = True
 

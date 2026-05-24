@@ -81,6 +81,41 @@ def test_update_monitor_repairs_partial_home_json(tmp_path):
     assert data["monitor"]["frequency"] == [100.0]
 
 
+def test_update_monitor_repairs_short_monitor_columns(tmp_path):
+    path = tmp_path / "home.json"
+    path.write_text(
+        json.dumps(
+            {
+                "monitor": {
+                    "step": ["Floorplan - place"],
+                    "memory": [],
+                    "runtime": [],
+                    "instance": [],
+                    "frequency": [],
+                }
+            }
+        )
+    )
+
+    home = HomeData()
+    home.init(str(path))
+    home.update_monitor(
+        step="Floorplan",
+        sub_step="place",
+        memory="12M",
+        runtime="3s",
+        instance=42,
+        frequency=100.0,
+    )
+
+    data = _read_json(path)
+    assert data["monitor"]["step"] == ["Floorplan - place"]
+    assert data["monitor"]["memory"] == ["12M"]
+    assert data["monitor"]["runtime"] == ["3s"]
+    assert data["monitor"]["instance"] == [42]
+    assert data["monitor"]["frequency"] == [100.0]
+
+
 def test_instances_do_not_share_nested_monitor_lists(tmp_path):
     first_path = tmp_path / "first.json"
     second_path = tmp_path / "second.json"
