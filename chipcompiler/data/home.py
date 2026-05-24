@@ -1,5 +1,8 @@
 #!/usr/bin/env python
+import fcntl
 import os
+from collections.abc import Callable
+from contextlib import contextmanager
 from copy import deepcopy
 
 from chipcompiler.utility import json_read, json_write
@@ -80,6 +83,9 @@ def _normalize_home_data(data: dict) -> tuple[dict, bool]:
 
     return normalized, changed
 
+def _read_normalized_home_data(path: str) -> tuple[dict, bool]:
+    return _normalize_home_data(json_read(path))
+
 class HomeData:
     """
     Home data information
@@ -93,7 +99,7 @@ class HomeData:
         self.data : dict = {}
     
         if os.path.exists(self.path):
-            self.data, changed = _normalize_home_data(json_read(self.path))
+            self.data, changed = _read_normalized_home_data(self.path)
             if changed:
                 self.save()
         else:
@@ -101,67 +107,85 @@ class HomeData:
             self.save()
             
     def reload(self):
-        self.data, changed = _normalize_home_data(json_read(self.path))
+        self.data, changed = _read_normalized_home_data(self.path)
         if changed:
             self.save()
         
     def reset(self):
-        self.data = _default_home_data()
-        self.save()
+        self._update(lambda data: data.clear() or data.update(_default_home_data()))
             
     def save(self):
-        self.data, _ = _normalize_home_data(self.data)
-        json_write(self.path, self.data)
+        source = self.data
+        self._update(lambda data: data.clear() or data.update(source), force=True)
+
+    @contextmanager
+    def _locked(self):
+        lock_path = f"{self.path}.lock"
+        with open(lock_path, "a") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _update(self, mutator: Callable[[dict], bool | None], force: bool = False) -> None:
+        with self._locked():
+            data, repaired = _read_normalized_home_data(self.path)
+            before = deepcopy(data)
+            mutated = mutator(data)
+            data, normalized = _normalize_home_data(data)
+            changed = force or repaired or normalized or mutated is True or data != before
+            if changed:
+                json_write(self.path, data)
+            self.data = data
+
+    def _set_path_value(self, key: str, path: str):
+        def mutator(data: dict) -> bool:
+            if data.get(key) == path:
+                return False
+            data[key] = path
+            return True
+
+        self._update(mutator)
         
     def set_parameters(self, path : str):
-        self.reload()
-        self.data["parameters"] = path
-        self.save()
+        self._set_path_value("parameters", path)
         
     def set_flow(self, path : str):
-        self.reload()
-        self.data["flow"] = path
-        self.save()
+        self._set_path_value("flow", path)
     
     def set_layout(self, path : str):
-        self.reload()
-        self.data["layout"] = path
-        self.save()
+        self._set_path_value("layout", path)
     
     def set_gds_merge(self, path : str):
-        self.reload()
-        self.data["GDS merge"] = path
-        self.save()
+        self._set_path_value("GDS merge", path)
+
+    def _set_metric(self, key: str, image_path: str):
+        def mutator(data: dict) -> bool:
+            if data["metrics"].get(key) == image_path:
+                return False
+            data["metrics"][key] = image_path
+            return True
+
+        self._update(mutator)
         
     def set_metrics_inst_dist(self, image_path : str):
-        self.reload()
-        self.data["metrics"]["instances dist."] = image_path
-        self.save()
+        self._set_metric("instances dist.", image_path)
         
     def set_metrics_layer_via_dist(self, image_path : str):
-        self.reload()
-        self.data["metrics"]["layer via dist."] = image_path
-        self.save()
+        self._set_metric("layer via dist.", image_path)
         
     def set_metrics_layer_wire_dist(self, image_path : str):
-        self.reload()
-        self.data["metrics"]["layer wire dist."] = image_path
-        self.save()
+        self._set_metric("layer wire dist.", image_path)
         
     def set_metrics_pin_dist(self, image_path : str):
-        self.reload()
-        self.data["metrics"]["pin dist."] = image_path
-        self.save()
+        self._set_metric("pin dist.", image_path)
         
     def set_metrics_drc_dist(self, image_path : str):
-        self.reload()
-        self.data["metrics"]["drc dist."] = image_path
-        self.save()
+        self._set_metric("drc dist.", image_path)
         
     def set_metrics_cts_skew_map(self, image_path : str):
-        self.reload()
-        self.data["metrics"]["CTS skew map"] = image_path
-        self.save()
+        self._set_metric("CTS skew map", image_path)
     
     def update_monitor(self,
                        step : str,
@@ -170,41 +194,47 @@ class HomeData:
                        runtime : str,
                        instance : int=0,
                        frequency : float=0.0):
-        self.reload()
-        
-        # if not set, use last value
-        if instance == 0:
-            instance_values = self.data["monitor"]["instance"]
-            instance = instance_values[-1] if len(instance_values) > 0 else 0
-        if frequency == 0.0:
-            frequency_values = self.data["monitor"]["frequency"]
-            frequency = frequency_values[-1] if len(frequency_values) > 0 else 0.0
-        
-        step_name = f"{step} - {sub_step}"
-        for i, existing_step in enumerate(self.data["monitor"]["step"]):
-            if existing_step == step_name:
-                self.data["monitor"]["memory"][i] = memory
-                self.data["monitor"]["runtime"][i] = runtime
-                self.data["monitor"]["instance"][i] = instance
-                self.data["monitor"]["frequency"][i] = frequency
-                self.save()
-                return
-        
-        self.data["monitor"]["step"].append(step_name)
-        self.data["monitor"]["memory"].append(memory)
-        self.data["monitor"]["runtime"].append(runtime)
-        self.data["monitor"]["instance"].append(instance)
-        self.data["monitor"]["frequency"].append(frequency)
-        
-        self.save()
+        def mutator(data: dict) -> bool:
+            target_instance = instance
+            target_frequency = frequency
+
+            # if not set, use last value
+            if target_instance == 0:
+                instance_values = data["monitor"]["instance"]
+                target_instance = instance_values[-1] if len(instance_values) > 0 else 0
+            if target_frequency == 0.0:
+                frequency_values = data["monitor"]["frequency"]
+                target_frequency = frequency_values[-1] if len(frequency_values) > 0 else 0.0
+
+            step_name = f"{step} - {sub_step}"
+            for i, existing_step in enumerate(data["monitor"]["step"]):
+                if existing_step == step_name:
+                    changed = (
+                        data["monitor"]["memory"][i] != memory
+                        or data["monitor"]["runtime"][i] != runtime
+                        or data["monitor"]["instance"][i] != target_instance
+                        or data["monitor"]["frequency"][i] != target_frequency
+                    )
+                    data["monitor"]["memory"][i] = memory
+                    data["monitor"]["runtime"][i] = runtime
+                    data["monitor"]["instance"][i] = target_instance
+                    data["monitor"]["frequency"][i] = target_frequency
+                    return changed
+
+            data["monitor"]["step"].append(step_name)
+            data["monitor"]["memory"].append(memory)
+            data["monitor"]["runtime"].append(runtime)
+            data["monitor"]["instance"].append(target_instance)
+            data["monitor"]["frequency"].append(target_frequency)
+            return True
+
+        self._update(mutator)
         
     def set_checklist(self, checklist_path : str):
-        self.data["checklist"] = checklist_path
-        
         if not os.path.exists(checklist_path):
             Checklist(path=checklist_path).save()
-        
-        self.save()
+
+        self._set_path_value("checklist", checklist_path)
             
     def get_checklist_header(self):
         return Checklist(path=self.data.get("checklist", "")).header

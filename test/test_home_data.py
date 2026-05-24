@@ -1,4 +1,5 @@
 import json
+from multiprocessing import Process
 
 from chipcompiler.data.home import HomeData
 
@@ -106,3 +107,78 @@ def test_set_metrics_repairs_missing_metrics(tmp_path):
     data = _read_json(path)
     assert data["metrics"]["pin dist."] == "/tmp/pin.png"
     assert data["monitor"]["step"] == []
+
+
+def test_setters_do_not_rewrite_healthy_current_values(tmp_path):
+    path = tmp_path / "home.json"
+
+    home = HomeData()
+    home.init(str(path))
+    home.set_flow("/ws/home/flow.json")
+    home.set_parameters("/ws/home/parameters.json")
+    home.set_checklist("/ws/home/checklist.json")
+    before = path.stat().st_mtime_ns
+
+    reloaded = HomeData()
+    reloaded.init(str(path))
+    reloaded.set_flow("/ws/home/flow.json")
+    reloaded.set_parameters("/ws/home/parameters.json")
+    reloaded.set_checklist("/ws/home/checklist.json")
+
+    assert path.stat().st_mtime_ns == before
+
+
+def _set_flow(path, value):
+    home = HomeData()
+    home.init(str(path))
+    home.set_flow(value)
+
+
+def _set_checklist(path, value):
+    home = HomeData()
+    home.init(str(path))
+    home.set_checklist(value)
+
+
+def _set_parameters(path, value):
+    home = HomeData()
+    home.init(str(path))
+    home.set_parameters(value)
+
+
+def _update_monitor(path):
+    home = HomeData()
+    home.init(str(path))
+    home.update_monitor("Floorplan", "place", "12M", "3s", instance=42, frequency=100.0)
+
+
+def test_concurrent_home_updates_preserve_schema_and_monitor_rows(tmp_path):
+    path = tmp_path / "home.json"
+    home = HomeData()
+    home.init(str(path))
+    home.set_layout("/ws/Floorplan_ecc/output/layout.png")
+    home.set_metrics_pin_dist("/ws/Floorplan_ecc/output/pin.png")
+    home.update_monitor("Synthesis", "yosys", "10M", "1s", instance=10, frequency=50.0)
+
+    processes = [
+        Process(target=_set_flow, args=(path, "/ws/home/flow.json")),
+        Process(target=_set_checklist, args=(path, "/ws/home/checklist.json")),
+        Process(target=_set_parameters, args=(path, "/ws/home/parameters.json")),
+        Process(target=_update_monitor, args=(path,)),
+    ]
+
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=10)
+
+    assert [process.exitcode for process in processes] == [0, 0, 0, 0]
+    data = _read_json(path)
+    assert data["layout"] == "/ws/Floorplan_ecc/output/layout.png"
+    assert data["metrics"]["pin dist."] == "/ws/Floorplan_ecc/output/pin.png"
+    assert data["monitor"]["step"] == ["Synthesis - yosys", "Floorplan - place"]
+    assert data["monitor"]["memory"] == ["10M", "12M"]
+    assert data["flow"] == "/ws/home/flow.json"
+    assert data["checklist"] == "/ws/home/checklist.json"
+    assert data["parameters"] == "/ws/home/parameters.json"
+    assert path.with_name("home.json.lock").exists()
