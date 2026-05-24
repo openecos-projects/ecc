@@ -81,7 +81,7 @@ def test_update_monitor_repairs_partial_home_json(tmp_path):
     assert data["monitor"]["frequency"] == [100.0]
 
 
-def test_update_monitor_repairs_short_monitor_columns(tmp_path):
+def test_update_monitor_repairs_short_monitor_columns_preserving_history(tmp_path):
     path = tmp_path / "home.json"
     path.write_text(
         json.dumps(
@@ -99,6 +99,13 @@ def test_update_monitor_repairs_short_monitor_columns(tmp_path):
 
     home = HomeData()
     home.init(str(path))
+    data = _read_json(path)
+    assert data["monitor"]["step"] == ["Floorplan - place"]
+    assert data["monitor"]["memory"] == [""]
+    assert data["monitor"]["runtime"] == [""]
+    assert data["monitor"]["instance"] == [0]
+    assert data["monitor"]["frequency"] == [0.0]
+
     home.update_monitor(
         step="Floorplan",
         sub_step="place",

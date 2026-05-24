@@ -48,6 +48,13 @@ home_json = {
 }
 
 _monitor_keys = ("step", "memory", "runtime", "instance", "frequency")
+_monitor_defaults = {
+    "step": "",
+    "memory": "",
+    "runtime": "",
+    "instance": 0,
+    "frequency": 0.0,
+}
 
 def _default_home_data() -> dict:
     return deepcopy(home_json)
@@ -78,10 +85,11 @@ def _normalize_home_data(data: dict) -> tuple[dict, bool]:
             normalized["monitor"][key] = []
             changed = True
 
-    monitor_length = min(len(normalized["monitor"][key]) for key in _monitor_keys)
+    monitor_length = max(len(normalized["monitor"][key]) for key in _monitor_keys)
     for key in _monitor_keys:
-        if len(normalized["monitor"][key]) != monitor_length:
-            normalized["monitor"][key] = normalized["monitor"][key][:monitor_length]
+        missing_count = monitor_length - len(normalized["monitor"][key])
+        if missing_count > 0:
+            normalized["monitor"][key].extend([_monitor_defaults[key]] * missing_count)
             changed = True
 
     if isinstance(data, dict) and normalized != data:
