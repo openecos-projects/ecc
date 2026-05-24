@@ -1,7 +1,9 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import os
+from copy import deepcopy
+
 from chipcompiler.utility import json_read, json_write
+
 from .checklist import Checklist
 
 # home_json = {
@@ -42,6 +44,42 @@ home_json = {
     }
 }
 
+_monitor_keys = ("step", "memory", "runtime", "instance", "frequency")
+
+def _default_home_data() -> dict:
+    return deepcopy(home_json)
+
+def _normalize_home_data(data: dict) -> tuple[dict, bool]:
+    normalized = _default_home_data()
+    changed = not isinstance(data, dict)
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            normalized[key] = value
+
+    if not isinstance(normalized.get("metrics"), dict):
+        normalized["metrics"] = {}
+        changed = True
+
+    if not isinstance(normalized.get("monitor"), dict):
+        normalized["monitor"] = _default_home_data()["monitor"]
+        changed = True
+
+    for key in home_json:
+        if key not in normalized:
+            normalized[key] = _default_home_data()[key]
+            changed = True
+
+    for key in _monitor_keys:
+        if not isinstance(normalized["monitor"].get(key), list):
+            normalized["monitor"][key] = []
+            changed = True
+
+    if isinstance(data, dict) and normalized != data:
+        changed = True
+
+    return normalized, changed
+
 class HomeData:
     """
     Home data information
@@ -55,19 +93,24 @@ class HomeData:
         self.data : dict = {}
     
         if os.path.exists(self.path):
-            self.data = json_read(self.path)
+            self.data, changed = _normalize_home_data(json_read(self.path))
+            if changed:
+                self.save()
         else:
-            self.data = home_json.copy()
+            self.data = _default_home_data()
             self.save()
             
     def reload(self):
-        self.data = json_read(self.path)
+        self.data, changed = _normalize_home_data(json_read(self.path))
+        if changed:
+            self.save()
         
     def reset(self):
-        self.data = home_json.copy()
+        self.data = _default_home_data()
         self.save()
             
     def save(self):
+        self.data, _ = _normalize_home_data(self.data)
         json_write(self.path, self.data)
         
     def set_parameters(self, path : str):
@@ -131,9 +174,11 @@ class HomeData:
         
         # if not set, use last value
         if instance == 0:
-            instance = self.data["monitor"]["instance"][-1] if len(self.data["monitor"]["instance"]) > 0 else 0
+            instance_values = self.data["monitor"]["instance"]
+            instance = instance_values[-1] if len(instance_values) > 0 else 0
         if frequency == 0.0:
-            frequency = self.data["monitor"]["frequency"][-1] if len(self.data["monitor"]["frequency"]) > 0 else 0.0
+            frequency_values = self.data["monitor"]["frequency"]
+            frequency = frequency_values[-1] if len(frequency_values) > 0 else 0.0
         
         step_name = f"{step} - {sub_step}"
         for i, existing_step in enumerate(self.data["monitor"]["step"]):
