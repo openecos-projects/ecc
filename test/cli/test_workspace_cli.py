@@ -665,6 +665,64 @@ def test_get_home_returns_path_and_failed_when_missing(monkeypatch, tmp_path, ca
     assert data["response"] == "failed"
 
 
+def test_load_repairs_partial_home_json_without_changing_response(monkeypatch, tmp_path, capsys):
+    ws = tmp_path / "workspace"
+    home_dir = ws / "home"
+    origin_dir = ws / "origin"
+    home_dir.mkdir(parents=True)
+    origin_dir.mkdir()
+    (origin_dir / "gcd.v").write_text("module gcd(input clk); endmodule\n")
+    (home_dir / "parameters.json").write_text(
+        json.dumps(
+            {
+                "PDK": "mock",
+                "Design": "gcd",
+                "Top module": "gcd",
+                "Clock": "clk",
+                "Frequency max [MHz]": 100,
+            }
+        )
+    )
+    (home_dir / "flow.json").write_text(json.dumps({"steps": []}))
+    (home_dir / "home.json").write_text(
+        json.dumps(
+            {
+                "flow": str(home_dir / "flow.json"),
+                "parameters": str(home_dir / "parameters.json"),
+                "layout": "keep-layout",
+                "metrics": {"pin dist.": "keep-pin"},
+            }
+        )
+    )
+    monkeypatch.setattr("chipcompiler.data.pdk.PDK.validate", lambda self: None)
+    monkeypatch.setattr(
+        "chipcompiler.cli.workspace_service.build_flow_for_workspace",
+        lambda workspace, create_step_workspaces=True: DummyFlow(workspace),
+    )
+
+    rc = cli_main.run(["workspace", "load", "--directory", str(ws), "--json"])
+
+    response = _response(capsys)
+    repaired = json.loads((home_dir / "home.json").read_text())
+    assert rc == 0
+    assert response == {
+        "cmd": "load_workspace",
+        "response": "success",
+        "data": {"directory": os.path.abspath(ws), "workspace_id": os.path.abspath(ws)},
+        "message": [f"load workspace success : {os.path.abspath(ws)}"],
+    }
+    assert repaired["layout"] == "keep-layout"
+    assert repaired["metrics"] == {"pin dist.": "keep-pin"}
+    assert repaired["monitor"] == {
+        "step": [],
+        "memory": [],
+        "runtime": [],
+        "instance": [],
+        "frequency": [],
+    }
+    assert repaired["checklist"] == str(home_dir / "checklist.json")
+
+
 def test_workspace_help_uses_typer_app(capsys):
     rc = cli_main.run(["workspace", "--help"])
 
