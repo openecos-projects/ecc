@@ -42,10 +42,11 @@ def json_write(file_path: str, data: dict | None = None, indent=4) -> bool:
             with gzip.open(file_path, 'wt') as f:
                 json.dump(data, f, indent=indent)
         else:
-            directory = os.path.dirname(os.path.abspath(file_path)) or "."
+            target_path = os.path.realpath(file_path)
+            directory = os.path.dirname(os.path.abspath(target_path)) or "."
             existing_mode = None
-            if os.path.exists(file_path):
-                existing_mode = os.stat(file_path).st_mode
+            if os.path.exists(target_path):
+                existing_mode = os.stat(target_path).st_mode
             with tempfile.NamedTemporaryFile(
                 "w",
                 dir=directory,
@@ -59,7 +60,7 @@ def json_write(file_path: str, data: dict | None = None, indent=4) -> bool:
                 os.fsync(f.fileno())
             if existing_mode is not None:
                 os.chmod(tmp_path, existing_mode)
-            os.replace(tmp_path, file_path)
+            os.replace(tmp_path, target_path)
             tmp_path = None
         return True
     except Exception:
