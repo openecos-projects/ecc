@@ -89,6 +89,13 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
     return result
 
 
+def step_dir_tool(step_path: str) -> str | None:
+    entry = os.path.basename(step_path)
+    if "_" not in entry:
+        return None
+    return entry.rpartition("_")[2]
+
+
 def get_flow_step_names(run_dir: str) -> set[str]:
     flow_data = read_flow_json(run_dir)
     if not isinstance(flow_data, dict):
