@@ -1,10 +1,13 @@
+import json
 from collections.abc import Sequence
+from typing import Annotated
 
 import click
 import typer
 
 from chipcompiler.cli.param_app import param_app
 from chipcompiler.cli.project_app import register_project_commands
+from chipcompiler.cli.version_info import root_version_line, version_payload, version_text
 from chipcompiler.cli.workspace_app import workspace_app
 
 app = typer.Typer(
@@ -13,6 +16,40 @@ app = typer.Typer(
     rich_markup_mode=None,
     help="ECC - EDA toolchain for RTL-to-GDS flows",
 )
+
+
+def version_callback(value: bool) -> None:
+    if value:
+        click.echo(root_version_line())
+        raise typer.Exit()
+
+
+@app.callback()
+def root_callback(
+    version: Annotated[
+        bool | None,
+        typer.Option(
+            "--version",
+            callback=version_callback,
+            is_eager=True,
+            help="Show ECC version and exit.",
+        ),
+    ] = None,
+) -> None:
+    pass
+
+
+@app.command("version", help="Show ECC runtime and component versions")
+def version_cmd(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    payload = version_payload()
+    if json_output:
+        click.echo(json.dumps(payload))
+    else:
+        click.echo(version_text(payload))
+
+
 register_project_commands(app)
 app.add_typer(param_app, name="param")
 app.add_typer(workspace_app, name="workspace")
