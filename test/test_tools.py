@@ -41,8 +41,11 @@ def test_ics55_gcd():
     )
     # workspace = load_workspace(workspace_dir)
     
-    
-    engine_flow = EngineFlow(workspace=workspace)
+    from chipcompiler.engine import EngineDB
+    # build engine_db for workspace
+    engine_db = EngineDB(workspace=workspace)
+    # build engine flow for workspace
+    engine_flow = EngineFlow(workspace=workspace, engine_db=engine_db)
     if not engine_flow.has_init():
         from chipcompiler.rtl2gds import build_rtl2gds_flow
         steps = build_rtl2gds_flow()

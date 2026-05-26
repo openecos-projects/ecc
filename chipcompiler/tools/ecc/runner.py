@@ -16,56 +16,68 @@ from chipcompiler.utility import json_read
 def create_db_engine(workspace: Workspace,
                      step: WorkspaceStep) -> ECCToolsModule:
     """"""
-    def load_data():
-        eda_inst = ECCToolsModule()
+    def load_data():   
+        ecc_module = ECCToolsModule()
         
-        eda_inst.init_config(flow_config=workspace.config["flow"],
-                             db_config=workspace.config["db"],
-                             output_dir=step.data["dir"],
-                             feature_dir=step.feature["dir"])
+        ecc_module.init_config(flow_config=workspace.config.get("flow"),
+                             db_config=workspace.config.get("db"),
+                             output_dir=step.data.get("dir"),
+                             feature_dir=step.feature.get("dir"))
     
         db_path = step.input.get("db", "")
-        if eda_inst.is_db_data_exists(db_path):
-            eda_inst.load_data(path=db_path)
+        if ecc_module.is_db_data_exists(db_path):
+            ecc_module.load_data(path=db_path)
             workspace.logger.info(f"Successfully loaded data from {db_path}")
-            return eda_inst
+            return ecc_module
         else:
             return None
         
     def load_design():
-        eda_inst = ECCToolsModule()
+        ecc_module = ECCToolsModule()
     
-        eda_inst.init_config(flow_config=workspace.config["flow"],
-                             db_config=workspace.config["db"],
-                             output_dir=step.data["dir"],
-                             feature_dir=step.feature["dir"])
+        ecc_module.init_config(flow_config=workspace.config.get("flow"),
+                             db_config=workspace.config.get("db"),
+                             output_dir=step.data.get("dir"),
+                             feature_dir=step.feature.get("dir"))
 
-        eda_inst.init_techlef(workspace.pdk.tech)
-        eda_inst.init_lefs(workspace.pdk.lefs)
+        ecc_module.init_techlef(workspace.pdk.tech)
+        ecc_module.init_lefs(workspace.pdk.lefs)
         
         # if db def exist, read db def
-        if os.path.exists(step.input["def"]):
-            eda_inst.read_def(step.input["def"])      
+        if os.path.exists(step.input.get("def", "")):
+            ecc_module.read_def(step.input.get("def", ""))      
         else:
             #else, read step output verilog
-            if os.path.exists(step.input["verilog"]):
-                eda_inst.read_verilog(verilog=step.input["verilog"],
+            if os.path.exists(step.input.get("verilog", "")):
+                ecc_module.read_verilog(verilog=step.input.get("verilog", ""),
                                       top_module=workspace.design.top_module)
             else:
                 return None
     
-        return eda_inst
+        return ecc_module
     
-    if not is_eda_exist():
+    def is_enable_setup():
+        # skip synthesis step
+        if step.name == StepEnum.SYNTHESIS.value:
+            return False
+        
+        # db_path = step.input.get("db", "")
+        
+        # ecc_module = ECCToolsModule()
+        
+        # return ecc_module.is_db_data_exists(db_path) or os.path.exists(step.input.get("def", "")) or os.path.exists(step.input.get("verilog", ""))
+        return os.path.exists(step.input.get("def", "")) or os.path.exists(step.input.get("verilog", ""))
+    
+    if not is_eda_exist() or not is_enable_setup():
         return None
     try:
-        eda_inst = load_data()
-        if eda_inst is None:
-            eda_inst = load_design()
+        ecc_module = load_data()
+        if ecc_module is None:
+            ecc_module = load_design()
     except Exception as e:
-        eda_inst = load_design()
+        ecc_module = load_design()
         
-    return eda_inst
+    return ecc_module
         
 def get_eda_instance(workspace: Workspace,
                      step: WorkspaceStep,
@@ -74,17 +86,23 @@ def get_eda_instance(workspace: Workspace,
     ecc_module is ecc module from db engine, 
     eda instacnce may initialize data from this module if ecc_module has been set
     """
-    eda_inst = None
+    if ecc_module is None:
+        try:
+            ecc_module = create_db_engine(workspace=workspace,
+                                          step=step)
+        except Exception as e:
+            ecc_module = None
+            workspace.logger.error(f"Failed to create ECC engine for step {step.name}: {e}")
+            
+    # release sta for some memory leakage issue
     if ecc_module is not None:
-        # copy data from ecc_module, but not set ecc_module to eda inst
-        # TBD
-        eda_inst = ecc_module
-    else:
-        # init ecc module
-        eda_inst = create_db_engine(workspace=workspace,
-                                    step=step)
+        ecc_module.update_step_paths(
+            output_dir=step.data.get("dir", ""),
+            feature_dir=step.feature.get("dir", ""),
+        )
+        ecc_module.release_sta()
     
-    return eda_inst
+    return ecc_module
 
 def save_data(workspace: Workspace,
               step: WorkspaceStep,
@@ -100,7 +118,7 @@ def save_data(workspace: Workspace,
     ecc_module.def_save(def_path=step.output.get("def", ""))
     ecc_module.verilog_save(output_verilog=step.output.get("verilog", ""))
     ecc_module.gds_save(output_path=step.output.get("gds", ""))
-    # ecc_module.save_data(path=step.output.get("db", ""))
+    ecc_module.save_data(path=step.output.get("db", ""))
     ecc_module.json_save(path=step.output.get("json", ""))
     ecc_module.feature_sammry(json_path=step.feature.get("db", ""))
     if feature_step:
@@ -110,11 +128,13 @@ def save_data(workspace: Workspace,
     ecc_module.report_summary(path=step.report.get("db", ""))
     
     # report timing
+    ecc_module.release_sta()
     ecc_module.init_sta(output_dir=step.data.get("sta", ""),
                     top_module=workspace.design.top_module,
                     lib_paths=workspace.pdk.libs,
                     sdc_path=workspace.pdk.sdc)
     ecc_module.report_timing()
+    ecc_module.release_sta()
     
     # update parameters
     db_json = json_read(step.feature.get("db", ""))
@@ -244,17 +264,17 @@ def run_net_opt(workspace: Workspace,
     
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_net_opt(config=workspace.config[f"{StepEnum.NETLIST_OPT.value}"])
+        ecc_module.run_net_opt(config=workspace.config.get(f"{StepEnum.NETLIST_OPT.value}"))
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_net_optimization.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
             
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -273,19 +293,19 @@ def run_placement(workspace: Workspace,
     
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_placement(config=workspace.config[f"{StepEnum.PLACEMENT.value}"])
-        eda_inst.feature_placement_map(json_path=step.feature["map"])
+        ecc_module.run_placement(config=workspace.config.get(f"{StepEnum.PLACEMENT.value}"))
+        ecc_module.feature_placement_map(json_path=step.feature.get("map", ""))
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -304,26 +324,26 @@ def run_cts(workspace: Workspace,
     
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_cts(config=workspace.config[f"{StepEnum.CTS.value}"],
-                         output=step.data[f"{StepEnum.CTS.value}"])
+        ecc_module.run_cts(config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
+                         output=step.data.get(f"{StepEnum.CTS.value}", ""))
         
-        eda_inst.report_cts(output=step.data[f"{StepEnum.CTS.value}"])
+        ecc_module.report_cts(output=step.data.get(f"{StepEnum.CTS.value}", ""))
         
         # Post-CTS legalization is handled by the following DreamPlace legalization step.
-        # eda_inst.run_legalize(config=workspace.config[f"{StepEnum.LEGALIZATION.value}"])
+        # ecc_module.run_legalize(config=workspace.config.get(f"{StepEnum.LEGALIZATION.value}", ""))
         
-        eda_inst.feature_cts_map(json_path=step.feature["map"])
+        ecc_module.feature_cts_map(json_path=step.feature.get("map", ""))
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
             
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -342,22 +362,22 @@ def run_timing_opt_drv(workspace: Workspace,
     
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_timing_opt_drv(config=workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
+        ecc_module.run_timing_opt_drv(config=workspace.config.get(f"{StepEnum.TIMING_OPT_DRV.value}", ""))
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_drv.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
     
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -376,18 +396,18 @@ def run_timing_opt_hold(workspace: Workspace,
     
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_timing_opt_hold(config=workspace.config[f"{StepEnum.TIMING_OPT_HOLD.value}"])
+        ecc_module.run_timing_opt_hold(config=workspace.config.get(f"{StepEnum.TIMING_OPT_HOLD.value}", ""))
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_hold.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -406,25 +426,25 @@ def run_routing(workspace: Workspace,
     
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        if eda_inst.is_rt_timing_enable(config=workspace.config[f"{StepEnum.ROUTING.value}"]):
-            eda_inst.init_sta(output_dir=step.data["sta"],
+        if ecc_module.is_rt_timing_enable(config=workspace.config.get(f"{StepEnum.ROUTING.value}", "")):
+            ecc_module.init_sta(output_dir=step.data.get(f"{StepEnum.ROUTING.value}", ""),
                               top_module=workspace.design.top_module,
                               lib_paths=workspace.pdk.libs,
                               sdc_path=workspace.pdk.sdc)
             
-        eda_inst.run_routing(config=workspace.config[f"{StepEnum.ROUTING.value}"])
+        ecc_module.run_routing(config=workspace.config.get(f"{StepEnum.ROUTING.value}", ""))
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_routing.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -445,23 +465,23 @@ def run_drc(workspace: Workspace,
     sub_flow = EccSubFlow(workspace=workspace,
                           workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.init_drc(output_dir=step.data[f"{StepEnum.DRC.value}"])
-        eda_inst.run_drc(config=workspace.config[f"{StepEnum.DRC.value}"],
-                         report_path=step.report["step"])
+        ecc_module.init_drc(output_dir=step.data.get(f"{StepEnum.DRC.value}", ""))
+        ecc_module.run_drc(config=workspace.config.get(f"{StepEnum.DRC.value}", ""),
+                         report_path=step.report.get("step", ""))
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
         
-        eda_inst.save_drc(feature_path=step.feature[f"step"])
+        ecc_module.save_drc(feature_path=step.feature.get("step", ""))
    
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -484,18 +504,18 @@ def run_legalization(workspace: Workspace,
     sub_flow = EccSubFlow(workspace=workspace,
                           workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_legalize(config=workspace.config[f"{StepEnum.LEGALIZATION.value}"])
+        ecc_module.run_legalize(config=workspace.config.get(f"{StepEnum.LEGALIZATION.value}", ""))
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_legalization.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
    
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -515,18 +535,18 @@ def run_filler(workspace: Workspace,
     sub_flow = EccSubFlow(workspace=workspace,
                           workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.run_filler(config=workspace.config[f"{StepEnum.FILLER.value}"])
+        ecc_module.run_filler(config=workspace.config.get(f"{StepEnum.FILLER.value}", ""))
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
       
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -545,11 +565,11 @@ def run_floorplan(workspace: Workspace,
     sub_flow = EccSubFlow(workspace=workspace,
                           workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value,
                              state=StateEnum.Success)
         
@@ -558,7 +578,7 @@ def run_floorplan(workspace: Workspace,
         util = workspace.parameters.data.get("Core", {}).get("Utilitization", 0.3)
         margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
         aspect_ratio = workspace.parameters.data.get("Core", {}).get("Aspect ratio", 1)
-        eda_inst.init_floorplan_by_core_utilization(
+        ecc_module.init_floorplan_by_core_utilization(
                 core_site=workspace.pdk.site_core,
                 io_site=workspace.pdk.site_io,
                 corner_site=workspace.pdk.site_corner,
@@ -571,7 +591,7 @@ def run_floorplan(workspace: Workspace,
         # init by die and core area
         # die_area=workspace.parameters.data.get("Die", {}).get("Bounding box", "")
         # core_area=workspace.parameters.data.get("Core", {}).get("Bounding box", "")
-        # eda_inst.init_floorplan_by_area(die_area=die_area,
+        # ecc_module.init_floorplan_by_area(die_area=die_area,
         #                                 core_area=core_area,
         #                                 core_site=workspace.pdk.site_core,
         #                                 io_site=workspace.pdk.site_io,
@@ -586,7 +606,7 @@ def run_floorplan(workspace: Workspace,
         json_floorplan = floorplan_dict.get("Floorplan", {})
         json_track = json_floorplan.get("Tracks", [])
         for item in json_track:
-            eda_inst.gern_track(layer=item.get("layer", ""),
+            ecc_module.gern_track(layer=item.get("layer", ""),
                                 x_start=item.get("x start", 0),
                                 x_step=item.get("x step", 0),
                                 y_start=item.get("y start", 0),
@@ -598,7 +618,7 @@ def run_floorplan(workspace: Workspace,
         json_macro_placement = floorplan_dict.get("Macro Placement", [])
         if len(json_macro_placement) > 0:
             for item in json_macro_placement:
-                eda_inst.place_instance(
+                ecc_module.place_instance(
                     inst_name=item.get("inst_name", ""),
                     llx=item.get("llx", 0),
                     lly=item.get("lly", 0),
@@ -616,7 +636,7 @@ def run_floorplan(workspace: Workspace,
             net_name = item.get("net name", "")
             direction = item.get("direction", "")
             is_power = item.get("is power")
-            eda_inst.add_pdn_io(net_name=net_name,
+            ecc_module.add_pdn_io(net_name=net_name,
                                 direction=direction,
                                 is_power=is_power)
         
@@ -626,13 +646,13 @@ def run_floorplan(workspace: Workspace,
             net_name = item.get("net name", "")
             instance_pin_name = item.get("instance pin name", "")
             is_power = item.get("is power", 1)
-            eda_inst.global_net_connect(net_name=net_name,
+            ecc_module.global_net_connect(net_name=net_name,
                                         instance_pin_name=instance_pin_name,
                                         is_power=is_power)
         
         # auto place io pins
         json_iopin_place = json_floorplan.get("Auto place pin", {})
-        eda_inst.auto_place_pins(layer=json_iopin_place.get("layer", ""),
+        ecc_module.auto_place_pins(layer=json_iopin_place.get("layer", ""),
                                  width=json_iopin_place.get("width", 0),
                                  height=json_iopin_place.get("height", 0),
                                  sides=json_iopin_place.get("sides", []))
@@ -640,7 +660,7 @@ def run_floorplan(workspace: Workspace,
                              state=StateEnum.Success)
         
         # tap cell
-        eda_inst.tapcell(tapcell=workspace.pdk.tap_cell,
+        ecc_module.tapcell(tapcell=workspace.pdk.tap_cell,
                          distance=json_floorplan.get("Tap distance", 0),
                          endcap=workspace.pdk.end_cap)
         sub_flow.update_step(step_name=EccSubFlowEnum.tap_cell.value,
@@ -654,7 +674,7 @@ def run_floorplan(workspace: Workspace,
             ground_net = json_pdn_grid.get("ground net", "")
             width = json_pdn_grid.get("width", 0)
             offset = json_pdn_grid.get("offset", 0)
-            eda_inst.create_pdn_grid(layer=layer,
+            ecc_module.create_pdn_grid(layer=layer,
                                      net_power=power_net,
                                      net_ground=ground_net,
                                      width=width,
@@ -669,7 +689,7 @@ def run_floorplan(workspace: Workspace,
             width = item.get("width", 0)
             pitch = item.get("pitch", 0)
             offset = item.get("offset", 0)
-            eda_inst.create_pdn_stripe(layer=layer,
+            ecc_module.create_pdn_stripe(layer=layer,
                                        net_power=power_net,
                                        net_ground=ground_net,
                                        width=width,
@@ -681,19 +701,19 @@ def run_floorplan(workspace: Workspace,
         for item in json_pdn_connect_layers:
             layers = item.get("layers", [])
             if len(layers) >= 2:
-                eda_inst.connect_pdn_layers(layers)
+                ecc_module.connect_pdn_layers(layers)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.PDN.value,
                              state=StateEnum.Success)
         
         # set clock net
         clock_name = workspace.parameters.data.get("Clock", "")
-        eda_inst.set_net(net_name=clock_name,
+        ecc_module.set_net(net_name=clock_name,
                          net_type="CLOCK")
         sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value,
                              state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=eda_inst, feature_step=False)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False)
             
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -713,21 +733,21 @@ def run_harden(workspace: Workspace,
     sub_flow = EccSubFlow(workspace=workspace,
                           workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
-        eda_inst.init_sta(output_dir=step.data["sta"],
+    if ecc_module is not None:
+        ecc_module.init_sta(output_dir=step.data["sta"],
                           top_module=workspace.design.top_module,
                           lib_paths=workspace.pdk.libs,
                           sdc_path=workspace.pdk.sdc)
-        eda_inst.update_timing()
+        ecc_module.update_timing()
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        eda_inst.write_abstract_lef(output_lef_path=step.output.get("lef", ""))
-        eda_inst.write_timing_model(output_lib_path=step.output.get("lib", ""))
-        eda_inst.gds_save(output_path=step.output.get("gds", ""), is_harden=True)
+        ecc_module.write_abstract_lef(output_lef_path=step.output.get("lef", ""))
+        ecc_module.write_timing_model(output_lib_path=step.output.get("lib", ""))
+        ecc_module.gds_save(output_path=step.output.get("gds", ""), is_harden=True)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
         
@@ -741,7 +761,7 @@ def run_rcx(workspace: Workspace,
     """
     run rcx
     """
-    def run_jsons_to_itf(eda_inst : ECCToolsModule) -> bool:
+    def run_jsons_to_itf(ecc_module : ECCToolsModule) -> bool:
         config=json_read(workspace.config.get(StepEnum.RCX.value, ""))
         corners_dict = config.get("corners", [])
         for item in corners_dict:
@@ -751,7 +771,7 @@ def run_rcx(workspace: Workspace,
             if not os.path.exists(json_file):
                 return False
             
-            eda_inst.rcx_json_to_itf(json_path=json_file, itf_path=itf_file)
+            ecc_module.rcx_json_to_itf(json_path=json_file, itf_path=itf_file)
         return True
     
     result = False
@@ -759,21 +779,22 @@ def run_rcx(workspace: Workspace,
     sub_flow = EccSubFlow(workspace=workspace,
                           workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-        if not run_jsons_to_itf(eda_inst):
+        if not run_jsons_to_itf(ecc_module):
             sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete)
             result = False
         else:
-            eda_inst.run_rcx(config=workspace.config.get(StepEnum.RCX.value, ""))
-            eda_inst.report_rcx(step.output.get("dir", ""))
+            ecc_module.init_rcx(config=workspace.config.get(StepEnum.RCX.value, ""))
+            ecc_module.run_rcx()
+            ecc_module.report_rcx()
             sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
             
-            save_data(workspace=workspace, step=step, ecc_module=eda_inst, feature_step=False)
+            save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False)
             
             sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                                  state=StateEnum.Success) 
@@ -828,11 +849,11 @@ def run_sta(workspace: Workspace,
     sub_flow = EccSubFlow(workspace=workspace,
                           workspace_step=step)
     
-    eda_inst = get_eda_instance(workspace=workspace,
+    ecc_module = get_eda_instance(workspace=workspace,
                                 step=step,
                                 ecc_module = ecc_module)
     
-    if eda_inst is not None:
+    if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
         spef_items = collect_spef_files()
@@ -872,16 +893,16 @@ def run_sta(workspace: Workspace,
             os.makedirs(report_dir, exist_ok=True)
 
             try:
-                eda_inst.set_design_workspace(report_dir)
-                eda_inst.read_netlist(step.input.get("verilog", ""))
-                eda_inst.read_liberty(workspace.pdk.libs)
-                eda_inst.link_design(workspace.design.top_module)
-                eda_inst.read_sdc(workspace.pdk.sdc)
-                eda_inst.read_spef(file_name=spef_file)
-                eda_inst.report_timing()
+                ecc_module.set_design_workspace(report_dir)
+                ecc_module.read_netlist(step.input.get("verilog", ""))
+                ecc_module.read_liberty(workspace.pdk.libs)
+                ecc_module.link_design(workspace.design.top_module)
+                ecc_module.read_sdc(workspace.pdk.sdc)
+                ecc_module.read_spef(file_name=spef_file)
+                ecc_module.report_timing()
             finally:
                 # release sta
-                eda_inst.release_sta()
+                ecc_module.release_sta()
 
             workspace.logger.info("STA report for %s saved to %s",
                                   spef_file,
@@ -889,7 +910,7 @@ def run_sta(workspace: Workspace,
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Success)
         
-        result = save_data(workspace=workspace, step=step, ecc_module=eda_inst, feature_step=False)
+        result = save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 

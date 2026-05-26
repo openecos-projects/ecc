@@ -17,7 +17,7 @@ class ECCToolsModule:
     """
     def __init__(self):
         try:
-            from chipcompiler.tools.ecc.bin import ecc_py as ecc
+            from ecc_tools_bin import ecc_py as ecc
         except ImportError:
             try:
                 from chipcompiler.tools.ecc.bin import ecc_py as ecc
@@ -64,7 +64,10 @@ class ECCToolsModule:
 
     def build_connection_map(self, clusters, src_instances, max_hop: int):
         return self.ecc.build_connection_map(clusters, src_instances, max_hop)
-    
+
+    def reset_data(self):
+        self.ecc.reset_data()
+
     ########################################################################
     # config api
     ########################################################################
@@ -80,6 +83,12 @@ class ECCToolsModule:
 
         self.ecc.db_init(
             config_path=db_config,
+            output_path=output_dir,
+            feature_path=feature_dir,
+        )
+
+    def update_step_paths(self, output_dir: str, feature_dir: str):
+        self.ecc.db_init(
             output_path=output_dir,
             feature_path=feature_dir,
         )
@@ -869,11 +878,14 @@ class ECCToolsModule:
     ########################################################################
     # RCX api
     ########################################################################
-    def run_rcx(self, config: str):
-        return self.ecc.run_rcx(config=config)
+    def init_rcx(self, config: str):
+        return self.ecc.init_rcx(config=config)
+    
+    def run_rcx(self):
+        return self.ecc.run_rcx()
 
-    def report_rcx(self, output_dir: str = "."):
-        return self.ecc.report_rcx(output_dir)
+    def report_rcx(self):
+        return self.ecc.report_rcx()
     
     def rcx_json_to_itf(self, json_path: str, itf_path: str):
         rcx_extractor =self.RcxExtraction(json_path, itf_path)
