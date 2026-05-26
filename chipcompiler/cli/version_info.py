@@ -4,13 +4,6 @@ UNKNOWN_VERSION = "unknown"
 RUNTIME_LABEL = "ECC CLI"
 VERSION_SCHEMA = 1
 
-COMPONENT_DISTRIBUTIONS = {
-    "ecc": "ecc",
-    "dreamplace": "ecc-dreamplace",
-    "ecc_tools": "ecc-tools",
-}
-
-
 def distribution_version(distribution: str, fallback: str | None = None) -> str:
     try:
         return metadata.version(distribution)
@@ -33,8 +26,8 @@ def version_payload() -> dict[str, int | str]:
         "schema_version": VERSION_SCHEMA,
         "runtime": RUNTIME_LABEL,
         "ecc": ecc_version(),
-        "dreamplace": distribution_version(COMPONENT_DISTRIBUTIONS["dreamplace"]),
-        "ecc_tools": distribution_version(COMPONENT_DISTRIBUTIONS["ecc_tools"]),
+        "dreamplace": distribution_version("ecc-dreamplace"),
+        "ecc_tools": distribution_version("ecc-tools"),
     }
 
 
