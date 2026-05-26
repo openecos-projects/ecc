@@ -170,7 +170,7 @@ def build_step_config_items(
         step_dir_tool,
     )
     from chipcompiler.cli.core.output import normalize_step_name
-    from chipcompiler.cli.workspace_config_view import workspace_config_files
+    from chipcompiler.cli.workspace.config_view import workspace_config_files
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     flow_data = read_flow_json(run_dir)

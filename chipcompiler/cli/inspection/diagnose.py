@@ -31,7 +31,7 @@ def _has_metrics(run_dir: str, step_token: str) -> bool:
 
 
 def _has_config_files(run_dir: str, step_token: str, tool: str | None) -> bool:
-    from chipcompiler.cli.workspace_config_view import workspace_config_files
+    from chipcompiler.cli.workspace.config_view import workspace_config_files
 
     return bool(workspace_config_files(run_dir, step_token, tool))
 

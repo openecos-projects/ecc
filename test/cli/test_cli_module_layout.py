@@ -92,3 +92,22 @@ def test_inspection_and_rendering_old_paths_reexport_owner_modules():
         new_module = importlib.import_module(f"chipcompiler.cli.{new_name}")
 
         assert getattr(old_module, symbol) is getattr(new_module, symbol)
+
+
+def test_workspace_modules_live_under_workspace_package():
+    for module_name in ("request", "response", "service", "config_view"):
+        module = importlib.import_module(f"chipcompiler.cli.workspace.{module_name}")
+        assert module.__name__ == f"chipcompiler.cli.workspace.{module_name}"
+
+
+def test_workspace_old_paths_reexport_owner_modules():
+    for old_name, new_name, symbol in (
+        ("workspace_request", "workspace.request", "create_request"),
+        ("workspace_response", "workspace.response", "workspace_response"),
+        ("workspace_service", "workspace.service", "load_workspace"),
+        ("workspace_config_view", "workspace.config_view", "workspace_config_files"),
+    ):
+        old_module = importlib.import_module(f"chipcompiler.cli.{old_name}")
+        new_module = importlib.import_module(f"chipcompiler.cli.{new_name}")
+
+        assert getattr(old_module, symbol) is getattr(new_module, symbol)
