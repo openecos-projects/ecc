@@ -948,8 +948,8 @@ class TestRendererCmdStripping:
     def test_json_preserves_cmd_keys(self):
         from io import StringIO
 
-        from chipcompiler.cli.render import render_json
         from chipcompiler.cli.core.types import CommandResult
+        from chipcompiler.cli.render import render_json
 
         buf = StringIO()
         result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))
@@ -961,8 +961,8 @@ class TestRendererCmdStripping:
     def test_jsonl_preserves_cmd_keys(self):
         from io import StringIO
 
-        from chipcompiler.cli.render import render_jsonl
         from chipcompiler.cli.core.types import CommandResult
+        from chipcompiler.cli.render import render_jsonl
 
         buf = StringIO()
         result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))

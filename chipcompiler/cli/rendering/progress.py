@@ -4,11 +4,16 @@ import shutil
 import threading
 import time
 
-from chipcompiler.cli.inspection.log_view import _KIND_COLOR, _KIND_LABEL, LineKind, extract_error_context
 from chipcompiler.cli.core.output import disclosure_cmd, normalize_state, normalize_step_name
+from chipcompiler.cli.core.types import OutputMode
+from chipcompiler.cli.inspection.log_view import (
+    _KIND_COLOR,
+    _KIND_LABEL,
+    LineKind,
+    extract_error_context,
+)
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.pretty import style as _style
-from chipcompiler.cli.core.types import OutputMode
 from chipcompiler.data import StateEnum, log_flow
 
 

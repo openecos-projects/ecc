@@ -4,6 +4,7 @@ import time
 
 import pytest
 
+from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.cli.log_view import LineKind, LogLine
 from chipcompiler.cli.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.progress import (
@@ -17,7 +18,6 @@ from chipcompiler.cli.progress import (
     supports_color,
     truncate_to_width,
 )
-from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.data import StateEnum
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")

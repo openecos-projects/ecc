@@ -26,8 +26,12 @@ def discover_artifacts(
     run_id: str | None = None,
     project_dir: str | None = None,
 ) -> tuple[list[dict], int]:
-    from chipcompiler.cli.inspection.discovery import _safe_steps, discover_step_dirs, read_flow_json
     from chipcompiler.cli.core.output import normalize_step_name
+    from chipcompiler.cli.inspection.discovery import (
+        _safe_steps,
+        discover_step_dirs,
+        read_flow_json,
+    )
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     step_dirs = discover_step_dirs(run_dir)

@@ -141,7 +141,10 @@ def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
         seen["plain"] = command_input.output.plain
         return CommandResult.ok([{"status": "ok"}])
 
-    monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_project_dir", fake_resolve_project_dir)
+    monkeypatch.setattr(
+        "chipcompiler.cli.core.invocation.resolve_project_dir",
+        fake_resolve_project_dir,
+    )
     monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_run_dir", fake_resolve_run_dir)
     monkeypatch.setattr("chipcompiler.cli.command_handlers.inspect.status", fake_status)
 
@@ -302,7 +305,10 @@ def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
     def fake_renderer(result, ctx, command_input, color):
         print(f"registry:{ctx.output_mode.value}:{result.records[0]['status']}")
 
-    monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_project_dir", fake_resolve_project_dir)
+    monkeypatch.setattr(
+        "chipcompiler.cli.core.invocation.resolve_project_dir",
+        fake_resolve_project_dir,
+    )
     monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_run_dir", fake_resolve_run_dir)
     monkeypatch.setitem(
         __import__("chipcompiler.cli.renderers", fromlist=["RENDERERS"]).RENDERERS,

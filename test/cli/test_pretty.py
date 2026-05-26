@@ -549,8 +549,8 @@ class TestSharedColorPolicy:
         assert not supports_color(file=io.StringIO())
 
     def test_pretty_supports_color_machine_mode(self):
-        from chipcompiler.cli.pretty import supports_color
         from chipcompiler.cli.core.types import OutputMode
+        from chipcompiler.cli.pretty import supports_color
 
         assert not supports_color(mode=OutputMode.JSON)
         assert not supports_color(mode=OutputMode.PLAIN)

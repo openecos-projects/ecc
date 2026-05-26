@@ -162,6 +162,7 @@ def build_step_config_items(
     run_id: str | None = None,
     project_dir: str | None = None,
 ) -> tuple[list[dict], int]:
+    from chipcompiler.cli.core.output import normalize_step_name
     from chipcompiler.cli.inspection.discovery import (
         CORRUPT_FLOW_JSON,
         _safe_steps,
@@ -169,7 +170,6 @@ def build_step_config_items(
         read_flow_json,
         step_dir_tool,
     )
-    from chipcompiler.cli.core.output import normalize_step_name
     from chipcompiler.cli.workspace.config_view import workspace_config_files
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))

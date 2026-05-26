@@ -148,6 +148,7 @@ def build_diagnose_issues(
     project: str | None = None,
     run_id: str | None = None,
 ) -> tuple[list[dict], int]:
+    from chipcompiler.cli.core.output import normalize_state, normalize_step_name
     from chipcompiler.cli.inspection.discovery import (
         CORRUPT_FLOW_JSON,
         _safe_steps,
@@ -155,7 +156,6 @@ def build_diagnose_issues(
         read_flow_json,
         step_dir_tool,
     )
-    from chipcompiler.cli.core.output import normalize_state, normalize_step_name
 
     display_run = run_id or "default"
     issues = []

@@ -7,8 +7,8 @@ import typer
 
 from chipcompiler.cli.commands.param import param_app
 from chipcompiler.cli.commands.project import register_project_commands
-from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
 from chipcompiler.cli.commands.workspace import workspace_app
+from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
 
 app = typer.Typer(
     add_completion=False,

@@ -385,7 +385,10 @@ def artifacts(command_input: StepInspectInput, ctx: CommandContext) -> CommandRe
 
 
 def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.inspection.config_view import build_project_config_items, build_step_config_items
+    from chipcompiler.cli.inspection.config_view import (
+        build_project_config_items,
+        build_step_config_items,
+    )
 
     step_token = command_input.step
     project = ctx.project
