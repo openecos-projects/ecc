@@ -28,6 +28,16 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         assert command in out
 
 
+def test_root_version_returns_single_line(capsys):
+    rc = cli_main.run(["--version"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out.startswith("ecc ")
+    assert out.endswith("\n")
+    assert len(out.splitlines()) == 1
+
+
 def test_param_help_returns_zero_and_lists_subcommands(capsys):
     rc = cli_main.run(["param", "--help"])
 
