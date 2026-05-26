@@ -1,6 +1,14 @@
 from importlib import metadata
 
 UNKNOWN_VERSION = "unknown"
+RUNTIME_LABEL = "ECC CLI"
+VERSION_SCHEMA = 1
+
+COMPONENT_DISTRIBUTIONS = {
+    "ecc": "ecc",
+    "dreamplace": "ecc-dreamplace",
+    "ecc_tools": "ecc-tools",
+}
 
 
 def distribution_version(distribution: str, fallback: str | None = None) -> str:
@@ -20,5 +28,26 @@ def ecc_version() -> str:
     return distribution_version("ecc", fallback=fallback)
 
 
+def version_payload() -> dict[str, int | str]:
+    return {
+        "schema_version": VERSION_SCHEMA,
+        "runtime": RUNTIME_LABEL,
+        "ecc": ecc_version(),
+        "dreamplace": distribution_version(COMPONENT_DISTRIBUTIONS["dreamplace"]),
+        "ecc_tools": distribution_version(COMPONENT_DISTRIBUTIONS["ecc_tools"]),
+    }
+
+
 def root_version_line() -> str:
     return f"ecc {ecc_version()}"
+
+
+def version_text(payload: dict[str, int | str]) -> str:
+    return "\n".join(
+        (
+            f"ecc {payload['ecc']}",
+            f"dreamplace {payload['dreamplace']}",
+            f"ecc_tools {payload['ecc_tools']}",
+            f"runtime {payload['runtime']}",
+        )
+    )

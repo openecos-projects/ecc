@@ -1,3 +1,4 @@
+import json
 from collections.abc import Sequence
 from typing import Annotated
 
@@ -6,7 +7,7 @@ import typer
 
 from chipcompiler.cli.param_app import param_app
 from chipcompiler.cli.project_app import register_project_commands
-from chipcompiler.cli.version_info import root_version_line
+from chipcompiler.cli.version_info import root_version_line, version_payload, version_text
 from chipcompiler.cli.workspace_app import workspace_app
 
 app = typer.Typer(
@@ -36,6 +37,17 @@ def root_callback(
     ] = None,
 ) -> None:
     pass
+
+
+@app.command("version", help="Show ECC runtime and component versions")
+def version_cmd(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    payload = version_payload()
+    if json_output:
+        click.echo(json.dumps(payload))
+    else:
+        click.echo(version_text(payload))
 
 
 register_project_commands(app)

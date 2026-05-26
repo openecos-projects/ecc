@@ -1,5 +1,6 @@
 import dataclasses
 import json
+from importlib import metadata
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.command_inputs import OutputOptions, ProjectOptions
@@ -36,6 +37,48 @@ def test_root_version_returns_single_line(capsys):
     assert out.startswith("ecc ")
     assert out.endswith("\n")
     assert len(out.splitlines()) == 1
+
+
+def test_version_command_returns_stable_text_lines(capsys):
+    rc = cli_main.run(["version"])
+
+    lines = capsys.readouterr().out.splitlines()
+    assert rc == 0
+    assert len(lines) == 4
+    assert lines[0].startswith("ecc ")
+    assert lines[1].startswith("dreamplace ")
+    assert lines[2].startswith("ecc_tools ")
+    assert lines[3] == "runtime ECC CLI"
+
+
+def test_version_command_returns_json_payload(capsys):
+    rc = cli_main.run(["version", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert set(data) == {"schema_version", "runtime", "ecc", "dreamplace", "ecc_tools"}
+    assert data["schema_version"] == 1
+    assert data["runtime"] == "ECC CLI"
+
+
+def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
+    def missing_version(distribution):
+        raise metadata.PackageNotFoundError(distribution)
+
+    monkeypatch.setattr("chipcompiler.cli.version_info.metadata.version", missing_version)
+    monkeypatch.setattr("chipcompiler.__version__", "source-fallback")
+
+    rc = cli_main.run(["version", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data == {
+        "schema_version": 1,
+        "runtime": "ECC CLI",
+        "ecc": "source-fallback",
+        "dreamplace": "unknown",
+        "ecc_tools": "unknown",
+    }
 
 
 def test_param_help_returns_zero_and_lists_subcommands(capsys):
