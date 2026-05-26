@@ -62,3 +62,33 @@ def test_project_and_param_old_paths_reexport_owner_modules():
         new_module = importlib.import_module(f"chipcompiler.cli.{new_name}")
 
         assert getattr(old_module, symbol) is getattr(new_module, symbol)
+
+
+def test_inspection_modules_live_under_inspection_package():
+    for module_name in ("discovery", "artifacts", "config_view", "diagnose", "log_view"):
+        module = importlib.import_module(f"chipcompiler.cli.inspection.{module_name}")
+        assert module.__name__ == f"chipcompiler.cli.inspection.{module_name}"
+
+
+def test_rendering_modules_live_under_rendering_package():
+    for module_name in ("render", "renderers", "pretty", "progress"):
+        module = importlib.import_module(f"chipcompiler.cli.rendering.{module_name}")
+        assert module.__name__ == f"chipcompiler.cli.rendering.{module_name}"
+
+
+def test_inspection_and_rendering_old_paths_reexport_owner_modules():
+    for old_name, new_name, symbol in (
+        ("inspect", "inspection.discovery", "resolve_run_dir"),
+        ("artifacts", "inspection.artifacts", "discover_artifacts"),
+        ("config_view", "inspection.config_view", "build_project_config_items"),
+        ("diagnose", "inspection.diagnose", "build_diagnose_issues"),
+        ("log_view", "inspection.log_view", "build_log_records"),
+        ("render", "rendering.render", "render_result"),
+        ("renderers", "rendering.renderers", "RENDERERS"),
+        ("pretty", "rendering.pretty", "render_error"),
+        ("progress", "rendering.progress", "should_enable_run_progress"),
+    ):
+        old_module = importlib.import_module(f"chipcompiler.cli.{old_name}")
+        new_module = importlib.import_module(f"chipcompiler.cli.{new_name}")
+
+        assert getattr(old_module, symbol) is getattr(new_module, symbol)

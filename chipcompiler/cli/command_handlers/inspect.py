@@ -18,7 +18,7 @@ from chipcompiler.cli.core.types import CommandContext, CommandResult
 
 
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.inspect import (
+    from chipcompiler.cli.inspection.discovery import (
         CORRUPT_FLOW_JSON,
         _safe_steps,
         get_run_status,
@@ -83,13 +83,13 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
 
 
 def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.inspect import (
+    from chipcompiler.cli.inspection.discovery import (
         discover_logs,
         discover_step_dirs,
         get_flow_step_names,
         listing_step_order,
     )
-    from chipcompiler.cli.log_view import build_log_records
+    from chipcompiler.cli.inspection.log_view import build_log_records
 
     step_token = command_input.step
     project = ctx.project
@@ -205,7 +205,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
 
 
 def metrics(command_input: StepInspectInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.inspect import (
+    from chipcompiler.cli.inspection.discovery import (
         _internal_from_token,
         discover_metrics,
         discover_step_dirs,
@@ -301,7 +301,7 @@ def metrics(command_input: StepInspectInput, ctx: CommandContext) -> CommandResu
 
 
 def artifacts(command_input: StepInspectInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.artifacts import discover_artifacts
+    from chipcompiler.cli.inspection.artifacts import discover_artifacts
 
     step_token = command_input.step
     project = ctx.project
@@ -385,7 +385,7 @@ def artifacts(command_input: StepInspectInput, ctx: CommandContext) -> CommandRe
 
 
 def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.config_view import build_project_config_items, build_step_config_items
+    from chipcompiler.cli.inspection.config_view import build_project_config_items, build_step_config_items
 
     step_token = command_input.step
     project = ctx.project
@@ -498,7 +498,7 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
 
 
 def diagnose(command_input: DiagnoseInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.diagnose import build_diagnose_issues
+    from chipcompiler.cli.inspection.diagnose import build_diagnose_issues
 
     step_token = command_input.step
     project = ctx.project

@@ -298,7 +298,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
         engine_flow.create_step_workspaces()
 
-        from chipcompiler.cli.progress import (
+        from chipcompiler.cli.rendering.progress import (
             run_flow_with_progress,
             should_enable_run_progress,
         )

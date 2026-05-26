@@ -251,17 +251,17 @@ def render_param_result(result, mode: OutputMode, file=None) -> bool:
     target = file or sys.stdout
 
     if mode == OutputMode.JSON:
-        from chipcompiler.cli.render import render_json
+        from chipcompiler.cli.rendering.render import render_json
 
         render_json(result, file=target)
         return True
     if mode == OutputMode.JSONL:
-        from chipcompiler.cli.render import render_jsonl
+        from chipcompiler.cli.rendering.render import render_jsonl
 
         render_jsonl(result, file=target)
         return True
     if mode == OutputMode.PLAIN:
-        from chipcompiler.cli.render import render_plain
+        from chipcompiler.cli.rendering.render import render_plain
 
         render_plain(result.records, file=target)
         return True
@@ -324,7 +324,7 @@ def render_param_set_text(records, file=None):
     elif status == "unset":
         print(f"  unset {r['param']} (now default: {r['value']})", file=target)
     else:
-        from chipcompiler.cli.render import render_text
+        from chipcompiler.cli.rendering.render import render_text
 
         render_text(records, file=target)
 
