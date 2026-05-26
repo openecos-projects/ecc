@@ -78,7 +78,7 @@ run = "default"
 
 
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.config import (
+    from chipcompiler.cli.project.config import (
         find_config_path,
         load_project_config,
         validate_project_config,
@@ -140,7 +140,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.config import (
+    from chipcompiler.cli.project.config import (
         find_config_path,
         load_project_config,
         resolve_pdk_root,
@@ -184,7 +184,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     cli_overrides = {}
     raw_sets = command_input.param_set
     if raw_sets:
-        from chipcompiler.cli.params import parse_cli_overrides
+        from chipcompiler.cli.project.params import parse_cli_overrides
 
         cli_overrides, set_errors = parse_cli_overrides(raw_sets)
         if set_errors:
@@ -233,7 +233,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     pdk_root = resolve_pdk_root(cfg)
 
     if cfg.params_overrides or cli_overrides:
-        from chipcompiler.cli.params import (
+        from chipcompiler.cli.project.params import (
             build_backend_overrides,
             resolve_parameters,
         )

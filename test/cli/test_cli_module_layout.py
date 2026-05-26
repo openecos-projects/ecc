@@ -39,3 +39,26 @@ def test_command_registration_old_paths_reexport_command_symbols():
         new_module = importlib.import_module(f"chipcompiler.cli.commands.{new_name}")
 
         assert getattr(old_module, symbol) is getattr(new_module, symbol)
+
+
+def test_project_modules_live_under_project_package():
+    for module_name in ("config", "params"):
+        module = importlib.import_module(f"chipcompiler.cli.project.{module_name}")
+        assert module.__name__ == f"chipcompiler.cli.project.{module_name}"
+
+
+def test_param_handler_lives_under_handlers_package():
+    module = importlib.import_module("chipcompiler.cli.handlers.param")
+    assert module.__name__ == "chipcompiler.cli.handlers.param"
+
+
+def test_project_and_param_old_paths_reexport_owner_modules():
+    for old_name, new_name, symbol in (
+        ("config", "project.config", "load_project_config"),
+        ("params", "project.params", "resolve_parameters"),
+        ("param_handler", "handlers.param", "param_show"),
+    ):
+        old_module = importlib.import_module(f"chipcompiler.cli.{old_name}")
+        new_module = importlib.import_module(f"chipcompiler.cli.{new_name}")
+
+        assert getattr(old_module, symbol) is getattr(new_module, symbol)

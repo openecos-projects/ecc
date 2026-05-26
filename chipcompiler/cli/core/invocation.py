@@ -5,7 +5,7 @@ from typing import Protocol, TypeVar
 import typer
 
 from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions
-from chipcompiler.cli.config import resolve_project_dir
+from chipcompiler.cli.project.config import resolve_project_dir
 from chipcompiler.cli.inspect import resolve_run_dir
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 

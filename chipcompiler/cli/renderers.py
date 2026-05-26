@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from chipcompiler.cli.core.inputs import LogInput
 from chipcompiler.cli.core.invocation import CommandInput
-from chipcompiler.cli.param_handler import (
+from chipcompiler.cli.handlers.param import (
     render_param_diff_text,
     render_param_list_text,
     render_param_set_text,

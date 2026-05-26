@@ -6,7 +6,7 @@ from chipcompiler.cli.core.output import disclosure_cmd
 def build_project_config_items(
     project_dir: str, run_dir: str, project: str | None = None, run_id: str | None = None
 ) -> tuple[list[dict], int]:
-    from chipcompiler.cli.config import (
+    from chipcompiler.cli.project.config import (
         _resolve_path,
         find_config_path,
         load_project_config,
@@ -102,7 +102,7 @@ def build_project_config_items(
     )
 
     # Parameter records with source information
-    from chipcompiler.cli.params import resolve_parameters
+    from chipcompiler.cli.project.params import resolve_parameters
 
     cli_provenance, prov_error = _load_cli_provenance(run_dir)
     if prov_error:
@@ -114,7 +114,7 @@ def build_project_config_items(
         toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
     )
-    from chipcompiler.cli.param_handler import _maps_to_str
+    from chipcompiler.cli.handlers.param import _maps_to_str
 
     for rp in resolved_params:
         items.append(
@@ -146,7 +146,7 @@ def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
         return {}, f"invalid CLI parameter provenance: {exc}"
     if not isinstance(data, dict):
         return {}, "invalid CLI parameter provenance: expected object"
-    from chipcompiler.cli.params import parse_cli_overrides
+    from chipcompiler.cli.project.params import parse_cli_overrides
 
     items = [f"{k}={v}" for k, v in data.items()]
     validated, errors = parse_cli_overrides(items)
