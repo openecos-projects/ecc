@@ -1,6 +1,6 @@
 import os
 
-from chipcompiler.cli.output import disclosure_cmd
+from chipcompiler.cli.core.output import disclosure_cmd
 
 
 def build_project_config_items(
@@ -169,7 +169,7 @@ def build_step_config_items(
         read_flow_json,
         step_dir_tool,
     )
-    from chipcompiler.cli.output import normalize_step_name
+    from chipcompiler.cli.core.output import normalize_step_name
     from chipcompiler.cli.workspace_config_view import workspace_config_files
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))

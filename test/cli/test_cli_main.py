@@ -949,7 +949,7 @@ class TestRendererCmdStripping:
         from io import StringIO
 
         from chipcompiler.cli.render import render_json
-        from chipcompiler.cli.types import CommandResult
+        from chipcompiler.cli.core.types import CommandResult
 
         buf = StringIO()
         result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))
@@ -962,7 +962,7 @@ class TestRendererCmdStripping:
         from io import StringIO
 
         from chipcompiler.cli.render import render_jsonl
-        from chipcompiler.cli.types import CommandResult
+        from chipcompiler.cli.core.types import CommandResult
 
         buf = StringIO()
         result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))

@@ -4,15 +4,15 @@ import os
 import re
 import sys
 
-from chipcompiler.cli.output import disclosure_cmd
+from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.params import (
     lookup_schema,
     parse_value,
     resolve_parameters,
     validate_value,
 )
-from chipcompiler.cli.records import error_record
-from chipcompiler.cli.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 
 
 def param_list(args, ctx: CommandContext) -> CommandResult:

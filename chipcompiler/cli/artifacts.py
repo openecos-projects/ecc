@@ -1,6 +1,6 @@
 import os
 
-from chipcompiler.cli.output import disclosure_cmd
+from chipcompiler.cli.core.output import disclosure_cmd
 
 KNOWN_ROLES = {
     "config",
@@ -27,7 +27,7 @@ def discover_artifacts(
     project_dir: str | None = None,
 ) -> tuple[list[dict], int]:
     from chipcompiler.cli.inspect import _safe_steps, discover_step_dirs, read_flow_json
-    from chipcompiler.cli.output import normalize_step_name
+    from chipcompiler.cli.core.output import normalize_step_name
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     step_dirs = discover_step_dirs(run_dir)

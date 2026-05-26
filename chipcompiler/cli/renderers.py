@@ -2,8 +2,8 @@ import os
 import sys
 from collections.abc import Callable
 
-from chipcompiler.cli.command_inputs import LogInput
-from chipcompiler.cli.invocation import CommandInput
+from chipcompiler.cli.core.inputs import LogInput
+from chipcompiler.cli.core.invocation import CommandInput
 from chipcompiler.cli.param_handler import (
     render_param_diff_text,
     render_param_list_text,
@@ -11,7 +11,7 @@ from chipcompiler.cli.param_handler import (
     render_param_show_text,
 )
 from chipcompiler.cli.render import render_result
-from chipcompiler.cli.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 
 Renderer = Callable[[CommandResult, CommandContext, CommandInput, bool], None]
 RendererKey = tuple[str, OutputMode]

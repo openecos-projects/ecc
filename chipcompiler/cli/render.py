@@ -1,7 +1,7 @@
 import json
 import sys
 
-from chipcompiler.cli.types import CommandResult, OutputMode
+from chipcompiler.cli.core.types import CommandResult, OutputMode
 
 
 def render_text(records: tuple[dict, ...], file=None) -> None:

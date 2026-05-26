@@ -4,10 +4,10 @@ from typing import Protocol, TypeVar
 
 import typer
 
-from chipcompiler.cli.command_inputs import OutputOptions, ProjectOptions
+from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions
 from chipcompiler.cli.config import resolve_project_dir
 from chipcompiler.cli.inspect import resolve_run_dir
-from chipcompiler.cli.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 
 
 class CommandInput(Protocol):

@@ -1,20 +1,20 @@
 import os
 
-from chipcompiler.cli.command_inputs import (
+from chipcompiler.cli.core.inputs import (
     ConfigInput,
     DiagnoseInput,
     LogInput,
     StatusInput,
     StepInspectInput,
 )
-from chipcompiler.cli.output import (
+from chipcompiler.cli.core.output import (
     disclosure_cmd,
     normalize_metric_key,
     normalize_state,
     normalize_step_name,
 )
-from chipcompiler.cli.records import error_record
-from chipcompiler.cli.types import CommandContext, CommandResult
+from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.types import CommandContext, CommandResult
 
 
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:

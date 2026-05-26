@@ -17,7 +17,7 @@ from chipcompiler.cli.progress import (
     supports_color,
     truncate_to_width,
 )
-from chipcompiler.cli.types import CommandContext, OutputMode
+from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.data import StateEnum
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")

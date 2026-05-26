@@ -1,6 +1,6 @@
 import os
 
-from chipcompiler.cli.output import disclosure_cmd
+from chipcompiler.cli.core.output import disclosure_cmd
 
 
 def _has_investigation_files(step_path: str) -> bool:
@@ -155,7 +155,7 @@ def build_diagnose_issues(
         read_flow_json,
         step_dir_tool,
     )
-    from chipcompiler.cli.output import normalize_state, normalize_step_name
+    from chipcompiler.cli.core.output import normalize_state, normalize_step_name
 
     display_run = run_id or "default"
     issues = []

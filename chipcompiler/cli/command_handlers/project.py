@@ -2,10 +2,10 @@ import os
 import shutil
 import sys
 
-from chipcompiler.cli.command_inputs import CheckInput, InitInput, RunInput
-from chipcompiler.cli.output import disclosure_cmd
-from chipcompiler.cli.records import error_record
-from chipcompiler.cli.types import CommandContext, CommandResult
+from chipcompiler.cli.core.inputs import CheckInput, InitInput, RunInput
+from chipcompiler.cli.core.output import disclosure_cmd
+from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.types import CommandContext, CommandResult
 
 
 def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
