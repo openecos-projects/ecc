@@ -397,13 +397,17 @@ def _make_step(name, tool, log_file=""):
     return type("WSS", (), {"name": name, "tool": tool, "log": {"file": log_file}})()
 
 
-def _make_flow(ws, steps, run_step_fn):
+def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None):
+    if init_db_engine_fn is None:
+        init_db_engine_fn = lambda self: None
+
     return type(
         "EF",
         (),
         {
             "workspace": ws,
             "workspace_steps": steps,
+            "init_db_engine": init_db_engine_fn,
             "run_step": run_step_fn,
         },
     )()
@@ -621,6 +625,35 @@ class TestRunFlowWithProgress:
         run_idx = call_order.index(("run_step", "Floorplan"))
         end_idx = call_order.index(("section", "ecc - end step - Floorplan"))
         assert begin_idx < run_idx < end_idx
+
+    def test_init_db_engine_called_before_run_step(self, tmp_path):
+        call_order = []
+
+        def fake_init_db_engine(self):
+            call_order.append(("init_db_engine",))
+
+        def fake_run_step(self, s):
+            call_order.append(("run_step", s.name))
+            return StateEnum.Success
+
+        flow = _make_flow(
+            _make_ws(
+                str(tmp_path), log_section_fn=lambda self, msg: call_order.append(("section", msg))
+            ),
+            [_make_step("Synthesis", "yosys")],
+            fake_run_step,
+            init_db_engine_fn=fake_init_db_engine,
+        )
+
+        buf = FakeTTYStderr(True)
+        run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        assert call_order == [
+            ("section", "yosys - begin step - Synthesis"),
+            ("init_db_engine",),
+            ("run_step", "Synthesis"),
+            ("section", "yosys - end step - Synthesis"),
+        ]
 
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
         def raising_run_step(self, s):
