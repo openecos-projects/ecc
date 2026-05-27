@@ -3,9 +3,9 @@ import json
 from importlib import metadata
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.cli.command_inputs import OutputOptions, ProjectOptions
-from chipcompiler.cli.invocation import execute_command
-from chipcompiler.cli.types import CommandResult
+from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions
+from chipcompiler.cli.core.invocation import execute_command
+from chipcompiler.cli.core.types import CommandResult
 
 
 def test_root_help_returns_zero_and_lists_commands(capsys):
@@ -65,7 +65,7 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
     def missing_version(distribution):
         raise metadata.PackageNotFoundError(distribution)
 
-    monkeypatch.setattr("chipcompiler.cli.version_info.metadata.version", missing_version)
+    monkeypatch.setattr("chipcompiler.cli.core.version_info.metadata.version", missing_version)
     monkeypatch.setattr("chipcompiler.__version__", "source-fallback")
 
     rc = cli_main.run(["version", "--json"])
@@ -141,8 +141,11 @@ def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
         seen["plain"] = command_input.output.plain
         return CommandResult.ok([{"status": "ok"}])
 
-    monkeypatch.setattr("chipcompiler.cli.invocation.resolve_project_dir", fake_resolve_project_dir)
-    monkeypatch.setattr("chipcompiler.cli.invocation.resolve_run_dir", fake_resolve_run_dir)
+    monkeypatch.setattr(
+        "chipcompiler.cli.core.invocation.resolve_project_dir",
+        fake_resolve_project_dir,
+    )
+    monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_run_dir", fake_resolve_run_dir)
     monkeypatch.setattr("chipcompiler.cli.command_handlers.inspect.status", fake_status)
 
     rc = cli_main.run(["status", "--jsonl", "--json", "--plain"])
@@ -164,11 +167,11 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
     seen = {}
 
     monkeypatch.setattr(
-        "chipcompiler.cli.invocation.resolve_project_dir",
+        "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
     )
     monkeypatch.setattr(
-        "chipcompiler.cli.invocation.resolve_run_dir",
+        "chipcompiler.cli.core.invocation.resolve_run_dir",
         lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
     )
 
@@ -219,11 +222,11 @@ def test_run_workspace_like_flag_is_run_parser_error(capsys):
 
 def test_non_workspace_command_handler_still_returns_command_result(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
-        "chipcompiler.cli.invocation.resolve_project_dir",
+        "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
     )
     monkeypatch.setattr(
-        "chipcompiler.cli.invocation.resolve_run_dir",
+        "chipcompiler.cli.core.invocation.resolve_run_dir",
         lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
     )
 
@@ -251,11 +254,11 @@ def test_non_workspace_command_handler_still_returns_command_result(monkeypatch,
 def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys):
     seen = {}
     monkeypatch.setattr(
-        "chipcompiler.cli.invocation.resolve_project_dir",
+        "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
     )
     monkeypatch.setattr(
-        "chipcompiler.cli.invocation.resolve_run_dir",
+        "chipcompiler.cli.core.invocation.resolve_run_dir",
         lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
     )
 
@@ -265,7 +268,7 @@ def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys):
         seen["project"] = command_input.project.project
         return CommandResult.ok([{"param": command_input.key}])
 
-    monkeypatch.setattr("chipcompiler.cli.param_app.param_show_handler", fake_show)
+    monkeypatch.setattr("chipcompiler.cli.commands.param.param_show_handler", fake_show)
 
     rc = cli_main.run(["param", "show", "place.target_density", "--project", "gcd", "--json"])
 
@@ -283,7 +286,7 @@ def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
 
     import click
 
-    from chipcompiler.cli.types import OutputMode
+    from chipcompiler.cli.core.types import OutputMode
 
     @dataclass(frozen=True)
     class DummyInput:
@@ -302,10 +305,13 @@ def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
     def fake_renderer(result, ctx, command_input, color):
         print(f"registry:{ctx.output_mode.value}:{result.records[0]['status']}")
 
-    monkeypatch.setattr("chipcompiler.cli.invocation.resolve_project_dir", fake_resolve_project_dir)
-    monkeypatch.setattr("chipcompiler.cli.invocation.resolve_run_dir", fake_resolve_run_dir)
+    monkeypatch.setattr(
+        "chipcompiler.cli.core.invocation.resolve_project_dir",
+        fake_resolve_project_dir,
+    )
+    monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_run_dir", fake_resolve_run_dir)
     monkeypatch.setitem(
-        __import__("chipcompiler.cli.renderers", fromlist=["RENDERERS"]).RENDERERS,
+        __import__("chipcompiler.cli.rendering.renderers", fromlist=["RENDERERS"]).RENDERERS,
         ("custom", OutputMode.TEXT),
         fake_renderer,
     )

@@ -62,7 +62,7 @@ def _install_flow_mocks(monkeypatch):
         lambda: [("Synthesis", "yosys", "Unstart")],
     )
     monkeypatch.setattr(
-        "chipcompiler.cli.config._validate_pdk_contents",
+        "chipcompiler.cli.project.config._validate_pdk_contents",
         lambda name, root: None,
     )
 
@@ -184,7 +184,7 @@ class TestCheck:
     def test_check_passes_valid_config(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         rc = cli_main.run(["check", "--project", project_dir])
@@ -195,7 +195,7 @@ class TestCheck:
     def test_check_from_inside_project_dir(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         monkeypatch.chdir(project_dir)
@@ -301,7 +301,7 @@ class TestCheck:
     def test_check_json_output(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
@@ -759,7 +759,7 @@ class TestDisclosureCommands:
     def test_check_lines_have_disclosure(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         rc = cli_main.run(["check", "--project", project_dir])
@@ -861,12 +861,14 @@ class TestEdgeCases:
 
 class TestCheckFilelistValidation:
     def test_check_fails_filelist_with_missing_sources(self, tmp_path, monkeypatch):
-        from chipcompiler.cli.config import _validate_pdk_contents
+        from chipcompiler.cli.project.config import _validate_pdk_contents
 
         monkeypatch.setattr(
             _validate_pdk_contents, "__wrapped__", lambda *a, **k: None, raising=False
         )
-        monkeypatch.setattr("chipcompiler.cli.config._validate_pdk_contents", lambda *a, **k: None)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents", lambda *a, **k: None
+        )
 
         project_dir = tmp_path / "flproj"
         project_dir.mkdir()
@@ -899,7 +901,9 @@ run = "default"
         assert rc == 1
 
     def test_check_fails_invalid_filelist_directive(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("chipcompiler.cli.config._validate_pdk_contents", lambda *a, **k: None)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents", lambda *a, **k: None
+        )
 
         project_dir = tmp_path / "flproj2"
         project_dir.mkdir()
@@ -935,7 +939,7 @@ class TestRendererCmdStripping:
     def test_text_strips_cmd_suffix(self):
         from io import StringIO
 
-        from chipcompiler.cli.render import render_text
+        from chipcompiler.cli.rendering.render import render_text
 
         buf = StringIO()
         render_text(({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},), file=buf)
@@ -948,8 +952,8 @@ class TestRendererCmdStripping:
     def test_json_preserves_cmd_keys(self):
         from io import StringIO
 
-        from chipcompiler.cli.render import render_json
-        from chipcompiler.cli.types import CommandResult
+        from chipcompiler.cli.core.types import CommandResult
+        from chipcompiler.cli.rendering.render import render_json
 
         buf = StringIO()
         result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))
@@ -961,8 +965,8 @@ class TestRendererCmdStripping:
     def test_jsonl_preserves_cmd_keys(self):
         from io import StringIO
 
-        from chipcompiler.cli.render import render_jsonl
-        from chipcompiler.cli.types import CommandResult
+        from chipcompiler.cli.core.types import CommandResult
+        from chipcompiler.cli.rendering.render import render_jsonl
 
         buf = StringIO()
         result = CommandResult(records=({"inspect_cmd": "ecc status", "log_cmd": "ecc log"},))

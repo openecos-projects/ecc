@@ -4,15 +4,15 @@ import os
 import re
 import sys
 
-from chipcompiler.cli.output import disclosure_cmd
-from chipcompiler.cli.params import (
+from chipcompiler.cli.core.output import disclosure_cmd
+from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.project.params import (
     lookup_schema,
     parse_value,
     resolve_parameters,
     validate_value,
 )
-from chipcompiler.cli.records import error_record
-from chipcompiler.cli.types import CommandContext, CommandResult, OutputMode
 
 
 def param_list(args, ctx: CommandContext) -> CommandResult:
@@ -251,17 +251,17 @@ def render_param_result(result, mode: OutputMode, file=None) -> bool:
     target = file or sys.stdout
 
     if mode == OutputMode.JSON:
-        from chipcompiler.cli.render import render_json
+        from chipcompiler.cli.rendering.render import render_json
 
         render_json(result, file=target)
         return True
     if mode == OutputMode.JSONL:
-        from chipcompiler.cli.render import render_jsonl
+        from chipcompiler.cli.rendering.render import render_jsonl
 
         render_jsonl(result, file=target)
         return True
     if mode == OutputMode.PLAIN:
-        from chipcompiler.cli.render import render_plain
+        from chipcompiler.cli.rendering.render import render_plain
 
         render_plain(result.records, file=target)
         return True
@@ -324,7 +324,7 @@ def render_param_set_text(records, file=None):
     elif status == "unset":
         print(f"  unset {r['param']} (now default: {r['value']})", file=target)
     else:
-        from chipcompiler.cli.render import render_text
+        from chipcompiler.cli.rendering.render import render_text
 
         render_text(records, file=target)
 
@@ -356,7 +356,7 @@ def _find_config_path(project_dir: str) -> str | None:
 
 
 def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]]:
-    from chipcompiler.cli.config import load_project_config
+    from chipcompiler.cli.project.config import load_project_config
 
     config_path = _find_config_path(project_dir)
     if config_path is None:

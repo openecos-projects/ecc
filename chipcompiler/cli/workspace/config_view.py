@@ -1,6 +1,5 @@
 import os
 
-
 _STEP_CONFIG_FILES = {
     ("floorplan", "ecc"): ("flow_config.json", "db_default_config.json", "fp_default_config.json"),
     (
@@ -11,12 +10,24 @@ _STEP_CONFIG_FILES = {
     ("cts", "ecc"): ("flow_config.json", "db_default_config.json", "cts_default_config.json"),
     ("routing", "ecc"): ("flow_config.json", "db_default_config.json", "rt_default_config.json"),
     ("drc", "ecc"): ("flow_config.json", "db_default_config.json", "drc_default_config.json"),
-    ("legalization", "ecc"): ("flow_config.json", "db_default_config.json", "pl_default_config.json"),
+    ("legalization", "ecc"): (
+        "flow_config.json",
+        "db_default_config.json",
+        "pl_default_config.json",
+    ),
     ("filler", "ecc"): ("flow_config.json", "db_default_config.json", "pl_default_config.json"),
     ("pnp", "ecc"): ("flow_config.json", "db_default_config.json", "pnp_default_config.json"),
     ("optdrv", "ecc"): ("flow_config.json", "db_default_config.json", "to_default_config_drv.json"),
-    ("opthold", "ecc"): ("flow_config.json", "db_default_config.json", "to_default_config_hold.json"),
-    ("optsetup", "ecc"): ("flow_config.json", "db_default_config.json", "to_default_config_setup.json"),
+    ("opthold", "ecc"): (
+        "flow_config.json",
+        "db_default_config.json",
+        "to_default_config_hold.json",
+    ),
+    ("optsetup", "ecc"): (
+        "flow_config.json",
+        "db_default_config.json",
+        "to_default_config_setup.json",
+    ),
     ("rcx", "ecc"): ("flow_config.json", "db_default_config.json", "rcx.json"),
     ("sta", "ecc"): ("flow_config.json", "db_default_config.json", "rcx.json"),
     ("placement", "dreamplace"): ("dreamplace.json",),

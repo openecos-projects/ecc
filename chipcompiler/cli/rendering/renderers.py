@@ -2,16 +2,16 @@ import os
 import sys
 from collections.abc import Callable
 
-from chipcompiler.cli.command_inputs import LogInput
-from chipcompiler.cli.invocation import CommandInput
-from chipcompiler.cli.param_handler import (
+from chipcompiler.cli.core.inputs import LogInput
+from chipcompiler.cli.core.invocation import CommandInput
+from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.handlers.param import (
     render_param_diff_text,
     render_param_list_text,
     render_param_set_text,
     render_param_show_text,
 )
-from chipcompiler.cli.render import render_result
-from chipcompiler.cli.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.rendering.render import render_result
 
 Renderer = Callable[[CommandResult, CommandContext, CommandInput, bool], None]
 RendererKey = tuple[str, OutputMode]
@@ -41,7 +41,7 @@ def _render_param_text(render_text: ParamTextRenderer) -> Renderer:
         command_input: CommandInput,
         color: bool,
     ) -> None:
-        from chipcompiler.cli.pretty import render_error
+        from chipcompiler.cli.rendering.pretty import render_error
 
         if result.exit_code != 0:
             render_error(result.records, color=color)
@@ -57,12 +57,12 @@ def _render_log_text(
     command_input: CommandInput,
     color: bool,
 ) -> None:
-    from chipcompiler.cli.log_view import (
+    from chipcompiler.cli.inspection.log_view import (
         render_log_listing_pretty,
         render_log_pretty,
         tail_lines_for_log,
     )
-    from chipcompiler.cli.pretty import render_error, render_generic_block
+    from chipcompiler.cli.rendering.pretty import render_error, render_generic_block
 
     if not isinstance(command_input, LogInput):
         raise TypeError("log renderer requires LogInput")
@@ -134,7 +134,7 @@ def _render_log_plain(
     command_input: CommandInput,
     color: bool,
 ) -> None:
-    from chipcompiler.cli.log_view import render_log_records_plain
+    from chipcompiler.cli.inspection.log_view import render_log_records_plain
 
     records = result.records
     if not records:

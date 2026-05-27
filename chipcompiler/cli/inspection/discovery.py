@@ -2,7 +2,7 @@ import json
 import os
 import re
 
-from chipcompiler.cli.output import (
+from chipcompiler.cli.core.output import (
     normalize_state,
     normalize_step_name,
 )

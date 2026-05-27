@@ -83,7 +83,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
 
     params_raw = data.get("params")
     if isinstance(params_raw, dict):
-        from chipcompiler.cli.params import parse_toml_params
+        from chipcompiler.cli.project.params import parse_toml_params
 
         flat, param_errors = parse_toml_params(params_raw)
         cfg.params_overrides = flat

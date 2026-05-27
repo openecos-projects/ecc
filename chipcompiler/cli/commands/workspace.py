@@ -5,13 +5,13 @@ from typing import Annotated
 
 import typer
 
-from chipcompiler.cli.workspace_request import InputError, create_request
-from chipcompiler.cli.workspace_response import (
+from chipcompiler.cli.workspace.request import InputError, create_request
+from chipcompiler.cli.workspace.response import (
     exit_code_for_response,
     render_workspace_response,
     workspace_response,
 )
-from chipcompiler.cli.workspace_service import (
+from chipcompiler.cli.workspace.service import (
     create_workspace_from_request,
     get_workspace_home,
     get_workspace_info,

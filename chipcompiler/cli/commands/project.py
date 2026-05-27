@@ -4,7 +4,7 @@ import typer
 
 from chipcompiler.cli.command_handlers import inspect as inspect_handlers
 from chipcompiler.cli.command_handlers import project as project_handlers
-from chipcompiler.cli.command_inputs import (
+from chipcompiler.cli.core.inputs import (
     CheckInput,
     ConfigInput,
     DiagnoseInput,
@@ -16,8 +16,8 @@ from chipcompiler.cli.command_inputs import (
     output_options,
     project_options,
 )
-from chipcompiler.cli.invocation import execute_command
-from chipcompiler.cli.options import (
+from chipcompiler.cli.core.invocation import execute_command
+from chipcompiler.cli.core.options import (
     JsonlOption,
     JsonOption,
     PlainOption,

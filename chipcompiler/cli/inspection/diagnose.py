@@ -1,6 +1,6 @@
 import os
 
-from chipcompiler.cli.output import disclosure_cmd
+from chipcompiler.cli.core.output import disclosure_cmd
 
 
 def _has_investigation_files(step_path: str) -> bool:
@@ -14,7 +14,7 @@ def _has_investigation_files(step_path: str) -> bool:
 
 
 def _count_log_errors(run_dir: str, step_token: str) -> int:
-    from chipcompiler.cli.inspect import discover_logs, filter_errors, read_log_file
+    from chipcompiler.cli.inspection.discovery import discover_logs, filter_errors, read_log_file
 
     logs = discover_logs(run_dir, step_token)
     count = 0
@@ -25,13 +25,13 @@ def _count_log_errors(run_dir: str, step_token: str) -> int:
 
 
 def _has_metrics(run_dir: str, step_token: str) -> bool:
-    from chipcompiler.cli.inspect import discover_metrics
+    from chipcompiler.cli.inspection.discovery import discover_metrics
 
     return bool(discover_metrics(run_dir, step_token))
 
 
 def _has_config_files(run_dir: str, step_token: str, tool: str | None) -> bool:
-    from chipcompiler.cli.workspace_config_view import workspace_config_files
+    from chipcompiler.cli.workspace.config_view import workspace_config_files
 
     return bool(workspace_config_files(run_dir, step_token, tool))
 
@@ -148,14 +148,14 @@ def build_diagnose_issues(
     project: str | None = None,
     run_id: str | None = None,
 ) -> tuple[list[dict], int]:
-    from chipcompiler.cli.inspect import (
+    from chipcompiler.cli.core.output import normalize_state, normalize_step_name
+    from chipcompiler.cli.inspection.discovery import (
         CORRUPT_FLOW_JSON,
         _safe_steps,
         discover_step_dirs,
         read_flow_json,
         step_dir_tool,
     )
-    from chipcompiler.cli.output import normalize_state, normalize_step_name
 
     display_run = run_id or "default"
     issues = []

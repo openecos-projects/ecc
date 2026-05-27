@@ -4,16 +4,21 @@ import shutil
 import threading
 import time
 
-from chipcompiler.cli.log_view import _KIND_COLOR, _KIND_LABEL, LineKind, extract_error_context
-from chipcompiler.cli.output import disclosure_cmd, normalize_state, normalize_step_name
-from chipcompiler.cli.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
-from chipcompiler.cli.pretty import style as _style
-from chipcompiler.cli.types import OutputMode
+from chipcompiler.cli.core.output import disclosure_cmd, normalize_state, normalize_step_name
+from chipcompiler.cli.core.types import OutputMode
+from chipcompiler.cli.inspection.log_view import (
+    _KIND_COLOR,
+    _KIND_LABEL,
+    LineKind,
+    extract_error_context,
+)
+from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
+from chipcompiler.cli.rendering.pretty import style as _style
 from chipcompiler.data import StateEnum, log_flow
 
 
 def supports_color(stream, mode, env=None):
-    from chipcompiler.cli.pretty import supports_color as _supports_color
+    from chipcompiler.cli.rendering.pretty import supports_color as _supports_color
 
     return _supports_color(file=stream, mode=mode, env=env)
 

@@ -1,13 +1,13 @@
 import os
 
-from chipcompiler.cli.workspace_request import (
+from chipcompiler.cli.workspace.request import (
     InputError,
     WorkspaceCreateRequest,
     missing_fields,
     normalize_rtl_list,
     write_filelist,
 )
-from chipcompiler.cli.workspace_response import workspace_response
+from chipcompiler.cli.workspace.response import workspace_response
 
 
 def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:

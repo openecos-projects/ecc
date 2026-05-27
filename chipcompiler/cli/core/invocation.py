@@ -4,10 +4,10 @@ from typing import Protocol, TypeVar
 
 import typer
 
-from chipcompiler.cli.command_inputs import OutputOptions, ProjectOptions
-from chipcompiler.cli.config import resolve_project_dir
-from chipcompiler.cli.inspect import resolve_run_dir
-from chipcompiler.cli.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions
+from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.inspection.discovery import resolve_run_dir
+from chipcompiler.cli.project.config import resolve_project_dir
 
 
 class CommandInput(Protocol):
@@ -52,7 +52,7 @@ def build_context(command_input: CommandInput) -> CommandContext:
 
 
 def _should_colorize():
-    from chipcompiler.cli.pretty import supports_color
+    from chipcompiler.cli.rendering.pretty import supports_color
 
     return supports_color(file=sys.stdout)
 
@@ -68,7 +68,7 @@ def execute_command(
     color = _should_colorize()
     selected_render_key = render_key or command
 
-    from chipcompiler.cli.renderers import render_command_result
+    from chipcompiler.cli.rendering.renderers import render_command_result
 
     render_command_result(command, selected_render_key, result, ctx, command_input, color)
 

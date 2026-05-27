@@ -122,7 +122,7 @@ def _has_disclosure(line: str) -> bool:
 
 def _mock_pdk_validation(monkeypatch):
     monkeypatch.setattr(
-        "chipcompiler.cli.config._validate_pdk_contents",
+        "chipcompiler.cli.project.config._validate_pdk_contents",
         lambda name, root: None,
     )
 

@@ -1,7 +1,7 @@
 import os
 import sys
 
-from chipcompiler.cli.types import OutputMode
+from chipcompiler.cli.core.types import OutputMode
 
 # --- ANSI constants ---
 

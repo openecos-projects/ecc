@@ -1,6 +1,6 @@
 import pytest
 
-from chipcompiler.cli.params import (
+from chipcompiler.cli.project.params import (
     PARAM_REGISTRY,
     ParamSchema,
     ResolvedParam,

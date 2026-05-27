@@ -1,7 +1,7 @@
 import json
 import sys
 
-from chipcompiler.cli.types import CommandResult, OutputMode
+from chipcompiler.cli.core.types import CommandResult, OutputMode
 
 
 def render_text(records: tuple[dict, ...], file=None) -> None:
@@ -66,7 +66,7 @@ def render_result(
 
 
 def _render_pretty(result: CommandResult, file=None, command=None, color=True) -> None:
-    from chipcompiler.cli.pretty import (
+    from chipcompiler.cli.rendering.pretty import (
         get_pretty_renderer,
         render_error,
         render_generic_block,

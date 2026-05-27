@@ -2,8 +2,8 @@ import enum
 import re
 import sys
 
-from chipcompiler.cli.pretty import BLUE, BOLD, CYAN, DIM, RED, RESET, YELLOW, style
-from chipcompiler.cli.render import _plain_value
+from chipcompiler.cli.rendering.pretty import BLUE, BOLD, CYAN, DIM, RED, RESET, YELLOW, style
+from chipcompiler.cli.rendering.render import _plain_value
 
 
 class LineKind(enum.Enum):
@@ -198,7 +198,7 @@ def tail_lines_for_log(path: str, max_lines: int = 10) -> list[str]:
     except OSError:
         return []
 
-    from chipcompiler.cli.progress import sanitize_log_line
+    from chipcompiler.cli.rendering.progress import sanitize_log_line
 
     sanitized = [sanitize_log_line(line) for line in raw]
     non_empty = [line for line in sanitized if line]

@@ -8,7 +8,7 @@
 
 python3Packages.buildPythonPackage {
   pname = "chipcompiler";
-  version = "0.1.0-alpha.2";
+  version = "0.1.0-alpha.3";
   pyproject = true;
 
   src =

@@ -1,12 +1,12 @@
 import os
 
-from chipcompiler.cli.output import disclosure_cmd
+from chipcompiler.cli.core.output import disclosure_cmd
 
 
 def build_project_config_items(
     project_dir: str, run_dir: str, project: str | None = None, run_id: str | None = None
 ) -> tuple[list[dict], int]:
-    from chipcompiler.cli.config import (
+    from chipcompiler.cli.project.config import (
         _resolve_path,
         find_config_path,
         load_project_config,
@@ -102,7 +102,7 @@ def build_project_config_items(
     )
 
     # Parameter records with source information
-    from chipcompiler.cli.params import resolve_parameters
+    from chipcompiler.cli.project.params import resolve_parameters
 
     cli_provenance, prov_error = _load_cli_provenance(run_dir)
     if prov_error:
@@ -114,7 +114,7 @@ def build_project_config_items(
         toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
     )
-    from chipcompiler.cli.param_handler import _maps_to_str
+    from chipcompiler.cli.handlers.param import _maps_to_str
 
     for rp in resolved_params:
         items.append(
@@ -146,7 +146,7 @@ def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
         return {}, f"invalid CLI parameter provenance: {exc}"
     if not isinstance(data, dict):
         return {}, "invalid CLI parameter provenance: expected object"
-    from chipcompiler.cli.params import parse_cli_overrides
+    from chipcompiler.cli.project.params import parse_cli_overrides
 
     items = [f"{k}={v}" for k, v in data.items()]
     validated, errors = parse_cli_overrides(items)
@@ -162,15 +162,15 @@ def build_step_config_items(
     run_id: str | None = None,
     project_dir: str | None = None,
 ) -> tuple[list[dict], int]:
-    from chipcompiler.cli.inspect import (
+    from chipcompiler.cli.core.output import normalize_step_name
+    from chipcompiler.cli.inspection.discovery import (
         CORRUPT_FLOW_JSON,
         _safe_steps,
         discover_step_dirs,
         read_flow_json,
         step_dir_tool,
     )
-    from chipcompiler.cli.output import normalize_step_name
-    from chipcompiler.cli.workspace_config_view import workspace_config_files
+    from chipcompiler.cli.workspace.config_view import workspace_config_files
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     flow_data = read_flow_json(run_dir)
