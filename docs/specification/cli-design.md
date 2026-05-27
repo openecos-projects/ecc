@@ -58,10 +58,12 @@ Every summary line must include at least one disclosure command on the same
 line. This is required so agents can grep the output and continue inspection
 without interpreting natural language paragraphs.
 
-Use stable `key="command"` fields:
+Use stable `key="command"` fields. Current run and step summary records use a
+`_cmd` suffix for command-valued fields, while pretty text displays the same
+fields without the suffix:
 
 ```text
-step=cts status=failed runtime=0:00:37 metrics="ecc metrics cts" log="ecc log cts" config="ecc config cts --resolved"
+step=cts status=failed runtime=0:00:37 metrics_cmd="ecc metrics cts" log_cmd="ecc log cts"
 ```
 
 Do not rely on prose such as:
@@ -80,20 +82,21 @@ The command field names should be stable across releases:
 | `artifacts` | List output artifacts |
 | `config` | Show resolved configuration |
 | `metrics` | Show metrics |
+| `*_cmd` | Current record suffix for command-valued variants such as `inspect_cmd`, `metrics_cmd`, `log_cmd`, and `start_cmd` |
 | `open` | Open a viewer or report (planned) |
 
 ### Stable Text Output
 
-The default output should be line-oriented and grep-friendly. Avoid box drawing,
-multi-line table cells, and terminal-width-dependent formatting in the default
+The stable shell interface should be line-oriented and grep-friendly. Avoid box
+drawing, multi-line table cells, and terminal-width-dependent formatting in that
 mode.
 
 Recommended style:
 
 ```text
-run=default status=failed workspace=runs/default inspect="ecc status" metrics="ecc metrics" log="ecc log"
-step=synthesis tool=yosys status=success runtime=0:00:18 metrics="ecc metrics synthesis" log="ecc log synthesis"
-step=floorplan tool=ecc status=success runtime=0:00:04 metrics="ecc metrics floorplan" log="ecc log floorplan"
+run=default status=failed workspace=runs/default inspect_cmd="ecc status" metrics_cmd="ecc metrics" log_cmd="ecc log"
+step=synthesis tool=yosys status=success runtime=0:00:18 metrics_cmd="ecc metrics synthesis" log_cmd="ecc log synthesis"
+step=floorplan tool=ecc status=success runtime=0:00:04 metrics_cmd="ecc metrics floorplan" log_cmd="ecc log floorplan"
 metric=gp_hpwl step=placement value=18423 source=Placement_ecc/analysis/place_metrics.json inspect="ecc metrics placement --json"
 artifact=design.def step=placement role=output path=runs/default/Placement_ecc/output/design.def inspect="ecc artifacts placement --json" config="ecc config placement --resolved"
 ```
@@ -129,6 +132,21 @@ Example:
 
 Text output and JSON output should describe the same objects. The text output is
 the human and shell interface; JSON is the strict machine interface.
+
+Current implementation status:
+
+| Command family | Structured options |
+| --- | --- |
+| `ecc init` | `--plain` |
+| `ecc check` | `--json`, `--plain` |
+| `ecc run`, `ecc status`, `ecc log`, `ecc metrics`, `ecc artifacts`, `ecc config`, `ecc diagnose` | `--json`, `--jsonl`, `--plain` |
+| `ecc param list/show/set/unset/diff` | `--json`, `--jsonl`, `--plain` |
+| `ecc version` | `--json` |
+| `ecc workspace ...` | `--json` |
+
+When multiple project output options are provided, the implementation selects
+`--jsonl` first, then `--json`, then `--plain`, and otherwise renders pretty
+text.
 
 ### Object-Oriented CLI Model
 
@@ -175,9 +193,13 @@ agent-specific disclosure fields inside core flow APIs.
 
 ### Core Commands
 
-The first stable CLI surface should stay small:
+The current root surface is a Typer command graph. The project-first command
+surface stays small, with version reporting and legacy workspace management
+available as explicit root entries:
 
 ```bash
+ecc --version
+ecc version
 ecc init
 ecc check
 ecc run
@@ -188,12 +210,15 @@ ecc artifacts
 ecc config
 ecc diagnose
 ecc param
+ecc workspace
 ```
 
 Responsibilities:
 
 | Command | Responsibility |
 | --- | --- |
+| `ecc --version` | Print a single `ecc <version>` line |
+| `ecc version` | Show ECC runtime and component versions |
 | `ecc init` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
 | `ecc run` | Execute the configured default flow |
@@ -204,6 +229,7 @@ Responsibilities:
 | `ecc artifacts` | List generated files and disclosure commands |
 | `ecc config` | Show user or resolved configuration |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
+| `ecc workspace` | Manage legacy runtime workspaces behind an explicit namespace |
 
 ### Project-Oriented Entry
 
@@ -228,8 +254,8 @@ gcd/
 Command-line arguments may override configuration values, but `ecc.toml` should
 be the primary user-facing interface.
 
-Current implementation supports `--project` on project commands. When omitted,
-the current working directory is treated as the project directory.
+Current implementation supports `--project` on project and `param` commands.
+When omitted, the current working directory is treated as the project directory.
 
 ### Step-Level Execution
 
@@ -287,6 +313,50 @@ ecc param diff
 ecc run --set synth.max_fanout=16
 ```
 
+### Version Information
+
+Version reporting is part of the implemented root surface:
+
+```bash
+ecc --version
+ecc version
+ecc version --json
+```
+
+`ecc --version` prints one line for package-manager and script probes. `ecc
+version` prints fixed-order text lines for `ecc`, `dreamplace`, `ecc_tools`, and
+`runtime`. `ecc version --json` returns schema version `1` with `runtime`,
+`ecc`, `dreamplace`, and `ecc_tools` fields. Missing distribution metadata is
+reported as `unknown`, except the `ecc` field may fall back to the source
+package `__version__`.
+
+### Legacy Workspace Commands
+
+`ecc workspace` is an implemented compatibility namespace for runtime workspace
+operations that predate the project-oriented `ecc.toml` workflow:
+
+```bash
+ecc workspace create
+ecc workspace load
+ecc workspace run-flow
+ecc workspace run-step
+ecc workspace get-info
+ecc workspace get-home
+```
+
+The namespace preserves the server-shaped response contract:
+
+```json
+{"cmd":"create_workspace","response":"success","data":{},"message":[]}
+```
+
+Workspace commands support `--json`. `workspace create` accepts either
+`--input-json` or explicit field flags such as `--directory`, `--pdk`,
+`--pdk-root`, `--rtl`, `--filelist`, `--origin-def`, `--origin-verilog`,
+`--param-json`, `--design`, `--top`, `--clock`, and `--freq`. Old top-level
+workspace flags such as `ecc --workspace ...` are no longer accepted by the root
+parser.
+
 ## Output Contracts
 
 ### Summary Line Format
@@ -300,8 +370,8 @@ kind=<object-kind> key=value ... disclosure_key="ecc command ..."
 Examples:
 
 ```text
-run=default status=success workspace=runs/default inspect="ecc status" metrics="ecc metrics" log="ecc log"
-step=routing tool=ecc status=failed runtime=0:03:42 metrics="ecc metrics routing" log="ecc log routing"
+run=default status=success workspace=runs/default inspect_cmd="ecc status" metrics_cmd="ecc metrics" log_cmd="ecc log"
+step=routing tool=ecc status=failed runtime=0:03:42 metrics_cmd="ecc metrics routing" log_cmd="ecc log routing"
 metric=max_wns step=cts value=-0.083 source=runs/default/CTS_ecc/analysis/CTS_metrics.json inspect="ecc metrics cts --json"
 artifact=design.def step=placement role=output path=runs/default/Placement_ecc/output/design.def inspect="ecc artifacts placement --json" config="ecc config placement --resolved"
 ```
@@ -325,8 +395,11 @@ Current output modes:
 | --- | --- | --- |
 | Pretty text | default | Human-oriented grouped output with disclosure commands |
 | Plain text | `--plain` | Stable one-record-per-line key-value output |
-| JSON | `--json` | JSON envelope with `records` |
+| JSON | `--json` | Project and `param` JSON envelope with `records`; `version` and `workspace` use their own root-level schemas |
 | JSONL | `--jsonl` | One JSON object per record |
+
+Plain output preserves record keys exactly. Pretty text may normalize labels for
+display, for example rendering `inspect_cmd` as `inspect`.
 
 ### Error Output
 
@@ -377,10 +450,11 @@ run = "default"
 target_density = 0.65
 ```
 
-Current validation supports the `ics55` PDK and the `rtl2gds` flow preset.
-`design.rtl` must contain exactly one entry; use a filelist (`.f`, `.fl`, or
-`.filelist`) for multi-source RTL designs. If `pdk.root` is empty, the CLI
-falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or `ICS55_PDK_ROOT`.
+Current validation supports the `ics55` PDK, the `rtl2gds` flow preset, and
+`flow.run = "default"`. `design.rtl` must contain exactly one entry; use a
+filelist (`.f`, `.fl`, or `.filelist`) for multi-source RTL designs. If
+`pdk.root` is empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
+`ICS55_PDK_ROOT`.
 
 The resolved configuration used by each step should be inspectable:
 
@@ -390,6 +464,8 @@ ecc config placement --resolved
 ecc param list
 ecc param show place.target_density
 ```
+
+The current `ecc config` command requires `--resolved`.
 
 ## AI-Native Behavior
 
@@ -425,6 +501,8 @@ commands.
 ### Phase 1: Project And Run Basics
 
 - [x] `ecc init`
+- [x] `ecc --version`
+- [x] `ecc version`
 - [x] `ecc check`
 - [x] `ecc run`
 - [x] `ecc status`
@@ -447,6 +525,7 @@ Success criteria:
 - [x] `ecc config --resolved`
 - [x] Run selection for inspection commands with `--run-id`
 - [x] Parameter overrides with `ecc param` and `ecc run --set`
+- [x] Legacy workspace namespace under `ecc workspace`
 - [ ] Run tags and run comparison basics
 - [x] Structured issue and artifact metadata
 
@@ -474,11 +553,13 @@ Success criteria:
 ## Compatibility Notes
 
 The stable Python integration surface is the project-level `chipcompiler`
-package and the CLI launcher entrypoint `chipcompiler.cli.main`. Internal CLI
-implementation modules under `chipcompiler.cli.*` are not compatibility
-surfaces; they may move with CLI implementation refactors. Integrations should
-invoke the packaged `ecc` command or call `chipcompiler.cli.main.run(argv)`
-rather than importing CLI helper modules directly.
+package and the CLI launcher entrypoint `chipcompiler.cli.main`. The launcher
+delegates to the root Typer graph and `chipcompiler.cli.main.run(argv)` remains
+an int-returning API. Internal CLI implementation modules under
+`chipcompiler.cli.*` are not compatibility surfaces; they may move with CLI
+implementation refactors. Integrations should invoke the packaged `ecc` command
+or call `chipcompiler.cli.main.run(argv)` rather than importing CLI helper
+modules directly.
 
 The legacy top-level parameter-only invocation with `--workspace` is no longer
 part of the CLI contract. Use `ecc workspace create --directory <dir>` with
