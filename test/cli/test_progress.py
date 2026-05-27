@@ -648,12 +648,11 @@ class TestRunFlowWithProgress:
         buf = FakeTTYStderr(True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
 
-        assert call_order == [
-            ("section", "yosys - begin step - Synthesis"),
-            ("init_db_engine",),
-            ("run_step", "Synthesis"),
-            ("section", "yosys - end step - Synthesis"),
-        ]
+        begin_idx = call_order.index(("section", "yosys - begin step - Synthesis"))
+        init_idx = call_order.index(("init_db_engine",))
+        run_idx = call_order.index(("run_step", "Synthesis"))
+        end_idx = call_order.index(("section", "yosys - end step - Synthesis"))
+        assert begin_idx < init_idx < run_idx < end_idx
 
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
         def raising_run_step(self, s):

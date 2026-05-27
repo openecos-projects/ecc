@@ -219,6 +219,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         start = time.time()
 
         try:
+            engine_flow.init_db_engine()
             state = engine_flow.run_step(workspace_step)
         finally:
             stop_event.set()
