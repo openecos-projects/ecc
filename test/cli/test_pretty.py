@@ -4,7 +4,7 @@ import os
 from io import StringIO
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.cli.pretty import (
+from chipcompiler.cli.rendering.pretty import (
     BOLD,
     GREEN,
     RED,
@@ -16,7 +16,7 @@ from chipcompiler.cli.pretty import (
     style,
     supports_color,
 )
-from chipcompiler.cli.render import _plain_value, render_plain
+from chipcompiler.cli.rendering.render import _plain_value, render_plain
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -191,7 +191,7 @@ class TestPlainFlagAcceptance:
     def test_check_plain(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         rc = cli_main.run(["check", "--project", project_dir, "--plain"])
@@ -245,7 +245,7 @@ class TestPlainFlagAcceptance:
     def test_config_plain(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         rc = cli_main.run(["config", "--resolved", "--plain", "--project", project_dir])
@@ -269,7 +269,7 @@ class TestPrettyDefaultOutput:
     def test_check_has_header(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         rc = cli_main.run(["check", "--project", project_dir])
@@ -382,7 +382,7 @@ class TestPrettyDefaultOutput:
             lambda: [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
 
@@ -431,7 +431,7 @@ class TestJsonUnchanged:
 
 class TestMultiRecordError:
     def test_render_error_two_records(self):
-        from chipcompiler.cli.pretty import render_error
+        from chipcompiler.cli.rendering.pretty import render_error
 
         buf = io.StringIO()
         records = [
@@ -447,7 +447,7 @@ class TestMultiRecordError:
         assert "bad format" in out
 
     def test_render_error_three_records_all_shown(self):
-        from chipcompiler.cli.pretty import render_error
+        from chipcompiler.cli.rendering.pretty import render_error
 
         buf = io.StringIO()
         records = [
@@ -469,7 +469,7 @@ class TestMultiRecordError:
 
 class TestErrorCodeColoring:
     def test_arbitrary_error_code_colored_red(self):
-        from chipcompiler.cli.pretty import render_error
+        from chipcompiler.cli.rendering.pretty import render_error
 
         buf = io.StringIO()
         render_error(
@@ -480,7 +480,7 @@ class TestErrorCodeColoring:
         assert "missing_config" in out
 
     def test_multiple_arbitrary_codes_colored_red(self):
-        from chipcompiler.cli.pretty import render_error
+        from chipcompiler.cli.rendering.pretty import render_error
 
         buf = io.StringIO()
         records = [
@@ -495,7 +495,7 @@ class TestErrorCodeColoring:
         assert RED in out
 
     def test_error_preserves_secondary_fields(self):
-        from chipcompiler.cli.pretty import render_error
+        from chipcompiler.cli.rendering.pretty import render_error
 
         buf = io.StringIO()
         render_error(
@@ -507,7 +507,7 @@ class TestErrorCodeColoring:
         assert "gone" in out
 
     def test_error_no_ansi_when_color_disabled(self):
-        from chipcompiler.cli.pretty import render_error
+        from chipcompiler.cli.rendering.pretty import render_error
 
         buf = io.StringIO()
         render_error([{"error": "missing_config", "reason": "bad"}], file=buf, color=False)
@@ -517,7 +517,7 @@ class TestErrorCodeColoring:
 
     def test_unknown_error_code_not_white_by_default(self):
         """Unknown error codes should still be red, not white or default."""
-        from chipcompiler.cli.pretty import render_error
+        from chipcompiler.cli.rendering.pretty import render_error
 
         buf = io.StringIO()
         render_error([{"error": "unknown_code_xyz"}], file=buf, color=True)
@@ -532,37 +532,38 @@ class TestErrorCodeColoring:
 
 class TestSharedColorPolicy:
     def test_pretty_supports_color_no_color_env(self):
-        from chipcompiler.cli.pretty import supports_color
+        from chipcompiler.cli.rendering.pretty import supports_color
 
         env = {"NO_COLOR": "1"}
         assert not supports_color(env=env)
 
     def test_pretty_supports_color_dumb_term(self):
-        from chipcompiler.cli.pretty import supports_color
+        from chipcompiler.cli.rendering.pretty import supports_color
 
         env = {"TERM": "dumb"}
         assert not supports_color(env=env)
 
     def test_pretty_supports_color_non_tty(self):
-        from chipcompiler.cli.pretty import supports_color
+        from chipcompiler.cli.rendering.pretty import supports_color
 
         assert not supports_color(file=io.StringIO())
 
     def test_pretty_supports_color_machine_mode(self):
         from chipcompiler.cli.core.types import OutputMode
-        from chipcompiler.cli.pretty import supports_color
+        from chipcompiler.cli.rendering.pretty import supports_color
 
         assert not supports_color(mode=OutputMode.JSON)
         assert not supports_color(mode=OutputMode.PLAIN)
 
     def test_progress_supports_color_delegates(self):
-        from chipcompiler.cli.progress import supports_color
+        from chipcompiler.cli.rendering.progress import supports_color
 
         assert not supports_color(io.StringIO(), None, env={"NO_COLOR": "1"})
         assert not supports_color(io.StringIO(), None, env={"TERM": "dumb"})
 
     def test_log_view_uses_shared_constants(self):
-        from chipcompiler.cli import log_view, pretty
+        from chipcompiler.cli.inspection import log_view
+        from chipcompiler.cli.rendering import pretty
 
         assert log_view.BOLD is pretty.BOLD
         assert log_view.RED is pretty.RED

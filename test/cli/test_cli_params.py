@@ -227,11 +227,11 @@ class TestRunSet:
             lambda: [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.progress.should_enable_run_progress",
+            "chipcompiler.cli.rendering.progress.should_enable_run_progress",
             lambda *a, **kw: False,
         )
 
@@ -308,11 +308,11 @@ class TestRunSet:
             lambda: [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.progress.should_enable_run_progress",
+            "chipcompiler.cli.rendering.progress.should_enable_run_progress",
             lambda *a, **kw: False,
         )
 
@@ -374,7 +374,7 @@ class TestConfigResolved:
     def test_config_resolved_includes_param_records(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         run_dir = os.path.join(project_dir, "runs", "default")
@@ -396,7 +396,7 @@ class TestConfigResolved:
     def test_config_resolved_shows_toml_source(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
@@ -419,7 +419,7 @@ class TestConfigResolved:
     def test_config_resolved_seeds_design_frequency(self, tmp_path, monkeypatch, capsys):
         project_dir = _create_valid_project(tmp_path, freq=200.0)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         run_dir = os.path.join(project_dir, "runs", "default")
@@ -683,7 +683,7 @@ class TestNativeTomlTypeValidation:
         with open(toml_path, "w") as f:
             f.write(content)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda pdk_root, pdk_name: [],
         )
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
@@ -722,11 +722,11 @@ class TestCliProvenance:
             lambda: [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.progress.should_enable_run_progress",
+            "chipcompiler.cli.rendering.progress.should_enable_run_progress",
             lambda *a, **kw: False,
         )
 
@@ -782,11 +782,11 @@ class TestCliProvenance:
             lambda: [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.progress.should_enable_run_progress",
+            "chipcompiler.cli.rendering.progress.should_enable_run_progress",
             lambda *a, **kw: False,
         )
 
@@ -847,11 +847,11 @@ class TestCliProvenance:
             lambda: [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.progress.should_enable_run_progress",
+            "chipcompiler.cli.rendering.progress.should_enable_run_progress",
             lambda *a, **kw: False,
         )
 
@@ -1076,7 +1076,7 @@ class TestMultilineTomlValues:
         with open(os.path.join(run_dir, "home", "cli-param-overrides.json"), "w") as f:
             f.write("not valid json{")
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda pdk_root, pdk_name: [],
         )
         rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
@@ -1090,7 +1090,7 @@ class TestMultilineTomlValues:
         with open(os.path.join(run_dir, "home", "cli-param-overrides.json"), "w") as f:
             json.dump([1, 2, 3], f)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda pdk_root, pdk_name: [],
         )
         rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
@@ -1102,7 +1102,7 @@ class TestMultilineTomlValues:
         with open(os.path.join(run_dir, "home", "cli-param-overrides.json"), "w") as f:
             json.dump({"nonexistent.param": 42}, f)
         monkeypatch.setattr(
-            "chipcompiler.cli.config._validate_pdk_contents",
+            "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda pdk_root, pdk_name: [],
         )
         rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])

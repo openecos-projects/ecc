@@ -65,7 +65,7 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
     def missing_version(distribution):
         raise metadata.PackageNotFoundError(distribution)
 
-    monkeypatch.setattr("chipcompiler.cli.version_info.metadata.version", missing_version)
+    monkeypatch.setattr("chipcompiler.cli.core.version_info.metadata.version", missing_version)
     monkeypatch.setattr("chipcompiler.__version__", "source-fallback")
 
     rc = cli_main.run(["version", "--json"])
@@ -268,7 +268,7 @@ def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys):
         seen["project"] = command_input.project.project
         return CommandResult.ok([{"param": command_input.key}])
 
-    monkeypatch.setattr("chipcompiler.cli.param_app.param_show_handler", fake_show)
+    monkeypatch.setattr("chipcompiler.cli.commands.param.param_show_handler", fake_show)
 
     rc = cli_main.run(["param", "show", "place.target_density", "--project", "gcd", "--json"])
 
@@ -311,7 +311,7 @@ def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
     )
     monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_run_dir", fake_resolve_run_dir)
     monkeypatch.setitem(
-        __import__("chipcompiler.cli.renderers", fromlist=["RENDERERS"]).RENDERERS,
+        __import__("chipcompiler.cli.rendering.renderers", fromlist=["RENDERERS"]).RENDERERS,
         ("custom", OutputMode.TEXT),
         fake_renderer,
     )

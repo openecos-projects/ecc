@@ -696,7 +696,7 @@ def test_load_repairs_partial_home_json_without_changing_response(monkeypatch, t
     )
     monkeypatch.setattr("chipcompiler.data.pdk.PDK.validate", lambda self: None)
     monkeypatch.setattr(
-        "chipcompiler.cli.workspace_service.build_flow_for_workspace",
+        "chipcompiler.cli.workspace.service.build_flow_for_workspace",
         lambda workspace, create_step_workspaces=True: DummyFlow(workspace),
     )
 
@@ -749,7 +749,7 @@ def test_workspace_create_help_lists_existing_options(capsys):
 
 
 def test_workspace_json_output_suppresses_runtime_stdout(monkeypatch, tmp_path, capsys):
-    from chipcompiler.cli.workspace_response import workspace_response
+    from chipcompiler.cli.workspace.response import workspace_response
 
     _capture, _ws = _install_runtime_mocks(monkeypatch, tmp_path)
 
@@ -762,7 +762,7 @@ def test_workspace_json_output_suppresses_runtime_stdout(monkeypatch, tmp_path, 
         )
 
     monkeypatch.setattr(
-        "chipcompiler.cli.workspace_app.create_workspace_from_request",
+        "chipcompiler.cli.commands.workspace.create_workspace_from_request",
         noisy_create,
     )
 
@@ -796,7 +796,7 @@ def test_unknown_workspace_subcommand_returns_nonzero(capsys):
 
 def test_non_workspace_commands_stay_on_argparse_path(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
-        "chipcompiler.cli.config._validate_pdk_contents",
+        "chipcompiler.cli.project.config._validate_pdk_contents",
         lambda name, root: None,
     )
     project_dir = tmp_path / "project"
@@ -812,10 +812,10 @@ def test_non_workspace_commands_stay_on_argparse_path(tmp_path, monkeypatch, cap
 
 def test_workspace_modules_keep_runtime_boundaries():
     module_paths = [
-        os.path.join("chipcompiler", "cli", "workspace_app.py"),
-        os.path.join("chipcompiler", "cli", "workspace_request.py"),
-        os.path.join("chipcompiler", "cli", "workspace_response.py"),
-        os.path.join("chipcompiler", "cli", "workspace_service.py"),
+        os.path.join("chipcompiler", "cli", "commands", "workspace.py"),
+        os.path.join("chipcompiler", "cli", "workspace", "request.py"),
+        os.path.join("chipcompiler", "cli", "workspace", "response.py"),
+        os.path.join("chipcompiler", "cli", "workspace", "service.py"),
     ]
     for module_path in module_paths:
         assert os.path.exists(module_path)
@@ -827,7 +827,9 @@ def test_workspace_modules_keep_runtime_boundaries():
     assert "workspace_app" not in main_source
     assert "workspace_legacy" not in main_source
 
-    with open(os.path.join("chipcompiler", "cli", "workspace_service.py"), encoding="utf-8") as f:
+    with open(
+        os.path.join("chipcompiler", "cli", "workspace", "service.py"), encoding="utf-8"
+    ) as f:
         service_source = f.read()
     assert "typer" not in service_source
     assert "print(" not in service_source
@@ -835,10 +837,10 @@ def test_workspace_modules_keep_runtime_boundaries():
 
 def test_workspace_modules_do_not_import_ecos_server():
     module_paths = [
-        os.path.join("chipcompiler", "cli", "workspace_app.py"),
-        os.path.join("chipcompiler", "cli", "workspace_request.py"),
-        os.path.join("chipcompiler", "cli", "workspace_response.py"),
-        os.path.join("chipcompiler", "cli", "workspace_service.py"),
+        os.path.join("chipcompiler", "cli", "commands", "workspace.py"),
+        os.path.join("chipcompiler", "cli", "workspace", "request.py"),
+        os.path.join("chipcompiler", "cli", "workspace", "response.py"),
+        os.path.join("chipcompiler", "cli", "workspace", "service.py"),
     ]
     for module_path in module_paths:
         assert os.path.exists(module_path)

@@ -1,6 +1,6 @@
 import os
 
-from chipcompiler.cli.log_view import (
+from chipcompiler.cli.inspection.log_view import (
     LineKind,
     annotate_log_lines,
     build_log_records,
@@ -755,7 +755,7 @@ class TestListingPrettyRenderer:
 
 class TestTailLinesForLog:
     def test_returns_last_10_non_empty(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         lines = [f"line {i}" for i in range(15)]
@@ -766,7 +766,7 @@ class TestTailLinesForLog:
         assert result[-1] == "line 14"
 
     def test_fewer_than_10_returns_all(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("a\nb\nc\n")
@@ -774,7 +774,7 @@ class TestTailLinesForLog:
         assert result == ["a", "b", "c"]
 
     def test_empty_lines_omitted(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("a\n\n\nb\n\n\nc\n")
@@ -782,7 +782,7 @@ class TestTailLinesForLog:
         assert result == ["a", "b", "c"]
 
     def test_preserves_order(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("first\nmiddle\nlast\n")
@@ -790,7 +790,7 @@ class TestTailLinesForLog:
         assert result == ["first", "middle", "last"]
 
     def test_ansi_stripped(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("\x1b[31mred text\x1b[0m\nnormal\n")
@@ -798,13 +798,13 @@ class TestTailLinesForLog:
         assert result == ["red text", "normal"]
 
     def test_missing_file_returns_empty(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         result = tail_lines_for_log(str(tmp_path / "nonexistent.log"))
         assert result == []
 
     def test_empty_file_returns_empty(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("")
@@ -812,7 +812,7 @@ class TestTailLinesForLog:
         assert result == []
 
     def test_blank_only_file_returns_empty(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("   \n\n\t\n   \n")
@@ -820,7 +820,7 @@ class TestTailLinesForLog:
         assert result == []
 
     def test_ansi_control_sequences_stripped(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("\x1b[31mred\x1b[0m\n\x1b[2Kclear\nvalid\n")
@@ -829,7 +829,7 @@ class TestTailLinesForLog:
         assert "valid" in result
 
     def test_osc_sequences_stripped(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("\x1b]0;window title\x07message\n")
@@ -837,7 +837,7 @@ class TestTailLinesForLog:
         assert result == ["message"]
 
     def test_dcs_sequences_stripped(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("\x1bP$data\x1b\\visible\n")
@@ -845,7 +845,7 @@ class TestTailLinesForLog:
         assert result == ["visible"]
 
     def test_bel_and_backspace_stripped(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("a\x07b\x08c\ndone\n")
@@ -853,7 +853,7 @@ class TestTailLinesForLog:
         assert result == ["abc", "done"]
 
     def test_unreadable_file_returns_empty(self, tmp_path):
-        from chipcompiler.cli.log_view import tail_lines_for_log
+        from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("content\n")
