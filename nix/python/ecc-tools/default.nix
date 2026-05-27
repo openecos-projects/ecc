@@ -41,28 +41,35 @@ let
     hash = "sha256-tgK3NB1zS3JIAZZEIG6JCbIz8nj/QBlFogpGj3Ty5DY=";
   };
 
-  installDeps = lib.pipe {
-    iir-rust = "src/operation/iIR/source/iir-rust/iir";
-    liberty-parser = "src/database/manager/parser/liberty/lib-rust/liberty-parser";
-    sdf_parser = "src/database/manager/parser/sdf/sdf_parse";
-    spef-parser = "src/database/manager/parser/spef/spef-parser";
-    vcd_parser = "src/database/manager/parser/vcd/vcd_parser";
-    verilog-parser = "src/database/manager/parser/verilog/verilog-rust/verilog-parser";
-  } [
-    (lib.mapAttrsToList (name: path: ''
-      mkdir -p ${path}/.cargo
-      cat <<EOF > ${path}/.cargo/config.toml
-      [source."crates-io"]
-      "replace-with" = "vendored-sources"
+  installDeps =
+    lib.pipe
+      {
+        iir-rust = "src/operation/iIR/source/iir-rust/iir";
+        liberty-parser = "src/database/manager/parser/liberty/lib-rust/liberty-parser";
+        sdf_parser = "src/database/manager/parser/sdf/sdf_parse";
+        spef-parser = "src/database/manager/parser/spef/spef-parser";
+        vcd_parser = "src/database/manager/parser/vcd/vcd_parser";
+        verilog-parser = "src/database/manager/parser/verilog/verilog-rust/verilog-parser";
+      }
+      [
+        (lib.mapAttrsToList (
+          name: path: ''
+            mkdir -p ${path}/.cargo
+            cat <<EOF > ${path}/.cargo/config.toml
+            [source."crates-io"]
+            "replace-with" = "vendored-sources"
 
-      [source."vendored-sources"]
-      "directory" = "${rustPlatform.importCargoLock {
-        lockFile = "${src}/${path}/Cargo.lock";
-      }}"
-      EOF
-    ''))
-    (lib.concatStringsSep "\n")
-  ];
+            [source."vendored-sources"]
+            "directory" = "${
+              rustPlatform.importCargoLock {
+                lockFile = "${src}/${path}/Cargo.lock";
+              }
+            }"
+            EOF
+          ''
+        ))
+        (lib.concatStringsSep "\n")
+      ];
 
   runtime = stdenv.mkDerivation {
     pname = "ecc-tools-runtime";

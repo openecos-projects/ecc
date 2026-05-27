@@ -43,7 +43,8 @@ python3Packages.buildPythonPackage {
   dependencies = [
     ecc-dreamplace-python
     ecc-tools-python
-  ] ++ (with python3Packages; [
+  ]
+  ++ (with python3Packages; [
     fastapi
     klayout
     matplotlib

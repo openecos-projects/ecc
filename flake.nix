@@ -58,8 +58,8 @@
             inherit (pkgs)
               chipcompiler
               cli
-							ecc-tools-python
-							ecc-dreamplace-python
+              ecc-tools-python
+              ecc-dreamplace-python
               ;
           };
         };
