@@ -473,6 +473,13 @@ Success criteria:
 
 ## Compatibility Notes
 
+The stable Python integration surface is the project-level `chipcompiler`
+package and the CLI launcher entrypoint `chipcompiler.cli.main`. Internal CLI
+implementation modules under `chipcompiler.cli.*` are not compatibility
+surfaces; they may move with CLI implementation refactors. Integrations should
+invoke the packaged `ecc` command or call `chipcompiler.cli.main.run(argv)`
+rather than importing CLI helper modules directly.
+
 The legacy top-level parameter-only invocation with `--workspace` is no longer
 part of the CLI contract. Use `ecc workspace create --directory <dir>` with
 explicit field flags such as `--design`, `--top`, `--clock`, `--freq`, `--pdk`,
@@ -480,6 +487,7 @@ and `--pdk-root` for one-line old-workspace creation. The long-term default is
 project-oriented and configuration-driven through `ecc.toml` and subcommands
 such as `ecc run --project <dir>`.
 
-The CLI should remain API-compatible with existing Python users. Changes needed
-for the CLI should be additive and should not force current Python flow scripts
-to change unless the underlying API already requires a broader cleanup.
+The project-level Python APIs should remain compatible with existing Python
+users. Changes needed for the CLI should be additive and should not force
+current Python flow scripts to change unless the underlying API already requires
+a broader cleanup.
