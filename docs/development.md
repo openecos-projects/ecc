@@ -58,14 +58,44 @@ Python deps are managed via `uv.lock` — Bazel consumes it automatically throug
 
 ## Release Builds
 
-### Python Package
+### PyInstaller CLI Release Artifact
+
+Tagged ECC releases publish a Linux x86_64 PyInstaller onedir CLI bundle:
+
+```text
+ecc-cli-linux-x86_64.tar.gz
+```
+
+Build the release artifact locally with:
+
+```bash
+bazel build //:build_ecc_cli_bundle
+mkdir -p dist/release
+gzip -n -9 -c bazel-bin/build_ecc_cli_bundle/ecc.tar \
+  > dist/release/ecc-cli-linux-x86_64.tar.gz
+```
+
+The archive extracts to an `ecc` executable and `_internal/` runtime directory.
+After extraction:
+
+```bash
+./ecc --version
+```
+
+Release notes for tagged ECC releases are generated with `git-cliff` using
+[`ecc/.github/cliff.toml`](../.github/cliff.toml). The release workflow appends
+the generated changelog before the CLI artifact checksum block that is published
+to GitHub Releases.
+
+### Manual Python Package
 ```bash
 uv build
 ```
 
-### Bazel Wheel Build (ECC Runtime + auditwheel)
+### Manual Bazel Wheel Build (ECC Runtime + auditwheel)
 
-Build a portable wheel with Bazel-managed ECC runtime and hermetic uv/Python:
+For developer validation, build a portable wheel with Bazel-managed ECC runtime
+and hermetic uv/Python:
 
 ```bash
 bazel build //:raw_wheel   # Sandboxed, cacheable — produces raw .whl
@@ -76,11 +106,6 @@ Artifacts:
 - Raw wheels: `dist/wheel/raw/`
 - Repaired wheels: `dist/wheel/repaired/`
 - auditwheel report: `dist/wheel/reports/show.txt`
-
-Release notes for tagged ECC releases are generated with `git-cliff` using
-[`ecc/.github/cliff.toml`](../.github/cliff.toml). The release workflow appends
-the generated changelog before the checksum block that is published to GitHub
-Releases.
 
 Requirements:
 - Linux x86_64
