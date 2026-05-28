@@ -400,6 +400,18 @@ class TestStableProgressStream:
         captured = capfd.readouterr()
         assert "stable stderr" in captured.err
 
+    def test_preserves_fd_stream_error_handler(self, tmp_path):
+        path = tmp_path / "stderr.txt"
+        with open(path, "w", encoding="ascii", errors="backslashreplace") as original:
+            stream = progress._stable_stream_from(original)
+            try:
+                stream.write("✓\n")
+                stream.flush()
+            finally:
+                stream.close()
+
+        assert "\\u2713" in path.read_text()
+
 
 class TestPreserveCliStdio:
     def test_restores_fd_stdout_stderr_after_redirect(self, tmp_path, capfd):
