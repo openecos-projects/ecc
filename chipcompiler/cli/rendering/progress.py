@@ -130,6 +130,7 @@ class _IncrementalLogTail:
         self.file_id = None
         self.change_id = None
         self.fingerprint = None
+        self.head = None
         self.offset = 0
         self.partial = ""
         self.started_at = None
@@ -168,11 +169,18 @@ class _IncrementalLogTail:
 
         file_id = (stat.st_dev, stat.st_ino)
         change_id = (stat.st_mtime_ns, stat.st_ctime_ns)
-        replaced_same_size = False
-        if self.file_id == file_id and stat.st_size == self.offset and self.offset > 0:
-            fingerprint = self._fingerprint(stat.st_size)
-            replaced_same_size = fingerprint != self.fingerprint
-        if self.file_id != file_id or stat.st_size < self.offset or replaced_same_size:
+        replaced = False
+        if self.file_id == file_id and self.offset > 0:
+            head = self._head()
+            if stat.st_size < self.offset:
+                replaced = True
+            elif stat.st_size == self.offset:
+                fingerprint = self._fingerprint(stat.st_size)
+                replaced = fingerprint != self.fingerprint
+            elif self.head is not None:
+                compare_len = min(len(self.head), len(head), self.offset)
+                replaced = head[:compare_len] != self.head[:compare_len]
+        if self.file_id != file_id or replaced:
             self.file_id = file_id
             self.offset = 0
             self.partial = ""
@@ -187,6 +195,7 @@ class _IncrementalLogTail:
             return []
 
         self.fingerprint = self._fingerprint(stat.st_size)
+        self.head = self._head()
         if not chunk:
             return []
 
@@ -198,6 +207,15 @@ class _IncrementalLogTail:
             self.partial = ""
 
         return lines
+
+    def _head(self):
+        if not self.path or not os.path.isfile(self.path):
+            return None
+        try:
+            with open(self.path, "rb") as f:
+                return f.read(4096)
+        except OSError:
+            return None
 
     def _fingerprint(self, size):
         if not self.path or not os.path.isfile(self.path):
