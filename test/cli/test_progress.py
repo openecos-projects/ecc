@@ -608,7 +608,7 @@ def _make_step(name, tool, log_file=""):
 
 def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=None):
     if init_db_engine_fn is None:
-        def init_db_engine_fn(self, workspace_step=None):
+        def init_db_engine_fn(self):
             return None
 
     if check_state_fn is None:
@@ -844,7 +844,7 @@ class TestRunFlowWithProgress:
     def test_init_db_engine_called_before_run_step(self, tmp_path):
         call_order = []
 
-        def fake_init_db_engine(self, workspace_step=None):
+        def fake_init_db_engine(self):
             call_order.append(("init_db_engine",))
 
         def fake_run_step(self, s):
@@ -873,7 +873,7 @@ class TestRunFlowWithProgress:
         log_file = tmp_path / "place.log"
         call_order = []
 
-        def fake_init_db_engine(self, workspace_step=None):
+        def fake_init_db_engine(self):
             call_order.append(("init_db_engine",))
 
         def fake_run_step(self, s):
@@ -926,7 +926,7 @@ class TestRunFlowWithProgress:
     def test_captures_init_db_engine_output_in_step_log(self, tmp_path, capfd):
         log_file = tmp_path / "floorplan.log"
 
-        def fake_init_db_engine(self, workspace_step=None):
+        def fake_init_db_engine(self):
             print("raw init stdout")
             sys.stderr.write("raw init stderr\n")
             sys.stderr.flush()
@@ -963,9 +963,9 @@ class TestRunFlowWithProgress:
         def fake_check_state(self, name, tool, state):
             return name == "Synthesis" and state == StateEnum.Success
 
-        def fake_init_db_engine(self, workspace_step=None):
-            init_calls.append(workspace_step.name if workspace_step is not None else None)
-            print(f"init for {init_calls[-1]}")
+        def fake_init_db_engine(self):
+            init_calls.append("init_db_engine")
+            print("init for step")
 
         def fake_run_step(self, s):
             return StateEnum.Success
@@ -985,9 +985,9 @@ class TestRunFlowWithProgress:
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
 
         assert result is True
-        assert init_calls == ["Floorplan"]
+        assert init_calls == ["init_db_engine"]
         assert not synth_log.exists()
-        assert "init for Floorplan" in floorplan_log.read_text()
+        assert "init for step" in floorplan_log.read_text()
 
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
         def raising_run_step(self, s):
