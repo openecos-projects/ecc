@@ -120,6 +120,99 @@ def latest_log_line(path):
     return None
 
 
+class _IncrementalLogTail:
+    def __init__(self, path, step_name, stale_after=10.0):
+        self.path = path
+        self.step_name = step_name
+        self.stale_after = stale_after
+        self.file_id = None
+        self.change_id = None
+        self.fingerprint = None
+        self.offset = 0
+        self.partial = ""
+        self.started_at = None
+        self.last_line = None
+        self.last_update_at = None
+
+    def poll(self, now=None):
+        now = time.monotonic() if now is None else now
+        if self.started_at is None:
+            self.started_at = now
+
+        for line in self._read_new_lines():
+            sanitized = sanitize_log_line(line)
+            if sanitized:
+                self.last_line = sanitized
+                self.last_update_at = now
+
+        if self.last_line is None:
+            elapsed = max(0, int(now - self.started_at))
+            return f"running {self.step_name}, waiting for step log {elapsed}s..."
+
+        elapsed = max(0, int(now - self.last_update_at))
+        if elapsed >= self.stale_after:
+            return f"running {self.step_name}, last log {elapsed}s ago: {self.last_line}"
+
+        return self.last_line
+
+    def _read_new_lines(self):
+        if not self.path or not os.path.isfile(self.path):
+            return []
+
+        try:
+            stat = os.stat(self.path)
+        except OSError:
+            return []
+
+        file_id = (stat.st_dev, stat.st_ino)
+        change_id = (stat.st_mtime_ns, stat.st_ctime_ns)
+        replaced_same_size = False
+        if self.file_id == file_id and stat.st_size == self.offset and self.offset > 0:
+            fingerprint = self._fingerprint(stat.st_size)
+            replaced_same_size = fingerprint != self.fingerprint
+        if self.file_id != file_id or stat.st_size < self.offset or replaced_same_size:
+            self.file_id = file_id
+            self.offset = 0
+            self.partial = ""
+        self.change_id = change_id
+
+        try:
+            with open(self.path, encoding="utf-8", errors="replace") as f:
+                f.seek(self.offset)
+                chunk = f.read()
+                self.offset = f.tell()
+        except OSError:
+            return []
+
+        self.fingerprint = self._fingerprint(stat.st_size)
+        if not chunk:
+            return []
+
+        text = self.partial + chunk
+        lines = text.splitlines(keepends=True)
+        if lines and not lines[-1].endswith(("\n", "\r")):
+            self.partial = lines.pop()
+        else:
+            self.partial = ""
+
+        return lines
+
+    def _fingerprint(self, size):
+        if not self.path or not os.path.isfile(self.path):
+            return None
+        try:
+            with open(self.path, "rb") as f:
+                head = f.read(4096)
+                if size > 4096:
+                    f.seek(max(0, size - 4096))
+                    tail = f.read(4096)
+                else:
+                    tail = b""
+        except OSError:
+            return None
+        return size, head, tail
+
+
 def terminal_width(fallback=80):
     cols, _ = shutil.get_terminal_size(fallback=(fallback, 24))
     return max(cols, 1)
