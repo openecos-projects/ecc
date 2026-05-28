@@ -151,6 +151,8 @@ jobs:
     needs: check-version
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - run: nix build -L -v .#cli
