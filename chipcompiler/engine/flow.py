@@ -229,7 +229,7 @@ class EngineFlow:
                 # error create step, TBD
                 pass
             
-    def init_db_engine(self) -> bool:
+    def init_db_engine(self, workspace_step: WorkspaceStep | None = None) -> bool:
         if len(self.workspace_steps) <= 0:
             return False
         
@@ -241,14 +241,14 @@ class EngineFlow:
                 return True
         
         # init engine step by last workpsace step data if all step run success
-        workspace_step = None
-        for ws_step in self.workspace_steps:
-            if not self.check_state(name=ws_step.name,
-                                    tool=ws_step.tool,
-                                    state=StateEnum.Success):
-                # use the first unsuccess step to setup db engine
-                workspace_step = ws_step
-                break
+        if workspace_step is None:
+            for ws_step in self.workspace_steps:
+                if not self.check_state(name=ws_step.name,
+                                        tool=ws_step.tool,
+                                        state=StateEnum.Success):
+                    # use the first unsuccess step to setup db engine
+                    workspace_step = ws_step
+                    break
                                 
         return self.engine_db.create_db_engine(step=workspace_step)
     

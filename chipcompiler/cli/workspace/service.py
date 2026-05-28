@@ -154,8 +154,12 @@ def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
 
     try:
         workspace, engine_flow = load_workspace_runtime(directory)
-        engine_flow.init_db_engine()
-        state = engine_flow.run_step(step, rerun)
+        workspace_step = engine_flow.get_workspace_step(step)
+        if workspace_step is None:
+            state = engine_flow.run_step(step, rerun)
+        else:
+            engine_flow.init_db_engine(workspace_step)
+            state = engine_flow.run_step(workspace_step, rerun)
     except WorkspaceValidationError as exc:
         return workspace_response(cmd, "failed", data=response_data, message=[str(exc)])
     except Exception as exc:
