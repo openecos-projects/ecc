@@ -1,9 +1,12 @@
 import io
+import os
 import re
+import sys
 import time
 
 import pytest
 
+import chipcompiler.cli.rendering.progress as progress
 from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.cli.inspection.log_view import LineKind, LogLine
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
@@ -19,6 +22,7 @@ from chipcompiler.cli.rendering.progress import (
     truncate_to_width,
 )
 from chipcompiler.data import StateEnum
+from chipcompiler.utility.log import redirect_stdio_to_file
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
@@ -368,6 +372,72 @@ class TestRunProgressRenderer:
         assert RED in output
 
 
+# -- progress stream / stdio guard helpers --
+
+
+class TestStableProgressStream:
+    def test_fallback_returns_stream_without_fileno(self):
+        buf = FakeTTYStderr(True)
+
+        stream = progress._stable_stream_from(buf)
+
+        assert stream is buf
+
+    def test_uses_dup_for_fd_backed_stream(self, capfd):
+        stream = progress._stable_stream_from(sys.stderr)
+        saved_stderr_fd = os.dup(2)
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(devnull_fd, 2)
+            stream.write("stable stderr\n")
+            stream.flush()
+        finally:
+            stream.close()
+            os.dup2(saved_stderr_fd, 2)
+            os.close(saved_stderr_fd)
+            os.close(devnull_fd)
+
+        captured = capfd.readouterr()
+        assert "stable stderr" in captured.err
+
+
+class TestPreserveCliStdio:
+    def test_restores_fd_stdout_stderr_after_redirect(self, tmp_path, capfd):
+        log_file = tmp_path / "step.log"
+
+        with progress._preserve_cli_stdio():
+            redirected = redirect_stdio_to_file(str(log_file))
+            print("inside stdout")
+            sys.stderr.write("inside stderr\n")
+            redirected.flush()
+
+        print("after stdout")
+        sys.stderr.write("after stderr\n")
+
+        captured = capfd.readouterr()
+        assert "after stdout" in captured.out
+        assert "after stderr" in captured.err
+        assert "after stdout" not in log_file.read_text()
+        assert "after stderr" not in log_file.read_text()
+
+    def test_restores_fd_stdout_stderr_after_exception(self, tmp_path, capfd):
+        log_file = tmp_path / "step.log"
+
+        with pytest.raises(RuntimeError, match="boom"):
+            with progress._preserve_cli_stdio():
+                redirect_stdio_to_file(str(log_file))
+                raise RuntimeError("boom")
+
+        print("after stdout")
+        sys.stderr.write("after stderr\n")
+
+        captured = capfd.readouterr()
+        assert "after stdout" in captured.out
+        assert "after stderr" in captured.err
+        assert "after stdout" not in log_file.read_text()
+        assert "after stderr" not in log_file.read_text()
+
+
 # -- run_flow_with_progress --
 
 
@@ -652,6 +722,60 @@ class TestRunFlowWithProgress:
         init_idx = call_order.index(("init_db_engine",))
         run_idx = call_order.index(("run_step", "Synthesis"))
         end_idx = call_order.index(("section", "yosys - end step - Synthesis"))
+        assert begin_idx < init_idx < run_idx < end_idx
+
+    def test_restores_progress_output_after_run_step_redirects_stdio(self, tmp_path, capfd):
+        log_file = tmp_path / "place.log"
+        call_order = []
+
+        def fake_init_db_engine(self):
+            call_order.append(("init_db_engine",))
+
+        def fake_run_step(self, s):
+            call_order.append(("run_step", s.name))
+            redirected = redirect_stdio_to_file(str(log_file))
+            print("raw tool stdout")
+            sys.stderr.write("Plotting array maps: 57%\n")
+            redirected.flush()
+            time.sleep(1.0)
+            return StateEnum.Success
+
+        flow = _make_flow(
+            _make_ws(
+                str(tmp_path), log_section_fn=lambda self, msg: call_order.append(("section", msg))
+            ),
+            [_make_step("placement", "dreamplace", str(log_file))],
+            fake_run_step,
+            init_db_engine_fn=fake_init_db_engine,
+        )
+
+        result = run_flow_with_progress(flow, _make_ctx(), "myproj", sys.stderr)
+        print("after progress stdout")
+        sys.stderr.write("after progress stderr\n")
+
+        captured = capfd.readouterr()
+        terminal = _strip_ansi(captured.err)
+        step_log = log_file.read_text()
+
+        assert result is True
+        assert "> placement (dreamplace)\n" in terminal
+        assert "Plotting array maps: 57%" in terminal
+        assert "✓ placement (dreamplace)" in terminal
+        assert "after progress stdout" in captured.out
+        assert "after progress stderr" in captured.err
+
+        assert "raw tool stdout" in step_log
+        assert "Plotting array maps: 57%" in step_log
+        assert "> placement (dreamplace)" not in step_log
+        assert "log: waiting for log..." not in step_log
+        assert "✓ placement (dreamplace)" not in step_log
+        assert "after progress stdout" not in step_log
+        assert "after progress stderr" not in step_log
+
+        begin_idx = call_order.index(("section", "dreamplace - begin step - placement"))
+        init_idx = call_order.index(("init_db_engine",))
+        run_idx = call_order.index(("run_step", "placement"))
+        end_idx = call_order.index(("section", "dreamplace - end step - placement"))
         assert begin_idx < init_idx < run_idx < end_idx
 
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
