@@ -5,30 +5,35 @@
     "corners" : [
         {
             "name" : "TYPICAL",
+            "temperature" : 25,
             "ecc_tf" : "./TYP.json",
             "itf_file" : "./TYP.itf ",
             "captab_file" : "./TYP.captab"
         },
         {
             "name" : "RCbest",
+            "temperature" : 25,
             "ecc_tf" : "./RCbest.json",
             "itf_file" : "./RCbest.itf ",
             "captab_file" : "./RCbest.captab"
         },
         {
             "name" : "RCworst",
+            "temperature" : 25,
             "ecc_tf" : "./RCworst.json",
             "itf_file" : "./RCworst.itf ",
             "captab_file" : "./RCworst.captab"
         },
         {
             "name" : "Cbest",
+            "temperature" : 25,
             "ecc_tf" : "./Cbest.json",
             "itf_file" : "./Cbest.itf ",
             "captab_file" : "./Cbest.captab"
         },
         {
             "name" : "Cworst",
+            "temperature" : 25,
             "ecc_tf" : "./Cworst.json",
             "itf_file" : "./Cworst.itf ",
             "captab_file" : "./Cworst.captab"
