@@ -478,10 +478,14 @@ def _make_step(name, tool, log_file=""):
     return type("WSS", (), {"name": name, "tool": tool, "log": {"file": log_file}})()
 
 
-def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None):
+def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=None):
     if init_db_engine_fn is None:
         def init_db_engine_fn(self):
             return None
+
+    if check_state_fn is None:
+        def check_state_fn(self, name, tool, state):
+            return False
 
     return type(
         "EF",
@@ -491,6 +495,7 @@ def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None):
             "workspace_steps": steps,
             "init_db_engine": init_db_engine_fn,
             "run_step": run_step_fn,
+            "check_state": check_state_fn,
         },
     )()
 
@@ -821,6 +826,40 @@ class TestRunFlowWithProgress:
         assert "raw init stdout" not in captured.out
         assert "log: raw init stderr" in terminal
         assert "\nraw init stderr\n" not in terminal
+
+    def test_does_not_initialize_db_for_skipped_progress_step(self, tmp_path):
+        synth_log = tmp_path / "synth.log"
+        floorplan_log = tmp_path / "floorplan.log"
+        init_calls = []
+
+        def fake_check_state(self, name, tool, state):
+            return name == "Synthesis" and state == StateEnum.Success
+
+        def fake_init_db_engine(self, workspace_step=None):
+            init_calls.append(workspace_step.name if workspace_step is not None else None)
+            print(f"init for {init_calls[-1]}")
+
+        def fake_run_step(self, s):
+            return StateEnum.Success
+
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [
+                _make_step("Synthesis", "yosys", str(synth_log)),
+                _make_step("Floorplan", "ecc", str(floorplan_log)),
+            ],
+            fake_run_step,
+            init_db_engine_fn=fake_init_db_engine,
+            check_state_fn=fake_check_state,
+        )
+
+        buf = FakeTTYStderr(True)
+        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+
+        assert result is True
+        assert init_calls == ["Floorplan"]
+        assert not synth_log.exists()
+        assert "init for Floorplan" in floorplan_log.read_text()
 
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
         def raising_run_step(self, s):
