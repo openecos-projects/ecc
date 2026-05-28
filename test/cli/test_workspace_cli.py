@@ -43,9 +43,10 @@ class DummyFlow:
     def clear_states(self):
         self.cleared = True
 
-    def init_db_engine(self):
+    def init_db_engine(self, workspace_step=None):
         self.init_db_engine_calls += 1
-        self.call_order.append(("init_db_engine",))
+        name = workspace_step.name if workspace_step is not None else None
+        self.call_order.append(("init_db_engine", name))
 
     def run_steps(self, rerun=False):
         self.run_steps_calls.append(rerun)
@@ -540,10 +541,37 @@ def test_run_step_initializes_engine_db_before_step(monkeypatch, tmp_path, capsy
     assert data["response"] == "success"
     assert flow.init_db_engine_calls == 1
     assert flow.call_order == [
-        ("init_db_engine",),
+        ("init_db_engine", "Synthesis"),
         ("run_step", "Synthesis", False),
     ]
     assert flow.run_steps_calls == []
+
+
+def test_run_step_rerun_initializes_engine_db_for_requested_step(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    rc = cli_main.run(
+        [
+            "workspace",
+            "run-step",
+            "--directory",
+            str(ws),
+            "--step",
+            "Floorplan",
+            "--rerun",
+            "--json",
+        ]
+    )
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 0
+    assert data["cmd"] == "run_step"
+    assert data["response"] == "success"
+    assert flow.call_order == [
+        ("init_db_engine", "Floorplan"),
+        ("run_step", "Floorplan", True),
+    ]
 
 
 def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path, capsys):
