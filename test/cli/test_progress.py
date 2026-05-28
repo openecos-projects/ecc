@@ -799,7 +799,7 @@ class TestRunFlowWithProgress:
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         plain = _strip_ansi("".join(buf.written))
-        assert "  log: waiting for log..." in plain
+        assert "  log: running synthesis, waiting for step log" in plain
 
     def test_log_section_markers_emitted(self, tmp_path):
         sections = []

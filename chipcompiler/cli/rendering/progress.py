@@ -42,6 +42,8 @@ _DCS_RE = re.compile(r"\x1bP.*?(?:\x1b\\)")
 _CONTROL_RE = re.compile(r"[\r\n\t]+")
 _C0_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MULTI_SPACE_RE = re.compile(r" {2,}")
+_LOG_POLL_INTERVAL = 0.5
+_LOG_STALE_AFTER = 10.0
 
 
 def sanitize_log_line(line):
@@ -334,11 +336,22 @@ class RunProgressRenderer:
         self._stream.flush()
 
 
-def _poll_log(renderer, log_path, stop_event, interval=0.5):
+def _monitor_log_progress(
+    renderer,
+    log_path,
+    step_name,
+    stop_event,
+    interval=_LOG_POLL_INTERVAL,
+    stale_after=_LOG_STALE_AFTER,
+):
+    tail = _IncrementalLogTail(log_path, step_name, stale_after=stale_after)
     while not stop_event.is_set():
-        line = latest_log_line(log_path)
-        renderer.running(line or "waiting for log...")
+        renderer.running(tail.poll())
         stop_event.wait(interval)
+
+
+def _poll_log(renderer, log_path, stop_event, interval=_LOG_POLL_INTERVAL):
+    _monitor_log_progress(renderer, log_path, "step", stop_event, interval=interval)
 
 
 def run_flow_with_progress(engine_flow, ctx, project, stderr):
@@ -362,11 +375,12 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
             )
 
             renderer.start_step(step_token, tool)
+            renderer.running("starting step...")
 
             stop_event = threading.Event()
             monitor = threading.Thread(
-                target=_poll_log,
-                args=(renderer, log_path, stop_event),
+                target=_monitor_log_progress,
+                args=(renderer, log_path, step_token, stop_event),
                 daemon=True,
             )
             monitor.start()
