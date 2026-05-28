@@ -2,6 +2,7 @@ import io
 import os
 import re
 import sys
+import threading
 import time
 
 import pytest
@@ -44,6 +45,29 @@ class FakeTTYStderr:
 
     def flush(self):
         pass
+
+
+class RecordingRenderer:
+    def __init__(self):
+        self.lines = []
+        self._lock = threading.Lock()
+
+    def running(self, text):
+        with self._lock:
+            self.lines.append(text)
+
+    def has_line_containing(self, needle):
+        with self._lock:
+            return any(needle in line for line in self.lines)
+
+
+def _wait_until(predicate, timeout=1.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
 
 
 def _make_ctx(mode=OutputMode.TEXT):
@@ -263,6 +287,53 @@ class TestIncrementalLogTail:
             "StaDataPropagation.cc:710] data bwd propagation start"
         )
         assert tail.last_line == "StaDataPropagation.cc:710] data bwd propagation start"
+
+
+class TestMonitorLogProgress:
+    def test_late_created_log_updates_after_initial_waiting_status(self, tmp_path):
+        log = tmp_path / "late.log"
+        renderer = RecordingRenderer()
+        stop_event = threading.Event()
+        monitor = threading.Thread(
+            target=progress._monitor_log_progress,
+            args=(renderer, str(log), "floorplan", stop_event),
+            kwargs={"interval": 0.01, "stale_after": 10.0},
+            daemon=True,
+        )
+
+        monitor.start()
+        try:
+            assert _wait_until(
+                lambda: renderer.has_line_containing("waiting for step log"), timeout=1.0
+            )
+            log.write_text("first appended line\n")
+            assert _wait_until(
+                lambda: renderer.has_line_containing("first appended line"), timeout=1.0
+            )
+        finally:
+            stop_event.set()
+            monitor.join(timeout=1.0)
+
+    def test_silent_log_switches_from_banner_to_stale_status(self, tmp_path):
+        log = tmp_path / "silent.log"
+        log.write_text("|_| |_/_/\\_\\ |_|\n")
+        renderer = RecordingRenderer()
+        stop_event = threading.Event()
+        monitor = threading.Thread(
+            target=progress._monitor_log_progress,
+            args=(renderer, str(log), "fixfanout", stop_event),
+            kwargs={"interval": 0.01, "stale_after": 0.03},
+            daemon=True,
+        )
+
+        monitor.start()
+        try:
+            assert _wait_until(lambda: renderer.has_line_containing("|_| |_"), timeout=1.0)
+            assert _wait_until(lambda: renderer.has_line_containing("last log"), timeout=1.0)
+            assert renderer.has_line_containing("running fixfanout")
+        finally:
+            stop_event.set()
+            monitor.join(timeout=1.0)
 
 
 # -- RunProgressRenderer --
