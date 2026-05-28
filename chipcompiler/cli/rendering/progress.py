@@ -137,7 +137,8 @@ def _stable_stream_from(stream):
         return stream
 
     encoding = getattr(stream, "encoding", None) or "utf-8"
-    return os.fdopen(dup_fd, "w", encoding=encoding, buffering=1, closefd=True)
+    errors = getattr(stream, "errors", None)
+    return os.fdopen(dup_fd, "w", encoding=encoding, errors=errors, buffering=1, closefd=True)
 
 
 @contextlib.contextmanager
