@@ -275,6 +275,16 @@ class TestIncrementalLogTail:
 
         assert tail.poll(now=1.0) == "new"
 
+    def test_restarts_when_replaced_file_grows_beyond_previous_offset(self, tmp_path):
+        log = tmp_path / "step.log"
+        log.write_text("old\n")
+        tail = progress._IncrementalLogTail(str(log), "floorplan", stale_after=10.0)
+        assert tail.poll(now=0.0) == "old"
+
+        log.write_text("replacement line\n")
+
+        assert tail.poll(now=1.0) == "replacement line"
+
     def test_reports_stale_status_without_losing_last_line(self, tmp_path):
         log = tmp_path / "step.log"
         log.write_text("StaDataPropagation.cc:710] data bwd propagation start\n")
