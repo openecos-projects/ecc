@@ -778,6 +778,38 @@ class TestRunFlowWithProgress:
         end_idx = call_order.index(("section", "dreamplace - end step - placement"))
         assert begin_idx < init_idx < run_idx < end_idx
 
+    def test_captures_init_db_engine_output_in_step_log(self, tmp_path, capfd):
+        log_file = tmp_path / "floorplan.log"
+
+        def fake_init_db_engine(self):
+            print("raw init stdout")
+            sys.stderr.write("raw init stderr\n")
+            sys.stderr.flush()
+
+        def fake_run_step(self, s):
+            time.sleep(1.0)
+            return StateEnum.Success
+
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [_make_step("Floorplan", "ecc", str(log_file))],
+            fake_run_step,
+            init_db_engine_fn=fake_init_db_engine,
+        )
+
+        result = run_flow_with_progress(flow, _make_ctx(), "myproj", sys.stderr)
+
+        captured = capfd.readouterr()
+        terminal = _strip_ansi(captured.err)
+        step_log = log_file.read_text()
+
+        assert result is True
+        assert "raw init stdout" in step_log
+        assert "raw init stderr" in step_log
+        assert "raw init stdout" not in captured.out
+        assert "log: raw init stderr" in terminal
+        assert "\nraw init stderr\n" not in terminal
+
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
         def raising_run_step(self, s):
             raise RuntimeError("tool crashed")
