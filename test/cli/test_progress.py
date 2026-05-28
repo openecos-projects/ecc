@@ -208,6 +208,63 @@ class TestLatestLogLine:
         assert latest_log_line(str(log)) is None
 
 
+# -- incremental log tail --
+
+
+class TestIncrementalLogTail:
+    def test_reads_only_appended_complete_lines(self, tmp_path):
+        log = tmp_path / "step.log"
+        log.write_text("first\n")
+        tail = progress._IncrementalLogTail(str(log), "floorplan", stale_after=10.0)
+
+        assert tail.poll(now=0.0) == "first"
+
+        log.write_text("first\nsecond\n")
+
+        assert tail.poll(now=1.0) == "second"
+
+    def test_carries_partial_line_until_newline_arrives(self, tmp_path):
+        log = tmp_path / "step.log"
+        log.write_text("partial")
+        tail = progress._IncrementalLogTail(str(log), "floorplan", stale_after=10.0)
+
+        assert tail.poll(now=0.0) == "running floorplan, waiting for step log 0s..."
+
+        log.write_text("partial line\n")
+
+        assert tail.poll(now=1.0) == "partial line"
+
+    def test_ignores_empty_or_pure_control_lines(self, tmp_path):
+        log = tmp_path / "step.log"
+        log.write_text("\x1b[31m\x1b[0m\n\nreal\n")
+        tail = progress._IncrementalLogTail(str(log), "floorplan", stale_after=10.0)
+
+        assert tail.poll(now=0.0) == "real"
+
+    def test_restarts_when_file_is_truncated(self, tmp_path):
+        log = tmp_path / "step.log"
+        log.write_text("old\n")
+        tail = progress._IncrementalLogTail(str(log), "floorplan", stale_after=10.0)
+        assert tail.poll(now=0.0) == "old"
+
+        log.write_text("new\n")
+
+        assert tail.poll(now=1.0) == "new"
+
+    def test_reports_stale_status_without_losing_last_line(self, tmp_path):
+        log = tmp_path / "step.log"
+        log.write_text("StaDataPropagation.cc:710] data bwd propagation start\n")
+        tail = progress._IncrementalLogTail(str(log), "fixfanout", stale_after=5.0)
+        assert tail.poll(now=10.0) == "StaDataPropagation.cc:710] data bwd propagation start"
+
+        assert (
+            tail.poll(now=16.0)
+            == "running fixfanout, last log 6s ago: "
+            "StaDataPropagation.cc:710] data bwd propagation start"
+        )
+        assert tail.last_line == "StaDataPropagation.cc:710] data bwd propagation start"
+
+
 # -- RunProgressRenderer --
 
 
