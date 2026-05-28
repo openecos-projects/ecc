@@ -345,6 +345,34 @@ class TestMonitorLogProgress:
             stop_event.set()
             monitor.join(timeout=1.0)
 
+    def test_isolated_monitor_renders_stale_status_while_main_thread_is_busy(self, tmp_path):
+        log = tmp_path / "silent.log"
+        output = tmp_path / "progress.txt"
+        log.write_text("|_| |_/_/\\_\\ |_|\n")
+
+        with open(output, "w", encoding="utf-8", buffering=1) as stream:
+            renderer = RunProgressRenderer(stream, color=False)
+            stop_event, monitor = progress._start_log_monitor(
+                renderer,
+                str(log),
+                "fixfanout",
+                isolated=True,
+                interval=0.01,
+                stale_after=0.03,
+            )
+            previous_interval = sys.getswitchinterval()
+            try:
+                sys.setswitchinterval(0.5)
+                deadline = time.time() + 0.15
+                while time.time() < deadline:
+                    pass
+            finally:
+                sys.setswitchinterval(previous_interval)
+                stop_event.set()
+                monitor.join(timeout=1.0)
+
+        assert "running fixfanout, last log" in output.read_text()
+
 
 # -- RunProgressRenderer --
 
