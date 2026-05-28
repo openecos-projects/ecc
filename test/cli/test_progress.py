@@ -435,10 +435,9 @@ class TestPreserveCliStdio:
     def test_restores_fd_stdout_stderr_after_exception(self, tmp_path, capfd):
         log_file = tmp_path / "step.log"
 
-        with pytest.raises(RuntimeError, match="boom"):
-            with progress._preserve_cli_stdio():
-                redirect_stdio_to_file(str(log_file))
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError, match="boom"), progress._preserve_cli_stdio():
+            redirect_stdio_to_file(str(log_file))
+            raise RuntimeError("boom")
 
         print("after stdout")
         sys.stderr.write("after stderr\n")
@@ -481,7 +480,8 @@ def _make_step(name, tool, log_file=""):
 
 def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None):
     if init_db_engine_fn is None:
-        init_db_engine_fn = lambda self: None
+        def init_db_engine_fn(self):
+            return None
 
     return type(
         "EF",

@@ -149,10 +149,8 @@ def _preserve_cli_stdio():
     saved_stderr_fd = None
 
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(Exception):
             stream.flush()
-        except Exception:
-            pass
 
     try:
         saved_stdout_fd = os.dup(1)
@@ -171,10 +169,8 @@ def _preserve_cli_stdio():
         yield
     finally:
         for stream in (sys.stdout, sys.stderr):
-            try:
+            with contextlib.suppress(Exception):
                 stream.flush()
-            except Exception:
-                pass
 
         try:
             os.dup2(saved_stdout_fd, 1)

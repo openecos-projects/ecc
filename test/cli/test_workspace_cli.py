@@ -50,7 +50,10 @@ class DummyFlow:
         self.call_order.append(("init_db_engine", name))
 
     def check_state(self, name, tool, state):
-        return getattr(state, "value", state) == StateEnum.Success.value and name in self.successful_steps
+        return (
+            getattr(state, "value", state) == StateEnum.Success.value
+            and name in self.successful_steps
+        )
 
     def run_steps(self, rerun=False):
         self.run_steps_calls.append(rerun)

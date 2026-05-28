@@ -1,6 +1,5 @@
 import os
 
-from chipcompiler.data import StateEnum
 from chipcompiler.cli.workspace.request import (
     InputError,
     WorkspaceCreateRequest,
@@ -9,6 +8,7 @@ from chipcompiler.cli.workspace.request import (
     write_filelist,
 )
 from chipcompiler.cli.workspace.response import workspace_response
+from chipcompiler.data import StateEnum
 
 
 def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
