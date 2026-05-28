@@ -1,4 +1,5 @@
 import contextlib
+import multiprocessing
 import os
 import re
 import shutil
@@ -149,12 +150,12 @@ class _IncrementalLogTail:
                 self.last_update_at = now
 
         if self.last_line is None:
-            elapsed = max(0, int(now - self.started_at))
-            return f"running {self.step_name}, waiting for step log {elapsed}s..."
+            elapsed = max(0, now - self.started_at)
+            return f"running {self.step_name}, waiting for step log {int(elapsed)}s..."
 
-        elapsed = max(0, int(now - self.last_update_at))
+        elapsed = max(0, now - self.last_update_at)
         if elapsed >= self.stale_after:
-            return f"running {self.step_name}, last log {elapsed}s ago: {self.last_line}"
+            return f"running {self.step_name}, last log {int(elapsed)}s ago: {self.last_line}"
 
         return self.last_line
 
@@ -372,6 +373,43 @@ def _poll_log(renderer, log_path, stop_event, interval=_LOG_POLL_INTERVAL):
     _monitor_log_progress(renderer, log_path, "step", stop_event, interval=interval)
 
 
+def _start_log_monitor(
+    renderer,
+    log_path,
+    step_name,
+    isolated=False,
+    interval=_LOG_POLL_INTERVAL,
+    stale_after=_LOG_STALE_AFTER,
+):
+    if isolated:
+        ctx = multiprocessing.get_context("fork")
+        stop_event = ctx.Event()
+        monitor = ctx.Process(
+            target=_monitor_log_progress,
+            args=(renderer, log_path, step_name, stop_event),
+            kwargs={"interval": interval, "stale_after": stale_after},
+            daemon=True,
+        )
+    else:
+        stop_event = threading.Event()
+        monitor = threading.Thread(
+            target=_monitor_log_progress,
+            args=(renderer, log_path, step_name, stop_event),
+            kwargs={"interval": interval, "stale_after": stale_after},
+            daemon=True,
+        )
+    monitor.start()
+    return stop_event, monitor
+
+
+def _stop_log_monitor(stop_event, monitor, timeout=2.0):
+    stop_event.set()
+    monitor.join(timeout=timeout)
+    if monitor.is_alive() and hasattr(monitor, "terminate"):
+        monitor.terminate()
+        monitor.join(timeout=timeout)
+
+
 def run_flow_with_progress(engine_flow, ctx, project, stderr):
     color = supports_color(stderr, ctx.output_mode)
     progress_stream = _stable_stream_from(stderr)
@@ -395,13 +433,12 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
             renderer.start_step(step_token, tool)
             renderer.running("starting step...")
 
-            stop_event = threading.Event()
-            monitor = threading.Thread(
-                target=_monitor_log_progress,
-                args=(renderer, log_path, step_token, stop_event),
-                daemon=True,
+            stop_event, monitor = _start_log_monitor(
+                renderer,
+                log_path,
+                step_token,
+                isolated=progress_stream is not stderr,
             )
-            monitor.start()
 
             start = time.time()
 
@@ -427,8 +464,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
                                 init_log_stream.close()
                     state = engine_flow.run_step(workspace_step)
             finally:
-                stop_event.set()
-                monitor.join(timeout=2.0)
+                _stop_log_monitor(stop_event, monitor)
                 renderer.clear()
 
             log_flow(workspace=engine_flow.workspace)
