@@ -1,5 +1,6 @@
 import os
 
+from chipcompiler.data import StateEnum
 from chipcompiler.cli.workspace.request import (
     InputError,
     WorkspaceCreateRequest,
@@ -157,6 +158,12 @@ def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
         workspace_step = engine_flow.get_workspace_step(step)
         if workspace_step is None:
             state = engine_flow.run_step(step, rerun)
+        elif not rerun and engine_flow.check_state(
+            name=workspace_step.name,
+            tool=workspace_step.tool,
+            state=StateEnum.Success,
+        ):
+            state = engine_flow.run_step(workspace_step, rerun)
         else:
             engine_flow.init_db_engine(workspace_step)
             state = engine_flow.run_step(workspace_step, rerun)
