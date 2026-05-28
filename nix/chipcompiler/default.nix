@@ -1,13 +1,14 @@
 {
   lib,
   python3Packages,
-  ecc-tools,
+  ecc-dreamplace-python,
+  ecc-tools-python,
   makeWrapper,
 }:
 
 python3Packages.buildPythonPackage {
   pname = "chipcompiler";
-  version = "0.1.0";
+  version = "0.1.0-alpha.3";
   pyproject = true;
 
   src =
@@ -21,12 +22,6 @@ python3Packages.buildPythonPackage {
         ./../../chipcompiler
       ];
     };
-
-  postPatch = ''
-    mkdir -p thirdparty/ecc-tools/bin
-    install -m 755 ${ecc-tools}/bin/*.cpython-*.so thirdparty/ecc-tools/bin/
-    install -m 755 ${ecc-tools}/bin/*.cpython-*.so chipcompiler/tools/ecc/bin/
-  '';
 
   postInstall = ''
     site_packages="$out/${python3Packages.python.sitePackages}"
@@ -45,7 +40,11 @@ python3Packages.buildPythonPackage {
 
   build-system = with python3Packages; [ uv-build ];
 
-  dependencies = with python3Packages; [
+  dependencies = [
+    ecc-dreamplace-python
+    ecc-tools-python
+  ]
+  ++ (with python3Packages; [
     fastapi
     klayout
     matplotlib
@@ -55,10 +54,12 @@ python3Packages.buildPythonPackage {
     pyjson5
     pyyaml
     scipy
+    torch
     tqdm
+    typer
     uvicorn
     pip
-  ];
+  ]);
 
   nativeBuildInputs = [ makeWrapper ];
 

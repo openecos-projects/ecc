@@ -128,8 +128,19 @@ def _ensure_writable(path: str):
     import os
     import stat
 
+    try:
+        os.chmod(path, os.stat(path).st_mode | stat.S_IWUSR | stat.S_IXUSR)
+    except OSError:
+        pass
+
     for root, dirs, files in os.walk(path):
-        for name in dirs + files:
+        for name in dirs:
+            target = os.path.join(root, name)
+            try:
+                os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR | stat.S_IXUSR)
+            except OSError:
+                pass
+        for name in files:
             target = os.path.join(root, name)
             try:
                 os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)

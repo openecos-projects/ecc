@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 import json
 import os
+import tempfile
+from contextlib import suppress
 
 
 def json_read(file_path: str) -> dict:
@@ -19,28 +20,53 @@ def json_read(file_path: str) -> dict:
             with gzip.open(file_path, 'rt') as f:
                 data = json.load(f)
         else:
-            with open(file_path, 'r') as f:
+            with open(file_path) as f:
                 data = json.load(f)
-    except Exception as e:
+    except Exception:
         return data
 
     return data
 
 
-def json_write(file_path: str, data: dict = {}, indent=4) -> bool:
+def json_write(file_path: str, data: dict | None = None, indent=4) -> bool:
     """
     Write a dictionary to a JSON file.
     """
+    if data is None:
+        data = {}
+
+    tmp_path = None
     try:
         if file_path.endswith('.gz'):
             import gzip
             with gzip.open(file_path, 'wt') as f:
                 json.dump(data, f, indent=indent)
         else:
-            with open(file_path, 'w') as f:
+            target_path = os.path.realpath(file_path)
+            directory = os.path.dirname(os.path.abspath(target_path)) or "."
+            existing_mode = None
+            if os.path.exists(target_path):
+                existing_mode = os.stat(target_path).st_mode
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=directory,
+                delete=False,
+                prefix=f".{os.path.basename(file_path)}.",
+                suffix=".tmp",
+            ) as f:
+                tmp_path = f.name
                 json.dump(data, f, indent=indent)
+                f.flush()
+                os.fsync(f.fileno())
+            if existing_mode is not None:
+                os.chmod(tmp_path, existing_mode)
+            os.replace(tmp_path, target_path)
+            tmp_path = None
         return True
-    except Exception as e:
+    except Exception:
+        if tmp_path is not None:
+            with suppress(OSError):
+                os.remove(tmp_path)
         return False
 
 def dict_to_str(d, indent=0):
@@ -108,11 +134,17 @@ def dict_to_str(d, indent=0):
             headers = _collect_headers(values)
             rows = []
             for index, item in enumerate(values, start=1):
-                rows.append([str(index)] + [_format_inline_value(item.get(header, '')) for header in headers])
+                rows.append(
+                    [str(index)]
+                    + [_format_inline_value(item.get(header, '')) for header in headers]
+                )
             _append_table(lines, _build_table(['#'] + headers, rows, current_indent))
             return
     
-        rows = [[str(index), _format_inline_value(item)] for index, item in enumerate(values, start=1)]
+        rows = [
+            [str(index), _format_inline_value(item)]
+            for index, item in enumerate(values, start=1)
+        ]
         _append_table(lines, _build_table(['#', 'Value'], rows, current_indent))
     
     
@@ -143,11 +175,23 @@ def dict_to_str(d, indent=0):
     
         prefix = '  ' * indent
         border = prefix + '+-' + '-+-'.join('-' * width for width in widths) + '-+'
-        header_line = prefix + '| ' + ' | '.join(str(header).ljust(widths[index]) for index, header in enumerate(headers)) + ' |'
+        header_line = (
+            prefix
+            + '| '
+            + ' | '.join(
+                str(header).ljust(widths[index]) for index, header in enumerate(headers)
+            )
+            + ' |'
+        )
     
         table_lines = [border, header_line, border]
         for row in string_rows:
-            table_lines.append(prefix + '| ' + ' | '.join(cell.ljust(widths[index]) for index, cell in enumerate(row)) + ' |')
+            table_lines.append(
+                prefix
+                + '| '
+                + ' | '.join(cell.ljust(widths[index]) for index, cell in enumerate(row))
+                + ' |'
+            )
         table_lines.append(border)
         return table_lines
     
@@ -156,7 +200,7 @@ def dict_to_str(d, indent=0):
         headers = []
         seen = set()
         for item in items:
-            for key in item.keys():
+            for key in item:
                 key_str = str(key)
                 if key_str not in seen:
                     seen.add(key_str)

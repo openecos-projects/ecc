@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag to release (e.g., v0.1.0-alpha.2)'
+        description: 'Tag to release (e.g., v0.1.0-alpha.3)'
         required: false
-        default: 'v0.1.0-alpha.2'
+        default: 'v0.1.0-alpha.3'
 
 permissions:
   contents: write
@@ -29,14 +29,10 @@ jobs:
           expected_tag: ${{ github.event.inputs.tag_name || github.ref_name }}
 
   build:
-    name: Build Wheel
+    name: Build CLI Bundle
     needs: check-version
-    runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux_2_34_x86_64
+    runs-on: ubuntu-22.04
     steps:
-      - name: Install git
-        run: dnf install -y git curl
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -44,27 +40,41 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Setup Python dependencies
+        uses: ./.github/actions/setup-python-deps
+
       - name: Setup Bazel
-        run: |
-          curl -fsSL https://github.com/bazelbuild/bazelisk/releases/download/v1.27.0/bazelisk-linux-amd64 \
-            -o /usr/local/bin/bazel
-          chmod +x /usr/local/bin/bazel
-
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v5
+        uses: bazel-contrib/setup-bazel@0.14.0
         with:
-          version: latest
-          enable-cache: true
+          bazelisk-version: "1.27.0"
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
 
-      - name: Build wheel
-        run: bazel run //:build_wheel
+      - name: Build PyInstaller bundle
+        run: bazel build //:build_ecc_cli_bundle
 
-      - name: Upload wheel artifact
+      - name: Package release artifact
+        run: |
+          mkdir -p dist/release
+          gzip -n -9 -c bazel-bin/build_ecc_cli_bundle/ecc.tar \
+            > dist/release/ecc-cli-linux-x86_64.tar.gz
+
+      - name: Smoke test release artifact
+        run: |
+          mkdir -p dist/pyinstaller-smoke
+          tar -xzf dist/release/ecc-cli-linux-x86_64.tar.gz -C dist/pyinstaller-smoke
+          dist/pyinstaller-smoke/ecc --help
+          dist/pyinstaller-smoke/ecc --version
+          dist/pyinstaller-smoke/ecc version --json
+          test -x dist/pyinstaller-smoke/_internal/torch/bin/torch_shm_manager
+
+      - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ecc-wheel
+          name: ecc-cli-linux-x86_64
           path: |
-            dist/wheel/repaired/*.whl
+            dist/release/ecc-cli-linux-x86_64.tar.gz
 
   release:
     name: Create Release
@@ -77,11 +87,11 @@ jobs:
           ref: ${{ github.event.inputs.tag_name || github.ref }}
           fetch-depth: 0
 
-      - name: Download wheel artifact
+      - name: Download CLI artifact
         uses: actions/download-artifact@v4
         with:
-          name: ecc-wheel
-          path: dist/wheel/repaired
+          name: ecc-cli-linux-x86_64
+          path: dist/release
 
       - name: Determine tag version
         id: version
@@ -111,12 +121,16 @@ jobs:
           {
             cat release-changelog.md
             echo ""
+            echo "## Artifacts"
+            echo ""
+            echo "- ecc-cli-linux-x86_64.tar.gz: PyInstaller onedir CLI bundle for Linux x86_64."
+            echo ""
             echo "## Checksums"
             echo ""
             echo '```'
             (
-              cd dist/wheel/repaired
-              sha256sum *.whl
+              cd dist/release
+              sha256sum ecc-cli-linux-x86_64.tar.gz
             )
             echo '```'
           } > release-notes.md
@@ -129,4 +143,4 @@ jobs:
           gh release create "${{ steps.version.outputs.full_tag }}" \
             --title "ecc ${{ steps.version.outputs.full_tag }}" \
             --notes-file release-notes.md \
-            dist/wheel/repaired/*.whl
+            dist/release/ecc-cli-linux-x86_64.tar.gz

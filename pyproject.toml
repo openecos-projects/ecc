@@ -4,7 +4,7 @@ requires = [ "uv-build>=0.8.5" ]
 
 [project]
 name = "ecc"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 readme = "README.md"
 authors = [
   { name = "Emin", email = "me@emin.chat" },
@@ -34,9 +34,10 @@ dependencies = [
   "scipy>=1.7",
   "torch>=1.6.0",
   "tqdm>=4.67.1",
+  "typer>=0.12",
   "uvicorn>=0.27",
 ]
-scripts.cli = "chipcompiler.cli.main:main"
+scripts.ecc = "chipcompiler.cli.main:main"
 
 [dependency-groups]
 dev = [

@@ -76,6 +76,16 @@ py_library(
     ],
 )
 
+py_library(
+    name = "chipcompiler_cli_lib",
+    srcs = glob(["cli/**/*.py"]),
+    deps = [
+        ":chipcompiler_core",
+        "@ecc_pypi//click",
+        "@ecc_pypi//typer",
+    ],
+)
+
 py_binary(
     name = "chipcompiler_cli",
     srcs = ["cli/main.py"],
@@ -87,5 +97,7 @@ py_binary(
     env = {
         "CHIPCOMPILER_ICS55_PDK_ROOT": "$(location @icsprout55_pdk//:README.md)/..",
     },
-    deps = [":chipcompiler_core"],
+    deps = [
+        ":chipcompiler_cli_lib",
+    ],
 )

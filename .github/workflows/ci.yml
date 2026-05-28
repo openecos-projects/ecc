@@ -8,6 +8,9 @@ on:
     paths:
       - 'chipcompiler/**'
       - 'test/**'
+      - 'ecc.spec'
+      - 'packaging/**'
+      - 'hooks/**'
       - 'pyproject.toml'
       - 'BUILD.bazel'
       - '.bazelversion'
@@ -89,8 +92,8 @@ jobs:
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
 
-  build-wheel:
-    name: Build
+  build-pyinstaller:
+    name: Build PyInstaller Bundle
     needs: check-version
     runs-on: ubuntu-latest
     steps:
@@ -122,14 +125,23 @@ jobs:
           print("ecc-tools wrapper and ecc-dreamplace imports passed")
           PY
 
-      - name: Build distributable wheel
-        run: bazel run //:build_wheel
+      - name: Build PyInstaller bundle
+        run: bazel build //:build_ecc_cli_bundle
 
-      - name: Upload wheel artifacts
+      - name: Smoke test PyInstaller bundle
+        run: |
+          mkdir -p dist/pyinstaller-smoke
+          tar -xf bazel-bin/build_ecc_cli_bundle/ecc.tar -C dist/pyinstaller-smoke
+          dist/pyinstaller-smoke/ecc --help
+          dist/pyinstaller-smoke/ecc --version
+          dist/pyinstaller-smoke/ecc version --json
+          test -x dist/pyinstaller-smoke/_internal/torch/bin/torch_shm_manager
+
+      - name: Upload PyInstaller artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ecc-wheel
+          name: ecc-cli-linux-x86_64
           if-no-files-found: ignore
           path: |
-            dist/wheel/repaired/*.whl
+            bazel-bin/build_ecc_cli_bundle/ecc.tar

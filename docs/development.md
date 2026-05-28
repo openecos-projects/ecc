@@ -58,14 +58,44 @@ Python deps are managed via `uv.lock` — Bazel consumes it automatically throug
 
 ## Release Builds
 
-### Python Package
+### PyInstaller CLI Release Artifact
+
+Tagged ECC releases publish a Linux x86_64 PyInstaller onedir CLI bundle:
+
+```text
+ecc-cli-linux-x86_64.tar.gz
+```
+
+Build the release artifact locally with:
+
+```bash
+bazel build //:build_ecc_cli_bundle
+mkdir -p dist/release
+gzip -n -9 -c bazel-bin/build_ecc_cli_bundle/ecc.tar \
+  > dist/release/ecc-cli-linux-x86_64.tar.gz
+```
+
+The archive extracts to an `ecc` executable and `_internal/` runtime directory.
+After extraction:
+
+```bash
+./ecc --version
+```
+
+Release notes for tagged ECC releases are generated with `git-cliff` using
+[`ecc/.github/cliff.toml`](../.github/cliff.toml). The release workflow appends
+the generated changelog before the CLI artifact checksum block that is published
+to GitHub Releases.
+
+### Manual Python Package
 ```bash
 uv build
 ```
 
-### Bazel Wheel Build (ECC Runtime + auditwheel)
+### Manual Bazel Wheel Build (ECC Runtime + auditwheel)
 
-Build a portable wheel with Bazel-managed ECC runtime and hermetic uv/Python:
+For developer validation, build a portable wheel with Bazel-managed ECC runtime
+and hermetic uv/Python:
 
 ```bash
 bazel build //:raw_wheel   # Sandboxed, cacheable — produces raw .whl
@@ -76,11 +106,6 @@ Artifacts:
 - Raw wheels: `dist/wheel/raw/`
 - Repaired wheels: `dist/wheel/repaired/`
 - auditwheel report: `dist/wheel/reports/show.txt`
-
-Release notes for tagged ECC releases are generated with `git-cliff` using
-[`ecc/.github/cliff.toml`](../.github/cliff.toml). The release workflow appends
-the generated changelog before the checksum block that is published to GitHub
-Releases.
 
 Requirements:
 - Linux x86_64
@@ -337,23 +362,39 @@ Create `chipcompiler/tools/<tool>/` with `__init__.py`, `builder.py`, `runner.py
 For command-line automation and scripting, run CLI via Nix:
 
 ```bash
-# Run directly from project root
-nix run .#cli -- --workspace ./ws \
-                --rtl ./rtl/top.v \
-                --design top \
-                --top top \
-                --clock clk \
-                --pdk-root /path/to/ics55
+# Create a project skeleton with ecc.toml, rtl/, constraints/, and runs/
+nix run .#cli -- init gcd
 
-# Filelist mode
-nix run .#cli -- --workspace ./ws \
-                --rtl ./rtl/filelist.f \
-                --design top \
-                --top top \
-                --clock clk \
-                --pdk-root /path/to/ics55 \
-                --freq 200
+# After editing gcd/ecc.toml and adding RTL files
+nix run .#cli -- check --project gcd
+nix run .#cli -- run --project gcd
+nix run .#cli -- status --project gcd
+nix run .#cli -- metrics --project gcd
+nix run .#cli -- log --project gcd
 ```
+
+The project config is the CLI input surface:
+
+```toml
+[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/gcd.v"]
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "/path/to/ics55"
+
+[flow]
+preset = "rtl2gds"
+run = "default"
+```
+
+For filelist mode, set `design.rtl` to a single filelist path, for example
+`rtl = ["rtl/filelist.f"]`. Multiple RTL sources should be listed in the
+filelist rather than as multiple `design.rtl` entries.
 
 If you need an interactive environment for development, use `nix develop`.
 
