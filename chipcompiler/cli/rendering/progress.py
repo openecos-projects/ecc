@@ -403,7 +403,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
                             except OSError:
                                 init_log_stream = None
                         try:
-                            engine_flow.init_db_engine(workspace_step)
+                            engine_flow.init_db_engine()
                         finally:
                             if init_log_stream is not None:
                                 init_log_stream.close()
