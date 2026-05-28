@@ -10,6 +10,7 @@ class DummyFlow:
     instances = []
     next_run_states = []
     fail_create_step_workspaces = False
+    successful_steps = set()
 
     def __init__(self, workspace):
         self.workspace = workspace
@@ -47,6 +48,9 @@ class DummyFlow:
         self.init_db_engine_calls += 1
         name = workspace_step.name if workspace_step is not None else None
         self.call_order.append(("init_db_engine", name))
+
+    def check_state(self, name, tool, state):
+        return getattr(state, "value", state) == StateEnum.Success.value and name in self.successful_steps
 
     def run_steps(self, rerun=False):
         self.run_steps_calls.append(rerun)
@@ -107,6 +111,7 @@ def _install_runtime_mocks(monkeypatch, tmp_path):
     DummyFlow.instances = []
     DummyFlow.next_run_states = []
     DummyFlow.fail_create_step_workspaces = False
+    DummyFlow.successful_steps = set()
 
     def fake_create_workspace(**kwargs):
         capture["create_kwargs"] = kwargs
@@ -572,6 +577,23 @@ def test_run_step_rerun_initializes_engine_db_for_requested_step(monkeypatch, tm
         ("init_db_engine", "Floorplan"),
         ("run_step", "Floorplan", True),
     ]
+
+
+def test_run_step_skip_success_does_not_initialize_engine_db(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.successful_steps = {"Synthesis"}
+
+    rc = cli_main.run(
+        ["workspace", "run-step", "--directory", str(ws), "--step", "Synthesis", "--json"]
+    )
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 0
+    assert data["cmd"] == "run_step"
+    assert data["response"] == "success"
+    assert flow.init_db_engine_calls == 0
+    assert flow.call_order == [("run_step", "Synthesis", False)]
 
 
 def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path, capsys):
