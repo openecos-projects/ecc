@@ -282,19 +282,24 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
 
             try:
                 with _preserve_cli_stdio():
-                    init_log_stream = None
-                    if log_path:
+                    if not engine_flow.check_state(
+                        name=workspace_step.name,
+                        tool=workspace_step.tool,
+                        state=StateEnum.Success,
+                    ):
+                        init_log_stream = None
+                        if log_path:
+                            try:
+                                abs_log_path = os.path.abspath(log_path)
+                                os.makedirs(os.path.dirname(abs_log_path) or ".", exist_ok=True)
+                                init_log_stream = redirect_stdio_to_file(abs_log_path)
+                            except OSError:
+                                init_log_stream = None
                         try:
-                            abs_log_path = os.path.abspath(log_path)
-                            os.makedirs(os.path.dirname(abs_log_path) or ".", exist_ok=True)
-                            init_log_stream = redirect_stdio_to_file(abs_log_path)
-                        except OSError:
-                            init_log_stream = None
-                    try:
-                        engine_flow.init_db_engine()
-                    finally:
-                        if init_log_stream is not None:
-                            init_log_stream.close()
+                            engine_flow.init_db_engine(workspace_step)
+                        finally:
+                            if init_log_stream is not None:
+                                init_log_stream.close()
                     state = engine_flow.run_step(workspace_step)
             finally:
                 stop_event.set()

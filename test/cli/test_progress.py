@@ -480,7 +480,7 @@ def _make_step(name, tool, log_file=""):
 
 def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=None):
     if init_db_engine_fn is None:
-        def init_db_engine_fn(self):
+        def init_db_engine_fn(self, workspace_step=None):
             return None
 
     if check_state_fn is None:
@@ -716,7 +716,7 @@ class TestRunFlowWithProgress:
     def test_init_db_engine_called_before_run_step(self, tmp_path):
         call_order = []
 
-        def fake_init_db_engine(self):
+        def fake_init_db_engine(self, workspace_step=None):
             call_order.append(("init_db_engine",))
 
         def fake_run_step(self, s):
@@ -745,7 +745,7 @@ class TestRunFlowWithProgress:
         log_file = tmp_path / "place.log"
         call_order = []
 
-        def fake_init_db_engine(self):
+        def fake_init_db_engine(self, workspace_step=None):
             call_order.append(("init_db_engine",))
 
         def fake_run_step(self, s):
@@ -798,7 +798,7 @@ class TestRunFlowWithProgress:
     def test_captures_init_db_engine_output_in_step_log(self, tmp_path, capfd):
         log_file = tmp_path / "floorplan.log"
 
-        def fake_init_db_engine(self):
+        def fake_init_db_engine(self, workspace_step=None):
             print("raw init stdout")
             sys.stderr.write("raw init stderr\n")
             sys.stderr.flush()
