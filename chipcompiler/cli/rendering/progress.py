@@ -1,6 +1,9 @@
+import contextlib
+import multiprocessing
 import os
 import re
 import shutil
+import sys
 import threading
 import time
 
@@ -15,6 +18,7 @@ from chipcompiler.cli.inspection.log_view import (
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.pretty import style as _style
 from chipcompiler.data import StateEnum, log_flow
+from chipcompiler.utility.log import redirect_stdio_to_file
 
 
 def supports_color(stream, mode, env=None):
@@ -39,6 +43,8 @@ _DCS_RE = re.compile(r"\x1bP.*?(?:\x1b\\)")
 _CONTROL_RE = re.compile(r"[\r\n\t]+")
 _C0_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MULTI_SPACE_RE = re.compile(r" {2,}")
+_LOG_POLL_INTERVAL = 0.5
+_LOG_STALE_AFTER = 10.0
 
 
 def sanitize_log_line(line):
@@ -117,9 +123,177 @@ def latest_log_line(path):
     return None
 
 
+class _IncrementalLogTail:
+    def __init__(self, path, step_name, stale_after=10.0):
+        self.path = path
+        self.step_name = step_name
+        self.stale_after = stale_after
+        self.file_id = None
+        self.change_id = None
+        self.fingerprint = None
+        self.head = None
+        self.offset = 0
+        self.partial = ""
+        self.started_at = None
+        self.last_line = None
+        self.last_update_at = None
+
+    def poll(self, now=None):
+        now = time.monotonic() if now is None else now
+        if self.started_at is None:
+            self.started_at = now
+
+        for line in self._read_new_lines():
+            sanitized = sanitize_log_line(line)
+            if sanitized:
+                self.last_line = sanitized
+                self.last_update_at = now
+
+        if self.last_line is None:
+            elapsed = max(0, now - self.started_at)
+            return f"running {self.step_name}, waiting for step log {int(elapsed)}s..."
+
+        elapsed = max(0, now - self.last_update_at)
+        if elapsed >= self.stale_after:
+            return f"running {self.step_name}, last log {int(elapsed)}s ago: {self.last_line}"
+
+        return self.last_line
+
+    def _read_new_lines(self):
+        if not self.path or not os.path.isfile(self.path):
+            return []
+
+        try:
+            stat = os.stat(self.path)
+        except OSError:
+            return []
+
+        file_id = (stat.st_dev, stat.st_ino)
+        change_id = (stat.st_mtime_ns, stat.st_ctime_ns)
+        replaced = False
+        if self.file_id == file_id and self.offset > 0:
+            head = self._head()
+            if stat.st_size < self.offset:
+                replaced = True
+            elif stat.st_size == self.offset:
+                fingerprint = self._fingerprint(stat.st_size)
+                replaced = fingerprint != self.fingerprint
+            elif self.head is not None:
+                compare_len = min(len(self.head), len(head), self.offset)
+                replaced = head[:compare_len] != self.head[:compare_len]
+        if self.file_id != file_id or replaced:
+            self.file_id = file_id
+            self.offset = 0
+            self.partial = ""
+        self.change_id = change_id
+
+        try:
+            with open(self.path, encoding="utf-8", errors="replace") as f:
+                f.seek(self.offset)
+                chunk = f.read()
+                self.offset = f.tell()
+        except OSError:
+            return []
+
+        self.fingerprint = self._fingerprint(stat.st_size)
+        self.head = self._head()
+        if not chunk:
+            return []
+
+        text = self.partial + chunk
+        lines = text.splitlines(keepends=True)
+        if lines and not lines[-1].endswith(("\n", "\r")):
+            self.partial = lines.pop()
+        else:
+            self.partial = ""
+
+        return lines
+
+    def _head(self):
+        if not self.path or not os.path.isfile(self.path):
+            return None
+        try:
+            with open(self.path, "rb") as f:
+                return f.read(4096)
+        except OSError:
+            return None
+
+    def _fingerprint(self, size):
+        if not self.path or not os.path.isfile(self.path):
+            return None
+        try:
+            with open(self.path, "rb") as f:
+                head = f.read(4096)
+                if size > 4096:
+                    f.seek(max(0, size - 4096))
+                    tail = f.read(4096)
+                else:
+                    tail = b""
+        except OSError:
+            return None
+        return size, head, tail
+
+
 def terminal_width(fallback=80):
     cols, _ = shutil.get_terminal_size(fallback=(fallback, 24))
     return max(cols, 1)
+
+
+def _stable_stream_from(stream):
+    try:
+        fd = stream.fileno()
+    except (AttributeError, OSError, ValueError):
+        return stream
+
+    try:
+        dup_fd = os.dup(fd)
+    except OSError:
+        return stream
+
+    encoding = getattr(stream, "encoding", None) or "utf-8"
+    errors = getattr(stream, "errors", None)
+    return os.fdopen(dup_fd, "w", encoding=encoding, errors=errors, buffering=1, closefd=True)
+
+
+@contextlib.contextmanager
+def _preserve_cli_stdio():
+    saved_stdout = sys.stdout
+    saved_stderr = sys.stderr
+    saved_stdout_fd = None
+    saved_stderr_fd = None
+
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(Exception):
+            stream.flush()
+
+    try:
+        saved_stdout_fd = os.dup(1)
+        saved_stderr_fd = os.dup(2)
+    except OSError:
+        if saved_stdout_fd is not None:
+            os.close(saved_stdout_fd)
+        try:
+            yield
+        finally:
+            sys.stdout = saved_stdout
+            sys.stderr = saved_stderr
+        return
+
+    try:
+        yield
+    finally:
+        for stream in (sys.stdout, sys.stderr):
+            with contextlib.suppress(Exception):
+                stream.flush()
+
+        try:
+            os.dup2(saved_stdout_fd, 1)
+            os.dup2(saved_stderr_fd, 2)
+        finally:
+            os.close(saved_stdout_fd)
+            os.close(saved_stderr_fd)
+            sys.stdout = saved_stdout
+            sys.stderr = saved_stderr
 
 
 class RunProgressRenderer:
@@ -181,82 +355,153 @@ class RunProgressRenderer:
         self._stream.flush()
 
 
-def _poll_log(renderer, log_path, stop_event, interval=0.5):
+def _monitor_log_progress(
+    renderer,
+    log_path,
+    step_name,
+    stop_event,
+    interval=_LOG_POLL_INTERVAL,
+    stale_after=_LOG_STALE_AFTER,
+):
+    tail = _IncrementalLogTail(log_path, step_name, stale_after=stale_after)
     while not stop_event.is_set():
-        line = latest_log_line(log_path)
-        renderer.running(line or "waiting for log...")
+        renderer.running(tail.poll())
         stop_event.wait(interval)
+
+
+def _poll_log(renderer, log_path, stop_event, interval=_LOG_POLL_INTERVAL):
+    _monitor_log_progress(renderer, log_path, "step", stop_event, interval=interval)
+
+
+def _start_log_monitor(
+    renderer,
+    log_path,
+    step_name,
+    isolated=False,
+    interval=_LOG_POLL_INTERVAL,
+    stale_after=_LOG_STALE_AFTER,
+):
+    if isolated:
+        ctx = multiprocessing.get_context("fork")
+        stop_event = ctx.Event()
+        monitor = ctx.Process(
+            target=_monitor_log_progress,
+            args=(renderer, log_path, step_name, stop_event),
+            kwargs={"interval": interval, "stale_after": stale_after},
+            daemon=True,
+        )
+    else:
+        stop_event = threading.Event()
+        monitor = threading.Thread(
+            target=_monitor_log_progress,
+            args=(renderer, log_path, step_name, stop_event),
+            kwargs={"interval": interval, "stale_after": stale_after},
+            daemon=True,
+        )
+    monitor.start()
+    return stop_event, monitor
+
+
+def _stop_log_monitor(stop_event, monitor, timeout=2.0):
+    stop_event.set()
+    monitor.join(timeout=timeout)
+    if monitor.is_alive() and hasattr(monitor, "terminate"):
+        monitor.terminate()
+        monitor.join(timeout=timeout)
 
 
 def run_flow_with_progress(engine_flow, ctx, project, stderr):
     color = supports_color(stderr, ctx.output_mode)
-    renderer = RunProgressRenderer(stderr, color=color)
-    engine_flow.workspace.home.reset()
+    progress_stream = _stable_stream_from(stderr)
+    try:
+        renderer = RunProgressRenderer(progress_stream, color=color)
+        engine_flow.workspace.home.reset()
 
-    run_dir = engine_flow.workspace.directory
-    run_name = os.path.basename(run_dir) or "default"
-    renderer.start_run(run_name, run_dir)
+        run_dir = engine_flow.workspace.directory
+        run_name = os.path.basename(run_dir) or "default"
+        renderer.start_run(run_name, run_dir)
 
-    for workspace_step in engine_flow.workspace_steps:
-        step_token = normalize_step_name(workspace_step.name)
-        tool = workspace_step.tool
-        log_path = workspace_step.log.get("file", "")
+        for workspace_step in engine_flow.workspace_steps:
+            step_token = normalize_step_name(workspace_step.name)
+            tool = workspace_step.tool
+            log_path = workspace_step.log.get("file", "")
 
-        engine_flow.workspace.logger.log_section(
-            f"{workspace_step.tool} - begin step - {workspace_step.name}"
-        )
-
-        renderer.start_step(step_token, tool)
-
-        stop_event = threading.Event()
-        monitor = threading.Thread(
-            target=_poll_log,
-            args=(renderer, log_path, stop_event),
-            daemon=True,
-        )
-        monitor.start()
-
-        start = time.time()
-
-        try:
-            state = engine_flow.run_step(workspace_step)
-        finally:
-            stop_event.set()
-            monitor.join(timeout=2.0)
-            renderer.clear()
-
-        log_flow(workspace=engine_flow.workspace)
-        engine_flow.workspace.logger.log_section(
-            f"{workspace_step.tool} - end step - {workspace_step.name}"
-        )
-
-        elapsed = time.time() - start
-        hours = int(elapsed // 3600)
-        minutes = int((elapsed % 3600) // 60)
-        seconds = int(elapsed % 60)
-        runtime = f"{hours}:{minutes:02d}:{seconds:02d}"
-
-        status = normalize_state(state.value)
-
-        rel_log = ""
-        if log_path:
-            try:
-                rel_log = os.path.relpath(log_path, engine_flow.workspace.directory)
-            except ValueError:
-                rel_log = log_path
-
-        inspect = disclosure_cmd(f"ecc log {step_token}", project)
-
-        is_success = state == StateEnum.Success
-        renderer.finish_step(step_token, tool, status, runtime, rel_log, inspect, is_success)
-
-        if not is_success:
-            _maybe_render_failure_context(
-                renderer, log_path, rel_log, step_token, project, ctx.run_id, color
+            engine_flow.workspace.logger.log_section(
+                f"{workspace_step.tool} - begin step - {workspace_step.name}"
             )
-            return False
 
-    return True
+            renderer.start_step(step_token, tool)
+            renderer.running("starting step...")
+
+            stop_event, monitor = _start_log_monitor(
+                renderer,
+                log_path,
+                step_token,
+                isolated=progress_stream is not stderr,
+            )
+
+            start = time.time()
+
+            try:
+                with _preserve_cli_stdio():
+                    if not engine_flow.check_state(
+                        name=workspace_step.name,
+                        tool=workspace_step.tool,
+                        state=StateEnum.Success,
+                    ):
+                        init_log_stream = None
+                        if log_path:
+                            try:
+                                abs_log_path = os.path.abspath(log_path)
+                                os.makedirs(os.path.dirname(abs_log_path) or ".", exist_ok=True)
+                                init_log_stream = redirect_stdio_to_file(abs_log_path)
+                            except OSError:
+                                init_log_stream = None
+                        try:
+                            engine_flow.init_db_engine()
+                        finally:
+                            if init_log_stream is not None:
+                                init_log_stream.close()
+                    state = engine_flow.run_step(workspace_step)
+            finally:
+                _stop_log_monitor(stop_event, monitor)
+                renderer.clear()
+
+            log_flow(workspace=engine_flow.workspace)
+            engine_flow.workspace.logger.log_section(
+                f"{workspace_step.tool} - end step - {workspace_step.name}"
+            )
+
+            elapsed = time.time() - start
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            seconds = int(elapsed % 60)
+            runtime = f"{hours}:{minutes:02d}:{seconds:02d}"
+
+            status = normalize_state(state.value)
+
+            rel_log = ""
+            if log_path:
+                try:
+                    rel_log = os.path.relpath(log_path, engine_flow.workspace.directory)
+                except ValueError:
+                    rel_log = log_path
+
+            inspect = disclosure_cmd(f"ecc log {step_token}", project)
+
+            is_success = state == StateEnum.Success
+            renderer.finish_step(step_token, tool, status, runtime, rel_log, inspect, is_success)
+
+            if not is_success:
+                _maybe_render_failure_context(
+                    renderer, log_path, rel_log, step_token, project, ctx.run_id, color
+                )
+                return False
+
+        return True
+    finally:
+        if progress_stream is not stderr:
+            progress_stream.close()
 
 
 def _maybe_render_failure_context(renderer, log_path, rel_log, step_token, project, run_id, color):
