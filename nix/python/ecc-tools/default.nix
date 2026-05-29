@@ -3,7 +3,6 @@
   stdenv,
   buildPythonPackage,
   fetchFromGitHub,
-  callPackages,
   rustPlatform,
   cargo,
   cmake,
@@ -25,7 +24,6 @@
   metis,
   gmp,
   curl,
-  onnxruntime,
   tbb_2022,
   uv-build,
   autoPatchelfHook,
@@ -37,8 +35,8 @@ let
   src = fetchFromGitHub {
     owner = "openecos-projects";
     repo = "ecc-tools";
-    rev = "76f99605282309ddd4e7d63f5bdd4ac4eb39033d";
-    hash = "sha256-7k/weLimMK79ZxkMzKuI2Q880DwbC6XNwMAxiE6XjnU=";
+    rev = "eff031dc6692c266054477d6bc6424f1bc2dd692";
+    hash = "sha256-CNx29x2UILpfHK5MhRSCOInv9UuV7gKjCdUwskJOqUE=";
   };
 
   installDeps =
