@@ -124,7 +124,8 @@ if {$keep_hierarchy == "false"} {
 yosys splitnets -driver
 yosys splitnets -format __v
 # rename DFFs from the driven signal
-yosys rename -wire -suffix _reg t:*DFF*
+yosys rename -wire -suffix _reg_p t:*DFF*_P*
+yosys rename -wire -suffix _reg_n t:*DFF*_N*
 # rename all other cells
 yosys select -write ${timing_cell_stat_rpt} t:*DFF*
 yosys autoname t:*DFF* %n

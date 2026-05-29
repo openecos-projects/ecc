@@ -3,7 +3,6 @@
   stdenv,
   buildPythonPackage,
   fetchFromGitHub,
-  callPackages,
   rustPlatform,
   cargo,
   cmake,
@@ -25,7 +24,6 @@
   metis,
   gmp,
   curl,
-  onnxruntime,
   tbb_2022,
   uv-build,
   autoPatchelfHook,
@@ -37,17 +35,15 @@ let
   src = fetchFromGitHub {
     owner = "openecos-projects";
     repo = "ecc-tools";
-    rev = "3bbe522f92c76c74de9c2d2dc5e338fa317c787d";
-    hash = "sha256-tgK3NB1zS3JIAZZEIG6JCbIz8nj/QBlFogpGj3Ty5DY=";
+    rev = "eff031dc6692c266054477d6bc6424f1bc2dd692";
+    hash = "sha256-CNx29x2UILpfHK5MhRSCOInv9UuV7gKjCdUwskJOqUE=";
   };
 
   installDeps =
     lib.pipe
       {
         iir-rust = "src/operation/iIR/source/iir-rust/iir";
-        liberty-parser = "src/database/manager/parser/liberty/lib-rust/liberty-parser";
         sdf_parser = "src/database/manager/parser/sdf/sdf_parse";
-        spef-parser = "src/database/manager/parser/spef/spef-parser";
         vcd_parser = "src/database/manager/parser/vcd/vcd_parser";
         verilog-parser = "src/database/manager/parser/verilog/verilog-rust/verilog-parser";
       }
