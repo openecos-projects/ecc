@@ -59,6 +59,10 @@ let
             "directory" = "${
               rustPlatform.importCargoLock {
                 lockFile = "${src}/${path}/Cargo.lock";
+                extraRegistries = {
+                  # See: https://github.com/NixOS/nixpkgs/pull/524985
+                  "https://github.com/rust-lang/crates.io-index" = "https://static.crates.io/crates";
+                };
               }
             }"
             EOF
