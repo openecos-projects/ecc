@@ -20,6 +20,7 @@ on:
       - '.github/workflows/release.yml'
       - '.github/workflows/auto-tag.yml'
       - '.github/actions/**'
+      - 'nix/**'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
