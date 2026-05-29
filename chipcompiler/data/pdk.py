@@ -94,7 +94,7 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
     corners = [
         {
             "name" : "TYPICAL",
-            "temperature" : 25,
+            "temperature" : [25],
             "ecc_tf" : "{}/corners/TYP.json".format(resolved_root),
             "itf_file" : "{}/corners/TYP.itf".format(resolved_root),
             "captab_file" : "{}/corners/TYP.captab".format(resolved_root),
@@ -102,7 +102,7 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
         },
         {
             "name" : "RCbest",
-            "temperature" : 25,
+            "temperature" : [-40, 125],
             "ecc_tf" : "{}/corners/RCbest.json".format(resolved_root),
             "itf_file" : "{}/corners/RCbest.itf".format(resolved_root),
             "captab_file" : "{}/corners/RCbest.captab".format(resolved_root),
@@ -110,7 +110,7 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
         },
         {
             "name" : "RCworst",
-            "temperature" : 25,
+            "temperature" : [-40, 125],
             "ecc_tf" : "{}/corners/RCworst.json".format(resolved_root),
             "itf_file" : "{}/corners/RCworst.itf".format(resolved_root),
             "captab_file" : "{}/corners/RCworst.captab".format(resolved_root),
@@ -118,7 +118,7 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
         },
         {
             "name" : "Cbest",
-            "temperature" : 25,
+            "temperature" : [-40, 125],
             "ecc_tf" : "{}/corners/Cbest.json".format(resolved_root),
             "itf_file" : "{}/corners/Cbest.itf".format(resolved_root),
             "captab_file" : "{}/corners/Cbest.captab".format(resolved_root),
@@ -126,7 +126,7 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
         },
         {
             "name" : "Cworst",
-            "temperature" : 25,
+            "temperature" : [-40, 125],
             "ecc_tf" : "{}/corners/Cworst.json".format(resolved_root),
             "itf_file" : "{}/corners/Cworst.itf".format(resolved_root),
             "captab_file" : "{}/corners/Cworst.captab".format(resolved_root),
