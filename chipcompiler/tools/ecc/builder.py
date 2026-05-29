@@ -210,7 +210,17 @@ def build_step_config(workspace: Workspace,
         from chipcompiler.utility import json_read
         rcx_config = json_read(workspace.config[f"{StepEnum.RCX.value}"])
         step.output["spef"] = [
-            corner.get("spef_file", "")
+            spef_path
             for corner in rcx_config.get("corners", [])
-            if corner.get("spef_file", "")
+            for spef_item in (
+                corner.get("spef_file", [])
+                if isinstance(corner.get("spef_file", []), list)
+                else [corner.get("spef_file", "")]
+            )
+            for spef_path in (
+                spef_item.values()
+                if isinstance(spef_item, dict)
+                else [spef_item]
+            )
+            if spef_path
         ]

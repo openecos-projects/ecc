@@ -120,6 +120,7 @@ def build_workspace_config_paths(workspace: Workspace) -> dict:
         f"{StepEnum.LEGALIZATION.value}": f"{config_dir}/pl_default_config.json",
         f"{StepEnum.FILLER.value}": f"{config_dir}/pl_default_config.json",
         f"{StepEnum.RCX.value}": f"{config_dir}/rcx.json",
+        f"{StepEnum.STA.value}": f"{config_dir}/sta.json",
         "dreamplace": f"{config_dir}/dreamplace.json",
     }
 
@@ -158,6 +159,18 @@ def _copy_missing_files(src_dir: str, dst_dir: str):
         dst = os.path.join(dst_dir, name)
         if os.path.isfile(src) and not os.path.exists(dst):
             shutil.copy2(src, dst)
+
+
+def _rcx_temperature_key(temperature) -> str:
+    try:
+        numeric = float(temperature)
+        return str(int(numeric)) if numeric.is_integer() else f"{numeric:.12g}"
+    except (TypeError, ValueError):
+        return str(temperature)
+
+
+def _rcx_temperature_token(temperature) -> str:
+    return _rcx_temperature_key(temperature).replace(".", "p").replace("-", "m") + "C"
 
 
 def init_workspace_config(workspace: Workspace) -> None:
@@ -283,7 +296,17 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
         for corner in rcx.get("corners", []):
             corner_name = corner.get("name", "")
             if corner_name:
-                corner["spef_file"] = f"{rcx_output_dir}/{workspace.design.name}_{corner_name}.spef"
+                temperatures = corner.get("temperature", [25]) or [25]
+                corner["spef_file"] = [
+                    {
+                        _rcx_temperature_key(temperature): (
+                            f"{rcx_output_dir}/"
+                            f"{workspace.design.name}_{corner_name}_"
+                            f"{_rcx_temperature_token(temperature)}.spef"
+                        )
+                    }
+                    for temperature in temperatures
+                ]
         json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
     
 

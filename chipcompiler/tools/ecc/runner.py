@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 import sys
 import os
+import re
        
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
 from chipcompiler.tools.ecc.module import ECCToolsModule
@@ -107,7 +108,8 @@ def get_eda_instance(workspace: Workspace,
 def save_data(workspace: Workspace,
               step: WorkspaceStep,
               ecc_module : ECCToolsModule,
-              feature_step : bool = True) -> bool:
+              feature_step : bool = True,
+              report_timing : bool = True) -> bool:
     """
     module is ecc module from db engine, 
     eda instacnce may initialize data from this module if module has been set
@@ -127,14 +129,14 @@ def save_data(workspace: Workspace,
     
     ecc_module.report_summary(path=step.report.get("db", ""))
     
-    # report timing
-    ecc_module.release_sta()
-    ecc_module.init_sta(output_dir=step.data.get("sta", ""),
-                    top_module=workspace.design.top_module,
-                    lib_paths=workspace.pdk.libs,
-                    sdc_path=workspace.pdk.sdc)
-    ecc_module.report_timing()
-    ecc_module.release_sta()
+    if report_timing:
+        ecc_module.release_sta()
+        ecc_module.init_sta(output_dir=step.data.get("sta", ""),
+                        top_module=workspace.design.top_module,
+                        lib_paths=workspace.pdk.libs,
+                        sdc_path=workspace.pdk.sdc)
+        ecc_module.report_timing()
+        ecc_module.release_sta()
     
     # update parameters
     db_json = json_read(step.feature.get("db", ""))
@@ -810,13 +812,6 @@ def run_sta(workspace: Workspace,
     """
     run sta
     """
-    def spef_type_from_path(spef_file: str) -> str:
-        stem = os.path.splitext(os.path.basename(spef_file))[0]
-        design_prefix = f"{workspace.design.name}_"
-        if stem.startswith(design_prefix):
-            stem = stem[len(design_prefix):]
-        return stem
-
     def safe_dir_name(name: str) -> str:
         value = "".join(
             char if char.isalnum() or char in ("-", "_", ".") else "_"
@@ -824,25 +819,129 @@ def run_sta(workspace: Workspace,
         )
         return value or "spef"
 
-    def collect_spef_files() -> list[tuple[str, str]]:
-        spef_files = step.output.get("spef", [])
-        if spef_files:
-            return [
-                (safe_dir_name(spef_type_from_path(spef_file)), spef_file)
-                for spef_file in spef_files
-            ]
+    def temperature_key(temperature) -> str:
+        try:
+            numeric = float(temperature)
+            if numeric.is_integer():
+                return str(int(numeric))
+        except (TypeError, ValueError):
+            pass
+        return str(temperature)
 
-        config = json_read(workspace.config.get(StepEnum.RCX.value, ""))
-        spef_items = []
-        for corner in config.get("corners", []):
-            spef_file = corner.get("spef_file", "")
-            if not spef_file:
+    def temperature_token(temperature) -> str:
+        return temperature_key(temperature).replace("-", "m").replace(".", "p")
+
+    def resolve_config_path(path: str) -> str:
+        if path.startswith("/"):
+            relative = path[1:]
+            workspace_prefixes = (
+                "CTS_ecc", "Floorplan_ecc", "fixFanout_ecc", "place_ecc",
+                "legalization_ecc", "route_ecc", "drc_ecc", "filler_ecc",
+                "RCX_ecc", "rcx_ecc", "sta_ecc", "harden_ecc", "config",
+                "origin", "home",
+            )
+            pdk_prefixes = ("IP", "prtech", "corners")
+            prefix = relative.split("/", 1)[0]
+            if prefix in workspace_prefixes:
+                return os.path.join(workspace.directory, relative)
+            if prefix in pdk_prefixes:
+                return os.path.join(workspace.pdk.root, relative)
+        return path
+
+    def normalize_spef_path(spef_file: str) -> str:
+        if not spef_file or os.path.exists(spef_file):
+            return spef_file
+
+        dirname = os.path.dirname(spef_file)
+        tail = os.path.basename(spef_file)
+        parts = tail.rsplit("_M", 1)
+        if len(parts) == 2 and parts[1].endswith("C.spef"):
+            normalized = os.path.join(dirname, f"{parts[0]}_m{parts[1]}")
+            if os.path.exists(normalized):
+                return normalized
+        return spef_file
+
+    def normalize_liberty_path(liberty_file: str) -> str:
+        if not liberty_file or os.path.exists(liberty_file):
+            return liberty_file
+
+        liberty_dir = os.path.dirname(liberty_file)
+        cell_dir = os.path.basename(os.path.dirname(liberty_dir))
+        tail = os.path.basename(liberty_file)
+        match = re.match(r"^(ics55_LLSC_H7C[0-9A-Za-z]+)(_.+)$", tail)
+        if match:
+            normalized = os.path.join(liberty_dir, f"{cell_dir}{match.group(2)}")
+            if os.path.exists(normalized):
+                return normalized
+        return liberty_file
+
+    def find_liberty_corner(sta_data: dict, corner_name: str) -> dict | None:
+        for liberty in sta_data.get("liberty", []):
+            if liberty.get("corner") == corner_name:
+                return liberty
+        return None
+
+    def find_rcx_corner(rcx_data: dict, rcx_corner_name: str) -> dict | None:
+        for corner in rcx_data.get("corners", []):
+            if corner.get("name") == rcx_corner_name:
+                return corner
+        return None
+
+    def find_spef_for_temp(rcx_corner: dict, temperature) -> str:
+        spef_file = rcx_corner.get("spef_file", "")
+        if isinstance(spef_file, str):
+            return spef_file
+
+        temp_key = temperature_key(temperature)
+        for spef_item in spef_file:
+            if not isinstance(spef_item, dict):
                 continue
+            for spef_temperature, spef_path in spef_item.items():
+                if temperature_key(spef_temperature) == temp_key:
+                    return spef_path
+        return ""
 
-            spef_type = corner.get("name", "") or spef_type_from_path(spef_file)
-            spef_items.append((safe_dir_name(spef_type), spef_file))
+    def collect_signoff_items() -> list[dict]:
+        sta_config = workspace.config.get(StepEnum.STA.value, "")
+        sta_data = json_read(sta_config)
+        rcx_data = json_read(workspace.config.get(StepEnum.RCX.value, ""))
+        items = []
 
-        return spef_items
+        for signoff_group in sta_data.get("signoff", []):
+            for corner_name, rcx_corner_names in signoff_group.items():
+                liberty = find_liberty_corner(sta_data, corner_name)
+                if liberty is None:
+                    workspace.logger.error("No liberty corner '%s' found in %s",
+                                           corner_name,
+                                           sta_config)
+                    return []
+
+                temperature = liberty.get("temperature")
+                liberty_files = [
+                    normalize_liberty_path(resolve_config_path(path))
+                    for path in liberty.get("path", [])
+                ]
+
+                for rcx_corner_name in rcx_corner_names:
+                    rcx_corner = find_rcx_corner(rcx_data, rcx_corner_name)
+                    if rcx_corner is None:
+                        workspace.logger.error("No RCX corner '%s' found in %s",
+                                               rcx_corner_name,
+                                               workspace.config.get(StepEnum.RCX.value, ""))
+                        return []
+
+                    spef_file = normalize_spef_path(
+                        resolve_config_path(find_spef_for_temp(rcx_corner, temperature))
+                    )
+                    items.append({
+                        "corner": corner_name,
+                        "temperature": temperature,
+                        "rcx_corner": rcx_corner_name,
+                        "liberty_files": liberty_files,
+                        "spef_file": spef_file,
+                    })
+
+        return items
 
     result = False
     
@@ -856,61 +955,89 @@ def run_sta(workspace: Workspace,
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        spef_items = collect_spef_files()
-        if len(spef_items) <= 0:
-            workspace.logger.error("No SPEF files found for STA")
+        signoff_items = collect_signoff_items()
+        if len(signoff_items) <= 0:
+            workspace.logger.error("No signoff STA items found")
             sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
                                  state=StateEnum.Imcomplete)
             return False
 
-        for spef_type, spef_file in spef_items:
+        if not os.path.exists(workspace.pdk.sdc):
+            workspace.logger.error("STA SDC does not exist: %s",
+                                   workspace.pdk.sdc)
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
+                                 state=StateEnum.Imcomplete)
+            return False
+
+        for signoff_item in signoff_items:
+            corner_name = signoff_item["corner"]
+            temperature = signoff_item["temperature"]
+            rcx_corner_name = signoff_item["rcx_corner"]
+            liberty_files = signoff_item["liberty_files"]
+            spef_file = signoff_item["spef_file"]
+
             if not os.path.exists(spef_file):
-                workspace.logger.error("SPEF file does not exist: %s", spef_file)
-                sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
-                                     state=StateEnum.Imcomplete)
-                return False
-            if not os.path.exists(step.input.get("verilog", "")):
-                workspace.logger.error("STA netlist does not exist: %s",
-                                       step.input.get("verilog", ""))
-                sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
-                                     state=StateEnum.Imcomplete)
-                return False
-            if len(workspace.pdk.libs) <= 0 \
-                or any(not os.path.exists(lib_path) for lib_path in workspace.pdk.libs):
-                workspace.logger.error("STA liberty file does not exist: %s",
-                                       workspace.pdk.libs)
-                sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
-                                     state=StateEnum.Imcomplete)
-                return False
-            if not os.path.exists(workspace.pdk.sdc):
-                workspace.logger.error("STA SDC does not exist: %s",
-                                       workspace.pdk.sdc)
+                workspace.logger.error(
+                    "STA SPEF does not exist for %s/%s at %sC: %s",
+                    corner_name,
+                    rcx_corner_name,
+                    temperature,
+                    spef_file,
+                )
                 sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
                                      state=StateEnum.Imcomplete)
                 return False
 
-            report_dir = os.path.join(step.output.get("dir", ""), spef_type)
+            if len(liberty_files) <= 0 or any(not os.path.exists(lib_path) for lib_path in liberty_files):
+                workspace.logger.error(
+                    "STA liberty does not exist for %s: %s",
+                    corner_name,
+                    liberty_files,
+                )
+                sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
+                                     state=StateEnum.Imcomplete)
+                return False
+
+            report_corner_dir = f"{corner_name}_{temperature_token(temperature)}"
+            report_dir = os.path.join(
+                step.output.get("dir", ""),
+                safe_dir_name(report_corner_dir),
+                safe_dir_name(rcx_corner_name),
+            )
             os.makedirs(report_dir, exist_ok=True)
 
             try:
-                ecc_module.set_design_workspace(report_dir)
-                ecc_module.read_netlist(step.input.get("verilog", ""))
-                ecc_module.read_liberty(workspace.pdk.libs)
-                ecc_module.link_design(workspace.design.top_module)
-                ecc_module.read_sdc(workspace.pdk.sdc)
+                ecc_module.update_sta_data_config(
+                    db_config=workspace.config.get("db", ""),
+                    output_dir=step.output.get("dir", ""),
+                    lib_paths=liberty_files,
+                    sdc_path=workspace.pdk.sdc,
+                )
+                ecc_module.release_sta()
+                ecc_module.init_sta(output_dir=report_dir,
+                                    top_module=workspace.design.top_module,
+                                    lib_paths=liberty_files,
+                                    sdc_path=workspace.pdk.sdc)
                 ecc_module.read_spef(file_name=spef_file)
                 ecc_module.report_timing()
             finally:
-                # release sta
                 ecc_module.release_sta()
 
-            workspace.logger.info("STA report for %s saved to %s",
-                                  spef_file,
-                                  report_dir)
+            workspace.logger.info(
+                "STA report for %s/%s at %sC saved to %s",
+                corner_name,
+                rcx_corner_name,
+                temperature,
+                report_dir,
+            )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Success)
         
-        result = save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False)
+        result = save_data(workspace=workspace,
+                           step=step,
+                           ecc_module=ecc_module,
+                           feature_step=False,
+                           report_timing=False)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 

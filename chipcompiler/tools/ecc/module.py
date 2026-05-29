@@ -92,6 +92,18 @@ class ECCToolsModule:
             output_path=output_dir,
             feature_path=feature_dir,
         )
+
+    def update_sta_data_config(self,
+                               db_config: str,
+                               output_dir: str,
+                               lib_paths: list[str],
+                               sdc_path: str):
+        self.ecc.db_init(
+            config_path=db_config,
+            output_path=output_dir,
+            lib_paths=lib_paths,
+            sdc_path=sdc_path,
+        )
         
     ########################################################################
     # data api
