@@ -20,7 +20,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "ecc-dreamplace==0.1.0a3",
+  "ecc-dreamplace==0.1.0a4",
   "ecc-tools==0.1.0a2",
   "fastapi>=0.109",
   "klayout>=0.30.2",
@@ -77,7 +77,7 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
-ecc-dreamplace = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.3/ecc_dreamplace-0.1.0a3-py3-none-manylinux_2_34_x86_64.whl" }
+ecc-dreamplace = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.4/ecc_dreamplace-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl" }
 ecc-tools = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.2/ecc_tools-0.1.0a2-py3-none-manylinux_2_34_x86_64.whl" }
 torch = { index = "pytorch-cpu" }
 
