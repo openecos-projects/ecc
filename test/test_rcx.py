@@ -51,7 +51,7 @@ def test_ics55_gcd():
             
     engine_flow.create_step_workspaces()
     
-    engine_flow.run_steps()
+    assert engine_flow.run_steps()
     
 if __name__ == "__main__":    
     test_ics55_gcd()
