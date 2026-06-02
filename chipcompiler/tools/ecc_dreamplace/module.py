@@ -1,17 +1,15 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import importlib.machinery
 import json
 import logging
 import os
 import sys
 from contextlib import contextmanager
-from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
-    
+
+
 class DreamplaceModule:
     def __init__(
         self,
@@ -47,8 +45,6 @@ class DreamplaceModule:
         params.timing_opt_flag = 0
         params.timing_eval_flag = 0
         params.differentiable_timing_obj = 0
-        params.routability_opt_flag = 0
-        params.get_congestion_map = 0
 
         if legalize_only:
             params.global_place_flag = 0
