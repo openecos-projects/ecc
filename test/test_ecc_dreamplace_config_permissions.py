@@ -4,7 +4,7 @@ import stat
 from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace
 from chipcompiler.data.workspace import init_workspace_config
 from chipcompiler.tools.ecc_dreamplace import builder as dreamplace_builder
-from chipcompiler.utility import json_read
+from chipcompiler.utility import json_read, json_write
 
 
 def test_workspace_config_generation_leaves_config_root_writable_after_read_only_copy(
@@ -131,3 +131,46 @@ def test_workspace_config_generation_nested_dreamplace_overrides_win_over_flat_k
 
     dreamplace_config = json_read(workspace.config["dreamplace"])
     assert dreamplace_config["routability_opt_flag"] == 0
+
+
+def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        parameters=Parameters(data={"Target density": 0.65}),
+    )
+    (tmp_path / "workspace" / "home").mkdir(parents=True)
+    workspace.parameters.path = str(tmp_path / "workspace" / "home" / "parameters.json")
+    step = dreamplace_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.PLACEMENT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+
+    init_workspace_config(workspace)
+    json_write(
+        workspace.parameters.path,
+        {
+            "Target density": 0.7,
+            "DreamPlace": {
+                "def_input": "stale.def",
+                "verilog_input": "stale.v",
+                "result_dir": "stale-output",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        dreamplace_builder.ecc_builder,
+        "build_step_config",
+        lambda _workspace, _step: None,
+    )
+
+    dreamplace_builder.build_step_config(workspace, step)
+
+    dreamplace_config = json_read(workspace.config["dreamplace"])
+    assert dreamplace_config["target_density"] == 0.7
+    assert dreamplace_config["def_input"] == "input.def"
+    assert dreamplace_config["verilog_input"] == "input.v"
+    assert dreamplace_config["result_dir"] == step.data[step.name]
