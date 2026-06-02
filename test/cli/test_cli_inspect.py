@@ -652,7 +652,7 @@ class TestConfigStepResolved:
             ]
             assert all(item["source"] == "workspace_config" for item in data["records"])
 
-    def test_config_sta_uses_rcx_workspace_config(self, tmp_path, capsys):
+    def test_config_sta_uses_rcx_and_sta_workspace_configs(self, tmp_path, capsys):
         project_dir = _create_valid_project(tmp_path)
         run_dir = os.path.join(project_dir, "runs", "default")
         _create_flow_json(
@@ -667,7 +667,15 @@ class TestConfigStepResolved:
             ],
         )
         _create_step_dir(run_dir, "STA", "ecc", subdirs=["output"])
-        _create_ecc_workspace_config(run_dir, "rcx.json")
+        _create_workspace_config(
+            run_dir,
+            {
+                "flow_config.json": "{}",
+                "db_default_config.json": "{}",
+                "rcx.json": "{}",
+                "sta.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["config", "sta", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
@@ -676,6 +684,7 @@ class TestConfigStepResolved:
             "runs/default/config/flow_config.json",
             "runs/default/config/db_default_config.json",
             "runs/default/config/rcx.json",
+            "runs/default/config/sta.json",
         ]
         assert all(item["source"] == "workspace_config" for item in data["records"])
 
@@ -1080,7 +1089,15 @@ class TestDiagnose:
                 "analysis/STA_metrics.json": "{}",
             },
         )
-        _create_ecc_workspace_config(run_dir, "rcx.json")
+        _create_workspace_config(
+            run_dir,
+            {
+                "flow_config.json": "{}",
+                "db_default_config.json": "{}",
+                "rcx.json": "{}",
+                "sta.json": "{}",
+            },
+        )
 
         rc = cli_main.run(["diagnose", "sta", "--project", project_dir])
         assert rc == 0

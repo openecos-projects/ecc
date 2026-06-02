@@ -92,6 +92,18 @@ class ECCToolsModule:
             output_path=output_dir,
             feature_path=feature_dir,
         )
+
+    def update_sta_data_config(self,
+                               db_config: str,
+                               output_dir: str,
+                               lib_paths: list[str],
+                               sdc_path: str):
+        self.ecc.db_init(
+            config_path=db_config,
+            output_path=output_dir,
+            lib_paths=lib_paths,
+            sdc_path=sdc_path,
+        )
         
     ########################################################################
     # data api
@@ -795,7 +807,7 @@ class ECCToolsModule:
         self.ecc.run_incremental_lg()
         
     def run_filler(self, config: str):
-        self.ecc.run_filler(config)
+        self.ecc.insert_filler(config)
         
     def run_macro_placement(self, config: str, tcl_path=""):
         """
@@ -1235,7 +1247,7 @@ class ECCToolsModule:
     # net optimization
     ########################################################################
     def run_net_opt(self, config : str):
-        return self.ecc.run_no_fixfanout(config)
+        return self.ecc.fix_fanout(config)
     
     def build_rc_tree_from_flat_data(
         self,

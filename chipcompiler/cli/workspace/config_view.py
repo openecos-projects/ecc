@@ -29,7 +29,7 @@ _STEP_CONFIG_FILES = {
         "to_default_config_setup.json",
     ),
     ("rcx", "ecc"): ("flow_config.json", "db_default_config.json", "rcx.json"),
-    ("sta", "ecc"): ("flow_config.json", "db_default_config.json", "rcx.json"),
+    ("sta", "ecc"): ("flow_config.json", "db_default_config.json", "rcx.json", "sta.json"),
     ("placement", "dreamplace"): ("dreamplace.json",),
     ("legalization", "dreamplace"): ("dreamplace.json",),
 }
