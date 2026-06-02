@@ -55,13 +55,13 @@ z3 proofs that `update_parameters()` recursive dict merge is correct.
 
 ### `test_param_propagation.py` -- Parameter to tool config pipeline
 
-Verifies parameters reach tool configs correctly through the builder pipeline.
+Verifies parameters reach tool configs correctly through builder/helper propagation.
 
 | Test | Method | Status |
 |------|--------|--------|
 | `test_key_spelling_matches_template` | String match against ICS55 template | XFAIL -- `"File list"` missing from template |
-| `test_dead_defaults` | z3 proves config defaults overwritten by builder | PASS (3 dead defaults found) |
-| `test_builder_forced_overrides` | z3 proves forced values are immutable | PASS |
+| `test_dead_defaults` | z3 proves config defaults overwritten by propagation | PASS (2 dead defaults found) |
+| `test_runtime_forced_overrides` | z3 proves forced values are immutable | PASS |
 | `test_propagation_z3` | z3 proves parameter reaches config field | PASS |
 
 ## Running
@@ -108,8 +108,7 @@ Documented by XFAIL tests with concrete z3 counterexamples:
 ### Parameter pipeline
 
 5. **"File list" key missing from template** -- yosys builder reads `"File list"` via `dict.get()` but ICS55 template does not define it
-6. **Dead config defaults** -- these JSON defaults are always overwritten by the builder:
-   - `dreamplace.json: target_density=0.8` -- overwritten with parameter default 0.3
-   - `dreamplace.json: routability_opt_flag=0` -- overwritten with parameter default 1
+6. **Dead config defaults** -- these JSON defaults are always overwritten by parameter propagation:
+   - `dreamplace.json: target_density=0.8` -- overwritten with parameter default 0.2
    - `no_default_config_fixfanout.json: max_fanout=32` -- overwritten with parameter default 20
-7. **Forced overrides** -- DreamPlace builder forces `timing_opt_flag`, `timing_eval_flag`, `with_sta`, `differentiable_timing_obj` to 0 regardless of parameters
+7. **Forced overrides** -- DreamPlace runtime forces timing-only fields `with_sta`, `timing_opt_flag`, `timing_eval_flag`, `differentiable_timing_obj` off regardless of parameters
