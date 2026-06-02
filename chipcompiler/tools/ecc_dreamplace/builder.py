@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
-
-from chipcompiler.data import Workspace, WorkspaceStep
-from chipcompiler.data import build_workspace_config_paths
+from chipcompiler.data import Workspace, WorkspaceStep, build_workspace_config_paths
 from chipcompiler.tools.ecc import builder as ecc_builder
+from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
+    apply_parameter_overrides as _apply_parameter_overrides,
+)
 from chipcompiler.utility import json_read, json_write
 
 
@@ -14,25 +14,11 @@ def apply_parameter_overrides(
     base_params: dict,
     parameter_data: dict,
 ) -> dict:
-    """Apply direct DreamPlace overrides onto a DreamPlace config dictionary.
+    """Apply DreamPlace overrides onto a DreamPlace config dictionary.
 
-    Args:
-        base_params: The generated DreamPlace config contents.
-        parameter_data: The workspace ``home/parameters.json`` data.
-
-    Returns:
-        A copied config dictionary with ``DreamPlace`` values applied directly.
+    Kept as a compatibility entrypoint for external benchmark integrations.
     """
-    params = deepcopy(base_params)
-
-    dreamplace_overrides = parameter_data.get("DreamPlace", {})
-    if not isinstance(dreamplace_overrides, dict):
-        return params
-
-    for key, value in dreamplace_overrides.items():
-        params[key] = deepcopy(value)
-
-    return params
+    return _apply_parameter_overrides(base_params, parameter_data)
 
 
 def build_step(
