@@ -17,7 +17,7 @@ from chipcompiler.utility import json_read
 def create_db_engine(workspace: Workspace,
                      step: WorkspaceStep) -> ECCToolsModule:
     """"""
-    def load_data():   
+    def load_data():  
         ecc_module = ECCToolsModule()
         
         ecc_module.init_config(flow_config=workspace.config.get("flow"),
@@ -154,11 +154,11 @@ def save_data(workspace: Workspace,
         
         update_param = {
             "Die": {
-                "Size": [die_bounding_width, die_bounding_height],
+                "Size": f"0, 0, {die_bounding_width}, {die_bounding_height}",
                 "Area": die_area
             },
             "Core": {
-                "Size": [core_bounding_width, core_bounding_height],
+                "Size": f"0, 0, {core_bounding_width}, {core_bounding_height}",
                 "Area": core_area,
                 "Bounding box": "({} , {}) ({} , {})".format(
                     margin[0], 
@@ -437,6 +437,7 @@ def run_routing(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         if ecc_module.is_rt_timing_enable(config=workspace.config.get(f"{StepEnum.ROUTING.value}", "")):
+            ecc_module.release_sta()
             ecc_module.init_sta(output_dir=step.data.get(f"{StepEnum.ROUTING.value}", ""),
                               top_module=workspace.design.top_module,
                               lib_paths=workspace.pdk.libs,
@@ -576,28 +577,31 @@ def run_floorplan(workspace: Workspace,
                              state=StateEnum.Success)
         
         # init floorplan
-        # init by core utilization
-        util = workspace.parameters.data.get("Core", {}).get("Utilitization", 0.3)
-        margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
-        aspect_ratio = workspace.parameters.data.get("Core", {}).get("Aspect ratio", 1)
-        ecc_module.init_floorplan_by_core_utilization(
-                core_site=workspace.pdk.site_core,
-                io_site=workspace.pdk.site_io,
-                corner_site=workspace.pdk.site_corner,
-                core_util=util,
-                x_margin=margin[0],
-                y_margin=margin[1],
-                aspect_ratio=aspect_ratio,
-            )
+
         
-        # init by die and core area
-        # die_area=workspace.parameters.data.get("Die", {}).get("Bounding box", "")
-        # core_area=workspace.parameters.data.get("Core", {}).get("Bounding box", "")
-        # ecc_module.init_floorplan_by_area(die_area=die_area,
-        #                                 core_area=core_area,
-        #                                 core_site=workspace.pdk.site_core,
-        #                                 io_site=workspace.pdk.site_io,
-        #                                 corner_site=workspace.pdk.site_corner)
+        die_area=workspace.parameters.data.get("Die", {}).get("Size", "")
+        core_area=workspace.parameters.data.get("Core", {}).get("Size", "")
+        if len(die_area) == 4 and len(core_area) == 4:
+            # init by die and core area
+            ecc_module.init_floorplan_by_area(die_area=die_area,
+                                            core_area=core_area,
+                                            core_site=workspace.pdk.site_core,
+                                            io_site=workspace.pdk.site_io,
+                                            corner_site=workspace.pdk.site_corner)
+        else:
+            # init by core utilization
+            util = workspace.parameters.data.get("Core", {}).get("Utilitization", 0.3)
+            margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
+            aspect_ratio = workspace.parameters.data.get("Core", {}).get("Aspect ratio", 1)
+            ecc_module.init_floorplan_by_core_utilization(
+                    core_site=workspace.pdk.site_core,
+                    io_site=workspace.pdk.site_io,
+                    corner_site=workspace.pdk.site_corner,
+                    core_util=util,
+                    x_margin=margin[0],
+                    y_margin=margin[1],
+                    aspect_ratio=aspect_ratio,
+                )
         
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value,
                              state=StateEnum.Success)
@@ -740,6 +744,7 @@ def run_harden(workspace: Workspace,
                                 ecc_module = ecc_module)
     
     if ecc_module is not None:
+        ecc_module.release_sta()
         ecc_module.init_sta(output_dir=step.data["sta"],
                           top_module=workspace.design.top_module,
                           lib_paths=workspace.pdk.libs,
