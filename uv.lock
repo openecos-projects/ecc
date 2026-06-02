@@ -471,8 +471,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ecc-dreamplace", url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.3/ecc_dreamplace-0.1.0a3-py3-none-manylinux_2_34_x86_64.whl" },
-    { name = "ecc-tools", url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.2/ecc_tools-0.1.0a2-py3-none-manylinux_2_34_x86_64.whl" },
+    { name = "ecc-dreamplace", url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.4/ecc_dreamplace-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl" },
+    { name = "ecc-tools", url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.3/ecc_tools-0.1.0a3-py3-none-manylinux_2_34_x86_64.whl" },
     { name = "fastapi", specifier = ">=0.109" },
     { name = "klayout", specifier = ">=0.30.2" },
     { name = "matplotlib", specifier = ">=3.4" },
@@ -508,8 +508,8 @@ dev = [
 
 [[package]]
 name = "ecc-dreamplace"
-version = "0.1.0a3"
-source = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.3/ecc_dreamplace-0.1.0a3-py3-none-manylinux_2_34_x86_64.whl" }
+version = "0.1.0a4"
+source = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.4/ecc_dreamplace-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl" }
 dependencies = [
     { name = "cairocffi" },
     { name = "configspace" },
@@ -532,7 +532,7 @@ dependencies = [
     { name = "xgboost" },
 ]
 wheels = [
-    { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.3/ecc_dreamplace-0.1.0a3-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:2025a864051e322cebab95f2b55b5d4be19427f4cb2b1067e5866965a497f950" },
+    { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.4/ecc_dreamplace-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:00b26f9507774c608aeb3af5932bb9841dddd9776ad9e16739c1015ec81f7fe0" },
 ]
 
 [package.metadata]
@@ -558,10 +558,10 @@ requires-dist = [
 
 [[package]]
 name = "ecc-tools"
-version = "0.1.0a2"
-source = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.2/ecc_tools-0.1.0a2-py3-none-manylinux_2_34_x86_64.whl" }
+version = "0.1.0a3"
+source = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.3/ecc_tools-0.1.0a3-py3-none-manylinux_2_34_x86_64.whl" }
 wheels = [
-    { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.2/ecc_tools-0.1.0a2-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:360aad48742288debd9aa666e5a7e4ff5de30ae831c945426b458050a407c8be" },
+    { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.3/ecc_tools-0.1.0a3-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:90445c53ff711e767246f7eb5e2d12a23584afd61bd6d7505e1a59b96132a341" },
 ]
 
 [[package]]

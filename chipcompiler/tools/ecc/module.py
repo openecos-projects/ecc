@@ -807,7 +807,7 @@ class ECCToolsModule:
         self.ecc.run_incremental_lg()
         
     def run_filler(self, config: str):
-        self.ecc.run_filler(config)
+        self.ecc.insert_filler(config)
         
     def run_macro_placement(self, config: str, tcl_path=""):
         """
@@ -1247,7 +1247,7 @@ class ECCToolsModule:
     # net optimization
     ########################################################################
     def run_net_opt(self, config : str):
-        return self.ecc.run_no_fixfanout(config)
+        return self.ecc.fix_fanout(config)
     
     def build_rc_tree_from_flat_data(
         self,

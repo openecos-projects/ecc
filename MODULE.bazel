@@ -69,7 +69,7 @@ local_source_repo(
     path = "chipcompiler/thirdparty/ecc-tools",
 )
 
-bazel_dep(name = "ecc-dreamplace", version = "0.1.0")
+bazel_dep(name = "ecc-dreamplace", version = "0.1.0-alpha.4")
 local_path_override(
     module_name = "ecc-dreamplace",
     path = "chipcompiler/thirdparty/ecc-dreamplace",

@@ -30,13 +30,13 @@
 }:
 
 let
-  version = "0.1.0-alpha.2";
+  version = "0.1.0-alpha.3";
 
   src = fetchFromGitHub {
     owner = "openecos-projects";
     repo = "ecc-tools";
-    rev = "eff031dc6692c266054477d6bc6424f1bc2dd692";
-    hash = "sha256-CNx29x2UILpfHK5MhRSCOInv9UuV7gKjCdUwskJOqUE=";
+    rev = "984c032e90f3fb2620b7c1ebeefc6fff583d385f";
+    hash = "sha256-j4cLgJqSaGHJPw80U9CdZuDh9uWkl1P1lmp2+xmtj2o=";
   };
 
   installDeps =
@@ -59,6 +59,10 @@ let
             "directory" = "${
               rustPlatform.importCargoLock {
                 lockFile = "${src}/${path}/Cargo.lock";
+                extraRegistries = {
+                  # See: https://github.com/NixOS/nixpkgs/pull/524985
+                  "https://github.com/rust-lang/crates.io-index" = "https://static.crates.io/crates";
+                };
               }
             }"
             EOF
