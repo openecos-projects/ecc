@@ -32,7 +32,7 @@ let
   rootSrc = fetchFromGitHub {
     owner = "openecos-projects";
     repo = "ecc-dreamplace";
-    rev = "v${version}";
+    rev = "1e9d038870efa0141b6122e120456c7eb05c8fee";
     hash = "sha256-EoxYaAwSnr/PwRnUxeeZrrqJx4VNwEARjP8HapAfFlQ=";
     fetchSubmodules = true;
   };
