@@ -22,7 +22,7 @@
   setuptools,
   shapely,
   torch,
-  uv-build,
+  hatchling,
   wheel,
 }:
 
@@ -94,14 +94,9 @@ buildPythonPackage {
 
   src = rootSrc;
 
-  build-system = [ uv-build ];
+  build-system = [ hatchling ];
 
   buildInputs = runtimeInputs;
-
-  postPatch = ''
-    substituteInPlace pyproject.toml \
-      --replace-fail 'uv_build>=0.10.9,<0.12' 'uv_build>=0.10.0,<0.12'
-  '';
 
   preBuild = ''
     cp -r ${runtime}/dreamplace/. dreamplace/
