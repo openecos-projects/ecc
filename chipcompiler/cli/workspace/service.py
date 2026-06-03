@@ -8,7 +8,6 @@ from chipcompiler.cli.workspace.request import (
     write_filelist,
 )
 from chipcompiler.cli.workspace.response import workspace_response
-from chipcompiler.data import StateEnum
 
 
 def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
@@ -158,15 +157,18 @@ def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
         workspace_step = engine_flow.get_workspace_step(step)
         if workspace_step is None:
             state = engine_flow.run_step(step, rerun)
-        elif not rerun and engine_flow.check_state(
-            name=workspace_step.name,
-            tool=workspace_step.tool,
-            state=StateEnum.Success,
-        ):
-            state = engine_flow.run_step(workspace_step, rerun)
         else:
-            _init_db_engine_for_workspace_step(engine_flow, workspace_step)
-            state = engine_flow.run_step(workspace_step, rerun)
+            from chipcompiler.data.step import StateEnum
+
+            if not rerun and engine_flow.check_state(
+                name=workspace_step.name,
+                tool=workspace_step.tool,
+                state=StateEnum.Success,
+            ):
+                state = engine_flow.run_step(workspace_step, rerun)
+            else:
+                _init_db_engine_for_workspace_step(engine_flow, workspace_step)
+                state = engine_flow.run_step(workspace_step, rerun)
     except WorkspaceValidationError as exc:
         return workspace_response(cmd, "failed", data=response_data, message=[str(exc)])
     except Exception as exc:
