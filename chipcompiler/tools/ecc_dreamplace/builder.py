@@ -76,7 +76,6 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
 
     params = json_read(workspace.config["dreamplace"])
 
-    params = _set_step_fields(params, step)
     params = apply_parameter_overrides(params, _current_parameter_data(workspace))
     params = _set_step_fields(params, step)
 
