@@ -88,3 +88,89 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
     assert data["verilog_input"] == "input.v"
     assert data["result_dir"] == step.data[step.name]
     assert data["base_design_name"] == "gcd"
+
+
+def test_workspace_config_generation_applies_flat_dreamplace_parameter_overrides(tmp_path):
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        parameters=Parameters(
+            data={
+                "Target density": 0.65,
+                "Target overflow": 0.05,
+                "Cell padding x": 800,
+                "Routability opt flag": 1,
+            }
+        ),
+    )
+
+    init_workspace_config(workspace)
+
+    dreamplace_config = json_read(workspace.config["dreamplace"])
+    assert dreamplace_config["target_density"] == 0.65
+    assert dreamplace_config["stop_overflow"] == 0.05
+    assert dreamplace_config["cell_padding_x"] == 800
+    assert dreamplace_config["routability_opt_flag"] == 1
+
+
+def test_workspace_config_generation_nested_dreamplace_overrides_win_over_flat_keys(tmp_path):
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        parameters=Parameters(
+            data={
+                "Routability opt flag": 1,
+                "DreamPlace": {"routability_opt_flag": 0},
+            }
+        ),
+    )
+
+    init_workspace_config(workspace)
+
+    dreamplace_config = json_read(workspace.config["dreamplace"])
+    assert dreamplace_config["routability_opt_flag"] == 0
+
+
+def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        parameters=Parameters(data={"Target density": 0.65}),
+    )
+    (tmp_path / "workspace" / "home").mkdir(parents=True)
+    workspace.parameters.path = str(tmp_path / "workspace" / "home" / "parameters.json")
+    step = dreamplace_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.PLACEMENT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+
+    init_workspace_config(workspace)
+    json_write(
+        workspace.parameters.path,
+        {
+            "Target density": 0.7,
+            "DreamPlace": {
+                "def_input": "stale.def",
+                "verilog_input": "stale.v",
+                "result_dir": "stale-output",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        dreamplace_builder.ecc_builder,
+        "build_step_config",
+        lambda _workspace, _step: None,
+    )
+
+    dreamplace_builder.build_step_config(workspace, step)
+
+    dreamplace_config = json_read(workspace.config["dreamplace"])
+    assert dreamplace_config["target_density"] == 0.7
+    assert dreamplace_config["def_input"] == "input.def"
+    assert dreamplace_config["verilog_input"] == "input.v"
+    assert dreamplace_config["result_dir"] == step.data[step.name]

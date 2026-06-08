@@ -178,6 +178,8 @@ def init_workspace_config(workspace: Workspace) -> None:
     import os
     import shutil
     from copy import deepcopy
+
+    from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
     from chipcompiler.utility import json_read, json_write
 
     if not workspace.config:
@@ -264,10 +266,7 @@ def init_workspace_config(workspace: Workspace) -> None:
     dreamplace = json_read(workspace.config["dreamplace"])
     dreamplace["lef_input"] = [workspace.pdk.tech, *workspace.pdk.lefs]
     dreamplace["base_design_name"] = workspace.design.name
-    dreamplace_overrides = workspace.parameters.data.get("DreamPlace", {})
-    if isinstance(dreamplace_overrides, dict):
-        for key, value in dreamplace_overrides.items():
-            dreamplace[key] = deepcopy(value)
+    dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
     json_write(workspace.config["dreamplace"], dreamplace)
 
 

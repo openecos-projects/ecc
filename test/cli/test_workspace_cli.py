@@ -1,15 +1,42 @@
 import json
 import os
+import subprocess
+import sys
+from contextlib import redirect_stdout, suppress
 from types import SimpleNamespace
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data import StateEnum
+
+DEFAULT_WORKSPACE_STEP_SPECS = (
+    ("Synthesis", "yosys"),
+    ("Floorplan", "ecc"),
+)
+
+
+class DummyEngineDB:
+    def __init__(self, flow):
+        self.flow = flow
+        self.engine = None
+        self.initialized = False
+
+    def has_init(self):
+        return self.initialized
+
+    def create_db_engine(self, step):
+        self.flow.init_db_engine_calls += 1
+        self.flow.init_db_engine_steps.append(None if step is None else step.name)
+        self.flow.call_order.append(("init_db_engine",))
+        self.initialized = True
+        return True
 
 
 class DummyFlow:
     instances = []
     next_run_states = []
     fail_create_step_workspaces = False
+    successful_steps = set()
+    workspace_step_specs = DEFAULT_WORKSPACE_STEP_SPECS
 
     def __init__(self, workspace):
         self.workspace = workspace
@@ -18,10 +45,13 @@ class DummyFlow:
         self.cleared = False
         self.run_steps_calls = []
         self.run_calls = []
+        self.init_db_engine_calls = 0
+        self.init_db_engine_steps = []
+        self.call_order = []
         self.workspace_steps = [
-            SimpleNamespace(name="Synthesis", tool="yosys"),
-            SimpleNamespace(name="Floorplan", tool="ecc"),
+            SimpleNamespace(name=name, tool=tool) for name, tool in self.workspace_step_specs
         ]
+        self.engine_db = DummyEngineDB(self)
         DummyFlow.instances.append(self)
 
     def has_init(self):
@@ -41,6 +71,14 @@ class DummyFlow:
     def clear_states(self):
         self.cleared = True
 
+    def init_db_engine(self):
+        workspace_step = None
+        for step in self.workspace_steps:
+            if step.name not in self.successful_steps:
+                workspace_step = step
+                break
+        return self.engine_db.create_db_engine(workspace_step)
+
     def run_steps(self, rerun=False):
         self.run_steps_calls.append(rerun)
         success = True
@@ -54,6 +92,7 @@ class DummyFlow:
     def run_step(self, workspace_step, rerun=False):
         name = workspace_step if isinstance(workspace_step, str) else workspace_step.name
         self.run_calls.append((name, rerun))
+        self.call_order.append(("run_step", name, rerun))
         if DummyFlow.next_run_states:
             return DummyFlow.next_run_states.pop(0)
         return StateEnum.Success
@@ -63,6 +102,11 @@ class DummyFlow:
             if step.name == name:
                 return step
         return None
+
+    def check_state(self, name, tool, state):
+        return getattr(state, "value", state) == StateEnum.Success.value and name in (
+            self.successful_steps
+        )
 
 
 def _response(capsys):
@@ -99,6 +143,8 @@ def _install_runtime_mocks(monkeypatch, tmp_path):
     DummyFlow.instances = []
     DummyFlow.next_run_states = []
     DummyFlow.fail_create_step_workspaces = False
+    DummyFlow.successful_steps = set()
+    DummyFlow.workspace_step_specs = DEFAULT_WORKSPACE_STEP_SPECS
 
     def fake_create_workspace(**kwargs):
         capture["create_kwargs"] = kwargs
@@ -517,6 +563,259 @@ def test_run_step_maps_success_and_failure(monkeypatch, tmp_path, capsys):
     assert rc == 1
     assert data["response"] == "failed"
     assert data["data"] == {"step": "Synthesis", "state": "Incomplete"}
+
+
+def test_run_step_initializes_engine_db_before_step(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    rc = cli_main.run(
+        ["workspace", "run-step", "--directory", str(ws), "--step", "Synthesis", "--json"]
+    )
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 0
+    assert data["cmd"] == "run_step"
+    assert data["response"] == "success"
+    assert flow.init_db_engine_calls == 1
+    assert flow.init_db_engine_steps == ["Synthesis"]
+    assert flow.call_order == [
+        ("init_db_engine",),
+        ("run_step", "Synthesis", False),
+    ]
+    assert flow.run_steps_calls == []
+
+
+def test_run_step_rerun_initializes_engine_db_before_step(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    rc = cli_main.run(
+        [
+            "workspace",
+            "run-step",
+            "--directory",
+            str(ws),
+            "--step",
+            "Floorplan",
+            "--rerun",
+            "--json",
+        ]
+    )
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 0
+    assert data["cmd"] == "run_step"
+    assert data["response"] == "success"
+    assert flow.init_db_engine_steps == ["Floorplan"]
+    assert flow.call_order == [
+        ("init_db_engine",),
+        ("run_step", "Floorplan", True),
+    ]
+    assert flow.run_steps_calls == []
+
+
+def test_run_step_skip_success_does_not_initialize_engine_db(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.successful_steps = {"Synthesis"}
+
+    rc = cli_main.run(
+        ["workspace", "run-step", "--directory", str(ws), "--step", "Synthesis", "--json"]
+    )
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 0
+    assert data["cmd"] == "run_step"
+    assert data["response"] == "success"
+    assert flow.init_db_engine_calls == 0
+    assert flow.call_order == [("run_step", "Synthesis", False)]
+
+
+def test_run_step_rerun_initializes_engine_db_from_requested_successful_step(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.workspace_step_specs = (
+        ("Synthesis", "yosys"),
+        ("Floorplan", "ecc"),
+        ("fixFanout", "ecc"),
+    )
+    DummyFlow.successful_steps = {"Synthesis", "Floorplan"}
+
+    rc = cli_main.run(
+        [
+            "workspace",
+            "run-step",
+            "--directory",
+            str(ws),
+            "--step",
+            "Floorplan",
+            "--rerun",
+            "--json",
+        ]
+    )
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 0
+    assert data["cmd"] == "run_step"
+    assert data["response"] == "success"
+    assert flow.init_db_engine_steps == ["Floorplan"]
+    assert flow.call_order == [
+        ("init_db_engine",),
+        ("run_step", "Floorplan", True),
+    ]
+    assert flow.run_steps_calls == []
+
+
+def test_workspace_json_output_survives_runtime_stdio_redirect(
+    monkeypatch,
+    tmp_path,
+    capfd,
+):
+    from chipcompiler.cli.commands import workspace as workspace_commands
+    from chipcompiler.utility.log import redirect_stdio_to_file
+
+    log_path = tmp_path / "step.log"
+    redirected_streams = []
+
+    def fake_run_workspace_step(directory, step, rerun):
+        os.write(1, b"runtime-fd-output\n")
+        redirected_streams.append(redirect_stdio_to_file(str(log_path)))
+        print("runtime-output")
+        return {
+            "cmd": "run_step",
+            "response": "success",
+            "data": {"step": step, "state": "Success"},
+            "message": [f"run step {step} success : {directory}"],
+        }
+
+    monkeypatch.setattr(workspace_commands, "run_workspace_step", fake_run_workspace_step)
+
+    saved_stdout = sys.stdout
+    saved_stderr = sys.stderr
+    saved_stdout_fd = os.dup(1)
+    saved_stderr_fd = os.dup(2)
+    try:
+        rc = cli_main.run(
+            [
+                "workspace",
+                "run-step",
+                "--directory",
+                str(tmp_path / "workspace"),
+                "--step",
+                "Synthesis",
+                "--json",
+            ]
+        )
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.dup2(saved_stdout_fd, 1)
+        os.dup2(saved_stderr_fd, 2)
+        os.close(saved_stdout_fd)
+        os.close(saved_stderr_fd)
+        sys.stdout = saved_stdout
+        sys.stderr = saved_stderr
+        for stream in redirected_streams:
+            with suppress(Exception):
+                stream.close()
+
+    capture = capfd.readouterr()
+    out = capture.out
+    data = json.loads(out)
+    assert rc == 0
+    assert data["cmd"] == "run_step"
+    assert data["response"] == "success"
+    assert data["data"] == {"step": "Synthesis", "state": "Success"}
+    assert "runtime-fd-output" not in out
+    assert "runtime-fd-output" in capture.err
+    assert "runtime-output" in log_path.read_text()
+
+
+def test_workspace_json_output_restores_stdout_for_programmatic_run(tmp_path):
+    env = os.environ.copy()
+    env["MPLCONFIGDIR"] = str(tmp_path / "mplconfig")
+    workspace_dir = str(tmp_path / "workspace")
+    script = f"""
+from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.commands import workspace as workspace_commands
+
+workspace_commands.load_workspace = lambda directory: {{
+    "cmd": "load_workspace",
+    "response": "success",
+    "data": {{"directory": directory}},
+    "message": [],
+}}
+
+rc = cli_main.run(["workspace", "load", "--directory", {workspace_dir!r}, "--json"])
+print("after-programmatic-run")
+raise SystemExit(rc)
+"""
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=os.getcwd(),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    out_lines = completed.stdout.splitlines()
+    assert completed.returncode == 0
+    assert json.loads(out_lines[0])["response"] == "success"
+    assert out_lines[1:] == ["after-programmatic-run"]
+    assert "after-programmatic-run" not in completed.stderr
+
+
+def test_workspace_json_output_honors_redirected_stdout(
+    monkeypatch,
+    tmp_path,
+    capfd,
+):
+    from chipcompiler.cli.commands import workspace as workspace_commands
+
+    monkeypatch.setattr(
+        workspace_commands,
+        "load_workspace",
+        lambda directory: {
+            "cmd": "load_workspace",
+            "response": "success",
+            "data": {"directory": directory},
+            "message": [],
+        },
+    )
+    output_path = tmp_path / "stdout.json"
+
+    saved_stdout = sys.stdout
+    saved_stderr = sys.stderr
+    saved_stdout_fd = os.dup(1)
+    saved_stderr_fd = os.dup(2)
+    try:
+        with output_path.open("w") as stream, redirect_stdout(stream):
+            rc = cli_main.run(
+                ["workspace", "load", "--directory", str(tmp_path / "workspace"), "--json"]
+            )
+        capture = capfd.readouterr()
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.dup2(saved_stdout_fd, 1)
+        os.dup2(saved_stderr_fd, 2)
+        os.close(saved_stdout_fd)
+        os.close(saved_stderr_fd)
+        sys.stdout = saved_stdout
+        sys.stderr = saved_stderr
+
+    redirected_output = output_path.read_text()
+    assert rc == 0
+    assert redirected_output.startswith("{")
+    assert json.loads(redirected_output)["response"] == "success"
+    assert capture.out == ""
 
 
 def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path, capsys):
