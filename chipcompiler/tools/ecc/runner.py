@@ -109,13 +109,13 @@ def save_data(workspace: Workspace,
               step: WorkspaceStep,
               ecc_module : ECCToolsModule,
               feature_step : bool = True,
-              report_timing : bool = True) -> bool:
+              report_timing : bool = False) -> bool:
     """
     module is ecc module from db engine, 
     eda instacnce may initialize data from this module if module has been set
     """
     if ecc_module is None:
-        return FALSE
+        return False
     
     ecc_module.def_save(def_path=step.output.get("def", ""))
     ecc_module.verilog_save(output_verilog=step.output.get("verilog", ""))
@@ -152,20 +152,27 @@ def save_data(workspace: Workspace,
         
         margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
         
+        core_usage = db_json.get("Design Layout", {}).get("core_usage", 0)
+        
+        aspect_ratio = die_bounding_width / die_bounding_height if die_bounding_height > 0 else 1
+        
+        
         update_param = {
             "Die": {
-                "Size": f"0, 0, {die_bounding_width}, {die_bounding_height}",
+                "Size": [die_bounding_width, die_bounding_height],
                 "Area": die_area
             },
             "Core": {
-                "Size": f"0, 0, {core_bounding_width}, {core_bounding_height}",
+                "Size": [core_bounding_width, core_bounding_height],
                 "Area": core_area,
                 "Bounding box": "({} , {}) ({} , {})".format(
                     margin[0], 
                     margin[1], 
                     core_bounding_width + margin[0], 
                     core_bounding_height + margin[1]
-                )
+                ),
+                "Utilitization": core_usage,
+                "Aspect ratio": aspect_ratio
             }
         }
         
@@ -307,7 +314,7 @@ def run_placement(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -447,7 +454,7 @@ def run_routing(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_routing.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -482,7 +489,7 @@ def run_drc(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
         
         ecc_module.save_drc(feature_path=step.feature.get("step", ""))
    
@@ -518,7 +525,7 @@ def run_legalization(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_legalization.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
    
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -549,7 +556,7 @@ def run_filler(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
       
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -577,22 +584,13 @@ def run_floorplan(workspace: Workspace,
                              state=StateEnum.Success)
         
         # init floorplan
-
-        
-        die_area=workspace.parameters.data.get("Die", {}).get("Size", "")
-        core_area=workspace.parameters.data.get("Core", {}).get("Size", "")
-        if len(die_area) == 4 and len(core_area) == 4:
-            # init by die and core area
-            ecc_module.init_floorplan_by_area(die_area=die_area,
-                                            core_area=core_area,
-                                            core_site=workspace.pdk.site_core,
-                                            io_site=workspace.pdk.site_io,
-                                            corner_site=workspace.pdk.site_corner)
-        else:
+        die_area=workspace.parameters.data.get("Die", {}).get("Size", [])
+        core_area=workspace.parameters.data.get("Core", {}).get("Size", [])
+        util = workspace.parameters.data.get("Core", {}).get("Utilitization", 0.3)
+        margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
+        aspect_ratio = workspace.parameters.data.get("Core", {}).get("Aspect ratio", 1)
+        if len(die_area) == 0:
             # init by core utilization
-            util = workspace.parameters.data.get("Core", {}).get("Utilitization", 0.3)
-            margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
-            aspect_ratio = workspace.parameters.data.get("Core", {}).get("Aspect ratio", 1)
             ecc_module.init_floorplan_by_core_utilization(
                     core_site=workspace.pdk.site_core,
                     io_site=workspace.pdk.site_io,
@@ -602,6 +600,23 @@ def run_floorplan(workspace: Workspace,
                     y_margin=margin[1],
                     aspect_ratio=aspect_ratio,
                 )
+        else:
+            # init by die and core area
+            if len(die_area) != 2 or len(margin) != 2:
+                return reslut
+            
+            str_die = f"0, 0, {die_area[0]}, {die_area[1]}"
+            
+            if len(core_area) == 2:
+                str_core = f"{margin[0]}, {margin[1]}, {core_area[0]+margin[0]}, {core_area[1]+margin[1]}"
+            else:
+                str_core = f"{margin[0]}, {margin[1]}, {die_area[0]-margin[0]}, {die_area[1]-margin[1]}"
+                
+            ecc_module.init_floorplan_by_area(die_area=str_die,
+                                            core_area=str_core,
+                                            core_site=workspace.pdk.site_core,
+                                            io_site=workspace.pdk.site_io,
+                                            corner_site=workspace.pdk.site_corner)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value,
                              state=StateEnum.Success)
@@ -658,10 +673,11 @@ def run_floorplan(workspace: Workspace,
         
         # auto place io pins
         json_iopin_place = json_floorplan.get("Auto place pin", {})
-        ecc_module.auto_place_pins(layer=json_iopin_place.get("layer", ""),
-                                 width=json_iopin_place.get("width", 0),
-                                 height=json_iopin_place.get("height", 0),
-                                 sides=json_iopin_place.get("sides", []))
+        if len(json_iopin_place) > 0:
+            ecc_module.auto_place_pins(layer=json_iopin_place.get("layer", ""),
+                                     width=json_iopin_place.get("width", 0),
+                                     height=json_iopin_place.get("height", 0),
+                                     sides=json_iopin_place.get("sides", []))
         sub_flow.update_step(step_name=EccSubFlowEnum.place_io_pins.value,
                              state=StateEnum.Success)
         
@@ -719,7 +735,7 @@ def run_floorplan(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value,
                              state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False, report_timing=False)
             
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -801,7 +817,7 @@ def run_rcx(workspace: Workspace,
             ecc_module.report_rcx()
             sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
             
-            save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False)
+            save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False, report_timing=False)
             
             sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                                  state=StateEnum.Success) 

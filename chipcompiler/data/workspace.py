@@ -613,6 +613,15 @@ def load_workspace(directory : str) -> Workspace:
     if len(spef_path) > 0:
         pdk.spef = spef_path[0]
         
+    # update lef and lib paths based on config
+    from chipcompiler.utility import json_read
+    db_json = json_read(workspace.config.get("db", ""))
+    if db_json.get("INPUT", {}).get("tech_lef_path", "") != "":
+        pdk.tech = db_json.get("INPUT", {}).get("tech_lef_path", "")
+    if db_json.get("INPUT", {}).get("lef_paths", []) != []:
+        pdk.lefs = db_json.get("INPUT", {}).get("lef_paths", [])
+    if db_json.get("INPUT", {}).get("lib_path", []) != []:
+        pdk.libs = db_json.get("INPUT", {}).get("lib_path", [])
     workspace.pdk = pdk
     
     #update config

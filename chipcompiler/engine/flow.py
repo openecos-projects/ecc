@@ -5,15 +5,34 @@ import os
 import time
 import logging
 import traceback
-from multiprocessing import Process
-from threading import Thread
+from threading import Event, Thread
 
 from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum, log_flow
 from chipcompiler.engine import EngineDB
-from chipcompiler.utility import track_process_memory
 from chipcompiler.utility.log import redirect_stdio_to_file
 
 logger = logging.getLogger(__name__)
+
+def get_process_rss_mb(pid : int) -> float:
+    peak_memory = 0
+    try:
+        with open(f"/proc/{pid}/status", 'r') as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    rss_kb = int(line.split()[1])
+                    peak_memory = rss_kb / 1024
+                    break
+    except Exception:
+        pass
+    return peak_memory
+
+def track_current_process_memory(pid : int,
+                                 stop_event : Event,
+                                 peak_memory : list[float]):
+    while not stop_event.is_set():
+        peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
+        stop_event.wait(0.1)
+    peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
 
 class EngineFlow:
     def __init__(self, workspace : Workspace, engine_db : EngineDB = None):
@@ -321,7 +340,15 @@ class EngineFlow:
     
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
         self.workspace.logger.info(f"[STEP] {step_tag} pid={os.getpid()} started")
-    
+
+        pid = os.getpid()
+        start_memory_mb = get_process_rss_mb(pid)
+        peak_memory = [start_memory_mb]
+        stop_memory_monitor = Event()
+        memory_monitor = Thread(target=track_current_process_memory,
+                                args=(pid, stop_memory_monitor, peak_memory),
+                                daemon=True)
+        memory_monitor.start()
         try:
             from chipcompiler.tools import run_step as run_tool_step
             result = run_tool_step(workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine)
@@ -329,9 +356,13 @@ class EngineFlow:
         except Exception:
             self.workspace.logger.error(f"[STEP] {step_tag} failed with exception")
             traceback.print_exc()
+        finally:
+            stop_memory_monitor.set()
+            memory_monitor.join()
 
         # compute metrics
-        peak_memory_mb = 0
+        peak_memory_mb = peak_memory[0] - start_memory_mb
+        peak_memory_mb = 0 if peak_memory_mb < 0 else round(peak_memory_mb, 3)
         elapsed = time.time() - start_time
         runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
 

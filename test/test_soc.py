@@ -55,8 +55,8 @@ def test_ics55_core():
     # build engine flow for workspace
     engine_flow = EngineFlow(workspace=workspace, engine_db=engine_db)
     if not engine_flow.has_init():
-        from chipcompiler.rtl2gds import build_rtl2gds_flow
-        steps = build_rtl2gds_flow()
+        from chipcompiler.rtl2gds import build_harden_flow
+        steps = build_harden_flow()
         for step, tool, state in steps:
             engine_flow.add_step(step=step, tool=tool, state=state)
             
