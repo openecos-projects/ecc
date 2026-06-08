@@ -194,8 +194,9 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
 def test_workspace_routes_through_root_typer(monkeypatch):
     seen = {}
 
-    def fake_invoke(argv):
+    def fake_invoke(argv, *, keep_workspace_json_stdio_redirect=False):
         seen["argv"] = argv
+        seen["keep_workspace_json_stdio_redirect"] = keep_workspace_json_stdio_redirect
         return 17
 
     monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
@@ -204,6 +205,48 @@ def test_workspace_routes_through_root_typer(monkeypatch):
 
     assert rc == 17
     assert seen["argv"] == ["workspace", "create", "--pdk-root", "/pdk"]
+    assert seen["keep_workspace_json_stdio_redirect"] is False
+
+
+def test_run_default_argv_keeps_programmatic_stdio_redirect_disabled(monkeypatch):
+    seen = {}
+
+    def fake_invoke(argv, *, keep_workspace_json_stdio_redirect=False):
+        seen["argv"] = argv
+        seen["keep_workspace_json_stdio_redirect"] = keep_workspace_json_stdio_redirect
+        return 17
+
+    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "workspace", "load", "--json"])
+    monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
+
+    rc = cli_main.run()
+
+    assert rc == 17
+    assert seen["argv"] == ["workspace", "load", "--json"]
+    assert seen["keep_workspace_json_stdio_redirect"] is False
+
+
+def test_main_enables_cli_stdio_redirect(monkeypatch):
+    seen = {}
+
+    def fake_invoke(argv, *, keep_workspace_json_stdio_redirect=False):
+        seen["argv"] = argv
+        seen["keep_workspace_json_stdio_redirect"] = keep_workspace_json_stdio_redirect
+        return 17
+
+    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "workspace", "load", "--json"])
+    monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
+
+    try:
+        cli_main.main()
+    except SystemExit as exc:
+        code = exc.code
+    else:
+        raise AssertionError("main() did not exit")
+
+    assert code == 17
+    assert seen["argv"] == ["workspace", "load", "--json"]
+    assert seen["keep_workspace_json_stdio_redirect"] is True
 
 
 def test_old_top_level_workspace_form_is_root_parser_error(capsys):

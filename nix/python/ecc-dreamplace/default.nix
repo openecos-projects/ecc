@@ -22,7 +22,7 @@
   setuptools,
   shapely,
   torch,
-  uv-build,
+  hatchling,
   wheel,
 }:
 
@@ -32,7 +32,7 @@ let
   rootSrc = fetchFromGitHub {
     owner = "openecos-projects";
     repo = "ecc-dreamplace";
-    rev = "v${version}";
+    rev = "1e9d038870efa0141b6122e120456c7eb05c8fee";
     hash = "sha256-EoxYaAwSnr/PwRnUxeeZrrqJx4VNwEARjP8HapAfFlQ=";
     fetchSubmodules = true;
   };
@@ -94,14 +94,9 @@ buildPythonPackage {
 
   src = rootSrc;
 
-  build-system = [ uv-build ];
+  build-system = [ hatchling ];
 
   buildInputs = runtimeInputs;
-
-  postPatch = ''
-    substituteInPlace pyproject.toml \
-      --replace-fail 'uv_build>=0.10.9,<0.12' 'uv_build>=0.10.0,<0.12'
-  '';
 
   preBuild = ''
     cp -r ${runtime}/dreamplace/. dreamplace/
