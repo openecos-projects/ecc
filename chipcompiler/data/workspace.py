@@ -258,6 +258,7 @@ def init_workspace_config(workspace: Workspace) -> None:
     json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 
     rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
+    rcx["pdk"] = "ics55" if workspace.pdk.name == "ics55" else ""
     rcx["mapping_file"] = workspace.pdk.mapping_file
     corners = deepcopy(workspace.pdk.corners)
     rcx["corners"] = corners

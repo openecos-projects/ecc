@@ -890,7 +890,9 @@ class ECCToolsModule:
     ########################################################################
     # RCX api
     ########################################################################
-    def init_rcx(self, config: str):
+    def init_rcx(self, config: str, pdk: str = ""):
+        if pdk:
+            return self.ecc.init_rcx(config=config, pdk=pdk)
         return self.ecc.init_rcx(config=config)
     
     def run_rcx(self):
