@@ -22,7 +22,8 @@ def load_eda_module(eda_tool: str):
 
     module_alias = {
         "klayout": "klayout_tool",
-        "dreamplace": "ecc_dreamplace"
+        "dreamplace": "ecc_dreamplace",
+        "sizer": "ecc_sizer",
     }
     module_name = module_alias.get(eda_tool, eda_tool)
 
@@ -143,6 +144,7 @@ def get_step_info(workspace: Workspace,
     module_alias = {
         "klayout": "klayout_tool",
         "dreamplace": "ecc_dreamplace",
+        "sizer": "ecc_sizer",
     }
     module_name = module_alias.get(step.tool, step.tool)
 

@@ -204,6 +204,15 @@ class EngineFlow:
                     if not os.path.exists(spef):
                         break
                 success = True
+            case (
+                StepEnum.TIMING_OPT.value
+                | StepEnum.TIMING_OPT_DRV.value
+                | StepEnum.TIMING_OPT_HOLD.value
+                | StepEnum.TIMING_OPT_SETUP.value
+            ):
+                if os.path.exists(workspace_step.output.get("def", "")) and \
+                    os.path.exists(workspace_step.output.get("verilog", "")):
+                    success = True
             case default:
                 if os.path.exists(workspace_step.output.get("def", "")) and \
                     os.path.exists(workspace_step.output.get("verilog", "")) and \
