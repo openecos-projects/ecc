@@ -791,7 +791,10 @@ def run_rcx(workspace: Workspace,
             sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete)
             result = False
         else:
-            ecc_module.init_rcx(config=workspace.config.get(StepEnum.RCX.value, ""))
+            rcx_config_path = workspace.config.get(StepEnum.RCX.value, "")
+            rcx_config = json_read(rcx_config_path)
+            rcx_pdk = str(rcx_config.get("pdk", "") or "").strip()
+            ecc_module.init_rcx(config=rcx_config_path, pdk=rcx_pdk)
             ecc_module.run_rcx()
             ecc_module.report_rcx()
             sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)

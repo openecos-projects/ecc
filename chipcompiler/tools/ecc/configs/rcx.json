@@ -1,4 +1,5 @@
 {
+    "pdk": "",
     "thread_num": 64,
     "output": "/RCX_ecc/output",
     "mapping_file": "/corners/ICsprout_55LLULP_1P6M_5lc_V1p1_cell.map",
