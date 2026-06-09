@@ -351,6 +351,10 @@ def get_parameters(pdk_name: str = "", path: str = "") -> Parameters:
             parameters.data = deepcopy(ICS55_PARAMETERS_TEMPLATE)
         case "sg13g2":
             parameters.data = deepcopy(SG13G2_PARAMETERS_TEMPLATE)
+        case "gf180mcu" | "gf180":
+            parameters.data = deepcopy(GF180_PARAMETERS_TEMPLATE)
+        case "sky130":
+            parameters.data = deepcopy(SKY130_PARAMETERS_TEMPLATE)
 
     return parameters
 
