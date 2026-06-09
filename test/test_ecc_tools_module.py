@@ -27,10 +27,19 @@ def test_init_rcx_passes_pdk_when_configured():
     assert module.ecc.calls == [{"config": "/tmp/rcx.json", "pdk": "ics55"}]
 
 
-def test_init_rcx_omits_empty_pdk_for_backward_compatibility():
+def test_init_rcx_defaults_to_ics55_pdk():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
     assert module.init_rcx(config="/tmp/rcx.json") is True
+
+    assert module.ecc.calls == [{"config": "/tmp/rcx.json", "pdk": "ics55"}]
+
+
+def test_init_rcx_omits_explicit_empty_pdk_for_backward_compatibility():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    assert module.init_rcx(config="/tmp/rcx.json", pdk="") is True
 
     assert module.ecc.calls == [{"config": "/tmp/rcx.json"}]
