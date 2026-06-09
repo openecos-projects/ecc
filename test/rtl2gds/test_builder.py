@@ -4,7 +4,14 @@ from chipcompiler.rtl2gds import get_flow_builders
 
 
 def test_discovery_includes_current_presets():
-    assert {"rtl2gds", "rcx", "harden", "syn_sta"} <= set(get_flow_builders())
+    assert {
+        "rtl2gds",
+        "rcx",
+        "harden",
+        "syn_sta",
+        "synthesis_lec",
+        "post_route_lec",
+    } <= set(get_flow_builders())
 
 
 def test_discovery_picks_up_new_flow_def(monkeypatch):

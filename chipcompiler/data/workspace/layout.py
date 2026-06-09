@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 """Typed path-group layout for workspace steps.
 
-Two real step shapes exist: synthesis (:class:`YosysStep`) and place-and-route
-(:class:`EccStep`, reused by ecc/dreamplace/sizer). Each path group has a common
-base plus a per-shape variant that adds the tool-specific leaves. The step
-classes are frozen so a variant may override a group field with its narrower
-type (covariance) without a mutable-field variance error; the group dataclasses
-themselves stay mutable so a builder can still populate ``output.spef`` or a
-subflow's ``steps`` in place.
+Three real step shapes exist: synthesis (:class:`YosysStep`), place-and-route
+(:class:`EccStep`, reused by ecc/dreamplace/sizer), and LEC
+(:class:`YosysLecStep`). Each path group has a common base plus a per-shape
+variant that adds the tool-specific leaves. The step classes are frozen so a
+variant may override a group field with its narrower type (covariance) without a
+mutable-field variance error; the group dataclasses themselves stay mutable so a
+builder can still populate ``output.spef`` or a subflow's ``steps`` in place.
 
 The legacy dict key ``"def"`` is a Python keyword, so it is exposed as the
 attribute ``def_``.
@@ -46,6 +46,8 @@ class OutputPaths:
 class YosysOutput(OutputPaths):
     sim_verilog: Path | None = None
     report: Path | None = None
+    # Pre-techmap netlist used as the golden side of Yosys LEC.
+    golden_verilog: Path | None = None
 
 
 @dataclass
@@ -139,6 +141,25 @@ class StepReport:
 class YosysReport(StepReport):
     stat: Path | None = None
     check: Path | None = None
+
+
+@dataclass
+class YosysLecInput(StepInput):
+    gate_verilog: Path | None = None
+    golden_verilog: Path | None = None
+
+
+@dataclass
+class YosysLecData(StepData):
+    config: Path | None = None
+
+
+@dataclass
+class YosysLecReport(StepReport):
+    status: Path | None = None
+    equiv_status: Path | None = None
+    failed_rtlil: Path | None = None
+    failed_verilog: Path | None = None
 
 
 @dataclass
@@ -240,6 +261,15 @@ class YosysStep(WorkspaceStepBase):
     data: YosysData = field(default_factory=YosysData)
     feature: YosysFeature = field(default_factory=YosysFeature)
     report: YosysReport = field(default_factory=YosysReport)
+
+
+@dataclass(frozen=True)
+class YosysLecStep(WorkspaceStepBase):
+    """Yosys equivalence-checking step."""
+
+    input: YosysLecInput = field(default_factory=YosysLecInput)
+    data: YosysLecData = field(default_factory=YosysLecData)
+    report: YosysLecReport = field(default_factory=YosysLecReport)
 
 
 @dataclass(frozen=True)

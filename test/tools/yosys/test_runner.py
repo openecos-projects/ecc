@@ -14,21 +14,22 @@ def _build_workspace_and_step(tmp_path: Path):
     rtl_file.write_text("module top; endmodule\n")
 
     output_file = tmp_path / "output.v"
+    golden_file = tmp_path / "output_golden.v"
     log_file = tmp_path / "yosys.log"
 
     workspace = SimpleNamespace(design=SimpleNamespace(input_filelist=""))
     step = SimpleNamespace(
         input=StepInput(verilog=rtl_file),
-        output=YosysOutput(verilog=output_file),
+        output=YosysOutput(verilog=output_file, golden_verilog=golden_file),
         log=LogPaths(file=log_file),
         script=ScriptPaths(dir=script_dir),
         directory=tmp_path,
     )
-    return workspace, step, output_file, log_file
+    return workspace, step, output_file, golden_file, log_file
 
 
 def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
-    workspace, step, output_file, _ = _build_workspace_and_step(tmp_path)
+    workspace, step, output_file, golden_file, _ = _build_workspace_and_step(tmp_path)
     runtime_env = {"PATH": "/opt/yosys/bin", "CUSTOM_ENV": "1"}
     updates = []
     run_calls = []
@@ -68,6 +69,7 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
         )
         if cmd == ["yosys", "yosys_synthesis.tcl"]:
             output_file.write_text("module top(); endmodule\n")
+            golden_file.write_text("module top(); endmodule\n")
             return SimpleNamespace(returncode=0)
         raise AssertionError(f"Unexpected command: {cmd}")
 
@@ -101,7 +103,7 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
 
 
 def test_run_step_keeps_synthesis_success_when_sta_report_fails(tmp_path, monkeypatch):
-    workspace, step, output_file, _ = _build_workspace_and_step(tmp_path)
+    workspace, step, output_file, golden_file, _ = _build_workspace_and_step(tmp_path)
     updates = []
 
     class FakeSubFlow:
@@ -120,6 +122,7 @@ def test_run_step_keeps_synthesis_success_when_sta_report_fails(tmp_path, monkey
 
     def fake_run(cmd, cwd, env, stdout, stderr):
         output_file.write_text("module top(); endmodule\n")
+        golden_file.write_text("module top(); endmodule\n")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(runner, "YosysSubFlow", FakeSubFlow)
@@ -136,7 +139,7 @@ def test_run_step_keeps_synthesis_success_when_sta_report_fails(tmp_path, monkey
 
 
 def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
-    workspace, step, _, log_file = _build_workspace_and_step(tmp_path)
+    workspace, step, _, _, log_file = _build_workspace_and_step(tmp_path)
     updates = []
     run_calls = []
 
@@ -170,7 +173,7 @@ def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
 
 
 def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
-    workspace, step, output_file, _ = _build_workspace_and_step(tmp_path)
+    workspace, step, output_file, golden_file, _ = _build_workspace_and_step(tmp_path)
     step.data = YosysData(requires_slang=False)
     updates = []
 
@@ -193,6 +196,7 @@ def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
 
     def fake_run(cmd, cwd, env, stdout, stderr):
         output_file.write_text("module top(); endmodule\n")
+        golden_file.write_text("module top(); endmodule\n")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(runner, "YosysSubFlow", FakeSubFlow)
@@ -208,7 +212,7 @@ def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
 
 
 def test_run_step_marks_invalid_when_yosys_is_missing(tmp_path, monkeypatch):
-    workspace, step, _, log_file = _build_workspace_and_step(tmp_path)
+    workspace, step, _, _, log_file = _build_workspace_and_step(tmp_path)
     updates = []
 
     class FakeSubFlow:

@@ -26,8 +26,12 @@ from chipcompiler.data import StepEnum
 STEP_TYPE_MAP: dict[StepEnum, int] = {member: i for i, member in enumerate(StepEnum)}
 STEP_TYPE_COUNT: int = len(STEP_TYPE_MAP)
 
-# Steps that only require verilog output (not def/gds).
-SYNTHESIS_ONLY_STEPS: set[StepEnum] = {StepEnum.SYNTHESIS}
+# Steps that only require a non-physical output (not def/gds).
+SYNTHESIS_ONLY_STEPS: set[StepEnum] = {
+    StepEnum.SYNTHESIS,
+    StepEnum.LEC,
+    StepEnum.POST_ROUTE_LEC,
+}
 
 
 def _expected_output_keys(

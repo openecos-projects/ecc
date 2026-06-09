@@ -177,9 +177,13 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
         script.set_list("rtl_file", native_rtl_files or [_abspath(rtl_file)])
     script.blank_line()
 
+    golden_netlist_file = _abspath(step.output.golden_verilog or "")
+
     script.comment("Output files")
     script.set_path("final_netlist_file", netlist_file)
     script.set_path("final_netlist_sim_file", netlist_sim_file)
+    if golden_netlist_file:
+        script.set_path("golden_netlist_file", golden_netlist_file)
     script.set_path("timing_cell_stat_rpt", timing_cell_stat_rpt)
     script.set_path("timing_cell_count_rpt", timing_cell_count_rpt)
     script.set_path("generic_stat_json", generic_stat_json)
@@ -261,6 +265,7 @@ def build_step(
                 else output_dir / f"{design}_{step_name}.v.gz"
             ),
             sim_verilog=output_dir / f"{design}_{step_name}_sim.v.gz",
+            golden_verilog=output_dir / f"{design}_{step_name}_golden.v",
             json=output_dir / f"{design}_{step_name}.json",
             report=output_dir / f"{design}_{step_name}.rpt",
             image=output_dir / f"{design}_{step_name}.png",
