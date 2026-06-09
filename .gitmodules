@@ -7,4 +7,4 @@
 	url = https://github.com/openecos-projects/ecc-dreamplace.git
 [submodule "chipcompiler/thirdparty/ecc-sizer"]
 	path = chipcompiler/thirdparty/ecc-sizer
-	url = git@github.com:openecos-projects/ecc-sizer.git
+	url = https://github.com/openecos-projects/ecc-sizer.git
