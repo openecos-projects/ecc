@@ -44,6 +44,15 @@ ci: gate nix workflow paths
 Prefer scopes that match the changed area: `cli`, `runtime`, `tools`, `build`,
 `nix`, `ci`, `docs`, `dreamplace`, or `ecc-tools`.
 
+Install the local commit message hook before creating commits:
+
+```sh
+uv run prek install --config .pre-commit-config.yaml --hook-type commit-msg --overwrite
+```
+
+The hook uses `conventional-pre-commit` to check commit subjects against the
+same Conventional Commit style.
+
 ## Pull Requests
 
 Every PR should include:
