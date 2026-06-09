@@ -106,7 +106,7 @@ def run_workspace_flow(directory: str, rerun: bool) -> dict:
     try:
         workspace, engine_flow = load_workspace_runtime(directory)
         if rerun:
-            engine_flow.clear_states()
+            _prepare_workspace_for_rerun(workspace, engine_flow)
         ok = engine_flow.run_steps(rerun=rerun)
         if not ok:
             return workspace_response(
@@ -154,6 +154,8 @@ def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
 
     try:
         workspace, engine_flow = load_workspace_runtime(directory)
+        if rerun:
+            _refresh_workspace_config(workspace)
         workspace_step = engine_flow.get_workspace_step(step)
         if workspace_step is None:
             state = engine_flow.run_step(step, rerun)
@@ -423,6 +425,18 @@ def build_flow_for_workspace(workspace, create_step_workspaces: bool = True):
     if create_step_workspaces:
         engine_flow.create_step_workspaces()
     return engine_flow
+
+
+def _refresh_workspace_config(workspace):
+    import chipcompiler.data as data_api
+
+    data_api.refresh_workspace_config(workspace)
+
+
+def _prepare_workspace_for_rerun(workspace, engine_flow):
+    import chipcompiler.data as data_api
+
+    data_api.prepare_workspace_for_rerun(workspace, engine_flow)
 
 
 def _path_is_within(path: str, directory: str) -> bool:

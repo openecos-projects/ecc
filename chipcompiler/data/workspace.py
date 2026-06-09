@@ -463,6 +463,93 @@ def _path_is_within(path: str, directory: str) -> bool:
         return False
 
 
+def _reset_workspace_checklist(workspace: Workspace) -> None:
+    from chipcompiler.utility import json_write
+
+    checklist_path = workspace.home.data.get("checklist", "")
+    if not checklist_path:
+        checklist_path = f"{workspace.directory}/home/checklist.json"
+    json_write(
+        checklist_path,
+        {
+            "path": checklist_path,
+            "checklist": [],
+        },
+    )
+
+
+def _reset_workspace_runtime_parameters(workspace: Workspace) -> None:
+    from copy import deepcopy
+
+    current_data = workspace.parameters.data or {}
+    pdk_name = str(current_data.get("PDK", "")).lower()
+    template_parameters = get_parameters(pdk_name)
+    template_data = deepcopy(template_parameters.data)
+
+    die_template = template_data.get("Die")
+    if isinstance(die_template, dict) and isinstance(current_data.get("Die"), dict):
+        current_data["Die"] = deepcopy(die_template)
+
+    core_template = template_data.get("Core")
+    if isinstance(core_template, dict) and isinstance(current_data.get("Core"), dict):
+        current_core = current_data["Core"]
+        current_data["Core"] = {
+            **deepcopy(core_template),
+            "Utilitization": current_core.get("Utilitization", core_template.get("Utilitization")),
+            "Margin": deepcopy(current_core.get("Margin", core_template.get("Margin"))),
+            "Aspect ratio": current_core.get("Aspect ratio", core_template.get("Aspect ratio")),
+        }
+
+    save_parameter(workspace.parameters)
+
+
+def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
+    """Delete old run artifacts and restore runtime files before a full-flow rerun."""
+    import os
+    import shutil
+
+    workspace_root = os.path.realpath(workspace.directory)
+    step_directories = []
+    for workspace_step in getattr(engine_flow, "workspace_steps", []):
+        step_directory = getattr(workspace_step, "directory", "")
+        if not step_directory:
+            continue
+        resolved_step_directory = os.path.realpath(step_directory)
+        if (
+            resolved_step_directory == workspace_root
+            or not _path_is_within(resolved_step_directory, workspace_root)
+        ):
+            raise ValueError(f"refusing to delete step directory outside workspace: {step_directory}")
+        step_directories.append(resolved_step_directory)
+
+    for step_directory in sorted(set(step_directories), key=len, reverse=True):
+        if not os.path.exists(step_directory):
+            continue
+        if os.path.islink(step_directory) or os.path.isfile(step_directory):
+            os.unlink(step_directory)
+        else:
+            shutil.rmtree(step_directory)
+
+    if hasattr(engine_flow, "clear_states"):
+        engine_flow.clear_states()
+
+    workspace.home.reset()
+    workspace.home.set_flow(workspace.flow.path)
+    workspace.home.set_checklist(f"{workspace.directory}/home/checklist.json")
+    workspace.home.set_parameters(workspace.parameters.path)
+    _reset_workspace_checklist(workspace)
+    _reset_workspace_runtime_parameters(workspace)
+
+    refresh_workspace_config(workspace)
+
+    if hasattr(engine_flow, "engine_db"):
+        engine_flow.engine_db = None
+    if hasattr(engine_flow, "workspace_steps"):
+        engine_flow.workspace_steps.clear()
+    if hasattr(engine_flow, "create_step_workspaces"):
+        engine_flow.create_step_workspaces()
+
+
 def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     """Update only step-dependent workspace config fields."""
     from chipcompiler.utility import json_read, json_write

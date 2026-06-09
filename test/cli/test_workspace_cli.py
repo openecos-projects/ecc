@@ -43,6 +43,7 @@ class DummyFlow:
         self.added_steps = []
         self.created = False
         self.cleared = False
+        self.prepared_for_rerun = False
         self.run_steps_calls = []
         self.run_calls = []
         self.init_db_engine_calls = 0
@@ -685,6 +686,13 @@ def test_run_step_initializes_engine_db_before_step(monkeypatch, tmp_path, capsy
 
 def test_run_step_rerun_initializes_engine_db_before_step(monkeypatch, tmp_path, capsys):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    refresh_calls = []
+
+    def refresh_config(workspace):
+        refresh_calls.append(workspace.directory)
+        DummyFlow.instances[-1].call_order.append(("refresh_config", workspace.directory))
+
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", refresh_config)
 
     rc = cli_main.run(
         [
@@ -706,9 +714,11 @@ def test_run_step_rerun_initializes_engine_db_before_step(monkeypatch, tmp_path,
     assert data["response"] == "success"
     assert flow.init_db_engine_steps == ["Floorplan"]
     assert flow.call_order == [
+        ("refresh_config", os.path.abspath(ws)),
         ("init_db_engine",),
         ("run_step", "Floorplan", True),
     ]
+    assert refresh_calls == [os.path.abspath(ws)]
     assert flow.run_steps_calls == []
 
 
@@ -918,6 +928,14 @@ def test_workspace_json_output_honors_redirected_stdout(
 def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path, capsys):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     DummyFlow.next_run_states = [StateEnum.Success, StateEnum.Imcomplete]
+    prepare_calls = []
+
+    def prepare_workspace_for_rerun(workspace, engine_flow):
+        prepare_calls.append(workspace.directory)
+        engine_flow.prepared_for_rerun = True
+        engine_flow.call_order.append(("prepare_rerun", workspace.directory))
+
+    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", prepare_workspace_for_rerun)
 
     rc = cli_main.run(["workspace", "run-flow", "--directory", str(ws), "--rerun", "--json"])
 
@@ -927,7 +945,10 @@ def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path
     assert data["cmd"] == "run_flow"
     assert data["response"] == "failed"
     assert data["data"] == {"rerun": True}
-    assert flow.cleared
+    assert not flow.cleared
+    assert flow.prepared_for_rerun
+    assert prepare_calls == [os.path.abspath(ws)]
+    assert flow.call_order[0] == ("prepare_rerun", os.path.abspath(ws))
     assert flow.run_steps_calls == [True]
     assert flow.run_calls == [("Synthesis", True), ("Floorplan", True)]
     assert str(os.path.abspath(ws)) in data["message"][0]
@@ -945,8 +966,30 @@ def test_run_flow_resume_avoids_bulk_home_reset(monkeypatch, tmp_path, capsys):
     assert data["response"] == "success"
     assert data["data"] == {"rerun": False}
     assert not flow.cleared
+    assert not flow.prepared_for_rerun
     assert flow.run_steps_calls == [False]
     assert flow.run_calls == [("Synthesis", False), ("Floorplan", False)]
+
+
+def test_run_flow_rerun_stops_when_prepare_fails(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    def prepare_workspace_for_rerun(workspace, engine_flow):
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", prepare_workspace_for_rerun)
+
+    rc = cli_main.run(["workspace", "run-flow", "--directory", str(ws), "--rerun", "--json"])
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 1
+    assert data["cmd"] == "run_flow"
+    assert data["response"] == "error"
+    assert data["data"] == {"rerun": True}
+    assert "cleanup failed" in data["message"][0]
+    assert flow.run_steps_calls == []
+    assert flow.run_calls == []
 
 
 def test_get_info_success_warning_and_exception(monkeypatch, tmp_path, capsys):

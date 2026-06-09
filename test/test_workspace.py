@@ -6,6 +6,7 @@ from pathlib import Path
 from chipcompiler.data import create_workspace, load_workspace
 from chipcompiler.data.workspace import (
     init_workspace_config,
+    prepare_workspace_for_rerun,
     refresh_workspace_config,
     sync_workspace_config_to_parameters,
 )
@@ -219,6 +220,155 @@ def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(tmp_path):
 
     after = json_read(str(workspace_dir / "home" / "parameters.json"))
     assert after == before
+
+
+def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state(tmp_path):
+    pdk_root = _create_minimal_ics55_pdk(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters=_default_parameters(),
+        pdk_root=str(pdk_root),
+    )
+
+    parameters_before = (workspace_dir / "home" / "parameters.json").read_text()
+    config_before = (workspace_dir / "config" / "flow_config.json").read_text()
+    origin_before = (workspace_dir / "origin" / "gcd.v").read_text()
+
+    step_dir = workspace_dir / "floorplan_ecc"
+    (step_dir / "output").mkdir(parents=True)
+    (step_dir / "data").mkdir()
+    (step_dir / "feature").mkdir()
+    (step_dir / "report").mkdir()
+    (step_dir / "log").mkdir()
+    (step_dir / "output" / "gcd_floorplan.png").write_text("old layout")
+    (step_dir / "feature" / "floorplan.db.inst_dist.png").write_text("old metric")
+    (step_dir / "log" / "floorplan.log").write_text("old log")
+
+    home_path = workspace_dir / "home" / "home.json"
+    home = json_read(str(home_path))
+    home["layout"] = str(step_dir / "output" / "gcd_floorplan.png")
+    home["metrics"] = {"instances dist.": str(step_dir / "feature" / "floorplan.db.inst_dist.png")}
+    home["monitor"] = {
+        "step": ["Floorplan - init"],
+        "memory": ["1"],
+        "runtime": ["2"],
+        "instance": [3],
+        "frequency": [4.0],
+    }
+    json_write(str(home_path), home)
+
+    flow_path = workspace_dir / "home" / "flow.json"
+    json_write(
+        str(flow_path),
+        {
+            "steps": [
+                {
+                    "name": "Floorplan",
+                    "tool": "ecc",
+                    "state": "Success",
+                    "runtime": "0:03",
+                    "peak memory (mb)": 99,
+                    "info": {"kept": "yes"},
+                }
+            ]
+        },
+    )
+
+    checklist_path = workspace_dir / "home" / "checklist.json"
+    json_write(
+        str(checklist_path),
+        {
+            "path": str(checklist_path),
+            "checklist": [
+                {
+                    "step": "Floorplan",
+                    "type": "Area",
+                    "item": "check DIE area",
+                    "state": "Success",
+                }
+            ],
+        },
+    )
+
+    class FakeEngineFlow:
+        def __init__(self):
+            self.workspace_steps = [
+                type("Step", (), {"directory": str(step_dir)})(),
+            ]
+            self.engine_db = object()
+            self.clear_calls = 0
+            self.create_calls = 0
+
+        def clear_states(self):
+            self.clear_calls += 1
+            data = json_read(str(flow_path))
+            for step in data["steps"]:
+                step["state"] = "Unstart"
+                step["runtime"] = ""
+                step["peak memory (mb)"] = 0
+            json_write(str(flow_path), data)
+
+        def create_step_workspaces(self):
+            self.create_calls += 1
+            (step_dir / "output").mkdir(parents=True)
+            (step_dir / "log").mkdir()
+            self.workspace_steps = [type("Step", (), {"directory": str(step_dir)})()]
+
+    engine_flow = FakeEngineFlow()
+
+    prepare_workspace_for_rerun(workspace, engine_flow)
+
+    assert step_dir.exists()
+    assert not (step_dir / "output" / "gcd_floorplan.png").exists()
+    assert not (step_dir / "feature" / "floorplan.db.inst_dist.png").exists()
+    assert not (step_dir / "log" / "floorplan.log").exists()
+    assert (workspace_dir / "config" / "flow_config.json").read_text() == config_before
+    assert (workspace_dir / "origin" / "gcd.v").read_text() == origin_before
+    assert (workspace_dir / "log").exists()
+
+    reset_parameters = json.loads((workspace_dir / "home" / "parameters.json").read_text())
+    parameters_before_json = json.loads(parameters_before)
+    assert reset_parameters["PDK"] == parameters_before_json["PDK"]
+    assert reset_parameters["Design"] == parameters_before_json["Design"]
+    assert reset_parameters["Top module"] == parameters_before_json["Top module"]
+    assert reset_parameters["Clock"] == parameters_before_json["Clock"]
+    assert reset_parameters["Frequency max [MHz]"] == parameters_before_json["Frequency max [MHz]"]
+    assert reset_parameters["Core"]["Utilitization"] == parameters_before_json["Core"]["Utilitization"]
+    assert reset_parameters["Core"]["Margin"] == parameters_before_json["Core"]["Margin"]
+    assert reset_parameters["Core"]["Aspect ratio"] == parameters_before_json["Core"]["Aspect ratio"]
+    assert reset_parameters["Die"]["Size"] == []
+    assert reset_parameters["Die"]["Area"] == 0
+    assert reset_parameters["Core"]["Size"] == []
+    assert reset_parameters["Core"]["Area"] == 0
+    assert reset_parameters["Core"]["Bounding box"] == ""
+
+    reset_home = json_read(str(home_path))
+    assert reset_home["parameters"] == str(workspace_dir / "home" / "parameters.json")
+    assert reset_home["flow"] == str(flow_path)
+    assert reset_home["checklist"] == str(checklist_path)
+    assert reset_home["layout"] == ""
+    assert reset_home["metrics"] == {}
+    assert reset_home["monitor"]["step"] == []
+
+    reset_flow = json_read(str(flow_path))
+    assert reset_flow["steps"][0]["state"] == "Unstart"
+    assert reset_flow["steps"][0]["runtime"] == ""
+    assert reset_flow["steps"][0]["peak memory (mb)"] == 0
+
+    assert json_read(str(checklist_path)) == {
+        "path": str(checklist_path),
+        "checklist": [],
+    }
+    assert engine_flow.engine_db is None
+    assert engine_flow.clear_calls == 1
+    assert engine_flow.create_calls == 1
 
 
 #SG13G2 workspace tests
