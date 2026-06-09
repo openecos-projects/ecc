@@ -200,6 +200,114 @@ def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
     )
 
 
+def refresh_workspace_config(directory: str) -> dict:
+    cmd = "refresh_config"
+    response_data = {"directory": os.path.abspath(directory) if directory else "", "refreshed": False}
+    if not directory:
+        return workspace_response(
+            cmd,
+            "failed",
+            data=response_data,
+            message=["missing required field: directory"],
+        )
+
+    try:
+        workspace, _engine_flow = load_workspace_runtime(directory, create_step_workspaces=False)
+        resolved_directory = os.path.abspath(workspace.directory)
+        response_data["directory"] = resolved_directory
+
+        import chipcompiler.data as data_api
+
+        data_api.refresh_workspace_config(workspace)
+        response_data["refreshed"] = True
+    except WorkspaceValidationError as exc:
+        return workspace_response(cmd, "failed", data=response_data, message=[str(exc)])
+    except Exception as exc:
+        return workspace_response(
+            cmd,
+            "error",
+            data=response_data,
+            message=[f"refresh workspace config failed : {exc}"],
+        )
+
+    return workspace_response(
+        cmd,
+        "success",
+        data=response_data,
+        message=[f"refresh workspace config success : {response_data['directory']}"],
+    )
+
+
+def sync_workspace_config(directory: str, config_path: str) -> dict:
+    cmd = "sync_config"
+    response_data = {
+        "directory": os.path.abspath(directory) if directory else "",
+        "config_path": os.path.abspath(config_path) if config_path else "",
+        "parameters_changed": False,
+        "refreshed": False,
+    }
+    if not directory:
+        return workspace_response(
+            cmd,
+            "failed",
+            data=response_data,
+            message=["missing required field: directory"],
+        )
+    if not config_path:
+        return workspace_response(
+            cmd,
+            "failed",
+            data=response_data,
+            message=["missing required field: config_path"],
+        )
+
+    try:
+        workspace, _engine_flow = load_workspace_runtime(directory, create_step_workspaces=False)
+        resolved_directory = os.path.abspath(workspace.directory)
+        resolved_config_path = os.path.abspath(config_path)
+        response_data["directory"] = resolved_directory
+        response_data["config_path"] = resolved_config_path
+
+        config_dir = os.path.realpath(os.path.join(resolved_directory, "config"))
+        real_config_path = os.path.realpath(resolved_config_path)
+        if not _path_is_within(real_config_path, config_dir):
+            return workspace_response(
+                cmd,
+                "failed",
+                data=response_data,
+                message=[
+                    f"config path outside workspace config directory : {resolved_config_path}"
+                ],
+            )
+
+        import chipcompiler.data as data_api
+
+        parameters_changed = data_api.sync_workspace_config_to_parameters(
+            workspace,
+            resolved_config_path,
+        )
+        response_data["parameters_changed"] = parameters_changed
+        if parameters_changed:
+            data_api.refresh_workspace_config(workspace)
+            response_data["refreshed"] = True
+    except WorkspaceValidationError as exc:
+        return workspace_response(cmd, "failed", data=response_data, message=[str(exc)])
+    except Exception as exc:
+        return workspace_response(
+            cmd,
+            "error",
+            data=response_data,
+            message=[f"sync workspace config failed : {exc}"],
+        )
+
+    return workspace_response(
+        cmd,
+        "success",
+        data=response_data,
+        message=[f"sync workspace config success : {response_data['config_path']}"],
+    )
+
+
 def get_workspace_info(directory: str, step: str, info_id: str) -> dict:
     cmd = "get_info"
     step = step or ""
@@ -315,6 +423,13 @@ def build_flow_for_workspace(workspace, create_step_workspaces: bool = True):
     if create_step_workspaces:
         engine_flow.create_step_workspaces()
     return engine_flow
+
+
+def _path_is_within(path: str, directory: str) -> bool:
+    try:
+        return os.path.commonpath([path, directory]) == directory
+    except ValueError:
+        return False
 
 
 def _init_db_engine_for_workspace_step(engine_flow, workspace_step):

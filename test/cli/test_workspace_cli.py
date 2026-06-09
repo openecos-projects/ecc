@@ -156,6 +156,8 @@ def _install_runtime_mocks(monkeypatch, tmp_path):
 
     monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
     monkeypatch.setattr("chipcompiler.data.load_workspace", fake_load_workspace)
+    monkeypatch.setattr("chipcompiler.data.init_workspace_config", lambda workspace: None)
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", lambda workspace: None)
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.build_rtl2gds_flow",
@@ -316,6 +318,101 @@ def test_create_input_json_resolves_relative_origin_inputs_from_json_dir(
     assert data["response"] == "success"
     assert capture["create_kwargs"]["origin_def"] == str(project / "inputs" / "top.def")
     assert capture["create_kwargs"]["origin_verilog"] == str(project / "inputs" / "top.v")
+
+
+def test_refresh_config_cli_calls_workspace_refresh(monkeypatch, tmp_path, capsys):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    refreshed = []
+
+    def fake_refresh_workspace_config(workspace):
+        refreshed.append(workspace.directory)
+
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", fake_refresh_workspace_config)
+
+    rc = cli_main.run(["workspace", "refresh-config", "--directory", str(ws), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data == {
+        "cmd": "refresh_config",
+        "response": "success",
+        "data": {"directory": os.path.abspath(ws), "refreshed": True},
+        "message": [f"refresh workspace config success : {os.path.abspath(ws)}"],
+    }
+    assert capture["loaded"] == [str(ws)]
+    assert refreshed == [os.path.abspath(ws)]
+
+
+def test_sync_config_cli_rejects_path_outside_workspace_config(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}")
+
+    rc = cli_main.run([
+        "workspace",
+        "sync-config",
+        "--directory",
+        str(ws),
+        "--config-path",
+        str(outside),
+        "--json",
+    ])
+
+    data = _response(capsys)
+    assert rc == 1
+    assert data["cmd"] == "sync_config"
+    assert data["response"] == "failed"
+    assert data["data"]["config_path"] == os.path.abspath(outside)
+    assert "outside workspace config directory" in data["message"][0]
+
+
+def test_sync_config_cli_syncs_parameters_and_refreshes_when_changed(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    config_dir = ws / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "rt_default_config.json"
+    config_path.write_text("{}")
+    synced = []
+    refreshed = []
+
+    def fake_sync_workspace_config_to_parameters(workspace, path):
+        synced.append((workspace.directory, path))
+        return True
+
+    def fake_refresh_workspace_config(workspace):
+        refreshed.append(workspace.directory)
+
+    monkeypatch.setattr(
+        "chipcompiler.data.sync_workspace_config_to_parameters",
+        fake_sync_workspace_config_to_parameters,
+    )
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", fake_refresh_workspace_config)
+
+    rc = cli_main.run([
+        "workspace",
+        "sync-config",
+        "--directory",
+        str(ws),
+        "--config-path",
+        str(config_path),
+        "--json",
+    ])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data == {
+        "cmd": "sync_config",
+        "response": "success",
+        "data": {
+            "directory": os.path.abspath(ws),
+            "config_path": os.path.abspath(config_path),
+            "parameters_changed": True,
+            "refreshed": True,
+        },
+        "message": [f"sync workspace config success : {os.path.abspath(config_path)}"],
+    }
+    assert synced == [(os.path.abspath(ws), os.path.abspath(config_path))]
+    assert refreshed == [os.path.abspath(ws)]
 
 
 def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys):
