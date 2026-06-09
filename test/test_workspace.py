@@ -156,3 +156,29 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(tmp_path):
     assert loaded.pdk.root == resolved_root
     assert loaded.parameters.data.get("PDK Root") == resolved_root
     assert all(path.startswith(resolved_root) for path in loaded.pdk.libs)
+
+
+def test_create_workspace_default_sdc_supports_multiple_clocks(tmp_path):
+    pdk_root = _create_minimal_ics55_pdk(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, input bus_clk, output y); assign y = clk; endmodule\n")
+    parameters = _default_parameters()
+    parameters["Clock"] = ["clk", "bus_clk"]
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters=parameters,
+        pdk_root=str(pdk_root),
+    )
+
+    sdc_content = Path(workspace.pdk.sdc).read_text()
+
+    assert sdc_content.count("create_clock -name $clk_name -period $clk_period $clk_port") == 2
+    assert "set clk_name clk" in sdc_content
+    assert "set clk_port_name clk" in sdc_content
+    assert "set clk_name bus_clk" in sdc_content
+    assert "set clk_port_name bus_clk" in sdc_content

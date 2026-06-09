@@ -5,6 +5,7 @@ import os
 import re
        
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
+from chipcompiler.data.workspace import get_clock_names
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.tools.ecc.plot import ECCToolsPlot
@@ -709,9 +710,9 @@ def run_floorplan(workspace: Workspace,
                              state=StateEnum.Success)
         
         # set clock net
-        clock_name = workspace.parameters.data.get("Clock", "")
-        ecc_module.set_net(net_name=clock_name,
-                         net_type="CLOCK")
+        for clock_name in get_clock_names(workspace.parameters):
+            ecc_module.set_net(net_name=clock_name,
+                             net_type="CLOCK")
         sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value,
                              state=StateEnum.Success)
         

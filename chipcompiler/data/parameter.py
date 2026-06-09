@@ -107,7 +107,18 @@ ICS55_DESIGN_PARAMETERS = {
         "Top module": "gcd",
         "Clock": "clk",
         "Frequency max [MHz]": 100,
-    }
+    },
+    "os_xs": {
+        "Design": "os_xs",
+        "Top module": "XSTop",
+        "Clock": [
+            "clock",
+            "noc_clock",
+            "soc_clock",
+            "clint_clock",
+        ],
+        "Frequency max [MHz]": 100,
+    },
 }
 
 @dataclass

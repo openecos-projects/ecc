@@ -16,6 +16,16 @@ from .pdk import get_pdk, PDK
 from .step import StepEnum
 from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
+
+
+def get_clock_names(parameters: Parameters | dict) -> list[str]:
+    data = parameters.data if isinstance(parameters, Parameters) else parameters
+    clocks = data.get("Clock", "")
+    if isinstance(clocks, list):
+        return [str(clock) for clock in clocks if clock]
+    if clocks:
+        return [str(clocks)]
+    return []
     
 @dataclass
 class OriginDesign:
@@ -700,13 +710,14 @@ def create_default_sdc(workspace : Workspace):
     sdc_content = []
     sdc_content.append("# Auto-generated SDC file\n")
     sdc_content.append("\n")
-    sdc_content.append("set clk_name {} \n".format(workspace.parameters.data.get("Clock", "")))
-    sdc_content.append("set clk_port_name {}\n".format(workspace.parameters.data.get("Clock", "")))
-    sdc_content.append("set clk_freq_mhz {}\n".format(workspace.parameters.data.get("Frequency max [MHz]", 100)))
-    sdc_content.append("set clk_period [expr 1000.0 / $clk_freq_mhz]\n")
-    sdc_content.append("set clk_io_pct 0.2\n")
-    sdc_content.append("set clk_port [get_ports $clk_port_name]\n")
-    sdc_content.append("create_clock -name $clk_name -period $clk_period $clk_port\n")
+    for clock_name in get_clock_names(workspace.parameters):
+        sdc_content.append("set clk_name {} \n".format(clock_name))
+        sdc_content.append("set clk_port_name {}\n".format(clock_name))
+        sdc_content.append("set clk_freq_mhz {}\n".format(workspace.parameters.data.get("Frequency max [MHz]", 100)))
+        sdc_content.append("set clk_period [expr 1000.0 / $clk_freq_mhz]\n")
+        sdc_content.append("set clk_io_pct 0.2\n")
+        sdc_content.append("set clk_port [get_ports $clk_port_name]\n")
+        sdc_content.append("create_clock -name $clk_name -period $clk_period $clk_port\n")
     
     with open(workspace.pdk.sdc, 'w') as file:
         file.writelines(sdc_content)
