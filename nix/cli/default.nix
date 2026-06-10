@@ -1,14 +1,15 @@
 {
   lib,
   python3Packages,
-  ecc-tools,
+  ecc-dreamplace-python,
+  ecc-tools-python,
   yosysWithSlang,
   makeWrapper,
 }:
 
 python3Packages.buildPythonPackage {
   pname = "chipcompiler-cli";
-  version = "0.1.0";
+  version = "0.1.0-alpha.3";
   pyproject = true;
 
   src =
@@ -22,12 +23,6 @@ python3Packages.buildPythonPackage {
         ./../../chipcompiler
       ];
     };
-
-  postPatch = ''
-    mkdir -p thirdparty/ecc-tools/bin
-    install -m 755 ${ecc-tools}/bin/*.cpython-*.so thirdparty/ecc-tools/bin/
-    install -m 755 ${ecc-tools}/bin/*.cpython-*.so chipcompiler/tools/ecc/bin/
-  '';
 
   postInstall = ''
     site_packages="$out/${python3Packages.python.sitePackages}"
@@ -43,19 +38,23 @@ python3Packages.buildPythonPackage {
       fi
     done
 
-    # This package should expose only the dedicated `cli` entrypoint.
+    # This package should expose only the dedicated `ecc` entrypoint.
     rm -f "$out/bin/chipcompiler"
   '';
 
   postFixup = ''
-    wrapProgram "$out/bin/cli" \
+    wrapProgram "$out/bin/ecc" \
       --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}" \
       --prefix PATH : "${yosysWithSlang}/bin"
   '';
 
   build-system = with python3Packages; [ uv-build ];
 
-  dependencies = with python3Packages; [
+  dependencies = [
+    ecc-dreamplace-python
+    ecc-tools-python
+  ]
+  ++ (with python3Packages; [
     fastapi
     klayout
     matplotlib
@@ -65,9 +64,12 @@ python3Packages.buildPythonPackage {
     pyjson5
     pyyaml
     scipy
+    torch
     tqdm
+    typer
     uvicorn
-  ];
+    pip
+  ]);
 
   nativeBuildInputs = [ makeWrapper ];
 
@@ -76,7 +78,6 @@ python3Packages.buildPythonPackage {
 
   pythonImportsCheck = [
     "chipcompiler"
-    "chipcompiler.server"
     "chipcompiler.engine"
     "chipcompiler.tools"
     "chipcompiler.cli"
@@ -88,6 +89,6 @@ python3Packages.buildPythonPackage {
     license = lib.licenses.mulan-psl2;
     platforms = lib.platforms.linux;
     maintainers = [ ];
-    mainProgram = "cli";
+    mainProgram = "ecc";
   };
 }

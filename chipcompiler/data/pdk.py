@@ -94,42 +94,32 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
         "{}/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir),
         "{}/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir)
     ]
-    mapping_file = "{}/resource/ICsprout_55LLULP_1P6M_5lc_V1p1_cell.map".format(resolved_root)
+    mapping_file = ""
     corners = [
         {
             "name" : "TYPICAL",
-            "ecc_tf" : "{}/resource/TYP.json".format(resolved_root),
-            "itf_file" : "{}/resource/TYP.itf".format(resolved_root),
-            "captab_file" : "{}/resource/TYP.captab".format(resolved_root),
-            "spef_file" : "{}/resource/TYP.spef".format(resolved_root)
+            "temperature" : [25],
+            "spef_file" : "./TYP.spef"
         },
         {
             "name" : "RCbest",
-            "ecc_tf" : "{}/resource/RCbest.json".format(resolved_root),
-            "itf_file" : "{}/resource/RCbest.itf".format(resolved_root),
-            "captab_file" : "{}/resource/RCbest.captab".format(resolved_root),
-            "spef_file" : "{}/resource/RCbest.spef".format(resolved_root)
+            "temperature" : [-40, 125],
+            "spef_file" : "./RCbest.spef"
         },
         {
             "name" : "RCworst",
-            "ecc_tf" : "{}/resource/RCworst.json".format(resolved_root),
-            "itf_file" : "{}/resource/RCworst.itf".format(resolved_root),
-            "captab_file" : "{}/resource/RCworst.captab".format(resolved_root),
-            "spef_file" : "{}/resource/RCworst.spef".format(resolved_root)
+            "temperature" : [-40, 125],
+            "spef_file" : "./RCworst.spef"
         },
         {
             "name" : "Cbest",
-            "ecc_tf" : "{}/resource/Cbest.json".format(resolved_root),
-            "itf_file" : "{}/resource/Cbest.itf".format(resolved_root),
-            "captab_file" : "{}/resource/Cbest.captab".format(resolved_root),
-            "spef_file" : "{}/resource/Cbest.spef".format(resolved_root)
+            "temperature" : [-40, 125],
+            "spef_file" : "./Cbest.spef"
         },
         {
             "name" : "Cworst",
-            "ecc_tf" : "{}/resource/Cworst.json".format(resolved_root),
-            "itf_file" : "{}/resource/Cworst.itf".format(resolved_root),
-            "captab_file" : "{}/resource/Cworst.captab".format(resolved_root),
-            "spef_file" : "{}/resource/Cworst.spef".format(resolved_root)
+            "temperature" : [-40, 125],
+            "spef_file" : "./Cworst.spef"
         }
     ]
 

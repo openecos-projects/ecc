@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
-from copy import deepcopy
-from pathlib import Path
+import os
 
-from chipcompiler.data import Workspace, WorkspaceStep
+from chipcompiler.data import Workspace, WorkspaceStep, build_workspace_config_paths
 from chipcompiler.tools.ecc import builder as ecc_builder
+from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
+    apply_parameter_overrides as _apply_parameter_overrides,
+)
 from chipcompiler.utility import json_read, json_write
 
 
@@ -15,24 +16,25 @@ def apply_parameter_overrides(
     base_params: dict,
     parameter_data: dict,
 ) -> dict:
-    """Apply direct DreamPlace overrides onto a DreamPlace config dictionary.
+    """Apply DreamPlace overrides onto a DreamPlace config dictionary.
 
-    Args:
-        base_params: The generated DreamPlace config contents.
-        parameter_data: The workspace ``home/parameters.json`` data.
-
-    Returns:
-        A copied config dictionary with ``DreamPlace`` values applied directly.
+    Kept as a compatibility entrypoint for external benchmark integrations.
     """
-    params = deepcopy(base_params)
+    return _apply_parameter_overrides(base_params, parameter_data)
 
-    dreamplace_overrides = parameter_data.get("DreamPlace", {})
-    if not isinstance(dreamplace_overrides, dict):
-        return params
 
-    for key, value in dreamplace_overrides.items():
-        params[key] = deepcopy(value)
+def _current_parameter_data(workspace: Workspace) -> dict:
+    parameter_path = workspace.parameters.path
+    if parameter_path and os.path.exists(parameter_path):
+        return json_read(parameter_path)
 
+    return workspace.parameters.data
+
+
+def _set_step_fields(params: dict, step: WorkspaceStep) -> dict:
+    params["def_input"] = step.input.get("def", "")
+    params["verilog_input"] = step.input.get("verilog", "")
+    params["result_dir"] = step.data.get(step.name, step.data["dir"])
     return params
 
 
@@ -58,8 +60,6 @@ def build_step(
         tool="dreamplace",
     )
 
-    step.config["dreamplace"] = f"{step.config['dir']}/dreamplace.json"
-
     return step
 
 
@@ -71,20 +71,12 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     # build ecc config
     ecc_builder.build_step_config(workspace, step)
 
-    # build workspace/place_dreamplace/config/dreamplace.json
+    if not workspace.config:
+        workspace.config = build_workspace_config_paths(workspace)
 
-    # resolve the absolute path to configs/dreamplace.json relative to this script,
-    # then copy it to the destination specified by step.config["dreamplace"]
-    param_src = Path(__file__).resolve().parent / "configs" / "dreamplace.json"
-    shutil.copy2(param_src, step.config["dreamplace"])
+    params = json_read(workspace.config["dreamplace"])
 
-    params = json_read(step.config["dreamplace"])
+    params = apply_parameter_overrides(params, _current_parameter_data(workspace))
+    params = _set_step_fields(params, step)
 
-    params["lef_input"] = [workspace.pdk.tech, *workspace.pdk.lefs]
-    params["def_input"] = step.input.get("def", "")
-    params["verilog_input"] = step.input.get("verilog", "")
-    params["result_dir"] = step.data.get(step.name, step.data["dir"])
-    params["base_design_name"] = workspace.design.name
-    params = apply_parameter_overrides(params, workspace.parameters.data)
-
-    json_write(step.config["dreamplace"], params)
+    json_write(workspace.config["dreamplace"], params)

@@ -1,17 +1,15 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import importlib.machinery
 import json
 import logging
 import os
 import sys
 from contextlib import contextmanager
-from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
-    
+
+
 class DreamplaceModule:
     def __init__(
         self,
@@ -30,7 +28,7 @@ class DreamplaceModule:
         self.input_verilog = input_verilog
         self.output_def = output_def
         self.output_verilog = output_verilog
-        self.param_path = step.config["dreamplace"]
+        self.param_path = workspace.config["dreamplace"]
         self.result_dir = step.data.get(step.name, step.data["dir"])
 
     def _build_params(self, params_cls, legalize_only: bool):

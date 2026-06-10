@@ -1,0 +1,1 @@
+"""Legacy workspace compatibility internals."""

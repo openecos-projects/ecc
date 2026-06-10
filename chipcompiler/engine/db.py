@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep
+from chipcompiler.data import Workspace, WorkspaceStep, StepEnum
 
 class EngineDB:
     """
@@ -8,20 +8,26 @@ class EngineDB:
     db : use ecc-tools-idb as the database engine
     """
     from chipcompiler.tools.ecc import ECCToolsModule
-    def __init__(self, workspace : Workspace, eda : ECCToolsModule= None):
+    def __init__(self, workspace : Workspace, ecc_module : ECCToolsModule= None):
         self.workspace = workspace
-        self.eda = eda
+        self.ecc_module = ecc_module
+        
+    def has_init(self) -> bool:
+        return self.ecc_module is not None and self.ecc_module.ecc is not None
     
     @property
     def engine(self):
-        return self.eda
+        return self.ecc_module
 
     def create_db_engine(self, step: WorkspaceStep) -> bool:
         """
         create db engine from ecc module
         """
-        if self.eda is not None:
+        if self.ecc_module is not None:
             return True
+        
+        if step is None:
+            return False
         
         # check eda tool exist
         from chipcompiler.tools import load_eda_module
@@ -30,12 +36,12 @@ class EngineDB:
             return False
         
         from chipcompiler.tools.ecc import create_db_engine
-        self.eda = create_db_engine(self.workspace, step)
-        if self.eda is not None:
-            self.workspace.logger.info("ecc db initialize success.")
+        self.ecc_module = create_db_engine(self.workspace, step)
+        if self.ecc_module is not None:
+            self.workspace.logger.info(f"ecc db initialize success for step {step.name}.")
             return True
         else:
-            self.workspace.logger.error("ecc db initialize failed.")
+            self.workspace.logger.warning(f"ecc db initialize failed for step {step.name}.")
             return False
     
     def update_db_from_step(self,
@@ -48,4 +54,4 @@ class EngineDB:
         """
         def_file = step.output["def"]
         
-        self.eda.read_def()
+        self.ecc_module.read_def()

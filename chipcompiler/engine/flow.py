@@ -5,64 +5,40 @@ import os
 import time
 import logging
 import traceback
-from multiprocessing import Process
-from threading import Thread
+from threading import Event, Thread
 
 from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum, log_flow
 from chipcompiler.engine import EngineDB
-from chipcompiler.utility import track_process_memory
 from chipcompiler.utility.log import redirect_stdio_to_file
 
 logger = logging.getLogger(__name__)
 
-def _run_step_in_subprocess(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
-    """
-    Step subprocess entry point: redirect stdio to log file if configured,
-    then execute the EDA tool step.
-    """
-    # Redirect stdout/stderr to the step's own log file.
-    log_file = workspace_step.log.get("file", "")
-    if log_file:
-        log_file = os.path.abspath(log_file)
-        try:
-            os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-            redirect_stdio_to_file(log_file)
-        except Exception:
-            traceback.print_exc()
-
-    step_tag = f"{workspace_step.name}({workspace_step.tool})"
-    workspace.logger.info(f"[STEP] {step_tag} pid={os.getpid()} started")
-
+def get_process_rss_mb(pid : int) -> float:
+    peak_memory = 0
     try:
-        from chipcompiler.tools import run_step as run_tool_step
-        result = run_tool_step(workspace=workspace, step=workspace_step)
-        workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
+        with open(f"/proc/{pid}/status", 'r') as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    rss_kb = int(line.split()[1])
+                    peak_memory = rss_kb / 1024
+                    break
     except Exception:
-        workspace.logger.error(f"[STEP] {step_tag} failed with exception")
-        traceback.print_exc()
+        pass
+    return peak_memory
 
-
-def _run_step_inline(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
-    """
-    Execute a step in the current process so pdb/debugpy can attach normally.
-    """
-    step_tag = f"{workspace_step.name}({workspace_step.tool})"
-    workspace.logger.info(f"[STEP] {step_tag} started inline pid={os.getpid()}")
-
-    try:
-        from chipcompiler.tools import run_step as run_tool_step
-        result = run_tool_step(workspace=workspace, step=workspace_step)
-        workspace.logger.info(f"[STEP] {step_tag} finished inline result={result}")
-    except Exception:
-        workspace.logger.error(f"[STEP] {step_tag} failed with exception")
-        traceback.print_exc()
-
+def track_current_process_memory(pid : int,
+                                 stop_event : Event,
+                                 peak_memory : list[float]):
+    while not stop_event.is_set():
+        peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
+        stop_event.wait(0.1)
+    peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
 
 class EngineFlow:
-    def __init__(self, workspace : Workspace):
+    def __init__(self, workspace : Workspace, engine_db : EngineDB = None):
         self.workspace = workspace
         self.workspace_steps = []
-        self.db = None # db engine for this flow
+        self.engine_db = engine_db # db engine for this flow
         
         if self.workspace is not None:
             self.load()
@@ -262,6 +238,10 @@ class EngineFlow:
                                    input_db=input_db)
             # save workspace step
             if eda_step is not None:
+                if pre_step is not None \
+                    and pre_step.name == StepEnum.RCX.value \
+                    and eda_step.name == StepEnum.STA.value:
+                    eda_step.output["spef"] = pre_step.output.get("spef", [])
                 self.workspace_steps.append(eda_step)
                 pre_step = eda_step
             else:
@@ -272,36 +252,36 @@ class EngineFlow:
         if len(self.workspace_steps) <= 0:
             return False
         
-        if self.db is not None:
-            return True
+        # check ecc is initialized by last step, if exist and success, use it to init db engine directly.
+        if self.engine_db is None:
+            self.engine_db = EngineDB(workspace=self.workspace)
+        else:
+            if self.engine_db.has_init():
+                return True
         
         # init engine step by last workpsace step data if all step run success
-        workspace_step = self.workspace_steps[-1]
+        workspace_step = None
         for ws_step in self.workspace_steps:
             if not self.check_state(name=ws_step.name,
                                     tool=ws_step.tool,
                                     state=StateEnum.Success):
                 # use the first unsuccess step to setup db engine
                 workspace_step = ws_step
+                break
                                 
-        engine = EngineDB(workspace=self.workspace)
-        if engine.create_db_engine(step=workspace_step):
-            self.db = engine
-            return True
-        else:
-            return False
-        
+        return self.engine_db.create_db_engine(step=workspace_step)
     
     def run_steps(self, rerun=False) -> bool:
         """
         run all flow steps
         """
         
-        self.workspace.home.reset() # reset home data before run steps
+        if rerun:
+            self.workspace.home.reset() # reset home data before rerun steps
         
         for workspace_step in self.workspace_steps: 
             self.workspace.logger.log_section(f"{workspace_step.tool} - begin step - {workspace_step.name}")
-            
+            self.init_db_engine()
             state = self.run_step(workspace_step, rerun)
             
             log_flow(workspace=self.workspace)
@@ -348,26 +328,41 @@ class EngineFlow:
                        tool=workspace_step.tool,
                        state=StateEnum.Ongoing)
 
-        # run step in a subprocess
-        p = Process(target=_run_step_in_subprocess,
-                    args=(self.workspace, workspace_step))
-        p.start()
-        step_log_file = workspace_step.log.get("file", "")
-        logger.info("[DISPATCH] %s pid=%s log=%s", step_tag, p.pid,
-                    os.path.abspath(step_log_file) if step_log_file else "N/A")
+        # run step
+        log_file = workspace_step.log.get("file", "")
+        if log_file:
+            log_file = os.path.abspath(log_file)
+            try:
+                os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
+                redirect_stdio_to_file(log_file)
+            except Exception:
+                traceback.print_exc()
+    
+        step_tag = f"{workspace_step.name}({workspace_step.tool})"
+        self.workspace.logger.info(f"[STEP] {step_tag} pid={os.getpid()} started")
 
-        # track peak memory in a background thread
-        peak_memory_result = [0]
-        def _track_memory():
-            peak_memory_result[0] = track_process_memory(p.pid)
-        tracker = Thread(target=_track_memory, daemon=True)
-        tracker.start()
+        pid = os.getpid()
+        start_memory_mb = get_process_rss_mb(pid)
+        peak_memory = [start_memory_mb]
+        stop_memory_monitor = Event()
+        memory_monitor = Thread(target=track_current_process_memory,
+                                args=(pid, stop_memory_monitor, peak_memory),
+                                daemon=True)
+        memory_monitor.start()
+        try:
+            from chipcompiler.tools import run_step as run_tool_step
+            result = run_tool_step(workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine)
+            self.workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
+        except Exception:
+            self.workspace.logger.error(f"[STEP] {step_tag} failed with exception")
+            traceback.print_exc()
+        finally:
+            stop_memory_monitor.set()
+            memory_monitor.join()
 
-        p.join()
-        tracker.join(timeout=1.0)
-        
         # compute metrics
-        peak_memory_mb = 0
+        peak_memory_mb = peak_memory[0] - start_memory_mb
+        peak_memory_mb = 0 if peak_memory_mb < 0 else round(peak_memory_mb, 3)
         elapsed = time.time() - start_time
         runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
 

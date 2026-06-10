@@ -11,13 +11,16 @@ from .workspace import (
     OriginDesign,
     Workspace,
     WorkspaceStep,
+    build_workspace_config_paths,
     create_default_sdc,
     create_workspace,
+    init_workspace_config,
     load_workspace,
     log_workspace,
     log_parameters,
     log_flow,
-    log_workspace_step
+    log_workspace_step,
+    update_step_config,
 )
 
 from .checklist import (
@@ -33,13 +36,16 @@ __all__ = [
     'create_default_sdc',
     'Workspace', 
     'WorkspaceStep', 
+    'build_workspace_config_paths',
+    'init_workspace_config',
+    'update_step_config',
     'PDK',
     'get_pdk',
     'OriginDesign',
     'log_workspace',
     'log_parameters',
     'log_flow',
-    'log_workspace_step'
+    'log_workspace_step',
     'Parameters',
     'load_parameter',
     'save_parameter',
