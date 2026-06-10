@@ -57,6 +57,20 @@ jobs:
           git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git chipcompiler/thirdparty/icsprout55-pdk
           cd chipcompiler/thirdparty/icsprout55-pdk && make unzip
 
+          # Create minimal GF180MCU PDK fixture for tests that expect a local PDK
+          mkdir -p chipcompiler/thirdparty/gf180mcu-pdk/lef
+          mkdir -p chipcompiler/thirdparty/gf180mcu-pdk/lib
+          echo "VERSION 5.8 ;" > chipcompiler/thirdparty/gf180mcu-pdk/lef/gf180mcu_7t_tech.lef
+          echo "VERSION 5.8 ;" > chipcompiler/thirdparty/gf180mcu-pdk/lef/gf180mcu_fd_sc_mcu7t5v0.lef
+          echo "library(test) { }" > chipcompiler/thirdparty/gf180mcu-pdk/lib/gf180mcu_fd_sc_mcu7t5v0__ss_125C_1p65V.lib
+
+          # Create minimal SKY130 PDK fixture for tests that expect a local PDK
+          mkdir -p chipcompiler/thirdparty/sky130-pdk/lef
+          mkdir -p chipcompiler/thirdparty/sky130-pdk/lib
+          echo "VERSION 5.8 ;" > chipcompiler/thirdparty/sky130-pdk/lef/sky130_fd_sc_hd.tech.lef
+          echo "VERSION 5.8 ;" > chipcompiler/thirdparty/sky130-pdk/lef/sky130_fd_sc_hd.lef
+          echo "library(test) { }" > chipcompiler/thirdparty/sky130-pdk/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
