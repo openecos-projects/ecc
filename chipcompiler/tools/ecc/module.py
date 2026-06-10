@@ -17,7 +17,7 @@ class ECCToolsModule:
     """
     def __init__(self):
         try:
-            from ecc_tools_bin import ecc_py as ecc
+            from chipcompiler.tools.ecc.bin import ecc_py as ecc
         except ImportError:
             try:
                 from chipcompiler.tools.ecc.bin import ecc_py as ecc
@@ -223,6 +223,12 @@ class ECCToolsModule:
     def json_save(self,
                   path : str):
         self.ecc.json_save(path=path)
+
+    def view_json_save(self, output_dir: str):
+        return self.ecc.view_json_save(output_dir=output_dir)
+
+    def view_json_apply_edits(self, edits_path: str):
+        return self.ecc.view_json_apply_edits(edits_path=edits_path)
 
     def save_data(self, path: str):
         """save ECC data"""

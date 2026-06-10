@@ -49,6 +49,8 @@ def build_step(workspace: Workspace,
     output_db = f"{step.directory}/output/{workspace.design.name}_{step.name}_db"
     output_image = f"{step.directory}/output/{workspace.design.name}_{step.name}.png"
     output_json = f"{step.directory}/output/{workspace.design.name}_{step.name}.json"
+    output_view = f"{step.directory}/output/{workspace.design.name}_{step.name}_view"
+    output_view_edits = f"{output_view}/edits/layout_edits.json"
     output_lef = f"{step.directory}/output/{workspace.design.name}_{step.name}.lef"
     output_lib = f"{step.directory}/output/{workspace.design.name}_{step.name}.lib"
     output_spef = []
@@ -60,6 +62,8 @@ def build_step(workspace: Workspace,
         "db": output_db,
         "image": output_image,
         "json" : output_json,
+        "view_json" : output_view,
+        "view_json_edits" : output_view_edits,
         "lef" : output_lef,
         "lib" : output_lib,
         "spef" : output_spef
