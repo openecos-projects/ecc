@@ -118,10 +118,12 @@ jobs:
          NUMPY_EXPERIMENTAL_ARRAY_FUNCTION: "0"
          OPENBLAS_VERBOSE: "2"
          MALLOC_CHECK_: "0"
+         VECLIB_MAXIMUM_THREADS: "1"
+         ACCELERATE_NUM_THREADS: "1"
         run: |
           export PYTHON_GIL=1
           ulimit -s unlimited
-          uv run pytest test/test_tools.py::test_ics55_gcd -v --timeout=600 -p no:cacheprovider --tb=short
+          uv run pytest test/test_tools.py::test_ics55_gcd -v --timeout=600 -p no:cacheprovider --tb=short -n0
       - name: Publish coverage summary
         if: always()
         run: |
@@ -153,6 +155,9 @@ jobs:
           NUMEXPR_NUM_THREADS: "1"
           OPENBLAS_NUM_THREADS: "1"
           OPENBLAS_MAIN_FREE: "1"
+          NUMPY_EXPERIMENTAL_ARRAY_FUNCTION: "0"
+          OPENBLAS_VERBOSE: "2"
+          MALLOC_CHECK_: "0"
         run: |
           export PYTHON_GIL=1
           ulimit -s unlimited
