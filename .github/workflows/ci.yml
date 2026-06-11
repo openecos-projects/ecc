@@ -109,11 +109,12 @@ jobs:
         env:
          PYTHONUNBUFFERED: "1"
          PYTHONFAULTHANDLER: "1"
-         OMP_NUM_THREADS: "2"
-         MKL_NUM_THREADS: "2"
-         NUMEXPR_NUM_THREADS: "2"
-         OPENBLAS_NUM_THREADS: "2"
+         OMP_NUM_THREADS: "1"
+         MKL_NUM_THREADS: "1"
+         NUMEXPR_NUM_THREADS: "1"
+         OPENBLAS_NUM_THREADS: "1"
          OPENBLAS_MAIN_FREE: "1"
+         NUMPY_EXPERIMENTAL_ARRAY_FUNCTION: "0"
         run: uv run pytest test/test_tools.py::test_ics55_gcd -v --timeout=600
       - name: Publish coverage summary
         if: always()
