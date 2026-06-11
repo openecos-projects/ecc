@@ -9,7 +9,7 @@ from chipcompiler.data.pdk import get_pdk
 
 def _create_minimal_ics55_pdk(root: Path) -> Path:
     """Create the minimal ICS55 directory tree required by get_pdk()."""
-    tech_path = root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
+    tech_path = root / "prtech" / "techLEF" / "N551P6M.lef"
     tech_path.parent.mkdir(parents=True, exist_ok=True)
     tech_path.write_text("VERSION 5.8 ;\n")
 
