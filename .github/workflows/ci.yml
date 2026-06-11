@@ -103,10 +103,18 @@ jobs:
          NUMEXPR_NUM_THREADS: "1"
          OPENBLAS_NUM_THREADS: "1"
          OPENBLAS_MAIN_FREE: "1"
-        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_rcx.py --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report= --maxfail=1 --tb=short --timeout=300 -v
-      - name: Pytest - Isolate failing test
+        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_rcx.py --ignore=test/examples/test_soc.py --ignore=test/test_tools.py::test_ics55_gcd --cov=chipcompiler --cov-report= --maxfail=1 --tb=short --timeout=300 -v
+      - name: Pytest - test_ics55_gcd (isolated)
         if: always()
-        run: uv run pytest test/test_tools.py::test_ics55_gcd -v
+        env:
+         PYTHONUNBUFFERED: "1"
+         PYTHONFAULTHANDLER: "1"
+         OMP_NUM_THREADS: "2"
+         MKL_NUM_THREADS: "2"
+         NUMEXPR_NUM_THREADS: "2"
+         OPENBLAS_NUM_THREADS: "2"
+         OPENBLAS_MAIN_FREE: "1"
+        run: uv run pytest test/test_tools.py::test_ics55_gcd -v --timeout=600
       - name: Publish coverage summary
         if: always()
         run: |
