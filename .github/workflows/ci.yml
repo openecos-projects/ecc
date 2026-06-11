@@ -123,7 +123,7 @@ jobs:
         run: |
           export PYTHON_GIL=1
           ulimit -s unlimited
-          uv run pytest test/test_tools.py::test_ics55_gcd -v --timeout=600 -p no:cacheprovider --tb=short -n0
+          uv run pytest test/test_tools.py::test_ics55_gcd -v --timeout=600 -p no:cacheprovider --tb=short
       - name: Publish coverage summary
         if: always()
         run: |
