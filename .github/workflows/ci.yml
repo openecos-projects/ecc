@@ -95,8 +95,15 @@ jobs:
       #   run: uv run pyright chipcompiler
 
       - name: Pytest
-        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_rcx.py --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report=
-
+        env:
+         PYTHONUNBUFFERED: "1"
+         PYTHONFAULTHANDLER: "1"
+         OMP_NUM_THREADS: "1"
+         MKL_NUM_THREADS: "1"
+         NUMEXPR_NUM_THREADS: "1"
+         OPENBLAS_NUM_THREADS: "1"
+         OPENBLAS_MAIN_FREE: "1"
+        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_rcx.py --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report= --maxfail=1 --tb=short
       - name: Publish coverage summary
         if: always()
         run: |
