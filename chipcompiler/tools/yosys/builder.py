@@ -3,6 +3,7 @@
 import os
 import stat
 from chipcompiler.data import WorkspaceStep, Workspace
+from chipcompiler.utility import json_read
 
 
 def _tcl_quote(value: str) -> str:
@@ -22,19 +23,33 @@ def _abspath(path: str) -> str:
     return os.path.abspath(path)
 
 
-def _split_stdcell_macro_libs(lib_files: list[str]) -> tuple[list[str], list[str]]:
-    """Split known ICS55 stdcell libraries from macro libraries."""
-    stdcell_libs = []
-    macro_libs = []
+def _existing_unique_paths(paths: list[str]) -> list[str]:
+    """Return existing paths in input order without duplicates."""
+    unique_paths = []
+    seen = set()
 
-    for lib in lib_files:
-        name = os.path.basename(lib)
-        if name.startswith("ICS55_"):
-            macro_libs.append(lib)
-        else:
-            stdcell_libs.append(lib)
+    for path in paths:
+        if not path or not os.path.isfile(path):
+            continue
+        abs_path = os.path.abspath(path)
+        if abs_path in seen:
+            continue
+        unique_paths.append(abs_path)
+        seen.add(abs_path)
 
-    return stdcell_libs, macro_libs
+    return unique_paths
+
+
+def _workspace_libs(workspace: Workspace) -> list[str]:
+    """Read extra liberty files from the workspace DB config."""
+    db_config = json_read(workspace.config.get("db", ""))
+    lib_paths = db_config.get("INPUT", {}).get("lib_path", [])
+    if isinstance(lib_paths, str):
+        lib_paths = [lib_paths]
+    if not isinstance(lib_paths, list):
+        return []
+
+    return _existing_unique_paths(lib_paths)
 
 
 def generate_global_var_tcl(workspace: Workspace,
@@ -84,9 +99,9 @@ def generate_global_var_tcl(workspace: Workspace,
     abc_driver_cell = pdk.abc_driver_cell if pdk.abc_driver_cell else "BUFX4H7L"
     abc_load = pdk.abc_load if pdk.abc_load else 0.015
 
-    lib_files = workspace.pdk.libs if workspace.pdk.libs else []
-    lib_stdcell, lib_macro = _split_stdcell_macro_libs(lib_files)
-    lib_files_all = " ".join(lib_stdcell + lib_macro) if lib_files else ""
+    lib_stdcell = _existing_unique_paths(workspace.pdk.libs if workspace.pdk.libs else [])
+    lib_files = _existing_unique_paths(lib_stdcell + _workspace_libs(workspace))
+    lib_files_all = " ".join(lib_files) if lib_files else ""
     lib_stdcell_all = " ".join(lib_stdcell) if lib_stdcell else ""
 
     filelist = workspace.design.input_filelist if workspace.design.input_filelist else workspace.parameters.data.get("File list", "")
