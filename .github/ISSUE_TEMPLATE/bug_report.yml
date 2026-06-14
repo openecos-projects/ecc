@@ -1,0 +1,155 @@
+name: Bug report
+description: Report errors or unexpected behavior in ECC.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: checkboxes
+    id: self-checks
+    attributes:
+      label: Self checks
+      description: Please confirm these before submitting the bug report.
+      options:
+        - label: I have searched existing issues, including closed issues.
+          required: true
+        - label: I have read the documentation and development guide.
+          required: true
+        - label: This is a bug report, not a question, feature request, or usage discussion.
+          required: true
+        - label: I will include logs, command output, or reproducer files where they help diagnose the issue.
+          required: true
+        - label: I have removed secrets, private paths, tokens, and other sensitive information from the report.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: ECC version
+      description: Use `ecc --version`, `ecc version --json`, a release tag, or a source commit. If unknown, write "unknown".
+      placeholder: "v0.1.0-alpha.3, ecc --version output, or git commit"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected area
+      description: Select every area that appears related to the bug.
+      multiple: true
+      options:
+        - CLI
+        - Flow/runtime
+        - EDA integration
+        - Build/package
+        - CI/release
+        - Tests/docs only
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ecc-source
+    attributes:
+      label: How did you get ECC?
+      description: Select how this ECC build or checkout was obtained.
+      multiple: true
+      options:
+        - Release PyInstaller bundle
+        - PyInstaller bundle built from source
+        - Source checkout with `uv`
+        - Source checkout with Bazel
+        - Nix flake output
+        - CI/GitHub Actions artifact
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: run-environment
+    attributes:
+      label: Where are you running ECC?
+      description: Select the runtime environment where the bug appears.
+      multiple: true
+      options:
+        - Native Linux
+        - Nix/dev shell
+        - Docker or devcontainer
+        - CI/GitHub Actions
+        - Virtual machine
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS distribution/version, architecture, glibc version if known, Python version, and Bazel/Nix version when relevant.
+      placeholder: "Ubuntu 22.04, x86_64, glibc 2.35, Python 3.11, Bazel 8.x"
+    validations:
+      required: true
+
+  - type: textarea
+    id: toolchain-context
+    attributes:
+      label: Toolchain, PDK, and dependency context
+      description: Required for flow, EDA integration, or packaging bugs. Include PDK, Yosys, ECC-Tools, DreamPlace, KLayout, workspace/project shape, and relevant config.
+      placeholder: |
+        PDK:
+        ECC-Tools:
+        DreamPlace:
+        Yosys/OSS CAD Suite:
+        Project/workspace:
+        Relevant ecc.toml or config:
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Provide exact commands, input files, config snippets, and expected project/workspace layout. Use fenced code blocks for logs or commands.
+      placeholder: |
+        1. Run ...
+        2. Use this ecc.toml ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: Describe what should have happened.
+      placeholder: "What did you expect ECC to do?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual behavior
+      description: Describe what happened instead.
+      placeholder: "What happened instead? Include error messages if any."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or command output
+      description: Paste relevant stdout, stderr, traceback, `ecc version --json`, build logs, or CI logs in fenced code blocks.
+      placeholder: |
+        ```text
+        Paste logs here.
+        ```
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add anything else that may help diagnose the issue.
+    validations:
+      required: false

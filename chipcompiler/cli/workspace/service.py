@@ -154,7 +154,21 @@ def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
 
     try:
         workspace, engine_flow = load_workspace_runtime(directory)
-        state = engine_flow.run_step(step, rerun)
+        workspace_step = engine_flow.get_workspace_step(step)
+        if workspace_step is None:
+            state = engine_flow.run_step(step, rerun)
+        else:
+            from chipcompiler.data.step import StateEnum
+
+            if not rerun and engine_flow.check_state(
+                name=workspace_step.name,
+                tool=workspace_step.tool,
+                state=StateEnum.Success,
+            ):
+                state = engine_flow.run_step(workspace_step, rerun)
+            else:
+                _init_db_engine_for_workspace_step(engine_flow, workspace_step)
+                state = engine_flow.run_step(workspace_step, rerun)
     except WorkspaceValidationError as exc:
         return workspace_response(cmd, "failed", data=response_data, message=[str(exc)])
     except Exception as exc:
@@ -301,6 +315,19 @@ def build_flow_for_workspace(workspace, create_step_workspaces: bool = True):
     if create_step_workspaces:
         engine_flow.create_step_workspaces()
     return engine_flow
+
+
+def _init_db_engine_for_workspace_step(engine_flow, workspace_step):
+    engine_db = getattr(engine_flow, "engine_db", None)
+    if engine_db is None:
+        from chipcompiler.engine import EngineDB
+
+        engine_db = EngineDB(workspace=engine_flow.workspace)
+        engine_flow.engine_db = engine_db
+    elif engine_db.has_init():
+        return True
+
+    return engine_db.create_db_engine(step=workspace_step)
 
 
 def _workspace_step_from_flow(workspace, name: str):

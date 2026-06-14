@@ -30,19 +30,18 @@
 }:
 
 let
-  version = "0.1.0-alpha.3";
+  version = "0.1.0-alpha.4";
 
   src = fetchFromGitHub {
     owner = "openecos-projects";
     repo = "ecc-tools";
-    rev = "984c032e90f3fb2620b7c1ebeefc6fff583d385f";
-    hash = "sha256-j4cLgJqSaGHJPw80U9CdZuDh9uWkl1P1lmp2+xmtj2o=";
+    rev = "af793d33efe91c37f42bfe00eb737427de43715a";
+    hash = "sha256-wD3mGge2vhGoXDIpanyRZGl1tTRmQJodDOmp8Lw2aC0=";
   };
 
   installDeps =
     lib.pipe
       {
-        iir-rust = "src/operation/iIR/source/iir-rust/iir";
         sdf_parser = "src/database/manager/parser/sdf/sdf_parse";
         vcd_parser = "src/database/manager/parser/vcd/vcd_parser";
         verilog-parser = "src/database/manager/parser/verilog/verilog-rust/verilog-parser";

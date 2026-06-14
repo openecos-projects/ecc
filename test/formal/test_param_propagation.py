@@ -2,7 +2,7 @@
 Formal verification of parameter propagation through tool config builders.
 
 Verifies:
-1. Every dict.get() key in builders matches the ICS55 template exactly.
+1. Every direct workspace parameter key in builders/helpers matches the ICS55 template exactly.
 2. Parameters reach their target config fields after build.
 3. Dead defaults and forced overrides are documented.
 """
@@ -14,11 +14,13 @@ from typing import Any
 import pytest
 from z3 import ArithRef, Int, Real, Solver, unsat
 
-from chipcompiler.data import get_parameters
+from chipcompiler.data import OriginDesign, StepEnum, Workspace, WorkspaceStep, get_parameters
+from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
+from chipcompiler.utility import json_write
 
-# Every parameter key accessed by dict.get() in builder files,
-# with the builder file and line where it is accessed.
-# Source: ecc/builder.py, ecc_dreamplace/builder.py, yosys/builder.py
+# Every direct workspace parameter key accessed by builder/helper code,
+# with the source file and line where it is accessed.
+# Source: ecc/builder.py, ecc_dreamplace/parameter_overrides.py, yosys/builder.py
 BUILDER_PARAM_KEYS: list[tuple[str, str, str]] = [
     # (key_string, builder_file, config_field)
     ("Bottom layer", "ecc/builder.py:244", "db.LayerSettings.routing_layer_1st"),
@@ -26,10 +28,26 @@ BUILDER_PARAM_KEYS: list[tuple[str, str, str]] = [
     ("Top layer", "ecc/builder.py:330", "RT.-top_routing_layer"),
     ("Max fanout", "ecc/builder.py:259", "no.max_fanout"),
     ("Global right padding", "ecc/builder.py:273", "PL.GP.global_right_padding"),
-    ("Target density", "ecc_dreamplace/builder.py:55", "dreamplace.target_density"),
-    ("Target overflow", "ecc_dreamplace/builder.py:58", "dreamplace.stop_overflow"),
-    ("Cell padding x", "ecc_dreamplace/builder.py:61", "dreamplace.cell_padding_x"),
-    ("Routability opt flag", "ecc_dreamplace/builder.py:64", "dreamplace.routability_opt_flag"),
+    (
+        "Target density",
+        "ecc_dreamplace/parameter_overrides.py:8",
+        "dreamplace.target_density",
+    ),
+    (
+        "Target overflow",
+        "ecc_dreamplace/parameter_overrides.py:9",
+        "dreamplace.stop_overflow",
+    ),
+    (
+        "Cell padding x",
+        "ecc_dreamplace/parameter_overrides.py:10",
+        "dreamplace.cell_padding_x",
+    ),
+    (
+        "Routability opt flag",
+        "ecc_dreamplace/parameter_overrides.py:11",
+        "dreamplace.routability_opt_flag",
+    ),
     ("Frequency max [MHz]", "yosys/builder.py:31", "yosys.clk_freq_mhz"),
     ("File list", "yosys/builder.py:38", "yosys.filelist"),
 ]
@@ -40,7 +58,7 @@ BUILDER_PARAM_KEYS: list[tuple[str, str, str]] = [
     strict=False,
 )
 def test_key_spelling_matches_template() -> None:
-    """Every parameter key used in dict.get() calls in builders must exist
+    """Every direct workspace parameter key used in config propagation must exist
     in the ICS55 template. A typo like 'target density' (lowercase) when
     the template has 'Target density' (capitalized) means the override
     silently falls back to the default."""
@@ -72,7 +90,7 @@ PARAM_CONFIG_DEFAULTS: list[tuple[str, float, float, str]] = [
     ("Target density", 0.2, 0.8, "dreamplace.target_density"),
     ("Target overflow", 0.1, 0.1, "dreamplace.stop_overflow"),
     ("Cell padding x", 600, 600, "dreamplace.cell_padding_x"),
-    ("Routability opt flag", 1, 0, "dreamplace.routability_opt_flag"),
+    ("Routability opt flag", 1, 1, "dreamplace.routability_opt_flag"),
     ("Max fanout", 20, 32, "no.max_fanout"),
     ("Global right padding", 0, 0, "PL.GP.global_right_padding"),
 ]
@@ -87,10 +105,10 @@ def test_dead_defaults(
     param_key: str, param_default: float, config_default: float, config_field: str
 ) -> None:
     """z3: if param_default != config_default, the JSON config default is dead
-    code (the builder always overwrites it with the parameter value).
+    code (parameter propagation always overwrites it with the parameter value).
 
     Query: can config end up with its own default while param differs?
-    UNSAT = config default is dead (builder always overwrites).
+    UNSAT = config default is dead (propagation always overwrites).
     """
     if param_default == config_default:
         pytest.skip("Defaults match -- config default is not dead")
@@ -99,7 +117,7 @@ def test_dead_defaults(
     config_val: ArithRef = Real("config_val")
 
     solver = Solver()
-    # Builder logic: config_val = param_val (always reads from parameters)
+    # Propagation logic: config_val = param_val (always reads from parameters)
     solver.add(config_val == param_val)
     # Can the config end up with its own default while param has a different value?
     solver.add(config_val == config_default)
@@ -108,16 +126,16 @@ def test_dead_defaults(
     result = solver.check()
     assert result == unsat, (
         f"Config default {config_default} for {config_field} is dead code: "
-        f"builder always overwrites with parameter value (param default={param_default})"
+        f"propagation always overwrites with parameter value (param default={param_default})"
     )
 
 
-# Forced overrides: builder sets these regardless of parameters.
+# Forced runtime overrides: DreamplaceModule._build_params sets these regardless of parameters.
 FORCED_OVERRIDES: list[tuple[str, int, str]] = [
-    ("timing_opt_flag", 0, "dreamplace/builder.py:67"),
-    ("timing_eval_flag", 0, "dreamplace/builder.py:68"),
-    ("with_sta", 0, "dreamplace/builder.py:69"),
-    ("differentiable_timing_obj", 0, "dreamplace/builder.py:70"),
+    ("with_sta", 0, "ecc_dreamplace/module.py:44"),
+    ("timing_opt_flag", 0, "ecc_dreamplace/module.py:45"),
+    ("timing_eval_flag", 0, "ecc_dreamplace/module.py:46"),
+    ("differentiable_timing_obj", 0, "ecc_dreamplace/module.py:47"),
 ]
 
 
@@ -126,9 +144,9 @@ FORCED_OVERRIDES: list[tuple[str, int, str]] = [
     FORCED_OVERRIDES,
     ids=[t[0] for t in FORCED_OVERRIDES],
 )
-def test_builder_forced_overrides(config_field: str, forced_value: int, source_line: str) -> None:
+def test_runtime_forced_overrides(config_field: str, forced_value: int, source_line: str) -> None:
     """z3: these config fields are always forced to a specific value by the
-    builder, regardless of any parameter setting. Verify the forced value
+    runtime module, regardless of any parameter setting. Verify the forced value
     is intentional by proving that no parameter can change it.
 
     Query: config_val != forced_value. Must be UNSAT.
@@ -146,13 +164,53 @@ def test_builder_forced_overrides(config_field: str, forced_value: int, source_l
     )
 
 
+class FakeDreamplaceParams:
+    def fromJson(self, config):
+        self.__dict__.update(config)
+
+
+def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
+    config_path = tmp_path / "dreamplace.json"
+    json_write(
+        str(config_path),
+        {
+            "routability_opt_flag": 1,
+            "get_congestion_map": 1,
+        },
+    )
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": str(config_path)},
+    )
+    result_dir = tmp_path / "data" / "pl"
+    step = WorkspaceStep(
+        name=StepEnum.PLACEMENT.value,
+        data={"dir": str(tmp_path / "data"), StepEnum.PLACEMENT.value: str(result_dir)},
+    )
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=None,
+        input_def="input.def",
+        input_verilog="input.v",
+        output_def="output.def",
+        output_verilog="output.v",
+    )
+
+    params = module._build_params(FakeDreamplaceParams, legalize_only=False)
+
+    assert params.routability_opt_flag == 1
+    assert params.get_congestion_map == 1
+
+
 # ---------------------------------------------------------------------------
 # z3: End-to-end parameter propagation model
 # ---------------------------------------------------------------------------
 
 # Complete parameter -> config propagation mapping.
 # (param_key, config_field, reads_param)
-# reads_param is True if the builder uses dict.get(param_key).
+# reads_param is True if the builder/helper propagates the parameter.
 PROPAGATION_MAP: list[tuple[str, str, bool]] = [
     ("Target density", "dreamplace.target_density", True),
     ("Target overflow", "dreamplace.stop_overflow", True),
@@ -181,7 +239,7 @@ def test_propagation_z3(param_key: str, config_field: str, reads_param: bool) ->
 
     Query: Exists(param_val): config_val != param_val
     UNSAT = parameter always propagates.
-    SAT = builder ignores parameter.
+    SAT = propagation ignores parameter.
     """
     param_val: ArithRef = Real("param_val")
     config_val: ArithRef = Real("config_val")
@@ -195,6 +253,6 @@ def test_propagation_z3(param_key: str, config_field: str, reads_param: bool) ->
         assert result == unsat, f"Parameter '{param_key}' should always propagate to {config_field}"
     else:
         pytest.fail(
-            f"Parameter '{param_key}' is NOT read by builder for {config_field} -- "
+            f"Parameter '{param_key}' is NOT propagated to {config_field} -- "
             f"it is dead in the template"
         )
