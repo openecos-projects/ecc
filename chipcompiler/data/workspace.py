@@ -18,7 +18,7 @@ from .pdk import get_pdk, PDK
 from .step import StepEnum
 from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
-    
+
 @dataclass
 class OriginDesign:
     """
@@ -337,7 +337,7 @@ def init_workspace_config(workspace: Workspace) -> None:
 
 def refresh_workspace_config(workspace: Workspace) -> None:
     """Reload parameters.json and refresh workspace configs derived from parameters/PDK."""
-    from copy import deepcopy
+    import os
 
     from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
     from chipcompiler.utility import json_read, json_write
@@ -404,12 +404,24 @@ def refresh_workspace_config(workspace: Workspace) -> None:
 
     _apply_parameter_mappings_to_workspace_config(workspace)
 
-    rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
-    rcx["pdk"] = "ics55" if workspace.pdk.name == "ics55" else ""
-    rcx["mapping_file"] = workspace.pdk.mapping_file
-    corners = deepcopy(workspace.pdk.corners)
-    rcx["corners"] = corners
-    json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
+    # rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
+    # rcx["pdk"] = "ics55" if workspace.pdk.name == "ics55" else ""
+    # rcx["mapping_file"] = workspace.pdk.mapping_file
+    # corners = deepcopy(workspace.pdk.corners)
+    # rcx["corners"] = corners
+    # json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
+
+    sta = json_read(workspace.config[f"{StepEnum.STA.value}"])
+    pdk_root = workspace.pdk.root.rstrip(os.sep)
+    for liberty in sta.get("liberty", []):
+        liberty["path"] = [
+            path
+            if path == pdk_root or path.startswith(f"{pdk_root}{os.sep}")
+            else os.path.join(workspace.pdk.root, path.lstrip(os.sep))
+            for path in liberty.get("path", [])
+        ]
+
+    json_write(workspace.config[f"{StepEnum.STA.value}"], sta)
 
     dreamplace = json_read(workspace.config["dreamplace"])
     dreamplace["lef_input"] = [workspace.pdk.tech, *workspace.pdk.lefs]
@@ -892,6 +904,15 @@ def load_workspace(directory : str) -> Workspace:
     if len(spef_path) > 0:
         pdk.spef = spef_path[0]
         
+    # update lef and lib paths based on config
+    from chipcompiler.utility import json_read
+    db_json = json_read(workspace.config.get("db", ""))
+    if db_json.get("INPUT", {}).get("tech_lef_path", "") != "":
+        pdk.tech = db_json.get("INPUT", {}).get("tech_lef_path", "")
+    if db_json.get("INPUT", {}).get("lef_paths", []) != []:
+        pdk.lefs = db_json.get("INPUT", {}).get("lef_paths", [])
+    if db_json.get("INPUT", {}).get("lib_path", []) != []:
+        pdk.libs = db_json.get("INPUT", {}).get("lib_path", [])
     workspace.pdk = pdk
     
     #update config
