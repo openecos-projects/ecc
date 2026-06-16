@@ -19,7 +19,6 @@ from .step import StepEnum
 from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
 
-<<<<<<< HEAD
 
 def get_clock_names(parameters: Parameters | dict) -> list[str]:
     data = parameters.data if isinstance(parameters, Parameters) else parameters
@@ -30,8 +29,6 @@ def get_clock_names(parameters: Parameters | dict) -> list[str]:
         return [str(clocks)]
     return []
     
-=======
->>>>>>> 8506e3af95197c5fe9544980e36e27ea0805773b
 @dataclass
 class OriginDesign:
     """
