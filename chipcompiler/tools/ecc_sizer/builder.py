@@ -30,6 +30,7 @@ def build_step(
         output_gds=output_gds,
         tool="sizer",
     )
+    step.output["db"] = ""
     step.script["sizer_env"] = f"{step.script['dir']}/{workspace.design.name}.env_file"
     step.script["sizer_cmd"] = f"{step.script['dir']}/{workspace.design.name}.cmd_file"
     return step

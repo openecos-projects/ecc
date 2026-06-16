@@ -63,6 +63,55 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path):
     assert "-max_route_layer M7" in cmd_text
 
 
+def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+
+    assert step.output["db"] == ""
+
+    sizer_builder.build_step_space(step)
+
+    for path in (
+        step.output["dir"],
+        step.data["dir"],
+        step.feature["dir"],
+        step.report["dir"],
+        step.log["dir"],
+        step.script["dir"],
+        step.analysis["dir"],
+    ):
+        assert os.path.isdir(path)
+
+
+def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer.utility import get_sizer_command, is_eda_exist
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    sizer = bin_dir / "sizer"
+    sizer.write_text("#!/bin/sh\n", encoding="utf-8")
+    sizer.chmod(0o755)
+
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+    assert get_sizer_command() == [str(sizer)]
+    assert is_eda_exist() is True
+
+    empty_path = tmp_path / "empty"
+    empty_path.mkdir()
+    monkeypatch.setenv("PATH", str(empty_path))
+
+    assert get_sizer_command() == []
+    assert is_eda_exist() is False
+
+
 def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner

@@ -1,4 +1,5 @@
 import os
+import shutil
 from pathlib import Path
 
 
@@ -14,17 +15,9 @@ def get_sizer_root() -> Path:
 
 
 def get_sizer_command() -> list[str]:
-    override = os.environ.get("CHIPCOMPILER_ECC_SIZER_BIN", "").strip()
-    if override:
-        return [str(Path(override).expanduser().resolve())]
-
-    installed = _repo_root() / "chipcompiler" / "tools" / "ecc_sizer" / "bin" / "Sizer"
-    if installed.exists():
-        return [str(installed)]
-
-    return [str(get_sizer_root() / "build" / "src" / "Sizer")]
+    sizer = shutil.which("sizer")
+    return [sizer] if sizer else []
 
 
 def is_eda_exist() -> bool:
-    command = get_sizer_command()
-    return bool(command and os.path.isfile(command[0]) and os.access(command[0], os.X_OK))
+    return bool(get_sizer_command())
