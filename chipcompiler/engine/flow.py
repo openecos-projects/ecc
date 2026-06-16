@@ -296,7 +296,6 @@ class EngineFlow:
             
             log_flow(workspace=self.workspace)
             self.workspace.logger.log_section(f"{workspace_step.tool} - end step - {workspace_step.name}")
-            self.clear_db_engine_after_step(workspace_step, state)
             
             match(state):
                 case StateEnum.Success:
@@ -331,6 +330,7 @@ class EngineFlow:
                             tool=workspace_step.tool,
                             state=StateEnum.Success):
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
+            self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             return StateEnum.Success
 
         # set state ongoing
@@ -393,5 +393,7 @@ class EngineFlow:
         if state == StateEnum.Success:
             from chipcompiler.tools import save_layout_image
             save_layout_image(workspace=self.workspace, step=workspace_step)
+
+        self.clear_db_engine_after_step(workspace_step, state)
 
         return state

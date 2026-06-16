@@ -272,17 +272,42 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
 def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monkeypatch):
     from chipcompiler.engine import flow as flow_module
     from chipcompiler.engine.flow import EngineFlow
+    import chipcompiler.tools as tools_api
 
     workspace = _workspace(tmp_path)
+    workspace.flow.path = str(tmp_path / "flow.json")
     workspace.flow.data = {
         "steps": [
-            {"name": StepEnum.TIMING_OPT.value, "tool": "sizer"},
-            {"name": StepEnum.LEGALIZATION.value, "tool": "ecc"},
+            {
+                "name": StepEnum.TIMING_OPT.value,
+                "tool": "sizer",
+                "state": StateEnum.Unstart.value,
+            },
+            {
+                "name": StepEnum.LEGALIZATION.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+            },
         ]
     }
 
-    sizer_step = WorkspaceStep(name=StepEnum.TIMING_OPT.value, tool="sizer")
-    post_sizer_step = WorkspaceStep(name=StepEnum.LEGALIZATION.value, tool="ecc")
+    sizer_step = WorkspaceStep(
+        name=StepEnum.TIMING_OPT.value,
+        tool="sizer",
+        output={
+            "def": str(tmp_path / "sizer.def"),
+            "verilog": str(tmp_path / "sizer.v"),
+        },
+    )
+    post_sizer_step = WorkspaceStep(
+        name=StepEnum.LEGALIZATION.value,
+        tool="ecc",
+        output={
+            "def": str(tmp_path / "post.def"),
+            "verilog": str(tmp_path / "post.v"),
+            "gds": str(tmp_path / "post.gds"),
+        },
+    )
     engine_flow = EngineFlow(workspace=None)
     engine_flow.workspace = workspace
     engine_flow.workspace_steps = [sizer_step, post_sizer_step]
@@ -297,18 +322,22 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
             engine_flow.engine_db = SimpleNamespace(engine="post-sizer-db", has_init=lambda: True)
         return True
 
-    def fake_run_step(workspace_step, rerun=False):
-        del rerun
+    def fake_tool_run(workspace, step, ecc_module):
+        del workspace
         run_seen.append(
             (
-                workspace_step.tool,
-                None if engine_flow.engine_db is None else engine_flow.engine_db.engine,
+                step.tool,
+                ecc_module,
             )
         )
+        for path in step.output.values():
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            open(path, "w", encoding="utf-8").write("\n")
         return StateEnum.Success
 
     monkeypatch.setattr(engine_flow, "init_db_engine", fake_init_db_engine)
-    monkeypatch.setattr(engine_flow, "run_step", fake_run_step)
+    monkeypatch.setattr(tools_api, "run_step", fake_tool_run)
+    monkeypatch.setattr(tools_api, "save_layout_image", lambda workspace, step: True)
     monkeypatch.setattr(flow_module, "log_flow", lambda workspace: None)
 
     assert engine_flow.run_steps() is True
