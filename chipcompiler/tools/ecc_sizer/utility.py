@@ -15,8 +15,11 @@ def get_sizer_root() -> Path:
 
 
 def get_sizer_command() -> list[str]:
-    sizer = shutil.which("sizer")
-    return [sizer] if sizer else []
+    for executable in ("sizer", "Sizer"):
+        sizer = shutil.which(executable)
+        if sizer:
+            return [sizer]
+    return []
 
 
 def is_eda_exist() -> bool:
