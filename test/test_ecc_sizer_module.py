@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 from types import SimpleNamespace
@@ -62,6 +63,14 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path):
     assert "-min_route_layer M2" in cmd_text
     assert "-max_route_layer M7" in cmd_text
 
+    with open(step.subflow["path"], encoding="utf-8") as file:
+        subflow = json.load(file)
+    assert [item["name"] for item in subflow["steps"]] == ["run sizer"]
+
+    with open(step.checklist["path"], encoding="utf-8") as file:
+        checklist = json.load(file)
+    assert checklist["checklist"] == []
+
 
 def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
@@ -110,6 +119,31 @@ def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
 
     assert get_sizer_command() == []
     assert is_eda_exist() is False
+
+
+def test_sizer_step_info_surfaces_include_step_local_config(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import get_step_info
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    assert get_step_info(workspace, step, "input") == step.input
+    assert get_step_info(workspace, step, "output") == step.output
+    assert get_step_info(workspace, step, "subflow") == {"path": step.subflow["path"]}
+    assert get_step_info(workspace, step, "checklist") == {"path": step.checklist["path"]}
+    assert get_step_info(workspace, step, "config") == {
+        "sizer_env": step.script["sizer_env"],
+        "sizer_cmd": step.script["sizer_cmd"],
+    }
+    assert get_step_info(workspace, step, "unknown") == {}
 
 
 def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, monkeypatch):

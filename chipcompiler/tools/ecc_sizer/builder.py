@@ -40,6 +40,20 @@ def build_step_space(step: WorkspaceStep) -> None:
     ecc_builder.build_step_space(step)
 
 
+def build_sub_flow(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
+    from .subflow import SizerSubFlow
+
+    subflow = SizerSubFlow(workspace=workspace, workspace_step=workspace_step)
+    subflow.build_sub_flow()
+
+
+def build_checklist(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
+    from .checklist import SizerChecklist
+
+    checklist = SizerChecklist(workspace=workspace, workspace_step=workspace_step)
+    checklist.build_checklist()
+
+
 def _copy_or_seed_template(template: str, target: str, fallback: str) -> None:
     os.makedirs(os.path.dirname(target), exist_ok=True)
     if os.path.exists(template):
@@ -118,3 +132,6 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
 
     _append_lines(env_path, _tech_lines(workspace))
     _append_lines(cmd_path, cmd_lines)
+
+    build_sub_flow(workspace=workspace, workspace_step=step)
+    build_checklist(workspace=workspace, workspace_step=step)
