@@ -279,6 +279,10 @@ class EngineFlow:
                 break
                                 
         return self.engine_db.create_db_engine(step=workspace_step)
+
+    def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
+        if workspace_step.tool == "sizer" and state == StateEnum.Success:
+            self.engine_db = None
     
     def run_steps(self, rerun=False) -> bool:
         """
@@ -292,6 +296,7 @@ class EngineFlow:
             
             log_flow(workspace=self.workspace)
             self.workspace.logger.log_section(f"{workspace_step.tool} - end step - {workspace_step.name}")
+            self.clear_db_engine_after_step(workspace_step, state)
             
             match(state):
                 case StateEnum.Success:

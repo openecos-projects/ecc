@@ -5,6 +5,7 @@ import subprocess
 
 from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 
+from .subflow import SizerSubFlow, SizerSubFlowEnum
 from .utility import get_sizer_command, is_eda_exist
 
 
@@ -19,14 +20,19 @@ def run_step(
     step: WorkspaceStep,
     ecc_module=None,
 ) -> StateEnum:
-    del workspace, ecc_module
+    del ecc_module
+
+    sub_flow = SizerSubFlow(workspace=workspace, workspace_step=step)
+    run_sizer_step = SizerSubFlowEnum.run_sizer.value
 
     if not is_eda_exist():
+        sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
 
     env_path = step.script.get("sizer_env", "")
     cmd_path = step.script.get("sizer_cmd", "")
     if not os.path.exists(env_path) or not os.path.exists(cmd_path):
+        sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
 
     output_dir = step.data.get(step.name, step.data["dir"])
@@ -45,5 +51,7 @@ def run_step(
         )
 
     if result.returncode == 0 and _has_required_outputs(step):
+        sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
         return StateEnum.Success
+    sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
     return StateEnum.Imcomplete

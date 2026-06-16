@@ -15,7 +15,7 @@ from chipcompiler.data import (
 
 
 def _workspace(tmp_path):
-    return Workspace(
+    workspace = Workspace(
         directory=str(tmp_path / "workspace"),
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(
@@ -27,6 +27,14 @@ def _workspace(tmp_path):
         ),
         parameters=Parameters(data={"Bottom layer": "M2", "Top layer": "M7"}),
     )
+    workspace.home.init(str(tmp_path / "home.json"))
+    return workspace
+
+
+def _subflow_states(step):
+    with open(step.subflow["path"], encoding="utf-8") as file:
+        subflow = json.load(file)
+    return {item["name"]: item["state"] for item in subflow["steps"]}
 
 
 def test_sizer_step_config_writes_env_and_cmd_files(tmp_path):
@@ -174,6 +182,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     assert sizer_runner.run_step(workspace, step) == StateEnum.Success
+    assert _subflow_states(step)["run sizer"] == StateEnum.Success.value
     assert calls == [
         (
             ["/fake/Sizer", "-env", step.script["sizer_env"], "-f", step.script["sizer_cmd"]],
@@ -182,6 +191,61 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
             False,
         )
     ]
+
+
+def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import runner as sizer_runner
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: False)
+
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Invalid
+    assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
+
+    monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
+    os.remove(step.script["sizer_cmd"])
+
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Invalid
+    assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
+
+
+def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
+    tmp_path,
+    monkeypatch,
+):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import runner as sizer_runner
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/Sizer"])
+    monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
+    )
+
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert _subflow_states(step)["run sizer"] == StateEnum.Imcomplete.value
 
 
 def test_timing_opt_step_result_does_not_require_gds(tmp_path):
@@ -203,3 +267,50 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
     )
 
     assert EngineFlow(workspace=None).check_step_result(step) is True
+
+
+def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monkeypatch):
+    from chipcompiler.engine import flow as flow_module
+    from chipcompiler.engine.flow import EngineFlow
+
+    workspace = _workspace(tmp_path)
+    workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.TIMING_OPT.value, "tool": "sizer"},
+            {"name": StepEnum.LEGALIZATION.value, "tool": "ecc"},
+        ]
+    }
+
+    sizer_step = WorkspaceStep(name=StepEnum.TIMING_OPT.value, tool="sizer")
+    post_sizer_step = WorkspaceStep(name=StepEnum.LEGALIZATION.value, tool="ecc")
+    engine_flow = EngineFlow(workspace=None)
+    engine_flow.workspace = workspace
+    engine_flow.workspace_steps = [sizer_step, post_sizer_step]
+    engine_flow.engine_db = SimpleNamespace(engine="pre-sizer-db", has_init=lambda: True)
+
+    init_seen = []
+    run_seen = []
+
+    def fake_init_db_engine():
+        init_seen.append(None if engine_flow.engine_db is None else engine_flow.engine_db.engine)
+        if engine_flow.engine_db is None:
+            engine_flow.engine_db = SimpleNamespace(engine="post-sizer-db", has_init=lambda: True)
+        return True
+
+    def fake_run_step(workspace_step, rerun=False):
+        del rerun
+        run_seen.append(
+            (
+                workspace_step.tool,
+                None if engine_flow.engine_db is None else engine_flow.engine_db.engine,
+            )
+        )
+        return StateEnum.Success
+
+    monkeypatch.setattr(engine_flow, "init_db_engine", fake_init_db_engine)
+    monkeypatch.setattr(engine_flow, "run_step", fake_run_step)
+    monkeypatch.setattr(flow_module, "log_flow", lambda workspace: None)
+
+    assert engine_flow.run_steps() is True
+    assert init_seen == ["pre-sizer-db", None]
+    assert run_seen == [("sizer", "pre-sizer-db"), ("ecc", "post-sizer-db")]
