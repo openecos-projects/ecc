@@ -32,10 +32,10 @@ GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-s
 
 ### CLI 流程运行
 
-可以使用 `nix run .#cli -- ...` 创建 ECC 项目，校验 `ecc.toml`，并执行完整 RTL2GDS 流程。
+可以使用 `nix run . -- ...` 创建 ECC 项目，校验 `ecc.toml`，并执行完整 RTL2GDS 流程。
 
 ```bash
-nix run .#cli -- init gcd
+nix run . -- init gcd
 cp ./rtl/gcd.v gcd/rtl/gcd.v
 ```
 
@@ -61,11 +61,11 @@ run = "default"
 然后校验并运行：
 
 ```bash
-nix run .#cli -- check --project gcd
-nix run .#cli -- run --project gcd
-nix run .#cli -- status --project gcd
-nix run .#cli -- metrics --project gcd
-nix run .#cli -- log --project gcd
+nix run . -- check --project gcd
+nix run . -- run --project gcd
+nix run . -- status --project gcd
+nix run . -- metrics --project gcd
+nix run . -- log --project gcd
 ```
 
 ## 功能特性

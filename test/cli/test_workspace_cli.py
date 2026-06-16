@@ -43,6 +43,7 @@ class DummyFlow:
         self.added_steps = []
         self.created = False
         self.cleared = False
+        self.prepared_for_rerun = False
         self.run_steps_calls = []
         self.run_calls = []
         self.init_db_engine_calls = 0
@@ -156,6 +157,8 @@ def _install_runtime_mocks(monkeypatch, tmp_path):
 
     monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
     monkeypatch.setattr("chipcompiler.data.load_workspace", fake_load_workspace)
+    monkeypatch.setattr("chipcompiler.data.init_workspace_config", lambda workspace: None)
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", lambda workspace: None)
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.build_rtl2gds_flow",
@@ -316,6 +319,101 @@ def test_create_input_json_resolves_relative_origin_inputs_from_json_dir(
     assert data["response"] == "success"
     assert capture["create_kwargs"]["origin_def"] == str(project / "inputs" / "top.def")
     assert capture["create_kwargs"]["origin_verilog"] == str(project / "inputs" / "top.v")
+
+
+def test_refresh_config_cli_calls_workspace_refresh(monkeypatch, tmp_path, capsys):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    refreshed = []
+
+    def fake_refresh_workspace_config(workspace):
+        refreshed.append(workspace.directory)
+
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", fake_refresh_workspace_config)
+
+    rc = cli_main.run(["workspace", "refresh-config", "--directory", str(ws), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data == {
+        "cmd": "refresh_config",
+        "response": "success",
+        "data": {"directory": os.path.abspath(ws), "refreshed": True},
+        "message": [f"refresh workspace config success : {os.path.abspath(ws)}"],
+    }
+    assert capture["loaded"] == [str(ws)]
+    assert refreshed == [os.path.abspath(ws)]
+
+
+def test_sync_config_cli_rejects_path_outside_workspace_config(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}")
+
+    rc = cli_main.run([
+        "workspace",
+        "sync-config",
+        "--directory",
+        str(ws),
+        "--config-path",
+        str(outside),
+        "--json",
+    ])
+
+    data = _response(capsys)
+    assert rc == 1
+    assert data["cmd"] == "sync_config"
+    assert data["response"] == "failed"
+    assert data["data"]["config_path"] == os.path.abspath(outside)
+    assert "outside workspace config directory" in data["message"][0]
+
+
+def test_sync_config_cli_syncs_parameters_and_refreshes_when_changed(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    config_dir = ws / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "rt_default_config.json"
+    config_path.write_text("{}")
+    synced = []
+    refreshed = []
+
+    def fake_sync_workspace_config_to_parameters(workspace, path):
+        synced.append((workspace.directory, path))
+        return True
+
+    def fake_refresh_workspace_config(workspace):
+        refreshed.append(workspace.directory)
+
+    monkeypatch.setattr(
+        "chipcompiler.data.sync_workspace_config_to_parameters",
+        fake_sync_workspace_config_to_parameters,
+    )
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", fake_refresh_workspace_config)
+
+    rc = cli_main.run([
+        "workspace",
+        "sync-config",
+        "--directory",
+        str(ws),
+        "--config-path",
+        str(config_path),
+        "--json",
+    ])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data == {
+        "cmd": "sync_config",
+        "response": "success",
+        "data": {
+            "directory": os.path.abspath(ws),
+            "config_path": os.path.abspath(config_path),
+            "parameters_changed": True,
+            "refreshed": True,
+        },
+        "message": [f"sync workspace config success : {os.path.abspath(config_path)}"],
+    }
+    assert synced == [(os.path.abspath(ws), os.path.abspath(config_path))]
+    assert refreshed == [os.path.abspath(ws)]
 
 
 def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys):
@@ -588,6 +686,13 @@ def test_run_step_initializes_engine_db_before_step(monkeypatch, tmp_path, capsy
 
 def test_run_step_rerun_initializes_engine_db_before_step(monkeypatch, tmp_path, capsys):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    refresh_calls = []
+
+    def refresh_config(workspace):
+        refresh_calls.append(workspace.directory)
+        DummyFlow.instances[-1].call_order.append(("refresh_config", workspace.directory))
+
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", refresh_config)
 
     rc = cli_main.run(
         [
@@ -609,9 +714,11 @@ def test_run_step_rerun_initializes_engine_db_before_step(monkeypatch, tmp_path,
     assert data["response"] == "success"
     assert flow.init_db_engine_steps == ["Floorplan"]
     assert flow.call_order == [
+        ("refresh_config", os.path.abspath(ws)),
         ("init_db_engine",),
         ("run_step", "Floorplan", True),
     ]
+    assert refresh_calls == [os.path.abspath(ws)]
     assert flow.run_steps_calls == []
 
 
@@ -821,6 +928,14 @@ def test_workspace_json_output_honors_redirected_stdout(
 def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path, capsys):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     DummyFlow.next_run_states = [StateEnum.Success, StateEnum.Imcomplete]
+    prepare_calls = []
+
+    def prepare_workspace_for_rerun(workspace, engine_flow):
+        prepare_calls.append(workspace.directory)
+        engine_flow.prepared_for_rerun = True
+        engine_flow.call_order.append(("prepare_rerun", workspace.directory))
+
+    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", prepare_workspace_for_rerun)
 
     rc = cli_main.run(["workspace", "run-flow", "--directory", str(ws), "--rerun", "--json"])
 
@@ -830,7 +945,10 @@ def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path
     assert data["cmd"] == "run_flow"
     assert data["response"] == "failed"
     assert data["data"] == {"rerun": True}
-    assert flow.cleared
+    assert not flow.cleared
+    assert flow.prepared_for_rerun
+    assert prepare_calls == [os.path.abspath(ws)]
+    assert flow.call_order[0] == ("prepare_rerun", os.path.abspath(ws))
     assert flow.run_steps_calls == [True]
     assert flow.run_calls == [("Synthesis", True), ("Floorplan", True)]
     assert str(os.path.abspath(ws)) in data["message"][0]
@@ -848,8 +966,30 @@ def test_run_flow_resume_avoids_bulk_home_reset(monkeypatch, tmp_path, capsys):
     assert data["response"] == "success"
     assert data["data"] == {"rerun": False}
     assert not flow.cleared
+    assert not flow.prepared_for_rerun
     assert flow.run_steps_calls == [False]
     assert flow.run_calls == [("Synthesis", False), ("Floorplan", False)]
+
+
+def test_run_flow_rerun_stops_when_prepare_fails(monkeypatch, tmp_path, capsys):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    def prepare_workspace_for_rerun(workspace, engine_flow):
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", prepare_workspace_for_rerun)
+
+    rc = cli_main.run(["workspace", "run-flow", "--directory", str(ws), "--rerun", "--json"])
+
+    data = _response(capsys)
+    flow = DummyFlow.instances[0]
+    assert rc == 1
+    assert data["cmd"] == "run_flow"
+    assert data["response"] == "error"
+    assert data["data"] == {"rerun": True}
+    assert "cleanup failed" in data["message"][0]
+    assert flow.run_steps_calls == []
+    assert flow.run_calls == []
 
 
 def test_get_info_success_warning_and_exception(monkeypatch, tmp_path, capsys):

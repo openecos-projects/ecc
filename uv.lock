@@ -14,6 +14,11 @@ resolution-markers = [
 ]
 
 [manifest]
+members = [
+    "ecc",
+    "ecc-dreamplace",
+    "ecc-tools-bin",
+]
 constraints = [
     { name = "llvmlite", specifier = ">=0.40.0" },
     { name = "numba", specifier = ">=0.57.0" },
@@ -435,7 +440,7 @@ version = "0.1.0a3"
 source = { editable = "." }
 dependencies = [
     { name = "ecc-dreamplace" },
-    { name = "ecc-tools" },
+    { name = "ecc-tools-bin" },
     { name = "fastapi" },
     { name = "klayout" },
     { name = "matplotlib" },
@@ -464,6 +469,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "scikit-build-core" },
     { name = "ty" },
     { name = "uv-build" },
     { name = "z3-solver" },
@@ -471,8 +477,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ecc-dreamplace", url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.4/ecc_dreamplace-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl" },
-    { name = "ecc-tools", url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.4/ecc_tools-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl" },
+    { name = "ecc-dreamplace", editable = "chipcompiler/thirdparty/ecc-dreamplace" },
+    { name = "ecc-tools-bin", editable = "chipcompiler/thirdparty/ecc-tools" },
     { name = "fastapi", specifier = ">=0.109" },
     { name = "klayout", specifier = ">=0.30.2" },
     { name = "matplotlib", specifier = ">=3.4" },
@@ -501,6 +507,7 @@ dev = [
     { name = "pytest", specifier = ">=7" },
     { name = "pytest-cov", specifier = ">=4" },
     { name = "ruff", specifier = ">=0.14.10" },
+    { name = "scikit-build-core", specifier = ">=0.12.2" },
     { name = "ty", specifier = ">=0.0.9" },
     { name = "uv-build", specifier = ">=0.10.9,<0.11.0" },
     { name = "z3-solver", specifier = ">=4.12" },
@@ -509,7 +516,7 @@ dev = [
 [[package]]
 name = "ecc-dreamplace"
 version = "0.1.0a4"
-source = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.4/ecc_dreamplace-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl" }
+source = { editable = "chipcompiler/thirdparty/ecc-dreamplace" }
 dependencies = [
     { name = "cairocffi" },
     { name = "configspace" },
@@ -531,8 +538,11 @@ dependencies = [
     { name = "torch", version = "2.11.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'x86_64' or sys_platform != 'darwin'" },
     { name = "xgboost" },
 ]
-wheels = [
-    { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.4/ecc_dreamplace-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:00b26f9507774c608aeb3af5932bb9841dddd9776ad9e16739c1015ec81f7fe0" },
+
+[package.dev-dependencies]
+dev = [
+    { name = "auditwheel" },
+    { name = "scikit-build-core" },
 ]
 
 [package.metadata]
@@ -552,16 +562,37 @@ requires-dist = [
     { name = "shap", specifier = ">=0.45.0,<0.51" },
     { name = "shapely", specifier = ">=1.7.0" },
     { name = "statsmodels", specifier = ">=0.13.2" },
-    { name = "torch", specifier = ">=1.6.0" },
+    { name = "torch", specifier = ">=1.6.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "xgboost", specifier = ">=1.5.1" },
 ]
 
+[package.metadata.requires-dev]
+dev = [
+    { name = "auditwheel" },
+    { name = "scikit-build-core", specifier = ">=0.12.2" },
+]
+
 [[package]]
-name = "ecc-tools"
-version = "0.1.0a4"
-source = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.4/ecc_tools-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl" }
-wheels = [
-    { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.4/ecc_tools-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:b06e46e5a7e8bd116d607e08654c2f2f13fcd6a500f2804de96994195d34a74c" },
+name = "ecc-tools-bin"
+version = "0.1.0a5"
+source = { editable = "chipcompiler/thirdparty/ecc-tools" }
+dependencies = [
+    { name = "numpy" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "auditwheel" },
+    { name = "scikit-build-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "numpy" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "auditwheel" },
+    { name = "scikit-build-core" },
 ]
 
 [[package]]
@@ -2049,6 +2080,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6a/c5/abd840d4132fd51a12f594934af5eba1d5d27298a6f5b5d6c3be45301caf/ruff-0.14.13-py3-none-win32.whl", hash = "sha256:ef720f529aec113968b45dfdb838ac8934e519711da53a0456038a0efecbd680", size = 12919024, upload-time = "2026-01-15T20:14:43.647Z" },
     { url = "https://files.pythonhosted.org/packages/c2/55/6384b0b8ce731b6e2ade2b5449bf07c0e4c31e8a2e68ea65b3bafadcecc5/ruff-0.14.13-py3-none-win_amd64.whl", hash = "sha256:6070bd026e409734b9257e03e3ef18c6e1a216f0435c6751d7a8ec69cb59abef", size = 14097887, upload-time = "2026-01-15T20:15:01.48Z" },
     { url = "https://files.pythonhosted.org/packages/4d/e1/7348090988095e4e39560cfc2f7555b1b2a7357deba19167b600fdf5215d/ruff-0.14.13-py3-none-win_arm64.whl", hash = "sha256:7ab819e14f1ad9fe39f246cfcc435880ef7a9390d81a2b6ac7e01039083dd247", size = 13080224, upload-time = "2026-01-15T20:14:45.853Z" },
+]
+
+[[package]]
+name = "scikit-build-core"
+version = "0.12.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pathspec" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/28/cd/9ebb50029b6d8a3ee9e38cdce514ebd70190ec1edf28ab0a1f66d0b84670/scikit_build_core-0.12.2.tar.gz", hash = "sha256:562e0bbc9de1a354c87825ccf732080268d6582a0200f648e8c4a2dcb1e3736d", size = 303553, upload-time = "2026-03-05T18:25:57.666Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/49/b2f0fbe3165d55c02e7f9eec6a10685d518af0ef6e919ff2f589c2d15c85/scikit_build_core-0.12.2-py3-none-any.whl", hash = "sha256:6ea4730da400f9a998ec3287bd3ebc1d751fe45ad0a93451bead8618adbc02b1", size = 192625, upload-time = "2026-03-05T18:25:56.207Z" },
 ]
 
 [[package]]

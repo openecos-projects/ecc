@@ -32,11 +32,11 @@ The GUI (ECOS Studio) has been moved to the [ecos-studio](https://github.com/0xh
 
 ### CLI Flow Runner
 
-Use `nix run .#cli -- ...` to create an ECC project, validate its `ecc.toml`,
+Use `nix run . -- ...` to create an ECC project, validate its `ecc.toml`,
 and run the full RTL2GDS flow.
 
 ```bash
-nix run .#cli -- init gcd
+nix run . -- init gcd
 cp ./rtl/gcd.v gcd/rtl/gcd.v
 ```
 
@@ -62,11 +62,11 @@ run = "default"
 Then validate and run:
 
 ```bash
-nix run .#cli -- check --project gcd
-nix run .#cli -- run --project gcd
-nix run .#cli -- status --project gcd
-nix run .#cli -- metrics --project gcd
-nix run .#cli -- log --project gcd
+nix run . -- check --project gcd
+nix run . -- run --project gcd
+nix run . -- status --project gcd
+nix run . -- metrics --project gcd
+nix run . -- log --project gcd
 ```
 
 ## Features

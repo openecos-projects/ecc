@@ -18,8 +18,10 @@ from chipcompiler.cli.workspace.service import (
     get_workspace_home,
     get_workspace_info,
     load_workspace,
+    refresh_workspace_config,
     run_workspace_flow,
     run_workspace_step,
+    sync_workspace_config,
 )
 
 workspace_app = typer.Typer(
@@ -235,6 +237,23 @@ def run_step_cmd(
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     _dispatch_runtime(lambda: run_workspace_step(directory, step, rerun), json_output)
+
+
+@workspace_app.command("refresh-config", help="Refresh workspace config from parameters")
+def refresh_config_cmd(
+    directory: Annotated[str, typer.Option("--directory")] = "",
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    _dispatch_runtime(lambda: refresh_workspace_config(directory), json_output)
+
+
+@workspace_app.command("sync-config", help="Sync managed workspace config fields to parameters")
+def sync_config_cmd(
+    directory: Annotated[str, typer.Option("--directory")] = "",
+    config_path: Annotated[str, typer.Option("--config-path")] = "",
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    _dispatch_runtime(lambda: sync_workspace_config(directory, config_path), json_output)
 
 
 @workspace_app.command("get-info", help="Show workspace or step runtime information")

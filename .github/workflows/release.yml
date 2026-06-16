@@ -43,21 +43,15 @@ jobs:
       - name: Setup Python dependencies
         uses: ./.github/actions/setup-python-deps
 
-      - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.14.0
-        with:
-          bazelisk-version: "1.27.0"
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
-
       - name: Build PyInstaller bundle
-        run: bazel build //:build_ecc_cli_bundle
+        run: |
+          uv run --no-sync pyinstaller ecc.spec --clean
+          tar -cf dist/ecc.tar -C dist/ecc .
 
       - name: Package release artifact
         run: |
           mkdir -p dist/release
-          gzip -n -9 -c bazel-bin/build_ecc_cli_bundle/ecc.tar \
+          gzip -n -9 -c dist/ecc.tar \
             > dist/release/ecc-cli-linux-x86_64.tar.gz
 
       - name: Smoke test release artifact
