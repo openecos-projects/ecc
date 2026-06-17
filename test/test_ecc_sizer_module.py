@@ -141,7 +141,7 @@ def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
     monkeypatch.delenv("CHIPCOMPILER_ECC_SIZER_ROOT", raising=False)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    sizer = bin_dir / "sizer"
+    sizer = bin_dir / "Sizer"
     sizer.write_text("#!/bin/sh\n", encoding="utf-8")
     sizer.chmod(0o755)
 
@@ -157,9 +157,9 @@ def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
     assert is_eda_exist() is True
 
     sizer.unlink()
-    sizer_upper = bin_dir / "Sizer"
-    sizer_upper.write_text("#!/bin/sh\n", encoding="utf-8")
-    sizer_upper.chmod(0o755)
+    sizer_lower = bin_dir / "sizer"
+    sizer_lower.write_text("#!/bin/sh\n", encoding="utf-8")
+    sizer_lower.chmod(0o755)
 
     assert get_sizer_command() == []
     assert is_eda_exist() is False
@@ -184,7 +184,7 @@ def test_sizer_runtime_root_resolves_from_path_binary(tmp_path, monkeypatch):
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    (bin_dir / "sizer").symlink_to(built_sizer)
+    (bin_dir / "Sizer").symlink_to(built_sizer)
     monkeypatch.setenv("PATH", str(bin_dir))
 
     assert find_sizer_root() == runtime_root.resolve()
@@ -349,7 +349,7 @@ def test_public_sizer_run_marks_invalid_when_runtime_missing(tmp_path, monkeypat
     monkeypatch.setattr(sizer_utility, "_repo_root", lambda: missing_repo)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    sizer = bin_dir / "sizer"
+    sizer = bin_dir / "Sizer"
     sizer.write_text("#!/bin/sh\n", encoding="utf-8")
     sizer.chmod(0o755)
     monkeypatch.setenv("PATH", str(bin_dir))

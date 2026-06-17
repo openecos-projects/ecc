@@ -55,7 +55,7 @@ def get_sizer_root() -> Path:
 
 
 def get_sizer_command() -> list[str]:
-    sizer = shutil.which("sizer")
+    sizer = shutil.which("Sizer")
     return [str(Path(sizer).resolve())] if sizer else []
 
 
