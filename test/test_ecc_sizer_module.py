@@ -61,13 +61,16 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path):
     assert "-lib slow.lib" in env_text
 
     assert "-top gcd" in cmd_text
+    assert "-useOpenSTA" in cmd_text
     assert "-def input.def" in cmd_text
     assert "-v input.v" in cmd_text
     assert "-sdc clock.sdc" in cmd_text
     assert "-spef route.spef" in cmd_text
-    assert f"-outputPath {step.data[StepEnum.TIMING_OPT.value]}" in cmd_text
-    assert f"-def_out_path {step.output['def']}" in cmd_text
-    assert f"-verilog_out_path {step.output['verilog']}" in cmd_text
+    assert "-asap7" not in cmd_text
+    assert "-prft_only" not in cmd_text
+    assert "-outputPath ." in cmd_text
+    assert f"-def_out_path {os.path.relpath(step.output['def'], step.data[StepEnum.TIMING_OPT.value])}" in cmd_text
+    assert f"-verilog_out_path {os.path.relpath(step.output['verilog'], step.data[StepEnum.TIMING_OPT.value])}" in cmd_text
     assert "-min_route_layer M2" in cmd_text
     assert "-max_route_layer M7" in cmd_text
 
@@ -92,6 +95,9 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
     )
 
     assert step.output["db"] == ""
+    assert " " not in os.path.basename(step.output["def"])
+    assert " " not in os.path.basename(step.output["verilog"])
+    assert step.directory.endswith(f"{StepEnum.TIMING_OPT.value}_sizer")
 
     sizer_builder.build_step_space(step)
 
@@ -185,7 +191,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
         open(step.output["verilog"], "w", encoding="utf-8").write("module gcd; endmodule\n")
         return SimpleNamespace(returncode=0)
 
-    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/Sizer"])
+    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/sizer"])
     monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
@@ -193,7 +199,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     assert _subflow_states(step)["run sizer"] == StateEnum.Success.value
     assert calls == [
         (
-            ["/fake/Sizer", "-env", step.script["sizer_env"], "-f", step.script["sizer_cmd"]],
+            ["/fake/sizer", "-env", step.script["sizer_env"], "-f", step.script["sizer_cmd"]],
             step.data[StepEnum.TIMING_OPT.value],
             subprocess.STDOUT,
             False,
@@ -244,7 +250,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
 
-    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/Sizer"])
+    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/sizer"])
     monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
     monkeypatch.setattr(
         subprocess,

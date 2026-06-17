@@ -9,6 +9,10 @@ from chipcompiler.tools.ecc import builder as ecc_builder
 from .utility import get_sizer_root
 
 
+def _path_token(value: str) -> str:
+    return "_".join(value.split())
+
+
 def build_step(
     workspace: Workspace,
     step_name: str,
@@ -19,6 +23,13 @@ def build_step(
     output_verilog: str | None = None,
     output_gds: str | None = None,
 ) -> WorkspaceStep:
+    step_directory = f"{workspace.directory}/{step_name}_sizer"
+    safe_step_name = _path_token(step_name)
+    if output_def is None:
+        output_def = f"{step_directory}/output/{workspace.design.name}_{safe_step_name}.def.gz"
+    if output_verilog is None:
+        output_verilog = f"{step_directory}/output/{workspace.design.name}_{safe_step_name}.v"
+
     step = ecc_builder.build_step(
         workspace=workspace,
         step_name=step_name,
@@ -64,6 +75,12 @@ def _copy_or_seed_template(template: str, target: str, fallback: str) -> None:
         file.write(fallback)
 
 
+def _write_text(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as file:
+        file.write(text)
+
+
 def _append_lines(path: str, lines: list[str]) -> None:
     with open(path, "a", encoding="utf-8") as file:
         for line in lines:
@@ -71,9 +88,9 @@ def _append_lines(path: str, lines: list[str]) -> None:
                 file.write(f"{line}\n")
 
 
-def _sizer_templates() -> tuple[str, str]:
+def _sizer_env_template() -> str:
     submit_dir = get_sizer_root() / "submit"
-    return str(submit_dir / "env_base_file"), str(submit_dir / "cmd_base_file")
+    return str(submit_dir / "env_base_file")
 
 
 def _tech_lines(workspace: Workspace) -> list[str]:
@@ -101,16 +118,17 @@ def _route_layer_lines(workspace: Workspace) -> list[str]:
 
 
 def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
-    env_template, cmd_template = _sizer_templates()
+    env_template = _sizer_env_template()
     env_path = step.script["sizer_env"]
     cmd_path = step.script["sizer_cmd"]
 
     _copy_or_seed_template(env_template, env_path, "-num_vt 1\n")
-    _copy_or_seed_template(cmd_template, cmd_path, "")
+    _write_text(cmd_path, "")
 
     output_dir = step.data.get(step.name, step.data["dir"])
     cmd_lines = [
         "",
+        "-useOpenSTA",
         f"-top {workspace.design.top_module or workspace.design.name}",
         f"-def {step.input.get('def', '')}",
     ]
@@ -123,9 +141,9 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
         cmd_lines.append(f"-spef {workspace.pdk.spef}")
     cmd_lines.extend(
         [
-            f"-outputPath {output_dir}",
-            f"-def_out_path {step.output['def']}",
-            f"-verilog_out_path {step.output['verilog']}",
+            "-outputPath .",
+            f"-def_out_path {os.path.relpath(step.output['def'], output_dir)}",
+            f"-verilog_out_path {os.path.relpath(step.output['verilog'], output_dir)}",
         ]
     )
     cmd_lines.extend(_route_layer_lines(workspace))
