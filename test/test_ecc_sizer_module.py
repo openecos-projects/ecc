@@ -150,6 +150,12 @@ def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
     assert get_sizer_command() == [str(sizer)]
     assert is_eda_exist() is True
 
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", "bin")
+
+    assert get_sizer_command() == [str(sizer)]
+    assert is_eda_exist() is True
+
     sizer.unlink()
     sizer_upper = bin_dir / "Sizer"
     sizer_upper.write_text("#!/bin/sh\n", encoding="utf-8")
