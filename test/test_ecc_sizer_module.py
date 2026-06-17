@@ -336,8 +336,11 @@ def test_public_sizer_run_marks_invalid_when_tool_missing(tmp_path, monkeypatch)
 def test_public_sizer_run_marks_invalid_when_runtime_missing(tmp_path, monkeypatch):
     from chipcompiler.tools import run_step as public_run_step
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import utility as sizer_utility
 
     monkeypatch.delenv("CHIPCOMPILER_ECC_SIZER_ROOT", raising=False)
+    missing_repo = tmp_path / "missing-repo"
+    monkeypatch.setattr(sizer_utility, "_repo_root", lambda: missing_repo)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     sizer = bin_dir / "sizer"
