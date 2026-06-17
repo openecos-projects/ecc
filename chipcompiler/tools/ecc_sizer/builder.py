@@ -6,7 +6,7 @@ import shutil
 from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.tools.ecc import builder as ecc_builder
 
-from .utility import get_sizer_root
+from .utility import find_sizer_root
 
 
 def _path_token(value: str) -> str:
@@ -89,19 +89,25 @@ def _append_lines(path: str, lines: list[str]) -> None:
 
 
 def _sizer_env_template() -> str:
-    submit_dir = get_sizer_root() / "submit"
+    sizer_root = find_sizer_root()
+    if sizer_root is None:
+        return ""
+
+    submit_dir = sizer_root / "submit"
     return str(submit_dir / "env_base_file")
 
 
 def _tech_lines(workspace: Workspace) -> list[str]:
+    sizer_root = find_sizer_root()
     lines = []
     if workspace.pdk.tech:
         lines.append(f"-lef {workspace.pdk.tech}")
     lines.extend(f"-lef {lef}" for lef in workspace.pdk.lefs)
     lines.extend(f"-lib {lib}" for lib in workspace.pdk.libs)
 
-    tcl_path = get_sizer_root() / "src" / "sizer_os.tcl"
-    lines.append(f"-tclFile {tcl_path}")
+    if sizer_root is not None:
+        tcl_path = sizer_root / "src" / "sizer_os.tcl"
+        lines.append(f"-tclFile {tcl_path}")
     return lines
 
 

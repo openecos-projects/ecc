@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from chipcompiler.data import CheckState, Checklist, Workspace, WorkspaceStep
+from chipcompiler.data import Checklist, CheckState, Workspace, WorkspaceStep
 
 
 class SizerChecklist:

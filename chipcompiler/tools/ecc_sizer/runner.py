@@ -6,7 +6,7 @@ import subprocess
 from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 
 from .subflow import SizerSubFlow, SizerSubFlowEnum
-from .utility import get_sizer_command, is_eda_exist
+from .utility import get_sizer_command, is_eda_exist, is_sizer_runtime_exist
 
 
 def _has_required_outputs(step: WorkspaceStep) -> bool:
@@ -25,7 +25,7 @@ def run_step(
     sub_flow = SizerSubFlow(workspace=workspace, workspace_step=step)
     run_sizer_step = SizerSubFlowEnum.run_sizer.value
 
-    if not is_eda_exist():
+    if not is_eda_exist() or not is_sizer_runtime_exist():
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
 

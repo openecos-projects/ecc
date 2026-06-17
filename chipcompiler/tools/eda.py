@@ -4,7 +4,7 @@ import logging
 from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
 
 
-def load_eda_module(eda_tool: str):
+def load_eda_module(eda_tool: str, check_dependency: bool = True):
     """
     Load and return the EDA tool module based on the given eda tool name.
     """
@@ -40,7 +40,7 @@ def load_eda_module(eda_tool: str):
         logging.error("EDA tool '%s': module loaded but missing interface: %s", eda_tool, missing)
         return None
 
-    if not eda_module.is_eda_exist():
+    if check_dependency and not eda_module.is_eda_exist():
         logging.error(
             "EDA tool '%s': dependency check failed (is_eda_exist returned False)",
             eda_tool,
@@ -62,7 +62,7 @@ def create_step(workspace : Workspace,
     Create and return an EDA tool instance based on the given step and eda tool name.
     """
     # check eda tool exist
-    eda_module = load_eda_module(eda)
+    eda_module = load_eda_module(eda, check_dependency=eda != "sizer")
     if eda_module is None \
         or not hasattr(eda_module, 'build_step'):
         return None
@@ -92,7 +92,7 @@ def run_step(workspace: Workspace,
     Run the given step using the provided EDA engine.
     """
     # check eda tool exist
-    eda_module = load_eda_module(step.tool)
+    eda_module = load_eda_module(step.tool, check_dependency=step.tool != "sizer")
     if eda_module is None:
         return False
     

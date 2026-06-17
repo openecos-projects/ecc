@@ -57,11 +57,10 @@ class SizerSubFlow:
     def get_runtime(self) -> str:
         end_time = time.time()
         elapsed_time = end_time - self.start_time
-        runtime = "{}:{}:{}".format(
-            int(elapsed_time // 3600),
-            int((elapsed_time % 3600) // 60),
-            int(elapsed_time % 60),
-        )
+        hours = int(elapsed_time // 3600)
+        minutes = int((elapsed_time % 3600) // 60)
+        seconds = int(elapsed_time % 60)
+        runtime = f"{hours}:{minutes}:{seconds}"
         self.start_time = end_time
         return runtime
 
