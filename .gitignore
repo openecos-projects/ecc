@@ -179,7 +179,6 @@ result
 requirements_lock.txt
 
 chipcompiler/tools/ecc_dreamplace/dreamplace
-chipcompiler/tools/ecc_sizer/bin/
 
 .humanize/
 humanize-*
