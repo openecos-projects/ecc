@@ -9,10 +9,6 @@ from chipcompiler.tools.ecc import builder as ecc_builder
 from .utility import find_sizer_root
 
 
-def _path_token(value: str) -> str:
-    return "_".join(value.split())
-
-
 def build_step(
     workspace: Workspace,
     step_name: str,
@@ -23,8 +19,8 @@ def build_step(
     output_verilog: str | None = None,
     output_gds: str | None = None,
 ) -> WorkspaceStep:
-    step_directory = f"{workspace.directory}/{step_name}_sizer"
-    safe_step_name = _path_token(step_name)
+    safe_step_name = "_".join(step_name.split()).lower()
+    step_directory = f"{workspace.directory}/{safe_step_name}_sizer"
     if output_def is None:
         output_def = f"{step_directory}/output/{workspace.design.name}_{safe_step_name}.def.gz"
     if output_verilog is None:
@@ -40,6 +36,7 @@ def build_step(
         output_verilog=output_verilog,
         output_gds=output_gds,
         tool="sizer",
+        step_directory=step_directory,
     )
     step.output["db"] = ""
     step.script["sizer_env"] = f"{step.script['dir']}/{workspace.design.name}.env_file"
@@ -73,12 +70,6 @@ def _copy_or_seed_template(template: str, target: str, fallback: str) -> None:
 
     with open(target, "w", encoding="utf-8") as file:
         file.write(fallback)
-
-
-def _write_text(path: str, text: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as file:
-        file.write(text)
 
 
 def _append_lines(path: str, lines: list[str]) -> None:
@@ -129,7 +120,9 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     cmd_path = step.script["sizer_cmd"]
 
     _copy_or_seed_template(env_template, env_path, "-num_vt 1\n")
-    _write_text(cmd_path, "")
+    os.makedirs(os.path.dirname(cmd_path), exist_ok=True)
+    with open(cmd_path, "w", encoding="utf-8"):
+        pass
 
     output_dir = step.data.get(step.name, step.data["dir"])
     cmd_lines = [

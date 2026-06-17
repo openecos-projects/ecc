@@ -5,10 +5,6 @@ from pathlib import Path
 _SIZER_RUNTIME_SENTINEL = Path("src") / "sizer_os.tcl"
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
 def _is_sizer_root(path: Path) -> bool:
     return (path / _SIZER_RUNTIME_SENTINEL).is_file()
 
@@ -39,19 +35,14 @@ def find_sizer_root() -> Path | None:
     if command:
         candidates.extend(_candidate_roots_from_binary(command[0]))
 
-    candidates.append(_repo_root() / "chipcompiler" / "thirdparty" / "ecc-sizer")
-
     for candidate in candidates:
         if _is_sizer_root(candidate):
             return candidate
     return None
 
 
-def get_sizer_root() -> Path:
-    root = find_sizer_root()
-    if root is not None:
-        return root
-    return _repo_root() / "chipcompiler" / "thirdparty" / "ecc-sizer"
+def get_sizer_root() -> Path | None:
+    return find_sizer_root()
 
 
 def get_sizer_command() -> list[str]:

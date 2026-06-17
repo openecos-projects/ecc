@@ -117,9 +117,13 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
     )
 
     assert step.output["db"] == ""
+    assert step.name == StepEnum.TIMING_OPT.value
+    assert step.directory.endswith("timing_optimization_sizer")
+    assert not step.directory.endswith(f"{StepEnum.TIMING_OPT.value}_sizer")
     assert " " not in os.path.basename(step.output["def"])
     assert " " not in os.path.basename(step.output["verilog"])
-    assert step.directory.endswith(f"{StepEnum.TIMING_OPT.value}_sizer")
+    assert os.path.basename(step.output["def"]) == "gcd_timing_optimization.def.gz"
+    assert os.path.basename(step.output["verilog"]) == "gcd_timing_optimization.v"
 
     sizer_builder.build_step_space(step)
 
@@ -133,6 +137,43 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
         step.analysis["dir"],
     ):
         assert os.path.isdir(path)
+        assert "Timing optimization_sizer" not in path
+
+
+def test_sizer_step_keeps_caller_input_paths(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    workspace = _workspace(tmp_path)
+    input_def = f"{workspace.directory}/Timing optimization_sizer_inputs/input.def"
+    input_verilog = f"{workspace.directory}/Timing optimization_sizer_inputs/input.v"
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def=input_def,
+        input_verilog=input_verilog,
+    )
+
+    assert step.input["def"] == input_def
+    assert step.input["verilog"] == input_verilog
+
+
+def test_sizer_step_keeps_caller_output_paths_that_share_old_prefix(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    workspace = _workspace(tmp_path)
+    output_def = f"{workspace.directory}/Timing optimization_sizer_outputs/output.def"
+    output_verilog = f"{workspace.directory}/Timing optimization_sizer_outputs/output.v"
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+        output_def=output_def,
+        output_verilog=output_verilog,
+    )
+
+    assert step.output["def"] == output_def
+    assert step.output["verilog"] == output_verilog
 
 
 def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
@@ -189,6 +230,20 @@ def test_sizer_runtime_root_resolves_from_path_binary(tmp_path, monkeypatch):
 
     assert find_sizer_root() == runtime_root.resolve()
     assert get_sizer_root() == runtime_root.resolve()
+
+
+def test_sizer_runtime_root_is_absent_without_env_or_discoverable_runtime(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import utility as sizer_utility
+
+    monkeypatch.delenv("CHIPCOMPILER_ECC_SIZER_ROOT", raising=False)
+
+    empty_path = tmp_path / "empty-path"
+    empty_path.mkdir()
+    monkeypatch.setenv("PATH", str(empty_path))
+
+    assert sizer_utility.find_sizer_root() is None
+    assert sizer_utility.get_sizer_root() is None
+    assert sizer_utility.is_sizer_runtime_exist() is False
 
 
 def test_sizer_step_info_surfaces_include_step_local_config(tmp_path, monkeypatch):
@@ -342,11 +397,8 @@ def test_public_sizer_run_marks_invalid_when_tool_missing(tmp_path, monkeypatch)
 def test_public_sizer_run_marks_invalid_when_runtime_missing(tmp_path, monkeypatch):
     from chipcompiler.tools import run_step as public_run_step
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
-    from chipcompiler.tools.ecc_sizer import utility as sizer_utility
 
     monkeypatch.delenv("CHIPCOMPILER_ECC_SIZER_ROOT", raising=False)
-    missing_repo = tmp_path / "missing-repo"
-    monkeypatch.setattr(sizer_utility, "_repo_root", lambda: missing_repo)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     sizer = bin_dir / "Sizer"
