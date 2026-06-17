@@ -126,8 +126,8 @@ def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
     sizer_upper.write_text("#!/bin/sh\n", encoding="utf-8")
     sizer_upper.chmod(0o755)
 
-    assert get_sizer_command() == [str(sizer_upper)]
-    assert is_eda_exist() is True
+    assert get_sizer_command() == []
+    assert is_eda_exist() is False
 
     empty_path = tmp_path / "empty"
     empty_path.mkdir()
