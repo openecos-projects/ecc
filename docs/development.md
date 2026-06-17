@@ -211,6 +211,22 @@ Create `chipcompiler/tools/<tool>/` with `__init__.py`, `builder.py`, and
 `run_step`. Integrate into the flow through `EngineFlow.build_default_steps()`
 or `add_step()`.
 
+### Sizer Development Policy
+
+Sizer is currently treated as an external native tool, not as an ECC Python
+workspace package. Do not add `ecc-sizer` to `[tool.uv.workspace]`; `uv`
+resolves Python packages and lockfiles, while Sizer is a separate CMake/Nix C++
+project with its own OpenROAD submodule tree.
+
+Do not vendor Sizer under `chipcompiler/thirdparty` unless ECC intentionally
+takes ownership of building and distributing that native runtime. For local
+development, keep Sizer in a sibling checkout and expose its executable through
+PATH. Promote it to an ECC thirdparty input only when CI, release bundles, or
+end-user installs must be reproducible without a separately prepared Sizer
+checkout. If that happens, prefer a Nix input or release artifact first; use a
+`chipcompiler/thirdparty/ecc-sizer` checkout only if the repository is meant to
+be built as part of ECC itself.
+
 ## CLI Usage
 
 For command-line automation and scripting, run CLI via Nix:
@@ -282,6 +298,58 @@ Or add Yosys to PATH directly:
 
 ```bash
 source /path/to/oss-cad-suite/environment
+```
+
+### Sizer
+
+Sizer integration expects the external
+[`ecc-sizer`](https://github.com/openecos-projects/ecc-sizer) repository to be
+built separately. Clone it outside the ECC repository:
+
+```bash
+git clone --recursive https://github.com/openecos-projects/ecc-sizer /path/to/ecc-sizer
+cd /path/to/ecc-sizer
+git submodule update --init --recursive
+```
+
+Build Sizer with its own development environment:
+
+```bash
+nix develop
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target Sizer -j "$(nproc)"
+```
+
+The executable is expected at:
+
+```text
+/path/to/ecc-sizer/build/src/Sizer
+```
+
+For ECC development, add the executable directory to PATH before running flows
+or tests:
+
+```bash
+export PATH=/path/to/ecc-sizer/build/src:$PATH
+which Sizer
+```
+
+The command name is case-sensitive on Linux. Current ECC detection looks for
+`Sizer`, then discovers the Sizer runtime root by walking upward from that
+binary and checking for `src/sizer_os.tcl`. If the executable is provided
+through a wrapper that does not live under the Sizer checkout, also set:
+
+```bash
+export CHIPCOMPILER_ECC_SIZER_ROOT=/path/to/ecc-sizer
+```
+
+For the ICS55 GCD tool integration test:
+
+```bash
+nix develop
+export PATH=/path/to/ecc-sizer/build/src:$PATH
+export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
+.venv/bin/python -m pytest test/test_tools.py::test_ics55_gcd -q -s
 ```
 
 ### PDK
