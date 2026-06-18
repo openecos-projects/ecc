@@ -5,6 +5,3 @@
 [submodule "chipcompiler/thirdparty/ecc-dreamplace"]
 	path = chipcompiler/thirdparty/ecc-dreamplace
 	url = https://github.com/openecos-projects/ecc-dreamplace.git
-[submodule "chipcompiler/thirdparty/ecc-sizer"]
-	path = chipcompiler/thirdparty/ecc-sizer
-	url = https://github.com/openecos-projects/ecc-sizer.git
