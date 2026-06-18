@@ -2,15 +2,23 @@
 
 ECC is the EDA toolchain component of ECOS Studio, orchestrating EDA tools (Yosys, ECC-Tools, OpenROAD, Magic, KLayout) for RTL-to-GDS flows. See `docs/architecture.md` for architecture details and `docs/development.md` for workflows.
 
-For setup, testing, code quality, and Bazel commands, see [docs/development.md](docs/development.md).
+For setup, testing, and code quality commands, see [docs/development.md](docs/development.md).
 
 # Workflow
 
-`bazel run //:prepare_dev` performs: venv creation (`uv sync`) -> ECC-Tools runtime install -> DreamPlace `.so` install (built via `@ecc-dreamplace` module). After setup: `source .venv/bin/activate`. Use `--jobs=1` on memory-constrained machines.
+If Nix is available, enter the dev shell before syncing:
 
-Release builds download a pre-built DreamPlace wheel from GitHub Releases instead of building from source. The CI workflow uses `uv pip install --no-deps <wheel-url>` directly.
+```bash
+nix develop
+uv sync --no-build-isolation-package ecc-dreamplace --no-binary-package ecc-tools-bin --verbose
+source .venv/bin/activate
+```
 
-For integrating thirdparty tools into the build system, see [docs/development.md](docs/development.md#integrating-a-thirdparty-tool-into-the-build-system).
+If Nix is not available, skip `nix develop` and run the `uv sync` command in the
+normal shell. `ecc` is editable, so source changes are picked up on the next
+import.
+
+For integrating thirdparty tools, see [docs/development.md](docs/development.md#integrating-a-thirdparty-tool).
 
 # Gotchas
 
@@ -19,9 +27,6 @@ For integrating thirdparty tools into the build system, see [docs/development.md
 - Steps run in `multiprocessing.Process`; state persisted in `workspace.flow.json`
 - File chaining: each step reads previous step's `output/`; first step uses `workspace.design.origin_verilog/origin_def`
 - `uv.lock` is source of truth for Python deps; `requirements_lock.txt` is auto-generated and gitignored
-- Use `--config=ghproxy` for Bazel on restricted networks
-- **Bazel 8 Bzlmod**: This project uses Bzlmod (`MODULE.bazel`), not legacy `WORKSPACE`. `new_local_repository` etc. must be loaded via `use_repo_rule()`, never used as bare globals. Do not use `WORKSPACE`-era idioms.
-- **Do not assume Bazel/Starlark APIs exist** -- always verify against the exact Bazel version (currently 8.x) before using an API. For example, `watch_tree` has no `exclude` parameter. If an API doesn't work, investigate alternatives instead of retrying with guessed parameters.
 
 # Behavioral Guidelines
 

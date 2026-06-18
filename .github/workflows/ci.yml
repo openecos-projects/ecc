@@ -81,7 +81,7 @@ jobs:
       #   run: uv run pyright chipcompiler
 
       - name: Pytest
-        run: uv run pytest test/ --ignore=test/test_harden.py --ignore=test/test_rcx.py --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report=
+        run: uv run --no-sync pytest test/ --ignore=test/test_harden.py --ignore=test/test_rcx.py --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report=
 
       - name: Publish coverage summary
         if: always()
@@ -89,7 +89,7 @@ jobs:
           {
             echo '## Coverage Report'
             echo '```'
-            uv run coverage report
+            uv run --no-sync coverage report
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
 
@@ -106,14 +106,6 @@ jobs:
       - name: Setup Python dependencies
         uses: ./.github/actions/setup-python-deps
 
-      - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.14.0
-        with:
-          bazelisk-version: "1.27.0"
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
-
       - name: Smoke test native toolchain wheels
         run: |
           .venv/bin/python - <<'PY'
@@ -127,12 +119,14 @@ jobs:
           PY
 
       - name: Build PyInstaller bundle
-        run: bazel build //:build_ecc_cli_bundle
+        run: |
+          uv run --no-sync pyinstaller ecc.spec --clean
+          tar -cf dist/ecc.tar -C dist/ecc .
 
       - name: Smoke test PyInstaller bundle
         run: |
           mkdir -p dist/pyinstaller-smoke
-          tar -xf bazel-bin/build_ecc_cli_bundle/ecc.tar -C dist/pyinstaller-smoke
+          tar -xf dist/ecc.tar -C dist/pyinstaller-smoke
           dist/pyinstaller-smoke/ecc --help
           dist/pyinstaller-smoke/ecc --version
           dist/pyinstaller-smoke/ecc version --json
@@ -145,7 +139,7 @@ jobs:
           name: ecc-cli-linux-x86_64
           if-no-files-found: ignore
           path: |
-            bazel-bin/build_ecc_cli_bundle/ecc.tar
+            dist/ecc.tar
 
   # nix:
   #   runs-on: ubuntu-latest

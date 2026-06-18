@@ -264,8 +264,8 @@ def test_clear_states_resets_all(tmp_path: Path) -> None:
         )
 
 
-def test_run_steps_resets_home_only_for_rerun(tmp_path: Path) -> None:
-    """Normal resume must preserve home data; explicit rerun may clear it."""
+def test_run_steps_does_not_reset_home_directly(tmp_path: Path) -> None:
+    """Rerun preparation is handled before run_steps(); step execution should not reset home."""
     ws: Workspace = _make_workspace(tmp_path, num_steps=1)
     reset_calls = []
     ws.home.reset = lambda: reset_calls.append(True)  # type: ignore[method-assign]
@@ -278,7 +278,30 @@ def test_run_steps_resets_home_only_for_rerun(tmp_path: Path) -> None:
     assert reset_calls == []
 
     assert flow.run_steps(rerun=True)
-    assert reset_calls == [True]
+    assert reset_calls == []
+
+
+def test_run_steps_does_not_refresh_workspace_config_directly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws: Workspace = _make_workspace(tmp_path, num_steps=1)
+    refresh_calls = []
+
+    def refresh_config(workspace: Workspace) -> None:
+        refresh_calls.append(workspace.directory)
+
+    monkeypatch.setattr("chipcompiler.data.init_workspace_config", refresh_config)
+
+    flow: EngineFlow = EngineFlow(workspace=ws)
+    flow.workspace_steps.append(WorkspaceStep(name="step_0", tool="mock"))
+    flow.run_step = lambda workspace_step, rerun=False: StateEnum.Success  # type: ignore[assignment]
+
+    assert flow.run_steps(rerun=False)
+    assert refresh_calls == []
+
+    assert flow.run_steps(rerun=True)
+    assert refresh_calls == []
 
 
 @pytest.mark.parametrize("fail_index", [0, 1, 2, 3, 4])

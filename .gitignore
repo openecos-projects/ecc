@@ -175,9 +175,6 @@ chipcompiler/thirdparty/icsprout55-pdk
 result
 .direnv/
 
-# Bazel result
-bazel-*
-
 # Generated from uv.lock, not committed
 requirements_lock.txt
 
@@ -190,3 +187,5 @@ findings.md
 progress.md
 task_plan.md
 .agents/
+
+.ccache

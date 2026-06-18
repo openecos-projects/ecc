@@ -9,6 +9,7 @@ Build:
 import os
 import sys
 import warnings
+from importlib.util import find_spec
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_data_files, copy_metadata
@@ -26,7 +27,7 @@ if BUNDLE_MODE not in {"onedir", "onefile"}:
 REQUIRED_DISTRIBUTION_METADATA = (
     "ecc",
     "ecc-dreamplace",
-    "ecc-tools",
+    "ecc-tools-bin",
 )
 
 ECC_PACKAGE_RESOURCES = (
@@ -182,13 +183,24 @@ def collect_platform_runtime_libs():
     return []
 
 
+def collect_ecc_tools_extension_binaries():
+    module_spec = find_spec("ecc_tools_bin")
+    if module_spec is None or module_spec.submodule_search_locations is None:
+        return []
+
+    package_dir = Path(next(iter(module_spec.submodule_search_locations)))
+    return [(str(extension), "ecc_tools_bin") for extension in package_dir.glob("ecc_py*.so")]
+
+
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
+ecc_tools_datas, ecc_tools_binaries, ecc_tools_hiddenimports = collect_all("ecc_tools_bin")
 klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all("klayout")
 dreamplace_datas, dreamplace_binaries, dreamplace_hiddenimports = collect_all("dreamplace")
 torch_datas, torch_binaries, torch_hiddenimports = collect_all("torch")
 
 datas = []
 datas.extend(ecc_datas)
+datas.extend(ecc_tools_datas)
 datas.extend(klayout_datas)
 datas.extend(dreamplace_datas)
 datas.extend(torch_datas)
@@ -198,6 +210,8 @@ datas.extend(collect_dreamplace_thirdparty_files())
 
 binaries = []
 binaries.extend(ecc_binaries)
+binaries.extend(ecc_tools_binaries)
+binaries.extend(collect_ecc_tools_extension_binaries())
 binaries.extend(klayout_binaries)
 binaries.extend(dreamplace_binaries)
 binaries.extend(torch_binaries)
@@ -206,6 +220,7 @@ binaries.extend(collect_platform_runtime_libs())
 hiddenimports = []
 hiddenimports.extend(HIDDENIMPORTS)
 hiddenimports.extend(ecc_hiddenimports)
+hiddenimports.extend(ecc_tools_hiddenimports)
 hiddenimports.extend(klayout_hiddenimports)
 hiddenimports.extend(dreamplace_hiddenimports)
 hiddenimports.extend(torch_hiddenimports)

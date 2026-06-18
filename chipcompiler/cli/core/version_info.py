@@ -27,7 +27,7 @@ def version_payload() -> dict[str, int | str]:
         "runtime": RUNTIME_LABEL,
         "ecc": ecc_version(),
         "dreamplace": distribution_version("ecc-dreamplace"),
-        "ecc_tools": distribution_version("ecc-tools"),
+        "ecc_tools": distribution_version("ecc-tools-bin"),
     }
 
 

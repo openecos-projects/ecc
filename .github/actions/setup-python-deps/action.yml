@@ -15,6 +15,34 @@ runs:
         version: latest
         enable-cache: "true"
 
+    - name: Install native tool wheels
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        mkdir -p dist/native-wheels
+        uv venv --python 3.11
+
+        dreamplace_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' chipcompiler/thirdparty/ecc-dreamplace/pyproject.toml)"
+        ecc_tools_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' chipcompiler/thirdparty/ecc-tools/pyproject.toml)"
+
+        gh release download "v$dreamplace_version" \
+          --repo "openecos-projects/ecc-dreamplace" \
+          --pattern '*.whl' \
+          --dir dist/native-wheels
+
+        gh release download "v$ecc_tools_version" \
+          --repo "openecos-projects/ecc-tools" \
+          --pattern '*.whl' \
+          --dir dist/native-wheels
+
+        uv pip install --python .venv/bin/python --no-deps dist/native-wheels/*.whl
+
     - name: Install Python dependencies
       shell: bash
-      run: uv sync --frozen --all-groups --python 3.11
+      run: |
+        uv sync --frozen --all-groups --python 3.11 --inexact \
+          --no-install-package ecc-dreamplace \
+          --no-install-package ecc-tools-bin

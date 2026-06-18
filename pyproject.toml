@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
   "ecc-dreamplace==0.1.0a4",
-  "ecc-tools==0.1.0a4",
+  "ecc-tools-bin==0.1.0a5",
   "fastapi>=0.109",
   "klayout>=0.30.2",
   "matplotlib>=3.4",
@@ -51,6 +51,7 @@ dev = [
   "pytest>=7",
   "pytest-cov>=4",
   "ruff>=0.14.10",
+  "scikit-build-core>=0.12.2",
   "ty>=0.0.9",
   "uv-build>=0.10.9,<0.11.0",
   "z3-solver>=4.12",
@@ -76,9 +77,15 @@ name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
+[tool.uv.workspace]
+members = [
+  "chipcompiler/thirdparty/ecc-dreamplace",
+  "chipcompiler/thirdparty/ecc-tools",
+]
+
 [tool.uv.sources]
-ecc-dreamplace = { url = "https://github.com/openecos-projects/ecc-dreamplace/releases/download/v0.1.0-alpha.4/ecc_dreamplace-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl" }
-ecc-tools = { url = "https://github.com/openecos-projects/ecc-tools/releases/download/v0.1.0-alpha.4/ecc_tools-0.1.0a4-py3-none-manylinux_2_34_x86_64.whl" }
+ecc-dreamplace = { workspace = true }
+ecc-tools-bin = { workspace = true }
 torch = { index = "pytorch-cpu" }
 
 [tool.ruff]
@@ -95,7 +102,7 @@ extend-include = ["*.spec"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
-norecursedirs = ["bazel-bin", "bazel-out", "bazel-ecc", "bazel-testlogs", ".venv"]
+norecursedirs = [".venv"]
 addopts = [
   "--deselect=test/test_tools.py::test_sg13g2_gcd",
 ]

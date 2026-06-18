@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 from .parameter import (
     Parameters,
     get_parameters, 
@@ -16,7 +18,7 @@ from .pdk import get_pdk, PDK
 from .step import StepEnum
 from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
-    
+
 @dataclass
 class OriginDesign:
     """
@@ -125,6 +127,138 @@ def build_workspace_config_paths(workspace: Workspace) -> dict:
     }
 
 
+@dataclass(frozen=True)
+class WorkspaceConfigParameterMapping:
+    parameter_key: str
+    config_key: str
+    json_path: tuple[str, ...]
+    to_config: Callable[[Any], Any] | None = None
+    to_parameter: Callable[[Any], Any] | None = None
+
+
+def _flag_to_int(value: Any) -> int:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes", "on"}:
+            return 1
+        if normalized in {"false", "no", "off", ""}:
+            return 0
+        try:
+            return int(float(normalized))
+        except ValueError:
+            return 1
+    return int(bool(value))
+
+
+PARAMETER_CONFIG_FIELD_MAPPINGS = (
+    WorkspaceConfigParameterMapping(
+        "Max fanout",
+        StepEnum.NETLIST_OPT.value,
+        ("max_fanout",),
+    ),
+    WorkspaceConfigParameterMapping(
+        "Global right padding",
+        StepEnum.PLACEMENT.value,
+        ("PL", "GP", "global_right_padding"),
+    ),
+    WorkspaceConfigParameterMapping(
+        "Bottom layer",
+        "db",
+        ("LayerSettings", "routing_layer_1st"),
+    ),
+    WorkspaceConfigParameterMapping(
+        "Bottom layer",
+        StepEnum.ROUTING.value,
+        ("RT", "-bottom_routing_layer"),
+    ),
+    WorkspaceConfigParameterMapping(
+        "Top layer",
+        StepEnum.ROUTING.value,
+        ("RT", "-top_routing_layer"),
+    ),
+    WorkspaceConfigParameterMapping(
+        "Target density",
+        "dreamplace",
+        ("target_density",),
+    ),
+    WorkspaceConfigParameterMapping(
+        "Target overflow",
+        "dreamplace",
+        ("stop_overflow",),
+    ),
+    WorkspaceConfigParameterMapping(
+        "Cell padding x",
+        "dreamplace",
+        ("cell_padding_x",),
+    ),
+    WorkspaceConfigParameterMapping(
+        "Routability opt flag",
+        "dreamplace",
+        ("routability_opt_flag",),
+        to_config=_flag_to_int,
+        to_parameter=_flag_to_int,
+    ),
+)
+
+
+_MISSING = object()
+
+
+def _get_nested_value(data: dict, path: tuple[str, ...]):
+    current = data
+    for key in path:
+        if not isinstance(current, dict) or key not in current:
+            return _MISSING
+        current = current[key]
+    return current
+
+
+def _set_nested_value(data: dict, path: tuple[str, ...], value) -> None:
+    current = data
+    for key in path[:-1]:
+        child = current.get(key)
+        if not isinstance(child, dict):
+            child = {}
+            current[key] = child
+        current = child
+    current[path[-1]] = value
+
+
+def _mapping_config_path(workspace: Workspace, mapping: WorkspaceConfigParameterMapping) -> str:
+    if not workspace.config:
+        workspace.config = build_workspace_config_paths(workspace)
+    return workspace.config.get(mapping.config_key, "")
+
+
+def _reload_workspace_parameters(workspace: Workspace) -> None:
+    import os
+
+    if workspace.parameters.path and os.path.exists(workspace.parameters.path):
+        workspace.parameters = load_parameter(workspace.parameters.path)
+
+
+def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
+    from chipcompiler.utility import json_read, json_write
+
+    configs: dict[str, dict] = {}
+    for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
+        if mapping.parameter_key not in workspace.parameters.data:
+            continue
+
+        path = _mapping_config_path(workspace, mapping)
+        if not path:
+            continue
+
+        config = configs.setdefault(path, json_read(path))
+        value = workspace.parameters.data[mapping.parameter_key]
+        if mapping.to_config is not None:
+            value = mapping.to_config(value)
+        _set_nested_value(config, mapping.json_path, value)
+
+    for path, config in configs.items():
+        json_write(path, config)
+
+
 def _ensure_writable(path: str):
     import os
     import stat
@@ -174,13 +308,9 @@ def _rcx_temperature_token(temperature) -> str:
 
 
 def init_workspace_config(workspace: Workspace) -> None:
-    """Create workspace-level configs and write static fields once."""
+    """Create workspace-level configs, then refresh parameter/PDK-derived fields."""
     import os
     import shutil
-    from copy import deepcopy
-
-    from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
-    from chipcompiler.utility import json_read, json_write
 
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
@@ -201,6 +331,21 @@ def init_workspace_config(workspace: Workspace) -> None:
     if not os.path.exists(workspace.config["dreamplace"]):
         shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
     _ensure_writable(config_dir)
+
+    refresh_workspace_config(workspace)
+
+
+def refresh_workspace_config(workspace: Workspace) -> None:
+    """Reload parameters.json and refresh workspace configs derived from parameters/PDK."""
+    import os
+
+    from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
+    from chipcompiler.utility import json_read, json_write
+
+    _reload_workspace_parameters(workspace)
+
+    if not workspace.config:
+        workspace.config = build_workspace_config_paths(workspace)
 
     flow = json_read(workspace.config["flow"])
     flow["ConfigPath"]["idb_path"] = workspace.config["db"]
@@ -257,13 +402,15 @@ def init_workspace_config(workspace: Workspace) -> None:
     router["RT"]["-top_routing_layer"] = workspace.parameters.data.get("Top layer", "")
     json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 
+    _apply_parameter_mappings_to_workspace_config(workspace)
+
     # rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
     # rcx["pdk"] = "ics55" if workspace.pdk.name == "ics55" else ""
     # rcx["mapping_file"] = workspace.pdk.mapping_file
     # corners = deepcopy(workspace.pdk.corners)
     # rcx["corners"] = corners
     # json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
-    
+
     sta = json_read(workspace.config[f"{StepEnum.STA.value}"])
     pdk_root = workspace.pdk.root.rstrip(os.sep)
     for liberty in sta.get("liberty", []):
@@ -281,6 +428,138 @@ def init_workspace_config(workspace: Workspace) -> None:
     dreamplace["base_design_name"] = workspace.design.name
     dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
     json_write(workspace.config["dreamplace"], dreamplace)
+
+
+def sync_workspace_config_to_parameters(workspace: Workspace, config_path: str) -> bool:
+    """Sync managed fields from one workspace config file back into parameters.json."""
+    import os
+
+    from chipcompiler.utility import json_read
+
+    _reload_workspace_parameters(workspace)
+
+    if not workspace.config:
+        workspace.config = build_workspace_config_paths(workspace)
+
+    resolved_config_path = os.path.abspath(config_path)
+    changed = False
+    for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
+        mapped_path = _mapping_config_path(workspace, mapping)
+        if not mapped_path or os.path.abspath(mapped_path) != resolved_config_path:
+            continue
+
+        config = json_read(mapped_path)
+        value = _get_nested_value(config, mapping.json_path)
+        if value is _MISSING:
+            continue
+
+        if mapping.to_parameter is not None:
+            value = mapping.to_parameter(value)
+
+        if workspace.parameters.data.get(mapping.parameter_key) != value:
+            workspace.parameters.data[mapping.parameter_key] = value
+            changed = True
+
+    if changed:
+        save_parameter(workspace.parameters)
+
+    return changed
+
+
+def _path_is_within(path: str, directory: str) -> bool:
+    import os
+
+    try:
+        return os.path.commonpath([path, directory]) == directory
+    except ValueError:
+        return False
+
+
+def _reset_workspace_checklist(workspace: Workspace) -> None:
+    from chipcompiler.utility import json_write
+
+    checklist_path = workspace.home.data.get("checklist", "")
+    if not checklist_path:
+        checklist_path = f"{workspace.directory}/home/checklist.json"
+    json_write(
+        checklist_path,
+        {
+            "path": checklist_path,
+            "checklist": [],
+        },
+    )
+
+
+def _reset_workspace_runtime_parameters(workspace: Workspace) -> None:
+    from copy import deepcopy
+
+    current_data = workspace.parameters.data or {}
+    pdk_name = str(current_data.get("PDK", "")).lower()
+    template_parameters = get_parameters(pdk_name)
+    template_data = deepcopy(template_parameters.data)
+
+    die_template = template_data.get("Die")
+    if isinstance(die_template, dict) and isinstance(current_data.get("Die"), dict):
+        current_data["Die"] = deepcopy(die_template)
+
+    core_template = template_data.get("Core")
+    if isinstance(core_template, dict) and isinstance(current_data.get("Core"), dict):
+        current_core = current_data["Core"]
+        current_data["Core"] = {
+            **deepcopy(core_template),
+            "Utilitization": current_core.get("Utilitization", core_template.get("Utilitization")),
+            "Margin": deepcopy(current_core.get("Margin", core_template.get("Margin"))),
+            "Aspect ratio": current_core.get("Aspect ratio", core_template.get("Aspect ratio")),
+        }
+
+    save_parameter(workspace.parameters)
+
+
+def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
+    """Delete old run artifacts and restore runtime files before a full-flow rerun."""
+    import os
+    import shutil
+
+    workspace_root = os.path.realpath(workspace.directory)
+    step_directories = []
+    for workspace_step in getattr(engine_flow, "workspace_steps", []):
+        step_directory = getattr(workspace_step, "directory", "")
+        if not step_directory:
+            continue
+        resolved_step_directory = os.path.realpath(step_directory)
+        if (
+            resolved_step_directory == workspace_root
+            or not _path_is_within(resolved_step_directory, workspace_root)
+        ):
+            raise ValueError(f"refusing to delete step directory outside workspace: {step_directory}")
+        step_directories.append(resolved_step_directory)
+
+    for step_directory in sorted(set(step_directories), key=len, reverse=True):
+        if not os.path.exists(step_directory):
+            continue
+        if os.path.islink(step_directory) or os.path.isfile(step_directory):
+            os.unlink(step_directory)
+        else:
+            shutil.rmtree(step_directory)
+
+    if hasattr(engine_flow, "clear_states"):
+        engine_flow.clear_states()
+
+    workspace.home.reset()
+    workspace.home.set_flow(workspace.flow.path)
+    workspace.home.set_checklist(f"{workspace.directory}/home/checklist.json")
+    workspace.home.set_parameters(workspace.parameters.path)
+    _reset_workspace_checklist(workspace)
+    _reset_workspace_runtime_parameters(workspace)
+
+    refresh_workspace_config(workspace)
+
+    if hasattr(engine_flow, "engine_db"):
+        engine_flow.engine_db = None
+    if hasattr(engine_flow, "workspace_steps"):
+        engine_flow.workspace_steps.clear()
+    if hasattr(engine_flow, "create_step_workspaces"):
+        engine_flow.create_step_workspaces()
 
 
 def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
