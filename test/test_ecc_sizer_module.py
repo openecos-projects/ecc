@@ -123,7 +123,7 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
     assert " " not in os.path.basename(step.output["def"])
     assert " " not in os.path.basename(step.output["verilog"])
     assert os.path.basename(step.output["def"]) == "gcd_timing_optimization.def.gz"
-    assert os.path.basename(step.output["verilog"]) == "gcd_timing_optimization.v"
+    assert os.path.basename(step.output["verilog"]) == "gcd_timing_optimization.v.gz"
 
     sizer_builder.build_step_space(step)
 
