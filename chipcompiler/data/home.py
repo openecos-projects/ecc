@@ -255,6 +255,7 @@ class HomeData:
                          step : str, 
                          type : str,
                          item : str,
-                         state : str):
+                         state : str,
+                         info : str = ""):
         checklist = Checklist(path=self.data.get("checklist", ""))
-        checklist.update(step=step, type=type, item=item, state=state)
+        checklist.update(step=step, type=type, item=item, state=state, info=info)

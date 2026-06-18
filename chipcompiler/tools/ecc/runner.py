@@ -16,6 +16,20 @@ from chipcompiler.utility import json_read
 def create_db_engine(workspace: Workspace,
                      step: WorkspaceStep) -> ECCToolsModule:
     """"""
+    def input_path_exists(path: str) -> str | None:
+        if not path:
+            return None
+    
+        gzip_path = path if path.endswith(".gz") else f"{path}.gz"
+        plain_path = path[:-3] if path.endswith(".gz") else path
+    
+        if os.path.exists(gzip_path):
+            return gzip_path
+        if os.path.exists(plain_path):
+            return plain_path
+    
+        return None
+
     def load_data():  
         ecc_module = ECCToolsModule()
         
@@ -33,6 +47,12 @@ def create_db_engine(workspace: Workspace,
             return None
         
     def load_design():
+        def def_exist() -> str | None:
+            return input_path_exists(step.input.get("def", ""))
+
+        def verilog_exist() -> str | None:
+            return input_path_exists(step.input.get("verilog", ""))
+
         ecc_module = ECCToolsModule()
     
         ecc_module.init_config(flow_config=workspace.config.get("flow"),
@@ -44,12 +64,15 @@ def create_db_engine(workspace: Workspace,
         ecc_module.init_lefs(workspace.pdk.lefs)
         
         # if db def exist, read db def
-        if os.path.exists(step.input.get("def", "")):
-            ecc_module.read_def(step.input.get("def", ""))      
+        def_path = def_exist()
+
+        if def_path is not None:
+            ecc_module.read_def(def_path)
         else:
             #else, read step output verilog
-            if os.path.exists(step.input.get("verilog", "")):
-                ecc_module.read_verilog(verilog=step.input.get("verilog", ""),
+            verilog_path = verilog_exist()
+            if verilog_path:
+                ecc_module.read_verilog(verilog=verilog_path,
                                       top_module=workspace.design.top_module)
             else:
                 return None
@@ -60,13 +83,11 @@ def create_db_engine(workspace: Workspace,
         # skip synthesis step
         if step.name == StepEnum.SYNTHESIS.value:
             return False
-        
-        # db_path = step.input.get("db", "")
-        
-        # ecc_module = ECCToolsModule()
-        
-        # return ecc_module.is_db_data_exists(db_path) or os.path.exists(step.input.get("def", "")) or os.path.exists(step.input.get("verilog", ""))
-        return os.path.exists(step.input.get("def", "")) or os.path.exists(step.input.get("verilog", ""))
+    
+        return (
+            input_path_exists(step.input.get("def", "")) is not None
+            or input_path_exists(step.input.get("verilog", "")) is not None
+        )
     
     if not is_eda_exist() or not is_enable_setup():
         return None
@@ -345,9 +366,6 @@ def run_cts(workspace: Workspace,
                          output=step.data.get(f"{StepEnum.CTS.value}", ""))
         
         ecc_module.report_cts(output=step.data.get(f"{StepEnum.CTS.value}", ""))
-        
-        # Post-CTS legalization is handled by the following DreamPlace legalization step.
-        # ecc_module.run_legalize(config=workspace.config.get(f"{StepEnum.LEGALIZATION.value}", ""))
         
         ecc_module.feature_cts_map(json_path=step.feature.get("map", ""))
         
@@ -775,6 +793,7 @@ def run_harden(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
         
+        run_analysis(workspace = workspace, step = step, subflow = sub_flow)
         reslut = True
     
     return reslut
@@ -808,6 +827,7 @@ def run_rcx(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
     
+        run_analysis(workspace = workspace, step = step, subflow = sub_flow)
         result = True
         
     return result
@@ -984,4 +1004,5 @@ def run_sta(workspace: Workspace,
     sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                          state=StateEnum.Success) 
         
+    run_analysis(workspace = workspace, step = step, subflow = sub_flow)
     return result

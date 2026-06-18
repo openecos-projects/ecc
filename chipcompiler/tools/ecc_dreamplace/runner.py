@@ -11,7 +11,21 @@ from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc import EccSubFlowEnum, EccSubFlow, ECCToolsModule
 
 from .module import DreamplaceModule
+from .checklist import DreamplaceChecklist
 from .utility import is_eda_exist
+
+
+def run_analysis(workspace: Workspace,
+                 step: WorkspaceStep,
+                 subflow : EccSubFlow):
+    ecc_runner.run_analysis(workspace=workspace,
+                            step=step,
+                            subflow=subflow)
+
+    checklist = DreamplaceChecklist(workspace=workspace,
+                                    workspace_step=step,
+                                    init_checklist=False)
+    checklist.check()
 
 def run_step(
     workspace: Workspace,
@@ -74,7 +88,7 @@ def run_placement(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
         
-        ecc_runner.run_analysis(workspace = workspace, step = step, subflow = sub_flow)
+        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
     
     return reslut
 
@@ -116,6 +130,6 @@ def run_legalization(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
         
-        ecc_runner.run_analysis(workspace = workspace, step = step, subflow = sub_flow)
+        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
     
     return reslut

@@ -71,6 +71,9 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     # build ecc config
     ecc_builder.build_step_config(workspace, step)
 
+    from .checklist import DreamplaceChecklist
+    DreamplaceChecklist(workspace=workspace, workspace_step=step)
+
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 

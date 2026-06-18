@@ -43,7 +43,7 @@ def build_step(workspace: Workspace,
     if output_def is None:
         output_def = f"{step.directory}/output/{workspace.design.name}_{step.name}.def.gz"
     if output_verilog is None:
-        output_verilog = f"{step.directory}/output/{workspace.design.name}_{step.name}.v"
+        output_verilog = f"{step.directory}/output/{workspace.design.name}_{step.name}.v.gz"
     if output_gds is None:
         output_gds = f"{step.directory}/output/{workspace.design.name}_{step.name}.gds"
     output_db = f"{step.directory}/output/{workspace.design.name}_{step.name}_db"
