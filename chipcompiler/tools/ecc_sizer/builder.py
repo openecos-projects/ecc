@@ -24,7 +24,7 @@ def build_step(
     if output_def is None:
         output_def = f"{step_directory}/output/{workspace.design.name}_{safe_step_name}.def.gz"
     if output_verilog is None:
-        output_verilog = f"{step_directory}/output/{workspace.design.name}_{safe_step_name}.v"
+        output_verilog = f"{step_directory}/output/{workspace.design.name}_{safe_step_name}.v.gz"
 
     step = ecc_builder.build_step(
         workspace=workspace,
