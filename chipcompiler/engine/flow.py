@@ -204,6 +204,15 @@ class EngineFlow:
                     if not os.path.exists(spef):
                         break
                 success = True
+            case (
+                StepEnum.TIMING_OPT.value
+                | StepEnum.TIMING_OPT_DRV.value
+                | StepEnum.TIMING_OPT_HOLD.value
+                | StepEnum.TIMING_OPT_SETUP.value
+            ):
+                if os.path.exists(workspace_step.output.get("def", "")) and \
+                    os.path.exists(workspace_step.output.get("verilog", "")):
+                    success = True
             case default:
                 if os.path.exists(workspace_step.output.get("def", "")) and \
                     os.path.exists(workspace_step.output.get("verilog", "")) and \
@@ -270,6 +279,10 @@ class EngineFlow:
                 break
                                 
         return self.engine_db.create_db_engine(step=workspace_step)
+
+    def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
+        if workspace_step.tool == "sizer" and state == StateEnum.Success:
+            self.engine_db = None
     
     def run_steps(self, rerun=False) -> bool:
         """
@@ -317,6 +330,7 @@ class EngineFlow:
                             tool=workspace_step.tool,
                             state=StateEnum.Success):
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
+            self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             return StateEnum.Success
 
         # set state ongoing
@@ -379,5 +393,7 @@ class EngineFlow:
         if state == StateEnum.Success:
             from chipcompiler.tools import save_layout_image
             save_layout_image(workspace=self.workspace, step=workspace_step)
+
+        self.clear_db_engine_after_step(workspace_step, state)
 
         return state

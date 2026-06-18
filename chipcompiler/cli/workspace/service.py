@@ -505,6 +505,7 @@ def _load_tool_builder(tool: str):
     module_alias = {
         "klayout": "klayout_tool",
         "dreamplace": "ecc_dreamplace",
+        "sizer": "ecc_sizer",
     }
     module_name = module_alias.get(tool, tool)
     return importlib.import_module(f"chipcompiler.tools.{module_name}.builder")

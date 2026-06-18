@@ -93,3 +93,26 @@ def test_ecc_builder_constructs_view_json_paths(tmp_path):
     expected_dir = f"{step.directory}/output/gcd_{StepEnum.PLACEMENT.value}_view"
     assert step.output["view_json"] == expected_dir
     assert step.output["view_json_edits"] == f"{expected_dir}/edits/layout_edits.json"
+
+
+def test_ecc_builder_uses_explicit_step_directory(tmp_path):
+    workspace = Workspace(
+        directory=str(tmp_path),
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step_directory = str(tmp_path / "timing_optimization_sizer")
+
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="/tmp/input.def",
+        input_verilog="/tmp/input.v",
+        tool="sizer",
+        step_directory=step_directory,
+    )
+
+    assert step.name == StepEnum.TIMING_OPT.value
+    assert step.directory == step_directory
+    assert step.output["dir"] == f"{step_directory}/output"
+    assert step.data[StepEnum.TIMING_OPT.value] == f"{step_directory}/data/to"
+    assert step.log["file"] == f"{step_directory}/log/{StepEnum.TIMING_OPT.value}.log"
