@@ -19,7 +19,8 @@ def build_step(workspace: Workspace,
                output_def : str | None = None,
                output_verilog : str | None = None,
                output_gds : str | None = None,
-               tool : str = "ecc") -> WorkspaceStep:
+               tool : str = "ecc",
+               step_directory: str | None = None) -> WorkspaceStep:
     """
     Build the given step in the specified workspace.
     """
@@ -30,7 +31,7 @@ def build_step(workspace: Workspace,
     step.version = "0.1"
 
     # build step directory
-    step.directory = f"{workspace.directory}/{step.name}_{step.tool}"
+    step.directory = step_directory or f"{workspace.directory}/{step.name}_{step.tool}"
     
     # build input paths
     step.input = {
@@ -79,6 +80,7 @@ def build_step(workspace: Workspace,
         f"{StepEnum.FILLER.value}": f"{step.directory}/data/pl",
         f"{StepEnum.CTS.value}": f"{step.directory}/data/cts",
         f"{StepEnum.NETLIST_OPT.value}": f"{step.directory}/data/no",
+        f"{StepEnum.TIMING_OPT.value}": f"{step.directory}/data/to",
         f"{StepEnum.TIMING_OPT_DRV.value}": f"{step.directory}/data/to",
         f"{StepEnum.TIMING_OPT_HOLD.value}": f"{step.directory}/data/to",
         f"{StepEnum.TIMING_OPT_SETUP.value}": f"{step.directory}/data/to",

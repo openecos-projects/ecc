@@ -1,5 +1,6 @@
 EXCLUDED_PAYLOAD_PREFIXES = (
     "chipcompiler/thirdparty/ecc-tools",
+    "chipcompiler/thirdparty/ecc-sizer",
     "chipcompiler/thirdparty/ecc-dreamplace/test",
     "chipcompiler/thirdparty/ecc-dreamplace/docs",
     "chipcompiler/thirdparty/ecc-dreamplace/build",

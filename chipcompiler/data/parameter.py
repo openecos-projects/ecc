@@ -25,7 +25,7 @@ ICS55_PARAMETERS_TEMPLATE = {
     "Target density" : 0.2,
     "Target overflow" : 0.1,
     "Global right padding": 0,
-    "Cell padding x": 600,
+    "Cell padding x": 300,
     "Routability opt flag": 1,
     "Clock" : "",
     "Frequency max [MHz]" : 100,
