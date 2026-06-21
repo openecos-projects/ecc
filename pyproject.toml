@@ -31,6 +31,7 @@ dependencies = [
   "pydantic>=2.5",
   "pyjson5>=1.6",
   "pyyaml>=6",
+  "rosettakit==1.0.0",
   "scipy>=1.7",
   "torch>=1.6.0",
   "tqdm>=4.67.1",
@@ -81,11 +82,13 @@ explicit = true
 members = [
   "chipcompiler/thirdparty/ecc-dreamplace",
   "chipcompiler/thirdparty/ecc-tools",
+  "chipcompiler/thirdparty/RosettaKit",
 ]
 
 [tool.uv.sources]
 ecc-dreamplace = { workspace = true }
 ecc-tools-bin = { workspace = true }
+rosettakit = { workspace = true }
 torch = { index = "pytorch-cpu" }
 
 [tool.ruff]

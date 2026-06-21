@@ -15,9 +15,37 @@
   outputs = inputs@{
     self, nixpkgs, flake-parts, ecc-dreamplace, ecc-tools, infra,
   }: let
+    rosettakit = {
+      lib,
+      python3Packages,
+    }: python3Packages.buildPythonPackage {
+      name = "rosettakit";
+      format = "pyproject";
+
+      src = with lib.fileset; toSource {
+        root = ./chipcompiler/thirdparty/RosettaKit;
+        fileset = unions [
+          ./chipcompiler/thirdparty/RosettaKit/README.md
+          ./chipcompiler/thirdparty/RosettaKit/pyproject.toml
+          ./chipcompiler/thirdparty/RosettaKit/uv.lock
+          ./chipcompiler/thirdparty/RosettaKit/rosettakit
+        ];
+      };
+
+      postPatch = ''
+        substituteInPlace pyproject.toml \
+          --replace-fail 'uv-build>=0.10.9,<0.11.0' 'uv-build>=0.8.5'
+      '';
+
+      build-system = with python3Packages; [ uv-build ];
+
+      pythonImportsCheck = [ "rosettakit" ];
+    };
+
     chipcompiler = {
       ecc-dreamplace,
       ecc-tools,
+      rosettakit,
       yosysWithSlang,
       lib,
       makeWrapper,
@@ -49,6 +77,7 @@
         pydantic
         pyjson5
         pyyaml
+        rosettakit
         scipy
         torch
         tqdm
@@ -78,6 +107,7 @@
       packages.default = pkgs.callPackage chipcompiler {
         ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
         ecc-tools = ecc-tools.packages.${system}.default;
+        rosettakit = pkgs.callPackage rosettakit {};
         yosysWithSlang = infra.packages.${system}.yosysWithSlang;
       };
       devShells.default = pkgs.mkShell.override {
