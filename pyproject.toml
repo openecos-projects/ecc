@@ -20,8 +20,8 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "ecc-dreamplace==0.1.0a4",
-  "ecc-tools-bin==0.1.0a5",
+  "ecc-dreamplace==0.1.0a5",
+  "ecc-tools-bin==0.1.0a6",
   "fastapi>=0.109",
   "klayout>=0.30.2",
   "matplotlib>=3.4",
