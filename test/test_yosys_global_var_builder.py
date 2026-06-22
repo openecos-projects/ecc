@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -143,3 +144,50 @@ def test_paths_with_spaces_remain_single_tcl_list_element(tmp_path):
     )
 
     assert result.stdout.splitlines()[-2:] == ["1", os.path.abspath(rtl_file)]
+
+
+def test_liberty_args_keep_paths_with_spaces_as_single_arguments(tmp_path):
+    if shutil.which("tclsh") is None:
+        pytest.skip("tclsh is not available")
+
+    workspace, step, _ = _build_workspace_and_step(tmp_path)
+    init_tech = (
+        Path(yosys_builder.__file__).resolve().parent / "scripts" / "init_tech.tcl"
+    )
+
+    text = yosys_builder.generate_global_var_tcl(workspace, step)
+    result = subprocess.run(
+        ["tclsh"],
+        input=(
+            text
+            + "\nproc yosys args {}\n"
+            + f"source {{{init_tech}}}\n"
+            + "foreach arg $liberty_args {puts \"LIB:$arg\"}\n"
+            + "foreach arg $tech_cells_args {puts \"STD:$arg\"}\n"
+        ),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    lib_args = [
+        line.removeprefix("LIB:") for line in result.stdout.splitlines() if line.startswith("LIB:")
+    ]
+    stdcell_args = [
+        line.removeprefix("STD:") for line in result.stdout.splitlines() if line.startswith("STD:")
+    ]
+
+    assert lib_args == [
+        "-liberty",
+        os.path.abspath(tmp_path / "lib" / "std cell.lib"),
+        "-liberty",
+        os.path.abspath(tmp_path / "lib" / "fast.lib"),
+        "-liberty",
+        os.path.abspath(tmp_path / "lib" / "extra corner.lib"),
+    ]
+    assert stdcell_args == [
+        "-liberty",
+        os.path.abspath(tmp_path / "lib" / "std cell.lib"),
+        "-liberty",
+        os.path.abspath(tmp_path / "lib" / "fast.lib"),
+    ]

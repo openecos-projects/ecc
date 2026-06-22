@@ -13,10 +13,10 @@ set tech_cell_tielo "$tie_low_cell $tie_low_port"
 
 # pre-formated for easier use in yosys commands
 # TODO: Distinguish between stdcell and other libraries?
-set liberty_args_list [lmap lib $lib_list {concat "-liberty" $lib}]
+set liberty_args_list [lmap lib $lib_list {list "-liberty" $lib}]
 set liberty_args [concat {*}$liberty_args_list]
 # only the standard cells
-set tech_cells_args_list [lmap lib $lib_stdcell_list {concat "-liberty" $lib}]
+set tech_cells_args_list [lmap lib $lib_stdcell_list {list "-liberty" $lib}]
 set tech_cells_args [concat {*}$tech_cells_args_list]
 
 # read library files
