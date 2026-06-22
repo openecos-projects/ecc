@@ -1,9 +1,11 @@
+import inspect
 import json
 import os
 import subprocess
 from types import SimpleNamespace
 
 import pytest
+from rosettakit.errors import ValidationError
 
 from chipcompiler.data import (
     PDK,
@@ -178,8 +180,20 @@ def test_sizer_config_rejects_whitespace_paths_unsupported_by_runtime(tmp_path, 
     )
 
     sizer_builder.build_step_space(step)
-    with pytest.raises(ValueError, match=r"Sizer option -def cannot contain whitespace"):
+    with pytest.raises(ValidationError, match=r"unquoted-value-needs-quoting"):
         sizer_builder.build_step_config(workspace, step)
+
+
+def test_sizer_builder_uses_rosettakit_options_without_raw_workaround():
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    source = inspect.getsource(sizer_builder)
+
+    assert "_sizer_value" not in source
+    assert "_sizer_option" not in source
+    assert "_sizer_options" not in source
+    assert "raw_line" not in source
+    assert "allow_unsafe_raw" not in source
 
 
 def test_sizer_config_omits_empty_optional_paths(tmp_path, monkeypatch):

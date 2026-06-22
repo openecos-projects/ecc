@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shutil
-from collections.abc import Iterable
 
 from rosettakit import cmdfile
 
@@ -91,48 +90,15 @@ def _sizer_env_template() -> str:
 
 def _tech_text(workspace: Workspace) -> str:
     sizer_root = find_sizer_root()
-    env = cmdfile.CommandFile(prefix="-")
-    _sizer_option(env, "lef", workspace.pdk.tech, omit_empty=True)
-    _sizer_options(env, "lef", workspace.pdk.lefs)
-    _sizer_options(env, "lib", workspace.pdk.libs)
+    env = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
+    env.option("lef", workspace.pdk.tech, value_type=cmdfile.ValueType.PATH, omit_empty=True)
+    env.options("lef", workspace.pdk.lefs, value_type=cmdfile.ValueType.PATH)
+    env.options("lib", workspace.pdk.libs, value_type=cmdfile.ValueType.PATH)
 
     if sizer_root is not None:
         tcl_path = sizer_root / "src" / "sizer_os.tcl"
-        _sizer_option(env, "tclFile", str(tcl_path))
-    return env.build(allow_unsafe_raw=True)
-
-
-def _sizer_value(option: str, value: object) -> str:
-    text = str(value)
-    if "\n" in text or "\r" in text:
-        raise ValueError(f"Sizer option -{option} cannot contain line breaks")
-    if any(char.isspace() for char in text):
-        raise ValueError(f"Sizer option -{option} cannot contain whitespace")
-    return text
-
-
-def _sizer_option(
-    document: cmdfile.CommandFile,
-    name: str,
-    value: object,
-    *,
-    omit_empty: bool = False,
-) -> None:
-    if omit_empty and value == "":
-        return
-    # Sizer tokenizes config values on spaces and does not understand shell or Tcl quoting.
-    document.raw_line(f"-{name} {_sizer_value(name, value)}")
-
-
-def _sizer_options(
-    document: cmdfile.CommandFile,
-    name: str,
-    values: Iterable[object],
-    *,
-    omit_empty: bool = False,
-) -> None:
-    for value in values:
-        _sizer_option(document, name, value, omit_empty=omit_empty)
+        env.option("tclFile", str(tcl_path), value_type=cmdfile.ValueType.PATH)
+    return env.build()
 
 
 def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspace) -> None:
@@ -140,30 +106,54 @@ def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspa
     top = workspace.parameters.data.get("Top layer", "")
 
     if bottom:
-        _sizer_option(command, "min_route_layer", bottom)
+        command.option("min_route_layer", bottom)
     if top:
-        _sizer_option(command, "max_route_layer", top)
+        command.option("max_route_layer", top)
 
 
 def _cmd_text(workspace: Workspace, step: WorkspaceStep) -> str:
     output_dir = step.data.get(step.name, step.data["dir"])
-    command = cmdfile.CommandFile(prefix="-")
+    command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
 
     command.flag("useOpenSTA")
-    _sizer_option(command, "top", workspace.design.top_module or workspace.design.name)
-    _sizer_option(command, "def", step.input.get("def", ""), omit_empty=True)
-    _sizer_option(command, "v", step.input.get("verilog", ""), omit_empty=True)
-    _sizer_option(command, "sdc", workspace.pdk.sdc, omit_empty=True)
-    _sizer_option(command, "spef", workspace.pdk.spef, omit_empty=True)
-    _sizer_option(command, "outputPath", ".")
-    _sizer_option(command, "def_out_path", os.path.relpath(step.output["def"], output_dir))
-    _sizer_option(
-        command,
+    command.option("top", workspace.design.top_module or workspace.design.name)
+    command.option(
+        "def",
+        step.input.get("def", ""),
+        value_type=cmdfile.ValueType.PATH,
+        omit_empty=True,
+    )
+    command.option(
+        "v",
+        step.input.get("verilog", ""),
+        value_type=cmdfile.ValueType.PATH,
+        omit_empty=True,
+    )
+    command.option(
+        "sdc",
+        workspace.pdk.sdc,
+        value_type=cmdfile.ValueType.PATH,
+        omit_empty=True,
+    )
+    command.option(
+        "spef",
+        workspace.pdk.spef,
+        value_type=cmdfile.ValueType.PATH,
+        omit_empty=True,
+    )
+    command.option("outputPath", ".")
+    command.option(
+        "def_out_path",
+        os.path.relpath(step.output["def"], output_dir),
+        value_type=cmdfile.ValueType.PATH,
+    )
+    command.option(
         "verilog_out_path",
         os.path.relpath(step.output["verilog"], output_dir),
+        value_type=cmdfile.ValueType.PATH,
     )
     _append_route_layer_options(command, workspace)
-    return command.build(allow_unsafe_raw=True)
+    return command.build()
 
 
 def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
