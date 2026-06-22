@@ -16,26 +16,18 @@
     self, nixpkgs, flake-parts, ecc-dreamplace, ecc-tools, infra,
   }: let
     rosettakit = {
-      lib,
+      fetchFromGitHub,
       python3Packages,
     }: python3Packages.buildPythonPackage {
       name = "rosettakit";
       format = "pyproject";
 
-      src = with lib.fileset; toSource {
-        root = ./chipcompiler/thirdparty/RosettaKit;
-        fileset = unions [
-          ./chipcompiler/thirdparty/RosettaKit/README.md
-          ./chipcompiler/thirdparty/RosettaKit/pyproject.toml
-          ./chipcompiler/thirdparty/RosettaKit/uv.lock
-          ./chipcompiler/thirdparty/RosettaKit/rosettakit
-        ];
+      src = fetchFromGitHub {
+        owner = "Emin017";
+        repo = "RosettaKit";
+        rev = "5750390b80e84c05e9f30c58df44e2a153f4c39e";
+        hash = "sha256-hyDKWsQnfPVuxxBNxjdGR6AsGa/1NkdflBmwiK3Eqz0=";
       };
-
-      postPatch = ''
-        substituteInPlace pyproject.toml \
-          --replace-fail 'uv-build>=0.10.9,<0.11.0' 'uv-build>=0.8.5'
-      '';
 
       build-system = with python3Packages; [ uv-build ];
 
