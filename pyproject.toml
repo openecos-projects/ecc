@@ -82,13 +82,11 @@ explicit = true
 members = [
   "chipcompiler/thirdparty/ecc-dreamplace",
   "chipcompiler/thirdparty/ecc-tools",
-  "chipcompiler/thirdparty/RosettaKit",
 ]
 
 [tool.uv.sources]
 ecc-dreamplace = { workspace = true }
 ecc-tools-bin = { workspace = true }
-rosettakit = { workspace = true }
 torch = { index = "pytorch-cpu" }
 
 [tool.ruff]

@@ -5,6 +5,3 @@
 [submodule "chipcompiler/thirdparty/ecc-dreamplace"]
 	path = chipcompiler/thirdparty/ecc-dreamplace
 	url = https://github.com/openecos-projects/ecc-dreamplace.git
-[submodule "chipcompiler/thirdparty/RosettaKit"]
-	path = chipcompiler/thirdparty/RosettaKit
-	url = git@github.com:Emin017/RosettaKit.git
