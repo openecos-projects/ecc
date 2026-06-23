@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 
+import pytest
 from integration.conftest import run_workspace_flow
 
 from chipcompiler.rtl2gds import build_harden_flow
+
+pytestmark = [pytest.mark.integration, pytest.mark.pdk]
 
 
 def test_ics55_gcd():
