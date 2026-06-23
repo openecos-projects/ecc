@@ -73,7 +73,7 @@ any_char = ? any Unicode character ? ;
 
 ## Testing
 
-See `test/test_filelist.py` for test coverage:
+See `test/utility/filelist/` and `test/data/test_workspace_filelist.py` for test coverage:
 
 - Basic filelist parsing
 - `+incdir` directive parsing
