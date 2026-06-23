@@ -936,8 +936,7 @@ def test_run_flow_rerun_clears_states_and_stops_on_failure(monkeypatch, tmp_path
         engine_flow.call_order.append(("prepare_rerun", workspace.directory))
 
     monkeypatch.setattr(
-        "chipcompiler.data.prepare_workspace_for_rerun",
-        prepare_workspace_for_rerun,
+        "chipcompiler.data.prepare_workspace_for_rerun", prepare_workspace_for_rerun
     )
 
     rc = cli_main.run(["workspace", "run-flow", "--directory", str(ws), "--rerun", "--json"])
@@ -981,8 +980,7 @@ def test_run_flow_rerun_stops_when_prepare_fails(monkeypatch, tmp_path, capsys):
         raise RuntimeError("cleanup failed")
 
     monkeypatch.setattr(
-        "chipcompiler.data.prepare_workspace_for_rerun",
-        prepare_workspace_for_rerun,
+        "chipcompiler.data.prepare_workspace_for_rerun", prepare_workspace_for_rerun
     )
 
     rc = cli_main.run(["workspace", "run-flow", "--directory", str(ws), "--rerun", "--json"])

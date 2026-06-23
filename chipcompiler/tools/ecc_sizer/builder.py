@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import shutil
 
+from rosettakit import cmdfile
+
 from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.tools.ecc import builder as ecc_builder
 
@@ -72,11 +74,9 @@ def _copy_or_seed_template(template: str, target: str, fallback: str) -> None:
         file.write(fallback)
 
 
-def _append_lines(path: str, lines: list[str]) -> None:
+def _append_text(path: str, text: str) -> None:
     with open(path, "a", encoding="utf-8") as file:
-        for line in lines:
-            if line:
-                file.write(f"{line}\n")
+        file.write(text)
 
 
 def _sizer_env_template() -> str:
@@ -88,30 +88,72 @@ def _sizer_env_template() -> str:
     return str(submit_dir / "env_base_file")
 
 
-def _tech_lines(workspace: Workspace) -> list[str]:
+def _tech_text(workspace: Workspace) -> str:
     sizer_root = find_sizer_root()
-    lines = []
-    if workspace.pdk.tech:
-        lines.append(f"-lef {workspace.pdk.tech}")
-    lines.extend(f"-lef {lef}" for lef in workspace.pdk.lefs)
-    lines.extend(f"-lib {lib}" for lib in workspace.pdk.libs)
+    env = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
+    env.option("lef", workspace.pdk.tech, value_type=cmdfile.ValueType.PATH, omit_empty=True)
+    env.options("lef", workspace.pdk.lefs, value_type=cmdfile.ValueType.PATH)
+    env.options("lib", workspace.pdk.libs, value_type=cmdfile.ValueType.PATH)
 
     if sizer_root is not None:
         tcl_path = sizer_root / "src" / "sizer_os.tcl"
-        lines.append(f"-tclFile {tcl_path}")
-    return lines
+        env.option("tclFile", str(tcl_path), value_type=cmdfile.ValueType.PATH)
+    return env.build()
 
 
-def _route_layer_lines(workspace: Workspace) -> list[str]:
+def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspace) -> None:
     bottom = workspace.parameters.data.get("Bottom layer", "")
     top = workspace.parameters.data.get("Top layer", "")
 
-    lines = []
     if bottom:
-        lines.append(f"-min_route_layer {bottom}")
+        command.option("min_route_layer", bottom)
     if top:
-        lines.append(f"-max_route_layer {top}")
-    return lines
+        command.option("max_route_layer", top)
+
+
+def _cmd_text(workspace: Workspace, step: WorkspaceStep) -> str:
+    output_dir = step.data.get(step.name, step.data["dir"])
+    command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
+
+    command.flag("useOpenSTA")
+    command.option("top", workspace.design.top_module or workspace.design.name)
+    command.option(
+        "def",
+        step.input.get("def", ""),
+        value_type=cmdfile.ValueType.PATH,
+        omit_empty=True,
+    )
+    command.option(
+        "v",
+        step.input.get("verilog", ""),
+        value_type=cmdfile.ValueType.PATH,
+        omit_empty=True,
+    )
+    command.option(
+        "sdc",
+        workspace.pdk.sdc,
+        value_type=cmdfile.ValueType.PATH,
+        omit_empty=True,
+    )
+    command.option(
+        "spef",
+        workspace.pdk.spef,
+        value_type=cmdfile.ValueType.PATH,
+        omit_empty=True,
+    )
+    command.option("outputPath", ".")
+    command.option(
+        "def_out_path",
+        os.path.relpath(step.output["def"], output_dir),
+        value_type=cmdfile.ValueType.PATH,
+    )
+    command.option(
+        "verilog_out_path",
+        os.path.relpath(step.output["verilog"], output_dir),
+        value_type=cmdfile.ValueType.PATH,
+    )
+    _append_route_layer_options(command, workspace)
+    return command.build()
 
 
 def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
@@ -124,31 +166,8 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     with open(cmd_path, "w", encoding="utf-8"):
         pass
 
-    output_dir = step.data.get(step.name, step.data["dir"])
-    cmd_lines = [
-        "",
-        "-useOpenSTA",
-        f"-top {workspace.design.top_module or workspace.design.name}",
-        f"-def {step.input.get('def', '')}",
-    ]
-    input_verilog = step.input.get("verilog", "")
-    if input_verilog:
-        cmd_lines.append(f"-v {input_verilog}")
-    if workspace.pdk.sdc:
-        cmd_lines.append(f"-sdc {workspace.pdk.sdc}")
-    if workspace.pdk.spef:
-        cmd_lines.append(f"-spef {workspace.pdk.spef}")
-    cmd_lines.extend(
-        [
-            "-outputPath .",
-            f"-def_out_path {os.path.relpath(step.output['def'], output_dir)}",
-            f"-verilog_out_path {os.path.relpath(step.output['verilog'], output_dir)}",
-        ]
-    )
-    cmd_lines.extend(_route_layer_lines(workspace))
-
-    _append_lines(env_path, _tech_lines(workspace))
-    _append_lines(cmd_path, cmd_lines)
+    _append_text(env_path, _tech_text(workspace))
+    _append_text(cmd_path, _cmd_text(workspace, step))
 
     build_sub_flow(workspace=workspace, workspace_step=step)
     build_checklist(workspace=workspace, workspace_step=step)

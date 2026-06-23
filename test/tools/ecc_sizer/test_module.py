@@ -1,7 +1,11 @@
+import inspect
 import json
 import os
 import subprocess
 from types import SimpleNamespace
+
+import pytest
+from rosettakit.errors import ValidationError
 
 from chipcompiler.data import (
     PDK,
@@ -103,6 +107,120 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     with open(step.checklist["path"], encoding="utf-8") as file:
         checklist = json.load(file)
     assert checklist["checklist"] == []
+
+
+def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    runtime_root = _sizer_runtime(tmp_path)
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+
+    workspace = _workspace(tmp_path)
+    workspace.pdk.tech = str(tmp_path / "tech_lef" / "tech.lef")
+    workspace.pdk.lefs = [str(tmp_path / "lef_dir" / "std_cell.lef")]
+    workspace.pdk.libs = [str(tmp_path / "lib_dir" / "slow_corner.lib")]
+    workspace.pdk.sdc = str(tmp_path / "constraints" / "main_clock.sdc")
+    workspace.pdk.spef = str(tmp_path / "rcx" / "route_parasitic.spef")
+
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def=str(tmp_path / "inputs" / "input_def.def"),
+        input_verilog=str(tmp_path / "inputs" / "input_rtl.v"),
+    )
+
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    with open(step.script["sizer_env"], encoding="utf-8") as file:
+        env_lines = file.read().splitlines()
+    with open(step.script["sizer_cmd"], encoding="utf-8") as file:
+        cmd_lines = [line for line in file.read().splitlines() if line]
+
+    assert env_lines[0] == "-num_vt 1"
+    assert f"-lef {workspace.pdk.tech}" in env_lines
+    assert f"-lef {workspace.pdk.lefs[0]}" in env_lines
+    assert f"-lib {workspace.pdk.libs[0]}" in env_lines
+    assert f"-tclFile {runtime_root / 'src' / 'sizer_os.tcl'}" in env_lines
+
+    expected_def_out = os.path.relpath(
+        step.output["def"],
+        step.data[StepEnum.TIMING_OPT.value],
+    )
+    expected_verilog_out = os.path.relpath(
+        step.output["verilog"],
+        step.data[StepEnum.TIMING_OPT.value],
+    )
+    assert cmd_lines == [
+        "-useOpenSTA",
+        "-top gcd",
+        f"-def {step.input['def']}",
+        f"-v {step.input['verilog']}",
+        f"-sdc {workspace.pdk.sdc}",
+        f"-spef {workspace.pdk.spef}",
+        "-outputPath .",
+        f"-def_out_path {expected_def_out}",
+        f"-verilog_out_path {expected_verilog_out}",
+        "-min_route_layer M2",
+        "-max_route_layer M7",
+    ]
+
+
+def test_sizer_config_rejects_whitespace_paths_unsupported_by_runtime(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def=str(tmp_path / "inputs" / "input def.def"),
+        input_verilog="input.v",
+    )
+
+    sizer_builder.build_step_space(step)
+    with pytest.raises(ValidationError, match=r"unquoted-value-needs-quoting"):
+        sizer_builder.build_step_config(workspace, step)
+
+
+def test_sizer_builder_uses_rosettakit_options_without_raw_workaround():
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    source = inspect.getsource(sizer_builder)
+
+    assert "_sizer_value" not in source
+    assert "_sizer_option" not in source
+    assert "_sizer_options" not in source
+    assert "raw_line" not in source
+    assert "allow_unsafe_raw" not in source
+
+
+def test_sizer_config_omits_empty_optional_paths(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))
+
+    workspace = _workspace(tmp_path)
+    workspace.pdk.sdc = ""
+    workspace.pdk.spef = ""
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="",
+        input_verilog="",
+    )
+
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    with open(step.script["sizer_cmd"], encoding="utf-8") as file:
+        cmd_lines = file.read().splitlines()
+
+    assert "-def " not in cmd_lines
+    assert "-v " not in cmd_lines
+    assert "-sdc " not in cmd_lines
+    assert "-spef " not in cmd_lines
 
 
 def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):

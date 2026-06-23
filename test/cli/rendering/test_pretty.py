@@ -19,57 +19,6 @@ from chipcompiler.cli.rendering.pretty import (
 from chipcompiler.cli.rendering.render import _plain_value, render_plain
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _create_valid_project(tmp_path, name="gcd", pdk_root=None):
-    project_dir = tmp_path / name
-    project_dir.mkdir(exist_ok=True)
-    (project_dir / "rtl").mkdir(exist_ok=True)
-    (project_dir / "constraints").mkdir(exist_ok=True)
-    (project_dir / "runs").mkdir(exist_ok=True)
-
-    rtl_file = project_dir / "rtl" / "gcd.v"
-    rtl_file.write_text("module gcd(input clk); endmodule\n")
-
-    if pdk_root is None:
-        pdk_root = tmp_path / "ics55"
-        pdk_root.mkdir(exist_ok=True)
-
-    toml = f'''[design]
-name = "{name}"
-top = "{name}"
-rtl = ["rtl/gcd.v"]
-clock_port = "clk"
-frequency_mhz = 100.0
-
-[pdk]
-name = "ics55"
-root = "{pdk_root}"
-
-[flow]
-preset = "rtl2gds"
-run = "default"
-'''
-    (project_dir / "ecc.toml").write_text(toml)
-    return str(project_dir)
-
-
-def _create_flow_json(run_dir, steps=None):
-    import json as j
-
-    home = os.path.join(run_dir, "home")
-    os.makedirs(home, exist_ok=True)
-    if steps is None:
-        steps = [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
-        ]
-    with open(os.path.join(home, "flow.json"), "w") as f:
-        j.dump({"steps": steps}, f)
-
-
-# ---------------------------------------------------------------------------
 # Plain key-value stability tests
 # ---------------------------------------------------------------------------
 
@@ -188,8 +137,8 @@ class TestPlainFlagAcceptance:
         assert "\x1b[" not in out
         assert "=" in out
 
-    def test_check_plain(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_plain(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -200,19 +149,19 @@ class TestPlainFlagAcceptance:
         assert "\x1b[" not in out
         assert "=" in out
 
-    def test_status_plain(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
-        _create_flow_json(os.path.join(project_dir, "runs", "default"))
+    def test_status_plain(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
+        create_flow_json(os.path.join(project_dir, "runs", "default"), profile="pretty")
         rc = cli_main.run(["status", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
         assert "\x1b[" not in out
         assert "status=" in out
 
-    def test_metrics_plain(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_plain(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="pretty")
         analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
         os.makedirs(analysis_dir, exist_ok=True)
         with open(os.path.join(analysis_dir, "Synthesis_metrics.json"), "w") as f:
@@ -223,10 +172,10 @@ class TestPlainFlagAcceptance:
         assert "\x1b[" not in out
         assert "metric=" in out
 
-    def test_artifacts_plain(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_artifacts_plain(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="pretty")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -236,14 +185,14 @@ class TestPlainFlagAcceptance:
         out = capsys.readouterr().out
         assert "\x1b[" not in out
 
-    def test_diagnose_plain(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_diagnose_plain(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["diagnose", "--plain", "--project", project_dir])
         out = capsys.readouterr().out
         assert "\x1b[" not in out
 
-    def test_config_plain(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_config_plain(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -266,8 +215,8 @@ class TestPrettyDefaultOutput:
         out = capsys.readouterr().out
         assert "[init]" in out
 
-    def test_check_has_header(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_has_header(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -277,17 +226,17 @@ class TestPrettyDefaultOutput:
         out = capsys.readouterr().out
         assert "[check]" in out
 
-    def test_status_has_header(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
-        _create_flow_json(os.path.join(project_dir, "runs", "default"))
+    def test_status_has_header(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
+        create_flow_json(os.path.join(project_dir, "runs", "default"), profile="pretty")
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "[status]" in out
 
-    def test_status_groups_steps(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
-        _create_flow_json(
+    def test_status_groups_steps(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
+        create_flow_json(
             os.path.join(project_dir, "runs", "default"),
             [
                 {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
@@ -300,8 +249,8 @@ class TestPrettyDefaultOutput:
         assert "synthesis (yosys)" in out
         assert "cts (ecc)" in out
 
-    def test_metrics_groups_by_step(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_groups_by_step(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         for step_dir_name in ["Synthesis_yosys", "CTS_ecc"]:
             analysis = os.path.join(run_dir, step_dir_name, "analysis")
@@ -316,10 +265,12 @@ class TestPrettyDefaultOutput:
         assert "synthesis:" in out
         assert "cts:" in out
 
-    def test_diagnose_clean_has_header(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_diagnose_clean_has_header(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(
+        create_flow_json(
             run_dir,
             [
                 {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
@@ -341,8 +292,8 @@ class TestPrettyDefaultOutput:
         out = capsys.readouterr().out
         assert "[error]" in out
 
-    def test_run_summary_has_header(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_summary_has_header(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
         from types import SimpleNamespace
 
         DummyFlow_instances = []
@@ -399,19 +350,19 @@ class TestPrettyDefaultOutput:
 
 
 class TestJsonUnchanged:
-    def test_status_json_unchanged(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
-        _create_flow_json(os.path.join(project_dir, "runs", "default"))
+    def test_status_json_unchanged(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
+        create_flow_json(os.path.join(project_dir, "runs", "default"), profile="pretty")
         rc = cli_main.run(["status", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
         assert data["records"][0]["run"] == "default"
 
-    def test_metrics_jsonl_unchanged(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_jsonl_unchanged(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="pretty")
         analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
         os.makedirs(analysis_dir, exist_ok=True)
         with open(os.path.join(analysis_dir, "Synthesis_metrics.json"), "w") as f:

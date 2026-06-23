@@ -10,7 +10,7 @@ If Nix is available, enter the dev shell before syncing:
 
 ```bash
 nix develop
-uv sync --no-build-isolation-package ecc-dreamplace --no-binary-package ecc-tools-bin --verbose
+uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose
 source .venv/bin/activate
 ```
 

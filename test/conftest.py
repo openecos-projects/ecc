@@ -17,14 +17,14 @@ def _load_complete_ics55_pdk_available():
 
 complete_ics55_pdk_available = _load_complete_ics55_pdk_available()
 
-FILELIST_INTEGRATION_PREFIX = "test/test_filelist.py::TestCreateWorkspaceIntegration"
+FILELIST_INTEGRATION_PREFIX = "test/data/test_workspace_filelist.py::TestCreateWorkspaceIntegration"
 
 PDK_REQUIRED_TESTS = {
     f"{FILELIST_INTEGRATION_PREFIX}::test_workspace_with_filelist": "",
     f"{FILELIST_INTEGRATION_PREFIX}::test_workspace_with_nested_filelist": "",
-    "test/test_harden.py::test_ics55_gcd": "../icsprout55-pdk",
-    "test/test_rcx.py::test_ics55_gcd": "",
-    "test/test_tools.py::test_ics55_gcd": "",
+    "test/integration/test_harden_flow.py::test_ics55_gcd": "../icsprout55-pdk",
+    "test/integration/test_rcx_flow.py::test_ics55_gcd": "",
+    "test/integration/test_rtl2gds_flow.py::test_ics55_gcd": "",
 }
 
 

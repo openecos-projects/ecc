@@ -450,6 +450,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjson5" },
     { name = "pyyaml" },
+    { name = "rosettakit" },
     { name = "scipy" },
     { name = "torch", version = "2.11.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
     { name = "torch", version = "2.11.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'x86_64' or sys_platform != 'darwin'" },
@@ -488,6 +489,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.5" },
     { name = "pyjson5", specifier = ">=1.6" },
     { name = "pyyaml", specifier = ">=6" },
+    { name = "rosettakit", specifier = "==0.2.0" },
     { name = "scipy", specifier = ">=1.7" },
     { name = "torch", specifier = ">=1.6.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "tqdm", specifier = ">=4.67.1" },
@@ -2054,6 +2056,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9/rich-15.0.0.tar.gz", hash = "sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36", size = 230680, upload-time = "2026-04-12T08:24:00.75Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl", hash = "sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb", size = 310654, upload-time = "2026-04-12T08:24:02.83Z" },
+]
+
+[[package]]
+name = "rosettakit"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/fe/2c917fa388180165d8553d48dbc53fe43985f7f6aef73307cd172a114db3/rosettakit-0.2.0.tar.gz", hash = "sha256:1dc16cc89ff9c145828bc0e7609846a197081e829b4560b41ee47d01cad181c6", size = 12462, upload-time = "2026-06-22T08:12:52.217Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/e1/716c06dc81db6065db98325fbba92631198de9c288ad57d50231cee6277f/rosettakit-0.2.0-py3-none-any.whl", hash = "sha256:b91438a445a1d14f5e70442b4152ea4fd398641a0b62955fc0f156ce7771b1de", size = 15725, upload-time = "2026-06-22T08:12:50.669Z" },
 ]
 
 [[package]]
