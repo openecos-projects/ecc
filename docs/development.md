@@ -95,7 +95,7 @@ uv run isort chipcompiler/ test/
 
 ```bash
 uv run pytest test/
-uv run pytest test/test_tools_yosys_utility.py -v
+uv run pytest test/tools/yosys/test_utility.py -v
 uv run pytest test/ --cov=chipcompiler --cov-report=term-missing
 uv run pytest test/formal/ -v
 ```
@@ -349,7 +349,7 @@ For the ICS55 GCD tool integration test:
 nix develop
 export PATH=/path/to/ecc-sizer/build/src:$PATH
 export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
-.venv/bin/python -m pytest test/test_tools.py::test_ics55_gcd -q -s
+.venv/bin/python -m pytest test/integration/test_rtl2gds_flow.py::test_ics55_gcd -q -s
 ```
 
 ### PDK

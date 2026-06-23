@@ -1,12 +1,5 @@
 import json
 
-from data.conftest import (
-    create_minimal_ics55_pdk,
-    create_minimal_sg13g2_pdk,
-    ics55_parameters,
-    sg13g2_parameters,
-)
-
 from chipcompiler.data import create_workspace, load_workspace
 from chipcompiler.data.workspace import (
     init_workspace_config,
@@ -17,8 +10,10 @@ from chipcompiler.data.workspace import (
 from chipcompiler.utility import json_read, json_write
 
 
-def test_create_workspace_persists_pdk_root_in_parameters(tmp_path):
-    pdk_root = create_minimal_ics55_pdk(tmp_path / "ics55")
+def test_create_workspace_persists_pdk_root_in_parameters(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -28,7 +23,7 @@ def test_create_workspace_persists_pdk_root_in_parameters(tmp_path):
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="ics55",
-        parameters=ics55_parameters(),
+        parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
 
@@ -41,8 +36,10 @@ def test_create_workspace_persists_pdk_root_in_parameters(tmp_path):
     assert parameters_data.get("PDK Root") == resolved_root
 
 
-def test_load_workspace_restores_pdk_root_from_parameters(tmp_path):
-    pdk_root = create_minimal_ics55_pdk(tmp_path / "ics55")
+def test_load_workspace_restores_pdk_root_from_parameters(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -52,7 +49,7 @@ def test_load_workspace_restores_pdk_root_from_parameters(tmp_path):
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="ics55",
-        parameters=ics55_parameters(),
+        parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
 
@@ -65,8 +62,10 @@ def test_load_workspace_restores_pdk_root_from_parameters(tmp_path):
     assert all(path.startswith(resolved_root) for path in loaded.pdk.libs)
 
 
-def test_workspace_config_refresh_uses_updated_parameters(tmp_path):
-    pdk_root = create_minimal_ics55_pdk(tmp_path / "ics55")
+def test_workspace_config_refresh_uses_updated_parameters(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -76,7 +75,7 @@ def test_workspace_config_refresh_uses_updated_parameters(tmp_path):
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="ics55",
-        parameters=ics55_parameters(),
+        parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
 
@@ -94,8 +93,10 @@ def test_workspace_config_refresh_uses_updated_parameters(tmp_path):
     assert placement["PL"]["GP"]["global_right_padding"] == 13
 
 
-def test_refresh_workspace_config_updates_all_parameter_derived_fields(tmp_path):
-    pdk_root = create_minimal_ics55_pdk(tmp_path / "ics55")
+def test_refresh_workspace_config_updates_all_parameter_derived_fields(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -105,7 +106,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(tmp_path)
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="ics55",
-        parameters=ics55_parameters(),
+        parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
 
@@ -140,8 +141,10 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(tmp_path)
     assert dreamplace["routability_opt_flag"] == 0
 
 
-def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(tmp_path):
-    pdk_root = create_minimal_ics55_pdk(tmp_path / "ics55")
+def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -151,7 +154,7 @@ def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshe
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="ics55",
-        parameters=ics55_parameters(),
+        parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
 
@@ -171,8 +174,10 @@ def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshe
     assert db["LayerSettings"]["routing_layer_1st"] == "MET4"
 
 
-def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(tmp_path):
-    pdk_root = create_minimal_ics55_pdk(tmp_path / "ics55")
+def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -182,7 +187,7 @@ def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(tmp_path):
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="ics55",
-        parameters=ics55_parameters(),
+        parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
 
@@ -198,8 +203,10 @@ def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(tmp_path):
     assert after == before
 
 
-def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state(tmp_path):
-    pdk_root = create_minimal_ics55_pdk(tmp_path / "ics55")
+def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -209,7 +216,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="ics55",
-        parameters=ics55_parameters(),
+        parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
 
@@ -351,8 +358,10 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert engine_flow.create_calls == 1
 
 
-def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(tmp_path):
-    pdk_root = create_minimal_sg13g2_pdk(tmp_path / "sg13g2")
+def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(
+    tmp_path, minimal_sg13g2_pdk_factory, default_sg13g2_parameters
+):
+    pdk_root = minimal_sg13g2_pdk_factory(tmp_path / "sg13g2")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -362,7 +371,7 @@ def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(tmp_path):
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="sg13g2",
-        parameters=sg13g2_parameters(),
+        parameters=default_sg13g2_parameters,
         pdk_root=str(pdk_root),
     )
 
@@ -375,8 +384,10 @@ def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(tmp_path):
     assert parameters_data.get("PDK Root") == resolved_root
 
 
-def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(tmp_path):
-    pdk_root = create_minimal_sg13g2_pdk(tmp_path / "sg13g2")
+def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
+    tmp_path, minimal_sg13g2_pdk_factory, default_sg13g2_parameters
+):
+    pdk_root = minimal_sg13g2_pdk_factory(tmp_path / "sg13g2")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -386,7 +397,7 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(tmp_path):
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="sg13g2",
-        parameters=sg13g2_parameters(),
+        parameters=default_sg13g2_parameters,
         pdk_root=str(pdk_root),
     )
 

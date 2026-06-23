@@ -81,7 +81,7 @@ jobs:
       #   run: uv run pyright chipcompiler
 
       - name: Pytest
-        run: uv run --no-sync pytest test/ --ignore=test/test_harden.py --ignore=test/test_rcx.py --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report=
+        run: uv run --no-sync pytest test/ --ignore=test/integration/test_harden_flow.py --ignore=test/integration/test_rcx_flow.py --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report=
 
       - name: Publish coverage summary
         if: always()

@@ -1,12 +1,13 @@
 import pytest
-from data.conftest import create_minimal_ics55_pdk, create_minimal_sg13g2_pdk
 
 from chipcompiler.data.pdk import get_pdk
 
 
-def test_get_pdk_prefers_explicit_root_over_env(tmp_path, monkeypatch):
-    explicit_root = create_minimal_ics55_pdk(tmp_path / "explicit")
-    env_root = create_minimal_ics55_pdk(tmp_path / "env")
+def test_get_pdk_prefers_explicit_root_over_env(
+    tmp_path, monkeypatch, minimal_ics55_pdk_factory
+):
+    explicit_root = minimal_ics55_pdk_factory(tmp_path / "explicit")
+    env_root = minimal_ics55_pdk_factory(tmp_path / "env")
     monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
 
     pdk = get_pdk(pdk_name="ics55", pdk_root=str(explicit_root))
@@ -17,8 +18,8 @@ def test_get_pdk_prefers_explicit_root_over_env(tmp_path, monkeypatch):
     assert all(path.startswith(expected_root) for path in pdk.lefs + pdk.libs)
 
 
-def test_get_pdk_uses_namespaced_env(tmp_path, monkeypatch):
-    env_root = create_minimal_ics55_pdk(tmp_path / "env")
+def test_get_pdk_uses_namespaced_env(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
+    env_root = minimal_ics55_pdk_factory(tmp_path / "env")
     monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
     monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
 
@@ -27,8 +28,10 @@ def test_get_pdk_uses_namespaced_env(tmp_path, monkeypatch):
     assert pdk.root == str(env_root.resolve())
 
 
-def test_get_pdk_uses_legacy_env_when_namespaced_missing(tmp_path, monkeypatch):
-    legacy_root = create_minimal_ics55_pdk(tmp_path / "legacy")
+def test_get_pdk_uses_legacy_env_when_namespaced_missing(
+    tmp_path, monkeypatch, minimal_ics55_pdk_factory
+):
+    legacy_root = minimal_ics55_pdk_factory(tmp_path / "legacy")
     monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
     monkeypatch.setenv("ICS55_PDK_ROOT", str(legacy_root))
 
@@ -45,9 +48,11 @@ def test_get_pdk_raises_on_missing_pdk_files(tmp_path):
         get_pdk("ics55", pdk_root=str(invalid_root))
 
 
-def test_get_pdk_sg13g2_prefers_explicit_root_over_env(tmp_path, monkeypatch):
-    explicit_root = create_minimal_sg13g2_pdk(tmp_path / "explicit")
-    env_root = create_minimal_sg13g2_pdk(tmp_path / "env")
+def test_get_pdk_sg13g2_prefers_explicit_root_over_env(
+    tmp_path, monkeypatch, minimal_sg13g2_pdk_factory
+):
+    explicit_root = minimal_sg13g2_pdk_factory(tmp_path / "explicit")
+    env_root = minimal_sg13g2_pdk_factory(tmp_path / "env")
     monkeypatch.setenv("CHIPCOMPILER_SG13G2_PDK_ROOT", str(env_root))
 
     pdk = get_pdk("sg13g2", pdk_root=str(explicit_root))
@@ -58,8 +63,10 @@ def test_get_pdk_sg13g2_prefers_explicit_root_over_env(tmp_path, monkeypatch):
     assert all(path.startswith(expected_root) for path in pdk.lefs + pdk.libs)
 
 
-def test_get_pdk_sg13g2_uses_namespaced_env(tmp_path, monkeypatch):
-    env_root = create_minimal_sg13g2_pdk(tmp_path / "env")
+def test_get_pdk_sg13g2_uses_namespaced_env(
+    tmp_path, monkeypatch, minimal_sg13g2_pdk_factory
+):
+    env_root = minimal_sg13g2_pdk_factory(tmp_path / "env")
     monkeypatch.setenv("CHIPCOMPILER_SG13G2_PDK_ROOT", str(env_root))
     monkeypatch.delenv("SG13G2_PDK_ROOT", raising=False)
 
@@ -68,8 +75,10 @@ def test_get_pdk_sg13g2_uses_namespaced_env(tmp_path, monkeypatch):
     assert pdk.root == str(env_root.resolve())
 
 
-def test_get_pdk_sg13g2_uses_legacy_env_when_namespaced_missing(tmp_path, monkeypatch):
-    legacy_root = create_minimal_sg13g2_pdk(tmp_path / "legacy")
+def test_get_pdk_sg13g2_uses_legacy_env_when_namespaced_missing(
+    tmp_path, monkeypatch, minimal_sg13g2_pdk_factory
+):
+    legacy_root = minimal_sg13g2_pdk_factory(tmp_path / "legacy")
     monkeypatch.delenv("CHIPCOMPILER_SG13G2_PDK_ROOT", raising=False)
     monkeypatch.setenv("SG13G2_PDK_ROOT", str(legacy_root))
 
@@ -87,8 +96,8 @@ def test_get_pdk_sg13g2_raises_on_missing_pdk_files(tmp_path, monkeypatch):
         get_pdk("sg13g2")
 
 
-def test_get_pdk_sg13g2_cell_config(tmp_path, monkeypatch):
-    pdk_root = create_minimal_sg13g2_pdk(tmp_path / "sg13g2")
+def test_get_pdk_sg13g2_cell_config(tmp_path, monkeypatch, minimal_sg13g2_pdk_factory):
+    pdk_root = minimal_sg13g2_pdk_factory(tmp_path / "sg13g2")
     monkeypatch.setenv("CHIPCOMPILER_SG13G2_PDK_ROOT", str(pdk_root))
 
     pdk = get_pdk("sg13g2")
@@ -104,8 +113,8 @@ def test_get_pdk_sg13g2_cell_config(tmp_path, monkeypatch):
     assert "sg13g2_lgcp_1" in pdk.dont_use
 
 
-def test_get_pdk_sg13g2_case_insensitive(tmp_path, monkeypatch):
-    pdk_root = create_minimal_sg13g2_pdk(tmp_path / "sg13g2")
+def test_get_pdk_sg13g2_case_insensitive(tmp_path, monkeypatch, minimal_sg13g2_pdk_factory):
+    pdk_root = minimal_sg13g2_pdk_factory(tmp_path / "sg13g2")
     monkeypatch.setenv("CHIPCOMPILER_SG13G2_PDK_ROOT", str(pdk_root))
 
     pdk = get_pdk("SG13G2")
