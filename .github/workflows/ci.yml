@@ -53,39 +53,8 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: latest
-          enable-cache: "true"
-
-      - name: Install native build dependencies
-        run: |
-          set -euo pipefail
-
-          packages=(
-            software-properties-common ca-certificates curl git xz-utils
-            build-essential python3 python3-dev python3-venv
-            cmake ninja-build pkg-config patchelf mold lld
-            flex libfl-dev bison unzip zip
-            zlib1g-dev libboost-all-dev libcairo2-dev
-            libgflags-dev libgoogle-glog-dev libeigen3-dev libgtest-dev
-            libtbb-dev libhwloc-dev libcurl4-openssl-dev libunwind-dev
-            libmetis-dev libgmp-dev tcl-dev tcl8.6-dev
-            libyaml-cpp-dev libqhull-dev libffi-dev libssl-dev
-          )
-
-          sudo apt-get update
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
-
-      - name: Install uv
-        run: uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose
-        # uses: ./.github/actions/setup-python-deps
+      - name: Setup Python dependencies
+        uses: ./.github/actions/setup-python-deps
 
       - name: Setup PDK
         run: |
