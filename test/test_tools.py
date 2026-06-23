@@ -1,96 +1,28 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import sys
-import os
+from integration.conftest import REPO_ROOT, run_workspace_flow
 
-current_dir = os.path.split(os.path.abspath(__file__))[0]
-root = current_dir.rsplit('/', 1)[0]
-sys.path.append(root)
+from chipcompiler.rtl2gds import build_rtl2gds_flow
 
-from chipcompiler.data import (
-    create_workspace,
-    load_workspace,
-    log_workspace,
-    log_parameters,
-    StepEnum,
-    StateEnum,
-    get_pdk,
-    get_design_parameters
-)
-
-from chipcompiler.engine import (
-    EngineDB,
-    EngineFlow
-)
 
 def test_ics55_gcd():
-    workspace_dir="{}/test/examples/ics55_gcd_tool".format(root)
-
-    input_def = ""
-    input_verilog = "{}/test/fixtures/gcd/gcd.v".format(root) # RTL file
-    parameters=get_design_parameters("ics55", "gcd")
-    pdk = get_pdk(pdk_name= "ics55")
-
-    workspace = create_workspace(
-        directory=workspace_dir,
-        origin_def=input_def,
-        origin_verilog=input_verilog,
-        pdk=pdk,
-        parameters=parameters
+    run_workspace_flow(
+        build_rtl2gds_flow,
+        workspace_suffix="ics55_gcd_tool",
+        with_engine_db=True,
     )
-    # workspace = load_workspace(workspace_dir)
-    
-    from chipcompiler.engine import EngineDB
-    # build engine_db for workspace
-    engine_db = EngineDB(workspace=workspace)
-    # build engine flow for workspace
-    engine_flow = EngineFlow(workspace=workspace, engine_db=engine_db)
-    if not engine_flow.has_init():
-        from chipcompiler.rtl2gds import build_rtl2gds_flow
-        steps = build_rtl2gds_flow()
-        for step, tool, state in steps:
-            engine_flow.add_step(step=step, tool=tool, state=state)
-            
-    engine_flow.create_step_workspaces()
-    
-    engine_flow.run_steps()
-    
+
+
 def test_sg13g2_gcd():
-    workspace_dir="{}/test/examples/sg13g2_gcd_tool".format(root)
-
-    input_def = ""
-    input_verilog = "{}/test/fixtures/gcd/gcd.v".format(root) # RTL file
-    parameters=get_design_parameters("sg13g2", "gcd")
-    parameters.data["Design"] = "gcd"
-    parameters.data["Top module"] = "gcd"
-    parameters.data["Clock"] = "clk"
-    
-    pdk_root = "{}/ihp-sg13g2".format(root)
-    pdk = get_pdk("sg13g2", pdk_root=pdk_root)
-
-    workspace = create_workspace(
-        directory=workspace_dir,
-        origin_def=input_def,
-        origin_verilog=input_verilog,
-        pdk=pdk,
-        parameters=parameters
+    run_workspace_flow(
+        build_rtl2gds_flow,
+        pdk_name="sg13g2",
+        workspace_suffix="sg13g2_gcd_tool",
+        pdk_root=REPO_ROOT / "ihp-sg13g2",
     )
-    
-    
-    engine_flow = EngineFlow(workspace=workspace)
-    if not engine_flow.has_init():
-        from chipcompiler.rtl2gds import build_rtl2gds_flow
-        steps = build_rtl2gds_flow()
-        for step, tool, state in steps:
-            engine_flow.add_step(step=step, tool=tool, state=state)
-            
-    engine_flow.create_step_workspaces()
-    
-    engine_flow.run_steps()
 
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     test_ics55_gcd()
     test_sg13g2_gcd()
 

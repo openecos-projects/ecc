@@ -4,49 +4,16 @@ import os
 from chipcompiler.cli import main as cli_main
 
 
-def _create_valid_project(tmp_path, name="gcd", pdk_root=None, freq=100.0):
-    project_dir = tmp_path / name
-    project_dir.mkdir(exist_ok=True)
-    (project_dir / "rtl").mkdir(exist_ok=True)
-    (project_dir / "constraints").mkdir(exist_ok=True)
-    (project_dir / "runs").mkdir(exist_ok=True)
-
-    rtl_file = project_dir / "rtl" / "gcd.v"
-    rtl_file.write_text("module gcd(input clk); endmodule\n")
-
-    if pdk_root is None:
-        pdk_root = tmp_path / "ics55"
-        pdk_root.mkdir(exist_ok=True)
-
-    toml = f'''[design]
-name = "{name}"
-top = "{name}"
-rtl = ["rtl/gcd.v"]
-clock_port = "clk"
-frequency_mhz = {freq}
-
-[pdk]
-name = "ics55"
-root = "{pdk_root}"
-
-[flow]
-preset = "rtl2gds"
-run = "default"
-'''
-    (project_dir / "ecc.toml").write_text(toml)
-    return str(project_dir)
-
-
 class TestParamList:
-    def test_param_list_text_output(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_text_output(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "place.target_density" in out
 
-    def test_param_list_json(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_json(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
@@ -54,16 +21,16 @@ class TestParamList:
         params = [r["param"] for r in data["records"]]
         assert "place.target_density" in params
 
-    def test_param_list_jsonl(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_jsonl(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--jsonl"])
         assert rc == 0
         lines = capsys.readouterr().out.strip().split("\n")
         objects = [json.loads(ln) for ln in lines]
         assert len(objects) == 12
 
-    def test_param_list_plain(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_plain(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
@@ -72,15 +39,15 @@ class TestParamList:
 
 
 class TestParamShow:
-    def test_param_show_known_key(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_show_known_key(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "place.target_density" in out
 
-    def test_param_show_json(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_show_json(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(
             ["param", "show", "place.target_density", "--project", project_dir, "--json"]
         )
@@ -92,15 +59,15 @@ class TestParamShow:
         assert "source" in record
         assert "maps_to" in record
 
-    def test_param_show_unknown_key(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_show_unknown_key(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "show", "unknown.key", "--project", project_dir])
         assert rc == 1
 
 
 class TestParamSet:
-    def test_param_set_writes_toml(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_set_writes_toml(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(
             ["param", "set", "place.target_density", "0.65", "--project", project_dir]
         )
@@ -112,8 +79,8 @@ class TestParamSet:
         assert "target_density" in content
         assert "0.65" in content
 
-    def test_param_set_then_show(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_set_then_show(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
@@ -126,18 +93,18 @@ class TestParamSet:
         assert record["value"] == 0.65
         assert record["source"] == "ecc.toml"
 
-    def test_param_set_rejects_unknown_key(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_set_rejects_unknown_key(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "set", "bogus.key", "5", "--project", project_dir])
         assert rc == 1
 
-    def test_param_set_rejects_invalid_value(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_set_rejects_invalid_value(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "set", "place.target_density", "1.5", "--project", project_dir])
         assert rc == 1
 
-    def test_param_set_preserves_other_sections(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_set_preserves_other_sections(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["param", "set", "synth.max_fanout", "16", "--project", project_dir])
 
         toml_path = os.path.join(project_dir, "ecc.toml")
@@ -149,8 +116,8 @@ class TestParamSet:
 
 
 class TestParamUnset:
-    def test_param_unset_removes_override(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_unset_removes_override(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
@@ -166,8 +133,8 @@ class TestParamUnset:
         record = data["records"][0]
         assert record["source"] == "default"
 
-    def test_param_unset_noop_when_absent(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_unset_noop_when_absent(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
@@ -175,8 +142,8 @@ class TestParamUnset:
 
 
 class TestParamDiff:
-    def test_param_diff_shows_overrides(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_diff_shows_overrides(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
@@ -187,8 +154,8 @@ class TestParamDiff:
         assert len(records) == 1
         assert records[0]["param"] == "place.target_density"
 
-    def test_param_diff_clean_when_no_overrides(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_diff_clean_when_no_overrides(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
@@ -196,10 +163,10 @@ class TestParamDiff:
 
 
 class TestRunSet:
-    def test_run_set_override(self, tmp_path, monkeypatch, capsys):
+    def test_run_set_override(self, tmp_path, monkeypatch, capsys, create_cli_project):
         from types import SimpleNamespace
 
-        project_dir = _create_valid_project(tmp_path)
+        project_dir = create_cli_project()
         workspace_obj = SimpleNamespace(name="workspace")
         capture = {"kwargs": None}
 
@@ -249,8 +216,8 @@ class TestRunSet:
         params = capture["kwargs"]["parameters"]
         assert params.get("DreamPlace", {}).get("target_density") == 0.65
 
-    def test_run_set_rejects_unknown_key(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_set_rejects_unknown_key(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(
             [
                 "run",
@@ -262,8 +229,8 @@ class TestRunSet:
         )
         assert rc == 1
 
-    def test_run_set_rejects_invalid_value(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_set_rejects_invalid_value(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(
             [
                 "run",
@@ -275,10 +242,10 @@ class TestRunSet:
         )
         assert rc == 1
 
-    def test_run_set_does_not_modify_toml(self, tmp_path, monkeypatch, capsys):
+    def test_run_set_does_not_modify_toml(self, tmp_path, monkeypatch, capsys, create_cli_project):
         from types import SimpleNamespace
 
-        project_dir = _create_valid_project(tmp_path)
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             original_toml = f.read()
@@ -332,37 +299,37 @@ class TestRunSet:
 
 
 class TestOutputContracts:
-    def test_plain_no_ansi(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_plain_no_ansi(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
         assert "\033[" not in out
 
-    def test_json_no_ansi(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_json_no_ansi(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
         assert rc == 0
         out = capsys.readouterr().out
         assert "\033[" not in out
 
-    def test_jsonl_no_ansi(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_jsonl_no_ansi(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--jsonl"])
         assert rc == 0
         out = capsys.readouterr().out
         assert "\033[" not in out
 
-    def test_json_uses_records_envelope(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_json_uses_records_envelope(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
         assert isinstance(data["records"], list)
 
-    def test_plain_is_line_oriented(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_plain_is_line_oriented(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
@@ -371,8 +338,10 @@ class TestOutputContracts:
 
 
 class TestConfigResolved:
-    def test_config_resolved_includes_param_records(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_config_resolved_includes_param_records(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -393,8 +362,10 @@ class TestConfigResolved:
         assert "source" in first_param
         assert "maps_to" in first_param
 
-    def test_config_resolved_shows_toml_source(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_config_resolved_shows_toml_source(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -416,8 +387,10 @@ class TestConfigResolved:
         assert density["value"] == 0.65
         assert density["source"] == "ecc.toml"
 
-    def test_config_resolved_seeds_design_frequency(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path, freq=200.0)
+    def test_config_resolved_seeds_design_frequency(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project(freq=200.0)
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -437,8 +410,8 @@ class TestConfigResolved:
 
 
 class TestTomlValidationErrors:
-    def _create_project_with_invalid_param(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path)
+    def _create_project_with_invalid_param(self, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -447,16 +420,16 @@ class TestTomlValidationErrors:
             f.write(content)
         return project_dir
 
-    def test_check_fails_invalid_param_type(self, tmp_path, capsys):
-        project_dir = self._create_project_with_invalid_param(tmp_path)
+    def test_check_fails_invalid_param_type(self, tmp_path, capsys, create_cli_project):
+        project_dir = self._create_project_with_invalid_param(create_cli_project)
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         reasons = [r.get("reason", "") for r in data["records"]]
         assert any("params" in r for r in reasons)
 
-    def test_check_fails_unknown_param_key(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_fails_unknown_param_key(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -466,23 +439,23 @@ class TestTomlValidationErrors:
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 1
 
-    def test_run_fails_invalid_param_type(self, tmp_path):
-        project_dir = self._create_project_with_invalid_param(tmp_path)
+    def test_run_fails_invalid_param_type(self, tmp_path, create_cli_project):
+        project_dir = self._create_project_with_invalid_param(create_cli_project)
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 1
 
 
 class TestPrettyOutput:
-    def test_param_list_default_is_grouped_text(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_default_is_grouped_text(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "place" in out
         assert "place.target_density" in out
 
-    def test_param_list_plain_is_one_line_per_record(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_plain_is_one_line_per_record(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
@@ -490,8 +463,8 @@ class TestPrettyOutput:
         assert len(lines) == 12
         assert "\033[" not in out
 
-    def test_param_show_default_is_pretty(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_show_default_is_pretty(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
@@ -499,8 +472,8 @@ class TestPrettyOutput:
         assert "source" in out
         assert "default" in out
 
-    def test_param_set_default_is_pretty(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_set_default_is_pretty(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(
             ["param", "set", "place.target_density", "0.65", "--project", project_dir]
         )
@@ -508,8 +481,8 @@ class TestPrettyOutput:
         out = capsys.readouterr().out
         assert "0.65" in out
 
-    def test_param_diff_default_is_pretty(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_diff_default_is_pretty(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()
         rc = cli_main.run(["param", "diff", "--project", project_dir])
@@ -519,8 +492,8 @@ class TestPrettyOutput:
 
 
 class TestResolvedListValues:
-    def test_param_list_json_has_value_and_source(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_json_has_value_and_source(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()
 
@@ -535,8 +508,10 @@ class TestResolvedListValues:
         assert "maps_to" in density
         assert "inspect" in density
 
-    def test_param_list_default_source_when_no_overrides(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_default_source_when_no_overrides(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
@@ -548,8 +523,8 @@ class TestResolvedListValues:
 
 
 class TestDiffFiltering:
-    def test_diff_only_shows_values_that_differ(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_diff_only_shows_values_that_differ(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()
 
@@ -562,8 +537,8 @@ class TestDiffFiltering:
         assert records[0]["value"] == 0.65
         assert records[0]["default"] != 0.65
 
-    def test_diff_clean_when_set_to_default(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_diff_clean_when_set_to_default(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         schema_default = 0.2
         cli_main.run(
             ["param", "set", "place.target_density", str(schema_default), "--project", project_dir]
@@ -577,8 +552,8 @@ class TestDiffFiltering:
 
 
 class TestScopedTomlEdit:
-    def test_set_preserves_unrelated_sections(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_preserves_unrelated_sections(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             original = f.read()
@@ -591,8 +566,8 @@ class TestScopedTomlEdit:
         design_section = original[original.index("[design]") : original.index("[pdk]")]
         assert design_section in after
 
-    def test_set_preserves_comments(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_preserves_comments(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -607,8 +582,8 @@ class TestScopedTomlEdit:
             after = f.read()
         assert "# my design" in after
 
-    def test_set_same_key_twice_has_one_assignment(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_same_key_twice_has_one_assignment(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
 
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
@@ -623,8 +598,8 @@ class TestScopedTomlEdit:
         assert "0.7" in content
         assert "0.65" not in content
 
-    def test_set_then_show_still_works(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_then_show_still_works(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
 
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()
@@ -641,8 +616,8 @@ class TestScopedTomlEdit:
 
 
 class TestNativeTomlTypeValidation:
-    def test_check_rejects_float_for_int(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_rejects_float_for_int(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -652,8 +627,8 @@ class TestNativeTomlTypeValidation:
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 1
 
-    def test_check_rejects_bool_for_int(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_rejects_bool_for_int(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -663,8 +638,8 @@ class TestNativeTomlTypeValidation:
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 1
 
-    def test_check_rejects_float_in_list_int(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_rejects_float_in_list_int(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -674,8 +649,8 @@ class TestNativeTomlTypeValidation:
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 1
 
-    def test_check_accepts_valid_int(self, tmp_path, capsys, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_accepts_valid_int(self, tmp_path, capsys, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -691,10 +666,12 @@ class TestNativeTomlTypeValidation:
 
 
 class TestCliProvenance:
-    def test_run_set_reports_cli_source_in_config(self, tmp_path, monkeypatch, capsys):
+    def test_run_set_reports_cli_source_in_config(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
         from types import SimpleNamespace
 
-        project_dir = _create_valid_project(tmp_path)
+        project_dir = create_cli_project()
         workspace_obj = SimpleNamespace(name="workspace")
 
         def fake_create(**kwargs):
@@ -751,10 +728,12 @@ class TestCliProvenance:
             data = json.load(f)
         assert data["synth.max_fanout"] == 16
 
-    def test_config_resolved_shows_cli_source(self, tmp_path, monkeypatch, capsys):
+    def test_config_resolved_shows_cli_source(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
         from types import SimpleNamespace
 
-        project_dir = _create_valid_project(tmp_path)
+        project_dir = create_cli_project()
         workspace_obj = SimpleNamespace(name="workspace")
 
         def fake_create(**kwargs):
@@ -812,10 +791,12 @@ class TestCliProvenance:
         assert fanout["value"] == 16
         assert fanout["source"] == "cli"
 
-    def test_config_resolved_toml_plus_cli_precedence(self, tmp_path, monkeypatch, capsys):
+    def test_config_resolved_toml_plus_cli_precedence(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
         from types import SimpleNamespace
 
-        project_dir = _create_valid_project(tmp_path)
+        project_dir = create_cli_project()
         workspace_obj = SimpleNamespace(name="workspace")
 
         # Set a TOML override first
@@ -888,24 +869,24 @@ class TestParamHandlersRejectInvalidToml:
         with open(toml_path, "w") as f:
             f.write(content)
 
-    def test_param_list_rejects_invalid_toml(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_rejects_invalid_toml(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         self._write_invalid_toml(project_dir)
         rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["error"] == "invalid_param_config"
 
-    def test_param_show_rejects_invalid_toml(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_show_rejects_invalid_toml(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         self._write_invalid_toml(project_dir)
         rc = cli_main.run(["param", "show", "synth.max_fanout", "--project", project_dir, "--json"])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["error"] == "invalid_param_config"
 
-    def test_param_diff_rejects_invalid_toml(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_diff_rejects_invalid_toml(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         self._write_invalid_toml(project_dir)
         rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
         assert rc == 1
@@ -916,8 +897,8 @@ class TestParamHandlersRejectInvalidToml:
 class TestIndentedTomlKeys:
     """Scoped TOML edit must handle indented assignment lines."""
 
-    def test_set_replaces_indented_key(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_replaces_indented_key(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -933,8 +914,8 @@ class TestIndentedTomlKeys:
         assert after.count("target_density") == 1
         assert "0.7" in after
 
-    def test_set_then_show_indented(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_then_show_indented(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -952,8 +933,8 @@ class TestIndentedTomlKeys:
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == 0.7
 
-    def test_unset_removes_indented_key(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_unset_removes_indented_key(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -968,8 +949,8 @@ class TestIndentedTomlKeys:
             after = f.read()
         assert "target_density" not in after
 
-    def test_set_indented_preserves_other_sections(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_indented_preserves_other_sections(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -989,8 +970,8 @@ class TestIndentedTomlKeys:
 class TestMultilineTomlValues:
     """Scoped TOML edit must handle multiline array values."""
 
-    def test_set_replaces_multiline_array(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_replaces_multiline_array(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -1007,8 +988,8 @@ class TestMultilineTomlValues:
         assert after.count("core_margin") == 1
         assert "[4, 4]" in after
 
-    def test_unset_removes_multiline_array(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_unset_removes_multiline_array(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -1023,8 +1004,8 @@ class TestMultilineTomlValues:
             after = f.read()
         assert "core_margin" not in after
 
-    def test_set_multiline_then_show(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_multiline_then_show(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -1042,8 +1023,8 @@ class TestMultilineTomlValues:
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == [4, 4]
 
-    def test_set_preserves_adjacent_key_after_multiline(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_preserves_adjacent_key_after_multiline(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -1070,8 +1051,10 @@ class TestMultilineTomlValues:
         os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
         return run_dir
 
-    def test_malformed_json_provenance_fails(self, tmp_path, capsys, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_malformed_json_provenance_fails(
+        self, tmp_path, capsys, monkeypatch, create_cli_project
+    ):
+        project_dir = create_cli_project()
         run_dir = self._setup_run_dir(project_dir)
         with open(os.path.join(run_dir, "home", "cli-param-overrides.json"), "w") as f:
             f.write("not valid json{")
@@ -1084,8 +1067,8 @@ class TestMultilineTomlValues:
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["error"] == "invalid_config"
 
-    def test_non_dict_provenance_fails(self, tmp_path, capsys, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_non_dict_provenance_fails(self, tmp_path, capsys, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = self._setup_run_dir(project_dir)
         with open(os.path.join(run_dir, "home", "cli-param-overrides.json"), "w") as f:
             json.dump([1, 2, 3], f)
@@ -1096,8 +1079,10 @@ class TestMultilineTomlValues:
         rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
         assert rc == 1
 
-    def test_unknown_key_in_provenance_fails(self, tmp_path, capsys, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_unknown_key_in_provenance_fails(
+        self, tmp_path, capsys, monkeypatch, create_cli_project
+    ):
+        project_dir = create_cli_project()
         run_dir = self._setup_run_dir(project_dir)
         with open(os.path.join(run_dir, "home", "cli-param-overrides.json"), "w") as f:
             json.dump({"nonexistent.param": 42}, f)
@@ -1114,8 +1099,8 @@ class TestMultilineTomlValues:
 class TestParamShowDisclosureCommands:
     """param show must include disclosure command fields."""
 
-    def test_show_json_has_disclosure_commands(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_show_json_has_disclosure_commands(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(
             ["param", "show", "place.target_density", "--project", project_dir, "--json"]
         )
@@ -1127,8 +1112,8 @@ class TestParamShowDisclosureCommands:
         assert "run" in record
         assert "ecc param show place.target_density" in record["inspect"]
 
-    def test_show_text_has_disclosure_commands(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_show_text_has_disclosure_commands(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
@@ -1140,8 +1125,8 @@ class TestParamShowDisclosureCommands:
 class TestSafeTomlSectionParsing:
     """Scoped TOML edits must handle comments and indented headers safely."""
 
-    def test_set_ignores_commented_section_header(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_ignores_commented_section_header(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -1157,8 +1142,8 @@ class TestSafeTomlSectionParsing:
         assert "[params.place]" in after
         assert "target_density = 0.7" in after
 
-    def test_set_ignores_indented_next_section_header(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_ignores_indented_next_section_header(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -1175,8 +1160,8 @@ class TestSafeTomlSectionParsing:
         assert "0.7" in after
         assert 'preset = "rtl2gds"' in after
 
-    def test_set_then_show_after_commented_header(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_then_show_after_commented_header(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -1194,8 +1179,8 @@ class TestSafeTomlSectionParsing:
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == 0.7
 
-    def test_unset_ignores_commented_section_header(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_unset_ignores_commented_section_header(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -1214,8 +1199,8 @@ class TestSafeTomlSectionParsing:
 class TestListDefaultDiffFiltering:
     """param diff must not report list values equal to defaults."""
 
-    def test_list_default_not_in_diff(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_list_default_not_in_diff(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["param", "set", "floorplan.core_margin", "[2,2]", "--project", project_dir])
         capsys.readouterr()
 
@@ -1224,8 +1209,8 @@ class TestListDefaultDiffFiltering:
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0].get("diff_status") == "clean"
 
-    def test_list_changed_value_in_diff(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_list_changed_value_in_diff(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         cli_main.run(["param", "set", "floorplan.core_margin", "[4,4]", "--project", project_dir])
         capsys.readouterr()
 
@@ -1243,13 +1228,13 @@ class TestListDefaultDiffFiltering:
 class TestZeroFrequencyRejected:
     """ecc param set design.frequency_mhz 0 must be rejected."""
 
-    def test_set_zero_rejected(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_set_zero_rejected(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(["param", "set", "design.frequency_mhz", "0", "--project", project_dir])
         assert rc == 1
 
-    def test_cli_set_zero_rejected(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path)
+    def test_cli_set_zero_rejected(self, tmp_path, create_cli_project):
+        project_dir = create_cli_project()
         rc = cli_main.run(
             [
                 "run",
@@ -1265,16 +1250,16 @@ class TestZeroFrequencyRejected:
 class TestDesignFrequencySeeded:
     """ecc param list/show must reflect [design] frequency_mhz."""
 
-    def test_list_shows_design_frequency(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path, freq=200.0)
+    def test_list_shows_design_frequency(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project(freq=200.0)
         rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         freq = next(r for r in data["records"] if r["param"] == "design.frequency_mhz")
         assert freq["value"] == 200.0
 
-    def test_show_shows_design_frequency(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path, freq=200.0)
+    def test_show_shows_design_frequency(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project(freq=200.0)
         rc = cli_main.run(
             ["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"]
         )
@@ -1282,8 +1267,8 @@ class TestDesignFrequencySeeded:
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["value"] == 200.0
 
-    def test_param_override_beats_design_frequency(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path, freq=200.0)
+    def test_param_override_beats_design_frequency(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project(freq=200.0)
         cli_main.run(["param", "set", "design.frequency_mhz", "300", "--project", project_dir])
         capsys.readouterr()
         rc = cli_main.run(
@@ -1303,24 +1288,24 @@ class TestMalformedTomlRejected:
         with open(toml_path, "w") as f:
             f.write('[design\nname = "gcd"\n')
 
-    def test_param_list_rejects_malformed(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_list_rejects_malformed(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         self._write_malformed_toml(project_dir)
         rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["error"] == "invalid_param_config"
 
-    def test_param_show_rejects_malformed(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_show_rejects_malformed(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         self._write_malformed_toml(project_dir)
         rc = cli_main.run(
             ["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"]
         )
         assert rc == 1
 
-    def test_param_diff_rejects_malformed(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_param_diff_rejects_malformed(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         self._write_malformed_toml(project_dir)
         rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
         assert rc == 1

@@ -69,57 +69,6 @@ def _install_flow_mocks(monkeypatch):
     return capture
 
 
-def _create_valid_project(tmp_path, name="gcd", pdk_root=None):
-    project_dir = tmp_path / name
-    project_dir.mkdir(exist_ok=True)
-    (project_dir / "rtl").mkdir(exist_ok=True)
-    (project_dir / "constraints").mkdir(exist_ok=True)
-    (project_dir / "runs").mkdir(exist_ok=True)
-
-    rtl_file = project_dir / "rtl" / "gcd.v"
-    rtl_file.write_text("module gcd(input clk); endmodule\n")
-
-    if pdk_root is None:
-        pdk_root = tmp_path / "ics55"
-        pdk_root.mkdir(exist_ok=True)
-
-    toml = f'''[design]
-name = "{name}"
-top = "{name}"
-rtl = ["rtl/gcd.v"]
-clock_port = "clk"
-frequency_mhz = 100.0
-
-[pdk]
-name = "ics55"
-root = "{pdk_root}"
-
-[flow]
-preset = "rtl2gds"
-run = "default"
-'''
-    (project_dir / "ecc.toml").write_text(toml)
-    return str(project_dir)
-
-
-def _create_flow_json(run_dir, steps=None):
-    home = os.path.join(run_dir, "home")
-    os.makedirs(home, exist_ok=True)
-    if steps is None:
-        steps = [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:18"},
-            {"name": "Floorplan", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-        ]
-    with open(os.path.join(home, "flow.json"), "w") as f:
-        json.dump({"steps": steps}, f)
-
-
-def _has_disclosure(line):
-    return bool(
-        re.search(r"ecc (?:check|run|status|log|metrics|artifacts|config|diagnose|param)\b", line)
-    )
-
-
 def _is_structural_line(line):
     s = line.strip()
     if not s:
@@ -181,8 +130,8 @@ class TestInit:
 
 
 class TestCheck:
-    def test_check_passes_valid_config(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_passes_valid_config(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -192,8 +141,8 @@ class TestCheck:
         out = capsys.readouterr().out
         assert "checked" in out
 
-    def test_check_from_inside_project_dir(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_from_inside_project_dir(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -215,8 +164,8 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", str(project_dir)])
         assert rc == 1
 
-    def test_check_fails_missing_rtl(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_fails_missing_rtl(self, tmp_path, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path, "w") as f:
             f.write(
@@ -228,20 +177,20 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_fails_empty_pdk_root(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path, pdk_root="")
+    def test_check_fails_empty_pdk_root(self, tmp_path, create_cli_project):
+        project_dir = create_cli_project(pdk_root="")
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_fails_non_directory_pdk_root(self, tmp_path):
+    def test_check_fails_non_directory_pdk_root(self, tmp_path, create_cli_project):
         pdk_root = tmp_path / "ics55.txt"
         pdk_root.write_text("not a dir")
-        project_dir = _create_valid_project(tmp_path, pdk_root=str(pdk_root))
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_fails_unsupported_pdk(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_fails_unsupported_pdk(self, tmp_path, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -251,8 +200,8 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_fails_unsupported_preset(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_fails_unsupported_preset(self, tmp_path, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -262,8 +211,8 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_fails_non_positive_frequency(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_fails_non_positive_frequency(self, tmp_path, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -273,8 +222,8 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_fails_multiple_rtl(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_fails_multiple_rtl(self, tmp_path, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -287,8 +236,8 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_fails_non_numeric_frequency(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_fails_non_numeric_frequency(self, tmp_path, create_cli_project):
+        project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
@@ -298,8 +247,8 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_json_output(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_json_output(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -319,24 +268,24 @@ class TestCheck:
 
 
 class TestRun:
-    def test_run_calls_create_workspace(self, tmp_path, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_calls_create_workspace(self, tmp_path, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
         capture = _install_flow_mocks(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
         assert capture["create_kwargs"]["directory"] == os.path.join(project_dir, "runs", "default")
 
-    def test_run_adds_flow_steps_when_no_init(self, tmp_path, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_adds_flow_steps_when_no_init(self, tmp_path, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
         _install_flow_mocks(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
         assert len(DummyFlow.instances[0].added_steps) > 0
 
-    def test_run_calls_create_and_run(self, tmp_path, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_calls_create_and_run(self, tmp_path, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
         _install_flow_mocks(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir])
@@ -344,19 +293,21 @@ class TestRun:
         assert DummyFlow.instances[0].create_called
         assert DummyFlow.instances[0].run_called
 
-    def test_run_overwrite_removes_existing(self, tmp_path, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_overwrite_removes_existing(
+        self, tmp_path, monkeypatch, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="main")
         _install_flow_mocks(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--overwrite"])
         assert rc == 0
 
-    def test_run_fails_if_flow_json_exists(self, tmp_path):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_fails_if_flow_json_exists(self, tmp_path, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 1
@@ -368,8 +319,10 @@ class TestRun:
         rc = cli_main.run(["run", "--project", str(project_dir)])
         assert rc == 1
 
-    def test_run_fails_when_create_workspace_returns_none(self, tmp_path, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_fails_when_create_workspace_returns_none(
+        self, tmp_path, monkeypatch, create_cli_project
+    ):
+        project_dir = create_cli_project()
         _install_flow_mocks(monkeypatch)
 
         def fake_create(**kwargs):
@@ -379,16 +332,18 @@ class TestRun:
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 1
 
-    def test_run_fails_when_run_steps_false(self, tmp_path, monkeypatch):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_fails_when_run_steps_false(self, tmp_path, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
         _install_flow_mocks(monkeypatch)
         DummyFlow.run_steps_value = False
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 1
 
-    def test_run_json_uses_non_progress_path(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_json_uses_non_progress_path(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
         _install_flow_mocks(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
@@ -399,8 +354,10 @@ class TestRun:
         assert data["records"][0]["status"] == "success"
         assert DummyFlow.instances[0].run_called
 
-    def test_run_jsonl_uses_non_progress_path(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_jsonl_uses_non_progress_path(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
         _install_flow_mocks(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--jsonl"])
@@ -410,8 +367,10 @@ class TestRun:
         assert any("status" in obj for obj in objects)
         assert DummyFlow.instances[0].run_called
 
-    def test_run_json_no_progress_on_stderr(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_json_no_progress_on_stderr(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
         _install_flow_mocks(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
@@ -419,8 +378,8 @@ class TestRun:
         err = capsys.readouterr().err
         assert "step=" not in err
 
-    def test_run_preserves_final_records(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_run_preserves_final_records(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
         _install_flow_mocks(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
@@ -441,10 +400,10 @@ class TestRun:
 
 
 class TestStatus:
-    def test_status_reads_flow_json(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_status_reads_flow_json(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
@@ -453,10 +412,10 @@ class TestStatus:
         assert "synthesis" in out
         assert "floorplan" in out
 
-    def test_status_json(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_status_json(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir, "--json"])
         assert rc == 0
@@ -468,10 +427,10 @@ class TestStatus:
         step_records = [r for r in records if "step" in r]
         assert len(step_records) == 2
 
-    def test_status_jsonl(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_status_jsonl(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir, "--jsonl"])
         assert rc == 0
@@ -480,10 +439,12 @@ class TestStatus:
         assert "run" in objects[0]
         assert "step" in objects[1]
 
-    def test_status_normalizes_step_names(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_status_normalizes_step_names(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(
+        create_flow_json(
             run_dir,
             [
                 {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:18"},
@@ -497,8 +458,8 @@ class TestStatus:
         assert "synthesis" in out
         assert "placement" in out
 
-    def test_status_missing_run(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_status_missing_run(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
 
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 1
@@ -506,8 +467,8 @@ class TestStatus:
         assert "missing" in out
         assert "ecc run" in out
 
-    def test_status_invalid_flow_json(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_status_invalid_flow_json(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
@@ -524,8 +485,8 @@ class TestStatus:
 
 
 class TestLog:
-    def test_log_step_errors(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_log_step_errors(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
@@ -541,8 +502,8 @@ class TestLog:
         assert "Warning: meh" in out
         assert "Info: running" in out
 
-    def test_log_step_errors_jsonl(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_log_step_errors_jsonl(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
@@ -555,8 +516,8 @@ class TestLog:
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
         assert any("Error" in obj["line"] for obj in objects)
 
-    def test_log_no_step_shows_locations(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_log_no_step_shows_locations(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         log_dir = os.path.join(run_dir, "log")
         os.makedirs(log_dir, exist_ok=True)
@@ -568,8 +529,8 @@ class TestLog:
         out = capsys.readouterr().out
         assert "ecc log" in out
 
-    def test_log_no_step_discovers_step_logs(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_log_no_step_discovers_step_logs(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
@@ -584,8 +545,8 @@ class TestLog:
         assert "Synthesis_yosys/log/synthesis.log" in out
         assert "ecc log synthesis" in out
 
-    def test_log_no_step_global_logs_have_disclosure(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_log_no_step_global_logs_have_disclosure(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         log_dir = os.path.join(run_dir, "log")
         os.makedirs(log_dir, exist_ok=True)
@@ -597,15 +558,15 @@ class TestLog:
         out = capsys.readouterr().out
         assert "ecc log" in out
 
-    def test_log_unknown_step(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_log_unknown_step(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "runs", "default"), exist_ok=True)
 
         rc = cli_main.run(["log", "nonexistent", "--project", project_dir])
         assert rc == 1
 
-    def test_log_missing_step_logs(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_log_missing_step_logs(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(os.path.join(run_dir, "Synthesis_yosys"), exist_ok=True)
 
@@ -619,8 +580,8 @@ class TestLog:
 
 
 class TestMetrics:
-    def test_metrics_reads_step_metrics(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_reads_step_metrics(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
@@ -633,8 +594,8 @@ class TestMetrics:
         out = capsys.readouterr().out
         assert "cell_number: 312" in out
 
-    def test_metrics_all_steps(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_all_steps(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         for step_dir_name in ["Synthesis_yosys", "Floorplan_ecc"]:
@@ -650,8 +611,8 @@ class TestMetrics:
         assert "synthesis" in out
         assert "floorplan" in out
 
-    def test_metrics_json(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_json(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
@@ -666,8 +627,8 @@ class TestMetrics:
         assert len(data["records"]) == 1
         assert data["records"][0]["metric"] == "cell_number"
 
-    def test_metrics_jsonl(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_jsonl(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
@@ -680,8 +641,8 @@ class TestMetrics:
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
         assert len(objects) == 2
 
-    def test_metrics_normalizes_known_keys(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_normalizes_known_keys(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         analysis_dir = os.path.join(run_dir, "CTS_ecc", "analysis")
@@ -695,15 +656,15 @@ class TestMetrics:
         assert "frequency_mhz: 450.0" in out
         assert "die_area_um2" in out
 
-    def test_metrics_unknown_step(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_unknown_step(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "runs", "default"), exist_ok=True)
 
         rc = cli_main.run(["metrics", "nonexistent", "--project", project_dir])
         assert rc == 1
 
-    def test_metrics_missing_file(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_missing_file(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(os.path.join(run_dir, "CTS_ecc", "analysis"), exist_ok=True)
 
@@ -713,8 +674,8 @@ class TestMetrics:
         assert "missing" in out
         assert "ecc log cts" in out
 
-    def test_metrics_json_unknown_step(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_json_unknown_step(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "runs", "default"), exist_ok=True)
 
         rc = cli_main.run(["metrics", "nonexistent", "--json", "--project", project_dir])
@@ -723,8 +684,8 @@ class TestMetrics:
         assert data["records"][0]["status"] == "unknown_step"
         assert data["records"][0]["step"] == "nonexistent"
 
-    def test_metrics_json_missing_file(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_json_missing_file(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(os.path.join(run_dir, "CTS_ecc", "analysis"), exist_ok=True)
 
@@ -733,8 +694,8 @@ class TestMetrics:
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["status"] == "missing"
 
-    def test_metrics_jsonl_unknown_step(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_jsonl_unknown_step(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "runs", "default"), exist_ok=True)
 
         rc = cli_main.run(["metrics", "nonexistent", "--jsonl", "--project", project_dir])
@@ -749,15 +710,17 @@ class TestMetrics:
 
 
 class TestDisclosureCommands:
-    def test_init_lines_have_disclosure(self, tmp_path, capsys):
+    def test_init_lines_have_disclosure(self, tmp_path, capsys, has_disclosure):
         project_path = str(tmp_path / "disctest")
         rc = cli_main.run(["init", project_path])
         assert rc == 0
         out = capsys.readouterr().out
-        assert _has_disclosure(out)
+        assert has_disclosure(out)
 
-    def test_check_lines_have_disclosure(self, tmp_path, monkeypatch, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_check_lines_have_disclosure(
+        self, tmp_path, monkeypatch, capsys, create_cli_project, has_disclosure
+    ):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root: None,
@@ -765,20 +728,24 @@ class TestDisclosureCommands:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert _has_disclosure(out)
+        assert has_disclosure(out)
 
-    def test_status_lines_have_disclosure(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_status_lines_have_disclosure(
+        self, tmp_path, capsys, create_cli_project, create_flow_json, has_disclosure
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert _has_disclosure(out)
+        assert has_disclosure(out)
 
-    def test_metrics_lines_have_disclosure(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_lines_have_disclosure(
+        self, tmp_path, capsys, create_cli_project, has_disclosure
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
@@ -789,10 +756,10 @@ class TestDisclosureCommands:
         rc = cli_main.run(["metrics", "synthesis", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert _has_disclosure(out)
+        assert has_disclosure(out)
 
-    def test_log_error_lines_have_disclosure(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_log_error_lines_have_disclosure(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
 
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
@@ -805,20 +772,22 @@ class TestDisclosureCommands:
         out = capsys.readouterr().out
         assert "ecc log synthesis" in out
 
-    def test_project_arg_propagated_to_disclosure(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_project_arg_propagated_to_disclosure(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert f"--project {project_dir}" in out
 
-    def test_output_lowercase_tokens(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_output_lowercase_tokens(self, tmp_path, capsys, create_cli_project, create_flow_json):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(
+        create_flow_json(
             run_dir,
             [
                 {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:01"},
@@ -1008,8 +977,8 @@ class TestMissingConfigErrorRecord:
 class TestLogDefaultShowsAllContent:
     """AC-1: Default ecc log <step> renders complete log content."""
 
-    def test_default_shows_all_lines(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_default_shows_all_lines(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1024,8 +993,8 @@ class TestLogDefaultShowsAllContent:
         assert "Error: bad" in out
         assert "Warning: meh" in out
 
-    def test_default_includes_header(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_default_includes_header(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1039,8 +1008,8 @@ class TestLogDefaultShowsAllContent:
         assert "step=synthesis" in out
         assert "source:" in out
 
-    def test_blank_lines_preserved(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_blank_lines_preserved(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1057,8 +1026,8 @@ class TestLogDefaultShowsAllContent:
 class TestLogTracebackComplete:
     """AC-2: Python traceback blocks remain complete and contiguous."""
 
-    def test_traceback_complete_in_default_output(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_traceback_complete_in_default_output(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1082,8 +1051,8 @@ class TestLogTracebackComplete:
         assert "^^^^^^^^^" in out
         assert "ValueError: invalid value" in out
 
-    def test_traceback_complete_in_jsonl(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_traceback_complete_in_jsonl(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1097,8 +1066,10 @@ class TestLogTracebackComplete:
         assert objects[1]["kind"] == "traceback"
         assert objects[2]["kind"] == "error"
 
-    def test_keyboard_interrupt_jsonl_classified_as_error(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_keyboard_interrupt_jsonl_classified_as_error(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1119,8 +1090,8 @@ class TestLogTracebackComplete:
 class TestLogPlainMode:
     """AC-5: --plain emits full-content stable line records."""
 
-    def test_plain_has_all_fields(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_plain_has_all_fields(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1138,8 +1109,8 @@ class TestLogPlainMode:
         assert "line_no=2" in lines[1]
         assert "kind=info" in lines[1]
 
-    def test_plain_no_ansi(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_plain_no_ansi(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1151,8 +1122,8 @@ class TestLogPlainMode:
         out = capsys.readouterr().out
         assert "\x1b[" not in out
 
-    def test_plain_stable_quoting_for_special_chars(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_plain_stable_quoting_for_special_chars(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1172,8 +1143,8 @@ class TestLogPlainMode:
 class TestLogJsonlMode:
     """AC-6: --jsonl emits full-content structured log objects."""
 
-    def test_jsonl_per_line_objects(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_jsonl_per_line_objects(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1192,8 +1163,8 @@ class TestLogJsonlMode:
             assert "line" in obj
             assert "inspect_cmd" in obj
 
-    def test_jsonl_no_ansi(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_jsonl_no_ansi(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1209,8 +1180,8 @@ class TestLogJsonlMode:
 class TestLogJsonMode:
     """ecc log --json must produce JSON envelope output."""
 
-    def test_json_step_output(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_json_step_output(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1223,8 +1194,8 @@ class TestLogJsonMode:
         assert "records" in data
         assert len(data["records"]) == 2
 
-    def test_json_listing_output(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_json_listing_output(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1240,8 +1211,8 @@ class TestLogJsonMode:
 class TestLogListingMode:
     """AC-7: ecc log without step lists available logs."""
 
-    def test_listing_shows_logs(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_listing_shows_logs(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1254,8 +1225,8 @@ class TestLogListingMode:
         assert "synthesis" in out
         assert "ecc log synthesis" in out
 
-    def test_listing_no_logs_returns_no_log_status(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_listing_no_logs_returns_no_log_status(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(run_dir, exist_ok=True)
 
@@ -1264,8 +1235,8 @@ class TestLogListingMode:
         out = capsys.readouterr().out
         assert "no_logs" in out
 
-    def test_listing_jsonl_records(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_listing_jsonl_records(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1279,8 +1250,8 @@ class TestLogListingMode:
         ]
         assert any("step" in o for o in objects)
 
-    def test_listing_plain_step_logs(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_listing_plain_step_logs(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1295,8 +1266,8 @@ class TestLogListingMode:
         assert "inspect_cmd=" in out
         assert "line_no=" not in out
 
-    def test_listing_plain_run_level_logs(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_listing_plain_run_level_logs(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         log_dir = os.path.join(run_dir, "log")
         os.makedirs(log_dir, exist_ok=True)
@@ -1315,8 +1286,8 @@ class TestLogListingMode:
 class TestLogErrorCases:
     """AC-9: Error cases are structured and readable."""
 
-    def test_unknown_step_returns_nonzero(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_unknown_step_returns_nonzero(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(run_dir, exist_ok=True)
 
@@ -1325,8 +1296,8 @@ class TestLogErrorCases:
         out = capsys.readouterr().out
         assert "unknown_step" in out
 
-    def test_unknown_step_json(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_unknown_step_json(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(run_dir, exist_ok=True)
 
@@ -1335,8 +1306,8 @@ class TestLogErrorCases:
         record = json.loads(capsys.readouterr().out.strip())
         assert record["status"] == "unknown_step"
 
-    def test_known_step_no_logs_returns_nonzero(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_known_step_no_logs_returns_nonzero(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(os.path.join(run_dir, "Synthesis_yosys"), exist_ok=True)
 
@@ -1345,8 +1316,8 @@ class TestLogErrorCases:
         out = capsys.readouterr().out
         assert "missing" in out
 
-    def test_known_step_no_logs_json(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_known_step_no_logs_json(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(os.path.join(run_dir, "Synthesis_yosys"), exist_ok=True)
 
@@ -1355,8 +1326,8 @@ class TestLogErrorCases:
         record = json.loads(capsys.readouterr().out.strip())
         assert record["log_status"] == "missing"
 
-    def test_empty_log_returns_zero(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_empty_log_returns_zero(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1372,8 +1343,8 @@ class TestLogErrorCases:
 class TestLogNoErrorsInDisclosure:
     """AC-8: Disclosure commands do not include --errors."""
 
-    def test_listing_disclosure_no_errors(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_listing_disclosure_no_errors(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1385,8 +1356,8 @@ class TestLogNoErrorsInDisclosure:
         out = capsys.readouterr().out
         assert "--errors" not in out
 
-    def test_step_log_inspect_no_errors(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_step_log_inspect_no_errors(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1398,18 +1369,20 @@ class TestLogNoErrorsInDisclosure:
         out = capsys.readouterr().out
         assert "--errors" not in out
 
-    def test_status_disclosure_no_errors(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_status_disclosure_no_errors(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "--errors" not in out
 
-    def test_metrics_disclosure_no_errors(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_disclosure_no_errors(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1423,10 +1396,12 @@ class TestLogNoErrorsInDisclosure:
         out = capsys.readouterr().out
         assert "--errors" not in out
 
-    def test_artifacts_log_disclosure_no_errors(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_artifacts_log_disclosure_no_errors(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(run_dir)
+        create_flow_json(run_dir, profile="main")
         log_dir = os.path.join(run_dir, "CTS_ecc", "log")
         os.makedirs(log_dir, exist_ok=True)
         with open(os.path.join(log_dir, "cts.log"), "w") as f:
@@ -1441,8 +1416,8 @@ class TestLogNoErrorsInDisclosure:
 class TestLogUnreadableFile:
     """AC-9: Unreadable log files return non-zero with OS error."""
 
-    def test_unreadable_log_returns_nonzero(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_unreadable_log_returns_nonzero(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1459,8 +1434,8 @@ class TestLogUnreadableFile:
         finally:
             os.chmod(log_path, 0o644)
 
-    def test_unreadable_log_jsonl(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_unreadable_log_jsonl(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1483,8 +1458,8 @@ class TestLogUnreadableFile:
 class TestLogMultiSource:
     """AC-1: Multiple log files per step shown with separate source headers."""
 
-    def test_multi_source_pretty(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_multi_source_pretty(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1510,8 +1485,8 @@ class TestLogErrorsDeprecation:
         assert rc == 0
         assert "--errors" not in capsys.readouterr().out
 
-    def test_errors_emits_deprecation_warning(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_errors_emits_deprecation_warning(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1523,8 +1498,8 @@ class TestLogErrorsDeprecation:
         err = capsys.readouterr().err
         assert "deprecated" in err
 
-    def test_errors_jsonl_still_full_records(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_errors_jsonl_still_full_records(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1543,8 +1518,8 @@ class TestLogErrorsDeprecation:
 class TestCorruptFlowJson:
     """Non-dict flow.json must be reported as corrupt, not missing."""
 
-    def test_array_flow_json_is_corrupt(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_array_flow_json_is_corrupt(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
@@ -1556,8 +1531,8 @@ class TestCorruptFlowJson:
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0].get("status") == "corrupt"
 
-    def test_string_flow_json_is_corrupt(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_string_flow_json_is_corrupt(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
@@ -1573,8 +1548,8 @@ class TestCorruptFlowJson:
 class TestFlowOnlyStepMetrics:
     """Step in flow.json but no step directory should report missing, not unknown."""
 
-    def test_metrics_flow_only_step_is_missing(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_metrics_flow_only_step_is_missing(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
@@ -1591,10 +1566,12 @@ class TestFlowOnlyStepMetrics:
 class TestLogListingFlowOrder:
     """Listing step logs follow flow.json order, not alphabetical."""
 
-    def _setup_steps_with_flow(self, tmp_path, step_names, extra_dirs=None):
-        project_dir = _create_valid_project(tmp_path)
+    def _setup_steps_with_flow(
+        self, tmp_path, create_cli_project, create_flow_json, step_names, extra_dirs=None
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
-        _create_flow_json(
+        create_flow_json(
             run_dir, steps=[{"name": n, "tool": "ecc", "state": "Success"} for n in step_names]
         )
         all_dirs = list(step_names) + (extra_dirs or [])
@@ -1617,9 +1594,13 @@ class TestLogListingFlowOrder:
                 f.write(f"log from {name}\n")
         return project_dir
 
-    def test_steps_follow_flow_json_order(self, tmp_path, capsys):
+    def test_steps_follow_flow_json_order(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
         project_dir = self._setup_steps_with_flow(
             tmp_path,
+            create_cli_project,
+            create_flow_json,
             ["Synthesis", "Floorplan", "CTS"],
         )
         rc = cli_main.run(["log", "--jsonl", "--project", project_dir])
@@ -1630,9 +1611,13 @@ class TestLogListingFlowOrder:
         steps = [r.get("step") for r in records if "step" in r]
         assert steps == ["synthesis", "floorplan", "cts"]
 
-    def test_run_level_logs_before_step_logs(self, tmp_path, capsys):
+    def test_run_level_logs_before_step_logs(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
         project_dir = self._setup_steps_with_flow(
             tmp_path,
+            create_cli_project,
+            create_flow_json,
             ["Synthesis", "CTS"],
         )
         run_dir = os.path.join(project_dir, "runs", "default")
@@ -1651,9 +1636,13 @@ class TestLogListingFlowOrder:
         assert step_indices, "expected at least one step record"
         assert max(run_indices) < min(step_indices)
 
-    def test_extra_steps_after_flow_steps(self, tmp_path, capsys):
+    def test_extra_steps_after_flow_steps(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
         project_dir = self._setup_steps_with_flow(
             tmp_path,
+            create_cli_project,
+            create_flow_json,
             ["Synthesis", "CTS"],
             extra_dirs=["Floorplan"],
         )
@@ -1669,9 +1658,13 @@ class TestLogListingFlowOrder:
         assert synth_idx < cts_idx
         assert cts_idx < fp_idx
 
-    def test_extra_steps_sorted_alphabetically(self, tmp_path, capsys):
+    def test_extra_steps_sorted_alphabetically(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
         project_dir = self._setup_steps_with_flow(
             tmp_path,
+            create_cli_project,
+            create_flow_json,
             ["Synthesis"],
             extra_dirs=["Floorplan", "CTS"],
         )
@@ -1684,8 +1677,10 @@ class TestLogListingFlowOrder:
         extras = [s for s in steps if s != "synthesis"]
         assert extras == sorted(extras)
 
-    def test_missing_flow_json_falls_back_to_alphabetical(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_missing_flow_json_falls_back_to_alphabetical(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(run_dir, exist_ok=True)
         for name in ["CTS_ecc", "Floorplan_ecc", "Synthesis_yosys"]:
@@ -1701,8 +1696,10 @@ class TestLogListingFlowOrder:
         steps = [r.get("step") for r in records if "step" in r]
         assert steps == sorted(steps)
 
-    def test_corrupt_flow_json_falls_back_to_alphabetical(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_corrupt_flow_json_falls_back_to_alphabetical(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
@@ -1725,8 +1722,8 @@ class TestLogListingFlowOrder:
 class TestLogListingTailPreview:
     """Tail preview shows up to 10 lines in default pretty text mode."""
 
-    def test_listing_shows_tail_lines(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_listing_shows_tail_lines(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1740,8 +1737,8 @@ class TestLogListingTailPreview:
         assert "log line 14" in out
         assert "tail:" in out
 
-    def test_listing_tail_max_10_lines(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_listing_tail_max_10_lines(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1763,8 +1760,8 @@ class TestLogListingTailPreview:
         ]
         assert len(tail_content) == 10
 
-    def test_empty_log_no_tail_block(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_empty_log_no_tail_block(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1777,8 +1774,8 @@ class TestLogListingTailPreview:
         assert "tail:" not in out
         assert "inspect:" in out
 
-    def test_inspect_visible_below_tail(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_inspect_visible_below_tail(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1796,8 +1793,8 @@ class TestLogListingTailPreview:
 class TestLogListingMachineModeNoTail:
     """Machine modes must not include tail data."""
 
-    def test_plain_no_tail(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_plain_no_tail(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1808,8 +1805,8 @@ class TestLogListingMachineModeNoTail:
         out = capsys.readouterr().out
         assert "tail=" not in out
 
-    def test_json_no_tail(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_json_no_tail(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1821,8 +1818,8 @@ class TestLogListingMachineModeNoTail:
         for rec in data["records"]:
             assert "tail" not in rec
 
-    def test_jsonl_no_tail(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_jsonl_no_tail(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1840,8 +1837,8 @@ class TestLogListingMachineModeNoTail:
 class TestLogStepUnchanged:
     """ecc log <step> full output must remain unchanged."""
 
-    def test_step_shows_all_lines_not_tail(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_step_shows_all_lines_not_tail(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1854,8 +1851,8 @@ class TestLogStepUnchanged:
         assert "line 0" in out
         assert "line 19" in out
 
-    def test_step_plain_unchanged(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_step_plain_unchanged(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1869,8 +1866,8 @@ class TestLogStepUnchanged:
         assert "line_no=3" in out
         assert "tail" not in out
 
-    def test_step_jsonl_unchanged(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_step_jsonl_unchanged(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -1889,8 +1886,8 @@ class TestLogStepUnchanged:
 class TestLogListingUnreadable:
     """Unreadable logs in listing mode must omit tail, keep path+inspect, no traceback."""
 
-    def test_unreadable_step_log_in_listing(self, tmp_path, capsys):
-        project_dir = _create_valid_project(tmp_path)
+    def test_unreadable_step_log_in_listing(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
