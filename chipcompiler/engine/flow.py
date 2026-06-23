@@ -1,17 +1,23 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import logging
 import os
 import time
-import logging
 import traceback
 from threading import Event, Thread
 
-from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum, log_flow
+from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow
 from chipcompiler.engine import EngineDB
+from chipcompiler.engine.signoff import (
+    SignoffPackageCollector,
+    SignoffPackageOptions,
+    SignoffPackageResult,
+)
 from chipcompiler.utility.log import redirect_stdio_to_file
 
 logger = logging.getLogger(__name__)
+
 
 def get_process_rss_mb(pid : int) -> float:
     peak_memory = 0
@@ -219,6 +225,15 @@ class EngineFlow:
                         os.path.exists(workspace_step.output.get("gds", "")):
                     success = True
         return success
+
+    def collect_signoff_package(
+        self,
+        options: SignoffPackageOptions | None = None,
+    ) -> SignoffPackageResult:
+        """
+        Collect harden-flow signoff resources from this flow workspace.
+        """
+        return SignoffPackageCollector(self.workspace).collect(options)
 
     def create_step_workspaces(self):
         """

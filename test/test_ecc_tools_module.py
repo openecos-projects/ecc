@@ -55,25 +55,25 @@ def test_init_rcx_omits_explicit_empty_pdk_for_backward_compatibility():
     assert module.ecc.calls == [{"config": "/tmp/rcx.json"}]
 
 
-def test_view_json_save_passes_output_dir():
+def test_view_json_save_passes_output_options():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.view_json_save(output_dir="/tmp/view_json") is True
+    assert module.view_json_save(output_dir="/tmp/view_json", json_format="compact", compress=True) is True
 
     assert module.ecc.calls == [
-        ("view_json_save", {"output_dir": "/tmp/view_json"}),
+        ("view_json_save", {"output_dir": "/tmp/view_json", "json_format": "compact", "compress": True}),
     ]
 
 
-def test_view_json_apply_edits_passes_edits_path():
+def test_view_json_apply_edits_passes_compress_option():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.view_json_apply_edits(edits_path="/tmp/view_json/edits/layout_edits.json") is True
+    assert module.view_json_apply_edits(edits_path="/tmp/view_json/edits/layout_edits.json.gz", compress=True) is True
 
     assert module.ecc.calls == [
-        ("view_json_apply_edits", {"edits_path": "/tmp/view_json/edits/layout_edits.json"}),
+        ("view_json_apply_edits", {"edits_path": "/tmp/view_json/edits/layout_edits.json.gz", "compress": True}),
     ]
 
 

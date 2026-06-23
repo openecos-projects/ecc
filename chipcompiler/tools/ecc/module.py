@@ -224,11 +224,39 @@ class ECCToolsModule:
                   path : str):
         self.ecc.json_save(path=path)
 
-    def view_json_save(self, output_dir: str):
-        return self.ecc.view_json_save(output_dir=output_dir)
+    def view_json_save(
+        self,
+        output_dir: str,
+        json_format: str = "pretty", 
+        compress: bool = False,
+    ):
+        """
+        Export the current iDB design as a view JSON package.
 
-    def view_json_apply_edits(self, edits_path: str):
-        return self.ecc.view_json_apply_edits(edits_path=edits_path)
+        Args:
+            output_dir: Directory used to write manifest.json and package files.
+            json_format: JSON text layout. Use "pretty" for indented output or
+                "compact" to remove extra spaces/newlines and reduce file size.
+            compress: When True, write package JSON files as .json.gz. The
+                manifest.json entry file remains plain JSON and points to the
+                compressed package files.
+        """
+        return self.ecc.view_json_save(
+            output_dir=output_dir,
+            json_format=json_format,
+            compress=compress,
+        )
+
+    def view_json_apply_edits(self, edits_path: str, compress: bool = False):
+        """
+        Apply edits generated for a view JSON package.
+
+        Args:
+            edits_path: Path to layout_edits.json or layout_edits.json.gz.
+            compress: When True, prefer reading edits_path + ".gz" if edits_path
+                does not already end with ".gz".
+        """
+        return self.ecc.view_json_apply_edits(edits_path=edits_path, compress=compress)
 
     def save_data(self, path: str):
         """save ECC data"""

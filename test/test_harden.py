@@ -21,8 +21,10 @@ from chipcompiler.data import (
 
 from chipcompiler.engine import (
     EngineDB,
-    EngineFlow
+    EngineFlow,
+    SignoffPackageOptions
 )
+
 
 def test_ics55_gcd():
     workspace_dir="{}/test/examples/ics55_gcd_harden".format(root)
@@ -52,6 +54,18 @@ def test_ics55_gcd():
     engine_flow.create_step_workspaces()
     
     assert engine_flow.run_steps()
+
+    # result = engine_flow.collect_signoff_package(
+    #     SignoffPackageOptions(
+    #         output_dir=f"{workspace_dir}/signoff",
+    #         archive=True,
+    #         include_debug=False,
+    #         allow_incomplete=False,
+    #     )
+    # )
+    
+    # assert result.ok, result.missing_required
+    # assert result.archive_path
     
 if __name__ == "__main__":    
     test_ics55_gcd()

@@ -204,7 +204,10 @@ def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
 
 def refresh_workspace_config(directory: str) -> dict:
     cmd = "refresh_config"
-    response_data = {"directory": os.path.abspath(directory) if directory else "", "refreshed": False}
+    response_data = {
+        "directory": os.path.abspath(directory) if directory else "",
+        "refreshed": False,
+    }
     if not directory:
         return workspace_response(
             cmd,
@@ -391,6 +394,78 @@ def get_workspace_home(directory: str) -> dict:
         cmd,
         "failed",
         message=[f"get home failed : {path}"],
+    )
+
+
+def collect_signoff_package(directory: str,
+                            output_dir: str,
+                            archive: bool,
+                            include_debug: bool,
+                            allow_incomplete: bool) -> dict:
+    cmd = "signoff"
+    response_data = {
+        "directory": os.path.abspath(directory) if directory else "",
+        "output_dir": os.path.abspath(output_dir) if output_dir else "",
+        "archive": bool(archive),
+        "include_debug": bool(include_debug),
+        "allow_incomplete": bool(allow_incomplete),
+    }
+    if not directory:
+        return workspace_response(
+            cmd,
+            "failed",
+            data=response_data,
+            message=["missing required field: directory"],
+        )
+
+    try:
+        workspace, engine_flow = load_workspace_runtime(
+            directory,
+            create_step_workspaces=False,
+        )
+        from chipcompiler.engine.signoff import SignoffPackageOptions
+
+        result = engine_flow.collect_signoff_package(
+            SignoffPackageOptions(
+                output_dir=output_dir or None,
+                archive=archive,
+                include_debug=include_debug,
+                allow_incomplete=allow_incomplete,
+            )
+        )
+    except WorkspaceValidationError as exc:
+        return workspace_response(cmd, "failed", data=response_data, message=[str(exc)])
+    except Exception as exc:
+        return workspace_response(
+            cmd,
+            "error",
+            data=response_data,
+            message=[f"collect signoff package failed : {exc}"],
+        )
+
+    response_data.update({
+        "directory": os.path.abspath(workspace.directory),
+        "package_dir": result.package_dir,
+        "archive_path": result.archive_path or "",
+        "manifest_path": result.manifest_path or "",
+        "summary_path": result.summary_path or "",
+        "copied_count": len(result.copied),
+        "missing_required": result.missing_required,
+        "warnings": result.warnings,
+    })
+    if result.ok:
+        return workspace_response(
+            cmd,
+            "success",
+            data=response_data,
+            message=[f"collect signoff package success : {result.package_dir}"],
+        )
+
+    return workspace_response(
+        cmd,
+        "failed",
+        data=response_data,
+        message=["collect signoff package incomplete"],
     )
 
 
