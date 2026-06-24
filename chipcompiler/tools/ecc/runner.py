@@ -40,7 +40,20 @@ def create_db_engine(workspace: Workspace,
     
         db_path = step.input.get("db", "")
         if ecc_module.is_db_data_exists(db_path):
-            ecc_module.load_data(path=db_path)
+            try:
+                loaded = ecc_module.load_data(path=db_path)
+            except Exception as e:
+                workspace.logger.warning(
+                    f"Failed to load ECC data from {db_path}; falling back to design input: {e}"
+                )
+                return None
+
+            if not loaded:
+                workspace.logger.warning(
+                    f"Failed to load ECC data from {db_path}; falling back to design input."
+                )
+                return None
+
             workspace.logger.info(f"Successfully loaded data from {db_path}")
             return ecc_module
         else:
