@@ -4,6 +4,18 @@ import os
 from chipcompiler.cli import main as cli_main
 
 
+def _make_path_unreadable(monkeypatch, unreadable_path):
+    real_open = open
+    unreadable_path = os.fspath(unreadable_path)
+
+    def open_unless_target(path, *args, **kwargs):
+        if os.fspath(path) == unreadable_path:
+            raise PermissionError("cannot read")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", open_unless_target)
+
+
 class TestLog:
     def test_log_step_errors(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
@@ -536,7 +548,9 @@ class TestLogNoErrorsInDisclosure:
 class TestLogUnreadableFile:
     """AC-9: Unreadable log files return non-zero with OS error."""
 
-    def test_unreadable_log_returns_nonzero(self, tmp_path, capsys, create_cli_project):
+    def test_unreadable_log_returns_nonzero(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
@@ -544,17 +558,14 @@ class TestLogUnreadableFile:
         log_path = os.path.join(step_dir, "synthesis.log")
         with open(log_path, "w") as f:
             f.write("content\n")
-        os.chmod(log_path, 0o000)
+        _make_path_unreadable(monkeypatch, log_path)
 
-        try:
-            rc = cli_main.run(["log", "synthesis", "--project", project_dir])
-            assert rc == 1
-            out = capsys.readouterr().out
-            assert "unreadable" in out
-        finally:
-            os.chmod(log_path, 0o644)
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "unreadable" in out
 
-    def test_unreadable_log_jsonl(self, tmp_path, capsys, create_cli_project):
+    def test_unreadable_log_jsonl(self, tmp_path, monkeypatch, capsys, create_cli_project):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
@@ -562,17 +573,14 @@ class TestLogUnreadableFile:
         log_path = os.path.join(step_dir, "synthesis.log")
         with open(log_path, "w") as f:
             f.write("content\n")
-        os.chmod(log_path, 0o000)
+        _make_path_unreadable(monkeypatch, log_path)
 
-        try:
-            rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
-            assert rc == 1
-            record = json.loads(capsys.readouterr().out.strip())
-            assert record["log_status"] == "unreadable"
-            assert "source" in record
-            assert "error" in record
-        finally:
-            os.chmod(log_path, 0o644)
+        rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
+        assert rc == 1
+        record = json.loads(capsys.readouterr().out.strip())
+        assert record["log_status"] == "unreadable"
+        assert "source" in record
+        assert "error" in record
 
 
 class TestLogMultiSource:
@@ -958,7 +966,9 @@ class TestLogStepUnchanged:
 class TestLogListingUnreadable:
     """Unreadable logs in listing mode must omit tail, keep path+inspect, no traceback."""
 
-    def test_unreadable_step_log_in_listing(self, tmp_path, capsys, create_cli_project):
+    def test_unreadable_step_log_in_listing(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
@@ -966,15 +976,12 @@ class TestLogListingUnreadable:
         log_path = os.path.join(step_dir, "synthesis.log")
         with open(log_path, "w") as f:
             f.write("content\n")
-        os.chmod(log_path, 0o000)
+        _make_path_unreadable(monkeypatch, log_path)
 
-        try:
-            rc = cli_main.run(["log", "--project", project_dir])
-            assert rc == 0
-            out = capsys.readouterr().out
-            assert "tail:" not in out
-            assert "Synthesis_yosys" in out
-            assert "inspect:" in out
-            assert "Traceback" not in out
-        finally:
-            os.chmod(log_path, 0o644)
+        rc = cli_main.run(["log", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "tail:" not in out
+        assert "Synthesis_yosys" in out
+        assert "inspect:" in out
+        assert "Traceback" not in out

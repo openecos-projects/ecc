@@ -1,5 +1,3 @@
-import os
-
 from chipcompiler.cli.inspection.log_view import (
     LineKind,
     annotate_log_lines,
@@ -852,17 +850,18 @@ class TestTailLinesForLog:
         result = tail_lines_for_log(str(log_file))
         assert result == ["abc", "done"]
 
-    def test_unreadable_file_returns_empty(self, tmp_path):
+    def test_unreadable_file_returns_empty(self, monkeypatch, tmp_path):
         from chipcompiler.cli.inspection.log_view import tail_lines_for_log
 
         log_file = tmp_path / "test.log"
         log_file.write_text("content\n")
-        os.chmod(str(log_file), 0o000)
-        try:
-            result = tail_lines_for_log(str(log_file))
-            assert result == []
-        finally:
-            os.chmod(str(log_file), 0o644)
+
+        def raise_permission_error(*args, **kwargs):
+            raise PermissionError("cannot read")
+
+        monkeypatch.setattr("builtins.open", raise_permission_error)
+        result = tail_lines_for_log(str(log_file))
+        assert result == []
 
 
 class TestListingTailRendering:
