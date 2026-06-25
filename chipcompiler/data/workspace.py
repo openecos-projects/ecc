@@ -747,7 +747,8 @@ def create_workspace(directory : str,
                      pdk : PDK | str,
                      parameters : Parameters | dict,
                      input_filelist : str = "",
-                     pdk_root : str = "") -> Workspace:
+                     pdk_root : str = "",
+                     pdk_json : str = "") -> Workspace:
     """
     Create a workspace for chip design flow.
 
@@ -783,7 +784,7 @@ def create_workspace(directory : str,
         workspace.pdk = pdk
         
     if isinstance(pdk, str):
-        workspace.pdk = get_pdk(pdk_name=pdk, pdk_root=pdk_root)
+        workspace.pdk = get_pdk(pdk_name=pdk, pdk_root=pdk_root, pdk_config=pdk_json)
     
     #update config
     if isinstance(parameters, Parameters):
@@ -868,6 +869,10 @@ def create_workspace(directory : str,
     
     if workspace.pdk.root:
         workspace.parameters.data["PDK Root"] = workspace.pdk.root
+    if pdk_json:
+        pdk_config_path = os.path.abspath(f"{directory}/home/pdk.json")
+        shutil.copy(pdk_json, pdk_config_path)
+        workspace.parameters.data["PDK Config"] = pdk_config_path
 
     # save parameter
     save_parameter(workspace.parameters)
@@ -896,6 +901,7 @@ def load_workspace(directory : str) -> Workspace:
     pdk = get_pdk(
         pdk_name=parameters.data.get("PDK", ""),
         pdk_root=parameters.data.get("PDK Root", ""),
+        pdk_config=parameters.data.get("PDK Config", ""),
     )
     sdc_path = find_files(f"{directory}/origin", ".sdc")
     if len(sdc_path) > 0:

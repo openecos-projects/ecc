@@ -17,6 +17,7 @@ class WorkspaceCreateRequest:
     directory: str = ""
     pdk: str = ""
     pdk_root: str = ""
+    pdk_json: str = ""
     parameters: dict = field(default_factory=dict)
     origin_def: str = ""
     origin_verilog: str = ""
@@ -43,6 +44,7 @@ def create_request_from_flags(
     directory: str | None = None,
     pdk: str | None = None,
     pdk_root: str | None = None,
+    pdk_json: str | None = None,
     origin_def: str | None = None,
     origin_verilog: str | None = None,
     filelist: str | None = None,
@@ -68,6 +70,7 @@ def create_request_from_flags(
         directory=directory or "",
         pdk=pdk or "",
         pdk_root=pdk_root or "",
+        pdk_json=pdk_json or "",
         parameters=parameters,
         origin_def=origin_def or "",
         origin_verilog=origin_verilog or "",
@@ -81,6 +84,7 @@ def create_request(
     directory: str | None = None,
     pdk: str | None = None,
     pdk_root: str | None = None,
+    pdk_json: str | None = None,
     origin_def: str | None = None,
     origin_verilog: str | None = None,
     filelist: str | None = None,
@@ -95,6 +99,7 @@ def create_request(
         directory,
         pdk,
         pdk_root,
+        pdk_json,
         origin_def,
         origin_verilog,
         filelist,
@@ -112,6 +117,7 @@ def create_request(
         directory=directory,
         pdk=pdk,
         pdk_root=pdk_root,
+        pdk_json=pdk_json,
         origin_def=origin_def,
         origin_verilog=origin_verilog,
         filelist=filelist,
