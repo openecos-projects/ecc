@@ -11,6 +11,15 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+
+def _path_text(path) -> str:
+    return "" if path is None else str(path)
+
+
+def _path_texts(paths: list) -> list[str]:
+    return [_path_text(path) for path in paths if path is not None]
+
+
 class ECCToolsModule:
     """
     python api package of ECC.
@@ -99,10 +108,10 @@ class ECCToolsModule:
                                lib_paths: list[str],
                                sdc_path: str):
         self.ecc.db_init(
-            config_path=db_config,
-            output_path=output_dir,
-            lib_paths=lib_paths,
-            sdc_path=sdc_path,
+            config_path=_path_text(db_config),
+            output_path=_path_text(output_dir),
+            lib_paths=_path_texts(lib_paths),
+            sdc_path=_path_text(sdc_path),
         )
         
     ########################################################################
@@ -182,11 +191,11 @@ class ECCToolsModule:
     ########################################################################
     def init_techlef(self, tech_lef_path : str):
         """init tech lef"""
-        self.ecc.tech_lef_init(tech_lef_path)
+        self.ecc.tech_lef_init(_path_text(tech_lef_path))
 
     def init_lefs(self, lef_paths: list):
         """init_lef"""
-        self.ecc.lef_init(lef_paths=lef_paths)
+        self.ecc.lef_init(lef_paths=_path_texts(lef_paths))
 
     def read_def(self, path: str = ""):
         """init def"""
@@ -947,7 +956,7 @@ class ECCToolsModule:
                  top_module : str,
                  lib_paths : list[str],
                  sdc_path: str):
-        self.ecc.init_sta(output=output_dir)
+        self.ecc.init_sta(output=_path_text(output_dir))
 
         # self.ecc.run_sta(output=output_dir)
         # self.ecc.set_design_workspace(output_dir)
@@ -977,7 +986,7 @@ class ECCToolsModule:
         return self.ecc.read_netlist(file_name)
         
     def read_liberty(self, lib_paths : list[str]):
-        return self.ecc.read_liberty(lib_paths)
+        return self.ecc.read_liberty(_path_texts(lib_paths))
         
     def link_design(self, design : str):
         return self.ecc.link_design(design)
@@ -986,7 +995,7 @@ class ECCToolsModule:
         return self.ecc.read_spef(file_name)
 
     def read_sdc(self, sdc_path : str):
-        return self.ecc.read_sdc(sdc_path)
+        return self.ecc.read_sdc(_path_text(sdc_path))
 
     def get_net_name(self, pin_port_name: str):
         return self.ecc.get_net_name(pin_port_name)

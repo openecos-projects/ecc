@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from pathlib import Path
+
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
 from chipcompiler.tools.ecc.builder import build_step
 from chipcompiler.tools.ecc.module import ECCToolsModule
@@ -11,6 +13,30 @@ class FakeEcc:
 
     def init_rcx(self, **kwargs):
         self.calls.append(kwargs)
+        return True
+
+    def db_init(self, **kwargs):
+        self.calls.append(("db_init", kwargs))
+        return True
+
+    def tech_lef_init(self, tech_lef_path):
+        self.calls.append(("tech_lef_init", tech_lef_path))
+        return True
+
+    def lef_init(self, **kwargs):
+        self.calls.append(("lef_init", kwargs))
+        return True
+
+    def init_sta(self, **kwargs):
+        self.calls.append(("init_sta", kwargs))
+        return True
+
+    def read_liberty(self, lib_paths):
+        self.calls.append(("read_liberty", lib_paths))
+        return True
+
+    def read_sdc(self, sdc_path):
+        self.calls.append(("read_sdc", sdc_path))
         return True
 
     def view_json_save(self, **kwargs):
@@ -73,6 +99,45 @@ def test_view_json_apply_edits_passes_compress_option():
 
     assert module.ecc.calls == [
         ("view_json_apply_edits", {"edits_path": "/tmp/view_json/edits/layout_edits.json.gz", "compress": True}),
+    ]
+
+
+def test_ecc_binding_wrappers_stringify_path_arguments():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    module.init_techlef(Path("/pdk/tech.lef"))
+    module.init_lefs([Path("/pdk/std.lef")])
+    module.update_sta_data_config(
+        db_config=Path("/ws/config/db.json"),
+        output_dir=Path("/ws/out"),
+        lib_paths=[Path("/pdk/lib.lib")],
+        sdc_path=Path("/ws/design.sdc"),
+    )
+    module.init_sta(
+        output_dir=Path("/ws/sta"),
+        top_module="gcd",
+        lib_paths=[Path("/pdk/lib.lib")],
+        sdc_path=Path("/ws/design.sdc"),
+    )
+    module.read_liberty([Path("/pdk/lib.lib")])
+    module.read_sdc(Path("/ws/design.sdc"))
+
+    assert module.ecc.calls == [
+        ("tech_lef_init", "/pdk/tech.lef"),
+        ("lef_init", {"lef_paths": ["/pdk/std.lef"]}),
+        (
+            "db_init",
+            {
+                "config_path": "/ws/config/db.json",
+                "output_path": "/ws/out",
+                "lib_paths": ["/pdk/lib.lib"],
+                "sdc_path": "/ws/design.sdc",
+            },
+        ),
+        ("init_sta", {"output": "/ws/sta"}),
+        ("read_liberty", ["/pdk/lib.lib"]),
+        ("read_sdc", "/ws/design.sdc"),
     ]
 
 
