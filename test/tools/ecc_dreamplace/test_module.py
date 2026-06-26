@@ -58,6 +58,35 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
     assert params.base_design_name == "gcd"
 
 
+def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
+    config_path = tmp_path / "dreamplace.json"
+    json_write(config_path, {})
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    result_dir = tmp_path / "data" / "pl"
+    step = WorkspaceStep(
+        name=StepEnum.PLACEMENT.value,
+        data={"dir": tmp_path / "data", StepEnum.PLACEMENT.value: result_dir},
+    )
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=None,
+        input_def=None,
+        input_verilog=None,
+        output_def=tmp_path / "output.def",
+        output_verilog=tmp_path / "output.v",
+    )
+
+    params = module._build_params(FakeParams, legalize_only=False)
+
+    assert params.def_input == ""
+    assert params.verilog_input == ""
+
+
 def test_dreamplace_step_info_stringifies_path_config(tmp_path):
     workspace = Workspace(
         directory=tmp_path,

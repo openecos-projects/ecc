@@ -122,13 +122,13 @@ def _cmd_text(workspace: Workspace, step: WorkspaceStep) -> str:
     command.option("top", workspace.design.top_module or workspace.design.name)
     command.option(
         "def",
-        step.input.get("def", ""),
+        step.input.get("def") or "",
         value_type=cmdfile.ValueType.PATH,
         omit_empty=True,
     )
     command.option(
         "v",
-        step.input.get("verilog", ""),
+        step.input.get("verilog") or "",
         value_type=cmdfile.ValueType.PATH,
         omit_empty=True,
     )

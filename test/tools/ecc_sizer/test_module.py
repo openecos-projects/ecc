@@ -167,6 +167,25 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     ]
 
 
+def test_sizer_cmd_omits_missing_input_paths(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def=None,
+        input_verilog=None,
+    )
+
+    cmd_text = sizer_builder._cmd_text(workspace, step)
+
+    assert "-def None" not in cmd_text
+    assert "-v None" not in cmd_text
+    assert "-def " not in cmd_text
+    assert "-v " not in cmd_text
+
+
 def test_sizer_config_rejects_whitespace_paths_unsupported_by_runtime(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 

@@ -92,6 +92,38 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
     assert data["base_design_name"] == "gcd"
 
 
+def test_dreamplace_config_uses_empty_strings_for_missing_inputs(
+    tmp_path,
+    monkeypatch,
+    make_ics55_parameters,
+):
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        parameters=make_ics55_parameters(),
+    )
+    step = dreamplace_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.PLACEMENT.value,
+        input_def=None,
+        input_verilog=None,
+    )
+
+    init_workspace_config(workspace)
+    monkeypatch.setattr(
+        dreamplace_builder.ecc_builder,
+        "build_step_config",
+        lambda _workspace, _step: None,
+    )
+
+    dreamplace_builder.build_step_config(workspace, step)
+
+    dreamplace_config = json_read(workspace.config["dreamplace"])
+    assert dreamplace_config["def_input"] == ""
+    assert dreamplace_config["verilog_input"] == ""
+
+
 def test_workspace_config_generation_applies_flat_dreamplace_parameter_overrides(
     tmp_path,
     make_ics55_parameters,

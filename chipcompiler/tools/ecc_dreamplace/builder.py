@@ -33,8 +33,8 @@ def _current_parameter_data(workspace: Workspace) -> dict:
 
 
 def _set_step_fields(params: dict, step: WorkspaceStep) -> dict:
-    params["def_input"] = str(step.input.get("def", ""))
-    params["verilog_input"] = str(step.input.get("verilog", ""))
+    params["def_input"] = str(step.input.get("def") or "")
+    params["verilog_input"] = str(step.input.get("verilog") or "")
     params["result_dir"] = str(step.data.get(step.name, step.data["dir"]))
     return params
 

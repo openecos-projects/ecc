@@ -24,8 +24,8 @@ class DreamplaceModule:
         self.workspace = workspace
         self.step = step
         self.ecc_module = ecc_module
-        self.input_def = str(input_def)
-        self.input_verilog = str(input_verilog)
+        self.input_def = str(input_def or "")
+        self.input_verilog = str(input_verilog or "")
         self.output_def = str(output_def)
         self.output_verilog = str(output_verilog)
         self.param_path = workspace.config["dreamplace"]
