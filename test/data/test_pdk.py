@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from chipcompiler.data.pdk import get_pdk
@@ -10,12 +12,15 @@ def test_get_pdk_prefers_explicit_root_over_env(
     env_root = minimal_ics55_pdk_factory(tmp_path / "env")
     monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
 
-    pdk = get_pdk(pdk_name="ics55", pdk_root=str(explicit_root))
+    pdk = get_pdk(pdk_name="ics55", pdk_root=explicit_root)
 
-    expected_root = str(explicit_root.resolve())
+    expected_root = explicit_root.resolve()
+    assert isinstance(pdk.root, Path)
+    assert isinstance(pdk.tech, Path)
     assert pdk.root == expected_root
-    assert pdk.tech.startswith(expected_root)
-    assert all(path.startswith(expected_root) for path in pdk.lefs + pdk.libs)
+    assert pdk.tech.is_relative_to(expected_root)
+    assert all(isinstance(path, Path) for path in pdk.lefs + pdk.libs)
+    assert all(path.is_relative_to(expected_root) for path in pdk.lefs + pdk.libs)
 
 
 def test_get_pdk_uses_namespaced_env(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
@@ -25,7 +30,7 @@ def test_get_pdk_uses_namespaced_env(tmp_path, monkeypatch, minimal_ics55_pdk_fa
 
     pdk = get_pdk(pdk_name="ics55", pdk_root="")
 
-    assert pdk.root == str(env_root.resolve())
+    assert pdk.root == env_root.resolve()
 
 
 def test_get_pdk_uses_legacy_env_when_namespaced_missing(
@@ -37,7 +42,7 @@ def test_get_pdk_uses_legacy_env_when_namespaced_missing(
 
     pdk = get_pdk(pdk_name="ics55", pdk_root="")
 
-    assert pdk.root == str(legacy_root.resolve())
+    assert pdk.root == legacy_root.resolve()
 
 
 def test_get_pdk_raises_on_missing_pdk_files(tmp_path):
@@ -55,12 +60,15 @@ def test_get_pdk_sg13g2_prefers_explicit_root_over_env(
     env_root = minimal_sg13g2_pdk_factory(tmp_path / "env")
     monkeypatch.setenv("CHIPCOMPILER_SG13G2_PDK_ROOT", str(env_root))
 
-    pdk = get_pdk("sg13g2", pdk_root=str(explicit_root))
+    pdk = get_pdk("sg13g2", pdk_root=explicit_root)
 
-    expected_root = str(explicit_root.resolve())
+    expected_root = explicit_root.resolve()
+    assert isinstance(pdk.root, Path)
+    assert isinstance(pdk.tech, Path)
     assert pdk.root == expected_root
-    assert pdk.tech.startswith(expected_root)
-    assert all(path.startswith(expected_root) for path in pdk.lefs + pdk.libs)
+    assert pdk.tech.is_relative_to(expected_root)
+    assert all(isinstance(path, Path) for path in pdk.lefs + pdk.libs)
+    assert all(path.is_relative_to(expected_root) for path in pdk.lefs + pdk.libs)
 
 
 def test_get_pdk_sg13g2_uses_namespaced_env(
@@ -72,7 +80,7 @@ def test_get_pdk_sg13g2_uses_namespaced_env(
 
     pdk = get_pdk("sg13g2")
 
-    assert pdk.root == str(env_root.resolve())
+    assert pdk.root == env_root.resolve()
 
 
 def test_get_pdk_sg13g2_uses_legacy_env_when_namespaced_missing(
@@ -84,7 +92,7 @@ def test_get_pdk_sg13g2_uses_legacy_env_when_namespaced_missing(
 
     pdk = get_pdk("sg13g2")
 
-    assert pdk.root == str(legacy_root.resolve())
+    assert pdk.root == legacy_root.resolve()
 
 
 def test_get_pdk_sg13g2_raises_on_missing_pdk_files(tmp_path, monkeypatch):

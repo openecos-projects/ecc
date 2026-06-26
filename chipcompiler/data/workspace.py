@@ -3,6 +3,7 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from .parameter import (
     Parameters,
@@ -359,11 +360,11 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     json_write(workspace.config["flow"], flow)
 
     db = json_read(workspace.config["db"])
-    db["INPUT"]["tech_lef_path"] = workspace.pdk.tech
-    db["INPUT"]["lef_paths"] = workspace.pdk.lefs
-    db["INPUT"]["lib_path"] = workspace.pdk.libs
-    db["INPUT"]["sdc_path"] = workspace.pdk.sdc
-    db["INPUT"]["spef"] = workspace.pdk.spef
+    db["INPUT"]["tech_lef_path"] = str(workspace.pdk.tech or "")
+    db["INPUT"]["lef_paths"] = [str(path) for path in workspace.pdk.lefs]
+    db["INPUT"]["lib_path"] = [str(path) for path in workspace.pdk.libs]
+    db["INPUT"]["sdc_path"] = str(workspace.pdk.sdc or "")
+    db["INPUT"]["spef"] = str(workspace.pdk.spef or "")
     db["LayerSettings"]["routing_layer_1st"] = workspace.parameters.data.get("Bottom layer", "")
     json_write(workspace.config["db"], db)
 
@@ -412,19 +413,21 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     # json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
 
     sta = json_read(workspace.config[f"{StepEnum.STA.value}"])
-    pdk_root = workspace.pdk.root.rstrip(os.sep)
+    pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
     for liberty in sta.get("liberty", []):
         liberty["path"] = [
             path
             if path == pdk_root or path.startswith(f"{pdk_root}{os.sep}")
-            else os.path.join(workspace.pdk.root, path.lstrip(os.sep))
+            else str((workspace.pdk.root or Path("")) / path.lstrip(os.sep))
             for path in liberty.get("path", [])
         ]
 
     json_write(workspace.config[f"{StepEnum.STA.value}"], sta)
 
     dreamplace = json_read(workspace.config["dreamplace"])
-    dreamplace["lef_input"] = [workspace.pdk.tech, *workspace.pdk.lefs]
+    dreamplace["lef_input"] = [
+        str(path) for path in [workspace.pdk.tech, *workspace.pdk.lefs] if path
+    ]
     dreamplace["base_design_name"] = workspace.design.name
     dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
     json_write(workspace.config["dreamplace"], dreamplace)
@@ -843,18 +846,20 @@ def create_workspace(directory : str,
             shutil.copy(input_filelist, f"{directory}/origin/{os.path.basename(input_filelist)}")
             workspace.design.input_filelist = f"{directory}/origin/{os.path.basename(input_filelist)}"
 
-    if os.path.exists(workspace.pdk.sdc):
-        shutil.copy(workspace.pdk.sdc, f"{directory}/origin/{os.path.basename(workspace.pdk.sdc)}")
-        workspace.pdk.sdc = f"{directory}/origin/{os.path.basename(workspace.pdk.sdc)}"
+    if workspace.pdk.sdc and workspace.pdk.sdc.exists():
+        sdc_target = Path(directory) / "origin" / workspace.pdk.sdc.name
+        shutil.copy(workspace.pdk.sdc, sdc_target)
+        workspace.pdk.sdc = sdc_target
     else:
         # create default sdc file
         from .workspace import create_default_sdc
-        workspace.pdk.sdc = f"{directory}/origin/{workspace.design.name}.sdc"
+        workspace.pdk.sdc = Path(directory) / "origin" / f"{workspace.design.name}.sdc"
         create_default_sdc(workspace)
         
-    if os.path.exists(workspace.pdk.spef):
-        shutil.copy(workspace.pdk.spef, f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}")
-        workspace.pdk.spef = f"{directory}/origin/{os.path.basename(workspace.pdk.spef)}"
+    if workspace.pdk.spef and workspace.pdk.spef.exists():
+        spef_target = Path(directory) / "origin" / workspace.pdk.spef.name
+        shutil.copy(workspace.pdk.spef, spef_target)
+        workspace.pdk.spef = spef_target
 
     init_workspace_config(workspace)
 
@@ -868,7 +873,7 @@ def create_workspace(directory : str,
     workspace.home.set_parameters(workspace.parameters.path)
     
     if workspace.pdk.root:
-        workspace.parameters.data["PDK Root"] = workspace.pdk.root
+        workspace.parameters.data["PDK Root"] = str(workspace.pdk.root)
     if pdk_json:
         pdk_config_path = os.path.abspath(f"{directory}/home/pdk.json")
         shutil.copy(pdk_json, pdk_config_path)
@@ -905,20 +910,20 @@ def load_workspace(directory : str) -> Workspace:
     )
     sdc_path = find_files(f"{directory}/origin", ".sdc")
     if len(sdc_path) > 0:
-        pdk.sdc = sdc_path[0]
+        pdk.sdc = Path(sdc_path[0])
     spef_path = find_files(f"{directory}/origin", ".spef")
     if len(spef_path) > 0:
-        pdk.spef = spef_path[0]
+        pdk.spef = Path(spef_path[0])
         
     # update lef and lib paths based on config
     from chipcompiler.utility import json_read
     db_json = json_read(workspace.config.get("db", ""))
     if db_json.get("INPUT", {}).get("tech_lef_path", "") != "":
-        pdk.tech = db_json.get("INPUT", {}).get("tech_lef_path", "")
+        pdk.tech = Path(db_json.get("INPUT", {}).get("tech_lef_path", ""))
     if db_json.get("INPUT", {}).get("lef_paths", []) != []:
-        pdk.lefs = db_json.get("INPUT", {}).get("lef_paths", [])
+        pdk.lefs = [Path(path) for path in db_json.get("INPUT", {}).get("lef_paths", [])]
     if db_json.get("INPUT", {}).get("lib_path", []) != []:
-        pdk.libs = db_json.get("INPUT", {}).get("lib_path", [])
+        pdk.libs = [Path(path) for path in db_json.get("INPUT", {}).get("lib_path", [])]
     workspace.pdk = pdk
     
     #update config

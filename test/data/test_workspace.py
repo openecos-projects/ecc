@@ -28,12 +28,12 @@ def test_create_workspace_persists_pdk_root_in_parameters(
     )
 
     assert workspace is not None
-    resolved_root = str(pdk_root.resolve())
+    resolved_root = pdk_root.resolve()
     assert workspace.pdk.root == resolved_root
-    assert workspace.parameters.data.get("PDK Root") == resolved_root
+    assert workspace.parameters.data.get("PDK Root") == str(resolved_root)
 
     parameters_data = json.loads((workspace_dir / "home" / "parameters.json").read_text())
-    assert parameters_data.get("PDK Root") == resolved_root
+    assert parameters_data.get("PDK Root") == str(resolved_root)
 
 
 def test_load_workspace_restores_pdk_root_from_parameters(
@@ -56,10 +56,10 @@ def test_load_workspace_restores_pdk_root_from_parameters(
     loaded = load_workspace(str(workspace_dir))
 
     assert loaded is not None
-    resolved_root = str(pdk_root.resolve())
+    resolved_root = pdk_root.resolve()
     assert loaded.pdk.root == resolved_root
-    assert loaded.parameters.data.get("PDK Root") == resolved_root
-    assert all(path.startswith(resolved_root) for path in loaded.pdk.libs)
+    assert loaded.parameters.data.get("PDK Root") == str(resolved_root)
+    assert all(path.is_relative_to(resolved_root) for path in loaded.pdk.libs)
 
 
 def test_workspace_config_refresh_uses_updated_parameters(
@@ -376,12 +376,12 @@ def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(
     )
 
     assert workspace is not None
-    resolved_root = str(pdk_root.resolve())
+    resolved_root = pdk_root.resolve()
     assert workspace.pdk.root == resolved_root
-    assert workspace.parameters.data.get("PDK Root") == resolved_root
+    assert workspace.parameters.data.get("PDK Root") == str(resolved_root)
 
     parameters_data = json.loads((workspace_dir / "home" / "parameters.json").read_text())
-    assert parameters_data.get("PDK Root") == resolved_root
+    assert parameters_data.get("PDK Root") == str(resolved_root)
 
 
 def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
@@ -404,7 +404,7 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
     loaded = load_workspace(str(workspace_dir))
 
     assert loaded is not None
-    resolved_root = str(pdk_root.resolve())
+    resolved_root = pdk_root.resolve()
     assert loaded.pdk.root == resolved_root
-    assert loaded.parameters.data.get("PDK Root") == resolved_root
-    assert all(path.startswith(resolved_root) for path in loaded.pdk.libs)
+    assert loaded.parameters.data.get("PDK Root") == str(resolved_root)
+    assert all(path.is_relative_to(resolved_root) for path in loaded.pdk.libs)

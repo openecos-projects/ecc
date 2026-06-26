@@ -5,8 +5,18 @@ from dataclasses import dataclass, field
 import json
 import logging
 import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _optional_path(path: str | Path | None) -> Path | None:
+    return Path(path) if path else None
+
+
+def _path_list(paths: list) -> list[Path]:
+    return [Path(path) for path in paths if path]
+
 
 @dataclass
 class PDK:
@@ -15,14 +25,14 @@ class PDK:
     """
     name : str = "" # pdk name
     version : str = "" # pdk version
-    root : str = "" # resolved pdk root path
-    tech : str = "" # pdk tech lef file
+    root : Path | None = None # resolved pdk root path
+    tech : Path | None = None # pdk tech lef file
     lefs : list = field(default_factory=list) # pdk lef files
     libs : list = field(default_factory=list) # pdk liberty files
-    mapping_file : str = "" # pdk mapping file
+    mapping_file : Path | None = None # pdk mapping file
     corners : list = field(default_factory=list) 
-    sdc : str = "" # pdk sdc file
-    spef : str = "" # pdk spef file
+    sdc : Path | None = None # pdk sdc file
+    spef : Path | None = None # pdk spef file
     site_core : str = "" # core site
     site_io : str = "" # io site
     site_corner : str = "" # corner site
@@ -38,23 +48,42 @@ class PDK:
     abc_driver_cell : str = "" # ABC driving cell
     abc_load : float = 0.015 # ABC output load
 
+    def __post_init__(self) -> None:
+        self.root = _optional_path(self.root)
+        self.tech = _optional_path(self.tech)
+        self.lefs = _path_list(self.lefs)
+        self.libs = _path_list(self.libs)
+        self.mapping_file = _optional_path(self.mapping_file)
+        self.sdc = _optional_path(self.sdc)
+        self.spef = _optional_path(self.spef)
+
     def validate(self) -> None:
         """Check that critical PDK paths exist. Raises ValueError if not."""
         errors = []
-        if self.root and not os.path.isdir(self.root):
+        if self.root and not self.root.is_dir():
             errors.append(f"PDK root directory not found: {self.root}")
         if not self.tech:
             errors.append("PDK tech LEF is missing")
+        elif not self.tech.is_file():
+            errors.append(f"PDK tech LEF not found: {self.tech}")
         if not self.lefs:
             errors.append("PDK has no LEF files")
+        else:
+            for lef in self.lefs:
+                if not lef.is_file():
+                    errors.append(f"PDK LEF not found: {lef}")
         if not self.libs:
             errors.append("PDK has no liberty files")
+        else:
+            for liberty in self.libs:
+                if not liberty.is_file():
+                    errors.append(f"PDK liberty file not found: {liberty}")
         if errors:
             msg = "PDK validation failed:\n  " + "\n  ".join(errors)
             logger.error(msg)
             raise ValueError(msg)
 
-def PDK_EXTERNAL(pdk_config: str, pdk_name: str = "") -> PDK:
+def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
     with open(pdk_config, encoding="utf-8") as file:
         data = json.load(file)
     if not isinstance(data, dict):
@@ -95,8 +124,11 @@ def PDK_EXTERNAL(pdk_config: str, pdk_name: str = "") -> PDK:
         abc_load=float(data.get("abc_load", 0.015)),
     )
 
-
-def get_pdk(pdk_name : str, pdk_root: str = "", pdk_config: str = "") -> PDK:
+def get_pdk(
+    pdk_name : str,
+    pdk_root: str | Path = "",
+    pdk_config: str | Path = "",
+) -> PDK:
     """
     Return the PDK instance based on the given pdk name.
     """
@@ -115,30 +147,36 @@ def get_pdk(pdk_name : str, pdk_root: str = "", pdk_config: str = "") -> PDK:
     pdk.validate()
     return pdk
 
-def PDK_ICS55(pdk_root: str = "") -> PDK:
-    current_dir = os.path.split(os.path.abspath(__file__))[0]
-    root = current_dir.rsplit('/', 2)[0]
-    default_pdk_root = "{}/chipcompiler/thirdparty/icsprout55-pdk".format(root)
+def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
+    root = Path(__file__).resolve().parents[2]
+    default_pdk_root = root / "chipcompiler" / "thirdparty" / "icsprout55-pdk"
 
     # Resolve: explicit arg > env vars > default
-    resolved_root = os.path.abspath(os.path.expanduser(
-        (pdk_root or "").strip()
+    root_text = (
+        str(pdk_root).strip()
         or os.environ.get("CHIPCOMPILER_ICS55_PDK_ROOT", "").strip()
         or os.environ.get("ICS55_PDK_ROOT", "").strip()
-        or default_pdk_root
-    ))
-    stdcell_dir = "{}/IP/STD_cell/ics55_LLSC_H7C_V1p10C100".format(resolved_root)
+        or str(default_pdk_root)
+    )
+    resolved_root = Path(root_text).expanduser().resolve()
+    stdcell_dir = resolved_root / "IP" / "STD_cell" / "ics55_LLSC_H7C_V1p10C100"
 
-    tech_path = "{}/prtech/techLEF/N551P6M_ecos.lef".format(resolved_root)
+    tech_path = resolved_root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
     lef_paths = [
-        "{}/ics55_LLSC_H7CR/lef/ics55_LLSC_H7CR_ecos.lef".format(stdcell_dir),
-        "{}/ics55_LLSC_H7CL/lef/ics55_LLSC_H7CL_ecos.lef".format(stdcell_dir)
+        stdcell_dir / "ics55_LLSC_H7CR" / "lef" / "ics55_LLSC_H7CR_ecos.lef",
+        stdcell_dir / "ics55_LLSC_H7CL" / "lef" / "ics55_LLSC_H7CL_ecos.lef",
     ]
     lib_paths = [
-        "{}/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir),
-        "{}/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib".format(stdcell_dir)
+        (
+            stdcell_dir / "ics55_LLSC_H7CR" / "liberty"
+            / "ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
+        ),
+        (
+            stdcell_dir / "ics55_LLSC_H7CL" / "liberty"
+            / "ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib"
+        ),
     ]
-    mapping_file = ""
+    mapping_file = None
     corners = [
         {
             "name" : "TYPICAL",
@@ -171,9 +209,9 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
         name="ics55",
         version="V1p10C100",
         root=resolved_root,
-        tech=tech_path if os.path.isfile(tech_path) else "",
-        lefs=[path for path in lef_paths if os.path.isfile(path)],
-        libs=[path for path in lib_paths if os.path.isfile(path)],
+        tech=tech_path if tech_path.is_file() else None,
+        lefs=[path for path in lef_paths if path.is_file()],
+        libs=[path for path in lib_paths if path.is_file()],
         mapping_file = mapping_file,
         corners=corners,
         site_core = "core7",
@@ -219,28 +257,32 @@ def PDK_ICS55(pdk_root: str = "") -> PDK:
 
     return pdk
 
-def PDK_SG13G2(pdk_root: str = "") -> PDK:
-    resolved_root = os.path.abspath(os.path.expanduser(
-        (pdk_root or "").strip()
+def PDK_SG13G2(pdk_root: str | Path = "") -> PDK:
+    root_text = (
+        str(pdk_root).strip()
         or os.environ.get("CHIPCOMPILER_SG13G2_PDK_ROOT", "").strip()
         or os.environ.get("SG13G2_PDK_ROOT", "").strip()
-    ))
+    )
+    resolved_root = Path(root_text).expanduser().resolve()
 
-    tech_path = "{}/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef".format(resolved_root)
+    tech_path = resolved_root / "libs.ref" / "sg13g2_stdcell" / "lef" / "sg13g2_tech.lef"
     lef_paths = [
-        "{}/libs.ref/sg13g2_stdcell/lef/sg13g2_stdcell.lef".format(resolved_root)
+        resolved_root / "libs.ref" / "sg13g2_stdcell" / "lef" / "sg13g2_stdcell.lef"
     ]
     lib_paths = [
-        "{}/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib".format(resolved_root)
+        (
+            resolved_root / "libs.ref" / "sg13g2_stdcell" / "lib"
+            / "sg13g2_stdcell_typ_1p20V_25C.lib"
+        )
     ]
 
     pdk = PDK(
         name="sg13g2",
         version="1.0",
         root=resolved_root,
-        tech=tech_path if os.path.isfile(tech_path) else "",
-        lefs=[path for path in lef_paths if os.path.isfile(path)],
-        libs=[path for path in lib_paths if os.path.isfile(path)],
+        tech=tech_path if tech_path.is_file() else None,
+        lefs=[path for path in lef_paths if path.is_file()],
+        libs=[path for path in lib_paths if path.is_file()],
         site_core="CoreSite",
         buffers=[
             "sg13g2_buf_1",
