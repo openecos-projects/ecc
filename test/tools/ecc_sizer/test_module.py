@@ -32,7 +32,7 @@ def _workspace(tmp_path):
         ),
         parameters=Parameters(data={"Bottom layer": "M2", "Top layer": "M7"}),
     )
-    workspace.home.init(str(tmp_path / "home.json"))
+    workspace.home.init(tmp_path / "home.json")
     return workspace
 
 

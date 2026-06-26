@@ -3,6 +3,7 @@
 import ast
 import glob
 import os
+from pathlib import Path
 
 from chipcompiler.data import (
     Workspace,
@@ -250,7 +251,7 @@ class DreamplaceChecklist:
 
     def view_instances(self) -> dict:
         view_dir = self.workspace_step.output.get("view_json", "")
-        return json_read(os.path.join(view_dir, "design", "instances.json"))
+        return json_read(Path(view_dir) / "design" / "instances.json")
 
     def count_unplaced_instances(self) -> int | None:
         instances = self.view_instances().get("data", [])

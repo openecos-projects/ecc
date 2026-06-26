@@ -12,7 +12,7 @@ def json_read(file_path: Path) -> dict:
     Read a JSON file and return its content as a dictionary.
     """
     data = {}
-    path = file_path
+    path = Path(file_path)
     if path.is_file() is False:
         return data
 
@@ -38,7 +38,7 @@ def json_write(file_path: Path, data: dict | None = None, indent=4) -> bool:
         data = {}
 
     tmp_path = None
-    path = file_path
+    path = Path(file_path)
     try:
         if path.suffix == '.gz':
             import gzip

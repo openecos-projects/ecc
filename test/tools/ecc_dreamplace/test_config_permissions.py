@@ -82,7 +82,7 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
 
     dreamplace_config = config_dir / "dreamplace.json"
     mode = dreamplace_config.stat().st_mode
-    data = json_read(str(dreamplace_config))
+    data = json_read(dreamplace_config)
 
     assert mode & stat.S_IWUSR
     assert data["lef_input"] == ["tech.lef", "std.lef"]
@@ -154,7 +154,7 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
         parameters=make_ics55_parameters(initial_overrides),
     )
     (tmp_path / "workspace" / "home").mkdir(parents=True)
-    workspace.parameters.path = str(tmp_path / "workspace" / "home" / "parameters.json")
+    workspace.parameters.path = tmp_path / "workspace" / "home" / "parameters.json"
     step = dreamplace_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.PLACEMENT.value,

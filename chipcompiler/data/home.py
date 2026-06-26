@@ -105,11 +105,11 @@ class HomeData:
     Home data information
     """
     def __init__(self, path : Path | None = None):
-        self.path : Path | None = path # home data file path
+        self.path : Path | None = Path(path) if path else None # home data file path
         self.data : dict = {} # home data
             
     def init(self, path : Path):
-        self.path = path
+        self.path = Path(path)
         self.data : dict = {}
     
         if self.path.exists():

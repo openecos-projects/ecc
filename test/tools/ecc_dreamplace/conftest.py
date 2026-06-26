@@ -12,7 +12,7 @@ def dreamplace_default_config():
     config_path = (
         Path(dreamplace_builder.__file__).resolve().parent / "configs" / "dreamplace.json"
     )
-    return json_read(str(config_path))
+    return json_read(config_path)
 
 
 @pytest.fixture

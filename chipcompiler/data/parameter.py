@@ -121,7 +121,7 @@ class Parameters:
 def load_parameter(path : Path) -> Parameters:
     from chipcompiler.utility import json_read
     parameter = Parameters()
-    parameter.path = path
+    parameter.path = Path(path)
     parameter.data = json_read(parameter.path)
     return parameter
     
@@ -133,7 +133,7 @@ def save_parameter(parameter : Parameters) -> bool:
                       data=parameter.data)
 
 def get_parameters(pdk_name: str = "", path: Path | None = None) -> Parameters:
-    parameter_path = path
+    parameter_path = Path(path) if path else None
     if parameter_path is not None and parameter_path.is_file():
         return load_parameter(parameter_path)
 
