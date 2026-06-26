@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 from chipcompiler.data import OriginDesign, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
+from chipcompiler.tools.ecc_dreamplace.service import get_step_info
 from chipcompiler.utility import json_write
 
 
@@ -53,3 +56,20 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
     assert params.verilog_input == str(tmp_path / "input.v")
     assert params.result_dir == str(result_dir)
     assert params.base_design_name == "gcd"
+
+
+def test_dreamplace_step_info_stringifies_path_config(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": tmp_path / "config" / "dreamplace.json"},
+    )
+    workspace.logger = SimpleNamespace(
+        log_section=lambda *args, **kwargs: None,
+        info=lambda *args, **kwargs: None,
+    )
+    step = WorkspaceStep(name=StepEnum.PLACEMENT.value)
+
+    assert get_step_info(workspace, step, "config") == {
+        "config": str(workspace.config["dreamplace"]),
+    }

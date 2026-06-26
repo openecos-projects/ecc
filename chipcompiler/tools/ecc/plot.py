@@ -191,7 +191,7 @@ class ECCToolsPlot:
         
         # Save drc_statis to CSV file
         import csv
-        statis_csv = self.step.analysis.get("statis_csv", "")
+        statis_csv = str(self.step.analysis.get("statis_csv", ""))
         # Write to CSV file
         with open(statis_csv, 'w', newline='') as csvfile:
             # Define headers: first column is "Type", followed by layer names

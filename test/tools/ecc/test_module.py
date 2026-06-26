@@ -363,6 +363,66 @@ def test_ecc_plot_instance_distribution_accepts_path_feature_db(tmp_path, monkey
     assert metric_calls == [expected_image_path]
 
 
+def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.DRC.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["db"].write_text(
+        json.dumps(
+            {
+                "Layers": {
+                    "cut_layers": [],
+                    "routing_layers": [
+                        {"layer_name": "M1", "layer_order": 1},
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    step.feature["step"].write_text(
+        json.dumps(
+            {
+                "drc": {
+                    "number": 2,
+                    "distribution": {
+                        "short": {"layers": {"M1": {"number": 2}}},
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    plot_calls = []
+    metric_calls = []
+    workspace.home = SimpleNamespace(
+        set_metrics_drc_dist=lambda image_path: metric_calls.append(image_path),
+    )
+
+    def record_bar_chart(**kwargs):
+        assert isinstance(kwargs["input_path"], str)
+        assert isinstance(kwargs["output_path"], str)
+        plot_calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(ecc_plot, "plot_csv_bar_chart", record_bar_chart)
+
+    assert ecc_plot.ECCToolsPlot(workspace, step).plot_drc_statis() is True
+
+    expected_image_path = str(step.analysis["statis_csv"]).replace(".csv", ".png")
+    assert plot_calls[0]["input_path"] == str(step.analysis["statis_csv"])
+    assert plot_calls[0]["output_path"] == expected_image_path
+    assert metric_calls == [expected_image_path]
+
+
 def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
