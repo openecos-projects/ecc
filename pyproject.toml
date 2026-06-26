@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
   "ecc-dreamplace==0.1.0a5",
-  "ecc-tools-bin==0.1.0a6",
+  "ecc-tools-bin==0.1.0a7",
   "fastapi>=0.109",
   "klayout>=0.30.2",
   "matplotlib>=3.4",
