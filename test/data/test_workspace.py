@@ -162,10 +162,11 @@ def test_workspace_config_refresh_uses_updated_parameters(
     )
 
     workspace = load_workspace(str(workspace_dir))
-    params = json_read(str(workspace_dir / "home" / "parameters.json"))
+    parameter_path = workspace_dir / "home" / "parameters.json"
+    params = json_read(parameter_path)
     params["Max fanout"] = 88
     params["Global right padding"] = 13
-    json_write(str(workspace_dir / "home" / "parameters.json"), params)
+    json_write(parameter_path, params)
 
     init_workspace_config(workspace)
 
@@ -193,7 +194,8 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     )
 
     workspace = load_workspace(str(workspace_dir))
-    params = json_read(str(workspace_dir / "home" / "parameters.json"))
+    parameter_path = workspace_dir / "home" / "parameters.json"
+    params = json_read(parameter_path)
     params["Max fanout"] = 91
     params["Global right padding"] = 17
     params["Bottom layer"] = "MET3"
@@ -202,7 +204,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     params["Target overflow"] = 0.07
     params["Cell padding x"] = 444
     params["Routability opt flag"] = 0
-    json_write(str(workspace_dir / "home" / "parameters.json"), params)
+    json_write(parameter_path, params)
 
     refresh_workspace_config(workspace)
 
@@ -249,7 +251,7 @@ def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshe
     assert sync_workspace_config_to_parameters(workspace, workspace.config["route"]) is True
     refresh_workspace_config(workspace)
 
-    params = json_read(str(workspace_dir / "home" / "parameters.json"))
+    params = json_read(workspace_dir / "home" / "parameters.json")
     db = json_read(workspace.config["db"])
     assert params["Bottom layer"] == "MET4"
     assert params["Top layer"] == "MET7"
@@ -277,11 +279,12 @@ def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
     cts = json_read(workspace.config["CTS"])
     cts["skew_bound"] = 0.12
     json_write(workspace.config["CTS"], cts)
-    before = json_read(str(workspace_dir / "home" / "parameters.json"))
+    parameter_path = workspace_dir / "home" / "parameters.json"
+    before = json_read(parameter_path)
 
     assert sync_workspace_config_to_parameters(workspace, workspace.config["CTS"]) is False
 
-    after = json_read(str(workspace_dir / "home" / "parameters.json"))
+    after = json_read(parameter_path)
     assert after == before
 
 
@@ -317,7 +320,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     (step_dir / "log" / "floorplan.log").write_text("old log")
 
     home_path = workspace_dir / "home" / "home.json"
-    home = json_read(str(home_path))
+    home = json_read(home_path)
     home["layout"] = str(step_dir / "output" / "gcd_floorplan.png")
     home["metrics"] = {"instances dist.": str(step_dir / "feature" / "floorplan.db.inst_dist.png")}
     home["monitor"] = {
@@ -327,11 +330,11 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
         "instance": [3],
         "frequency": [4.0],
     }
-    json_write(str(home_path), home)
+    json_write(home_path, home)
 
     flow_path = workspace_dir / "home" / "flow.json"
     json_write(
-        str(flow_path),
+        flow_path,
         {
             "steps": [
                 {
@@ -348,7 +351,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
 
     checklist_path = workspace_dir / "home" / "checklist.json"
     json_write(
-        str(checklist_path),
+        checklist_path,
         {
             "path": str(checklist_path),
             "checklist": [
@@ -373,12 +376,12 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
 
         def clear_states(self):
             self.clear_calls += 1
-            data = json_read(str(flow_path))
+            data = json_read(flow_path)
             for step in data["steps"]:
                 step["state"] = "Unstart"
                 step["runtime"] = ""
                 step["peak memory (mb)"] = 0
-            json_write(str(flow_path), data)
+            json_write(flow_path, data)
 
         def create_step_workspaces(self):
             self.create_calls += 1
@@ -418,7 +421,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert reset_parameters["Core"]["Area"] == 0
     assert reset_parameters["Core"]["Bounding box"] == ""
 
-    reset_home = json_read(str(home_path))
+    reset_home = json_read(home_path)
     assert reset_home["parameters"] == str(workspace_dir / "home" / "parameters.json")
     assert reset_home["flow"] == str(flow_path)
     assert reset_home["checklist"] == str(checklist_path)
@@ -426,12 +429,12 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert reset_home["metrics"] == {}
     assert reset_home["monitor"]["step"] == []
 
-    reset_flow = json_read(str(flow_path))
+    reset_flow = json_read(flow_path)
     assert reset_flow["steps"][0]["state"] == "Unstart"
     assert reset_flow["steps"][0]["runtime"] == ""
     assert reset_flow["steps"][0]["peak memory (mb)"] == 0
 
-    assert json_read(str(checklist_path)) == {
+    assert json_read(checklist_path) == {
         "path": str(checklist_path),
         "checklist": [],
     }

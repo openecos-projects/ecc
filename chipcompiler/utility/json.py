@@ -7,12 +7,12 @@ from contextlib import suppress
 from pathlib import Path
 
 
-def json_read(file_path: str | Path) -> dict:
+def json_read(file_path: Path) -> dict:
     """
     Read a JSON file and return its content as a dictionary.
     """
     data = {}
-    path = Path(file_path)
+    path = file_path
     if path.is_file() is False:
         return data
 
@@ -30,7 +30,7 @@ def json_read(file_path: str | Path) -> dict:
     return data
 
 
-def json_write(file_path: str | Path, data: dict | None = None, indent=4) -> bool:
+def json_write(file_path: Path, data: dict | None = None, indent=4) -> bool:
     """
     Write a dictionary to a JSON file.
     """
@@ -38,7 +38,7 @@ def json_write(file_path: str | Path, data: dict | None = None, indent=4) -> boo
         data = {}
 
     tmp_path = None
-    path = Path(file_path)
+    path = file_path
     try:
         if path.suffix == '.gz':
             import gzip

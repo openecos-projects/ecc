@@ -470,8 +470,10 @@ def _path_is_within(path: str | Path, directory: str | Path) -> bool:
 def _reset_workspace_checklist(workspace: Workspace) -> None:
     from chipcompiler.utility import json_write
 
-    checklist_path = workspace.home.data.get("checklist", "")
-    if not checklist_path:
+    checklist_path_text = workspace.home.data.get("checklist", "")
+    if checklist_path_text:
+        checklist_path = Path(checklist_path_text)
+    else:
         checklist_path = Path(workspace.directory) / "home" / "checklist.json"
     json_write(
         checklist_path,

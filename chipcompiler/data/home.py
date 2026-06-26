@@ -97,19 +97,19 @@ def _normalize_home_data(data: dict) -> tuple[dict, bool]:
 
     return normalized, changed
 
-def _read_normalized_home_data(path: str | Path) -> tuple[dict, bool]:
+def _read_normalized_home_data(path: Path) -> tuple[dict, bool]:
     return _normalize_home_data(json_read(path))
 
 class HomeData:
     """
     Home data information
     """
-    def __init__(self, path : str | Path | None = None):
-        self.path : Path | None = Path(path) if path else None # home data file path
+    def __init__(self, path : Path | None = None):
+        self.path : Path | None = path # home data file path
         self.data : dict = {} # home data
             
-    def init(self, path : str | Path):
-        self.path = Path(path)
+    def init(self, path : Path):
+        self.path = path
         self.data : dict = {}
     
         if self.path.exists():
@@ -158,7 +158,7 @@ class HomeData:
             raise ValueError("home data path is not set")
         return self.path
 
-    def _set_path_value(self, key: str, path: str | Path):
+    def _set_path_value(self, key: str, path: Path):
         path_text = str(path)
 
         def mutator(data: dict) -> bool:
@@ -169,19 +169,19 @@ class HomeData:
 
         self._update(mutator)
         
-    def set_parameters(self, path : str | Path):
+    def set_parameters(self, path : Path):
         self._set_path_value("parameters", path)
         
-    def set_flow(self, path : str | Path):
+    def set_flow(self, path : Path):
         self._set_path_value("flow", path)
     
-    def set_layout(self, path : str | Path):
+    def set_layout(self, path : Path):
         self._set_path_value("layout", path)
     
-    def set_gds_merge(self, path : str | Path):
+    def set_gds_merge(self, path : Path):
         self._set_path_value("GDS merge", path)
 
-    def _set_metric(self, key: str, image_path: str | Path):
+    def _set_metric(self, key: str, image_path: Path):
         image_path_text = str(image_path)
 
         def mutator(data: dict) -> bool:
@@ -192,22 +192,22 @@ class HomeData:
 
         self._update(mutator)
         
-    def set_metrics_inst_dist(self, image_path : str | Path):
+    def set_metrics_inst_dist(self, image_path : Path):
         self._set_metric("instances dist.", image_path)
         
-    def set_metrics_layer_via_dist(self, image_path : str | Path):
+    def set_metrics_layer_via_dist(self, image_path : Path):
         self._set_metric("layer via dist.", image_path)
         
-    def set_metrics_layer_wire_dist(self, image_path : str | Path):
+    def set_metrics_layer_wire_dist(self, image_path : Path):
         self._set_metric("layer wire dist.", image_path)
         
-    def set_metrics_pin_dist(self, image_path : str | Path):
+    def set_metrics_pin_dist(self, image_path : Path):
         self._set_metric("pin dist.", image_path)
         
-    def set_metrics_drc_dist(self, image_path : str | Path):
+    def set_metrics_drc_dist(self, image_path : Path):
         self._set_metric("drc dist.", image_path)
         
-    def set_metrics_cts_skew_map(self, image_path : str | Path):
+    def set_metrics_cts_skew_map(self, image_path : Path):
         self._set_metric("CTS skew map", image_path)
     
     def update_monitor(self,
@@ -253,15 +253,15 @@ class HomeData:
 
         self._update(mutator)
         
-    def set_checklist(self, checklist_path : str | Path):
-        path = Path(checklist_path)
+    def set_checklist(self, checklist_path : Path):
+        path = checklist_path
         if not path.exists():
             Checklist(path=path).save()
 
         self._set_path_value("checklist", path)
             
     def get_checklist_header(self):
-        return Checklist(path=self.data.get("checklist", "")).header
+        return Checklist(path=Path(self.data.get("checklist", ""))).header
         
     def update_checklist(self,
                          step : str, 
@@ -269,5 +269,5 @@ class HomeData:
                          item : str,
                          state : str,
                          info : str = ""):
-        checklist = Checklist(path=self.data.get("checklist", ""))
+        checklist = Checklist(path=Path(self.data.get("checklist", "")))
         checklist.update(step=step, type=type, item=item, state=state, info=info)

@@ -118,10 +118,10 @@ class Parameters:
     path : Path | None = None # parameters file path
     data : dict = field(default_factory=dict) # parameters data
 
-def load_parameter(path : str | Path) -> Parameters:
+def load_parameter(path : Path) -> Parameters:
     from chipcompiler.utility import json_read
     parameter = Parameters()
-    parameter.path = Path(path)
+    parameter.path = path
     parameter.data = json_read(parameter.path)
     return parameter
     
@@ -132,8 +132,8 @@ def save_parameter(parameter : Parameters) -> bool:
     return json_write(file_path=parameter.path,
                       data=parameter.data)
 
-def get_parameters(pdk_name: str = "", path: str | Path = "") -> Parameters:
-    parameter_path = Path(path) if path else None
+def get_parameters(pdk_name: str = "", path: Path | None = None) -> Parameters:
+    parameter_path = path
     if parameter_path is not None and parameter_path.is_file():
         return load_parameter(parameter_path)
 
@@ -148,7 +148,7 @@ def get_parameters(pdk_name: str = "", path: str | Path = "") -> Parameters:
 
     return parameters
 
-def get_design_parameters(pdk_name : str, design : str = "", path : str | Path = "") -> Parameters:
+def get_design_parameters(pdk_name : str, design : str = "", path : Path | None = None) -> Parameters:
     """
     Return parameters resolved by PDK and optional design name.
     """

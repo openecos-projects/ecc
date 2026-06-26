@@ -16,8 +16,8 @@ class Checklist:
     """
     Checklist information
     """
-    def __init__(self, path : str | Path):
-        self.path : Path = Path(path) # checklist file path
+    def __init__(self, path : Path):
+        self.path : Path = path # checklist file path
         self.header = ["step", "type", "item", "state", "info"]
         self.data : dict = {} # checklist data
         

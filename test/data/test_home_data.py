@@ -13,7 +13,7 @@ def test_init_writes_complete_schema_for_missing_file(tmp_path):
     path = tmp_path / "home.json"
 
     home = HomeData()
-    home.init(str(path))
+    home.init(path)
 
     data = _read_json(path)
     assert data["layout"] == ""
@@ -41,7 +41,7 @@ def test_init_repairs_partial_home_json_preserving_existing_values(tmp_path):
     )
 
     home = HomeData()
-    home.init(str(path))
+    home.init(path)
 
     data = _read_json(path)
     assert data["flow"] == "/ws/home/flow.json"
@@ -64,7 +64,7 @@ def test_update_monitor_repairs_partial_home_json(tmp_path):
     path.write_text(json.dumps({"metrics": {}}))
 
     home = HomeData()
-    home.init(str(path))
+    home.init(path)
     home.update_monitor(
         step="Floorplan",
         sub_step="place",
@@ -99,7 +99,7 @@ def test_update_monitor_repairs_short_monitor_columns_preserving_history(tmp_pat
     )
 
     home = HomeData()
-    home.init(str(path))
+    home.init(path)
     data = _read_json(path)
     assert data["monitor"]["step"] == ["Floorplan - place"]
     assert data["monitor"]["memory"] == [""]
@@ -129,9 +129,9 @@ def test_instances_do_not_share_nested_monitor_lists(tmp_path):
     second_path = tmp_path / "second.json"
 
     first = HomeData()
-    first.init(str(first_path))
+    first.init(first_path)
     second = HomeData()
-    second.init(str(second_path))
+    second.init(second_path)
 
     first.update_monitor("Synthesis", "yosys", "10M", "1s")
 
@@ -144,8 +144,8 @@ def test_set_metrics_repairs_missing_metrics(tmp_path):
     path.write_text(json.dumps({"monitor": {"step": []}}))
 
     home = HomeData()
-    home.init(str(path))
-    home.set_metrics_pin_dist("/tmp/pin.png")
+    home.init(path)
+    home.set_metrics_pin_dist(Path("/tmp/pin.png"))
 
     data = _read_json(path)
     assert data["metrics"]["pin dist."] == "/tmp/pin.png"
@@ -156,57 +156,57 @@ def test_setters_do_not_rewrite_healthy_current_values(tmp_path):
     path = tmp_path / "home.json"
 
     home = HomeData()
-    home.init(str(path))
-    home.set_flow("/ws/home/flow.json")
-    home.set_parameters("/ws/home/parameters.json")
-    home.set_checklist("/ws/home/checklist.json")
+    home.init(path)
+    home.set_flow(Path("/ws/home/flow.json"))
+    home.set_parameters(Path("/ws/home/parameters.json"))
+    home.set_checklist(Path("/ws/home/checklist.json"))
     before = path.stat().st_mtime_ns
 
     reloaded = HomeData()
-    reloaded.init(str(path))
-    reloaded.set_flow("/ws/home/flow.json")
-    reloaded.set_parameters("/ws/home/parameters.json")
-    reloaded.set_checklist("/ws/home/checklist.json")
+    reloaded.init(path)
+    reloaded.set_flow(Path("/ws/home/flow.json"))
+    reloaded.set_parameters(Path("/ws/home/parameters.json"))
+    reloaded.set_checklist(Path("/ws/home/checklist.json"))
 
     assert path.stat().st_mtime_ns == before
 
 
 def _set_flow(path, value):
     home = HomeData()
-    home.init(str(path))
+    home.init(path)
     home.set_flow(value)
 
 
 def _set_checklist(path, value):
     home = HomeData()
-    home.init(str(path))
+    home.init(path)
     home.set_checklist(value)
 
 
 def _set_parameters(path, value):
     home = HomeData()
-    home.init(str(path))
+    home.init(path)
     home.set_parameters(value)
 
 
 def _update_monitor(path):
     home = HomeData()
-    home.init(str(path))
+    home.init(path)
     home.update_monitor("Floorplan", "place", "12M", "3s", instance=42, frequency=100.0)
 
 
 def test_concurrent_home_updates_preserve_schema_and_monitor_rows(tmp_path):
     path = tmp_path / "home.json"
     home = HomeData()
-    home.init(str(path))
-    home.set_layout("/ws/Floorplan_ecc/output/layout.png")
-    home.set_metrics_pin_dist("/ws/Floorplan_ecc/output/pin.png")
+    home.init(path)
+    home.set_layout(Path("/ws/Floorplan_ecc/output/layout.png"))
+    home.set_metrics_pin_dist(Path("/ws/Floorplan_ecc/output/pin.png"))
     home.update_monitor("Synthesis", "yosys", "10M", "1s", instance=10, frequency=50.0)
 
     processes = [
-        Process(target=_set_flow, args=(path, "/ws/home/flow.json")),
-        Process(target=_set_checklist, args=(path, "/ws/home/checklist.json")),
-        Process(target=_set_parameters, args=(path, "/ws/home/parameters.json")),
+        Process(target=_set_flow, args=(path, Path("/ws/home/flow.json"))),
+        Process(target=_set_checklist, args=(path, Path("/ws/home/checklist.json"))),
+        Process(target=_set_parameters, args=(path, Path("/ws/home/parameters.json"))),
         Process(target=_update_monitor, args=(path,)),
     ]
 
