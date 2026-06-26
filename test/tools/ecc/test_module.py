@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
-from chipcompiler.tools.ecc.builder import build_step
+from chipcompiler.tools.ecc import service as ecc_service
+from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.module import ECCToolsModule
+from chipcompiler.tools.ecc.subflow import EccSubFlow
 
 
 class FakeEcc:
@@ -177,22 +181,134 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     ]
 
 
-def test_ecc_builder_constructs_view_json_paths(tmp_path):
+def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):
     workspace = Workspace(
-        directory=str(tmp_path),
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    input_def = tmp_path / "input.def"
+    input_verilog = tmp_path / "input.v"
+
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.PLACEMENT.value,
+        input_def=input_def,
+        input_verilog=input_verilog,
+    )
+
+    expected_step_dir = tmp_path / f"{StepEnum.PLACEMENT.value}_ecc"
+    expected_output_dir = expected_step_dir / "output"
+    expected_view_dir = expected_output_dir / f"gcd_{StepEnum.PLACEMENT.value}_view"
+    assert step.directory == expected_step_dir
+    assert isinstance(step.directory, Path)
+    assert step.input["def"] == input_def
+    assert step.input["verilog"] == input_verilog
+    assert step.output["dir"] == expected_output_dir
+    assert step.output["view_json"] == expected_view_dir
+    assert step.output["view_json_edits"] == expected_view_dir / "edits" / "layout_edits.json"
+    assert str(step.output["view_json"]) == (
+        f"{expected_step_dir}/output/gcd_{StepEnum.PLACEMENT.value}_view"
+    )
+    assert str(step.output["view_json_edits"]) == (
+        f"{expected_step_dir}/output/gcd_{StepEnum.PLACEMENT.value}_view/edits/layout_edits.json"
+    )
+
+
+def test_ecc_build_step_space_creates_path_directories(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
 
     step = build_step(
         workspace=workspace,
-        step_name=StepEnum.PLACEMENT.value,
-        input_def="/tmp/input.def",
-        input_verilog="/tmp/input.v",
+        step_name=StepEnum.FLOORPLAN.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
     )
 
-    expected_dir = f"{step.directory}/output/gcd_{StepEnum.PLACEMENT.value}_view"
-    assert step.output["view_json"] == expected_dir
-    assert step.output["view_json_edits"] == f"{expected_dir}/edits/layout_edits.json"
+    build_step_space(step)
+
+    assert isinstance(step.output["dir"], Path)
+    assert step.output["dir"].is_dir()
+    assert step.data["dir"].is_dir()
+    assert step.feature["dir"].is_dir()
+    assert step.report["dir"].is_dir()
+    assert step.log["dir"].is_dir()
+    assert step.script["dir"].is_dir()
+    assert step.analysis["dir"].is_dir()
+    assert (step.directory / "data" / "pl" / "density").is_dir()
+    assert (step.directory / "data" / "pl" / "report").is_dir()
+
+
+def test_ecc_subflow_writes_path_payload_as_json_strings(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.PLACEMENT.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+
+    EccSubFlow(workspace, step)
+
+    with open(step.subflow["path"], encoding="utf-8") as file:
+        data = json.load(file)
+    assert data["path"] == str(step.subflow["path"])
+
+
+def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        config={StepEnum.PLACEMENT.value: tmp_path / "config" / "pl.json"},
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.PLACEMENT.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    monkeypatch.setattr(
+        ecc_service,
+        "build_step_metrics",
+        lambda workspace, step: SimpleNamespace(path=tmp_path / "metrics.json"),
+    )
+
+    assert ecc_service.get_step_info(workspace, step, "views") == {
+        "image": str(step.output["image"]),
+        "json": str(step.output["json"]),
+        "metrics": str(tmp_path / "metrics.json"),
+        "information": {},
+    }
+    assert ecc_service.get_step_info(workspace, step, "layout") == {
+        "image": str(step.output["image"]),
+        "json": str(step.output["json"]),
+    }
+    assert ecc_service.get_step_info(workspace, step, "metrics") == {
+        "metrics": str(tmp_path / "metrics.json"),
+    }
+    assert ecc_service.get_step_info(workspace, step, "subflow") == {
+        "path": str(step.subflow["path"])
+    }
+    assert ecc_service.get_step_info(workspace, step, "config") == {
+        "config": str(workspace.config[StepEnum.PLACEMENT.value]),
+    }
+    assert ecc_service.get_step_info(workspace, step, "analysis") == {
+        "metrics": str(step.analysis["metrics"]),
+        "statis": str(step.analysis["statis_csv"]),
+        "data summary": str(step.feature["db"]),
+        "step feature": str(step.feature["step"]),
+        "step report": str(step.report["db"]),
+    }
+    assert ecc_service.get_step_info(workspace, step, "sta") == {
+        key: str(value)
+        for key, value in step.report["sta"].items()
+    }
 
 
 def test_ecc_builder_uses_explicit_step_directory(tmp_path):
@@ -200,19 +316,23 @@ def test_ecc_builder_uses_explicit_step_directory(tmp_path):
         directory=str(tmp_path),
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
-    step_directory = str(tmp_path / "timing_optimization_sizer")
+    step_directory = tmp_path / "timing_optimization_sizer"
 
     step = build_step(
         workspace=workspace,
         step_name=StepEnum.TIMING_OPT.value,
-        input_def="/tmp/input.def",
-        input_verilog="/tmp/input.v",
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
         tool="sizer",
         step_directory=step_directory,
     )
 
     assert step.name == StepEnum.TIMING_OPT.value
     assert step.directory == step_directory
-    assert step.output["dir"] == f"{step_directory}/output"
-    assert step.data[StepEnum.TIMING_OPT.value] == f"{step_directory}/data/to"
-    assert step.log["file"] == f"{step_directory}/log/{StepEnum.TIMING_OPT.value}.log"
+    assert isinstance(step.directory, Path)
+    assert step.output["dir"] == step_directory / "output"
+    assert step.data[StepEnum.TIMING_OPT.value] == step_directory / "data" / "to"
+    assert step.log["file"] == step_directory / "log" / f"{StepEnum.TIMING_OPT.value}.log"
+    assert str(step.output["dir"]) == f"{step_directory}/output"
+    assert str(step.data[StepEnum.TIMING_OPT.value]) == f"{step_directory}/data/to"
+    assert str(step.log["file"]) == f"{step_directory}/log/{StepEnum.TIMING_OPT.value}.log"

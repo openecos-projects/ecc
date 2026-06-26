@@ -2,6 +2,7 @@
 import os
 import stat
 from contextlib import suppress
+from pathlib import Path
 
 from rosettakit import tcl
 
@@ -9,14 +10,14 @@ from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.utility import json_read
 
 
-def _abspath(path: str) -> str:
+def _abspath(path: str | Path) -> str:
     """Convert path to absolute path, handling empty strings."""
     if not path:
         return ""
     return os.path.abspath(path)
 
 
-def _existing_unique_paths(paths: list[str]) -> list[str]:
+def _existing_unique_paths(paths: list[str | Path]) -> list[str]:
     """Return existing paths in input order without duplicates."""
     unique_paths = []
     seen = set()
@@ -166,12 +167,12 @@ def generate_global_var_tcl(workspace: Workspace,
 
 def build_step(workspace: Workspace,
                step_name: str,
-               input_def: str,
-               input_verilog: str,
-               input_db : str | None = None,
-               output_def: str = None,
-               output_verilog: str = None,
-               output_gds: str = None) -> WorkspaceStep:
+               input_def: str | Path,
+               input_verilog: str | Path,
+               input_db : str | Path | None = None,
+               output_def: str | Path | None = None,
+               output_verilog: str | Path | None = None,
+               output_gds: str | Path | None = None) -> WorkspaceStep:
     """
     Build the synthesis step in the specified workspace.
 
@@ -183,67 +184,78 @@ def build_step(workspace: Workspace,
     step.tool = "yosys"
     step.version = "0.1"
 
-    step.directory = f"{workspace.directory}/{step.name}_{step.tool}"
+    step.directory = Path(workspace.directory) / f"{step.name}_{step.tool}"
 
     step.input = {
-        "verilog": input_verilog,
+        "verilog": Path(input_verilog) if input_verilog else "",
     }
 
+    output_dir = step.directory / "output"
     if output_verilog is None:
-        output_verilog = f"{step.directory}/output/{workspace.design.name}_{step.name}.v.gz"
+        output_verilog = output_dir / f"{workspace.design.name}_{step.name}.v.gz"
+    else:
+        output_verilog = Path(output_verilog)
     if output_def is None:
-        output_def = f"{step.directory}/output/{workspace.design.name}_{step.name}.def.gz"
+        output_def = output_dir / f"{workspace.design.name}_{step.name}.def.gz"
+    else:
+        output_def = Path(output_def)
     step.output = {
-        "dir": f"{step.directory}/output",
+        "dir": output_dir,
         "def": output_def,
         "verilog": output_verilog,
-        "fixed_verilog": f"{step.directory}/output/{workspace.design.name}_{step.name}_fixed.v.gz",
-        "json": f"{step.directory}/output/{workspace.design.name}_{step.name}.json",
-        "report": f"{step.directory}/output/{workspace.design.name}_{step.name}.rpt",
-        "image": f"{step.directory}/output/{workspace.design.name}_{step.name}.png"
+        "fixed_verilog": output_dir / f"{workspace.design.name}_{step.name}_fixed.v.gz",
+        "json": output_dir / f"{workspace.design.name}_{step.name}.json",
+        "report": output_dir / f"{workspace.design.name}_{step.name}.rpt",
+        "image": output_dir / f"{workspace.design.name}_{step.name}.png"
     }
 
+    data_dir = step.directory / "data"
     step.data = {
-        "dir": f"{step.directory}/data",
-        "tmp": f"{step.directory}/data/tmp",
+        "dir": data_dir,
+        "tmp": data_dir / "tmp",
     }
 
+    feature_dir = step.directory / "feature"
     step.feature = {
-        "dir": f"{step.directory}/feature",
-        "generic_stat": f"{step.directory}/feature/{step.name}_generic_stat.json",
-        "stat": f"{step.directory}/feature/{step.name}_stat.json",
+        "dir": feature_dir,
+        "generic_stat": feature_dir / f"{step.name}_generic_stat.json",
+        "stat": feature_dir / f"{step.name}_stat.json",
     }
 
+    report_dir = step.directory / "report"
     step.report = {
-        "dir": f"{step.directory}/report",
-        "stat": f"{step.directory}/report/{step.name}_stat.json",
-        "check": f"{step.directory}/report/{step.name}_check.rpt",
+        "dir": report_dir,
+        "stat": report_dir / f"{step.name}_stat.json",
+        "check": report_dir / f"{step.name}_check.rpt",
     }
 
+    log_dir = step.directory / "log"
     step.log = {
-        "dir": f"{step.directory}/log",
-        "file": f"{step.directory}/log/{step.name}.log",
+        "dir": log_dir,
+        "file": log_dir / f"{step.name}.log",
     }
 
+    script_dir = step.directory / "script"
     step.script = {
-        "dir": f"{step.directory}/script",
-        "main": f"{step.directory}/script/{step.name}_main.tcl",
+        "dir": script_dir,
+        "main": script_dir / f"{step.name}_main.tcl",
     }
 
+    analysis_dir = step.directory / "analysis"
     step.analysis = {
-        "dir": f"{step.directory}/analysis",
-        "metrics": f"{step.directory}/analysis/{step.name}_metrics.json"
+        "dir": analysis_dir,
+        "metrics": analysis_dir / f"{step.name}_metrics.json"
     }  
     
     # build sub flow paths and data
     step.subflow = {
-        "path": f"{step.directory}/subflow.json",
+        "path": step.directory / "subflow.json",
         "steps": []
     }  
     
     # build checklist paths and data
     step.checklist = {
-        "path": f"{step.directory}/checklist.json",
+        "path": step.directory / "checklist.json",
         "checklist": []
     }
 
@@ -254,15 +266,16 @@ def build_step_space(step: WorkspaceStep) -> None:
     """
     Create the workspace directories for the given step.
     """
-    os.makedirs(step.directory, exist_ok=True)
-    os.makedirs(step.output.get("dir", f"{step.directory}/output"), exist_ok=True)
-    os.makedirs(step.data.get("dir", f"{step.directory}/data"), exist_ok=True)
-    os.makedirs(step.data.get("tmp", f"{step.directory}/data/tmp"), exist_ok=True)
-    os.makedirs(step.report.get("dir", f"{step.directory}/report"), exist_ok=True)
-    os.makedirs(step.log.get("dir", f"{step.directory}/log"), exist_ok=True)
-    os.makedirs(step.script.get("dir", f"{step.directory}/script"), exist_ok=True)
-    os.makedirs(step.feature.get("dir", f"{step.directory}/feature"), exist_ok=True)
-    os.makedirs(step.analysis.get("dir", f"{step.directory}/analysis"), exist_ok=True)
+    step_directory = Path(step.directory)
+    step_directory.mkdir(parents=True, exist_ok=True)
+    Path(step.output.get("dir", step_directory / "output")).mkdir(parents=True, exist_ok=True)
+    Path(step.data.get("dir", step_directory / "data")).mkdir(parents=True, exist_ok=True)
+    Path(step.data.get("tmp", step_directory / "data" / "tmp")).mkdir(parents=True, exist_ok=True)
+    Path(step.report.get("dir", step_directory / "report")).mkdir(parents=True, exist_ok=True)
+    Path(step.log.get("dir", step_directory / "log")).mkdir(parents=True, exist_ok=True)
+    Path(step.script.get("dir", step_directory / "script")).mkdir(parents=True, exist_ok=True)
+    Path(step.feature.get("dir", step_directory / "feature")).mkdir(parents=True, exist_ok=True)
+    Path(step.analysis.get("dir", step_directory / "analysis")).mkdir(parents=True, exist_ok=True)
 
 
 def build_step_config(workspace: Workspace,
@@ -276,33 +289,33 @@ def build_step_config(workspace: Workspace,
     """
     import shutil
 
-    def _copy_writable(src: str, dst: str):
+    def _copy_writable(src: str | Path, dst: str | Path):
         """Copy file and ensure it's writable."""
         shutil.copy2(src, dst)
         with suppress(OSError):
             os.chmod(dst, os.stat(dst).st_mode | stat.S_IWUSR)
 
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    scripts_dir = os.path.abspath(os.path.join(current_dir, 'scripts'))
+    current_dir = Path(__file__).resolve().parent
+    scripts_dir = current_dir / 'scripts'
 
     for file in ['yosys_synthesis.tcl', 'init_tech.tcl']:
-        src = os.path.join(scripts_dir, file)
-        if os.path.exists(src):
-            _copy_writable(src, os.path.join(step.script['dir'], file))
+        src = scripts_dir / file
+        if src.exists():
+            _copy_writable(src, step.script['dir'] / file)
 
-    abc_script = os.path.join(scripts_dir, 'abc-opt.script')
-    if os.path.exists(abc_script):
-        _copy_writable(abc_script, os.path.join(step.script['dir'], 'abc-opt.script'))
+    abc_script = scripts_dir / 'abc-opt.script'
+    if abc_script.exists():
+        _copy_writable(abc_script, step.script['dir'] / 'abc-opt.script')
 
-    configs_dir = os.path.abspath(os.path.join(current_dir, 'configs'))
-    aig_file = os.path.join(configs_dir, 'lazy_man_synth_library.aig')
-    if os.path.exists(aig_file):
-        _copy_writable(aig_file, os.path.join(step.script['dir'], 'lazy_man_synth_library.aig'))
+    configs_dir = current_dir / 'configs'
+    aig_file = configs_dir / 'lazy_man_synth_library.aig'
+    if aig_file.exists():
+        _copy_writable(aig_file, step.script['dir'] / 'lazy_man_synth_library.aig')
 
     try:
         tcl_content = generate_global_var_tcl(workspace, step)
-        global_var_path = os.path.join(step.data['dir'], 'global_var.tcl')
-        with open(global_var_path, 'w') as f:
+        global_var_path = step.data['dir'] / 'global_var.tcl'
+        with global_var_path.open('w') as f:
             f.write(tcl_content)
     except (ValueError, OSError) as e:
         print(f"Error generating global_var.tcl: {e}")

@@ -40,11 +40,11 @@ def run_step(
     os.makedirs(os.path.dirname(step.log["file"]), exist_ok=True)
     os.makedirs(os.path.dirname(step.output["def"]), exist_ok=True)
 
-    command = get_sizer_command() + ["-env", env_path, "-f", cmd_path]
+    command = get_sizer_command() + ["-env", str(env_path), "-f", str(cmd_path)]
     with open(step.log["file"], "w", encoding="utf-8") as log_file:
         result = subprocess.run(
             command,
-            cwd=output_dir,
+            cwd=str(output_dir),
             stdout=log_file,
             stderr=subprocess.STDOUT,
             check=False,

@@ -148,9 +148,13 @@ class EccSubFlow:
     
     def save(self) -> bool:
         from chipcompiler.utility import json_write
+
+        data = dict(self.workspace_step.subflow)
+        if "path" in data:
+            data["path"] = str(data["path"])
         
         return json_write(file_path=self.workspace_step.subflow.get("path", ""), 
-                          data=self.workspace_step.subflow)
+                          data=data)
     
     def get_runtime(self):
         # end time

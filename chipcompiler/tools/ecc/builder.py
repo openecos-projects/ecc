@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-import os
+from pathlib import Path
+
 from chipcompiler.data import (
     WorkspaceStep,
     Workspace,
@@ -13,14 +14,14 @@ from chipcompiler.data import (
 
 def build_step(workspace: Workspace,
                step_name: str,
-               input_def : str,
-               input_verilog : str,
-               input_db : str | None = None,
-               output_def : str | None = None,
-               output_verilog : str | None = None,
-               output_gds : str | None = None,
+               input_def : str | Path,
+               input_verilog : str | Path,
+               input_db : str | Path | None = None,
+               output_def : str | Path | None = None,
+               output_verilog : str | Path | None = None,
+               output_gds : str | Path | None = None,
                tool : str = "ecc",
-               step_directory: str | None = None) -> WorkspaceStep:
+               step_directory: str | Path | None = None) -> WorkspaceStep:
     """
     Build the given step in the specified workspace.
     """
@@ -31,32 +32,43 @@ def build_step(workspace: Workspace,
     step.version = "0.1"
 
     # build step directory
-    step.directory = step_directory or f"{workspace.directory}/{step.name}_{step.tool}"
+    step.directory = (
+        Path(step_directory)
+        if step_directory
+        else Path(workspace.directory) / f"{step.name}_{step.tool}"
+    )
     
     # build input paths
     step.input = {
-        "def": input_def,
-        "verilog": input_verilog,
-        "db": input_db
+        "def": Path(input_def) if input_def else "",
+        "verilog": Path(input_verilog) if input_verilog else "",
+        "db": Path(input_db) if input_db else None
     }  
     
     # build output paths
+    output_dir = step.directory / "output"
     if output_def is None:
-        output_def = f"{step.directory}/output/{workspace.design.name}_{step.name}.def.gz"
+        output_def = output_dir / f"{workspace.design.name}_{step.name}.def.gz"
+    else:
+        output_def = Path(output_def)
     if output_verilog is None:
-        output_verilog = f"{step.directory}/output/{workspace.design.name}_{step.name}.v.gz"
+        output_verilog = output_dir / f"{workspace.design.name}_{step.name}.v.gz"
+    else:
+        output_verilog = Path(output_verilog)
     if output_gds is None:
-        output_gds = f"{step.directory}/output/{workspace.design.name}_{step.name}.gds"
-    output_db = f"{step.directory}/output/{workspace.design.name}_{step.name}_db"
-    output_image = f"{step.directory}/output/{workspace.design.name}_{step.name}.png"
-    output_json = f"{step.directory}/output/{workspace.design.name}_{step.name}.json"
-    output_view = f"{step.directory}/output/{workspace.design.name}_{step.name}_view"
-    output_view_edits = f"{output_view}/edits/layout_edits.json"
-    output_lef = f"{step.directory}/output/{workspace.design.name}_{step.name}.lef"
-    output_lib = f"{step.directory}/output/{workspace.design.name}_{step.name}.lib"
+        output_gds = output_dir / f"{workspace.design.name}_{step.name}.gds"
+    else:
+        output_gds = Path(output_gds)
+    output_db = output_dir / f"{workspace.design.name}_{step.name}_db"
+    output_image = output_dir / f"{workspace.design.name}_{step.name}.png"
+    output_json = output_dir / f"{workspace.design.name}_{step.name}.json"
+    output_view = output_dir / f"{workspace.design.name}_{step.name}_view"
+    output_view_edits = output_view / "edits" / "layout_edits.json"
+    output_lef = output_dir / f"{workspace.design.name}_{step.name}.lef"
+    output_lib = output_dir / f"{workspace.design.name}_{step.name}.lib"
     output_spef = []
     step.output = {
-        "dir": f"{step.directory}/output",
+        "dir": output_dir,
         "def": output_def,
         "verilog": output_verilog,
         "gds": output_gds,
@@ -71,77 +83,83 @@ def build_step(workspace: Workspace,
     }
     
     # build data paths
+    data_dir = step.directory / "data"
     step.data = {
-        "dir": f"{step.directory}/data",
-        f"{StepEnum.FLOORPLAN.value}": f"{step.directory}/data/fp",
-        f"{StepEnum.PNP.value}": f"{step.directory}/data/pnp",
-        f"{StepEnum.PLACEMENT.value}": f"{step.directory}/data/pl",
-        f"{StepEnum.LEGALIZATION.value}": f"{step.directory}/data/pl",
-        f"{StepEnum.FILLER.value}": f"{step.directory}/data/pl",
-        f"{StepEnum.CTS.value}": f"{step.directory}/data/cts",
-        f"{StepEnum.NETLIST_OPT.value}": f"{step.directory}/data/no",
-        f"{StepEnum.TIMING_OPT.value}": f"{step.directory}/data/to",
-        f"{StepEnum.TIMING_OPT_DRV.value}": f"{step.directory}/data/to",
-        f"{StepEnum.TIMING_OPT_HOLD.value}": f"{step.directory}/data/to",
-        f"{StepEnum.TIMING_OPT_SETUP.value}": f"{step.directory}/data/to",
-        f"{StepEnum.ROUTING.value}": f"{step.directory}/data/rt",
-        f"{StepEnum.STA.value}": f"{step.directory}/data/sta",
-        f"{StepEnum.DRC.value}": f"{step.directory}/data/drc",
-        f"{StepEnum.RCX.value}": f"{step.directory}/data/rcx"
+        "dir": data_dir,
+        f"{StepEnum.FLOORPLAN.value}": data_dir / "fp",
+        f"{StepEnum.PNP.value}": data_dir / "pnp",
+        f"{StepEnum.PLACEMENT.value}": data_dir / "pl",
+        f"{StepEnum.LEGALIZATION.value}": data_dir / "pl",
+        f"{StepEnum.FILLER.value}": data_dir / "pl",
+        f"{StepEnum.CTS.value}": data_dir / "cts",
+        f"{StepEnum.NETLIST_OPT.value}": data_dir / "no",
+        f"{StepEnum.TIMING_OPT.value}": data_dir / "to",
+        f"{StepEnum.TIMING_OPT_DRV.value}": data_dir / "to",
+        f"{StepEnum.TIMING_OPT_HOLD.value}": data_dir / "to",
+        f"{StepEnum.TIMING_OPT_SETUP.value}": data_dir / "to",
+        f"{StepEnum.ROUTING.value}": data_dir / "rt",
+        f"{StepEnum.STA.value}": data_dir / "sta",
+        f"{StepEnum.DRC.value}": data_dir / "drc",
+        f"{StepEnum.RCX.value}": data_dir / "rcx"
     }
     
     # build feature paths
+    feature_dir = step.directory / "feature"
     step.feature = {
-        "dir": f"{step.directory}/feature",
-        "db": f"{step.directory}/feature/{step.name}.db.json",
-        "step": f"{step.directory}/feature/{step.name}.step.json",
-        "map": f"{step.directory}/feature/{step.name}.map.json",
-        "timing": f"{step.directory}/data/sta/{workspace.design.top_module}.rpt.json",
+        "dir": feature_dir,
+        "db": feature_dir / f"{step.name}.db.json",
+        "step": feature_dir / f"{step.name}.step.json",
+        "map": feature_dir / f"{step.name}.map.json",
+        "timing": data_dir / "sta" / f"{workspace.design.top_module}.rpt.json",
     }
     
     # build report paths
+    report_dir = step.directory / "report"
     step.report = {
-        "dir": f"{step.directory}/report",
-        "db": f"{step.directory}/report/{step.name}.db.rpt",
-        "step": f"{step.directory}/report/{step.name}.rpt",
+        "dir": report_dir,
+        "db": report_dir / f"{step.name}.db.rpt",
+        "step": report_dir / f"{step.name}.rpt",
         "sta": {
-            "timing": f"{step.directory}/data/sta/{workspace.design.top_module}.rpt",
-            "hold": f"{step.directory}/data/sta/{workspace.design.top_module}_hold.skew",
-            "setup": f"{step.directory}/data/sta/{workspace.design.top_module}_setup.skew",
-            "cap": f"{step.directory}/data/sta/{workspace.design.top_module}.cap",
-            "fanout": f"{step.directory}/data/sta/{workspace.design.top_module}.fanout",
-            "trans": f"{step.directory}/data/sta/{workspace.design.top_module}.trans",
+            "timing": data_dir / "sta" / f"{workspace.design.top_module}.rpt",
+            "hold": data_dir / "sta" / f"{workspace.design.top_module}_hold.skew",
+            "setup": data_dir / "sta" / f"{workspace.design.top_module}_setup.skew",
+            "cap": data_dir / "sta" / f"{workspace.design.top_module}.cap",
+            "fanout": data_dir / "sta" / f"{workspace.design.top_module}.fanout",
+            "trans": data_dir / "sta" / f"{workspace.design.top_module}.trans",
         },
     }
     
     # build log paths
+    log_dir = step.directory / "log"
     step.log = {
-        "dir": f"{step.directory}/log",
-        "file": f"{step.directory}/log/{step.name}.log"
+        "dir": log_dir,
+        "file": log_dir / f"{step.name}.log"
     }
     
     # build script paths
+    script_dir = step.directory / "script"
     step.script = {
-        "dir": f"{step.directory}/script",
-        "main": f"{step.directory}/script/{step.name}_main.tcl"
+        "dir": script_dir,
+        "main": script_dir / f"{step.name}_main.tcl"
     }
     
     # build analysis paths
+    analysis_dir = step.directory / "analysis"
     step.analysis = {
-        "dir": f"{step.directory}/analysis",
-        "metrics": f"{step.directory}/analysis/{step.name}_metrics.json",
-        "statis_csv": f"{step.directory}/analysis/{step.name}_statis.csv"
+        "dir": analysis_dir,
+        "metrics": analysis_dir / f"{step.name}_metrics.json",
+        "statis_csv": analysis_dir / f"{step.name}_statis.csv"
     }    
     
     # build sub flow paths
     step.subflow = {
-        "path": f"{step.directory}/subflow.json",
+        "path": step.directory / "subflow.json",
         "steps": []
     }  
     
     # build checklist paths and data
     step.checklist = {
-        "path": f"{step.directory}/checklist.json",
+        "path": step.directory / "checklist.json",
         "checklist": []
     }
     
@@ -167,27 +185,27 @@ def build_step_space(step: WorkspaceStep) -> None:
     """
     Create the workspace directories for the given step.
     """
-    import os
+    step_directory = Path(step.directory)
     
-    os.makedirs(step.directory, exist_ok=True)
-    os.makedirs(step.output.get("dir", f"{step.directory}/output"), exist_ok=True)
-    os.makedirs(step.data.get("dir", f"{step.directory}/data"), exist_ok=True)
-    os.makedirs(step.feature.get("dir", f"{step.directory}/feature"), exist_ok=True)
-    os.makedirs(step.report.get("dir", f"{step.directory}/report"), exist_ok=True)
-    os.makedirs(step.log.get("dir", f"{step.directory}/log"), exist_ok=True)
-    os.makedirs(step.script.get("dir", f"{step.directory}/script"), exist_ok=True)
-    os.makedirs(step.analysis.get("dir", f"{step.directory}/analysis"), exist_ok=True)
+    step_directory.mkdir(parents=True, exist_ok=True)
+    Path(step.output.get("dir", step_directory / "output")).mkdir(parents=True, exist_ok=True)
+    Path(step.data.get("dir", step_directory / "data")).mkdir(parents=True, exist_ok=True)
+    Path(step.feature.get("dir", step_directory / "feature")).mkdir(parents=True, exist_ok=True)
+    Path(step.report.get("dir", step_directory / "report")).mkdir(parents=True, exist_ok=True)
+    Path(step.log.get("dir", step_directory / "log")).mkdir(parents=True, exist_ok=True)
+    Path(step.script.get("dir", step_directory / "script")).mkdir(parents=True, exist_ok=True)
+    Path(step.analysis.get("dir", step_directory / "analysis")).mkdir(parents=True, exist_ok=True)
     
     # build data directory
-    for key, dir in step.data.items():
-        os.makedirs(dir, exist_ok=True)
+    for directory in step.data.values():
+        Path(directory).mkdir(parents=True, exist_ok=True)
         
     # create pl sub dir
-    os.makedirs(f"{step.directory}/data/pl/density", exist_ok=True)
-    os.makedirs(f"{step.directory}/data/pl/gui", exist_ok=True)
-    os.makedirs(f"{step.directory}/data/pl/log", exist_ok=True)
-    os.makedirs(f"{step.directory}/data/pl/plot", exist_ok=True)
-    os.makedirs(f"{step.directory}/data/pl/report", exist_ok=True)  
+    (step_directory / "data" / "pl" / "density").mkdir(parents=True, exist_ok=True)
+    (step_directory / "data" / "pl" / "gui").mkdir(parents=True, exist_ok=True)
+    (step_directory / "data" / "pl" / "log").mkdir(parents=True, exist_ok=True)
+    (step_directory / "data" / "pl" / "plot").mkdir(parents=True, exist_ok=True)
+    (step_directory / "data" / "pl" / "report").mkdir(parents=True, exist_ok=True)
         
 
 def build_step_config(workspace: Workspace,

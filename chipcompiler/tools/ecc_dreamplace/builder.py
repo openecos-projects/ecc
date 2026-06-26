@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from chipcompiler.data import Workspace, WorkspaceStep, build_workspace_config_paths
 from chipcompiler.tools.ecc import builder as ecc_builder
@@ -32,21 +33,21 @@ def _current_parameter_data(workspace: Workspace) -> dict:
 
 
 def _set_step_fields(params: dict, step: WorkspaceStep) -> dict:
-    params["def_input"] = step.input.get("def", "")
-    params["verilog_input"] = step.input.get("verilog", "")
-    params["result_dir"] = step.data.get(step.name, step.data["dir"])
+    params["def_input"] = str(step.input.get("def", ""))
+    params["verilog_input"] = str(step.input.get("verilog", ""))
+    params["result_dir"] = str(step.data.get(step.name, step.data["dir"]))
     return params
 
 
 def build_step(
     workspace: Workspace,
     step_name: str,
-    input_def: str,
-    input_verilog: str,
-    input_db: str | None = None,
-    output_def: str | None = None,
-    output_verilog: str | None = None,
-    output_gds: str | None = None,
+    input_def: str | Path,
+    input_verilog: str | Path,
+    input_db: str | Path | None = None,
+    output_def: str | Path | None = None,
+    output_verilog: str | Path | None = None,
+    output_gds: str | Path | None = None,
 ) -> WorkspaceStep:
     step = ecc_builder.build_step(
         workspace=workspace,

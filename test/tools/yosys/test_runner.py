@@ -22,11 +22,11 @@ def _build_workspace_and_step(tmp_path: Path):
         )
     )
     step = SimpleNamespace(
-        input={"verilog": str(rtl_file)},
-        output={"verilog": str(output_file)},
-        log={"file": str(log_file)},
-        script={"dir": str(script_dir)},
-        directory=str(tmp_path)
+        input={"verilog": rtl_file},
+        output={"verilog": output_file},
+        log={"file": log_file},
+        script={"dir": script_dir},
+        directory=tmp_path
     )
     return workspace, step, output_file, log_file
 
@@ -83,10 +83,11 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
     assert result is True
     assert len(check_calls) == 1
     assert check_calls[0]["yosys_cmd"] == ["yosys"]
+    assert check_calls[0]["cwd"] == str(step.script["dir"])
     assert check_calls[0]["env"] == runtime_env
     assert len(run_calls) == 1
     assert run_calls[0]["cmd"] == ["yosys", "yosys_synthesis.tcl"]
-    assert run_calls[0]["cwd"] == step.script["dir"]
+    assert run_calls[0]["cwd"] == str(step.script["dir"])
     assert run_calls[0]["env"] == runtime_env
     assert ("run yosys", StateEnum.Success) in updates
     assert ("analysis", StateEnum.Success) in updates

@@ -2,6 +2,7 @@ import inspect
 import json
 import os
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -236,8 +237,9 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
 
     assert step.output["db"] == ""
     assert step.name == StepEnum.TIMING_OPT.value
-    assert step.directory.endswith("timing_optimization_sizer")
-    assert not step.directory.endswith(f"{StepEnum.TIMING_OPT.value}_sizer")
+    assert step.directory.name == "timing_optimization_sizer"
+    assert not str(step.directory).endswith(f"{StepEnum.TIMING_OPT.value}_sizer")
+    assert isinstance(step.directory, Path)
     assert " " not in os.path.basename(step.output["def"])
     assert " " not in os.path.basename(step.output["verilog"])
     assert os.path.basename(step.output["def"]) == "gcd_timing_optimization.def.gz"
@@ -255,7 +257,8 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
         step.analysis["dir"],
     ):
         assert os.path.isdir(path)
-        assert "Timing optimization_sizer" not in path
+        assert isinstance(path, Path)
+        assert "Timing optimization_sizer" not in str(path)
 
 
 def test_sizer_step_keeps_caller_input_paths(tmp_path):
@@ -271,8 +274,10 @@ def test_sizer_step_keeps_caller_input_paths(tmp_path):
         input_verilog=input_verilog,
     )
 
-    assert step.input["def"] == input_def
-    assert step.input["verilog"] == input_verilog
+    assert step.input["def"] == Path(input_def)
+    assert step.input["verilog"] == Path(input_verilog)
+    assert str(step.input["def"]) == input_def
+    assert str(step.input["verilog"]) == input_verilog
 
 
 def test_sizer_step_keeps_caller_output_paths_that_share_old_prefix(tmp_path):
@@ -290,8 +295,10 @@ def test_sizer_step_keeps_caller_output_paths_that_share_old_prefix(tmp_path):
         output_verilog=output_verilog,
     )
 
-    assert step.output["def"] == output_def
-    assert step.output["verilog"] == output_verilog
+    assert step.output["def"] == Path(output_def)
+    assert step.output["verilog"] == Path(output_verilog)
+    assert str(step.output["def"]) == output_def
+    assert str(step.output["verilog"]) == output_verilog
 
 
 def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
@@ -380,13 +387,19 @@ def test_sizer_step_info_surfaces_include_step_local_config(tmp_path, monkeypatc
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
 
-    assert get_step_info(workspace, step, "input") == step.input
-    assert get_step_info(workspace, step, "output") == step.output
-    assert get_step_info(workspace, step, "subflow") == {"path": step.subflow["path"]}
-    assert get_step_info(workspace, step, "checklist") == {"path": step.checklist["path"]}
+    assert get_step_info(workspace, step, "input") == {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in step.input.items()
+    }
+    assert get_step_info(workspace, step, "output") == {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in step.output.items()
+    }
+    assert get_step_info(workspace, step, "subflow") == {"path": str(step.subflow["path"])}
+    assert get_step_info(workspace, step, "checklist") == {"path": str(step.checklist["path"])}
     assert get_step_info(workspace, step, "config") == {
-        "sizer_env": step.script["sizer_env"],
-        "sizer_cmd": step.script["sizer_cmd"],
+        "sizer_env": str(step.script["sizer_env"]),
+        "sizer_cmd": str(step.script["sizer_cmd"]),
     }
     assert get_step_info(workspace, step, "unknown") == {}
 
@@ -425,8 +438,14 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     assert _subflow_states(step)["run sizer"] == StateEnum.Success.value
     assert calls == [
         (
-            ["/fake/sizer", "-env", step.script["sizer_env"], "-f", step.script["sizer_cmd"]],
-            step.data[StepEnum.TIMING_OPT.value],
+            [
+                "/fake/sizer",
+                "-env",
+                str(step.script["sizer_env"]),
+                "-f",
+                str(step.script["sizer_cmd"]),
+            ],
+            str(step.data[StepEnum.TIMING_OPT.value]),
             subprocess.STDOUT,
             False,
         )

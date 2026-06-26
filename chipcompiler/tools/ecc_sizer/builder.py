@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 
 from rosettakit import cmdfile
 
@@ -14,19 +15,21 @@ from .utility import find_sizer_root
 def build_step(
     workspace: Workspace,
     step_name: str,
-    input_def: str,
-    input_verilog: str,
-    input_db: str | None = None,
-    output_def: str | None = None,
-    output_verilog: str | None = None,
-    output_gds: str | None = None,
+    input_def: str | Path,
+    input_verilog: str | Path,
+    input_db: str | Path | None = None,
+    output_def: str | Path | None = None,
+    output_verilog: str | Path | None = None,
+    output_gds: str | Path | None = None,
 ) -> WorkspaceStep:
     safe_step_name = "_".join(step_name.split()).lower()
-    step_directory = f"{workspace.directory}/{safe_step_name}_sizer"
+    step_directory = Path(workspace.directory) / f"{safe_step_name}_sizer"
     if output_def is None:
-        output_def = f"{step_directory}/output/{workspace.design.name}_{safe_step_name}.def.gz"
+        output_def = step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.def.gz"
     if output_verilog is None:
-        output_verilog = f"{step_directory}/output/{workspace.design.name}_{safe_step_name}.v.gz"
+        output_verilog = (
+            step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.v.gz"
+        )
 
     step = ecc_builder.build_step(
         workspace=workspace,
@@ -41,8 +44,8 @@ def build_step(
         step_directory=step_directory,
     )
     step.output["db"] = ""
-    step.script["sizer_env"] = f"{step.script['dir']}/{workspace.design.name}.env_file"
-    step.script["sizer_cmd"] = f"{step.script['dir']}/{workspace.design.name}.cmd_file"
+    step.script["sizer_env"] = step.script["dir"] / f"{workspace.design.name}.env_file"
+    step.script["sizer_cmd"] = step.script["dir"] / f"{workspace.design.name}.cmd_file"
     return step
 
 
@@ -64,18 +67,19 @@ def build_checklist(workspace: Workspace, workspace_step: WorkspaceStep) -> None
     checklist.build_checklist()
 
 
-def _copy_or_seed_template(template: str, target: str, fallback: str) -> None:
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    if os.path.exists(template):
-        shutil.copy2(template, target)
+def _copy_or_seed_template(template: str | Path, target: str | Path, fallback: str) -> None:
+    target_path = Path(target)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    if template and Path(template).exists():
+        shutil.copy2(template, target_path)
         return
 
-    with open(target, "w", encoding="utf-8") as file:
+    with target_path.open("w", encoding="utf-8") as file:
         file.write(fallback)
 
 
-def _append_text(path: str, text: str) -> None:
-    with open(path, "a", encoding="utf-8") as file:
+def _append_text(path: str | Path, text: str) -> None:
+    with Path(path).open("a", encoding="utf-8") as file:
         file.write(text)
 
 
@@ -162,8 +166,8 @@ def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     cmd_path = step.script["sizer_cmd"]
 
     _copy_or_seed_template(env_template, env_path, "-num_vt 1\n")
-    os.makedirs(os.path.dirname(cmd_path), exist_ok=True)
-    with open(cmd_path, "w", encoding="utf-8"):
+    Path(cmd_path).parent.mkdir(parents=True, exist_ok=True)
+    with Path(cmd_path).open("w", encoding="utf-8"):
         pass
 
     _append_text(env_path, _tech_text(workspace))

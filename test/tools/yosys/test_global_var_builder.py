@@ -7,8 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.data import PDK, OriginDesign, Parameters, Workspace, WorkspaceStep
+from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.yosys import builder as yosys_builder
+from chipcompiler.tools.yosys.service import get_step_info
+from chipcompiler.tools.yosys.subflow import YosysSubFlow
 
 
 def _write_file(path, text=""):
@@ -65,6 +67,76 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
         },
     )
     return workspace, step, rtl_file
+
+
+def test_yosys_builder_constructs_path_objects_and_creates_dirs(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="top", top_module="top"),
+    )
+    rtl_file = tmp_path / "top.v"
+
+    step = yosys_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.SYNTHESIS.value,
+        input_def="",
+        input_verilog=rtl_file,
+    )
+
+    expected_step_dir = tmp_path / f"{StepEnum.SYNTHESIS.value}_yosys"
+    assert step.directory == expected_step_dir
+    assert isinstance(step.directory, Path)
+    assert step.input["verilog"] == rtl_file
+    assert step.output["dir"] == expected_step_dir / "output"
+    assert step.output["fixed_verilog"] == expected_step_dir / "output" / "top_Synthesis_fixed.v.gz"
+    assert step.script["main"] == expected_step_dir / "script" / "Synthesis_main.tcl"
+
+    yosys_builder.build_step_space(step)
+
+    assert step.output["dir"].is_dir()
+    assert step.data["tmp"].is_dir()
+    assert step.script["dir"].is_dir()
+    assert step.analysis["dir"].is_dir()
+
+
+def test_yosys_subflow_writes_path_payload_as_json_strings(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="top", top_module="top"),
+    )
+    step = yosys_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.SYNTHESIS.value,
+        input_def="",
+        input_verilog=tmp_path / "top.v",
+    )
+    yosys_builder.build_step_space(step)
+
+    YosysSubFlow(workspace, step)
+
+    with open(step.subflow["path"], encoding="utf-8") as file:
+        data = json.load(file)
+    assert data["path"] == str(step.subflow["path"])
+
+
+def test_yosys_step_info_stringifies_path_payloads(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="top", top_module="top"),
+        config={"flow": tmp_path / "config" / "flow.json"},
+    )
+    step = yosys_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.SYNTHESIS.value,
+        input_def="",
+        input_verilog=tmp_path / "top.v",
+    )
+
+    assert get_step_info(workspace, step, "views")["image"] == str(step.output["image"])
+    assert get_step_info(workspace, step, "metrics") == {"metrics": str(step.analysis["metrics"])}
+    assert get_step_info(workspace, step, "subflow") == {"path": str(step.subflow["path"])}
+    assert get_step_info(workspace, step, "checklist") == {"path": str(step.checklist["path"])}
+    assert get_step_info(workspace, step, "config") == {"path": str(workspace.config["flow"])}
 
 
 def test_filelist_mode_emits_filelist_path_and_no_rtl_file(tmp_path):

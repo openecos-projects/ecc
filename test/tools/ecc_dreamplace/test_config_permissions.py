@@ -88,7 +88,7 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
     assert data["lef_input"] == ["tech.lef", "std.lef"]
     assert data["def_input"] == "input.def"
     assert data["verilog_input"] == "input.v"
-    assert data["result_dir"] == step.data[step.name]
+    assert data["result_dir"] == str(step.data[step.name])
     assert data["base_design_name"] == "gcd"
 
 
@@ -188,4 +188,4 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
     assert dreamplace_config["target_density"] == updated_overrides["Target density"]
     assert dreamplace_config["def_input"] == "input.def"
     assert dreamplace_config["verilog_input"] == "input.v"
-    assert dreamplace_config["result_dir"] == step.data[step.name]
+    assert dreamplace_config["result_dir"] == str(step.data[step.name])

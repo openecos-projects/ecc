@@ -1,8 +1,21 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+from pathlib import Path
+
 from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.utility import dict_to_str
+
+
+def _stringify_paths(value):
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _stringify_paths(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_stringify_paths(item) for item in value]
+    return value
+
 
 def get_step_info(workspace: Workspace, 
                   step: WorkspaceStep,
@@ -38,8 +51,8 @@ def get_step_info(workspace: Workspace,
 def build_views(workspace: Workspace, 
                 step: WorkspaceStep) -> dict:
     info = {
-        "image" : step.output.get("image", ""),
-        "metrics" : step.analysis.get('metrics', ''),
+        "image" : _stringify_paths(step.output.get("image", "")),
+        "metrics" : _stringify_paths(step.analysis.get('metrics', '')),
         "information" : {}
     }
     
@@ -48,7 +61,7 @@ def build_views(workspace: Workspace,
 def build_layout(workspace: Workspace, 
                  step: WorkspaceStep) -> dict:
     info = {
-        "image" : step.output.get("image", ""),
+        "image" : _stringify_paths(step.output.get("image", "")),
     }
     
     return info
@@ -56,7 +69,7 @@ def build_layout(workspace: Workspace,
 def build_metrics(workspace: Workspace, 
                   step: WorkspaceStep) -> dict:
     info = {
-        "metrics" : step.analysis.get('metrics', '')
+        "metrics" : _stringify_paths(step.analysis.get('metrics', ''))
     }
     
     return info
@@ -64,21 +77,21 @@ def build_metrics(workspace: Workspace,
 def build_subflow(workspace: Workspace, 
                   step: WorkspaceStep) -> dict:       
     info = {
-        "path" : step.subflow.get("path", "")
+        "path" : _stringify_paths(step.subflow.get("path", ""))
     }
     
     return info
 
 
 def build_config(workspace: Workspace, step: WorkspaceStep) -> dict:
-    return {"path": workspace.config.get("flow", "")}
+    return {"path": _stringify_paths(workspace.config.get("flow", ""))}
 
 def build_analysis(workspace: Workspace, 
                    step: WorkspaceStep) -> dict:          
     info = {
-        "metrics" : step.analysis.get("metrics", ""),
-        "data summary" : step.feature.get("stat", ""),
-        "step report" : step.report.get("check", "")
+        "metrics" : _stringify_paths(step.analysis.get("metrics", "")),
+        "data summary" : _stringify_paths(step.feature.get("stat", "")),
+        "step report" : _stringify_paths(step.report.get("check", ""))
     }
     
     return info
@@ -94,7 +107,7 @@ def build_maps(workspace: Workspace,
 def build_checklist(workspace: Workspace, 
                     step: WorkspaceStep) -> dict:          
     info = {
-        "path" : step.checklist.get("path", "")
+        "path" : _stringify_paths(step.checklist.get("path", ""))
     }
     
     return info

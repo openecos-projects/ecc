@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from chipcompiler.cli.workspace.request import (
     InputError,
@@ -8,6 +9,16 @@ from chipcompiler.cli.workspace.request import (
     write_filelist,
 )
 from chipcompiler.cli.workspace.response import workspace_response
+
+
+def _stringify_paths(value):
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _stringify_paths(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_stringify_paths(item) for item in value]
+    return value
 
 
 def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
@@ -362,7 +373,7 @@ def get_workspace_info(directory: str, step: str, info_id: str) -> dict:
             message=[f"no information for step {step} : {os.path.abspath(workspace.directory)}"],
         )
 
-    response_data["info"] = info
+    response_data["info"] = _stringify_paths(info)
     return workspace_response(
         cmd,
         "success",
