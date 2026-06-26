@@ -58,14 +58,15 @@ def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
             message=[f"create workspace failed : {exc}"],
         )
 
-    directory = os.path.abspath(request.directory)
     if workspace is None:
+        directory = os.path.abspath(request.directory)
         return workspace_response(
             "create_workspace",
             "failed",
             message=[f"create workspace failed : {directory}"],
         )
 
+    directory = os.path.abspath(os.fspath(workspace.directory))
     try:
         build_flow_for_workspace(workspace)
     except Exception as exc:

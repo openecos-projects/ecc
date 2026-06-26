@@ -207,6 +207,36 @@ def test_create_input_json_success_writes_server_shape(monkeypatch, tmp_path, ca
     assert DummyFlow.instances[0].added_steps == [("Synthesis", "yosys", "Unstart")]
 
 
+def test_create_returns_normalized_workspace_directory(monkeypatch, tmp_path, capsys):
+    _install_runtime_mocks(monkeypatch, tmp_path)
+    normalized_ws = tmp_path / "expanded-workspace"
+
+    def fake_create_workspace(**_kwargs):
+        return _workspace(os.path.abspath(normalized_ws))
+
+    monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
+
+    rc = cli_main.run([
+        "workspace",
+        "create",
+        "--directory",
+        "~/ecc-review-workspace",
+        "--pdk",
+        "ics55",
+        "--json",
+    ])
+
+    data = _response(capsys)
+    expected_directory = os.path.abspath(normalized_ws)
+    assert rc == 0
+    assert data == {
+        "cmd": "create_workspace",
+        "response": "success",
+        "data": {"directory": expected_directory, "workspace_id": expected_directory},
+        "message": [f"create workspace success : {expected_directory}"],
+    }
+
+
 def test_create_input_json_from_stdin(monkeypatch, tmp_path, capsys):
     capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     monkeypatch.setattr(
