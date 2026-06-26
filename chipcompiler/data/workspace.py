@@ -17,7 +17,7 @@ from .home import HomeData
 
 from .pdk import get_pdk, PDK
 from .step import StepEnum
-from chipcompiler.utility import Logger, create_logger, dict_to_str, find_files
+from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
 
 @dataclass
@@ -27,16 +27,16 @@ class OriginDesign:
     """
     name : str = "" # design name
     top_module : str = "" # top module name
-    origin_def : str = "" # original def file path
-    origin_verilog : str = "" # original verilog file path
-    input_filelist : str = "" # input filelist for synthesis
+    origin_def : Path | None = None # original def file path
+    origin_verilog : Path | None = None # original verilog file path
+    input_filelist : Path | None = None # input filelist for synthesis
     
 @dataclass
 class Flow:
     """
     Dataclass for design flow
     """
-    path : str = "" # flow file path
+    path : Path | None = None # flow file path
     data : dict = field(default_factory=dict) # flow steps
     
 @dataclass
@@ -44,13 +44,13 @@ class Workspace:
     """
     Dataclass for workspace information
     """
-    directory : str = "" # workspace directory
+    directory : Path | None = None # workspace directory
     design : OriginDesign = field(default_factory=OriginDesign) # original design info
     pdk : PDK = field(default_factory=PDK) # pdk information
     parameters : Parameters = field(default_factory=Parameters) # design parameters
     flow : Flow = field(default_factory=Flow) # design flow for this workspace
     home : HomeData = field(default_factory=HomeData) # home data for this workspace
-    config : dict = field(default_factory=dict) # workspace-level config paths
+    config : dict[str, Path] = field(default_factory=dict) # workspace-level config paths
     
     # logger
     logger : Logger = field(default_factory=Logger) # logger for this workspace
@@ -62,7 +62,7 @@ class WorkspaceStep:
     """
     # step basic info
     name : str = "" # step name
-    directory : str = "" # step working directory
+    directory : Path | None = None # step working directory
 
     # eda tool info
     tool : str = "" # eda tool name
@@ -103,28 +103,29 @@ def log_workspace_step(step : WorkspaceStep, logger : Logger):
     logger.log_separator()
 
 
-def build_workspace_config_paths(workspace: Workspace) -> dict:
+def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:
     """Build workspace-level config file paths."""
-    config_dir = f"{workspace.directory}/config"
+    workspace_dir = Path(workspace.directory) if workspace.directory is not None else Path("")
+    config_dir = workspace_dir / "config"
     return {
         "dir": config_dir,
-        "flow": f"{config_dir}/flow_config.json",
-        "db": f"{config_dir}/db_default_config.json",
-        f"{StepEnum.CTS.value}": f"{config_dir}/cts_default_config.json",
-        f"{StepEnum.DRC.value}": f"{config_dir}/drc_default_config.json",
-        f"{StepEnum.FLOORPLAN.value}": f"{config_dir}/fp_default_config.json",
-        f"{StepEnum.NETLIST_OPT.value}": f"{config_dir}/no_default_config_fixfanout.json",
-        f"{StepEnum.PLACEMENT.value}": f"{config_dir}/pl_default_config.json",
-        f"{StepEnum.PNP.value}": f"{config_dir}/pnp_default_config.json",
-        f"{StepEnum.ROUTING.value}": f"{config_dir}/rt_default_config.json",
-        f"{StepEnum.TIMING_OPT_DRV.value}": f"{config_dir}/to_default_config_drv.json",
-        f"{StepEnum.TIMING_OPT_HOLD.value}": f"{config_dir}/to_default_config_hold.json",
-        f"{StepEnum.TIMING_OPT_SETUP.value}": f"{config_dir}/to_default_config_setup.json",
-        f"{StepEnum.LEGALIZATION.value}": f"{config_dir}/pl_default_config.json",
-        f"{StepEnum.FILLER.value}": f"{config_dir}/pl_default_config.json",
-        f"{StepEnum.RCX.value}": f"{config_dir}/rcx.json",
-        f"{StepEnum.STA.value}": f"{config_dir}/sta.json",
-        "dreamplace": f"{config_dir}/dreamplace.json",
+        "flow": config_dir / "flow_config.json",
+        "db": config_dir / "db_default_config.json",
+        f"{StepEnum.CTS.value}": config_dir / "cts_default_config.json",
+        f"{StepEnum.DRC.value}": config_dir / "drc_default_config.json",
+        f"{StepEnum.FLOORPLAN.value}": config_dir / "fp_default_config.json",
+        f"{StepEnum.NETLIST_OPT.value}": config_dir / "no_default_config_fixfanout.json",
+        f"{StepEnum.PLACEMENT.value}": config_dir / "pl_default_config.json",
+        f"{StepEnum.PNP.value}": config_dir / "pnp_default_config.json",
+        f"{StepEnum.ROUTING.value}": config_dir / "rt_default_config.json",
+        f"{StepEnum.TIMING_OPT_DRV.value}": config_dir / "to_default_config_drv.json",
+        f"{StepEnum.TIMING_OPT_HOLD.value}": config_dir / "to_default_config_hold.json",
+        f"{StepEnum.TIMING_OPT_SETUP.value}": config_dir / "to_default_config_setup.json",
+        f"{StepEnum.LEGALIZATION.value}": config_dir / "pl_default_config.json",
+        f"{StepEnum.FILLER.value}": config_dir / "pl_default_config.json",
+        f"{StepEnum.RCX.value}": config_dir / "rcx.json",
+        f"{StepEnum.STA.value}": config_dir / "sta.json",
+        "dreamplace": config_dir / "dreamplace.json",
     }
 
 
@@ -225,17 +226,17 @@ def _set_nested_value(data: dict, path: tuple[str, ...], value) -> None:
     current[path[-1]] = value
 
 
-def _mapping_config_path(workspace: Workspace, mapping: WorkspaceConfigParameterMapping) -> str:
+def _mapping_config_path(workspace: Workspace, mapping: WorkspaceConfigParameterMapping) -> Path | str:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
     return workspace.config.get(mapping.config_key, "")
 
 
 def _reload_workspace_parameters(workspace: Workspace) -> None:
-    import os
-
-    if workspace.parameters.path and os.path.exists(workspace.parameters.path):
-        workspace.parameters = load_parameter(workspace.parameters.path)
+    if workspace.parameters.path:
+        parameter_path = Path(workspace.parameters.path)
+        if parameter_path.exists():
+            workspace.parameters = load_parameter(parameter_path)
 
 
 def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
@@ -310,26 +311,18 @@ def _rcx_temperature_token(temperature) -> str:
 
 def init_workspace_config(workspace: Workspace) -> None:
     """Create workspace-level configs, then refresh parameter/PDK-derived fields."""
-    import os
     import shutil
 
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
     config_dir = workspace.config["dir"]
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    root_dir = current_dir.rsplit("/", 1)[0]
-    ecc_config_dir = os.path.join(root_dir, "tools", "ecc", "configs")
-    dreamplace_config = os.path.join(
-        root_dir,
-        "tools",
-        "ecc_dreamplace",
-        "configs",
-        "dreamplace.json",
-    )
+    root_dir = Path(__file__).resolve().parent.parent
+    ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
+    dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace.json"
 
     _copy_missing_files(ecc_config_dir, config_dir)
-    if not os.path.exists(workspace.config["dreamplace"]):
+    if not workspace.config["dreamplace"].exists():
         shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
     _ensure_writable(config_dir)
 
@@ -349,14 +342,14 @@ def refresh_workspace_config(workspace: Workspace) -> None:
         workspace.config = build_workspace_config_paths(workspace)
 
     flow = json_read(workspace.config["flow"])
-    flow["ConfigPath"]["idb_path"] = workspace.config["db"]
-    flow["ConfigPath"]["ifp_path"] = workspace.config[f"{StepEnum.FLOORPLAN.value}"]
-    flow["ConfigPath"]["ipl_path"] = workspace.config[f"{StepEnum.PLACEMENT.value}"]
-    flow["ConfigPath"]["irt_path"] = workspace.config[f"{StepEnum.ROUTING.value}"]
-    flow["ConfigPath"]["idrc_path"] = workspace.config[f"{StepEnum.DRC.value}"]
-    flow["ConfigPath"]["icts_path"] = workspace.config[f"{StepEnum.CTS.value}"]
-    flow["ConfigPath"]["ito_path"] = workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"]
-    flow["ConfigPath"]["ipnp_path"] = workspace.config[f"{StepEnum.PNP.value}"]
+    flow["ConfigPath"]["idb_path"] = str(workspace.config["db"])
+    flow["ConfigPath"]["ifp_path"] = str(workspace.config[f"{StepEnum.FLOORPLAN.value}"])
+    flow["ConfigPath"]["ipl_path"] = str(workspace.config[f"{StepEnum.PLACEMENT.value}"])
+    flow["ConfigPath"]["irt_path"] = str(workspace.config[f"{StepEnum.ROUTING.value}"])
+    flow["ConfigPath"]["idrc_path"] = str(workspace.config[f"{StepEnum.DRC.value}"])
+    flow["ConfigPath"]["icts_path"] = str(workspace.config[f"{StepEnum.CTS.value}"])
+    flow["ConfigPath"]["ito_path"] = str(workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
+    flow["ConfigPath"]["ipnp_path"] = str(workspace.config[f"{StepEnum.PNP.value}"])
     json_write(workspace.config["flow"], flow)
 
     db = json_read(workspace.config["db"])
@@ -433,10 +426,8 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     json_write(workspace.config["dreamplace"], dreamplace)
 
 
-def sync_workspace_config_to_parameters(workspace: Workspace, config_path: str) -> bool:
+def sync_workspace_config_to_parameters(workspace: Workspace, config_path: str | Path) -> bool:
     """Sync managed fields from one workspace config file back into parameters.json."""
-    import os
-
     from chipcompiler.utility import json_read
 
     _reload_workspace_parameters(workspace)
@@ -444,11 +435,11 @@ def sync_workspace_config_to_parameters(workspace: Workspace, config_path: str) 
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
-    resolved_config_path = os.path.abspath(config_path)
+    resolved_config_path = Path(config_path).expanduser().resolve()
     changed = False
     for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
         mapped_path = _mapping_config_path(workspace, mapping)
-        if not mapped_path or os.path.abspath(mapped_path) != resolved_config_path:
+        if not mapped_path or Path(mapped_path).expanduser().resolve() != resolved_config_path:
             continue
 
         config = json_read(mapped_path)
@@ -469,12 +460,10 @@ def sync_workspace_config_to_parameters(workspace: Workspace, config_path: str) 
     return changed
 
 
-def _path_is_within(path: str, directory: str) -> bool:
-    import os
-
+def _path_is_within(path: str | Path, directory: str | Path) -> bool:
     try:
-        return os.path.commonpath([path, directory]) == directory
-    except ValueError:
+        return Path(path).resolve().is_relative_to(Path(directory).resolve())
+    except OSError:
         return False
 
 
@@ -483,11 +472,11 @@ def _reset_workspace_checklist(workspace: Workspace) -> None:
 
     checklist_path = workspace.home.data.get("checklist", "")
     if not checklist_path:
-        checklist_path = f"{workspace.directory}/home/checklist.json"
+        checklist_path = Path(workspace.directory) / "home" / "checklist.json"
     json_write(
         checklist_path,
         {
-            "path": checklist_path,
+            "path": str(checklist_path),
             "checklist": [],
         },
     )
@@ -520,16 +509,15 @@ def _reset_workspace_runtime_parameters(workspace: Workspace) -> None:
 
 def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
     """Delete old run artifacts and restore runtime files before a full-flow rerun."""
-    import os
     import shutil
 
-    workspace_root = os.path.realpath(workspace.directory)
+    workspace_root = Path(workspace.directory).resolve()
     step_directories = []
     for workspace_step in getattr(engine_flow, "workspace_steps", []):
         step_directory = getattr(workspace_step, "directory", "")
         if not step_directory:
             continue
-        resolved_step_directory = os.path.realpath(step_directory)
+        resolved_step_directory = Path(step_directory).resolve()
         if (
             resolved_step_directory == workspace_root
             or not _path_is_within(resolved_step_directory, workspace_root)
@@ -537,11 +525,11 @@ def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
             raise ValueError(f"refusing to delete step directory outside workspace: {step_directory}")
         step_directories.append(resolved_step_directory)
 
-    for step_directory in sorted(set(step_directories), key=len, reverse=True):
-        if not os.path.exists(step_directory):
+    for step_directory in sorted(set(step_directories), key=lambda path: len(str(path)), reverse=True):
+        if not step_directory.exists():
             continue
-        if os.path.islink(step_directory) or os.path.isfile(step_directory):
-            os.unlink(step_directory)
+        if step_directory.is_symlink() or step_directory.is_file():
+            step_directory.unlink()
         else:
             shutil.rmtree(step_directory)
 
@@ -550,7 +538,7 @@ def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
 
     workspace.home.reset()
     workspace.home.set_flow(workspace.flow.path)
-    workspace.home.set_checklist(f"{workspace.directory}/home/checklist.json")
+    workspace.home.set_checklist(workspace_root / "home" / "checklist.json")
     workspace.home.set_parameters(workspace.parameters.path)
     _reset_workspace_checklist(workspace)
     _reset_workspace_runtime_parameters(workspace)
@@ -572,20 +560,25 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
+    def _path_value(value) -> str:
+        return str(value) if value else ""
+
     db = json_read(workspace.config["db"])
-    db["INPUT"]["def_path"] = step.input.get("def", "")
-    db["INPUT"]["verilog_path"] = step.input.get("verilog", "")
-    db["OUTPUT"]["output_dir_path"] = step.output.get("dir", "")
+    db["INPUT"]["def_path"] = _path_value(step.input.get("def", ""))
+    db["INPUT"]["verilog_path"] = _path_value(step.input.get("verilog", ""))
+    db["OUTPUT"]["output_dir_path"] = _path_value(step.output.get("dir", ""))
     json_write(workspace.config["db"], db)
 
     if step.name == StepEnum.ROUTING.value:
         router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
-        router["RT"]["-temp_directory_path"] = step.data.get(f"{StepEnum.ROUTING.value}", "")
+        router["RT"]["-temp_directory_path"] = _path_value(
+            step.data.get(f"{StepEnum.ROUTING.value}", "")
+        )
         json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 
     if step.name == StepEnum.RCX.value:
         rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
-        rcx_output_dir = step.output.get("dir", "")
+        rcx_output_dir = _path_value(step.output.get("dir", ""))
         rcx["output"] = rcx_output_dir
         for corner in rcx.get("corners", []):
             corner_name = corner.get("name", "")
@@ -744,14 +737,14 @@ def _copy_file_safely(src: str, dst: str, logger, context: str) -> bool:
         return False
 
                      
-def create_workspace(directory : str,
-                     origin_def : str,
-                     origin_verilog : str,
+def create_workspace(directory : str | Path,
+                     origin_def : str | Path,
+                     origin_verilog : str | Path,
                      pdk : PDK | str,
                      parameters : Parameters | dict,
-                     input_filelist : str = "",
-                     pdk_root : str = "",
-                     pdk_json : str = "") -> Workspace:
+                     input_filelist : str | Path = "",
+                     pdk_root : str | Path = "",
+                     pdk_json : str | Path = "") -> Workspace:
     """
     Create a workspace for chip design flow.
 
@@ -773,9 +766,14 @@ def create_workspace(directory : str,
         - All input files are copied to workspace/origin/ directory
     """
     # create workspace directory
-    import os
+    import shutil
+
+    workspace_dir = Path(directory).expanduser().resolve()
+    origin_dir = workspace_dir / "origin"
+    home_dir = workspace_dir / "home"
+    log_dir = workspace_dir / "log"
     try:
-        os.makedirs(directory, exist_ok=True)
+        workspace_dir.mkdir(parents=True, exist_ok=True)
     except OSError as error:
         return None
     
@@ -806,70 +804,74 @@ def create_workspace(directory : str,
         workspace.design.top_module = workspace.parameters.data["Top module"]         
     
     # update path
-    workspace.directory = directory
+    workspace.directory = workspace_dir
     workspace.config = build_workspace_config_paths(workspace)
     
     # create logger first (needed for copy operations)
-    os.makedirs(f"{directory}/log", exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
     workspace.logger = create_logger(name=workspace.parameters.data["Design"],
-                                     log_dir=f"{directory}/log")
+                                     log_dir=log_dir)
 
     # update orign files to workspace origin folder
-    import shutil
-    os.makedirs(f"{directory}/origin", exist_ok=True)
-    os.makedirs(workspace.config["dir"], exist_ok=True)
-    if os.path.exists(origin_def):
-        shutil.copy(origin_def, f"{directory}/origin/{os.path.basename(origin_def)}")
-        workspace.design.origin_def = f"{directory}/origin/{os.path.basename(origin_def)}"
+    origin_dir.mkdir(parents=True, exist_ok=True)
+    workspace.config["dir"].mkdir(parents=True, exist_ok=True)
+    origin_def_path = Path(origin_def) if origin_def else None
+    if origin_def_path and origin_def_path.exists():
+        target = origin_dir / origin_def_path.name
+        shutil.copy(origin_def_path, target)
+        workspace.design.origin_def = target
     else:
-        workspace.design.origin_def = f"{directory}/origin/{workspace.design.name}.def"
+        workspace.design.origin_def = origin_dir / f"{workspace.design.name}.def"
 
-    if os.path.exists(origin_verilog):
-        shutil.copy(origin_verilog, f"{directory}/origin/{os.path.basename(origin_verilog)}")
-        workspace.design.origin_verilog = f"{directory}/origin/{os.path.basename(origin_verilog)}"
+    origin_verilog_path = Path(origin_verilog) if origin_verilog else None
+    if origin_verilog_path and origin_verilog_path.exists():
+        target = origin_dir / origin_verilog_path.name
+        shutil.copy(origin_verilog_path, target)
+        workspace.design.origin_verilog = target
     else:
-        workspace.design.origin_verilog = f"{directory}/origin/{workspace.design.name}.v"
+        workspace.design.origin_verilog = origin_dir / f"{workspace.design.name}.v"
 
     # Copy filelist and all referenced source files
-    if os.path.exists(input_filelist):
+    input_filelist_path = Path(input_filelist) if input_filelist else None
+    if input_filelist_path and input_filelist_path.exists():
         try:
             # Use new copy_filelist_with_sources to copy filelist + all RTL files
-            workspace.design.input_filelist = copy_filelist_with_sources(
-                input_filelist=input_filelist,
-                workspace_dir=directory,
+            workspace.design.input_filelist = Path(copy_filelist_with_sources(
+                input_filelist=str(input_filelist_path),
+                workspace_dir=str(workspace_dir),
                 logger=workspace.logger
-            )
+            ))
         except Exception as e:
             workspace.logger.error(f"Failed to copy filelist sources: {e}")
             workspace.logger.warning("Falling back to copying only filelist file")
             # Fallback: copy only filelist file (backward compatibility)
-            shutil.copy(input_filelist, f"{directory}/origin/{os.path.basename(input_filelist)}")
-            workspace.design.input_filelist = f"{directory}/origin/{os.path.basename(input_filelist)}"
+            target = origin_dir / input_filelist_path.name
+            shutil.copy(input_filelist_path, target)
+            workspace.design.input_filelist = target
 
     if workspace.pdk.sdc and workspace.pdk.sdc.exists():
-        sdc_target = Path(directory) / "origin" / workspace.pdk.sdc.name
+        sdc_target = origin_dir / workspace.pdk.sdc.name
         shutil.copy(workspace.pdk.sdc, sdc_target)
         workspace.pdk.sdc = sdc_target
     else:
         # create default sdc file
-        from .workspace import create_default_sdc
-        workspace.pdk.sdc = Path(directory) / "origin" / f"{workspace.design.name}.sdc"
+        workspace.pdk.sdc = origin_dir / f"{workspace.design.name}.sdc"
         create_default_sdc(workspace)
         
     if workspace.pdk.spef and workspace.pdk.spef.exists():
-        spef_target = Path(directory) / "origin" / workspace.pdk.spef.name
+        spef_target = origin_dir / workspace.pdk.spef.name
         shutil.copy(workspace.pdk.spef, spef_target)
         workspace.pdk.spef = spef_target
 
     init_workspace_config(workspace)
 
     # set home data
-    os.makedirs(f"{directory}/home", exist_ok=True)
-    workspace.flow.path = f"{directory}/home/flow.json"
-    workspace.parameters.path = f"{directory}/home/parameters.json"
-    workspace.home.init(path=f"{directory}/home/home.json")
+    home_dir.mkdir(parents=True, exist_ok=True)
+    workspace.flow.path = home_dir / "flow.json"
+    workspace.parameters.path = home_dir / "parameters.json"
+    workspace.home.init(path=home_dir / "home.json")
     workspace.home.set_flow(workspace.flow.path)
-    workspace.home.set_checklist(f"{directory}/home/checklist.json")
+    workspace.home.set_checklist(home_dir / "checklist.json")
     workspace.home.set_parameters(workspace.parameters.path)
     
     if workspace.pdk.root:
@@ -887,17 +889,19 @@ def create_workspace(directory : str,
      
     return workspace
 
-def load_workspace(directory : str) -> Workspace:
-    import os
-    if not os.path.exists(directory):
+def load_workspace(directory : str | Path) -> Workspace:
+    workspace_dir = Path(directory).expanduser().resolve()
+    origin_dir = workspace_dir / "origin"
+    home_dir = workspace_dir / "home"
+    if not workspace_dir.exists():
         return None
     
     # create workspace instance
     workspace = Workspace()
-    workspace.directory = directory
+    workspace.directory = workspace_dir
     workspace.config = build_workspace_config_paths(workspace)
 
-    parameters = load_parameter(f"{directory}/home/parameters.json")
+    parameters = load_parameter(home_dir / "parameters.json")
     if len(parameters.data)<=0:
         return None
     
@@ -908,12 +912,12 @@ def load_workspace(directory : str) -> Workspace:
         pdk_root=parameters.data.get("PDK Root", ""),
         pdk_config=parameters.data.get("PDK Config", ""),
     )
-    sdc_path = find_files(f"{directory}/origin", ".sdc")
+    sdc_path = list(origin_dir.rglob("*.sdc"))
     if len(sdc_path) > 0:
-        pdk.sdc = Path(sdc_path[0])
-    spef_path = find_files(f"{directory}/origin", ".spef")
+        pdk.sdc = sdc_path[0]
+    spef_path = list(origin_dir.rglob("*.spef"))
     if len(spef_path) > 0:
-        pdk.spef = Path(spef_path[0])
+        pdk.spef = spef_path[0]
         
     # update lef and lib paths based on config
     from chipcompiler.utility import json_read
@@ -929,36 +933,36 @@ def load_workspace(directory : str) -> Workspace:
     #update config
     workspace.design.name = parameters.data.get("Design", "")
     workspace.design.top_module = parameters.data.get("Top module", "")  
-    def_path = find_files(f"{directory}/origin", ".def")
-    def_gz_path = find_files(f"{directory}/origin", ".def.gz")
+    def_path = list(origin_dir.rglob("*.def"))
+    def_gz_path = list(origin_dir.rglob("*.def.gz"))
     if len(def_path) > 0:
         workspace.design.origin_def = def_path[0]
     if len(def_gz_path) > 0:
         workspace.design.origin_def = def_gz_path[0]
         
-    verilog_path = find_files(f"{directory}/origin", ".v")
-    verilog_gz_path = find_files(f"{directory}/origin", ".v.gz")
+    verilog_path = list(origin_dir.rglob("*.v"))
+    verilog_gz_path = list(origin_dir.rglob("*.v.gz"))
     if len(verilog_path) > 0:
         workspace.design.origin_verilog = verilog_path[0]
     if len(verilog_gz_path) > 0:
         workspace.design.origin_verilog = verilog_gz_path[0]
     
-    filelist_path = f"{directory}/origin/filelist"
-    if os.path.exists(filelist_path):
+    filelist_path = origin_dir / "filelist"
+    if filelist_path.exists():
         workspace.design.input_filelist = filelist_path
         
     # set home data
-    os.makedirs(f"{directory}/home", exist_ok=True)
-    os.makedirs(workspace.config["dir"], exist_ok=True)
-    workspace.flow.path = f"{directory}/home/flow.json"
-    workspace.home.init(path=f"{directory}/home/home.json")
+    home_dir.mkdir(parents=True, exist_ok=True)
+    workspace.config["dir"].mkdir(parents=True, exist_ok=True)
+    workspace.flow.path = home_dir / "flow.json"
+    workspace.home.init(path=home_dir / "home.json")
     workspace.home.set_flow(workspace.flow.path)
-    workspace.home.set_checklist(f"{directory}/home/checklist.json")
+    workspace.home.set_checklist(home_dir / "checklist.json")
     workspace.home.set_parameters(workspace.parameters.path)
     
     # create logger first (needed for copy operations)
     workspace.logger = create_logger(name=parameters.data["Design"],
-                                     log_dir=f"{directory}/log")
+                                     log_dir=workspace_dir / "log")
     
     log_workspace(workspace)
     log_parameters(workspace)

@@ -1,13 +1,95 @@
 import json
+from pathlib import Path
 
 from chipcompiler.data import create_workspace, load_workspace
 from chipcompiler.data.workspace import (
+    Workspace,
+    build_workspace_config_paths,
     init_workspace_config,
     prepare_workspace_for_rerun,
     refresh_workspace_config,
     sync_workspace_config_to_parameters,
 )
 from chipcompiler.utility import json_read, json_write
+
+
+def test_create_workspace_returns_path_fields_and_persists_string_paths(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+    )
+
+    assert workspace is not None
+    assert workspace.directory == workspace_dir.resolve()
+    assert isinstance(workspace.directory, Path)
+    assert isinstance(workspace.design.origin_verilog, Path)
+    assert isinstance(workspace.design.origin_def, Path)
+    assert isinstance(workspace.flow.path, Path)
+    assert isinstance(workspace.parameters.path, Path)
+    assert isinstance(workspace.home.path, Path)
+    assert all(isinstance(path, Path) for path in workspace.config.values())
+
+    home_data = json.loads((workspace_dir / "home" / "home.json").read_text())
+    assert home_data["flow"] == str(workspace.flow.path)
+    assert home_data["parameters"] == str(workspace.parameters.path)
+    assert home_data["checklist"] == str(workspace_dir.resolve() / "home" / "checklist.json")
+    assert isinstance(home_data["flow"], str)
+
+    flow_config = json_read(workspace.config["flow"])
+    assert flow_config["ConfigPath"]["idb_path"] == str(workspace.config["db"])
+    assert isinstance(flow_config["ConfigPath"]["idb_path"], str)
+
+
+def test_load_workspace_restores_path_fields_from_existing_json(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+    )
+
+    loaded = load_workspace(workspace_dir)
+
+    assert loaded is not None
+    assert loaded.directory == workspace_dir.resolve()
+    assert loaded.design.origin_verilog == workspace_dir.resolve() / "origin" / "gcd.v"
+    assert loaded.design.origin_def == workspace_dir.resolve() / "origin" / "gcd.def"
+    assert loaded.flow.path == workspace_dir.resolve() / "home" / "flow.json"
+    assert loaded.parameters.path == workspace_dir.resolve() / "home" / "parameters.json"
+    assert loaded.home.path == workspace_dir.resolve() / "home" / "home.json"
+    assert all(isinstance(path, Path) for path in loaded.config.values())
+
+
+def test_build_workspace_config_paths_returns_path_objects(tmp_path):
+    workspace = Workspace(directory=tmp_path / "workspace")
+
+    paths = build_workspace_config_paths(workspace)
+
+    assert paths["dir"] == tmp_path / "workspace" / "config"
+    assert paths["flow"] == tmp_path / "workspace" / "config" / "flow_config.json"
+    assert all(isinstance(path, Path) for path in paths.values())
 
 
 def test_create_workspace_persists_pdk_root_in_parameters(
