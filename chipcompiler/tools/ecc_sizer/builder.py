@@ -15,12 +15,12 @@ from .utility import find_sizer_root
 def build_step(
     workspace: Workspace,
     step_name: str,
-    input_def: str | Path,
-    input_verilog: str | Path,
-    input_db: str | Path | None = None,
-    output_def: str | Path | None = None,
-    output_verilog: str | Path | None = None,
-    output_gds: str | Path | None = None,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | None = None,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+    output_gds: Path | None = None,
 ) -> WorkspaceStep:
     safe_step_name = "_".join(step_name.split()).lower()
     step_directory = Path(workspace.directory) / f"{safe_step_name}_sizer"
@@ -67,29 +67,28 @@ def build_checklist(workspace: Workspace, workspace_step: WorkspaceStep) -> None
     checklist.build_checklist()
 
 
-def _copy_or_seed_template(template: str | Path, target: str | Path, fallback: str) -> None:
-    target_path = Path(target)
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    if template and Path(template).exists():
-        shutil.copy2(template, target_path)
+def _copy_or_seed_template(template: Path | None, target: Path, fallback: str) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if template and template.exists():
+        shutil.copy2(template, target)
         return
 
-    with target_path.open("w", encoding="utf-8") as file:
+    with target.open("w", encoding="utf-8") as file:
         file.write(fallback)
 
 
-def _append_text(path: str | Path, text: str) -> None:
-    with Path(path).open("a", encoding="utf-8") as file:
+def _append_text(path: Path, text: str) -> None:
+    with path.open("a", encoding="utf-8") as file:
         file.write(text)
 
 
-def _sizer_env_template() -> str:
+def _sizer_env_template() -> Path | None:
     sizer_root = find_sizer_root()
     if sizer_root is None:
-        return ""
+        return None
 
     submit_dir = sizer_root / "submit"
-    return str(submit_dir / "env_base_file")
+    return submit_dir / "env_base_file"
 
 
 def _tech_text(workspace: Workspace) -> str:

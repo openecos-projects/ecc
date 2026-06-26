@@ -285,8 +285,8 @@ def sync_workspace_config(directory: str, config_path: str) -> dict:
         response_data["directory"] = resolved_directory
         response_data["config_path"] = resolved_config_path
 
-        config_dir = os.path.realpath(os.path.join(resolved_directory, "config"))
-        real_config_path = os.path.realpath(resolved_config_path)
+        config_dir = Path(resolved_directory) / "config"
+        real_config_path = Path(resolved_config_path).resolve()
         if not _path_is_within(real_config_path, config_dir):
             return workspace_response(
                 cmd,
@@ -301,7 +301,7 @@ def sync_workspace_config(directory: str, config_path: str) -> dict:
 
         parameters_changed = data_api.sync_workspace_config_to_parameters(
             workspace,
-            resolved_config_path,
+            real_config_path,
         )
         response_data["parameters_changed"] = parameters_changed
         if parameters_changed:
@@ -526,10 +526,10 @@ def _prepare_workspace_for_rerun(workspace, engine_flow):
     data_api.prepare_workspace_for_rerun(workspace, engine_flow)
 
 
-def _path_is_within(path: str, directory: str) -> bool:
+def _path_is_within(path: Path, directory: Path) -> bool:
     try:
-        return os.path.commonpath([path, directory]) == directory
-    except ValueError:
+        return path.resolve().is_relative_to(directory.resolve())
+    except OSError:
         return False
 
 

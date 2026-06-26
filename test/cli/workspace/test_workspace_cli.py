@@ -412,7 +412,7 @@ def test_sync_config_cli_syncs_parameters_and_refreshes_when_changed(monkeypatch
         },
         "message": [f"sync workspace config success : {os.path.abspath(config_path)}"],
     }
-    assert synced == [(os.path.abspath(ws), os.path.abspath(config_path))]
+    assert synced == [(os.path.abspath(ws), config_path.resolve())]
     assert refreshed == [os.path.abspath(ws)]
 
 

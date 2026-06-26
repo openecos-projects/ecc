@@ -251,9 +251,9 @@ class EngineFlow:
                 input_db = None
             else:
                 # use the output def and verilog from last step.
-                input_def = pre_step.output.get("def", "")
-                input_verilog = pre_step.output.get("verilog", "")
-                input_db = pre_step.output.get("db", "")
+                input_def = pre_step.output.get("def")
+                input_verilog = pre_step.output.get("verilog")
+                input_db = pre_step.output.get("db")
 
             from chipcompiler.tools import create_step, run_step
             # create workspace step

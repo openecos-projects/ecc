@@ -226,10 +226,13 @@ def _set_nested_value(data: dict, path: tuple[str, ...], value) -> None:
     current[path[-1]] = value
 
 
-def _mapping_config_path(workspace: Workspace, mapping: WorkspaceConfigParameterMapping) -> Path | str:
+def _mapping_config_path(
+    workspace: Workspace,
+    mapping: WorkspaceConfigParameterMapping,
+) -> Path | None:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
-    return workspace.config.get(mapping.config_key, "")
+    return workspace.config.get(mapping.config_key)
 
 
 def _reload_workspace_parameters(workspace: Workspace) -> None:
@@ -426,7 +429,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     json_write(workspace.config["dreamplace"], dreamplace)
 
 
-def sync_workspace_config_to_parameters(workspace: Workspace, config_path: str | Path) -> bool:
+def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path) -> bool:
     """Sync managed fields from one workspace config file back into parameters.json."""
     from chipcompiler.utility import json_read
 
@@ -439,7 +442,7 @@ def sync_workspace_config_to_parameters(workspace: Workspace, config_path: str |
     changed = False
     for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
         mapped_path = _mapping_config_path(workspace, mapping)
-        if not mapped_path or Path(mapped_path).expanduser().resolve() != resolved_config_path:
+        if mapped_path is None or mapped_path.expanduser().resolve() != resolved_config_path:
             continue
 
         config = json_read(mapped_path)
@@ -460,7 +463,7 @@ def sync_workspace_config_to_parameters(workspace: Workspace, config_path: str |
     return changed
 
 
-def _path_is_within(path: str | Path, directory: str | Path) -> bool:
+def _path_is_within(path: Path, directory: Path) -> bool:
     try:
         return Path(path).resolve().is_relative_to(Path(directory).resolve())
     except OSError:

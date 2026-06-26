@@ -14,14 +14,14 @@ from chipcompiler.data import (
 
 def build_step(workspace: Workspace,
                step_name: str,
-               input_def : str | Path,
-               input_verilog : str | Path,
-               input_db : str | Path | None = None,
-               output_def : str | Path | None = None,
-               output_verilog : str | Path | None = None,
-               output_gds : str | Path | None = None,
+               input_def : Path | None,
+               input_verilog : Path | None,
+               input_db : Path | None = None,
+               output_def : Path | None = None,
+               output_verilog : Path | None = None,
+               output_gds : Path | None = None,
                tool : str = "ecc",
-               step_directory: str | Path | None = None) -> WorkspaceStep:
+               step_directory: Path | None = None) -> WorkspaceStep:
     """
     Build the given step in the specified workspace.
     """
@@ -40,8 +40,8 @@ def build_step(workspace: Workspace,
     
     # build input paths
     step.input = {
-        "def": Path(input_def) if input_def else "",
-        "verilog": Path(input_verilog) if input_verilog else "",
+        "def": Path(input_def) if input_def else None,
+        "verilog": Path(input_verilog) if input_verilog else None,
         "db": Path(input_db) if input_db else None
     }  
     

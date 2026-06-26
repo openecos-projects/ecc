@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import logging
+from pathlib import Path
 
 from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
 
@@ -52,12 +53,12 @@ def load_eda_module(eda_tool: str, check_dependency: bool = True):
 def create_step(workspace : Workspace, 
                step : str, 
                eda : str,
-               input_def : str,
-               input_verilog : str,
-               input_db : str | None = None,
-               output_def : str = None,
-               output_verilog : str = None,
-               output_gds : str = None) -> WorkspaceStep:
+               input_def : Path | None,
+               input_verilog : Path | None,
+               input_db : Path | None = None,
+               output_def : Path | None = None,
+               output_verilog : Path | None = None,
+               output_gds : Path | None = None) -> WorkspaceStep:
     """
     Create and return an EDA tool instance based on the given step and eda tool name.
     """

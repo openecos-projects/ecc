@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 import sys
 import os
+from pathlib import Path
        
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
 from chipcompiler.tools.ecc.module import ECCToolsModule
@@ -16,7 +17,7 @@ from chipcompiler.utility import json_read
 def create_db_engine(workspace: Workspace,
                      step: WorkspaceStep) -> ECCToolsModule:
     """"""
-    def input_path_exists(path: str | os.PathLike) -> str | None:
+    def input_path_exists(path: Path | None) -> str | None:
         if not path:
             return None
 

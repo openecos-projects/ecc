@@ -42,12 +42,12 @@ def _set_step_fields(params: dict, step: WorkspaceStep) -> dict:
 def build_step(
     workspace: Workspace,
     step_name: str,
-    input_def: str | Path,
-    input_verilog: str | Path,
-    input_db: str | Path | None = None,
-    output_def: str | Path | None = None,
-    output_verilog: str | Path | None = None,
-    output_gds: str | Path | None = None,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | None = None,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+    output_gds: Path | None = None,
 ) -> WorkspaceStep:
     step = ecc_builder.build_step(
         workspace=workspace,
