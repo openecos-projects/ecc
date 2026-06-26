@@ -87,19 +87,19 @@ class ECCToolsModule:
                     feature_dir : str):
         """init_config"""
         self.ecc.flow_init(
-            flow_config=flow_config
+            flow_config=_path_text(flow_config)
         )
 
         self.ecc.db_init(
-            config_path=db_config,
-            output_path=output_dir,
-            feature_path=feature_dir,
+            config_path=_path_text(db_config),
+            output_path=_path_text(output_dir),
+            feature_path=_path_text(feature_dir),
         )
 
     def update_step_paths(self, output_dir: str, feature_dir: str):
         self.ecc.db_init(
-            output_path=output_dir,
-            feature_path=feature_dir,
+            output_path=_path_text(output_dir),
+            feature_path=_path_text(feature_dir),
         )
 
     def update_sta_data_config(self,
@@ -118,7 +118,7 @@ class ECCToolsModule:
     # data api
     ########################################################################
     def idb_init(self, config_path: str):
-        return self.ecc.idb_init(config_path)
+        return self.ecc.idb_init(_path_text(config_path))
 
     def set_net(self, 
                 net_name: str, 

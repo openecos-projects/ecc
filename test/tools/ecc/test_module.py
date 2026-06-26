@@ -11,6 +11,10 @@ class FakeEcc:
     def __init__(self):
         self.calls = []
 
+    def flow_init(self, **kwargs):
+        self.calls.append(("flow_init", kwargs))
+        return True
+
     def init_rcx(self, **kwargs):
         self.calls.append(kwargs)
         return True
@@ -37,6 +41,10 @@ class FakeEcc:
 
     def read_sdc(self, sdc_path):
         self.calls.append(("read_sdc", sdc_path))
+        return True
+
+    def idb_init(self, config_path):
+        self.calls.append(("idb_init", config_path))
         return True
 
     def view_json_save(self, **kwargs):
@@ -106,8 +114,19 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
+    module.init_config(
+        flow_config=Path("/ws/config/flow.json"),
+        db_config=Path("/ws/config/db.json"),
+        output_dir=Path("/ws/output"),
+        feature_dir=Path("/ws/feature"),
+    )
+    module.update_step_paths(
+        output_dir=Path("/ws/output"),
+        feature_dir=Path("/ws/feature"),
+    )
     module.init_techlef(Path("/pdk/tech.lef"))
     module.init_lefs([Path("/pdk/std.lef")])
+    module.idb_init(Path("/ws/config/db.json"))
     module.update_sta_data_config(
         db_config=Path("/ws/config/db.json"),
         output_dir=Path("/ws/out"),
@@ -124,8 +143,25 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     module.read_sdc(Path("/ws/design.sdc"))
 
     assert module.ecc.calls == [
+        ("flow_init", {"flow_config": "/ws/config/flow.json"}),
+        (
+            "db_init",
+            {
+                "config_path": "/ws/config/db.json",
+                "output_path": "/ws/output",
+                "feature_path": "/ws/feature",
+            },
+        ),
+        (
+            "db_init",
+            {
+                "output_path": "/ws/output",
+                "feature_path": "/ws/feature",
+            },
+        ),
         ("tech_lef_init", "/pdk/tech.lef"),
         ("lef_init", {"lef_paths": ["/pdk/std.lef"]}),
+        ("idb_init", "/ws/config/db.json"),
         (
             "db_init",
             {
