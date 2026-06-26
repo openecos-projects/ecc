@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from chipcompiler.data import OriginDesign, PDK, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc import runner as ecc_runner
 
