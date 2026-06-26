@@ -1,4 +1,8 @@
+import json
+from pathlib import Path
+
 from chipcompiler.data import get_design_parameters, get_parameters
+from chipcompiler.data.parameter import load_parameter, save_parameter
 
 
 def test_get_design_parameters_ics55_gcd_overrides_fields():
@@ -108,3 +112,32 @@ def test_get_design_parameters_sg13g2_returns_base_template():
     assert parameters.data["PDK"] == "sg13g2"
     assert parameters.data["Design"] == ""
     assert parameters.data["Top module"] == ""
+
+
+def test_load_parameter_accepts_path_and_stores_path_object(tmp_path):
+    path = tmp_path / "parameters.json"
+    path.write_text(json.dumps({"Design": "gcd"}))
+
+    parameters = load_parameter(path)
+
+    assert isinstance(parameters.path, Path)
+    assert parameters.path == path
+    assert parameters.data["Design"] == "gcd"
+
+
+def test_get_parameters_accepts_path_and_save_writes_to_path(tmp_path):
+    path = tmp_path / "parameters.json"
+
+    parameters = get_parameters("ics55", path)
+    parameters.data["Design"] = "gcd"
+
+    assert isinstance(parameters.path, Path)
+    assert parameters.path == path
+    assert save_parameter(parameters)
+    assert json.loads(path.read_text())["Design"] == "gcd"
+
+
+def test_get_parameters_without_path_uses_none():
+    parameters = get_parameters("ics55")
+
+    assert parameters.path is None

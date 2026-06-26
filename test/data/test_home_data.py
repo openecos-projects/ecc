@@ -1,5 +1,6 @@
 import json
 from multiprocessing import Process
+from pathlib import Path
 
 from chipcompiler.data.home import HomeData
 
@@ -224,3 +225,32 @@ def test_concurrent_home_updates_preserve_schema_and_monitor_rows(tmp_path):
     assert data["checklist"] == "/ws/home/checklist.json"
     assert data["parameters"] == "/ws/home/parameters.json"
     assert path.with_name("home.json.lock").exists()
+
+
+def test_init_accepts_path_and_stores_path_object(tmp_path):
+    path = tmp_path / "home.json"
+
+    home = HomeData()
+    home.init(path)
+
+    assert isinstance(home.path, Path)
+    assert home.path == path
+    assert path.exists()
+
+
+def test_path_setters_accept_path_and_persist_strings(tmp_path):
+    path = tmp_path / "home.json"
+    flow_path = tmp_path / "flow.json"
+    parameters_path = tmp_path / "parameters.json"
+    checklist_path = tmp_path / "checklist.json"
+
+    home = HomeData()
+    home.init(path)
+    home.set_flow(flow_path)
+    home.set_parameters(parameters_path)
+    home.set_checklist(checklist_path)
+
+    data = _read_json(path)
+    assert data["flow"] == str(flow_path)
+    assert data["parameters"] == str(parameters_path)
+    assert data["checklist"] == str(checklist_path)

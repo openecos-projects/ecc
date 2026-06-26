@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-import os
 from enum import Enum
+from pathlib import Path
+
 from chipcompiler.utility import json_read, json_write
 
 class CheckState(Enum):
@@ -15,12 +16,12 @@ class Checklist:
     """
     Checklist information
     """
-    def __init__(self, path : str):
-        self.path : str = path # checklist file path
+    def __init__(self, path : str | Path):
+        self.path : Path = Path(path) # checklist file path
         self.header = ["step", "type", "item", "state", "info"]
         self.data : dict = {} # checklist data
         
-        if os.path.exists(self.path):
+        if self.path.exists():
             self.data = json_read(self.path)
         else:
             self.save()
@@ -28,8 +29,9 @@ class Checklist:
         self.data = json_read(self.path)
         
         if len(self.data) == 0:
-            self.data["path"] = path
+            self.data["path"] = str(self.path)
             self.data["checklist"] = []
+            self.save()
         else:
             for check_item in self.data.get("checklist", []):
                 check_item.setdefault("info", "")
