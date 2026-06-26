@@ -5,8 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
+import chipcompiler.utility as chipcompiler_utility
+from chipcompiler.tools.ecc import plot as ecc_plot
 from chipcompiler.tools.ecc import service as ecc_service
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
+from chipcompiler.tools.ecc.metrics import build_metrics_net_opt
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.subflow import EccSubFlow
 
@@ -59,6 +62,24 @@ class FakeEcc:
         self.calls.append(("view_json_apply_edits", kwargs))
         return True
 
+    def __getattr__(self, name):
+        def record_call(*args, **kwargs):
+            self.calls.append((name, args, kwargs))
+            return True
+
+        return record_call
+
+
+def _assert_no_path_values(value):
+    if isinstance(value, Path):
+        raise AssertionError(f"native ECC boundary received Path: {value!r}")
+    if isinstance(value, dict):
+        for item in value.values():
+            _assert_no_path_values(item)
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            _assert_no_path_values(item)
+
 
 def test_ecc_tools_module_imports_installed_native_extension():
     module = ECCToolsModule()
@@ -96,7 +117,7 @@ def test_view_json_save_passes_output_options():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.view_json_save(output_dir="/tmp/view_json", json_format="compact", compress=True) is True
+    assert module.view_json_save(output_dir=Path("/tmp/view_json"), json_format="compact", compress=True) is True
 
     assert module.ecc.calls == [
         ("view_json_save", {"output_dir": "/tmp/view_json", "json_format": "compact", "compress": True}),
@@ -107,7 +128,7 @@ def test_view_json_apply_edits_passes_compress_option():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.view_json_apply_edits(edits_path="/tmp/view_json/edits/layout_edits.json.gz", compress=True) is True
+    assert module.view_json_apply_edits(edits_path=Path("/tmp/view_json/edits/layout_edits.json.gz"), compress=True) is True
 
     assert module.ecc.calls == [
         ("view_json_apply_edits", {"edits_path": "/tmp/view_json/edits/layout_edits.json.gz", "compress": True}),
@@ -179,6 +200,167 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
         ("read_liberty", ["/pdk/lib.lib"]),
         ("read_sdc", "/ws/design.sdc"),
     ]
+
+
+def test_ecc_runtime_wrappers_stringify_path_arguments():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    module.read_def(Path("/ws/input.def"))
+    module.read_verilog(Path("/ws/input.v"), "gcd")
+    module.def_save(Path("/ws/output/gcd.def.gz"))
+    module.gds_save(Path("/ws/output/gcd.gds.gz"), is_harden=True)
+    module.tcl_save(Path("/ws/script/out.tcl"))
+    module.verilog_save(Path("/ws/output/gcd.v.gz"))
+    module.json_save(Path("/ws/output/gcd.json"))
+    module.save_data(Path("/ws/output/db"))
+    module.load_data(Path("/ws/input/db"))
+    module.write_soc_json(Path("/ws/output/soc.json"))
+    module.feature_sammry(Path("/ws/feature/db.json"))
+    module.feature_step("placement", Path("/ws/feature/step.json"))
+    module.feature_eval_map(Path("/ws/feature/eval.json"), 4, 4)
+    module.feature_eval_summary(Path("/ws/feature/eval_summary.json"), 8)
+    module.feature_timing_eval_summary(Path("/ws/feature/timing.json"))
+    module.feature_net_eval(Path("/ws/feature/net.json"))
+    module.feature_cong_map("routing", Path("/ws/feature/cong"))
+    module.report_wirelength(Path("/ws/report/wire.rpt"))
+    module.report_summary(Path("/ws/report/db.rpt"))
+    module.report_congestion(Path("/ws/report/cong.rpt"))
+    module.report_dangling_net(Path("/ws/report/dangling.rpt"))
+    module.report_route(path=Path("/ws/report/route.rpt"))
+    module.report_drc(Path("/ws/report/drc.rpt"))
+    module.run_cts(Path("/ws/config/cts.json"), Path("/ws/data/cts"))
+    module.report_cts(Path("/ws/report/cts"))
+    module.feature_cts_map(Path("/ws/feature/cts_map.json"))
+    module.init_drc(Path("/ws/data/drc"))
+    module.run_drc(Path("/ws/config/drc.json"), Path("/ws/report/drc.rpt"))
+    module.save_drc(Path("/ws/feature/drc.json"))
+    module.pnp(Path("/ws/config/pnp.json"))
+    module.run_placement(Path("/ws/config/place.json"))
+    module.init_pl(Path("/ws/config/place.json"))
+    module.feature_placement_map(Path("/ws/feature/place_map.json"))
+    module.run_incremental_flow(Path("/ws/config/incremental.json"))
+    module.run_legalize(Path("/ws/config/legalize.json"))
+    module.run_filler(Path("/ws/config/filler.json"))
+    module.run_macro_placement(Path("/ws/config/macro.json"), Path("/ws/script/macro.tcl"))
+    module.run_refinement(Path("/ws/script/refine.tcl"))
+    module.run_routing(Path("/ws/config/route.json"))
+    module.feature_route_read(Path("/ws/feature/route_read.json"))
+    module.feature_route(Path("/ws/feature/route.json"))
+    module.run_sta(Path("/ws/data/sta"))
+    module.report_sta(Path("/ws/report/sta.rpt"))
+    module.init_log(Path("/ws/log"))
+    module.set_design_workspace(Path("/ws/design"))
+    module.read_lef_def([Path("/pdk/tech.lef")], Path("/ws/design.def"))
+    module.read_netlist(Path("/ws/design.v"))
+    module.read_spef(Path("/ws/design.spef"))
+    module.write_abstract_lef(Path("/ws/output/abstract.lef"))
+    module.write_timing_model(Path("/ws/output/timing.lib"))
+    module.run_to(Path("/ws/config/to.json"))
+    module.run_timing_opt_drv(Path("/ws/config/drv.json"))
+    module.run_timing_opt_hold(Path("/ws/config/hold.json"))
+    module.run_timing_opt_setup(Path("/ws/config/setup.json"))
+    module.layout_patchs(Path("/ws/layout/patches.json"))
+    module.layout_graph(Path("/ws/layout/graph.json"))
+    module.generate_vectors(Path("/ws/vectors"))
+    module.vectors_nets_to_def(Path("/ws/vectors"))
+    module.vectors_nets_patterns_to_def(Path("/ws/vectors/patterns.json"))
+    module.get_timing_wire_graph(Path("/ws/graph/wire.json"))
+    module.get_timing_instance_graph(Path("/ws/graph/inst.json"))
+    module.cell_density(save_path=Path("/ws/eval/cell.csv"))
+    module.pin_density(save_path=Path("/ws/eval/pin.csv"))
+    module.net_density(save_path=Path("/ws/eval/net.csv"))
+    module.rudy_congestion(save_path=Path("/ws/eval/rudy.csv"))
+    module.lut_rudy_congestion(save_path=Path("/ws/eval/lutrudy.csv"))
+    module.egr_congestion(save_path=Path("/ws/eval/egr.csv"))
+    module.eval_cell_hierarchy(Path("/ws/eval/cell.png"), 1, 1)
+    module.eval_macro_hierarchy(Path("/ws/eval/macro.png"), 1, 1)
+    module.eval_macro_connection(Path("/ws/eval/macro_conn.png"), 1, 1)
+    module.eval_macro_pin_connection(Path("/ws/eval/macro_pin.png"), 1, 1)
+    module.eval_macro_io_pin_connection(Path("/ws/eval/macro_io.png"), 1, 1)
+    module.run_net_opt(Path("/ws/config/fixfanout.json"))
+
+    _assert_no_path_values(module.ecc.calls)
+
+
+def test_ecc_metrics_accept_path_feature_paths(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.NETLIST_OPT.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+
+    metrics = build_metrics_net_opt(workspace, step)
+
+    assert metrics.report == [
+        (str(step.feature["step"]).replace(".json", ".png"), f"{step.name} step metrics:\n")
+    ]
+
+
+def test_ecc_plot_step_metrics_accepts_path_metrics(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.NETLIST_OPT.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.analysis["metrics"].write_text("{}", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(
+        ecc_plot,
+        "plot_metrics",
+        lambda metrics, output_path: calls.append((metrics, output_path)) or True,
+    )
+
+    assert ecc_plot.ECCToolsPlot(workspace, step).plot_step_metrics() is True
+    assert calls == [
+        ({}, str(step.analysis["metrics"]).replace(".json", ".png")),
+    ]
+
+
+def test_ecc_plot_instance_distribution_accepts_path_feature_db(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.NETLIST_OPT.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["db"].write_text(
+        json.dumps({"Instances": {"stdcell": {"num": 1, "area": 2, "pin_num": 3}}}),
+        encoding="utf-8",
+    )
+    plot_calls = []
+    metric_calls = []
+    workspace.home = SimpleNamespace(
+        set_metrics_inst_dist=lambda image_path: metric_calls.append(image_path),
+    )
+    monkeypatch.setattr(
+        chipcompiler_utility,
+        "plot_bar_chart",
+        lambda **kwargs: plot_calls.append(kwargs) or True,
+    )
+
+    assert ecc_plot.ECCToolsPlot(workspace, step).plot_instance_distribution() is True
+
+    expected_image_path = str(step.feature["db"]).replace(".json", ".inst_dist.png")
+    assert plot_calls[0]["output_path"] == expected_image_path
+    assert metric_calls == [expected_image_path]
 
 
 def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):

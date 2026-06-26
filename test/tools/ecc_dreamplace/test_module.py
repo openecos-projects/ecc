@@ -24,21 +24,21 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
     workspace = Workspace(
         directory=str(tmp_path / "workspace"),
         design=OriginDesign(name="gcd"),
-        config={"dreamplace": str(config_path)},
+        config={"dreamplace": config_path},
     )
     result_dir = tmp_path / "data" / "pl"
     step = WorkspaceStep(
         name=StepEnum.PLACEMENT.value,
-        data={"dir": str(tmp_path / "data"), StepEnum.PLACEMENT.value: str(result_dir)},
+        data={"dir": tmp_path / "data", StepEnum.PLACEMENT.value: result_dir},
     )
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
         ecc_module=None,
-        input_def="input.def",
-        input_verilog="input.v",
-        output_def="output.def",
-        output_verilog="output.v",
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+        output_def=tmp_path / "output.def",
+        output_verilog=tmp_path / "output.v",
     )
 
     params = module._build_params(FakeParams, legalize_only=False)
@@ -49,7 +49,7 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
     assert params.timing_opt_flag == 0
     assert params.timing_eval_flag == 0
     assert params.differentiable_timing_obj == 0
-    assert params.def_input == "input.def"
-    assert params.verilog_input == "input.v"
+    assert params.def_input == str(tmp_path / "input.def")
+    assert params.verilog_input == str(tmp_path / "input.v")
     assert params.result_dir == str(result_dir)
     assert params.base_design_name == "gcd"

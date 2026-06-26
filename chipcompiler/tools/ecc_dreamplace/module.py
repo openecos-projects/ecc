@@ -24,12 +24,12 @@ class DreamplaceModule:
         self.workspace = workspace
         self.step = step
         self.ecc_module = ecc_module
-        self.input_def = input_def
-        self.input_verilog = input_verilog
-        self.output_def = output_def
-        self.output_verilog = output_verilog
+        self.input_def = str(input_def)
+        self.input_verilog = str(input_verilog)
+        self.output_def = str(output_def)
+        self.output_verilog = str(output_verilog)
         self.param_path = workspace.config["dreamplace"]
-        self.result_dir = step.data.get(step.name, step.data["dir"])
+        self.result_dir = str(step.data.get(step.name, step.data["dir"]))
 
     def _build_params(self, params_cls, legalize_only: bool):
         with open(self.param_path, encoding="utf-8") as f_reader:

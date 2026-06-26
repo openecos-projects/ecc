@@ -138,7 +138,7 @@ def build_metrics_floorplan(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png")
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -146,7 +146,7 @@ def build_metrics_floorplan(workspace: Workspace,
     if save_metrics(step_metrics):
         return step_metrics
     else:
-        return None 
+        return None
 
 def build_metrics_net_opt(workspace: Workspace, 
                           step: WorkspaceStep) -> StepMetrics:
@@ -169,7 +169,7 @@ def build_metrics_net_opt(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png")
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -177,7 +177,7 @@ def build_metrics_net_opt(workspace: Workspace,
     if save_metrics(step_metrics):
         return step_metrics
     else:
-        return None 
+        return None
 
 
 def build_metrics_filler(workspace: Workspace, 
@@ -203,7 +203,7 @@ def build_metrics_filler(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png") 
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -211,7 +211,7 @@ def build_metrics_filler(workspace: Workspace,
     if save_metrics(step_metrics):
         return step_metrics
     else:
-        return None 
+        return None
 
 
 def build_metrics_drc(workspace: Workspace, 
@@ -236,7 +236,7 @@ def build_metrics_drc(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png")
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -270,7 +270,7 @@ def build_metrics_routing(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png")
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -303,7 +303,7 @@ def build_metrics_legalization(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png")
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -341,7 +341,7 @@ def build_metrics_timing_opt_hold(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png")
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -379,7 +379,7 @@ def build_metrics_timing_opt_drv(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png")
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -415,7 +415,7 @@ def build_metrics_cts(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png")
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -452,7 +452,7 @@ def build_metrics_placement(workspace: Workspace,
     step_metrics.data = metrics
     
     # generate report image and dscription
-    image_path = json_path.replace(".json", ".png")
+    image_path = str(json_path).replace(".json", ".png")
     report = f"{step.name} step metrics:\n"
     
     step_metrics.report.append((image_path, report))
@@ -460,4 +460,4 @@ def build_metrics_placement(workspace: Workspace,
     if save_metrics(step_metrics):
         return step_metrics
     else:
-        return None 
+        return None
