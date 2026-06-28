@@ -316,6 +316,12 @@ def run_net_opt(workspace: Workspace,
                                 ecc_module = ecc_module)
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+
+        clock_name = workspace.parameters.data.get("Clock", "")
+        if clock_name:
+            ecc_module.set_net(net_name=clock_name, net_type="CLOCK")
+            sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value,
+                                 state=StateEnum.Success)
         
         ecc_module.run_net_opt(config=workspace.config.get(f"{StepEnum.NETLIST_OPT.value}"))
         

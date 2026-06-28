@@ -80,6 +80,7 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
             case StepEnum.NETLIST_OPT:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.set_clock_net.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_net_optimization.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
