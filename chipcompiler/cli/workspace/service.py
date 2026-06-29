@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+from chipcompiler.utility.path import path_is_within, stringify_paths
+
 from chipcompiler.cli.workspace.request import (
     InputError,
     WorkspaceCreateRequest,
@@ -9,16 +11,6 @@ from chipcompiler.cli.workspace.request import (
     write_filelist,
 )
 from chipcompiler.cli.workspace.response import workspace_response
-
-
-def _stringify_paths(value):
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {key: _stringify_paths(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_stringify_paths(item) for item in value]
-    return value
 
 
 def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
@@ -288,7 +280,7 @@ def sync_workspace_config(directory: str, config_path: str) -> dict:
 
         config_dir = Path(resolved_directory) / "config"
         real_config_path = Path(resolved_config_path).resolve()
-        if not _path_is_within(real_config_path, config_dir):
+        if not path_is_within(real_config_path, config_dir):
             return workspace_response(
                 cmd,
                 "failed",
@@ -374,7 +366,7 @@ def get_workspace_info(directory: str, step: str, info_id: str) -> dict:
             message=[f"no information for step {step} : {os.path.abspath(workspace.directory)}"],
         )
 
-    response_data["info"] = _stringify_paths(info)
+    response_data["info"] = stringify_paths(info)
     return workspace_response(
         cmd,
         "success",
@@ -525,13 +517,6 @@ def _prepare_workspace_for_rerun(workspace, engine_flow):
     import chipcompiler.data as data_api
 
     data_api.prepare_workspace_for_rerun(workspace, engine_flow)
-
-
-def _path_is_within(path: Path, directory: Path) -> bool:
-    try:
-        return path.resolve().is_relative_to(directory.resolve())
-    except OSError:
-        return False
 
 
 def _init_db_engine_for_workspace_step(engine_flow, workspace_step):

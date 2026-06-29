@@ -7,15 +7,9 @@ import logging
 import os
 from pathlib import Path
 
+from chipcompiler.utility.path import optional_path, path_list
+
 logger = logging.getLogger(__name__)
-
-
-def _optional_path(path: str | Path | None) -> Path | None:
-    return Path(path) if path else None
-
-
-def _path_list(paths: list) -> list[Path]:
-    return [Path(path) for path in paths if path]
 
 
 @dataclass
@@ -49,13 +43,13 @@ class PDK:
     abc_load : float = 0.015 # ABC output load
 
     def __post_init__(self) -> None:
-        self.root = _optional_path(self.root)
-        self.tech = _optional_path(self.tech)
-        self.lefs = _path_list(self.lefs)
-        self.libs = _path_list(self.libs)
-        self.mapping_file = _optional_path(self.mapping_file)
-        self.sdc = _optional_path(self.sdc)
-        self.spef = _optional_path(self.spef)
+        self.root = optional_path(self.root)
+        self.tech = optional_path(self.tech)
+        self.lefs = path_list(self.lefs)
+        self.libs = path_list(self.libs)
+        self.mapping_file = optional_path(self.mapping_file)
+        self.sdc = optional_path(self.sdc)
+        self.spef = optional_path(self.spef)
 
     def validate(self) -> None:
         """Check that critical PDK paths exist. Raises ValueError if not."""

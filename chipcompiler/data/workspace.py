@@ -19,6 +19,7 @@ from .pdk import get_pdk, PDK
 from .step import StepEnum
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
+from chipcompiler.utility.path import path_is_within, path_text
 
 @dataclass
 class OriginDesign:
@@ -463,13 +464,6 @@ def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path)
     return changed
 
 
-def _path_is_within(path: Path, directory: Path) -> bool:
-    try:
-        return Path(path).resolve().is_relative_to(Path(directory).resolve())
-    except OSError:
-        return False
-
-
 def _reset_workspace_checklist(workspace: Workspace) -> None:
     from chipcompiler.utility import json_write
 
@@ -525,7 +519,7 @@ def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
         resolved_step_directory = Path(step_directory).resolve()
         if (
             resolved_step_directory == workspace_root
-            or not _path_is_within(resolved_step_directory, workspace_root)
+            or not path_is_within(resolved_step_directory, workspace_root)
         ):
             raise ValueError(f"refusing to delete step directory outside workspace: {step_directory}")
         step_directories.append(resolved_step_directory)
@@ -565,25 +559,22 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
-    def _path_value(value) -> str:
-        return str(value) if value else ""
-
     db = json_read(workspace.config["db"])
-    db["INPUT"]["def_path"] = _path_value(step.input.get("def", ""))
-    db["INPUT"]["verilog_path"] = _path_value(step.input.get("verilog", ""))
-    db["OUTPUT"]["output_dir_path"] = _path_value(step.output.get("dir", ""))
+    db["INPUT"]["def_path"] = path_text(step.input.get("def"))
+    db["INPUT"]["verilog_path"] = path_text(step.input.get("verilog"))
+    db["OUTPUT"]["output_dir_path"] = path_text(step.output.get("dir"))
     json_write(workspace.config["db"], db)
 
     if step.name == StepEnum.ROUTING.value:
         router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
-        router["RT"]["-temp_directory_path"] = _path_value(
-            step.data.get(f"{StepEnum.ROUTING.value}", "")
+        router["RT"]["-temp_directory_path"] = path_text(
+            step.data.get(f"{StepEnum.ROUTING.value}")
         )
         json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 
     if step.name == StepEnum.RCX.value:
         rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
-        rcx_output_dir = _path_value(step.output.get("dir", ""))
+        rcx_output_dir = path_text(step.output.get("dir"))
         rcx["output"] = rcx_output_dir
         for corner in rcx.get("corners", []):
             corner_name = corner.get("name", "")

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
-from pathlib import Path
 
 from chipcompiler.data import (
     Workspace, 
@@ -12,16 +11,7 @@ from chipcompiler.data import (
 from chipcompiler.tools.ecc.metrics import build_step_metrics
 
 from chipcompiler.utility import json_read, dict_to_str
-
-
-def _stringify_paths(value):
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {key: _stringify_paths(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_stringify_paths(item) for item in value]
-    return value
+from chipcompiler.utility.path import stringify_paths
     
 def get_step_info(workspace: Workspace, 
                   step: WorkspaceStep,
@@ -51,7 +41,7 @@ def get_step_info(workspace: Workspace,
         case "config":
             step_info = build_config(workspace=workspace, step=step)
 
-    step_info = _stringify_paths(step_info)
+    step_info = stringify_paths(step_info)
     workspace.logger.log_section(f"[ecc] get step info, id = {id}")
     workspace.logger.info(f"{dict_to_str(step_info)}")
 
