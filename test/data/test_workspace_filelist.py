@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 
@@ -58,7 +59,8 @@ class TestCreateWorkspaceIntegration:
         assert os.path.exists(workspace_dir / "origin" / "design.f")
         assert os.path.exists(workspace_dir / "origin" / "gcd.v")
         assert (workspace_dir / "origin" / "gcd.v").read_text() == "module gcd(); endmodule"
-        assert workspace.design.input_filelist == str(workspace_dir / "origin" / "design.f")
+        assert workspace.design.input_filelist == workspace_dir / "origin" / "design.f"
+        assert isinstance(workspace.design.input_filelist, Path)
 
     def test_workspace_with_nested_filelist(self, tmp_path, test_parameters, pdk):
         project_dir = tmp_path / "project"
