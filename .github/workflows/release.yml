@@ -11,6 +11,7 @@ on:
         default: 'v0.1.0-alpha.3'
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -32,6 +33,7 @@ jobs:
     name: Build CLI Bundle
     needs: check-version
     runs-on: ubuntu-22.04
+    container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
       - name: Checkout
         uses: actions/checkout@v4

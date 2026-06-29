@@ -2,6 +2,12 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      build-all:
+        description: Build native dependencies from source instead of downloading prebuilt native wheels.
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -23,6 +29,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 env:
@@ -43,6 +50,7 @@ jobs:
     name: Test
     needs: check-version
     runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,6 +59,8 @@ jobs:
 
       - name: Setup Python dependencies
         uses: ./.github/actions/setup-python-deps
+        with:
+          build-all: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['build-all'] == 'true' && 'true' || 'false' }}
 
       - name: Setup PDK
         run: |
@@ -93,6 +103,7 @@ jobs:
     name: Build PyInstaller Bundle
     needs: check-version
     runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -101,6 +112,8 @@ jobs:
 
       - name: Setup Python dependencies
         uses: ./.github/actions/setup-python-deps
+        with:
+          build-all: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['build-all'] == 'true' && 'true' || 'false' }}
 
       - name: Smoke test native toolchain wheels
         run: |

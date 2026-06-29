@@ -1,13 +1,18 @@
 name: Setup Python Dependencies
 description: Setup Python 3.11, uv, and install project dependencies.
 
+inputs:
+  build-all:
+    description: Build native dependencies from source instead of downloading prebuilt native wheels.
+    required: false
+    default: "false"
+
 runs:
   using: composite
   steps:
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
+    - name: Setup Python 3.11
+      shell: bash
+      run: echo "/opt/python/cp311-cp311/bin" >> "$GITHUB_PATH"
 
     - name: Setup uv
       uses: astral-sh/setup-uv@v3
@@ -15,7 +20,34 @@ runs:
         version: latest
         enable-cache: "true"
 
+    - name: Trust GitHub workspace
+      shell: bash
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+    - name: Install native build dependencies
+      shell: bash
+      run: |
+        dnf install -y epel-release dnf-plugins-core
+        dnf config-manager --set-enabled crb || true
+        dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+        dnf install -y \
+          cmake ninja-build pkgconfig patchelf mold lld \
+          boost-devel cairo-devel gflags-devel glog-devel \
+          flex flex-devel bison eigen3-devel gtest-devel \
+          tbb-devel hwloc-devel libcurl-devel libunwind-devel \
+          metis-devel gmp-devel tcl-devel \
+          unzip zip gh
+
+    - name: Setup Rust
+      if: ${{ inputs.build-all == 'true' }}
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Setup sccache
+      if: ${{ inputs.build-all == 'true' }}
+      uses: mozilla-actions/sccache-action@v0.0.9
+
     - name: Install native tool wheels
+      if: ${{ inputs.build-all != 'true' }}
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -25,24 +57,55 @@ runs:
         mkdir -p dist/native-wheels
         uv venv --python 3.11
 
-        dreamplace_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' chipcompiler/thirdparty/ecc-dreamplace/pyproject.toml)"
-        ecc_tools_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' chipcompiler/thirdparty/ecc-tools/pyproject.toml)"
+        download_wheel_artifact() {
+          local repo="$1"
+          local submodule_path="$2"
+          local artifact_name="$3"
+          local commit
+          local run_id
 
-        gh release download "v$dreamplace_version" \
-          --repo "openecos-projects/ecc-dreamplace" \
-          --pattern '*.whl' \
-          --dir dist/native-wheels
+          commit="$(git rev-parse "HEAD:${submodule_path}")"
+          run_id="$(
+            gh api "repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${commit}&per_page=20" \
+              --jq '[.workflow_runs[] | select(.conclusion == "success") | .id][0] // empty'
+          )"
 
-        gh release download "v$ecc_tools_version" \
-          --repo "openecos-projects/ecc-tools" \
-          --pattern '*.whl' \
-          --dir dist/native-wheels
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful CI artifact found for ${repo} at submodule commit ${commit}"
+            exit 1
+          fi
+
+          echo "Downloading ${artifact_name} from ${repo} CI run ${run_id} (${commit})"
+          gh run download "$run_id" \
+            --repo "$repo" \
+            --name "$artifact_name" \
+            --dir dist/native-wheels
+        }
+
+        download_wheel_artifact \
+          "openecos-projects/ecc-dreamplace" \
+          "chipcompiler/thirdparty/ecc-dreamplace" \
+          "ecc-dreamplace-wheel"
+
+        download_wheel_artifact \
+          "openecos-projects/ecc-tools" \
+          "chipcompiler/thirdparty/ecc-tools" \
+          "ecc-tools-wheel"
 
         uv pip install --python .venv/bin/python --no-deps dist/native-wheels/*.whl
 
     - name: Install Python dependencies
       shell: bash
       run: |
-        uv sync --frozen --all-groups --python 3.11 --inexact \
-          --no-install-package ecc-dreamplace \
-          --no-install-package ecc-tools-bin
+        if [ "${{ inputs.build-all }}" = "true" ]; then
+          export SCCACHE_GHA_ENABLED="true"
+          export CMAKE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          uv sync --frozen --all-groups --python 3.11 \
+            --no-build-isolation-package ecc-dreamplace \
+            --no-build-isolation-package ecc-tools-bin \
+            --verbose
+        else
+          uv sync --frozen --all-groups --python 3.11 --inexact \
+            --no-install-package ecc-dreamplace \
+            --no-install-package ecc-tools-bin
+        fi
