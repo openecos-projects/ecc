@@ -133,6 +133,39 @@ def run_workspace_flow(directory: str, rerun: bool) -> dict:
     )
 
 
+def reset_workspace_flow(directory: str) -> dict:
+    cmd = "reset_flow"
+    response_data = {"directory": os.path.abspath(directory) if directory else ""}
+    if not directory:
+        return workspace_response(
+            cmd,
+            "failed",
+            data=response_data,
+            message=["missing required field: directory"],
+        )
+
+    try:
+        workspace, engine_flow = load_workspace_runtime(directory)
+        _prepare_workspace_for_rerun(workspace, engine_flow)
+        response_data["directory"] = os.path.abspath(workspace.directory)
+    except WorkspaceValidationError as exc:
+        return workspace_response(cmd, "failed", data=response_data, message=[str(exc)])
+    except Exception as exc:
+        return workspace_response(
+            cmd,
+            "error",
+            data=response_data,
+            message=[f"reset workspace flow failed : {exc}"],
+        )
+
+    return workspace_response(
+        cmd,
+        "success",
+        data=response_data,
+        message=[f"reset workspace flow success : {response_data['directory']}"],
+    )
+
+
 def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
     cmd = "run_step"
     step = step or ""
