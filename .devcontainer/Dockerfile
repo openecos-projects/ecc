@@ -50,10 +50,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
 # Install Rust (for Tauri).
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-# Install Bazel
-RUN wget https://github.com/bazelbuild/bazel/releases/download/8.5.0/bazel-8.5.0-linux-x86_64 -O /usr/local/bin/bazel \
-    && chmod +x /usr/local/bin/bazel
-
 # Install uv (Python package manager used by project).
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ln -s /root/.local/bin/uv /usr/local/bin/uv
@@ -73,9 +69,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     rm -rf .venv \
-    && uv sync --frozen --all-groups --python 3.11
-
-RUN bazel run //:install_dev
+    && uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose
 
 ENV VIRTUAL_ENV="/workspace/.venv"
 ENV PATH="/workspace/.venv/bin:${PATH}"

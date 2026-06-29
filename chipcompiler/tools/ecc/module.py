@@ -28,7 +28,7 @@ class ECCToolsModule:
                 candidates = sorted(p.name for p in ecc_bin_dir.glob("ecc_py*.so"))
                 raise ImportError(
                     "ecc-tools is not installed. Install the ecc-tools wheel or "
-                    "build from source with: bazel run //:prepare_dev. "
+                    "build from source "
                     f"Import error: {exc}. "
                     f"Available ecc_py binaries in {ecc_bin_dir}: {candidates}"
                 ) from exc

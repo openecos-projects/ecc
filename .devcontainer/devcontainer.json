@@ -22,6 +22,6 @@
   "containerEnv": {
     "PROJECT_ROOT": "${containerWorkspaceFolder}"
   },
-  "postCreateCommand": "bazel run //:prepare_dev",
+  "postCreateCommand": "uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose && source .venv/bin/activate",
   "remoteUser": "root"
 }
