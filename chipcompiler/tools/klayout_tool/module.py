@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 import os
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
+from chipcompiler.utility.path import path_text
 from klayout import db
 from klayout import lay
 
@@ -57,11 +58,11 @@ class KlayoutModule:
         lv.set_config("text-visible", "false")
     
         # Load the GDS file
-        lv.load_layout(gds_file, 0)
+        lv.load_layout(path_text(gds_file), 0)
         lv.max_hier()
     
         # Event processing for delayed configuration events
         lv.timer()
     
         # Save the image
-        lv.save_image(img_file, weight, height)
+        lv.save_image(path_text(img_file), weight, height)

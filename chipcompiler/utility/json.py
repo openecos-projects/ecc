@@ -4,23 +4,25 @@ import json
 import os
 import tempfile
 from contextlib import suppress
+from pathlib import Path
 
 
-def json_read(file_path: str) -> dict:
+def json_read(file_path: Path) -> dict:
     """
     Read a JSON file and return its content as a dictionary.
     """
     data = {}
-    if os.path.isfile(file_path) is False:
+    path = Path(file_path)
+    if path.is_file() is False:
         return data
 
     try:
-        if file_path.endswith('.gz'):
+        if path.suffix == '.gz':
             import gzip
-            with gzip.open(file_path, 'rt') as f:
+            with gzip.open(path, 'rt') as f:
                 data = json.load(f)
         else:
-            with open(file_path) as f:
+            with path.open() as f:
                 data = json.load(f)
     except Exception:
         return data
@@ -28,7 +30,7 @@ def json_read(file_path: str) -> dict:
     return data
 
 
-def json_write(file_path: str, data: dict | None = None, indent=4) -> bool:
+def json_write(file_path: Path, data: dict | None = None, indent=4) -> bool:
     """
     Write a dictionary to a JSON file.
     """
@@ -36,37 +38,38 @@ def json_write(file_path: str, data: dict | None = None, indent=4) -> bool:
         data = {}
 
     tmp_path = None
+    path = Path(file_path)
     try:
-        if file_path.endswith('.gz'):
+        if path.suffix == '.gz':
             import gzip
-            with gzip.open(file_path, 'wt') as f:
+            with gzip.open(path, 'wt') as f:
                 json.dump(data, f, indent=indent)
         else:
-            target_path = os.path.realpath(file_path)
-            directory = os.path.dirname(os.path.abspath(target_path)) or "."
+            target_path = path.expanduser().resolve()
+            directory = target_path.parent
             existing_mode = None
-            if os.path.exists(target_path):
-                existing_mode = os.stat(target_path).st_mode
+            if target_path.exists():
+                existing_mode = target_path.stat().st_mode
             with tempfile.NamedTemporaryFile(
                 "w",
                 dir=directory,
                 delete=False,
-                prefix=f".{os.path.basename(file_path)}.",
+                prefix=f".{path.name}.",
                 suffix=".tmp",
             ) as f:
-                tmp_path = f.name
+                tmp_path = Path(f.name)
                 json.dump(data, f, indent=indent)
                 f.flush()
                 os.fsync(f.fileno())
             if existing_mode is not None:
-                os.chmod(tmp_path, existing_mode)
-            os.replace(tmp_path, target_path)
+                tmp_path.chmod(existing_mode)
+            tmp_path.replace(target_path)
             tmp_path = None
         return True
     except Exception:
         if tmp_path is not None:
             with suppress(OSError):
-                os.remove(tmp_path)
+                tmp_path.unlink()
         return False
 
 def dict_to_str(d, indent=0):

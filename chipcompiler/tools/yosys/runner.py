@@ -99,7 +99,7 @@ def run_step(workspace: Workspace,
         return False
 
     try:
-        cwd_dir = step.script.get("dir", step.directory)
+        cwd_dir = str(step.script.get("dir", step.directory))
 
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 

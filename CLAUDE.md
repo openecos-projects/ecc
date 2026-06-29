@@ -10,7 +10,7 @@ If Nix is available, enter the dev shell before syncing:
 
 ```bash
 nix develop
-uv sync --no-build-isolation-package ecc-dreamplace --no-binary-package ecc-tools-bin --verbose
+uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose
 source .venv/bin/activate
 ```
 
@@ -57,3 +57,9 @@ For integrating thirdparty tools, see [docs/development.md](docs/development.md#
 - Transform tasks into verifiable goals.
 - For multi-step tasks, state a brief plan with verification at each step.
 - Loop independently with strong success criteria; ask for clarification when criteria are weak.
+
+## 5. Test Structure and Fixtures
+
+- Place tests near the ownership boundary they exercise. Tool-specific behavior belongs under `test/tools/<tool>/`; shared workspace/data behavior belongs under `test/data/`; CLI behavior belongs under `test/cli/`; cross-cutting invariants belong under `test/formal/`.
+- Keep helper fixtures local to the narrowest useful scope, such as a tool test directory `conftest.py`, before promoting them to shared test fixtures.
+- When tests need production defaults or tool config baselines, read the real template/config factory through a helper or fixture instead of duplicating default values. Keep literal values for explicit override inputs and assertions that intentionally define the default contract.

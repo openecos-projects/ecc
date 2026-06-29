@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from chipcompiler.data import Workspace, WorkspaceStep, build_workspace_config_paths
 from chipcompiler.tools.ecc import builder as ecc_builder
@@ -32,21 +33,21 @@ def _current_parameter_data(workspace: Workspace) -> dict:
 
 
 def _set_step_fields(params: dict, step: WorkspaceStep) -> dict:
-    params["def_input"] = step.input.get("def", "")
-    params["verilog_input"] = step.input.get("verilog", "")
-    params["result_dir"] = step.data.get(step.name, step.data["dir"])
+    params["def_input"] = str(step.input.get("def") or "")
+    params["verilog_input"] = str(step.input.get("verilog") or "")
+    params["result_dir"] = str(step.data.get(step.name, step.data["dir"]))
     return params
 
 
 def build_step(
     workspace: Workspace,
     step_name: str,
-    input_def: str,
-    input_verilog: str,
-    input_db: str | None = None,
-    output_def: str | None = None,
-    output_verilog: str | None = None,
-    output_gds: str | None = None,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | None = None,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+    output_gds: Path | None = None,
 ) -> WorkspaceStep:
     step = ecc_builder.build_step(
         workspace=workspace,
@@ -70,6 +71,9 @@ def build_step_space(step: WorkspaceStep) -> None:
 def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     # build ecc config
     ecc_builder.build_step_config(workspace, step)
+
+    from .checklist import DreamplaceChecklist
+    DreamplaceChecklist(workspace=workspace, workspace_step=step)
 
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)

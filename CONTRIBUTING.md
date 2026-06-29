@@ -23,7 +23,7 @@ change.
 Use one of the setup paths in [docs/development.md](docs/development.md):
 
 - `nix develop` for the optional Nix development shell.
-- `uv sync --no-build-isolation-package ecc-dreamplace --no-binary-package ecc-tools-bin --verbose`
+- `uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose`
   for the ECC workspace.
 
 `uv.lock` is the source of truth for Python dependency resolution. Do not

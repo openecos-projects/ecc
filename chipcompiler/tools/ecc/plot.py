@@ -56,7 +56,7 @@ class ECCToolsPlot:
     def plot_step_metrics(self) -> bool:
         # generate report image and dscription
         json_path = self.step.analysis.get('metrics', "")
-        image_path = json_path.replace(".json", ".png")
+        image_path = str(json_path).replace(".json", ".png")
         metrics = json_read(json_path)
         return plot_metrics(metrics=metrics, output_path=image_path)
 
@@ -191,7 +191,7 @@ class ECCToolsPlot:
         
         # Save drc_statis to CSV file
         import csv
-        statis_csv = self.step.analysis.get("statis_csv", "")
+        statis_csv = str(self.step.analysis.get("statis_csv", ""))
         # Write to CSV file
         with open(statis_csv, 'w', newline='') as csvfile:
             # Define headers: first column is "Type", followed by layer names
@@ -211,7 +211,7 @@ class ECCToolsPlot:
         
         # Plot the CSV table
         # plot_csv_table(input_path=statis_csv)
-        output_path=statis_csv.replace(".csv", ".png")
+        output_path=str(statis_csv).replace(".csv", ".png")
         plot_csv_bar_chart(input_path=statis_csv, output_path=output_path, title="DRC Violation Distribution by Layer", xlabel="DRC Type", ylabel="Violation Count", integer_yaxis=True)
 
         self.workspace.home.set_metrics_drc_dist(image_path=output_path)
@@ -243,7 +243,7 @@ class ECCToolsPlot:
         # Save the plot
         db_path = self.step.feature.get("db", "")
         if db_path:
-            image_path = db_path.replace(".json", ".inst_dist.png")
+            image_path = str(db_path).replace(".json", ".inst_dist.png")
             from chipcompiler.utility import plot_bar_chart
             
             success = plot_bar_chart(
@@ -293,7 +293,7 @@ class ECCToolsPlot:
         # Save the plot
         db_path = self.step.feature.get("db", "")
         if db_path:
-            image_path = db_path.replace(".json", ".pin_dist.png")
+            image_path = str(db_path).replace(".json", ".pin_dist.png")
             from chipcompiler.utility import plot_bar_chart
             
             success = plot_bar_chart(
@@ -340,7 +340,7 @@ class ECCToolsPlot:
         # Save the plot
         db_path = self.step.feature.get("db", "")
         if db_path:
-            image_path = db_path.replace(".json", ".layer_via_dist.png")
+            image_path = str(db_path).replace(".json", ".layer_via_dist.png")
             from chipcompiler.utility import plot_bar_chart
             
             success = plot_bar_chart(
@@ -389,7 +389,7 @@ class ECCToolsPlot:
         # Save the plot
         db_path = self.step.feature.get("db", "")
         if db_path:
-            image_path = db_path.replace(".json", ".layer_wire_dist.png")
+            image_path = str(db_path).replace(".json", ".layer_wire_dist.png")
             from chipcompiler.utility import plot_bar_chart
             
             success = plot_bar_chart(

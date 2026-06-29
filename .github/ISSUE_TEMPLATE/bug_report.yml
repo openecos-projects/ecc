@@ -57,7 +57,6 @@ body:
         - Release PyInstaller bundle
         - PyInstaller bundle built from source
         - Source checkout with `uv`
-        - Source checkout with Bazel
         - Nix flake output
         - CI/GitHub Actions artifact
         - Other
@@ -84,8 +83,8 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Include OS distribution/version, architecture, glibc version if known, Python version, and Bazel/Nix version when relevant.
-      placeholder: "Ubuntu 22.04, x86_64, glibc 2.35, Python 3.11, Bazel 8.x"
+      description: Include OS distribution/version, architecture, glibc version if known, Python version, and Nix version when relevant.
+      placeholder: "Ubuntu 22.04, x86_64, glibc 2.35, Python 3.11"
     validations:
       required: true
 

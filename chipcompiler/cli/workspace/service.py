@@ -1,4 +1,7 @@
 import os
+from pathlib import Path
+
+from chipcompiler.utility.path import path_is_within, stringify_paths
 
 from chipcompiler.cli.workspace.request import (
     InputError,
@@ -36,6 +39,7 @@ def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
             origin_verilog=request.origin_verilog,
             input_filelist=input_filelist,
             pdk_root=request.pdk_root,
+            pdk_json=request.pdk_json,
         )
     except InputError as exc:
         return workspace_response("create_workspace", exc.response, message=[str(exc)])
@@ -46,14 +50,15 @@ def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
             message=[f"create workspace failed : {exc}"],
         )
 
-    directory = os.path.abspath(request.directory)
     if workspace is None:
+        directory = os.path.abspath(request.directory)
         return workspace_response(
             "create_workspace",
             "failed",
             message=[f"create workspace failed : {directory}"],
         )
 
+    directory = os.path.abspath(os.fspath(workspace.directory))
     try:
         build_flow_for_workspace(workspace)
     except Exception as exc:
@@ -204,7 +209,10 @@ def run_workspace_step(directory: str, step: str, rerun: bool) -> dict:
 
 def refresh_workspace_config(directory: str) -> dict:
     cmd = "refresh_config"
-    response_data = {"directory": os.path.abspath(directory) if directory else "", "refreshed": False}
+    response_data = {
+        "directory": os.path.abspath(directory) if directory else "",
+        "refreshed": False,
+    }
     if not directory:
         return workspace_response(
             cmd,
@@ -270,9 +278,9 @@ def sync_workspace_config(directory: str, config_path: str) -> dict:
         response_data["directory"] = resolved_directory
         response_data["config_path"] = resolved_config_path
 
-        config_dir = os.path.realpath(os.path.join(resolved_directory, "config"))
-        real_config_path = os.path.realpath(resolved_config_path)
-        if not _path_is_within(real_config_path, config_dir):
+        config_dir = Path(resolved_directory) / "config"
+        real_config_path = Path(resolved_config_path).resolve()
+        if not path_is_within(real_config_path, config_dir):
             return workspace_response(
                 cmd,
                 "failed",
@@ -286,7 +294,7 @@ def sync_workspace_config(directory: str, config_path: str) -> dict:
 
         parameters_changed = data_api.sync_workspace_config_to_parameters(
             workspace,
-            resolved_config_path,
+            real_config_path,
         )
         response_data["parameters_changed"] = parameters_changed
         if parameters_changed:
@@ -358,7 +366,7 @@ def get_workspace_info(directory: str, step: str, info_id: str) -> dict:
             message=[f"no information for step {step} : {os.path.abspath(workspace.directory)}"],
         )
 
-    response_data["info"] = info
+    response_data["info"] = stringify_paths(info)
     return workspace_response(
         cmd,
         "success",
@@ -391,6 +399,78 @@ def get_workspace_home(directory: str) -> dict:
         cmd,
         "failed",
         message=[f"get home failed : {path}"],
+    )
+
+
+def collect_signoff_package(directory: str,
+                            output_dir: str,
+                            archive: bool,
+                            include_debug: bool,
+                            allow_incomplete: bool) -> dict:
+    cmd = "signoff"
+    response_data = {
+        "directory": os.path.abspath(directory) if directory else "",
+        "output_dir": os.path.abspath(output_dir) if output_dir else "",
+        "archive": bool(archive),
+        "include_debug": bool(include_debug),
+        "allow_incomplete": bool(allow_incomplete),
+    }
+    if not directory:
+        return workspace_response(
+            cmd,
+            "failed",
+            data=response_data,
+            message=["missing required field: directory"],
+        )
+
+    try:
+        workspace, engine_flow = load_workspace_runtime(
+            directory,
+            create_step_workspaces=False,
+        )
+        from chipcompiler.engine.signoff import SignoffPackageOptions
+
+        result = engine_flow.collect_signoff_package(
+            SignoffPackageOptions(
+                output_dir=output_dir or None,
+                archive=archive,
+                include_debug=include_debug,
+                allow_incomplete=allow_incomplete,
+            )
+        )
+    except WorkspaceValidationError as exc:
+        return workspace_response(cmd, "failed", data=response_data, message=[str(exc)])
+    except Exception as exc:
+        return workspace_response(
+            cmd,
+            "error",
+            data=response_data,
+            message=[f"collect signoff package failed : {exc}"],
+        )
+
+    response_data.update({
+        "directory": os.path.abspath(workspace.directory),
+        "package_dir": result.package_dir,
+        "archive_path": result.archive_path or "",
+        "manifest_path": result.manifest_path or "",
+        "summary_path": result.summary_path or "",
+        "copied_count": len(result.copied),
+        "missing_required": result.missing_required,
+        "warnings": result.warnings,
+    })
+    if result.ok:
+        return workspace_response(
+            cmd,
+            "success",
+            data=response_data,
+            message=[f"collect signoff package success : {result.package_dir}"],
+        )
+
+    return workspace_response(
+        cmd,
+        "failed",
+        data=response_data,
+        message=["collect signoff package incomplete"],
     )
 
 
@@ -437,13 +517,6 @@ def _prepare_workspace_for_rerun(workspace, engine_flow):
     import chipcompiler.data as data_api
 
     data_api.prepare_workspace_for_rerun(workspace, engine_flow)
-
-
-def _path_is_within(path: str, directory: str) -> bool:
-    try:
-        return os.path.commonpath([path, directory]) == directory
-    except ValueError:
-        return False
 
 
 def _init_db_engine_for_workspace_step(engine_flow, workspace_step):
@@ -505,6 +578,7 @@ def _load_tool_builder(tool: str):
     module_alias = {
         "klayout": "klayout_tool",
         "dreamplace": "ecc_dreamplace",
+        "sizer": "ecc_sizer",
     }
     module_name = module_alias.get(tool, tool)
     return importlib.import_module(f"chipcompiler.tools.{module_name}.builder")

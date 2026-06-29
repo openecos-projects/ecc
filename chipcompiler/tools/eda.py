@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 import logging
+from pathlib import Path
 
 from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
 
 
-def load_eda_module(eda_tool: str):
+def load_eda_module(eda_tool: str, check_dependency: bool = True):
     """
     Load and return the EDA tool module based on the given eda tool name.
     """
@@ -22,7 +23,8 @@ def load_eda_module(eda_tool: str):
 
     module_alias = {
         "klayout": "klayout_tool",
-        "dreamplace": "ecc_dreamplace"
+        "dreamplace": "ecc_dreamplace",
+        "sizer": "ecc_sizer",
     }
     module_name = module_alias.get(eda_tool, eda_tool)
 
@@ -39,7 +41,7 @@ def load_eda_module(eda_tool: str):
         logging.error("EDA tool '%s': module loaded but missing interface: %s", eda_tool, missing)
         return None
 
-    if not eda_module.is_eda_exist():
+    if check_dependency and not eda_module.is_eda_exist():
         logging.error(
             "EDA tool '%s': dependency check failed (is_eda_exist returned False)",
             eda_tool,
@@ -51,17 +53,17 @@ def load_eda_module(eda_tool: str):
 def create_step(workspace : Workspace, 
                step : str, 
                eda : str,
-               input_def : str,
-               input_verilog : str,
-               input_db : str | None = None,
-               output_def : str = None,
-               output_verilog : str = None,
-               output_gds : str = None) -> WorkspaceStep:
+               input_def : Path | None,
+               input_verilog : Path | None,
+               input_db : Path | None = None,
+               output_def : Path | None = None,
+               output_verilog : Path | None = None,
+               output_gds : Path | None = None) -> WorkspaceStep:
     """
     Create and return an EDA tool instance based on the given step and eda tool name.
     """
     # check eda tool exist
-    eda_module = load_eda_module(eda)
+    eda_module = load_eda_module(eda, check_dependency=eda != "sizer")
     if eda_module is None \
         or not hasattr(eda_module, 'build_step'):
         return None
@@ -91,7 +93,7 @@ def run_step(workspace: Workspace,
     Run the given step using the provided EDA engine.
     """
     # check eda tool exist
-    eda_module = load_eda_module(step.tool)
+    eda_module = load_eda_module(step.tool, check_dependency=step.tool != "sizer")
     if eda_module is None:
         return False
     
@@ -143,6 +145,7 @@ def get_step_info(workspace: Workspace,
     module_alias = {
         "klayout": "klayout_tool",
         "dreamplace": "ecc_dreamplace",
+        "sizer": "ecc_sizer",
     }
     module_name = module_alias.get(step.tool, step.tool)
 

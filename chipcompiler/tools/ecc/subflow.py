@@ -80,6 +80,7 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
             case StepEnum.NETLIST_OPT:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.set_clock_net.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_net_optimization.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
@@ -147,9 +148,13 @@ class EccSubFlow:
     
     def save(self) -> bool:
         from chipcompiler.utility import json_write
+
+        data = dict(self.workspace_step.subflow)
+        if "path" in data:
+            data["path"] = str(data["path"])
         
         return json_write(file_path=self.workspace_step.subflow.get("path", ""), 
-                          data=self.workspace_step.subflow)
+                          data=data)
     
     def get_runtime(self):
         # end time

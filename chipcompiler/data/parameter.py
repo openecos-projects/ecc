@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-import os
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 
 ICS55_PARAMETERS_TEMPLATE = {
     "PDK":"ICS55",
@@ -25,7 +25,7 @@ ICS55_PARAMETERS_TEMPLATE = {
     "Target density" : 0.2,
     "Target overflow" : 0.1,
     "Global right padding": 0,
-    "Cell padding x": 600,
+    "Cell padding x": 300,
     "Routability opt flag": 1,
     "Clock" : "",
     "Frequency max [MHz]" : 100,
@@ -115,27 +115,30 @@ class Parameters:
     """
     Dataclass for design parameters
     """
-    path : str = "" # parameters file path
+    path : Path | None = None # parameters file path
     data : dict = field(default_factory=dict) # parameters data
 
-def load_parameter(path : str) -> Parameters:
+def load_parameter(path : Path) -> Parameters:
     from chipcompiler.utility import json_read
     parameter = Parameters()
-    parameter.path = path
-    parameter.data = json_read(path)
+    parameter.path = Path(path)
+    parameter.data = json_read(parameter.path)
     return parameter
     
 def save_parameter(parameter : Parameters) -> bool:
     from chipcompiler.utility import json_write
+    if parameter.path is None:
+        return False
     return json_write(file_path=parameter.path,
                       data=parameter.data)
 
-def get_parameters(pdk_name: str = "", path: str = "") -> Parameters:
-    if os.path.isfile(path):
-        return load_parameter(path)
+def get_parameters(pdk_name: str = "", path: Path | None = None) -> Parameters:
+    parameter_path = Path(path) if path else None
+    if parameter_path is not None and parameter_path.is_file():
+        return load_parameter(parameter_path)
 
     parameters = Parameters()
-    parameters.path = path
+    parameters.path = parameter_path
 
     match pdk_name.lower():
         case "ics55":
@@ -145,7 +148,7 @@ def get_parameters(pdk_name: str = "", path: str = "") -> Parameters:
 
     return parameters
 
-def get_design_parameters(pdk_name : str, design : str = "", path : str = "") -> Parameters:
+def get_design_parameters(pdk_name : str, design : str = "", path : Path | None = None) -> Parameters:
     """
     Return parameters resolved by PDK and optional design name.
     """

@@ -89,7 +89,7 @@ def test_key_spelling_matches_template() -> None:
 PARAM_CONFIG_DEFAULTS: list[tuple[str, float, float, str]] = [
     ("Target density", 0.2, 0.8, "dreamplace.target_density"),
     ("Target overflow", 0.1, 0.1, "dreamplace.stop_overflow"),
-    ("Cell padding x", 600, 600, "dreamplace.cell_padding_x"),
+    ("Cell padding x", 300, 300, "dreamplace.cell_padding_x"),
     ("Routability opt flag", 1, 1, "dreamplace.routability_opt_flag"),
     ("Max fanout", 20, 32, "no.max_fanout"),
     ("Global right padding", 0, 0, "PL.GP.global_right_padding"),
@@ -172,7 +172,7 @@ class FakeDreamplaceParams:
 def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
     config_path = tmp_path / "dreamplace.json"
     json_write(
-        str(config_path),
+        config_path,
         {
             "routability_opt_flag": 1,
             "get_congestion_map": 1,
@@ -181,12 +181,12 @@ def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
     workspace = Workspace(
         directory=str(tmp_path / "workspace"),
         design=OriginDesign(name="gcd"),
-        config={"dreamplace": str(config_path)},
+        config={"dreamplace": config_path},
     )
     result_dir = tmp_path / "data" / "pl"
     step = WorkspaceStep(
         name=StepEnum.PLACEMENT.value,
-        data={"dir": str(tmp_path / "data"), StepEnum.PLACEMENT.value: str(result_dir)},
+        data={"dir": tmp_path / "data", StepEnum.PLACEMENT.value: result_dir},
     )
     module = DreamplaceModule(
         workspace=workspace,

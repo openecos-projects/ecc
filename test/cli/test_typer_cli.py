@@ -374,3 +374,9 @@ def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
         assert exc.exit_code == 0
 
     assert capsys.readouterr().out.strip() == "registry:text:ok"
+
+
+class TestEdgeCases:
+    def test_no_command_returns_nonzero(self, capsys):
+        rc = cli_main.run([])
+        assert rc == 1

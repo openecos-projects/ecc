@@ -1,17 +1,23 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import logging
 import os
 import time
-import logging
 import traceback
 from threading import Event, Thread
 
-from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum, log_flow
+from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow
 from chipcompiler.engine import EngineDB
+from chipcompiler.engine.signoff import (
+    SignoffPackageCollector,
+    SignoffPackageOptions,
+    SignoffPackageResult,
+)
 from chipcompiler.utility.log import redirect_stdio_to_file
 
 logger = logging.getLogger(__name__)
+
 
 def get_process_rss_mb(pid : int) -> float:
     peak_memory = 0
@@ -98,6 +104,9 @@ class EngineFlow:
         load flow config json from workspace
         """
         from chipcompiler.utility import json_read
+        if not self.workspace.flow.path:
+            self.workspace.flow.data = {}
+            return False
         self.workspace.flow.data = json_read(self.workspace.flow.path)
         if len(self.workspace.flow.data.get("steps", [])) <= 0:
             return False
@@ -204,12 +213,30 @@ class EngineFlow:
                     if not os.path.exists(spef):
                         break
                 success = True
+            case (
+                StepEnum.TIMING_OPT.value
+                | StepEnum.TIMING_OPT_DRV.value
+                | StepEnum.TIMING_OPT_HOLD.value
+                | StepEnum.TIMING_OPT_SETUP.value
+            ):
+                if os.path.exists(workspace_step.output.get("def", "")) and \
+                    os.path.exists(workspace_step.output.get("verilog", "")):
+                    success = True
             case default:
                 if os.path.exists(workspace_step.output.get("def", "")) and \
                     os.path.exists(workspace_step.output.get("verilog", "")) and \
                         os.path.exists(workspace_step.output.get("gds", "")):
                     success = True
         return success
+
+    def collect_signoff_package(
+        self,
+        options: SignoffPackageOptions | None = None,
+    ) -> SignoffPackageResult:
+        """
+        Collect harden-flow signoff resources from this flow workspace.
+        """
+        return SignoffPackageCollector(self.workspace).collect(options)
 
     def create_step_workspaces(self):
         """
@@ -224,9 +251,9 @@ class EngineFlow:
                 input_db = None
             else:
                 # use the output def and verilog from last step.
-                input_def = pre_step.output.get("def", "")
-                input_verilog = pre_step.output.get("verilog", "")
-                input_db = pre_step.output.get("db", "")
+                input_def = pre_step.output.get("def")
+                input_verilog = pre_step.output.get("verilog")
+                input_db = pre_step.output.get("db")
 
             from chipcompiler.tools import create_step, run_step
             # create workspace step
@@ -270,6 +297,10 @@ class EngineFlow:
                 break
                                 
         return self.engine_db.create_db_engine(step=workspace_step)
+
+    def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
+        if workspace_step.tool == "sizer" and state == StateEnum.Success:
+            self.engine_db = None
     
     def run_steps(self, rerun=False) -> bool:
         """
@@ -317,6 +348,7 @@ class EngineFlow:
                             tool=workspace_step.tool,
                             state=StateEnum.Success):
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
+            self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             return StateEnum.Success
 
         # set state ongoing
@@ -379,5 +411,7 @@ class EngineFlow:
         if state == StateEnum.Success:
             from chipcompiler.tools import save_layout_image
             save_layout_image(workspace=self.workspace, step=workspace_step)
+
+        self.clear_db_engine_after_step(workspace_step, state)
 
         return state

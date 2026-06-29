@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
+
 from chipcompiler.data import (
     Workspace, 
     WorkspaceStep, 
@@ -10,6 +11,7 @@ from chipcompiler.data import (
 from chipcompiler.tools.ecc.metrics import build_step_metrics
 
 from chipcompiler.utility import json_read, dict_to_str
+from chipcompiler.utility.path import stringify_paths
     
 def get_step_info(workspace: Workspace, 
                   step: WorkspaceStep,
@@ -39,6 +41,7 @@ def get_step_info(workspace: Workspace,
         case "config":
             step_info = build_config(workspace=workspace, step=step)
 
+    step_info = stringify_paths(step_info)
     workspace.logger.log_section(f"[ecc] get step info, id = {id}")
     workspace.logger.info(f"{dict_to_str(step_info)}")
 

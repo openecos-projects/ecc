@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 import fcntl
-import os
 from collections.abc import Callable
 from contextlib import contextmanager
 from copy import deepcopy
+from pathlib import Path
 
 from chipcompiler.utility import json_read, json_write
 
@@ -97,22 +97,22 @@ def _normalize_home_data(data: dict) -> tuple[dict, bool]:
 
     return normalized, changed
 
-def _read_normalized_home_data(path: str) -> tuple[dict, bool]:
+def _read_normalized_home_data(path: Path) -> tuple[dict, bool]:
     return _normalize_home_data(json_read(path))
 
 class HomeData:
     """
     Home data information
     """
-    def __init__(self, path : str = ""):
-        self.path : str = path # home data file path
+    def __init__(self, path : Path | None = None):
+        self.path : Path | None = Path(path) if path else None # home data file path
         self.data : dict = {} # home data
             
-    def init(self, path : str):
-        self.path : str = path
+    def init(self, path : Path):
+        self.path = Path(path)
         self.data : dict = {}
     
-        if os.path.exists(self.path):
+        if self.path.exists():
             self._repair_or_reload()
         else:
             self.reset()
@@ -129,7 +129,8 @@ class HomeData:
 
     @contextmanager
     def _locked(self):
-        lock_path = f"{self.path}.lock"
+        path = self._path_required()
+        lock_path = path.with_name(f"{path.name}.lock")
         with open(lock_path, "a") as lock_file:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
@@ -139,64 +140,74 @@ class HomeData:
 
     def _update(self, mutator: Callable[[dict], bool | None], force: bool = False) -> None:
         with self._locked():
-            data, repaired = _read_normalized_home_data(self.path)
+            path = self._path_required()
+            data, repaired = _read_normalized_home_data(path)
             before = deepcopy(data)
             mutated = mutator(data)
             data, normalized = _normalize_home_data(data)
             changed = force or repaired or normalized or mutated is True or data != before
             if changed:
-                json_write(self.path, data)
+                json_write(path, data)
             self.data = data
 
     def _repair_or_reload(self) -> None:
         self._update(lambda data: False)
 
-    def _set_path_value(self, key: str, path: str):
+    def _path_required(self) -> Path:
+        if self.path is None:
+            raise ValueError("home data path is not set")
+        return self.path
+
+    def _set_path_value(self, key: str, path: Path):
+        path_text = str(path)
+
         def mutator(data: dict) -> bool:
-            if data.get(key) == path:
+            if data.get(key) == path_text:
                 return False
-            data[key] = path
+            data[key] = path_text
             return True
 
         self._update(mutator)
         
-    def set_parameters(self, path : str):
+    def set_parameters(self, path : Path):
         self._set_path_value("parameters", path)
         
-    def set_flow(self, path : str):
+    def set_flow(self, path : Path):
         self._set_path_value("flow", path)
     
-    def set_layout(self, path : str):
+    def set_layout(self, path : Path):
         self._set_path_value("layout", path)
     
-    def set_gds_merge(self, path : str):
+    def set_gds_merge(self, path : Path):
         self._set_path_value("GDS merge", path)
 
-    def _set_metric(self, key: str, image_path: str):
+    def _set_metric(self, key: str, image_path: Path):
+        image_path_text = str(image_path)
+
         def mutator(data: dict) -> bool:
-            if data["metrics"].get(key) == image_path:
+            if data["metrics"].get(key) == image_path_text:
                 return False
-            data["metrics"][key] = image_path
+            data["metrics"][key] = image_path_text
             return True
 
         self._update(mutator)
         
-    def set_metrics_inst_dist(self, image_path : str):
+    def set_metrics_inst_dist(self, image_path : Path):
         self._set_metric("instances dist.", image_path)
         
-    def set_metrics_layer_via_dist(self, image_path : str):
+    def set_metrics_layer_via_dist(self, image_path : Path):
         self._set_metric("layer via dist.", image_path)
         
-    def set_metrics_layer_wire_dist(self, image_path : str):
+    def set_metrics_layer_wire_dist(self, image_path : Path):
         self._set_metric("layer wire dist.", image_path)
         
-    def set_metrics_pin_dist(self, image_path : str):
+    def set_metrics_pin_dist(self, image_path : Path):
         self._set_metric("pin dist.", image_path)
         
-    def set_metrics_drc_dist(self, image_path : str):
+    def set_metrics_drc_dist(self, image_path : Path):
         self._set_metric("drc dist.", image_path)
         
-    def set_metrics_cts_skew_map(self, image_path : str):
+    def set_metrics_cts_skew_map(self, image_path : Path):
         self._set_metric("CTS skew map", image_path)
     
     def update_monitor(self,
@@ -242,19 +253,21 @@ class HomeData:
 
         self._update(mutator)
         
-    def set_checklist(self, checklist_path : str):
-        if not os.path.exists(checklist_path):
-            Checklist(path=checklist_path).save()
+    def set_checklist(self, checklist_path : Path):
+        path = checklist_path
+        if not path.exists():
+            Checklist(path=path).save()
 
-        self._set_path_value("checklist", checklist_path)
+        self._set_path_value("checklist", path)
             
     def get_checklist_header(self):
-        return Checklist(path=self.data.get("checklist", "")).header
+        return Checklist(path=Path(self.data.get("checklist", ""))).header
         
     def update_checklist(self,
                          step : str, 
                          type : str,
                          item : str,
-                         state : str):
-        checklist = Checklist(path=self.data.get("checklist", ""))
-        checklist.update(step=step, type=type, item=item, state=state)
+                         state : str,
+                         info : str = ""):
+        checklist = Checklist(path=Path(self.data.get("checklist", "")))
+        checklist.update(step=step, type=type, item=item, state=state, info=info)

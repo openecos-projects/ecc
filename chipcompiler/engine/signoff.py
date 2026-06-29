@@ -1,0 +1,614 @@
+import glob
+import hashlib
+import json
+import shutil
+import tarfile
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from chipcompiler.data import StateEnum, StepEnum, Workspace
+
+
+@dataclass(frozen=True)
+class SignoffPackageOptions:
+    output_dir: str | None = None
+    archive: bool = True
+    include_debug: bool = False
+    allow_incomplete: bool = False
+
+
+@dataclass
+class SignoffPackageResult:
+    ok: bool
+    package_dir: str
+    archive_path: str | None = None
+    manifest_path: str | None = None
+    summary_path: str | None = None
+    copied: list[dict] = field(default_factory=list)
+    missing_required: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+class SignoffPackageCollector:
+    def __init__(self, workspace: Workspace):
+        self.workspace = workspace
+
+    def collect(
+        self,
+        options: SignoffPackageOptions | None = None,
+    ) -> SignoffPackageResult:
+        options = options or SignoffPackageOptions()
+        if self.workspace is None or not self.workspace.directory:
+            raise FileNotFoundError("workspace is not configured")
+
+        workspace_dir = Path(self.workspace.directory)
+        if not workspace_dir.exists():
+            raise FileNotFoundError(f"workspace does not exist: {workspace_dir}")
+
+        parameters = self._read_json(workspace_dir / "home" / "parameters.json")
+        design = (
+            self.workspace.design.name
+            or parameters.get("Design", "")
+            or self._design_from_outputs(workspace_dir)
+        )
+        top_module = self.workspace.design.top_module or parameters.get("Top module", "") or design
+        pdk_name = getattr(self.workspace.pdk, "name", "") or parameters.get("PDK", "")
+        if not design:
+            raise ValueError("cannot determine design name for signoff package")
+
+        package_root = Path(options.output_dir) if options.output_dir else workspace_dir / "signoff"
+        package_dir = package_root / f"{design}_signoff_package"
+        if package_dir.exists():
+            shutil.rmtree(package_dir)
+        package_dir.mkdir(parents=True, exist_ok=True)
+
+        copied: list[dict] = []
+        missing_required: list[str] = []
+        warnings: list[str] = []
+
+        def add_file(role: str,
+                     source: Path | None,
+                     destination: str,
+                     required: bool = False) -> None:
+            self._add_file(
+                workspace_dir=workspace_dir,
+                package_dir=package_dir,
+                role=role,
+                source=source,
+                destination=destination,
+                required=required,
+                copied=copied,
+                missing_required=missing_required,
+            )
+
+        flow_path = workspace_dir / "home" / "flow.json"
+        checklist_path = workspace_dir / "home" / "checklist.json"
+        flow_data = self.workspace.flow.data or self._read_json(flow_path)
+        checklist_data = self._read_json(checklist_path)
+
+        required_steps = self._required_step_states(flow_data)
+        for step_name, state in required_steps.items():
+            if state != StateEnum.Success.value:
+                missing_required.append(f"flow step {step_name} is {state or 'missing'}")
+
+        config_dir = workspace_dir / "config"
+        required_configs = {
+            "db_default_config.json",
+            "flow_config.json",
+            "rcx.json",
+            "sta.json",
+        }
+        if not config_dir.is_dir():
+            missing_required.append("config directory")
+        else:
+            for config_file in sorted(path for path in config_dir.rglob("*") if path.is_file()):
+                rel = config_file.relative_to(config_dir).as_posix()
+                add_file(
+                    role=f"config.{config_file.stem}",
+                    source=config_file,
+                    destination=f"config/{rel}",
+                    required=config_file.name in required_configs,
+                )
+            for config_name in sorted(required_configs):
+                if not (config_dir / config_name).is_file():
+                    missing_required.append(f"config/{config_name}")
+
+        db_config = self._read_json(config_dir / "db_default_config.json")
+        origin_verilog = self._find_one(
+            workspace_dir / "origin",
+            preferred_name=f"{design}.v",
+            pattern="*.v",
+            missing_label="origin Verilog",
+            missing_required=missing_required,
+        )
+        origin_sdc = self._path_from_config(
+            workspace_dir,
+            db_config.get("INPUT", {}).get("sdc_path", ""),
+        )
+        if origin_sdc is None:
+            origin_sdc = self._find_one(
+                workspace_dir / "origin",
+                preferred_name=f"{design}.sdc",
+                pattern="*.sdc",
+                missing_label="origin SDC",
+                missing_required=missing_required,
+            )
+
+        add_file(
+            role="harden.gds",
+            source=workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.gds",
+            destination=f"harden/{design}.gds",
+            required=True,
+        )
+        add_file(
+            role="harden.lef",
+            source=workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lef",
+            destination=f"harden/{design}.lef",
+            required=True,
+        )
+        add_file(
+            role="harden.lib",
+            source=workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lib",
+            destination=f"harden/{design}.lib",
+            required=True,
+        )
+        add_file(
+            role="harden.lib_check_sources",
+            source=(
+                workspace_dir
+                / "Harden_ecc"
+                / "output"
+                / f"{design}_Harden.lib.check_sources.tsv"
+            ),
+            destination=f"harden/{design}.lib.check_sources.tsv",
+        )
+        add_file(
+            role="harden.image",
+            source=workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.png",
+            destination=f"harden/{design}.png",
+        )
+
+        add_file("initial.verilog", origin_verilog, f"initial/{design}.v", required=True)
+        add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
+        add_file(
+            "initial.parameters",
+            workspace_dir / "home" / "parameters.json",
+            "initial/parameters.json",
+            required=True,
+        )
+
+        add_file(
+            role="final.design.verilog",
+            source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz",
+            destination=f"final/design/{design}.v.gz",
+            required=True,
+        )
+        add_file(
+            role="final.design.def",
+            source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.def.gz",
+            destination=f"final/design/{design}.def.gz",
+            required=True,
+        )
+        add_file(
+            role="final.design.gds",
+            source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.gds",
+            destination=f"final/design/{design}.gds",
+            required=True,
+        )
+        add_file(
+            role="final.design.image",
+            source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.png",
+            destination=f"final/design/{design}.png",
+        )
+
+        sta_config = self._read_json(config_dir / "sta.json")
+        sta_matrix = self._sta_matrix(sta_config)
+        expected_spefs = set()
+        for item in sta_matrix:
+            expected_spefs.add(
+                f"{design}_{item['rcx_corner']}_{self._temperature_token(item['temperature'])}C.spef"
+            )
+            report_dir = (
+                workspace_dir
+                / "sta_ecc"
+                / "output"
+                / f"{item['lib_corner']}_{self._temperature_token(item['temperature'])}"
+                / item["rcx_corner"]
+            )
+            report_dest = (
+                f"final/timing/sta/{item['lib_corner']}_"
+                f"{self._temperature_token(item['temperature'])}/"
+                f"{item['rcx_corner']}"
+            )
+            for suffix in (
+                ".rpt.json",
+                ".rpt",
+                ".cap",
+                ".fanout",
+                ".trans",
+                "_hold.skew",
+                "_setup.skew",
+            ):
+                add_file(
+                    role="final.sta_report",
+                    source=report_dir / f"{top_module}{suffix}",
+                    destination=f"{report_dest}/{top_module}{suffix}",
+                    required=suffix in (".rpt.json", ".rpt"),
+                )
+            item["report"] = f"{report_dest}/{top_module}.rpt.json"
+
+        rcx_output_dir = workspace_dir / "RCX_ecc" / "output"
+        spef_paths = sorted(rcx_output_dir.glob("*.spef")) if rcx_output_dir.is_dir() else []
+        if expected_spefs:
+            for spef_name in sorted(expected_spefs):
+                add_file(
+                    role="final.spef",
+                    source=rcx_output_dir / spef_name,
+                    destination=f"final/timing/spef/{spef_name}",
+                    required=True,
+                )
+            for spef_path in spef_paths:
+                if spef_path.name not in expected_spefs:
+                    add_file(
+                        role="final.spef",
+                        source=spef_path,
+                        destination=f"final/timing/spef/{spef_path.name}",
+                    )
+        elif spef_paths:
+            for spef_path in spef_paths:
+                add_file(
+                    role="final.spef",
+                    source=spef_path,
+                    destination=f"final/timing/spef/{spef_path.name}",
+                    required=True,
+                )
+        else:
+            missing_required.append("RCX SPEF files")
+
+        add_file("status.flow", flow_path, "final/reports/flow.json", required=True)
+        add_file(
+            "status.checklist",
+            checklist_path,
+            "final/reports/checklist.json",
+            required=True,
+        )
+
+        for step_name, step_dir in self._step_dirs().items():
+            for kind in ("analysis", "report"):
+                self._copy_tree_files(
+                    workspace_dir=workspace_dir,
+                    package_dir=package_dir,
+                    source_dir=workspace_dir / step_dir / kind,
+                    destination_dir=f"final/reports/{step_name}/{kind}",
+                    role=f"report.{kind}",
+                    copied=copied,
+                )
+
+        if options.include_debug:
+            self._collect_debug_files(
+                workspace_dir=workspace_dir,
+                package_dir=package_dir,
+                copied=copied,
+            )
+
+        checklist_counts = self._checklist_counts(checklist_data)
+        if checklist_counts.get("warning", 0) or checklist_counts.get("failed", 0):
+            warnings.append(
+                "home checklist contains failed or warning items; "
+                "see final/reports/checklist.json"
+            )
+
+        metrics = self._read_json(
+            workspace_dir / "drc_ecc" / "analysis" / "drc_metrics.json"
+        )
+        ok = len(missing_required) == 0
+        flow_success = all(
+            state == StateEnum.Success.value
+            for state in required_steps.values()
+        )
+        summary = {
+            "schema_version": 1,
+            "status": "ok" if ok else "incomplete",
+            "design": design,
+            "top_module": top_module,
+            "pdk": pdk_name,
+            "required_steps": required_steps,
+            "checks": {
+                "flow": "passed" if flow_success else "failed",
+                "home_checklist": checklist_counts,
+            },
+            "initial": {
+                "verilog": f"initial/{design}.v",
+                "sdc": f"initial/{design}.sdc",
+                "parameters": "initial/parameters.json",
+            },
+            "config": "config/",
+            "harden": {
+                "gds": f"harden/{design}.gds",
+                "lef": f"harden/{design}.lef",
+                "lib": f"harden/{design}.lib",
+            },
+            "final": {
+                "verilog": f"final/design/{design}.v.gz",
+                "def": f"final/design/{design}.def.gz",
+                "gds": f"final/design/{design}.gds",
+                "image": f"final/design/{design}.png",
+            },
+            "metrics": metrics,
+            "sta_matrix": sta_matrix,
+            "missing_required": missing_required,
+            "warnings": warnings,
+        }
+        summary_path = package_dir / "summary.json"
+        summary_path.write_text(json.dumps(summary, indent=2))
+
+        manifest = {
+            "schema_version": 1,
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "workspace": str(workspace_dir.resolve()),
+            "design": design,
+            "top_module": top_module,
+            "pdk": pdk_name,
+            "flow": {
+                "source": "home/flow.json",
+                "all_required_steps_success": flow_success,
+            },
+            "files": copied,
+            "missing_required": missing_required,
+            "warnings": warnings,
+        }
+        manifest_path = package_dir / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2))
+
+        readme_path = package_dir / "README.md"
+        readme_path.write_text(
+            f"# {design} Signoff Package\n\n"
+            f"- Workspace: {workspace_dir.resolve()}\n"
+            f"- Status: {summary['status']}\n"
+            "- Harden outputs are under `harden/`.\n"
+            "- Final physical resources are under `final/`.\n"
+        )
+
+        archive_path = None
+        if options.archive and (ok or options.allow_incomplete):
+            archive_path = str(package_dir.with_suffix(".tar.gz"))
+            archive_file = Path(archive_path)
+            if archive_file.exists():
+                archive_file.unlink()
+            with tarfile.open(archive_file, "w:gz") as archive:
+                archive.add(package_dir, arcname=package_dir.name)
+
+        return SignoffPackageResult(
+            ok=ok,
+            package_dir=str(package_dir),
+            archive_path=archive_path,
+            manifest_path=str(manifest_path),
+            summary_path=str(summary_path),
+            copied=copied,
+            missing_required=missing_required,
+            warnings=warnings,
+        )
+
+    def _add_file(self,
+                  workspace_dir: Path,
+                  package_dir: Path,
+                  role: str,
+                  source: Path | None,
+                  destination: str,
+                  required: bool,
+                  copied: list[dict],
+                  missing_required: list[str]) -> None:
+        if source is None or not source.is_file() or source.stat().st_size <= 0:
+            if required:
+                missing_required.append(destination)
+            return
+
+        target = package_dir / destination
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        copied.append({
+            "role": role,
+            "required": required,
+            "source": self._source_path(workspace_dir, source),
+            "destination": destination,
+            "size_bytes": target.stat().st_size,
+            "sha256": self._sha256(target),
+        })
+
+    def _copy_tree_files(self,
+                         workspace_dir: Path,
+                         package_dir: Path,
+                         source_dir: Path,
+                         destination_dir: str,
+                         role: str,
+                         copied: list[dict]) -> None:
+        if not source_dir.is_dir():
+            return
+        for source in sorted(path for path in source_dir.rglob("*") if path.is_file()):
+            relative = source.relative_to(source_dir).as_posix()
+            self._add_file(
+                workspace_dir=workspace_dir,
+                package_dir=package_dir,
+                role=role,
+                source=source,
+                destination=f"{destination_dir}/{relative}",
+                required=False,
+                copied=copied,
+                missing_required=[],
+            )
+
+    def _collect_debug_files(self,
+                             workspace_dir: Path,
+                             package_dir: Path,
+                             copied: list[dict]) -> None:
+        patterns = [
+            "*_ecc/feature/*",
+            "*_ecc/subflow.json",
+            "sta_ecc/output/**/wire_paths/*",
+        ]
+        for pattern in patterns:
+            for path_text in sorted(glob.glob(str(workspace_dir / pattern), recursive=True)):
+                source = Path(path_text)
+                if not source.is_file():
+                    continue
+                destination = f"debug/{source.relative_to(workspace_dir).as_posix()}"
+                self._add_file(
+                    workspace_dir=workspace_dir,
+                    package_dir=package_dir,
+                    role="debug",
+                    source=source,
+                    destination=destination,
+                    required=False,
+                    copied=copied,
+                    missing_required=[],
+                )
+        output_db_dirs = sorted(workspace_dir.glob("*_ecc/output/*_db"))
+        output_view_dirs = sorted(workspace_dir.glob("*_ecc/output/*_view"))
+        for source in output_db_dirs + output_view_dirs:
+            if not source.is_dir():
+                continue
+            self._copy_tree_files(
+                workspace_dir=workspace_dir,
+                package_dir=package_dir,
+                source_dir=source,
+                destination_dir=f"debug/{source.relative_to(workspace_dir).as_posix()}",
+                role="debug",
+                copied=copied,
+            )
+
+    def _read_json(self, path: Path) -> dict:
+        try:
+            with open(path, encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _sha256(self, path: Path) -> str:
+        digest = hashlib.sha256()
+        with open(path, "rb") as file:
+            for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _path_from_config(self,
+                          workspace_dir: Path,
+                          path_text: str) -> Path | None:
+        if not path_text:
+            return None
+        path = Path(path_text)
+        if not path.is_absolute():
+            path = workspace_dir / path
+        return path if path.is_file() else None
+
+    def _source_path(self, workspace_dir: Path, source: Path) -> str:
+        try:
+            return source.relative_to(workspace_dir).as_posix()
+        except ValueError:
+            return str(source)
+
+    def _find_one(self,
+                  directory: Path,
+                  preferred_name: str,
+                  pattern: str,
+                  missing_label: str,
+                  missing_required: list[str]) -> Path | None:
+        preferred = directory / preferred_name
+        if preferred.is_file():
+            return preferred
+        matches = sorted(directory.glob(pattern)) if directory.is_dir() else []
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            missing_required.append(f"{missing_label}: multiple matches")
+            return None
+        missing_required.append(missing_label)
+        return None
+
+    def _design_from_outputs(self, workspace_dir: Path) -> str:
+        for pattern, suffix in (
+            ("Harden_ecc/output/*_Harden.gds", "_Harden.gds"),
+            ("filler_ecc/output/*_filler.v.gz", "_filler.v.gz"),
+        ):
+            matches = sorted(workspace_dir.glob(pattern))
+            if matches:
+                name = matches[0].name
+                if name.endswith(suffix):
+                    return name[: -len(suffix)]
+        return ""
+
+    def _required_step_states(self, flow_data: dict) -> dict:
+        required = [
+            StepEnum.HARDEN.value,
+            StepEnum.RCX.value,
+            StepEnum.STA.value,
+            StepEnum.DRC.value,
+            StepEnum.FILLER.value,
+            StepEnum.ROUTING.value,
+        ]
+        state_by_step = {
+            step.get("name"): step.get("state", "")
+            for step in flow_data.get("steps", [])
+            if isinstance(step, dict)
+        }
+        return {step: state_by_step.get(step, "") for step in required}
+
+    def _checklist_counts(self, checklist_data: dict) -> dict:
+        counts = {"passed": 0, "warning": 0, "failed": 0}
+        for item in checklist_data.get("checklist", []):
+            state = str(item.get("state", "")).lower()
+            if state == "passed":
+                counts["passed"] += 1
+            elif state == "warning":
+                counts["warning"] += 1
+            elif state == "failed":
+                counts["failed"] += 1
+        return counts
+
+    def _sta_matrix(self, sta_config: dict) -> list[dict]:
+        liberty_by_corner = {
+            item.get("corner"): item
+            for item in sta_config.get("liberty", [])
+            if isinstance(item, dict)
+        }
+        matrix = []
+        for signoff_group in sta_config.get("signoff", []):
+            if not isinstance(signoff_group, dict):
+                continue
+            for lib_corner, rcx_corners in signoff_group.items():
+                liberty = liberty_by_corner.get(lib_corner, {})
+                if isinstance(rcx_corners, str):
+                    rcx_corners = [rcx_corners]
+                for rcx_corner in rcx_corners:
+                    matrix.append({
+                        "lib_corner": lib_corner,
+                        "temperature": liberty.get("temperature", ""),
+                        "rcx_corner": rcx_corner,
+                    })
+        return matrix
+
+    def _temperature_token(self, temperature) -> str:
+        try:
+            numeric = float(temperature)
+            if numeric.is_integer():
+                temperature = int(numeric)
+        except (TypeError, ValueError):
+            pass
+        return str(temperature).replace("-", "m").replace(".", "p")
+
+    def _step_dirs(self) -> dict[str, str]:
+        return {
+            StepEnum.SYNTHESIS.value: "Synthesis_yosys",
+            StepEnum.FLOORPLAN.value: "Floorplan_ecc",
+            StepEnum.NETLIST_OPT.value: "fixFanout_ecc",
+            StepEnum.PLACEMENT.value: "place_dreamplace",
+            StepEnum.CTS.value: "CTS_ecc",
+            StepEnum.LEGALIZATION.value: "legalization_dreamplace",
+            StepEnum.ROUTING.value: "route_ecc",
+            StepEnum.DRC.value: "drc_ecc",
+            StepEnum.FILLER.value: "filler_ecc",
+            StepEnum.RCX.value: "RCX_ecc",
+            StepEnum.STA.value: "sta_ecc",
+            StepEnum.HARDEN.value: "Harden_ecc",
+        }

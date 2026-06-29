@@ -14,6 +14,7 @@ from chipcompiler.cli.workspace.response import (
     workspace_response,
 )
 from chipcompiler.cli.workspace.service import (
+    collect_signoff_package,
     create_workspace_from_request,
     get_workspace_home,
     get_workspace_info,
@@ -177,6 +178,7 @@ def create_cmd(
     directory: Annotated[str | None, typer.Option("--directory")] = None,
     pdk: Annotated[str | None, typer.Option("--pdk")] = None,
     pdk_root: Annotated[str | None, typer.Option("--pdk-root")] = None,
+    pdk_json: Annotated[str | None, typer.Option("--pdk-json")] = None,
     origin_def: Annotated[str | None, typer.Option("--origin-def")] = None,
     origin_verilog: Annotated[str | None, typer.Option("--origin-verilog")] = None,
     filelist: Annotated[str | None, typer.Option("--filelist")] = None,
@@ -194,6 +196,7 @@ def create_cmd(
             directory=directory,
             pdk=pdk,
             pdk_root=pdk_root,
+            pdk_json=pdk_json,
             origin_def=origin_def,
             origin_verilog=origin_verilog,
             filelist=filelist,
@@ -272,3 +275,24 @@ def get_home_cmd(
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     _dispatch_runtime(lambda: get_workspace_home(directory), json_output)
+
+
+@workspace_app.command("signoff", help="Collect a harden-flow signoff package")
+def signoff_cmd(
+    directory: Annotated[str, typer.Option("--directory")] = "",
+    output_dir: Annotated[str, typer.Option("--output")] = "",
+    archive: Annotated[bool, typer.Option("--archive/--no-archive")] = True,
+    include_debug: Annotated[bool, typer.Option("--include-debug")] = False,
+    allow_incomplete: Annotated[bool, typer.Option("--allow-incomplete")] = False,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    _dispatch_runtime(
+        lambda: collect_signoff_package(
+            directory,
+            output_dir,
+            archive,
+            include_debug,
+            allow_incomplete,
+        ),
+        json_output,
+    )
