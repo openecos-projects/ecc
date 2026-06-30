@@ -1007,6 +1007,7 @@ def run_sta(workspace: Workspace,
         ecc_module.run_timing(
             config=workspace.config.get(StepEnum.STA.value, ""),
             output_dir=report_dir,
+            work_dir=step.directory,
             lib_paths=liberty_files,
             sdc_path=workspace.pdk.sdc,
             spef_path=spef_file,

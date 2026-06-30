@@ -948,6 +948,7 @@ class ECCToolsModule:
     def run_timing(
         self,
         config: str = "",
+        work_dir: str = "",
         output_dir: str = "",
         lib_paths: list[str] = [],
         sdc_path: str = "",
@@ -957,11 +958,24 @@ class ECCToolsModule:
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
         config_dict = {}
-        if output_dir:
-            config_dict["-temp_directory_path"] = path_text(output_dir)
+        if work_dir:
+            config_dict["-temp_directory_path"] = path_text(work_dir)
         self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
-        self.ecc.run_sta()
-        self.ecc.destroy_sta()
+        try:
+            self.ecc.run_sta()
+        finally:
+            self.ecc.destroy_sta()
+
+        timing_report_dir = Path(work_dir) / "timing_reporter"
+        if output_dir and timing_report_dir.is_dir():
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+            for source_path in timing_report_dir.iterdir():
+                target_path = output_path / source_path.name
+                if source_path.is_dir():
+                    shutil.copytree(source_path, target_path, dirs_exist_ok=True)
+                elif source_path.is_file():
+                    shutil.copy2(source_path, target_path)
 
     def run_sta(self, output_dir: str):
         return None
