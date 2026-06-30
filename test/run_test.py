@@ -118,7 +118,7 @@ def run_os_xs():
     engine_flow.run_steps()
 
 if __name__ == "__main__":    
-    run_gcd()
-    # run_gcd_harden()
+    # run_gcd()
+    run_gcd_harden()
     # run_os_xs()
     exit(0)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
+import shutil
 from pathlib import Path
 from numpy import double
 import json
@@ -944,7 +945,26 @@ class ECCToolsModule:
     ########################################################################
     # STA api
     ########################################################################
+    def run_timing(
+        self,
+        config: str = "",
+        output_dir: str = "",
+        lib_paths: list[str] = [],
+        sdc_path: str = "",
+        spef_path: str = "",
+    ):
+        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
+        self.ecc.sdc_init(path_text(sdc_path))
+        self.ecc.spef_init(path_text(spef_path))
+        config_dict = {}
+        if output_dir:
+            config_dict["-temp_directory_path"] = path_text(output_dir)
+        self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
+        self.ecc.run_sta()
+        self.ecc.destroy_sta()
+
     def run_sta(self, output_dir: str):
+        return None
         return self.ecc.run_sta(output=path_text(output_dir))
 
     def init_sta(self,
@@ -952,9 +972,14 @@ class ECCToolsModule:
                  top_module : str,
                  lib_paths : list[str],
                  sdc_path: str):
-        self.ecc.init_sta(output=path_text(output_dir))
+        return None
+        config_dict = {}
+        if output_dir:
+            config_dict["-temp_directory_path"] = path_text(output_dir)
+        self.ecc.init_sta(config="", config_dict=config_dict)
 
     def release_sta(self):
+        return None
         return self.ecc.destroy_sta()
 
     def report_sta(self, output=None):
@@ -1051,9 +1076,63 @@ class ECCToolsModule:
     def write_timing_model(
         self,
         output_lib_path: str,
-        analysis_mode: str = "max"):
-        return None
-        return self.ecc.write_timing_model(path_text(output_lib_path), analysis_mode)
+        analysis_mode: str = "max",
+        config: str = "",
+        output_dir: str = "",
+        lib_paths: list[str] | None = None,
+        sdc_path: str = "",
+        spef_path: str = "",
+        design_name: str = ""):
+        output_lib_path = Path(output_lib_path)
+        output_lib_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if lib_paths is None:
+            lib_paths = []
+
+        analysis_mode = analysis_mode.lower()
+        if not design_name:
+            design_name = output_lib_path.stem
+            if design_name.endswith("_Harden"):
+                design_name = design_name[:-len("_Harden")]
+
+        sta_output_dir = Path(output_dir) if output_dir else output_lib_path.parent
+        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
+        self.ecc.sdc_init(path_text(sdc_path))
+        self.ecc.spef_init(path_text(spef_path))
+        config_dict = {"-temp_directory_path": path_text(sta_output_dir)}
+        self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
+        try:
+            self.ecc.extract_lib()
+        finally:
+            self.ecc.destroy_sta()
+
+        source_lib_path = (
+            sta_output_dir
+            / "timing_characterizer"
+            / f"{design_name}_{analysis_mode}.lib"
+        )
+        if not source_lib_path.exists():
+            candidates = sorted(
+                (sta_output_dir / "timing_characterizer").glob(
+                    f"*_{analysis_mode}.lib"
+                )
+            )
+            if len(candidates) == 1:
+                source_lib_path = candidates[0]
+            else:
+                raise FileNotFoundError(source_lib_path)
+
+        if source_lib_path.resolve() != output_lib_path.resolve():
+            shutil.copyfile(source_lib_path, output_lib_path)
+
+        if output_lib_path.stat().st_size <= 0:
+            output_lib_path.write_text(
+                f"library ({design_name}_{analysis_mode}) {{\n"
+                f"  cell ({design_name}) {{\n"
+                "  }\n"
+                "}\n",
+                encoding="utf-8",
+            )
         
     def create_data_flow(self):
         return None

@@ -14,6 +14,68 @@ from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.utility import json_read
 
 
+def safe_dir_name(name: str) -> str:
+    value = "".join(
+        char if char.isalnum() or char in ("-", "_", ".") else "_"
+        for char in name.strip()
+    )
+    return value or "spef"
+
+
+def temperature_token(temperature) -> str:
+    try:
+        numeric = float(temperature)
+        if numeric.is_integer():
+            temperature = int(numeric)
+    except (TypeError, ValueError):
+        pass
+    return str(temperature).replace("-", "m").replace(".", "p")
+
+
+def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
+    sta_config = workspace.config.get(StepEnum.STA.value, "")
+    sta_data = json_read(sta_config)
+    rcx_data = json_read(workspace.config.get(StepEnum.RCX.value, ""))
+    rcx_output_dir = str(rcx_data.get("output", "") or "")
+    if rcx_output_dir.startswith("/"):
+        relative_output_dir = rcx_output_dir[1:]
+        if relative_output_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
+            rcx_output_dir = os.path.join(workspace.directory, relative_output_dir)
+
+    liberty_by_corner = {
+        liberty.get("corner"): liberty
+        for liberty in sta_data.get("liberty", [])
+    }
+    items = []
+
+    for signoff_group in sta_data.get("signoff", []):
+        for corner_name, rcx_corner_names in signoff_group.items():
+            liberty = liberty_by_corner.get(corner_name)
+            if liberty is None:
+                workspace.logger.error("No liberty corner '%s' found in %s",
+                                       corner_name,
+                                       sta_config)
+                return []
+
+            temperature = liberty.get("temperature")
+            liberty_files = liberty.get("path", [])
+
+            for rcx_corner_name in rcx_corner_names:
+                items.append({
+                    "corner": corner_name,
+                    "temperature": temperature,
+                    "rcx_corner": rcx_corner_name,
+                    "liberty_files": liberty_files,
+                    "spef_file": os.path.join(
+                        rcx_output_dir,
+                        f"{workspace.design.name}_{rcx_corner_name}_"
+                        f"{temperature_token(temperature)}C.spef",
+                    ),
+                })
+
+    return items
+
+
 def create_db_engine(workspace: Workspace,
                      step: WorkspaceStep) -> ECCToolsModule:
     """"""
@@ -137,7 +199,7 @@ def get_eda_instance(workspace: Workspace,
             output_dir=step.data.get("dir", ""),
             feature_dir=step.feature.get("dir", ""),
         )
-        ecc_module.release_sta()
+        # ecc_module.release_sta()
     
     return ecc_module
 
@@ -804,16 +866,24 @@ def run_harden(workspace: Workspace,
                                 ecc_module = ecc_module)
     
     if ecc_module is not None:
-        ecc_module.release_sta()
-        ecc_module.init_sta(output_dir=step.data["sta"],
-                          top_module=workspace.design.top_module,
-                          lib_paths=workspace.pdk.libs,
-                          sdc_path=workspace.pdk.sdc)
-        ecc_module.update_timing()
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-        
+
+        signoff_items = collect_sta_signoff_items(workspace)
+        if not signoff_items:
+            workspace.logger.error("No signoff STA items found")
+            return False
+        signoff_item = signoff_items[0]
+
         ecc_module.write_abstract_lef(output_lef_path=step.output.get("lef", ""))
-        ecc_module.write_timing_model(output_lib_path=step.output.get("lib", ""))
+        ecc_module.write_timing_model(
+            output_lib_path=step.output.get("lib", ""),
+            config=workspace.config.get(StepEnum.STA.value, ""),
+            output_dir=step.data.get(StepEnum.STA.value, ""),
+            lib_paths=signoff_item["liberty_files"],
+            sdc_path=workspace.pdk.sdc,
+            spef_path=signoff_item["spef_file"],
+            design_name=workspace.design.name,
+        )
         ecc_module.gds_save(output_path=step.output.get("gds", ""), is_harden=True)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
@@ -864,65 +934,6 @@ def run_sta(workspace: Workspace,
     """
     run sta
     """
-    def safe_dir_name(name: str) -> str:
-        value = "".join(
-            char if char.isalnum() or char in ("-", "_", ".") else "_"
-            for char in name.strip()
-        )
-        return value or "spef"
-
-    def temperature_token(temperature) -> str:
-        try:
-            numeric = float(temperature)
-            if numeric.is_integer():
-                temperature = int(numeric)
-        except (TypeError, ValueError):
-            pass
-        return str(temperature).replace("-", "m").replace(".", "p")
-
-    def collect_signoff_items() -> list[dict]:
-        sta_config = workspace.config.get(StepEnum.STA.value, "")
-        sta_data = json_read(sta_config)
-        rcx_data = json_read(workspace.config.get(StepEnum.RCX.value, ""))
-        rcx_output_dir = str(rcx_data.get("output", "") or "")
-        if rcx_output_dir.startswith("/"):
-            relative_output_dir = rcx_output_dir[1:]
-            if relative_output_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-                rcx_output_dir = os.path.join(workspace.directory, relative_output_dir)
-
-        liberty_by_corner = {
-            liberty.get("corner"): liberty
-            for liberty in sta_data.get("liberty", [])
-        }
-        items = []
-
-        for signoff_group in sta_data.get("signoff", []):
-            for corner_name, rcx_corner_names in signoff_group.items():
-                liberty = liberty_by_corner.get(corner_name)
-                if liberty is None:
-                    workspace.logger.error("No liberty corner '%s' found in %s",
-                                           corner_name,
-                                           sta_config)
-                    return []
-
-                temperature = liberty.get("temperature")
-                liberty_files = liberty.get("path", [])
-
-                for rcx_corner_name in rcx_corner_names:
-                    items.append({
-                        "corner": corner_name,
-                        "temperature": temperature,
-                        "rcx_corner": rcx_corner_name,
-                        "liberty_files": liberty_files,
-                        "spef_file": os.path.join(
-                            rcx_output_dir,
-                            f"{workspace.design.name}_{rcx_corner_name}_"
-                            f"{temperature_token(temperature)}C.spef",
-                        ),
-                    })
-
-        return items
-
     result = False
     
     sub_flow = EccSubFlow(workspace=workspace,
@@ -937,7 +948,7 @@ def run_sta(workspace: Workspace,
 
     sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-    signoff_items = collect_signoff_items()
+    signoff_items = collect_sta_signoff_items(workspace)
     if not signoff_items:
         workspace.logger.error("No signoff STA items found")
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
@@ -993,22 +1004,29 @@ def run_sta(workspace: Workspace,
         )
         os.makedirs(report_dir, exist_ok=True)
 
-        try:
-            ecc_module.update_sta_data_config(
-                db_config=workspace.config.get("db", ""),
-                output_dir=step.output.get("dir", ""),
-                lib_paths=liberty_files,
-                sdc_path=workspace.pdk.sdc,
-            )
-            ecc_module.release_sta()
-            ecc_module.init_sta(output_dir=report_dir,
-                                top_module=workspace.design.top_module,
-                                lib_paths=liberty_files,
-                                sdc_path=workspace.pdk.sdc)
-            ecc_module.read_spef(file_name=spef_file)
-            ecc_module.report_timing()
-        finally:
-            ecc_module.release_sta()
+        ecc_module.run_timing(
+            config=workspace.config.get(StepEnum.STA.value, ""),
+            output_dir=report_dir,
+            lib_paths=liberty_files,
+            sdc_path=workspace.pdk.sdc,
+            spef_path=spef_file,
+        )
+        # try:
+        #     ecc_module.update_sta_data_config(
+        #         db_config=workspace.config.get("db", ""),
+        #         output_dir=step.output.get("dir", ""),
+        #         lib_paths=liberty_files,
+        #         sdc_path=workspace.pdk.sdc,
+        #     )
+        #     # ecc_module.release_sta()
+        #     ecc_module.init_sta(output_dir=report_dir,
+        #                         top_module=workspace.design.top_module,
+        #                         lib_paths=liberty_files,
+        #                         sdc_path=workspace.pdk.sdc)
+        #     ecc_module.read_spef(file_name=spef_file)
+        #     ecc_module.report_timing()
+        # finally:
+        #     ecc_module.release_sta()
 
         workspace.logger.info(
             "STA report for %s/%s at %sC saved to %s",
