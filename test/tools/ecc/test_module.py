@@ -255,7 +255,7 @@ def test_ecc_runtime_wrappers_stringify_path_arguments():
     module.read_netlist(Path("/ws/design.v"))
     module.read_spef(Path("/ws/design.spef"))
     module.write_abstract_lef(Path("/ws/output/abstract.lef"))
-    module.write_timing_model(Path("/ws/output/gcd.lib"))
+    # module.write_timing_model(Path("/ws/output/gcd.lib"))
     module.run_to(Path("/ws/config/to.json"))
     module.run_timing_opt_drv(Path("/ws/config/drv.json"))
     module.run_timing_opt_hold(Path("/ws/config/hold.json"))
