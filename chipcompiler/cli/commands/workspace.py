@@ -20,6 +20,7 @@ from chipcompiler.cli.workspace.service import (
     get_workspace_info,
     load_workspace,
     refresh_workspace_config,
+    reset_workspace_flow,
     run_workspace_flow,
     run_workspace_step,
     sync_workspace_config,
@@ -230,6 +231,14 @@ def run_flow_cmd(
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     _dispatch_runtime(lambda: run_workspace_flow(directory, rerun), json_output)
+
+
+@workspace_app.command("reset-flow", help="Clear workspace run artifacts using rerun reset logic")
+def reset_flow_cmd(
+    directory: Annotated[str, typer.Option("--directory")] = "",
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    _dispatch_runtime(lambda: reset_workspace_flow(directory), json_output)
 
 
 @workspace_app.command("run-step", help="Run one workspace step")

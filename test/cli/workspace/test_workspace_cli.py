@@ -374,6 +374,32 @@ def test_refresh_config_cli_calls_workspace_refresh(monkeypatch, tmp_path, capsy
     assert refreshed == [os.path.abspath(ws)]
 
 
+def test_reset_flow_cli_clears_workspace_run_results(monkeypatch, tmp_path, capsys):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    prepared = []
+
+    def fake_prepare_workspace_for_rerun(workspace, engine_flow):
+        prepared.append((workspace.directory, engine_flow))
+
+    monkeypatch.setattr(
+        "chipcompiler.data.prepare_workspace_for_rerun",
+        fake_prepare_workspace_for_rerun,
+    )
+
+    rc = cli_main.run(["workspace", "reset-flow", "--directory", str(ws), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data == {
+        "cmd": "reset_flow",
+        "response": "success",
+        "data": {"directory": os.path.abspath(ws)},
+        "message": [f"reset workspace flow success : {os.path.abspath(ws)}"],
+    }
+    assert capture["loaded"] == [str(ws)]
+    assert prepared == [(os.path.abspath(ws), DummyFlow.instances[0])]
+
+
 def test_sync_config_cli_rejects_path_outside_workspace_config(monkeypatch, tmp_path, capsys):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     outside = tmp_path / "outside.json"
