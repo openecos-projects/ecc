@@ -1050,7 +1050,6 @@ class ECCToolsModule:
 
     def update_rc_tree_info(self, net_name: str):
         return None
-        return self.ecc.update_rc_tree_info(net_name)
 
     def update_timing(self):
         return None
