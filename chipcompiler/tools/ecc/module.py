@@ -1171,7 +1171,6 @@ class ECCToolsModule:
 
     def update_clock_timing(self):
         return None
-        return self.ecc.update_clock_timing()
 
     def convert_idb_to_timing_netlist(self):
         return None
