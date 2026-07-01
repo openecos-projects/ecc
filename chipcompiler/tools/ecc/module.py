@@ -1007,7 +1007,6 @@ class ECCToolsModule:
 
     def read_lef_def(self, lef_files: list[str], def_file: str):
         return None
-        return self.ecc.read_lef_def(path_texts(lef_files), path_text(def_file))
 
     def read_netlist(self, file_name: str):
         return None
