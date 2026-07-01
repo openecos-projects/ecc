@@ -1011,7 +1011,6 @@ class ECCToolsModule:
         
     def link_design(self, design : str):
         return None
-        return self.ecc.link_design(design)
 
     def read_spef(self, file_name: str):
         return None
