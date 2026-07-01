@@ -1038,11 +1038,6 @@ class ECCToolsModule:
         route_layer_id: int,
     ):
         return None
-        return self.ecc.get_segment_resistance(
-            layer_id,
-            segment_length,
-            route_layer_id,
-        )
 
     def make_rc_tree_inner_node(self, net_name: str, node_id: int, cap: float):
         return None
