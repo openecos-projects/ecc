@@ -1028,8 +1028,6 @@ class ECCToolsModule:
         route_layer_id: int,
     ):
         return None
-            route_layer_id,
-        )
 
     def get_segment_resistance(
         self,
