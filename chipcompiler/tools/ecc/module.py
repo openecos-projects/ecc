@@ -1005,7 +1005,6 @@ class ECCToolsModule:
 
     def read_netlist(self, file_name: str):
         return None
-        return self.ecc.read_netlist(path_text(file_name))
         
     def read_liberty(self, lib_paths : list[str]):
         return None
