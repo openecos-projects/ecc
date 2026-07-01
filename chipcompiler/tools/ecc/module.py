@@ -1118,7 +1118,6 @@ class ECCToolsModule:
         
     def create_data_flow(self):
         return None
-        self.ecc.create_data_flow()
 
     def get_used_libs(self):
         """
