@@ -1014,7 +1014,6 @@ class ECCToolsModule:
 
     def read_spef(self, file_name: str):
         return None
-        return self.ecc.read_spef(path_text(file_name))
 
     def read_sdc(self, sdc_path : str):
         return None
