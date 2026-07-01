@@ -1201,7 +1201,6 @@ class ECCToolsModule:
 
     def get_wire_timing_data(self, n_worst_path_per_clock: int):
         return None
-        return self.ecc.get_wire_timing_data(n_worst_path_per_clock)
         
     ########################################################################
     # timing opt api
