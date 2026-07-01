@@ -1124,8 +1124,6 @@ class ECCToolsModule:
         get lib files that use in the disign
         """
         return None
-
-        return libs
     
     def report_timing(self,
                       digits: int = 3,
@@ -1144,17 +1142,6 @@ class ECCToolsModule:
         report timing
         """
         return None
-            exclude_cell_names=exclude_cell_names,
-            derate=derate,
-            is_clock_cap=is_clock_cap,
-            is_not_bak_rpt=is_not_bak_rpt,
-            max_path=max_path,
-            nworst=nworst,
-            from_list=from_list,
-            through=through,
-            to_list=to_list,
-            is_json=is_json,
-        )
 
     def build_timing_graph(self):
         return None
