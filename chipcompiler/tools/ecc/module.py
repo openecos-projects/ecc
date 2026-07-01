@@ -1041,7 +1041,6 @@ class ECCToolsModule:
 
     def make_rc_tree_inner_node(self, net_name: str, node_id: int, cap: float):
         return None
-        return self.ecc.make_rc_tree_inner_node(net_name, node_id, cap)
 
     def make_rc_tree_obj_node(self, pin_port_name: str, cap: float):
         return None
