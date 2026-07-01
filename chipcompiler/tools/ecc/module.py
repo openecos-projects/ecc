@@ -1191,7 +1191,6 @@ class ECCToolsModule:
 
     def convert_idb_to_timing_netlist(self):
         return None
-        return self.ecc.convert_idb_to_timing_netlist()
 
     def get_wire_timing_data(self, n_worst_path_per_clock: int):
         return None
