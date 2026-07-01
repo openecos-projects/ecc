@@ -1044,7 +1044,6 @@ class ECCToolsModule:
 
     def make_rc_tree_obj_node(self, pin_port_name: str, cap: float):
         return None
-        return self.ecc.make_rc_tree_obj_node(pin_port_name, cap)
 
     def make_rc_tree_edge(self, net_name: str, node1: str, node2: str, res: float):
         return None
