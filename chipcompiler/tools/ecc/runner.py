@@ -1012,22 +1012,6 @@ def run_sta(workspace: Workspace,
             sdc_path=workspace.pdk.sdc,
             spef_path=spef_file,
         )
-        # try:
-        #     ecc_module.update_sta_data_config(
-        #         db_config=workspace.config.get("db", ""),
-        #         output_dir=step.output.get("dir", ""),
-        #         lib_paths=liberty_files,
-        #         sdc_path=workspace.pdk.sdc,
-        #     )
-        #     # ecc_module.release_sta()
-        #     ecc_module.init_sta(output_dir=report_dir,
-        #                         top_module=workspace.design.top_module,
-        #                         lib_paths=liberty_files,
-        #                         sdc_path=workspace.pdk.sdc)
-        #     ecc_module.read_spef(file_name=spef_file)
-        #     ecc_module.report_timing()
-        # finally:
-        #     ecc_module.release_sta()
 
         workspace.logger.info(
             "STA report for %s/%s at %sC saved to %s",
