@@ -987,10 +987,6 @@ class ECCToolsModule:
                  lib_paths : list[str],
                  sdc_path: str):
         return None
-        config_dict = {}
-        if output_dir:
-            config_dict["-temp_directory_path"] = path_text(output_dir)
-        self.ecc.init_sta(config="", config_dict=config_dict)
 
     def release_sta(self):
         return None
