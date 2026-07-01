@@ -153,16 +153,3 @@ jobs:
           path: |
             dist/ecc.tar
 
-  # nix:
-  #   runs-on: ubuntu-latest
-  #   needs: check-version
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #       with:
-  #         submodules: recursive
-  #     - uses: DeterminateSystems/nix-installer-action@main
-  #     - uses: DeterminateSystems/magic-nix-cache-action@main
-  #     - run: nix build -L -v .#cli
-  #     - run: nix run .#cli -- --help
-  #     - run: nix run .#cli -- --version
-  #     - run: nix run .#cli -- version --json
