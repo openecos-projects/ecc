@@ -990,7 +990,6 @@ class ECCToolsModule:
 
     def release_sta(self):
         return None
-        return self.ecc.destroy_sta()
 
     def report_sta(self, output=None):
         return None
