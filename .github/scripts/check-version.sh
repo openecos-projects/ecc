@@ -70,6 +70,11 @@ fi
 
 expected_version="$(normalize_expected_version "${expected_ref}")"
 
+if [[ -n "${expected_ref}" && -z "${expected_version}" ]]; then
+  echo "ERROR: malformed expected ref '${expected_ref}'" >&2
+  exit 1
+fi
+
 if [[ -n "${expected_version}" && "${expected_version}" != "${py_ver}" ]]; then
   echo "ERROR: ref mismatch. ref='${expected_ref}' expected='v${py_ver}'" >&2
   exit 1

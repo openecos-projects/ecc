@@ -75,6 +75,10 @@ run_case "release branch passes" 0 "release/v0.1.0-alpha.5"
 run_case "full release branch ref passes" 0 "refs/heads/release/v0.1.0-alpha.5"
 run_case "mismatched release branch fails" 1 "release/v0.1.0-alpha.4"
 run_case "unsupported explicit ref fails" 1 "refs/heads/feature/foo"
+run_case "empty short tag fails" 1 "v"
+run_case "empty full tag ref fails" 1 "refs/tags/v"
+run_case "empty release branch fails" 1 "release/v"
+run_case "empty full release branch ref fails" 1 "refs/heads/release/v"
 run_case "package version mismatch fails" 1 "" "0.1.0-alpha.5" "0.1.0-alpha.4"
 
 if [[ "${failures}" -ne 0 ]]; then
