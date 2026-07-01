@@ -1053,7 +1053,6 @@ class ECCToolsModule:
 
     def update_timing(self):
         return None
-        return self.ecc.update_timing()
 
     def write_abstract_lef(self, output_lef_path: str):
         return self.ecc.write_abstract_lef(path_text(output_lef_path))
