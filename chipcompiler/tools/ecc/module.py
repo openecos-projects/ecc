@@ -998,7 +998,7 @@ class ECCToolsModule:
 
     def init_log(self, log_dir: str):
         return None
-        return self.ecc.init_log(path_text(log_dir))
+       
 
     def set_design_workspace(self, design_workspace: str):
         return None
