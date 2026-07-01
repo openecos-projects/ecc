@@ -1,0 +1,79 @@
+name: Build PyInstaller Bundle
+description: Build, package, and smoke test the ECC PyInstaller CLI bundle.
+
+inputs:
+  artifact-path:
+    description: Path to write the packaged PyInstaller artifact.
+    required: false
+    default: dist/ecc.tar
+  artifact-format:
+    description: Artifact format. Supported values are "tar" and "tar.gz".
+    required: false
+    default: tar
+  smoke-dir:
+    description: Directory used to extract and smoke test the artifact.
+    required: false
+    default: dist/pyinstaller-smoke
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      shell: bash
+      env:
+        ARTIFACT_FORMAT: ${{ inputs.artifact-format }}
+      run: |
+        case "$ARTIFACT_FORMAT" in
+          tar|tar.gz) ;;
+          *)
+            echo "::error::Unsupported artifact-format: $ARTIFACT_FORMAT"
+            exit 1
+            ;;
+        esac
+
+    - name: Build PyInstaller bundle
+      shell: bash
+      run: |
+        uv run --no-sync --managed-python pyinstaller ecc.spec --clean
+        mkdir -p dist/pyinstaller
+        tar -cf dist/pyinstaller/ecc.tar -C dist/ecc .
+
+    - name: Package PyInstaller artifact
+      shell: bash
+      env:
+        ARTIFACT_FORMAT: ${{ inputs.artifact-format }}
+        ARTIFACT_PATH: ${{ inputs.artifact-path }}
+      run: |
+        mkdir -p "$(dirname "$ARTIFACT_PATH")"
+        case "$ARTIFACT_FORMAT" in
+          tar)
+            cp dist/pyinstaller/ecc.tar "$ARTIFACT_PATH"
+            ;;
+          tar.gz)
+            gzip -n -9 -c dist/pyinstaller/ecc.tar > "$ARTIFACT_PATH"
+            ;;
+        esac
+
+    - name: Smoke test PyInstaller artifact
+      shell: bash
+      env:
+        ARTIFACT_FORMAT: ${{ inputs.artifact-format }}
+        ARTIFACT_PATH: ${{ inputs.artifact-path }}
+        SMOKE_DIR: ${{ inputs.smoke-dir }}
+      run: |
+        rm -rf "$SMOKE_DIR"
+        mkdir -p "$SMOKE_DIR"
+
+        case "$ARTIFACT_FORMAT" in
+          tar)
+            tar -xf "$ARTIFACT_PATH" -C "$SMOKE_DIR"
+            ;;
+          tar.gz)
+            tar -xzf "$ARTIFACT_PATH" -C "$SMOKE_DIR"
+            ;;
+        esac
+
+        "$SMOKE_DIR/ecc" --help
+        "$SMOKE_DIR/ecc" --version
+        "$SMOKE_DIR/ecc" version --json
+        test -x "$SMOKE_DIR/_internal/torch/bin/torch_shm_manager"
