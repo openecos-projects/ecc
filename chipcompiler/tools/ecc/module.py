@@ -1008,7 +1008,6 @@ class ECCToolsModule:
         
     def read_liberty(self, lib_paths : list[str]):
         return None
-        return self.ecc.read_liberty(path_texts(lib_paths))
         
     def link_design(self, design : str):
         return None
