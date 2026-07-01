@@ -40,16 +40,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js (LTS) and pnpm.
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
-    && apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs \
-    && npm install -g pnpm \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Rust (for Tauri).
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-
 # Install uv (Python package manager used by project).
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ln -s /root/.local/bin/uv /usr/local/bin/uv
