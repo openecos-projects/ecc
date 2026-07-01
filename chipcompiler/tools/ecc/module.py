@@ -1017,7 +1017,6 @@ class ECCToolsModule:
 
     def read_sdc(self, sdc_path : str):
         return None
-        return self.ecc.read_sdc(path_text(sdc_path))
 
     def get_net_name(self, pin_port_name: str):
         return None
