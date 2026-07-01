@@ -1047,7 +1047,6 @@ class ECCToolsModule:
 
     def make_rc_tree_edge(self, net_name: str, node1: str, node2: str, res: float):
         return None
-        return self.ecc.make_rc_tree_edge(net_name, node1, node2, res)
 
     def update_rc_tree_info(self, net_name: str):
         return None
