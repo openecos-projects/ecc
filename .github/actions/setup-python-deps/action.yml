@@ -10,33 +10,31 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Setup Python 3.11
-      shell: bash
-      run: echo "/opt/python/cp311-cp311/bin" >> "$GITHUB_PATH"
-
     - name: Setup uv
       uses: astral-sh/setup-uv@v3
       with:
         version: latest
         enable-cache: "true"
 
+    - name: Setup uv-managed Python 3.11
+      shell: bash
+      run: uv python install 3.11
+
     - name: Trust GitHub workspace
       shell: bash
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-    - name: Install native build dependencies
+    - name: Install hosted native build dependencies
+      if: ${{ inputs.build-all == 'true' }}
       shell: bash
       run: |
-        dnf install -y epel-release dnf-plugins-core
-        dnf config-manager --set-enabled crb || true
-        dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-        dnf install -y \
-          cmake ninja-build pkgconfig patchelf mold lld \
-          boost-devel cairo-devel gflags-devel glog-devel \
-          flex flex-devel bison eigen3-devel gtest-devel \
-          tbb-devel hwloc-devel libcurl-devel libunwind-devel \
-          metis-devel gmp-devel tcl-devel \
-          unzip zip gh
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential cmake ninja-build pkg-config patchelf mold lld \
+          libboost-all-dev libcairo2-dev libgflags-dev libgoogle-glog-dev \
+          flex libfl-dev bison libeigen3-dev libgtest-dev libtbb-dev libhwloc-dev \
+          libcurl4-openssl-dev libunwind-dev libmetis-dev libgmp-dev \
+          tcl-dev unzip zip
 
     - name: Setup Rust
       if: ${{ inputs.build-all == 'true' }}
@@ -55,7 +53,7 @@ runs:
         set -euo pipefail
 
         mkdir -p dist/native-wheels
-        uv venv --python 3.11
+        uv venv --python 3.11 --managed-python
 
         download_wheel_artifact() {
           local repo="$1"
@@ -100,12 +98,12 @@ runs:
         if [ "${{ inputs.build-all }}" = "true" ]; then
           export SCCACHE_GHA_ENABLED="true"
           export CMAKE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
-          uv sync --frozen --all-groups --python 3.11 \
+          uv sync --frozen --all-groups --python 3.11 --managed-python \
             --no-build-isolation-package ecc-dreamplace \
             --no-build-isolation-package ecc-tools-bin \
             --verbose
         else
-          uv sync --frozen --all-groups --python 3.11 --inexact \
+          uv sync --frozen --all-groups --python 3.11 --managed-python --inexact \
             --no-install-package ecc-dreamplace \
             --no-install-package ecc-tools-bin
         fi

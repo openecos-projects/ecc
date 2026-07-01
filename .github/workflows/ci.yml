@@ -33,9 +33,6 @@ permissions:
   actions: read
   contents: read
 
-env:
-  UV_PYTHON_PREFERENCE: only-managed
-
 jobs:
   check-version:
     name: Check Version Consistency
@@ -52,8 +49,7 @@ jobs:
   test:
     name: Test
     needs: check-version
-    runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux_2_34_x86_64
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,8 +101,7 @@ jobs:
   build-pyinstaller:
     name: Build PyInstaller Bundle
     needs: check-version
-    runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux_2_34_x86_64
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -131,18 +126,10 @@ jobs:
           PY
 
       - name: Build PyInstaller bundle
-        run: |
-          uv run --no-sync pyinstaller ecc.spec --clean
-          tar -cf dist/ecc.tar -C dist/ecc .
-
-      - name: Smoke test PyInstaller bundle
-        run: |
-          mkdir -p dist/pyinstaller-smoke
-          tar -xf dist/ecc.tar -C dist/pyinstaller-smoke
-          dist/pyinstaller-smoke/ecc --help
-          dist/pyinstaller-smoke/ecc --version
-          dist/pyinstaller-smoke/ecc version --json
-          test -x dist/pyinstaller-smoke/_internal/torch/bin/torch_shm_manager
+        uses: ./.github/actions/build-pyinstaller-bundle
+        with:
+          artifact-path: dist/ecc.tar
+          artifact-format: tar
 
       - name: Upload PyInstaller artifact
         if: always()
@@ -152,4 +139,3 @@ jobs:
           if-no-files-found: ignore
           path: |
             dist/ecc.tar
-

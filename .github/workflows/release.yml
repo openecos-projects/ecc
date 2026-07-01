@@ -33,7 +33,6 @@ jobs:
     name: Build CLI Bundle
     needs: check-version
     runs-on: ubuntu-22.04
-    container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,24 +45,10 @@ jobs:
         uses: ./.github/actions/setup-python-deps
 
       - name: Build PyInstaller bundle
-        run: |
-          uv run --no-sync pyinstaller ecc.spec --clean
-          tar -cf dist/ecc.tar -C dist/ecc .
-
-      - name: Package release artifact
-        run: |
-          mkdir -p dist/release
-          gzip -n -9 -c dist/ecc.tar \
-            > dist/release/ecc-cli-linux-x86_64.tar.gz
-
-      - name: Smoke test release artifact
-        run: |
-          mkdir -p dist/pyinstaller-smoke
-          tar -xzf dist/release/ecc-cli-linux-x86_64.tar.gz -C dist/pyinstaller-smoke
-          dist/pyinstaller-smoke/ecc --help
-          dist/pyinstaller-smoke/ecc --version
-          dist/pyinstaller-smoke/ecc version --json
-          test -x dist/pyinstaller-smoke/_internal/torch/bin/torch_shm_manager
+        uses: ./.github/actions/build-pyinstaller-bundle
+        with:
+          artifact-path: dist/release/ecc-cli-linux-x86_64.tar.gz
+          artifact-format: tar.gz
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
