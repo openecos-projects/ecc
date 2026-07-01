@@ -1124,7 +1124,6 @@ class ECCToolsModule:
         get lib files that use in the disign
         """
         return None
-        libs = self.ecc.get_used_libs()
 
         return libs
     
