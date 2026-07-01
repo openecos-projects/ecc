@@ -1146,9 +1146,6 @@ class ECCToolsModule:
         report timing
         """
         return None
-        self.ecc.report_timing(
-            digits=digits,
-            delay_type=delay_type,
             exclude_cell_names=exclude_cell_names,
             derate=derate,
             is_clock_cap=is_clock_cap,
