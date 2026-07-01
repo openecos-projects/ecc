@@ -1165,7 +1165,6 @@ class ECCToolsModule:
 
     def build_timing_graph(self):
         return None
-        return self.ecc.build_timing_graph()
 
     def update_clock_timing(self):
         return None
