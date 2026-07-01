@@ -979,7 +979,6 @@ class ECCToolsModule:
 
     def run_sta(self, output_dir: str):
         return None
-        return self.ecc.run_sta(output=path_text(output_dir))
 
     def init_sta(self,
                  output_dir : str,
