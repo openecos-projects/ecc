@@ -199,7 +199,6 @@ def get_eda_instance(workspace: Workspace,
             output_dir=step.data.get("dir", ""),
             feature_dir=step.feature.get("dir", ""),
         )
-        # ecc_module.release_sta()
     
     return ecc_module
 
