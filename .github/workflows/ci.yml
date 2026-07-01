@@ -47,7 +47,7 @@ jobs:
       - name: Check version
         uses: ./.github/actions/check-version
         with:
-          expected_ref: ${{ startsWith(github.ref, 'refs/heads/release/v') && github.ref || '' }}
+          expected_ref: ${{ startsWith(github.ref, 'refs/heads/release/v') && github.ref || startsWith(github.base_ref, 'release/v') && github.base_ref || '' }}
 
   test:
     name: Test
