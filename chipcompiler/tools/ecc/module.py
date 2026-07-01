@@ -1020,7 +1020,6 @@ class ECCToolsModule:
 
     def get_net_name(self, pin_port_name: str):
         return None
-        return self.ecc.get_net_name(pin_port_name)
 
     def get_segment_capacitance(
         self,
