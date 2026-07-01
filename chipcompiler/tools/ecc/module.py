@@ -1002,7 +1002,6 @@ class ECCToolsModule:
 
     def set_design_workspace(self, design_workspace: str):
         return None
-        return self.ecc.set_design_workspace(path_text(design_workspace))
 
     def read_lef_def(self, lef_files: list[str], def_file: str):
         return None
