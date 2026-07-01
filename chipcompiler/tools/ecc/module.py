@@ -992,9 +992,6 @@ class ECCToolsModule:
 
     def report_sta(self, output=None):
         return None
-        if output is None:
-            return self.ecc.report_sta()
-        return self.ecc.report_sta(path_text(output))
 
     def init_log(self, log_dir: str):
         return None
