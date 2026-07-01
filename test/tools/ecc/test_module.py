@@ -17,6 +17,8 @@ from chipcompiler.tools.ecc.subflow import EccSubFlow
 class FakeEcc:
     def __init__(self):
         self.calls = []
+        self.generated_timing_lib_name = "gcd_max.lib"
+        self.generated_timing_lib_contents = "library (gcd_max) {}\n"
 
     def flow_init(self, **kwargs):
         self.calls.append(("flow_init", kwargs))
@@ -52,6 +54,23 @@ class FakeEcc:
 
     def idb_init(self, config_path):
         self.calls.append(("idb_init", config_path))
+        return True
+
+    def extract_lib(self):
+        self.calls.append(("extract_lib", (), {}))
+        for call in reversed(self.calls):
+            if len(call) != 2:
+                continue
+            call_name, payload = call
+            if call_name != "init_sta":
+                continue
+            temp_dir = payload.get("config_dict", {}).get("-temp_directory_path")
+            if not temp_dir:
+                return True
+            lib_path = Path(temp_dir) / "timing_characterizer" / self.generated_timing_lib_name
+            lib_path.parent.mkdir(parents=True, exist_ok=True)
+            lib_path.write_text(self.generated_timing_lib_contents, encoding="utf-8")
+            return True
         return True
 
     def view_json_save(self, **kwargs):
@@ -158,14 +177,14 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
         lib_paths=[Path("/pdk/lib.lib")],
         sdc_path=Path("/ws/design.sdc"),
     )
-    module.init_sta(
-        output_dir=Path("/ws/sta"),
-        top_module="gcd",
+    module.run_timing(
+        config=Path("/ws/config/sta.json"),
+        work_dir=Path("/ws/sta_work"),
+        output_dir=Path("/ws/sta_report"),
         lib_paths=[Path("/pdk/lib.lib")],
         sdc_path=Path("/ws/design.sdc"),
+        spef_path=Path("/ws/design.spef"),
     )
-    module.read_liberty([Path("/pdk/lib.lib")])
-    module.read_sdc(Path("/ws/design.sdc"))
 
     assert module.ecc.calls == [
         ("flow_init", {"flow_config": "/ws/config/flow.json"}),
@@ -196,15 +215,26 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
                 "sdc_path": "/ws/design.sdc",
             },
         ),
-        ("init_sta", {"output": "/ws/sta"}),
-        ("read_liberty", ["/pdk/lib.lib"]),
-        ("read_sdc", "/ws/design.sdc"),
+        ("lib_init", (), {"lib_paths": ["/pdk/lib.lib"]}),
+        ("sdc_init", ("/ws/design.sdc",), {}),
+        ("spef_init", ("/ws/design.spef",), {}),
+        (
+            "init_sta",
+            {
+                "config": "/ws/config/sta.json",
+                "config_dict": {"-temp_directory_path": "/ws/sta_work"},
+            },
+        ),
+        ("run_sta", (), {}),
+        ("destroy_sta", (), {}),
     ]
 
 
-def test_ecc_runtime_wrappers_stringify_path_arguments():
+def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
+    timing_output = tmp_path / "output" / "gcd.lib"
+    timing_work_dir = tmp_path / "sta"
 
     module.read_def(Path("/ws/input.def"))
     module.read_verilog(Path("/ws/input.v"), "gcd")
@@ -255,7 +285,15 @@ def test_ecc_runtime_wrappers_stringify_path_arguments():
     module.read_netlist(Path("/ws/design.v"))
     module.read_spef(Path("/ws/design.spef"))
     module.write_abstract_lef(Path("/ws/output/abstract.lef"))
-    module.write_timing_model(Path("/ws/output/gcd.lib"))
+    module.write_timing_model(
+        timing_output,
+        config=Path("/ws/config/sta.json"),
+        output_dir=timing_work_dir,
+        lib_paths=[Path("/pdk/lib.lib")],
+        sdc_path=Path("/ws/design.sdc"),
+        spef_path=Path("/ws/design.spef"),
+        design_name="gcd",
+    )
     module.run_to(Path("/ws/config/to.json"))
     module.run_timing_opt_drv(Path("/ws/config/drv.json"))
     module.run_timing_opt_hold(Path("/ws/config/hold.json"))
@@ -281,6 +319,19 @@ def test_ecc_runtime_wrappers_stringify_path_arguments():
     module.run_net_opt(Path("/ws/config/fixfanout.json"))
 
     _assert_no_path_values(module.ecc.calls)
+    assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
+    assert [
+        call[0]
+        for call in module.ecc.calls
+        if call[0] in {
+            "lib_init",
+            "sdc_init",
+            "spef_init",
+            "init_sta",
+            "extract_lib",
+            "destroy_sta",
+        }
+    ] == ["lib_init", "sdc_init", "spef_init", "init_sta", "extract_lib", "destroy_sta"]
 
 
 def test_ecc_metrics_accept_path_feature_paths(tmp_path):
