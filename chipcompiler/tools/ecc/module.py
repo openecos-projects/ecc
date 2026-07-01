@@ -1028,9 +1028,6 @@ class ECCToolsModule:
         route_layer_id: int,
     ):
         return None
-        return self.ecc.get_segment_capacitance(
-            layer_id,
-            segment_length,
             route_layer_id,
         )
 
