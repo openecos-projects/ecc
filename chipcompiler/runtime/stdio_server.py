@@ -32,6 +32,8 @@ def run_stdio_server(
 
         for message in messages:
             response = runtime_server.dispatch(message)
+            if not response:
+                continue
             output_stream.write(encode_content_length_frame(response))
             output_stream.flush()
             if runtime_server.should_exit:

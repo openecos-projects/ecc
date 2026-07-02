@@ -19,6 +19,13 @@ def _request(method: str, request_id, params: dict | None = None) -> bytes:
     return encode_content_length_frame(json.dumps(payload, separators=(",", ":")))
 
 
+def _notification(method: str, params: dict | None = None) -> bytes:
+    payload = {"jsonrpc": "2.0", "method": method}
+    if params is not None:
+        payload["params"] = params
+    return encode_content_length_frame(json.dumps(payload, separators=(",", ":")))
+
+
 def _decode_output(output: bytes) -> list[dict]:
     decoder = ContentLengthDecoder()
     return [json.loads(message) for message in decoder.feed(output)]
@@ -101,6 +108,16 @@ def test_stdio_server_writes_only_content_length_framed_responses():
     assert responses[0]["result"]["version"] == 1
     assert responses[1]["result"] == {"ok": True}
     assert responses[2]["result"] == {"ok": True}
+
+
+def test_stdio_server_does_not_write_response_for_notification():
+    stdin = io.BytesIO(_notification("rpc.ping"))
+    stdout = io.BytesIO()
+
+    rc = run_stdio_server(stdin, stdout, server=RuntimeServer())
+
+    assert rc == 0
+    assert stdout.getvalue() == b""
 
 
 def test_stdio_server_redirects_print_noise_away_from_protocol_stdout(capfd):
