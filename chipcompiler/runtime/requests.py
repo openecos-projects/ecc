@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+from dataclasses import MISSING, dataclass, fields
+from typing import Any
+
+
+@dataclass(frozen=True)
+class WorkspaceCreateRequest:
+    directory: str
+    pdk: str = ""
+    pdk_root: str = ""
+    pdk_json: Any = None
+    parameters: dict[str, Any] | None = None
+    origin_def: str = ""
+    origin_verilog: str = ""
+    filelist: str = ""
+    rtl_list: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class WorkspaceOpenRequest:
+    directory: str
+
+
+@dataclass(frozen=True)
+class WorkspaceIdRequest:
+    workspace_id: str
+
+
+@dataclass(frozen=True)
+class WorkspaceCloseRequest:
+    workspace_id: str
+
+
+@dataclass(frozen=True)
+class WorkspaceSyncConfigRequest:
+    workspace_id: str
+    config_path: str
+
+
+@dataclass(frozen=True)
+class WorkspaceInfoRequest:
+    workspace_id: str
+    step: str
+    info_id: str
+
+
+@dataclass(frozen=True)
+class FlowRunRequest:
+    workspace_id: str
+    rerun: bool = False
+
+
+@dataclass(frozen=True)
+class FlowRunStepRequest:
+    workspace_id: str
+    step: str
+    rerun: bool = False
+
+
+class RequestValidationError(ValueError):
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+REQUEST_MODELS = {
+    "workspace.create": WorkspaceCreateRequest,
+    "workspace.open": WorkspaceOpenRequest,
+    "workspace.close": WorkspaceCloseRequest,
+    "workspace.home": WorkspaceIdRequest,
+    "workspace.refresh_config": WorkspaceIdRequest,
+    "workspace.reset_flow": WorkspaceIdRequest,
+    "workspace.sync_config": WorkspaceSyncConfigRequest,
+    "workspace.info": WorkspaceInfoRequest,
+    "flow.run": FlowRunRequest,
+    "flow.run_step": FlowRunStepRequest,
+}
+
+FIELD_ALIASES = {
+    "pdkRoot": "pdk_root",
+    "pdkJson": "pdk_json",
+    "originDef": "origin_def",
+    "originVerilog": "origin_verilog",
+    "paramJson": "parameters",
+    "rtlList": "rtl_list",
+    "workspaceId": "workspace_id",
+    "configPath": "config_path",
+    "infoId": "info_id",
+    "id": "info_id",
+}
+
+
+def parse_request(method: str, params: object):
+    model = REQUEST_MODELS.get(method)
+    if model is None:
+        raise RequestValidationError(f"unsupported method: {method}")
+    if not isinstance(params, dict):
+        raise RequestValidationError("params must be an object")
+
+    normalized = _normalize_fields(params)
+    model_fields = {field.name: field for field in fields(model)}
+    for key in normalized:
+        if key not in model_fields:
+            raise RequestValidationError(f"unknown field: {key}")
+
+    values: dict[str, Any] = {}
+    for field in fields(model):
+        required = field.default is MISSING and field.default_factory is MISSING
+
+        if field.name in normalized:
+            values[field.name] = normalized[field.name]
+        elif not required:
+            values[field.name] = field.default
+        else:
+            raise RequestValidationError(f"missing required field: {field.name}")
+
+        if required and _is_missing(values[field.name]):
+            raise RequestValidationError(f"missing required field: {field.name}")
+
+    return model(**values)
+
+
+def _normalize_fields(params: dict) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for key, value in params.items():
+        normalized_key = FIELD_ALIASES.get(str(key), str(key))
+        if normalized_key in normalized:
+            raise RequestValidationError(f"duplicate field: {normalized_key}")
+        normalized[normalized_key] = value
+    return normalized
+
+
+def _is_missing(value: object) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())

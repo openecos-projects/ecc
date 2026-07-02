@@ -5,9 +5,9 @@ from typing import Annotated
 import click
 import typer
 
-from chipcompiler.cli.commands import workspace as workspace_commands
 from chipcompiler.cli.commands.param import param_app
 from chipcompiler.cli.commands.project import register_project_commands
+from chipcompiler.cli.commands.rpc import rpc_app
 from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
 
 app = typer.Typer(
@@ -52,14 +52,10 @@ def version_cmd(
 
 register_project_commands(app)
 app.add_typer(param_app, name="param")
-app.add_typer(workspace_commands.workspace_app, name="workspace")
+app.add_typer(rpc_app, name="rpc")
 
 
-def invoke_typer_app(
-    argv: Sequence[str],
-    *,
-    keep_workspace_json_stdio_redirect: bool = False,
-) -> int:
+def invoke_typer_app(argv: Sequence[str]) -> int:
     if not argv:
         command = typer.main.get_command(app)
         click.echo(command.get_help(click.Context(command, info_name="ecc")), err=True)
@@ -67,14 +63,11 @@ def invoke_typer_app(
 
     command = typer.main.get_command(app)
     try:
-        with workspace_commands.keep_json_stdio_redirect(
-            keep_workspace_json_stdio_redirect
-        ):
-            result = command.main(
-                args=list(argv),
-                prog_name="ecc",
-                standalone_mode=False,
-            )
+        result = command.main(
+            args=list(argv),
+            prog_name="ecc",
+            standalone_mode=False,
+        )
     except click.exceptions.Exit as exc:
         return int(exc.exit_code or 0)
     except click.ClickException as exc:

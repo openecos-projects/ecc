@@ -1,1 +1,1 @@
-"""Legacy workspace compatibility internals."""
+"""Workspace config inspection helpers for project CLI commands."""

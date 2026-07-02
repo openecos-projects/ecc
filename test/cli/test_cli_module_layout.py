@@ -47,7 +47,7 @@ def test_core_modules_live_under_core_package():
 
 
 def test_command_registration_modules_live_under_commands_package():
-    for module_name in ("project", "param", "workspace"):
+    for module_name in ("project", "param", "rpc"):
         module = importlib.import_module(f"chipcompiler.cli.commands.{module_name}")
         assert module.__name__ == f"chipcompiler.cli.commands.{module_name}"
 
@@ -76,7 +76,7 @@ def test_rendering_modules_live_under_rendering_package():
 
 
 def test_workspace_modules_live_under_workspace_package():
-    for module_name in ("request", "response", "service", "config_view"):
+    for module_name in ("config_view",):
         module = importlib.import_module(f"chipcompiler.cli.workspace.{module_name}")
         assert module.__name__ == f"chipcompiler.cli.workspace.{module_name}"
 

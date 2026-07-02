@@ -24,9 +24,10 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "config",
         "diagnose",
         "param",
-        "workspace",
+        "rpc",
     ):
         assert command in out
+    assert "workspace" not in out
 
 
 def test_root_version_returns_single_line(capsys):
@@ -87,15 +88,6 @@ def test_param_help_returns_zero_and_lists_subcommands(capsys):
     out = capsys.readouterr().out
     assert rc == 0
     for command in ("list", "show", "set", "unset", "diff"):
-        assert command in out
-
-
-def test_workspace_help_returns_zero_and_lists_subcommands(capsys):
-    rc = cli_main.run(["workspace", "--help"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    for command in ("create", "load", "run-flow", "run-step", "get-info", "get-home"):
         assert command in out
 
 
@@ -191,50 +183,45 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
     }
 
 
-def test_workspace_routes_through_root_typer(monkeypatch):
+def test_rpc_routes_through_root_typer(monkeypatch):
     seen = {}
 
-    def fake_invoke(argv, *, keep_workspace_json_stdio_redirect=False):
+    def fake_invoke(argv):
         seen["argv"] = argv
-        seen["keep_workspace_json_stdio_redirect"] = keep_workspace_json_stdio_redirect
         return 17
 
     monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
 
-    rc = cli_main.run(["workspace", "create", "--pdk-root", "/pdk"])
+    rc = cli_main.run(["rpc", "serve", "--stdio"])
 
     assert rc == 17
-    assert seen["argv"] == ["workspace", "create", "--pdk-root", "/pdk"]
-    assert seen["keep_workspace_json_stdio_redirect"] is False
+    assert seen["argv"] == ["rpc", "serve", "--stdio"]
 
 
-def test_run_default_argv_keeps_programmatic_stdio_redirect_disabled(monkeypatch):
+def test_run_default_argv_uses_sys_argv(monkeypatch):
     seen = {}
 
-    def fake_invoke(argv, *, keep_workspace_json_stdio_redirect=False):
+    def fake_invoke(argv):
         seen["argv"] = argv
-        seen["keep_workspace_json_stdio_redirect"] = keep_workspace_json_stdio_redirect
         return 17
 
-    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "workspace", "load", "--json"])
+    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "rpc", "serve", "--stdio"])
     monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
 
     rc = cli_main.run()
 
     assert rc == 17
-    assert seen["argv"] == ["workspace", "load", "--json"]
-    assert seen["keep_workspace_json_stdio_redirect"] is False
+    assert seen["argv"] == ["rpc", "serve", "--stdio"]
 
 
-def test_main_enables_cli_stdio_redirect(monkeypatch):
+def test_main_exits_with_run_code(monkeypatch):
     seen = {}
 
-    def fake_invoke(argv, *, keep_workspace_json_stdio_redirect=False):
+    def fake_invoke(argv):
         seen["argv"] = argv
-        seen["keep_workspace_json_stdio_redirect"] = keep_workspace_json_stdio_redirect
         return 17
 
-    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "workspace", "load", "--json"])
+    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "rpc", "serve", "--stdio"])
     monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
 
     try:
@@ -245,8 +232,7 @@ def test_main_enables_cli_stdio_redirect(monkeypatch):
         raise AssertionError("main() did not exit")
 
     assert code == 17
-    assert seen["argv"] == ["workspace", "load", "--json"]
-    assert seen["keep_workspace_json_stdio_redirect"] is True
+    assert seen["argv"] == ["rpc", "serve", "--stdio"]
 
 
 def test_old_top_level_workspace_form_is_root_parser_error(capsys):

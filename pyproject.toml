@@ -23,6 +23,7 @@ dependencies = [
   "ecc-dreamplace==0.1.0a5",
   "ecc-tools-bin==0.1.0a7",
   "fastapi>=0.109",
+  "jsonrpcserver>=5.0.9",
   "klayout>=0.30.2",
   "matplotlib>=3.4",
   "numpy>=1.21",

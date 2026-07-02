@@ -10,3 +10,4 @@ class TestPackaging:
         with open(pyproject, "rb") as f:
             data = tomllib.load(f)
         assert data["project"]["scripts"]["ecc"] == "chipcompiler.cli.main:main"
+        assert set(data["project"]["scripts"]) == {"ecc"}
