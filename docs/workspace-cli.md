@@ -200,10 +200,10 @@ The server closes workspace sessions and exits after the response is written.
 ## Errors
 
 JSON-RPC validation errors use standard JSON-RPC error objects. Runtime errors
-use ECC-specific messages in the JSON-RPC error `message` field, with details in
-`data` when available.
+use ECC-specific code strings in the JSON-RPC error `message` field, with
+human-readable details in `data.message` when available.
 
-Common runtime messages:
+Common runtime error messages:
 
 - `unsupported_version`: `rpc.hello` used an incompatible protocol version.
 - `workspace_session_not_found`: the supplied `workspaceId` is unknown or
