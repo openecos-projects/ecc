@@ -149,6 +149,10 @@ def collect_ecc_resources():
     return datas
 
 
+def collect_jsonrpcserver_resources():
+    return collect_data_files("jsonrpcserver")
+
+
 def collect_dreamplace_thirdparty_files():
     datas = []
     thirdparty_root = ECC_DIR / "chipcompiler" / "thirdparty" / "ecc-dreamplace"
@@ -206,6 +210,7 @@ datas.extend(dreamplace_datas)
 datas.extend(torch_datas)
 datas.extend(collect_required_metadata())
 datas.extend(collect_ecc_resources())
+datas.extend(collect_jsonrpcserver_resources())
 datas.extend(collect_dreamplace_thirdparty_files())
 
 binaries = []

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
@@ -48,16 +50,21 @@ class WorkspaceRuntimeApi:
 
         import chipcompiler.data as data_api
 
-        workspace = data_api.create_workspace(
-            directory=request.directory,
-            pdk=request.pdk,
-            parameters=request.parameters or {},
-            origin_def=request.origin_def,
-            origin_verilog=request.origin_verilog,
-            input_filelist=input_filelist,
-            pdk_root=request.pdk_root,
-            pdk_json=request.pdk_json,
-        )
+        pdk_json, pdk_json_temp_path = _materialize_inline_pdk_json(request.pdk_json)
+        try:
+            workspace = data_api.create_workspace(
+                directory=request.directory,
+                pdk=request.pdk,
+                parameters=request.parameters or {},
+                origin_def=request.origin_def,
+                origin_verilog=request.origin_verilog,
+                input_filelist=input_filelist,
+                pdk_root=request.pdk_root,
+                pdk_json=pdk_json,
+            )
+        finally:
+            if pdk_json_temp_path is not None:
+                pdk_json_temp_path.unlink(missing_ok=True)
         if workspace is None:
             raise RuntimeApiError(
                 "command_failed",
@@ -278,6 +285,21 @@ def _write_filelist(directory: str, rtl_paths: list[str]) -> str:
         for path in rtl_paths:
             f.write(f'"{path}"\n' if any(ch.isspace() for ch in path) else f"{path}\n")
     return filelist_path
+
+
+def _materialize_inline_pdk_json(pdk_json: Any) -> tuple[Any, Path | None]:
+    if not isinstance(pdk_json, dict):
+        return pdk_json, None
+
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        prefix="ecc-pdk-",
+        suffix=".json",
+        delete=False,
+    ) as f:
+        json.dump(pdk_json, f)
+        return f.name, Path(f.name)
 
 
 def _looks_like_old_workspace(directory: str) -> bool:

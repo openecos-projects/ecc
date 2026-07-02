@@ -190,9 +190,33 @@ def test_create_workspace_returns_plain_runtime_result_and_session(monkeypatch, 
     assert set(result) == {"workspaceId", "directory"}
     assert result["directory"] == str(ws.resolve())
     assert result["workspaceId"].startswith("workspace-")
-    assert capture["create_kwargs"]["pdk_json"] == {"name": "ics55"}
+    assert isinstance(capture["create_kwargs"]["pdk_json"], str)
     assert DummyFlow.instances[0].created
     assert api.sessions.get_session(result["workspaceId"]).directory == ws.resolve()
+
+
+def test_create_workspace_materializes_inline_pdk_json_before_data_api(monkeypatch, tmp_path):
+    pdk_json = {"name": "ics55", "lef": ["tech.lef"]}
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    seen = {}
+
+    def create_workspace(**kwargs):
+        pdk_json_path = Path(kwargs["pdk_json"])
+        seen["pdk_json"] = json.loads(pdk_json_path.read_text(encoding="utf-8"))
+        return _workspace(Path(kwargs["directory"]))
+
+    monkeypatch.setattr("chipcompiler.data.create_workspace", create_workspace)
+    api = WorkspaceRuntimeApi()
+
+    api.create_workspace(
+        WorkspaceCreateRequest(
+            directory=str(ws),
+            pdk="ics55",
+            pdk_json=pdk_json,
+        )
+    )
+
+    assert seen["pdk_json"] == pdk_json
 
 
 def test_open_workspace_loads_without_creating_step_workspaces(monkeypatch, tmp_path):
