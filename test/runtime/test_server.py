@@ -119,6 +119,24 @@ def test_workspace_session_errors_map_to_json_rpc_runtime_error():
     assert response["error"]["message"] == "workspace_session_not_found"
 
 
+def test_workspace_api_user_exceptions_map_to_command_failed():
+    class FakeApi:
+        def open_workspace(self, _request):
+            raise ValueError("PDK tech LEF is missing")
+
+    server = RuntimeServer(api=FakeApi())
+
+    response = _dispatch(
+        server,
+        '{"jsonrpc":"2.0","method":"workspace.open","params":{"directory":"/ws"},"id":7}',
+    )
+
+    assert response["id"] == 7
+    assert response["error"]["code"] == -32020
+    assert response["error"]["message"] == "command_failed"
+    assert response["error"]["data"]["message"] == "PDK tech LEF is missing"
+
+
 @pytest.mark.parametrize(
     "method",
     [

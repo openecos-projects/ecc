@@ -84,19 +84,27 @@ class RuntimeServer:
         def handler(**params):
             try:
                 request = parse_request(method_name, params)
-                api_method = getattr(self.api, api_method_name)
-                return api_method(request)
             except RequestValidationError as exc:
                 return Error(
                     -32602,
                     "invalid_request",
                     {"message": exc.reason},
                 )
+
+            api_method = getattr(self.api, api_method_name)
+            try:
+                return api_method(request)
             except RuntimeApiError as exc:
                 return Error(
                     ERROR_CODES.get(exc.code, -32000),
                     exc.code,
                     {"message": exc.message, **exc.data},
+                )
+            except Exception as exc:
+                return Error(
+                    ERROR_CODES["command_failed"],
+                    "command_failed",
+                    {"message": str(exc)},
                 )
 
         return handler
