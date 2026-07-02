@@ -1,4 +1,6 @@
 import json
+import queue
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -145,6 +147,31 @@ def _install_runtime_mocks(monkeypatch, tmp_path):
     return capture, ws
 
 
+def _assert_call_waits_for_session_lock(api, workspace_id, call, entered):
+    session = api.sessions.get_session(workspace_id)
+    result_queue = queue.Queue()
+
+    def run_call():
+        try:
+            result_queue.put(("result", call()))
+        except BaseException as exc:  # pragma: no cover - re-raised in test thread
+            result_queue.put(("error", exc))
+
+    with session.mutation_lock:
+        worker = threading.Thread(target=run_call)
+        worker.start()
+        assert not entered.wait(0.1)
+        assert worker.is_alive()
+
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    kind, payload = result_queue.get_nowait()
+    if kind == "error":
+        raise payload
+    assert entered.is_set()
+    return payload
+
+
 def test_create_workspace_returns_plain_runtime_result_and_session(monkeypatch, tmp_path):
     capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()
@@ -250,6 +277,75 @@ def test_refresh_sync_and_reset_flow_use_session(monkeypatch, tmp_path):
     assert refreshed == [ws.resolve(), ws.resolve()]
     assert synced == [(ws.resolve(), config_path.resolve())]
     assert prepared == [(ws.resolve(), DummyFlow.instances[-1])]
+
+
+def test_refresh_config_waits_for_session_mutation_lock(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    entered = threading.Event()
+
+    def refresh_config(_workspace):
+        entered.set()
+
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", refresh_config)
+
+    _assert_call_waits_for_session_lock(
+        api=api,
+        workspace_id=workspace_id,
+        call=lambda: api.refresh_config(WorkspaceIdRequest(workspace_id=workspace_id)),
+        entered=entered,
+    )
+
+
+def test_sync_config_waits_for_session_mutation_lock(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    config_dir = ws / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "route.json"
+    config_path.write_text("{}")
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    entered = threading.Event()
+
+    def sync_config(_workspace, _path):
+        entered.set()
+        return False
+
+    monkeypatch.setattr("chipcompiler.data.sync_workspace_config_to_parameters", sync_config)
+
+    _assert_call_waits_for_session_lock(
+        api=api,
+        workspace_id=workspace_id,
+        call=lambda: api.sync_config(
+            WorkspaceSyncConfigRequest(
+                workspace_id=workspace_id,
+                config_path=str(config_path),
+            )
+        ),
+        entered=entered,
+    )
+
+
+def test_reset_flow_waits_for_session_mutation_lock(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    entered = threading.Event()
+
+    def build_flow(_workspace):
+        entered.set()
+        return SimpleNamespace()
+
+    monkeypatch.setattr("chipcompiler.runtime.workspace_api.build_flow_for_workspace", build_flow)
+    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", lambda _ws, _flow: None)
+
+    _assert_call_waits_for_session_lock(
+        api=api,
+        workspace_id=workspace_id,
+        call=lambda: api.reset_flow(WorkspaceIdRequest(workspace_id=workspace_id)),
+        entered=entered,
+    )
 
 
 def test_unknown_session_returns_structured_runtime_error():

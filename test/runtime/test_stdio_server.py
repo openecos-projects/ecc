@@ -1,9 +1,12 @@
 import io
 import json
 import os
+import select
 import subprocess
 import sys
+from pathlib import Path
 
+from chipcompiler.data import create_workspace
 from chipcompiler.runtime.server import RuntimeServer
 from chipcompiler.runtime.stdio_server import run_stdio_server
 from chipcompiler.runtime.transport import ContentLengthDecoder, encode_content_length_frame
@@ -19,6 +22,64 @@ def _request(method: str, request_id, params: dict | None = None) -> bytes:
 def _decode_output(output: bytes) -> list[dict]:
     decoder = ContentLengthDecoder()
     return [json.loads(message) for message in decoder.feed(output)]
+
+
+def _read_subprocess_response(process: subprocess.Popen) -> dict:
+    assert process.stdout is not None
+    assert select.select([process.stdout], [], [], 5)[0]
+    length_line = process.stdout.readline()
+    assert length_line.startswith(b"Content-Length: ")
+    blank_line = process.stdout.readline()
+    assert blank_line == b"\r\n"
+    length = int(length_line.removeprefix(b"Content-Length: ").strip())
+    payload = process.stdout.read(length)
+    return json.loads(payload)
+
+
+def _write_subprocess_request(process: subprocess.Popen, method: str, request_id, params=None):
+    assert process.stdin is not None
+    process.stdin.write(_request(method, request_id, params))
+    process.stdin.flush()
+
+
+def _create_real_workspace(tmp_path: Path) -> Path:
+    pdk_root = _create_minimal_ics55_pdk(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        pdk_root=pdk_root,
+        parameters={
+            "PDK": "ics55",
+            "Design": "gcd",
+            "Top module": "gcd",
+            "Clock": "clk",
+            "Frequency max [MHz]": 100,
+        },
+    )
+    return workspace_dir
+
+
+def _create_minimal_ics55_pdk(root: Path) -> Path:
+    tech_path = root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
+    tech_path.parent.mkdir(parents=True, exist_ok=True)
+    tech_path.write_text("VERSION 5.8 ;\n")
+
+    stdcell_root = root / "IP" / "STD_cell" / "ics55_LLSC_H7C_V1p10C100"
+    for flavor in ("ics55_LLSC_H7CR", "ics55_LLSC_H7CL"):
+        lef_path = stdcell_root / flavor / "lef" / f"{flavor}_ecos.lef"
+        lef_path.parent.mkdir(parents=True, exist_ok=True)
+        lef_path.write_text("VERSION 5.8 ;\n")
+
+        lib_path = stdcell_root / flavor / "liberty" / f"{flavor}_ss_rcworst_1p08_125_nldm.lib"
+        lib_path.parent.mkdir(parents=True, exist_ok=True)
+        lib_path.write_text("library(test) { }\n")
+
+    return root
 
 
 def test_stdio_server_writes_only_content_length_framed_responses():
@@ -98,68 +159,44 @@ def test_rpc_stdio_subprocess_smoke():
 
 
 def test_rpc_stdio_subprocess_workspace_open_home_smoke(tmp_path):
-    ws = tmp_path / "workspace"
-    (ws / "home").mkdir(parents=True)
-    (ws / "home" / "parameters.json").write_text("{}")
-    (ws / "home" / "home.json").write_text("{}")
-    stdin = (
-        _request("workspace.open", 1, {"directory": str(ws)})
-        + _request("workspace.home", 2, {"workspaceId": "workspace-1"})
-        + _request("rpc.shutdown", 3)
-    )
-    script = """
-import sys
-from pathlib import Path
-from types import SimpleNamespace
-
-import chipcompiler.data
-import chipcompiler.engine
-import chipcompiler.rtl2gds
-
-class DummyFlow:
-    def __init__(self, workspace):
-        self.workspace = workspace
-        self.workspace_steps = []
-    def has_init(self):
-        return False
-    def add_step(self, step, tool, state):
-        self.workspace.flow.data.setdefault("steps", []).append(
-            {"name": step, "tool": tool, "state": state}
-        )
-    def create_step_workspaces(self):
-        return None
-
-def fake_workspace(directory):
-    directory = Path(directory).resolve()
-    return SimpleNamespace(
-        directory=directory,
-        flow=SimpleNamespace(path=directory / "home" / "flow.json", data={"steps": []}),
-        home=SimpleNamespace(path=directory / "home" / "home.json"),
-        design=SimpleNamespace(origin_def="", origin_verilog=""),
-    )
-
-chipcompiler.data.load_workspace = fake_workspace
-chipcompiler.engine.EngineFlow = DummyFlow
-chipcompiler.rtl2gds.build_rtl2gds_flow = lambda: [("Synthesis", "yosys", "Unstart")]
-sys.argv = ["ecc", "rpc", "serve", "--stdio"]
-
-from chipcompiler.cli.main import main
-main()
-"""
-
-    completed = subprocess.run(
-        [sys.executable, "-c", script],
-        input=stdin,
+    ws = _create_real_workspace(tmp_path)
+    process = subprocess.Popen(
+        [sys.executable, "-m", "chipcompiler.cli.main", "rpc", "serve", "--stdio"],
         cwd=os.getcwd(),
-        capture_output=True,
-        check=False,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
 
-    assert completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace")
-    responses = _decode_output(completed.stdout)
-    assert responses[0]["result"] == {
-        "workspaceId": "workspace-1",
+    try:
+        _write_subprocess_request(process, "workspace.open", 1, {"directory": str(ws)})
+        open_response = _read_subprocess_response(process)
+        workspace_id = open_response["result"]["workspaceId"]
+
+        _write_subprocess_request(
+            process,
+            "workspace.home",
+            2,
+            {"workspaceId": workspace_id},
+        )
+        home_response = _read_subprocess_response(process)
+
+        _write_subprocess_request(process, "rpc.shutdown", 3)
+        shutdown_response = _read_subprocess_response(process)
+        stderr = process.communicate(timeout=5)[1]
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate()
+
+    assert process.returncode == 0, stderr.decode("utf-8", errors="replace")
+    assert open_response["result"] == {
+        "workspaceId": workspace_id,
         "directory": str(ws.resolve()),
     }
-    assert responses[1]["result"] == {"path": str(ws.resolve() / "home" / "home.json")}
-    assert responses[2]["result"] == {"ok": True}
+    assert home_response == {
+        "jsonrpc": "2.0",
+        "result": {"path": str(ws.resolve() / "home" / "home.json")},
+        "id": 2,
+    }
+    assert shutdown_response == {"jsonrpc": "2.0", "result": {"ok": True}, "id": 3}

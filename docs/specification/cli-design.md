@@ -142,7 +142,6 @@ Current implementation status:
 | `ecc run`, `ecc status`, `ecc log`, `ecc metrics`, `ecc artifacts`, `ecc config`, `ecc diagnose` | `--json`, `--jsonl`, `--plain` |
 | `ecc param list/show/set/unset/diff` | `--json`, `--jsonl`, `--plain` |
 | `ecc version` | `--json` |
-| `ecc workspace ...` | `--json` |
 
 When multiple project output options are provided, the implementation selects
 `--jsonl` first, then `--json`, then `--plain`, and otherwise renders pretty
@@ -194,7 +193,7 @@ agent-specific disclosure fields inside core flow APIs.
 ### Core Commands
 
 The current root surface is a Typer command graph. The project-first command
-surface stays small, with version reporting and legacy workspace management
+surface stays small, with version reporting and the private runtime sidecar
 available as explicit root entries:
 
 ```bash
@@ -210,7 +209,7 @@ ecc artifacts
 ecc config
 ecc diagnose
 ecc param
-ecc workspace
+ecc rpc
 ```
 
 Responsibilities:
@@ -229,7 +228,7 @@ Responsibilities:
 | `ecc artifacts` | List generated files and disclosure commands |
 | `ecc config` | Show user or resolved configuration |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
-| `ecc workspace` | Manage legacy runtime workspaces behind an explicit namespace |
+| `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |
 
 ### Project-Oriented Entry
 
@@ -330,32 +329,39 @@ version` prints fixed-order text lines for `ecc`, `dreamplace`, `ecc_tools`, and
 reported as `unknown`, except the `ecc` field may fall back to the source
 package `__version__`.
 
-### Legacy Workspace Commands
+### Runtime Sidecar RPC
 
-`ecc workspace` is an implemented compatibility namespace for runtime workspace
-operations that predate the project-oriented `ecc.toml` workflow:
+Workspace operations are no longer exposed as a compatibility command namespace.
+The supported runtime surface is the private stdio sidecar:
 
 ```bash
-ecc workspace create
-ecc workspace load
-ecc workspace run-flow
-ecc workspace run-step
-ecc workspace get-info
-ecc workspace get-home
+ecc rpc serve --stdio
 ```
 
-The namespace preserves the server-shaped response contract:
+The sidecar uses JSON-RPC 2.0 payloads framed with `Content-Length` headers.
+After `workspace.create` or `workspace.open`, follow-up calls use the returned
+`workspaceId` rather than repeatedly passing the workspace directory.
 
-```json
-{"cmd":"create_workspace","response":"success","data":{},"message":[]}
+First-slice runtime methods include:
+
+```text
+rpc.hello
+rpc.ping
+rpc.shutdown
+workspace.create
+workspace.open
+workspace.close
+workspace.home
+workspace.info
+workspace.refresh_config
+workspace.sync_config
+workspace.reset_flow
+flow.run
+flow.run_step
 ```
 
-Workspace commands support `--json`. `workspace create` accepts either
-`--input-json` or explicit field flags such as `--directory`, `--pdk`,
-`--pdk-root`, `--rtl`, `--filelist`, `--origin-def`, `--origin-verilog`,
-`--param-json`, `--design`, `--top`, `--clock`, and `--freq`. Old top-level
-workspace flags such as `ecc --workspace ...` are no longer accepted by the root
-parser.
+The former custom workspace JSON object is not part of the supported output
+contract. See `docs/workspace-cli.md` for framing examples and method payloads.
 
 ## Output Contracts
 
@@ -525,7 +531,7 @@ Success criteria:
 - [x] `ecc config --resolved`
 - [x] Run selection for inspection commands with `--run-id`
 - [x] Parameter overrides with `ecc param` and `ecc run --set`
-- [x] Legacy workspace namespace under `ecc workspace`
+- [x] Private runtime sidecar under `ecc rpc serve --stdio`
 - [ ] Run tags and run comparison basics
 - [x] Structured issue and artifact metadata
 
@@ -562,9 +568,9 @@ or call `chipcompiler.cli.main.run(argv)` rather than importing CLI helper
 modules directly.
 
 The legacy top-level parameter-only invocation with `--workspace` is no longer
-part of the CLI contract. Use `ecc workspace create --directory <dir>` with
-explicit field flags such as `--design`, `--top`, `--clock`, `--freq`, `--pdk`,
-and `--pdk-root` for one-line old-workspace creation. The long-term default is
+part of the CLI contract. Old-workspace automation should use the private
+JSON-RPC runtime sidecar, open or create a workspace session, and pass the
+returned `workspaceId` to follow-up runtime calls. The long-term default is
 project-oriented and configuration-driven through `ecc.toml` and subcommands
 such as `ecc run --project <dir>`.
 

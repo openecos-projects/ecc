@@ -21,7 +21,7 @@ def run_stdio_server(
     decoder = ContentLengthDecoder()
 
     while not runtime_server.should_exit:
-        chunk = input_stream.read(8192)
+        chunk = _read_chunk(input_stream)
         if not chunk:
             break
         try:
@@ -38,6 +38,13 @@ def run_stdio_server(
                 break
 
     return 0
+
+
+def _read_chunk(input_stream: BinaryIO) -> bytes:
+    read1 = getattr(input_stream, "read1", None)
+    if read1 is not None:
+        return read1(8192)
+    return input_stream.read(8192)
 
 
 def main() -> int:

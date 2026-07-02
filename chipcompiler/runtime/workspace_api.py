@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from chipcompiler.runtime.requests import (
     FlowRunRequest,
@@ -19,6 +20,8 @@ from chipcompiler.runtime.sessions import (
     WorkspaceSessionRegistry,
 )
 from chipcompiler.utility.path import path_is_within, stringify_paths
+
+_T = TypeVar("_T")
 
 
 class RuntimeApiError(RuntimeError):
@@ -98,65 +101,74 @@ class WorkspaceRuntimeApi:
         }
 
     def refresh_config(self, request: WorkspaceIdRequest) -> dict:
-        session = self._get_session(request.workspace_id)
-        self._refresh_workspace_config(session.workspace)
-        return {"directory": str(session.directory), "refreshed": True}
+        def refresh(session: WorkspaceSession) -> dict:
+            self._refresh_workspace_config(session.workspace)
+            return {"directory": str(session.directory), "refreshed": True}
+
+        return self._with_session_mutation_lock(request.workspace_id, refresh)
 
     def sync_config(self, request: WorkspaceSyncConfigRequest) -> dict:
-        session = self._get_session(request.workspace_id)
-        config_path = Path(request.config_path).resolve()
-        config_dir = session.directory / "config"
-        if not path_is_within(config_path, config_dir):
-            raise RuntimeApiError(
-                "invalid_request",
-                f"config path outside workspace config directory : {config_path}",
+        def sync(session: WorkspaceSession) -> dict:
+            config_path = Path(request.config_path).resolve()
+            config_dir = session.directory / "config"
+            if not path_is_within(config_path, config_dir):
+                raise RuntimeApiError(
+                    "invalid_request",
+                    f"config path outside workspace config directory : {config_path}",
+                )
+
+            import chipcompiler.data as data_api
+
+            parameters_changed = data_api.sync_workspace_config_to_parameters(
+                session.workspace,
+                config_path,
             )
+            refreshed = False
+            if parameters_changed:
+                self._refresh_workspace_config(session.workspace)
+                refreshed = True
+            return {
+                "directory": str(session.directory),
+                "configPath": str(config_path),
+                "parametersChanged": bool(parameters_changed),
+                "refreshed": refreshed,
+            }
 
-        import chipcompiler.data as data_api
-
-        parameters_changed = data_api.sync_workspace_config_to_parameters(
-            session.workspace,
-            config_path,
-        )
-        refreshed = False
-        if parameters_changed:
-            self._refresh_workspace_config(session.workspace)
-            refreshed = True
-        return {
-            "directory": str(session.directory),
-            "configPath": str(config_path),
-            "parametersChanged": bool(parameters_changed),
-            "refreshed": refreshed,
-        }
+        return self._with_session_mutation_lock(request.workspace_id, sync)
 
     def reset_flow(self, request: WorkspaceIdRequest) -> dict:
-        session = self._get_session(request.workspace_id)
-        engine_flow = build_flow_for_workspace(session.workspace)
-        self._prepare_workspace_for_rerun(session.workspace, engine_flow)
-        return {"directory": str(session.directory)}
+        def reset(session: WorkspaceSession) -> dict:
+            engine_flow = build_flow_for_workspace(session.workspace)
+            self._prepare_workspace_for_rerun(session.workspace, engine_flow)
+            return {"directory": str(session.directory)}
+
+        return self._with_session_mutation_lock(request.workspace_id, reset)
 
     def close_workspace(self, request: WorkspaceIdRequest) -> dict:
-        self.sessions.close_session(request.workspace_id)
-        return {"ok": True}
+        def close(session: WorkspaceSession) -> dict:
+            self.sessions.close_session(session.workspace_id)
+            return {"ok": True}
+
+        return self._with_session_mutation_lock(request.workspace_id, close)
 
     def flow_run(self, request: FlowRunRequest) -> dict:
-        session = self._get_session(request.workspace_id)
-        with session.mutation_lock:
+        def run(session: WorkspaceSession) -> dict:
             engine_flow = build_flow_for_workspace(session.workspace)
             if request.rerun:
                 self._prepare_workspace_for_rerun(session.workspace, engine_flow)
             ok = engine_flow.run_steps(rerun=request.rerun)
-        if not ok:
-            raise RuntimeApiError(
-                "command_failed",
-                f"run flow failed : {session.directory}",
-                {"rerun": request.rerun},
-            )
-        return {"rerun": request.rerun}
+            if not ok:
+                raise RuntimeApiError(
+                    "command_failed",
+                    f"run flow failed : {session.directory}",
+                    {"rerun": request.rerun},
+                )
+            return {"rerun": request.rerun}
+
+        return self._with_session_mutation_lock(request.workspace_id, run)
 
     def flow_run_step(self, request: FlowRunStepRequest) -> dict:
-        session = self._get_session(request.workspace_id)
-        with session.mutation_lock:
+        def run_step(session: WorkspaceSession) -> dict:
             engine_flow = build_flow_for_workspace(session.workspace)
             if request.rerun:
                 self._refresh_workspace_config(session.workspace)
@@ -175,15 +187,17 @@ class WorkspaceRuntimeApi:
                 _init_db_engine_for_workspace_step(engine_flow, workspace_step)
                 state = engine_flow.run_step(workspace_step, request.rerun)
 
-        state_value = _state_value(state)
-        result = {"step": request.step, "state": state_value}
-        if state_value != "Success":
-            raise RuntimeApiError(
-                "command_failed",
-                f"run step {request.step} failed with state {state_value}",
-                result,
-            )
-        return result
+            state_value = _state_value(state)
+            result = {"step": request.step, "state": state_value}
+            if state_value != "Success":
+                raise RuntimeApiError(
+                    "command_failed",
+                    f"run step {request.step} failed with state {state_value}",
+                    result,
+                )
+            return result
+
+        return self._with_session_mutation_lock(request.workspace_id, run_step)
 
     def _load_workspace(self, directory: str):
         if not directory:
@@ -206,6 +220,15 @@ class WorkspaceRuntimeApi:
                 "workspace_session_not_found",
                 f"workspace session not found: {workspace_id}",
             ) from exc
+
+    def _with_session_mutation_lock(
+        self,
+        workspace_id: str,
+        operation: Callable[[WorkspaceSession], _T],
+    ) -> _T:
+        session = self._get_session(workspace_id)
+        with session.mutation_lock:
+            return operation(session)
 
     def _refresh_workspace_config(self, workspace) -> None:
         import chipcompiler.data as data_api
