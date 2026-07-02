@@ -20,7 +20,7 @@ commands.
 Each request is UTF-8 JSON preceded by a byte length:
 
 ```text
-Content-Length: 72
+Content-Length: 63
 
 {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
 ```
@@ -28,7 +28,7 @@ Content-Length: 72
 The server returns another framed payload:
 
 ```text
-Content-Length: 54
+Content-Length: 52
 
 {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
 ```

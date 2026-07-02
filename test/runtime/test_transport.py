@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 import pytest
 
 from chipcompiler.runtime.transport import (
@@ -55,3 +58,12 @@ def test_oversize_payload_is_transport_error():
 
     with pytest.raises(TransportError, match="exceeds"):
         decoder.feed(encode_content_length_frame(b"12345"))
+
+
+def test_workspace_rpc_doc_content_lengths_match_payloads():
+    source = Path("docs/workspace-cli.md").read_text(encoding="utf-8")
+    frames = re.findall(r"Content-Length: (\d+)\n\n({\"jsonrpc\"[^\n]+})", source)
+
+    assert frames
+    for declared, payload in frames:
+        assert int(declared) == len(payload.encode("utf-8"))
