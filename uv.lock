@@ -517,7 +517,7 @@ dev = [
 
 [[package]]
 name = "ecc-dreamplace"
-version = "0.1.0a6"
+version = "0.1.0a5"
 source = { editable = "chipcompiler/thirdparty/ecc-dreamplace" }
 dependencies = [
     { name = "cairocffi" },
