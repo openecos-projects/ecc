@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
+import gzip
 import os
+from pathlib import Path
 
-from chipcompiler.data import (
-    Workspace, WorkspaceStep, Checklist, StepEnum, CheckState
-)
+from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.utility import json_read
+
 
 class YosysChecklist:
     CHECKLIST_ITEMS = {
@@ -116,6 +116,21 @@ class YosysChecklist:
 
 
 class YosysSynthesisChecklist(YosysChecklist):
+    def read_text(self, path: str | os.PathLike) -> str:
+        if not path:
+            return ""
+
+        path_obj = Path(path)
+        try:
+            if path_obj.suffix == ".gz":
+                with gzip.open(path_obj, "rt", encoding="utf-8", errors="ignore") as file:
+                    return file.read()
+
+            with path_obj.open("r", encoding="utf-8", errors="ignore") as file:
+                return file.read()
+        except (OSError, gzip.BadGzipFile, EOFError):
+            return ""
+
     def check_file(self,
                    path : str,
                    text_tokens : list | None = None) -> bool:
@@ -125,12 +140,7 @@ class YosysSynthesisChecklist(YosysChecklist):
         if not text_tokens:
             return True
 
-        try:
-            with open(path, "r", encoding="utf-8", errors="ignore") as file:
-                content = file.read()
-        except OSError:
-            return False
-
+        content = self.read_text(path)
         return all(token in content for token in text_tokens)
 
     def to_float(self,
@@ -146,19 +156,8 @@ class YosysSynthesisChecklist(YosysChecklist):
         metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
         stat = json_read(self.workspace_step.feature.get("stat", ""))
 
-        try:
-            with open(self.workspace_step.log.get("file", ""),
-                      "r", encoding="utf-8", errors="ignore") as file:
-                log_text = file.read()
-        except OSError:
-            log_text = ""
-
-        try:
-            with open(self.workspace_step.output.get("verilog", ""),
-                      "r", encoding="utf-8", errors="ignore") as file:
-                netlist_text = file.read()
-        except OSError:
-            netlist_text = ""
+        log_text = self.read_text(self.workspace_step.log.get("file", ""))
+        netlist_text = self.read_text(self.workspace_step.output.get("verilog", ""))
 
         input_verilog = self.workspace_step.input.get("verilog", "")
         filelist = (
