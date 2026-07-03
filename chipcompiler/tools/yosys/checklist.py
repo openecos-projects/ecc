@@ -1,10 +1,9 @@
 #!/usr/bin/env python
-import gzip
 import os
-from pathlib import Path
 
 from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.utility import json_read
+from chipcompiler.utility.gzip import read_text_maybe_gzip
 
 
 class YosysChecklist:
@@ -116,21 +115,6 @@ class YosysChecklist:
 
 
 class YosysSynthesisChecklist(YosysChecklist):
-    def read_text(self, path: str | os.PathLike) -> str:
-        if not path:
-            return ""
-
-        path_obj = Path(path)
-        try:
-            if path_obj.suffix == ".gz":
-                with gzip.open(path_obj, "rt", encoding="utf-8", errors="ignore") as file:
-                    return file.read()
-
-            with path_obj.open("r", encoding="utf-8", errors="ignore") as file:
-                return file.read()
-        except (OSError, gzip.BadGzipFile, EOFError):
-            return ""
-
     def check_file(self,
                    path : str,
                    text_tokens : list | None = None) -> bool:
@@ -140,7 +124,11 @@ class YosysSynthesisChecklist(YosysChecklist):
         if not text_tokens:
             return True
 
-        content = self.read_text(path)
+        try:
+            content = read_text_maybe_gzip(path)
+        except (OSError, EOFError):
+            return False
+
         return all(token in content for token in text_tokens)
 
     def to_float(self,
@@ -156,8 +144,15 @@ class YosysSynthesisChecklist(YosysChecklist):
         metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
         stat = json_read(self.workspace_step.feature.get("stat", ""))
 
-        log_text = self.read_text(self.workspace_step.log.get("file", ""))
-        netlist_text = self.read_text(self.workspace_step.output.get("verilog", ""))
+        try:
+            log_text = read_text_maybe_gzip(self.workspace_step.log.get("file", ""))
+        except (OSError, EOFError):
+            log_text = ""
+
+        try:
+            netlist_text = read_text_maybe_gzip(self.workspace_step.output.get("verilog", ""))
+        except (OSError, EOFError):
+            netlist_text = ""
 
         input_verilog = self.workspace_step.input.get("verilog", "")
         filelist = (

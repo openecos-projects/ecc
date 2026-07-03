@@ -1,35 +1,13 @@
 #!/usr/bin/env python
-import gzip
 import os
 import subprocess
-from pathlib import Path
 
 from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
 from chipcompiler.tools.yosys.utility import check_slang_plugin, get_yosys_runtime
-
-
-def _read_netlist_text(path: str) -> str:
-    path_obj = Path(path)
-    if path_obj.suffix == ".gz":
-        with gzip.open(path_obj, "rt", encoding="utf-8", errors="ignore") as src:
-            return src.read()
-
-    with path_obj.open("r", encoding="utf-8", errors="ignore") as src:
-        return src.read()
-
-
-def _write_netlist_text(path: str, text: str) -> None:
-    path_obj = Path(path)
-    if path_obj.suffix == ".gz":
-        with gzip.open(path_obj, "wt", encoding="utf-8") as dst:
-            dst.write(text)
-        return
-
-    with path_obj.open("w", encoding="utf-8") as dst:
-        dst.write(text)
+from chipcompiler.utility.gzip import read_text_maybe_gzip, write_text_maybe_gzip
 
 
 def _remove_parameter_overrides(text: str) -> str:
@@ -67,9 +45,9 @@ def _write_fixed_netlist(src_path: str, dst_path: str) -> bool:
     if not src_path or not dst_path or not os.path.exists(src_path):
         return False
 
-    text = _read_netlist_text(src_path)
+    text = read_text_maybe_gzip(src_path)
     fixed = _remove_parameter_overrides(text)
-    _write_netlist_text(dst_path, fixed)
+    write_text_maybe_gzip(dst_path, fixed)
 
     return True
 
