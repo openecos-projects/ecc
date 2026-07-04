@@ -16,7 +16,7 @@ from .parameter import (
 from .home import HomeData
 
 from .pdk import get_pdk, PDK
-from .step import StepEnum
+from .step import StateEnum, StepEnum
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
 from chipcompiler.utility.path import path_is_within, path_text
@@ -127,6 +127,109 @@ def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:
         f"{StepEnum.RCX.value}": config_dir / "rcx.json",
         f"{StepEnum.STA.value}": config_dir / "sta.json",
         "dreamplace": config_dir / "dreamplace.json",
+    }
+
+
+def build_dynamic_flow_data(flow_config: dict | None) -> dict:
+    """Build initial flow.json data from GUI-provided flow_config."""
+    if not isinstance(flow_config, dict) or not flow_config:
+        return {}
+
+    canonical_steps = _canonical_harden_flow_entries()
+    selected_names = _selected_dynamic_flow_step_names(flow_config, canonical_steps)
+    if not selected_names:
+        return {}
+
+    selected = set(selected_names)
+    return {
+        "steps": [
+            _flow_step_template(name, tool, state)
+            for name, tool, state in canonical_steps
+            if name in selected
+        ]
+    }
+
+
+def _canonical_harden_flow_entries() -> list[tuple[str, str, str]]:
+    import chipcompiler.rtl2gds as rtl2gds_api
+
+    return [
+        (
+            step.value if isinstance(step, StepEnum) else str(step),
+            str(tool),
+            state.value if isinstance(state, StateEnum) else str(state),
+        )
+        for step, tool, state in rtl2gds_api.build_harden_flow()
+    ]
+
+
+def _selected_dynamic_flow_step_names(
+    flow_config: dict,
+    canonical_steps: list[tuple[str, str, str]],
+) -> list[str]:
+    canonical_names = [name for name, _tool, _state in canonical_steps]
+    canonical_name_set = set(canonical_names)
+
+    raw_steps = flow_config.get("steps", [])
+    if isinstance(raw_steps, str):
+        raw_steps = [raw_steps]
+    if isinstance(raw_steps, (list, tuple)):
+        requested = {
+            name
+            for name in (_normalize_flow_step_name(item) for item in raw_steps)
+            if name in canonical_name_set
+        }
+        if requested:
+            return [name for name in canonical_names if name in requested]
+
+    start_step = _normalize_flow_step_name(flow_config.get("start_step"))
+    end_step = _normalize_flow_step_name(flow_config.get("end_step"))
+    if start_step not in canonical_name_set or end_step not in canonical_name_set:
+        return []
+
+    start_index = canonical_names.index(start_step)
+    end_index = canonical_names.index(end_step)
+    start = min(start_index, end_index)
+    end = max(start_index, end_index)
+    return canonical_names[start : end + 1]
+
+
+def _normalize_flow_step_name(value) -> str:
+    token = str(value or "").strip()
+    if not token:
+        return ""
+    alias_key = token.lower().replace("_", "").replace("-", "").replace(" ", "")
+    aliases = {
+        "synth": StepEnum.SYNTHESIS.value,
+        "synthesis": StepEnum.SYNTHESIS.value,
+        "floor": StepEnum.FLOORPLAN.value,
+        "floorplan": StepEnum.FLOORPLAN.value,
+        "fanout": StepEnum.NETLIST_OPT.value,
+        "fixfanout": StepEnum.NETLIST_OPT.value,
+        "place": StepEnum.PLACEMENT.value,
+        "placement": StepEnum.PLACEMENT.value,
+        "cts": StepEnum.CTS.value,
+        "legal": StepEnum.LEGALIZATION.value,
+        "legalization": StepEnum.LEGALIZATION.value,
+        "route": StepEnum.ROUTING.value,
+        "routing": StepEnum.ROUTING.value,
+        "drc": StepEnum.DRC.value,
+        "filler": StepEnum.FILLER.value,
+        "rcx": StepEnum.RCX.value,
+        "sta": StepEnum.STA.value,
+        "harden": StepEnum.HARDEN.value,
+    }
+    return aliases.get(alias_key, token)
+
+
+def _flow_step_template(name: str, tool: str, state: str) -> dict:
+    return {
+        "name": name,
+        "tool": tool,
+        "state": state,
+        "runtime": "",
+        "peak memory (mb)": 0,
+        "info": {},
     }
 
 
@@ -740,7 +843,8 @@ def create_workspace(directory : str | Path,
                      parameters : Parameters | dict,
                      input_filelist : str | Path = "",
                      pdk_root : str | Path = "",
-                     pdk_json : str | Path = "") -> Workspace:
+                     pdk_json : str | Path = "",
+                     flow_config : dict | None = None) -> Workspace:
     """
     Create a workspace for chip design flow.
 
@@ -869,6 +973,12 @@ def create_workspace(directory : str | Path,
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(home_dir / "checklist.json")
     workspace.home.set_parameters(workspace.parameters.path)
+    dynamic_flow_data = build_dynamic_flow_data(flow_config)
+    if dynamic_flow_data:
+        from chipcompiler.utility import json_write
+
+        workspace.flow.data = dynamic_flow_data
+        json_write(workspace.flow.path, workspace.flow.data)
     
     if workspace.pdk.root:
         workspace.parameters.data["PDK Root"] = str(workspace.pdk.root)

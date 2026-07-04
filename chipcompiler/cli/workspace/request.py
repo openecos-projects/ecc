@@ -23,6 +23,7 @@ class WorkspaceCreateRequest:
     origin_verilog: str = ""
     filelist: str = ""
     rtl_list: list[str] = field(default_factory=list)
+    flow_config: dict = field(default_factory=dict)
 
 
 def create_request_from_json(path: str) -> WorkspaceCreateRequest:
@@ -37,6 +38,7 @@ def create_request_from_json(path: str) -> WorkspaceCreateRequest:
         origin_verilog=data.get("origin_verilog", ""),
         filelist=data.get("filelist", ""),
         rtl_list=_normalize_rtl_list(data.get("rtl_list", [])),
+        flow_config=_normalize_dict(data.get("flow_config", {})),
     )
 
 
@@ -198,6 +200,10 @@ def _normalize_rtl_list(rtl_list) -> list[str]:
         seen.add(path)
         result.append(path)
     return result
+
+
+def _normalize_dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
 
 
 def _resolve_rtl_flags(rtl_paths: Sequence[str]) -> list[str]:

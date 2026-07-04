@@ -51,6 +51,91 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert isinstance(flow_config["ConfigPath"]["idb_path"], str)
 
 
+def test_create_workspace_persists_dynamic_flow_steps(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=netlist_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={
+            "start_step": "Fanout",
+            "end_step": "DRC",
+            "steps": ["Fanout", "Placement", "CTS", "legal", "Route", "DRC"],
+        },
+    )
+
+    assert workspace is not None
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [step["name"] for step in flow_data["steps"]] == [
+        "fixFanout",
+        "place",
+        "CTS",
+        "legalization",
+        "route",
+        "drc",
+    ]
+    assert [step["tool"] for step in flow_data["steps"]] == [
+        "ecc",
+        "dreamplace",
+        "ecc",
+        "dreamplace",
+        "ecc",
+        "ecc",
+    ]
+    assert all(step["state"] == "Unstart" for step in flow_data["steps"])
+    assert all(step["runtime"] == "" for step in flow_data["steps"])
+    assert all(step["peak memory (mb)"] == 0 for step in flow_data["steps"])
+
+
+def test_create_workspace_derives_dynamic_flow_from_boundaries(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=netlist_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={
+            "start_step": "fixFanout",
+            "end_step": "Harden",
+        },
+    )
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [step["name"] for step in flow_data["steps"]] == [
+        "fixFanout",
+        "place",
+        "CTS",
+        "legalization",
+        "route",
+        "drc",
+        "filler",
+        "RCX",
+        "sta",
+        "Harden",
+    ]
+
+
 def test_load_workspace_restores_path_fields_from_existing_json(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

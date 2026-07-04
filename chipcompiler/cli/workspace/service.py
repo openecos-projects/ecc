@@ -40,6 +40,7 @@ def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
             input_filelist=input_filelist,
             pdk_root=request.pdk_root,
             pdk_json=request.pdk_json,
+            flow_config=request.flow_config,
         )
     except InputError as exc:
         return workspace_response("create_workspace", exc.response, message=[str(exc)])

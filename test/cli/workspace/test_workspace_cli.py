@@ -207,6 +207,36 @@ def test_create_input_json_success_writes_server_shape(monkeypatch, tmp_path, ca
     assert DummyFlow.instances[0].added_steps == [("Synthesis", "yosys", "Unstart")]
 
 
+def test_create_input_json_forwards_flow_config(monkeypatch, tmp_path, capsys):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    request_path = tmp_path / "request.json"
+    flow_config = {
+        "start_step": "fixFanout",
+        "end_step": "DRC",
+        "steps": ["fixFanout", "place", "CTS", "drc"],
+    }
+    request_path.write_text(
+        json.dumps(
+            {
+                "directory": str(ws),
+                "pdk": "ics55",
+                "pdk_root": "/pdk",
+                "parameters": {"Design": "gcd", "Top module": "gcd"},
+                "origin_def": "",
+                "origin_verilog": "in.v",
+                "flow_config": flow_config,
+            }
+        )
+    )
+
+    rc = cli_main.run(["workspace", "create", "--input-json", str(request_path), "--json"])
+
+    data = _response(capsys)
+    assert rc == 0
+    assert data["response"] == "success"
+    assert capture["create_kwargs"]["flow_config"] == flow_config
+
+
 def test_create_returns_normalized_workspace_directory(monkeypatch, tmp_path, capsys):
     _install_runtime_mocks(monkeypatch, tmp_path)
     normalized_ws = tmp_path / "expanded-workspace"
