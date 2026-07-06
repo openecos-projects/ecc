@@ -658,6 +658,32 @@ def test_refresh_workspace_config_preserves_routability_flag_string_coercion(
         assert dreamplace["routability_opt_flag"] == expected
 
 
+def test_refresh_workspace_config_preserves_nested_dreamplace_override_precedence(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_dreamplace_precedence",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    parameter_path = workspace_dir / "home" / "parameters.json"
+    params = json_read(parameter_path)
+    params["Target density"] = 0.25
+    params["Routability opt flag"] = "true"
+    params["DreamPlace"] = {
+        "target_density": 0.88,
+        "routability_opt_flag": 0,
+    }
+    json_write(parameter_path, params)
+
+    refresh_workspace_config(workspace)
+
+    dreamplace = json_read(workspace.config["dreamplace"])
+    assert dreamplace["target_density"] == 0.88
+    assert dreamplace["routability_opt_flag"] == 0
+
+
 def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
