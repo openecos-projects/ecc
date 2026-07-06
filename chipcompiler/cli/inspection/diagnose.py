@@ -30,9 +30,11 @@ def _has_metrics(run_dir: str, step_token: str) -> bool:
     return bool(discover_metrics(run_dir, step_token))
 
 
-def _has_config_files(run_dir: str, step_token: str, tool: str | None) -> bool:
+def _has_config_files(run_dir: str, step_token: str | None, tool: str | None) -> bool:
     from chipcompiler.data import step_config_paths
 
+    if step_token is None:
+        return False
     return bool(step_config_paths(run_dir, step_token, tool, existing_only=True))
 
 
@@ -93,6 +95,7 @@ def _check_step_artifacts(
     display_run: str,
     project: str | None,
     run_id: str | None,
+    config_step: str | None = None,
 ) -> None:
     error_count = _count_log_errors(run_dir, token)
     if error_count > 0:
@@ -129,7 +132,7 @@ def _check_step_artifacts(
                 run_id=run_id,
             )
         )
-    if not _has_config_files(run_dir, token, tool):
+    if not _has_config_files(run_dir, config_step, tool):
         issues.append(
             _make_issue(
                 "config_unavailable",
@@ -154,6 +157,7 @@ def build_diagnose_issues(
         _safe_steps,
         discover_step_dirs,
         read_flow_json,
+        step_dir_step_name,
         step_dir_tool,
     )
 
@@ -258,6 +262,7 @@ def build_diagnose_issues(
                 display_run,
                 project,
                 run_id,
+                config_step=s.get("name"),
             )
         else:
             issues.append(
@@ -280,7 +285,7 @@ def build_diagnose_issues(
                     run_id=run_id,
                 )
             )
-            if not _has_config_files(run_dir, token, s.get("tool")):
+            if not _has_config_files(run_dir, s.get("name"), s.get("tool")):
                 issues.append(
                     _make_issue(
                         "config_unavailable",
@@ -305,6 +310,7 @@ def build_diagnose_issues(
             display_run,
             project,
             run_id,
+            config_step=step_dir_step_name(step_dirs[token]),
         )
 
     has_error = any(i.get("severity") == "error" for i in issues)

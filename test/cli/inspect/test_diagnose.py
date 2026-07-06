@@ -423,6 +423,88 @@ class TestDiagnose:
             assert "config_unavailable" not in out
             assert "clean" in out
 
+    def test_diagnose_cli_tokens_use_internal_flow_step_names(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        create_flow_json,
+        create_step_dir,
+        create_ecc_workspace_config,
+    ):
+        cases = [
+            ("place", "placement", "pl_default_config.json"),
+            ("route", "routing", "rt_default_config.json"),
+        ]
+        for step_name, step_token, step_config in cases:
+            project_dir = create_cli_project(name=f"gcd_{step_token}")
+            run_dir = os.path.join(project_dir, "runs", "default")
+            create_flow_json(
+                run_dir,
+                [
+                    {
+                        "name": step_name,
+                        "tool": "ecc",
+                        "state": "Success",
+                        "runtime": "0:00:04",
+                    },
+                ],
+            )
+            create_step_dir(
+                run_dir,
+                step_name,
+                "ecc",
+                subdirs=["log", "output", "analysis"],
+                files={
+                    f"log/{step_name}.log": "ok\n",
+                    "output/design.def": "def",
+                    f"analysis/{step_name}_metrics.json": "{}",
+                },
+            )
+            create_ecc_workspace_config(run_dir, step_config)
+
+            rc = cli_main.run(["diagnose", step_token, "--project", project_dir])
+            assert rc == 0
+            out = capsys.readouterr().out
+            assert "config_unavailable" not in out
+            assert "clean" in out
+
+    def test_diagnose_dir_only_routing_uses_internal_step_directory_prefix(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        create_flow_json,
+        create_step_dir,
+        create_ecc_workspace_config,
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(
+            run_dir,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+            ],
+        )
+        create_step_dir(
+            run_dir,
+            "route",
+            "ecc",
+            subdirs=["log", "output", "analysis"],
+            files={
+                "log/route.log": "ok\n",
+                "output/design.def": "def",
+                "analysis/route_metrics.json": "{}",
+            },
+        )
+        create_ecc_workspace_config(run_dir, "rt_default_config.json")
+
+        rc = cli_main.run(["diagnose", "routing", "--project", project_dir])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "config_unavailable" not in out
+        assert "clean" in out
+
     def test_diagnose_sta_uses_rcx_workspace_config(
         self,
         tmp_path,
@@ -438,7 +520,7 @@ class TestDiagnose:
             run_dir,
             [
                 {
-                    "name": "STA",
+                    "name": "sta",
                     "tool": "ecc",
                     "state": "Success",
                     "runtime": "0:00:04",
@@ -447,13 +529,13 @@ class TestDiagnose:
         )
         create_step_dir(
             run_dir,
-            "STA",
+            "sta",
             "ecc",
             subdirs=["log", "output", "analysis"],
             files={
-                "log/STA.log": "ok\n",
+                "log/sta.log": "ok\n",
                 "output/design.def": "def",
-                "analysis/STA_metrics.json": "{}",
+                "analysis/sta_metrics.json": "{}",
             },
         )
         create_workspace_config(

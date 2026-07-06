@@ -104,3 +104,20 @@ def test_production_code_does_not_import_inspection_step_config():
     for source_path in package_root.rglob("*.py"):
         source = source_path.read_text()
         assert "chipcompiler.cli.inspection.step_config" not in source, source_path
+
+
+def test_cli_does_not_import_workspace_config_metadata_maps():
+    package_root = Path(__file__).parents[2] / "chipcompiler" / "cli"
+    forbidden_names = (
+        "WORKSPACE_CONFIG_FILENAMES",
+        "STEP_CONFIG_KEYS",
+        "WORKSPACE_STEP_BY_LOWER_NAME",
+        "WORKSPACE_STEP_ALIASES",
+        "_WORKSPACE_CONFIG_FILENAMES",
+        "_STEP_CONFIG_KEYS",
+    )
+
+    for source_path in package_root.rglob("*.py"):
+        source = source_path.read_text()
+        for name in forbidden_names:
+            assert name not in source, source_path

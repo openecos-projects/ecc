@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import chipcompiler.data as data_api
+import chipcompiler.data.workspace as workspace_data
 from chipcompiler.data import StepEnum, create_workspace, load_workspace
 from chipcompiler.data.workspace import (
     Workspace,
@@ -340,8 +341,8 @@ def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
 
 
 def test_step_config_keys_return_workspace_config_keys():
-    assert data_api.step_config_keys("cts", "ECC") == ("flow", "db", StepEnum.CTS.value)
-    assert data_api.step_config_keys("placement", "ecc") == (
+    assert data_api.step_config_keys("CTS", "ecc") == ("flow", "db", StepEnum.CTS.value)
+    assert data_api.step_config_keys("place", "ecc") == (
         "flow",
         "db",
         StepEnum.PLACEMENT.value,
@@ -367,29 +368,21 @@ def test_step_config_keys_return_workspace_config_keys():
         StepEnum.RCX.value,
         StepEnum.STA.value,
     )
-    assert data_api.step_config_keys("placement", "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys("place", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("synthesis", "yosys") == ()
-    assert data_api.step_config_keys("placement", None) == ()
+    assert data_api.step_config_keys("place", None) == ()
 
 
-def test_step_config_keys_accept_cli_tokens_and_internal_step_names():
+def test_step_config_keys_accept_exact_internal_step_names_only():
     cases = [
-        ("floorplan", StepEnum.FLOORPLAN.value),
         (StepEnum.FLOORPLAN.value, StepEnum.FLOORPLAN.value),
-        ("fixfanout", StepEnum.NETLIST_OPT.value),
         (StepEnum.NETLIST_OPT.value, StepEnum.NETLIST_OPT.value),
-        ("placement", StepEnum.PLACEMENT.value),
         (StepEnum.PLACEMENT.value, StepEnum.PLACEMENT.value),
-        ("routing", StepEnum.ROUTING.value),
         (StepEnum.ROUTING.value, StepEnum.ROUTING.value),
-        ("optdrv", StepEnum.TIMING_OPT_DRV.value),
         (StepEnum.TIMING_OPT_DRV.value, StepEnum.TIMING_OPT_DRV.value),
-        ("opthold", StepEnum.TIMING_OPT_HOLD.value),
         (StepEnum.TIMING_OPT_HOLD.value, StepEnum.TIMING_OPT_HOLD.value),
-        ("optsetup", StepEnum.TIMING_OPT_SETUP.value),
         (StepEnum.TIMING_OPT_SETUP.value, StepEnum.TIMING_OPT_SETUP.value),
-        ("rcx", StepEnum.RCX.value),
         (StepEnum.RCX.value, StepEnum.RCX.value),
         ("sta", StepEnum.STA.value),
     ]
@@ -399,6 +392,22 @@ def test_step_config_keys_accept_cli_tokens_and_internal_step_names():
         assert keys[:2] == ("flow", "db")
         assert config_key in keys
 
+    for cli_token in (
+        "floorplan",
+        "fixfanout",
+        "placement",
+        "routing",
+        "optdrv",
+        "opthold",
+        "optsetup",
+        "cts",
+        "rcx",
+    ):
+        assert data_api.step_config_keys(cli_token, "ecc") == ()
+
+    assert data_api.step_config_keys("place", "ECC") == ()
+    assert data_api.step_config_keys("place", "DreamPlace") == ()
+
 
 def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
     workspace_dir = tmp_path / "workspace"
@@ -407,19 +416,47 @@ def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
     (config_dir / "flow_config.json").write_text("{}")
     (config_dir / "cts_default_config.json").write_text("{}")
 
-    assert data_api.step_config_paths(workspace_dir, "cts", "ecc") == (
+    assert data_api.step_config_paths(workspace_dir, "CTS", "ecc") == (
         config_dir / "flow_config.json",
         config_dir / "db_default_config.json",
         config_dir / "cts_default_config.json",
     )
-    assert data_api.step_config_paths(workspace_dir, "cts", "ecc", existing_only=True) == (
+    assert data_api.step_config_paths(workspace_dir, "CTS", "ecc", existing_only=True) == (
         config_dir / "flow_config.json",
         config_dir / "cts_default_config.json",
     )
-    assert data_api.step_config_paths(str(workspace_dir), "placement", "dreamplace") == (
+    assert data_api.step_config_paths(str(workspace_dir), "place", "dreamplace") == (
         config_dir / "dreamplace.json",
     )
+    assert data_api.step_config_paths(workspace_dir, "place", "ECC") == ()
     assert data_api.step_config_paths(workspace_dir, "synthesis", "yosys") == ()
+
+
+def test_workspace_config_metadata_is_private_and_step_enum_keyed():
+    for public_name in (
+        "WORKSPACE_CONFIG_FILENAMES",
+        "STEP_CONFIG_KEYS",
+        "WORKSPACE_STEP_BY_LOWER_NAME",
+        "WORKSPACE_STEP_ALIASES",
+    ):
+        assert not hasattr(data_api, public_name)
+        assert public_name not in data_api.__all__
+        assert not hasattr(workspace_data, public_name)
+
+    assert not hasattr(data_api, "_flag_to_int")
+    assert "_flag_to_int" not in data_api.__all__
+    assert hasattr(workspace_data, "_flag_to_int")
+
+    assert hasattr(workspace_data, "_WORKSPACE_CONFIG_FILENAMES")
+    assert hasattr(workspace_data, "_STEP_CONFIG_KEYS")
+    assert all(
+        isinstance(step, StepEnum) and isinstance(tool, str)
+        for step, tool in workspace_data._STEP_CONFIG_KEYS
+    )
+
+    step_source = Path("chipcompiler/data/step.py").read_text()
+    assert "STEP_CONFIG" not in step_source
+    assert "WORKSPACE_CONFIG" not in step_source
 
 
 def test_workspace_data_does_not_import_cli_step_normalization():

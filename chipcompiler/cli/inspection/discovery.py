@@ -83,10 +83,19 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
     for entry in os.listdir(run_dir):
         full = os.path.join(run_dir, entry)
         if os.path.isdir(full) and "_" in entry:
-            name, _, tool = entry.partition("_")
+            name = step_dir_step_name(full)
+            if name is None:
+                continue
             token = normalize_step_name(name)
             result[token] = full
     return result
+
+
+def step_dir_step_name(step_path: str) -> str | None:
+    entry = os.path.basename(step_path)
+    if "_" not in entry:
+        return None
+    return entry.rpartition("_")[0]
 
 
 def step_dir_tool(step_path: str) -> str | None:

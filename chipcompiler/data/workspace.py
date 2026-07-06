@@ -104,7 +104,7 @@ def log_workspace_step(step : WorkspaceStep, logger : Logger):
     logger.log_separator()
 
 
-WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
+_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "flow": "flow_config.json",
     "db": "db_default_config.json",
     StepEnum.CTS.value: "cts_default_config.json",
@@ -124,47 +124,38 @@ WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "dreamplace": "dreamplace.json",
 }
 
-WORKSPACE_STEP_BY_LOWER_NAME: Final[dict[str, str]] = {
-    step.value.lower(): step.value for step in StepEnum
+_STEP_BY_VALUE: Final[dict[str, StepEnum]] = {
+    step.value: step for step in StepEnum
 }
 
-WORKSPACE_STEP_ALIASES: Final[dict[str, str]] = {
-    "placement": StepEnum.PLACEMENT.value,
-    "routing": StepEnum.ROUTING.value,
-}
-
-STEP_CONFIG_KEYS: Final[dict[tuple[str, str], tuple[str, ...]]] = {
-    (StepEnum.FLOORPLAN.value, "ecc"): ("flow", "db", StepEnum.FLOORPLAN.value),
-    (StepEnum.NETLIST_OPT.value, "ecc"): ("flow", "db", StepEnum.NETLIST_OPT.value),
-    (StepEnum.PLACEMENT.value, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
-    (StepEnum.CTS.value, "ecc"): ("flow", "db", StepEnum.CTS.value),
-    (StepEnum.ROUTING.value, "ecc"): ("flow", "db", StepEnum.ROUTING.value),
-    (StepEnum.DRC.value, "ecc"): ("flow", "db", StepEnum.DRC.value),
-    (StepEnum.LEGALIZATION.value, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
-    (StepEnum.FILLER.value, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
-    (StepEnum.PNP.value, "ecc"): ("flow", "db", StepEnum.PNP.value),
-    (StepEnum.TIMING_OPT_DRV.value, "ecc"): ("flow", "db", StepEnum.TIMING_OPT_DRV.value),
-    (StepEnum.TIMING_OPT_HOLD.value, "ecc"): ("flow", "db", StepEnum.TIMING_OPT_HOLD.value),
-    (StepEnum.TIMING_OPT_SETUP.value, "ecc"): (
+_STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
+    (StepEnum.FLOORPLAN, "ecc"): ("flow", "db", StepEnum.FLOORPLAN.value),
+    (StepEnum.NETLIST_OPT, "ecc"): ("flow", "db", StepEnum.NETLIST_OPT.value),
+    (StepEnum.PLACEMENT, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.CTS, "ecc"): ("flow", "db", StepEnum.CTS.value),
+    (StepEnum.ROUTING, "ecc"): ("flow", "db", StepEnum.ROUTING.value),
+    (StepEnum.DRC, "ecc"): ("flow", "db", StepEnum.DRC.value),
+    (StepEnum.LEGALIZATION, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.FILLER, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.PNP, "ecc"): ("flow", "db", StepEnum.PNP.value),
+    (StepEnum.TIMING_OPT_DRV, "ecc"): ("flow", "db", StepEnum.TIMING_OPT_DRV.value),
+    (StepEnum.TIMING_OPT_HOLD, "ecc"): ("flow", "db", StepEnum.TIMING_OPT_HOLD.value),
+    (StepEnum.TIMING_OPT_SETUP, "ecc"): (
         "flow",
         "db",
         StepEnum.TIMING_OPT_SETUP.value,
     ),
-    (StepEnum.RCX.value, "ecc"): ("flow", "db", StepEnum.RCX.value),
-    (StepEnum.STA.value, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
-    (StepEnum.PLACEMENT.value, "dreamplace"): ("dreamplace",),
-    (StepEnum.LEGALIZATION.value, "dreamplace"): ("dreamplace",),
+    (StepEnum.RCX, "ecc"): ("flow", "db", StepEnum.RCX.value),
+    (StepEnum.STA, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
+    (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
+    (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
 }
 
 
-def _normalize_workspace_step(step: str | StepEnum) -> str:
+def _workspace_step_enum(step: str | StepEnum) -> StepEnum | None:
     if isinstance(step, StepEnum):
-        return step.value
-    normalized = step.lower()
-    return WORKSPACE_STEP_ALIASES.get(
-        normalized,
-        WORKSPACE_STEP_BY_LOWER_NAME.get(normalized, step),
-    )
+        return step
+    return _STEP_BY_VALUE.get(step)
 
 
 def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
@@ -173,7 +164,7 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
     paths.update(
         {
             config_key: config_dir / filename
-            for config_key, filename in WORKSPACE_CONFIG_FILENAMES.items()
+            for config_key, filename in _WORKSPACE_CONFIG_FILENAMES.items()
         }
     )
     return paths
@@ -184,9 +175,10 @@ def workspace_config_path(workspace_dir: str | Path, config_key: str) -> Path | 
 
 
 def step_config_keys(step: str | StepEnum, tool: str | None) -> tuple[str, ...]:
-    normalized_step = _normalize_workspace_step(step)
-    normalized_tool = (tool or "").lower()
-    return STEP_CONFIG_KEYS.get((normalized_step, normalized_tool), ())
+    step_enum = _workspace_step_enum(step)
+    if step_enum is None or tool is None:
+        return ()
+    return _STEP_CONFIG_KEYS.get((step_enum, tool), ())
 
 
 def step_config_paths(

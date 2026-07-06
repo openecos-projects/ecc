@@ -168,6 +168,7 @@ def build_step_config_items(
         _safe_steps,
         discover_step_dirs,
         read_flow_json,
+        step_dir_step_name,
         step_dir_tool,
     )
     from chipcompiler.data import step_config_paths
@@ -187,14 +188,21 @@ def build_step_config_items(
         return [{"kind": "error", "status": "unknown_step", "step": step_token}], 1
 
     step_info = flow_step_by_token.get(step_token, {})
+    data_step = step_info.get("name")
     tool = step_info.get("tool")
     if tool is None and step_token in step_dirs:
         tool = step_dir_tool(step_dirs[step_token])
+    if data_step is None and step_token in step_dirs:
+        data_step = step_dir_step_name(step_dirs[step_token])
 
     items = []
     display_run = run_id or "default"
 
-    for fpath in step_config_paths(run_dir, step_token, tool, existing_only=True):
+    config_paths = ()
+    if data_step is not None:
+        config_paths = step_config_paths(run_dir, data_step, tool, existing_only=True)
+
+    for fpath in config_paths:
         items.append(
             {
                 "kind": "config",
