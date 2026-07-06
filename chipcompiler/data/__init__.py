@@ -23,7 +23,11 @@ from .workspace import (
     sync_workspace_config_to_parameters,
     log_flow,
     log_workspace_step,
+    step_config_keys,
+    step_config_paths,
     update_step_config,
+    workspace_config_path,
+    workspace_config_paths,
 )
 
 from .checklist import (
@@ -40,6 +44,10 @@ __all__ = [
     'Workspace', 
     'WorkspaceStep', 
     'build_workspace_config_paths',
+    'workspace_config_paths',
+    'workspace_config_path',
+    'step_config_keys',
+    'step_config_paths',
     'init_workspace_config',
     'prepare_workspace_for_rerun',
     'refresh_workspace_config',

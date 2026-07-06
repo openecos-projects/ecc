@@ -31,9 +31,9 @@ def _has_metrics(run_dir: str, step_token: str) -> bool:
 
 
 def _has_config_files(run_dir: str, step_token: str, tool: str | None) -> bool:
-    from chipcompiler.cli.inspection.step_config import step_config_files
+    from chipcompiler.data import step_config_paths
 
-    return bool(step_config_files(run_dir, step_token, tool))
+    return bool(step_config_paths(run_dir, step_token, tool, existing_only=True))
 
 
 def _make_issue(

@@ -1,4 +1,5 @@
 import importlib
+from pathlib import Path
 
 import pytest
 
@@ -70,7 +71,6 @@ def test_inspection_modules_live_under_inspection_package():
         "config_view",
         "diagnose",
         "log_view",
-        "step_config",
     ):
         module = importlib.import_module(f"chipcompiler.cli.inspection.{module_name}")
         assert module.__name__ == f"chipcompiler.cli.inspection.{module_name}"
@@ -91,3 +91,16 @@ def test_legacy_root_modules_are_not_importable():
 def test_workspace_config_view_module_is_not_importable():
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("chipcompiler.cli.workspace.config_view")
+
+
+def test_inspection_step_config_module_is_not_importable():
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("chipcompiler.cli.inspection.step_config")
+
+
+def test_production_code_does_not_import_inspection_step_config():
+    package_root = Path(__file__).parents[2] / "chipcompiler"
+
+    for source_path in package_root.rglob("*.py"):
+        source = source_path.read_text()
+        assert "chipcompiler.cli.inspection.step_config" not in source, source_path

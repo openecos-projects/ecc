@@ -4,7 +4,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 from .parameter import (
     Parameters,
     get_parameters, 
@@ -104,30 +104,111 @@ def log_workspace_step(step : WorkspaceStep, logger : Logger):
     logger.log_separator()
 
 
+WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
+    "flow": "flow_config.json",
+    "db": "db_default_config.json",
+    StepEnum.CTS.value: "cts_default_config.json",
+    StepEnum.DRC.value: "drc_default_config.json",
+    StepEnum.FLOORPLAN.value: "fp_default_config.json",
+    StepEnum.NETLIST_OPT.value: "no_default_config_fixfanout.json",
+    StepEnum.PLACEMENT.value: "pl_default_config.json",
+    StepEnum.PNP.value: "pnp_default_config.json",
+    StepEnum.ROUTING.value: "rt_default_config.json",
+    StepEnum.TIMING_OPT_DRV.value: "to_default_config_drv.json",
+    StepEnum.TIMING_OPT_HOLD.value: "to_default_config_hold.json",
+    StepEnum.TIMING_OPT_SETUP.value: "to_default_config_setup.json",
+    StepEnum.LEGALIZATION.value: "pl_default_config.json",
+    StepEnum.FILLER.value: "pl_default_config.json",
+    StepEnum.RCX.value: "rcx.json",
+    StepEnum.STA.value: "sta.json",
+    "dreamplace": "dreamplace.json",
+}
+
+WORKSPACE_STEP_BY_LOWER_NAME: Final[dict[str, str]] = {
+    step.value.lower(): step.value for step in StepEnum
+}
+
+WORKSPACE_STEP_ALIASES: Final[dict[str, str]] = {
+    "placement": StepEnum.PLACEMENT.value,
+    "routing": StepEnum.ROUTING.value,
+}
+
+STEP_CONFIG_KEYS: Final[dict[tuple[str, str], tuple[str, ...]]] = {
+    (StepEnum.FLOORPLAN.value, "ecc"): ("flow", "db", StepEnum.FLOORPLAN.value),
+    (StepEnum.NETLIST_OPT.value, "ecc"): ("flow", "db", StepEnum.NETLIST_OPT.value),
+    (StepEnum.PLACEMENT.value, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.CTS.value, "ecc"): ("flow", "db", StepEnum.CTS.value),
+    (StepEnum.ROUTING.value, "ecc"): ("flow", "db", StepEnum.ROUTING.value),
+    (StepEnum.DRC.value, "ecc"): ("flow", "db", StepEnum.DRC.value),
+    (StepEnum.LEGALIZATION.value, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.FILLER.value, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.PNP.value, "ecc"): ("flow", "db", StepEnum.PNP.value),
+    (StepEnum.TIMING_OPT_DRV.value, "ecc"): ("flow", "db", StepEnum.TIMING_OPT_DRV.value),
+    (StepEnum.TIMING_OPT_HOLD.value, "ecc"): ("flow", "db", StepEnum.TIMING_OPT_HOLD.value),
+    (StepEnum.TIMING_OPT_SETUP.value, "ecc"): (
+        "flow",
+        "db",
+        StepEnum.TIMING_OPT_SETUP.value,
+    ),
+    (StepEnum.RCX.value, "ecc"): ("flow", "db", StepEnum.RCX.value),
+    (StepEnum.STA.value, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
+    (StepEnum.PLACEMENT.value, "dreamplace"): ("dreamplace",),
+    (StepEnum.LEGALIZATION.value, "dreamplace"): ("dreamplace",),
+}
+
+
+def _normalize_workspace_step(step: str | StepEnum) -> str:
+    if isinstance(step, StepEnum):
+        return step.value
+    normalized = step.lower()
+    return WORKSPACE_STEP_ALIASES.get(
+        normalized,
+        WORKSPACE_STEP_BY_LOWER_NAME.get(normalized, step),
+    )
+
+
+def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
+    config_dir = Path(workspace_dir) / "config"
+    paths = {"dir": config_dir}
+    paths.update(
+        {
+            config_key: config_dir / filename
+            for config_key, filename in WORKSPACE_CONFIG_FILENAMES.items()
+        }
+    )
+    return paths
+
+
+def workspace_config_path(workspace_dir: str | Path, config_key: str) -> Path | None:
+    return workspace_config_paths(workspace_dir).get(config_key)
+
+
+def step_config_keys(step: str | StepEnum, tool: str | None) -> tuple[str, ...]:
+    normalized_step = _normalize_workspace_step(step)
+    normalized_tool = (tool or "").lower()
+    return STEP_CONFIG_KEYS.get((normalized_step, normalized_tool), ())
+
+
+def step_config_paths(
+    workspace_dir: str | Path,
+    step: str | StepEnum,
+    tool: str | None,
+    *,
+    existing_only: bool = False,
+) -> tuple[Path, ...]:
+    paths = workspace_config_paths(workspace_dir)
+    result = tuple(
+        path for config_key in step_config_keys(step, tool) if (path := paths.get(config_key))
+    )
+    if existing_only:
+        return tuple(path for path in result if path.is_file())
+    return result
+
+
 def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:
     """Build workspace-level config file paths."""
     workspace_dir = Path(workspace.directory) if workspace.directory is not None else Path("")
-    config_dir = workspace_dir / "config"
-    return {
-        "dir": config_dir,
-        "flow": config_dir / "flow_config.json",
-        "db": config_dir / "db_default_config.json",
-        f"{StepEnum.CTS.value}": config_dir / "cts_default_config.json",
-        f"{StepEnum.DRC.value}": config_dir / "drc_default_config.json",
-        f"{StepEnum.FLOORPLAN.value}": config_dir / "fp_default_config.json",
-        f"{StepEnum.NETLIST_OPT.value}": config_dir / "no_default_config_fixfanout.json",
-        f"{StepEnum.PLACEMENT.value}": config_dir / "pl_default_config.json",
-        f"{StepEnum.PNP.value}": config_dir / "pnp_default_config.json",
-        f"{StepEnum.ROUTING.value}": config_dir / "rt_default_config.json",
-        f"{StepEnum.TIMING_OPT_DRV.value}": config_dir / "to_default_config_drv.json",
-        f"{StepEnum.TIMING_OPT_HOLD.value}": config_dir / "to_default_config_hold.json",
-        f"{StepEnum.TIMING_OPT_SETUP.value}": config_dir / "to_default_config_setup.json",
-        f"{StepEnum.LEGALIZATION.value}": config_dir / "pl_default_config.json",
-        f"{StepEnum.FILLER.value}": config_dir / "pl_default_config.json",
-        f"{StepEnum.RCX.value}": config_dir / "rcx.json",
-        f"{StepEnum.STA.value}": config_dir / "sta.json",
-        "dreamplace": config_dir / "dreamplace.json",
-    }
+    return workspace_config_paths(workspace_dir)
 
 
 def build_dynamic_flow_data(flow_config: dict | None) -> dict:

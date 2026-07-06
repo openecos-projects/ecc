@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from chipcompiler.data import create_workspace, load_workspace
+import chipcompiler.data as data_api
+from chipcompiler.data import StepEnum, create_workspace, load_workspace
 from chipcompiler.data.workspace import (
     Workspace,
     build_workspace_config_paths,
@@ -11,6 +12,27 @@ from chipcompiler.data.workspace import (
     sync_workspace_config_to_parameters,
 )
 from chipcompiler.utility import json_read, json_write
+
+
+EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
+    "flow": "flow_config.json",
+    "db": "db_default_config.json",
+    StepEnum.CTS.value: "cts_default_config.json",
+    StepEnum.DRC.value: "drc_default_config.json",
+    StepEnum.FLOORPLAN.value: "fp_default_config.json",
+    StepEnum.NETLIST_OPT.value: "no_default_config_fixfanout.json",
+    StepEnum.PLACEMENT.value: "pl_default_config.json",
+    StepEnum.PNP.value: "pnp_default_config.json",
+    StepEnum.ROUTING.value: "rt_default_config.json",
+    StepEnum.TIMING_OPT_DRV.value: "to_default_config_drv.json",
+    StepEnum.TIMING_OPT_HOLD.value: "to_default_config_hold.json",
+    StepEnum.TIMING_OPT_SETUP.value: "to_default_config_setup.json",
+    StepEnum.LEGALIZATION.value: "pl_default_config.json",
+    StepEnum.FILLER.value: "pl_default_config.json",
+    StepEnum.RCX.value: "rcx.json",
+    StepEnum.STA.value: "sta.json",
+    "dreamplace": "dreamplace.json",
+}
 
 
 def test_create_workspace_returns_path_fields_and_persists_string_paths(
@@ -289,6 +311,115 @@ def test_build_workspace_config_paths_returns_path_objects(tmp_path):
     assert paths["dir"] == tmp_path / "workspace" / "config"
     assert paths["flow"] == tmp_path / "workspace" / "config" / "flow_config.json"
     assert all(isinstance(path, Path) for path in paths.values())
+
+
+def test_workspace_config_paths_match_build_workspace_config_paths(tmp_path):
+    workspace_dir = tmp_path / "workspace"
+
+    paths = data_api.workspace_config_paths(workspace_dir)
+    existing = build_workspace_config_paths(Workspace(directory=workspace_dir))
+
+    assert paths == existing
+    assert paths["dir"] == workspace_dir / "config"
+    assert set(paths) == {"dir", *EXPECTED_WORKSPACE_CONFIG_FILENAMES}
+    assert all(isinstance(path, Path) for path in paths.values())
+    for config_key, filename in EXPECTED_WORKSPACE_CONFIG_FILENAMES.items():
+        assert paths[config_key] == workspace_dir / "config" / filename
+
+
+def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
+    workspace_dir = tmp_path / "workspace"
+
+    assert data_api.workspace_config_path(str(workspace_dir), "flow") == (
+        workspace_dir / "config" / "flow_config.json"
+    )
+    assert data_api.workspace_config_path(workspace_dir, StepEnum.PLACEMENT.value) == (
+        workspace_dir / "config" / "pl_default_config.json"
+    )
+    assert data_api.workspace_config_path(workspace_dir, "unknown") is None
+
+
+def test_step_config_keys_return_workspace_config_keys():
+    assert data_api.step_config_keys("cts", "ECC") == ("flow", "db", StepEnum.CTS.value)
+    assert data_api.step_config_keys("placement", "ecc") == (
+        "flow",
+        "db",
+        StepEnum.PLACEMENT.value,
+    )
+    assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == (
+        "flow",
+        "db",
+        StepEnum.PLACEMENT.value,
+    )
+    assert data_api.step_config_keys("legalization", "ecc") == (
+        "flow",
+        "db",
+        StepEnum.PLACEMENT.value,
+    )
+    assert data_api.step_config_keys("filler", "ecc") == (
+        "flow",
+        "db",
+        StepEnum.PLACEMENT.value,
+    )
+    assert data_api.step_config_keys("sta", "ecc") == (
+        "flow",
+        "db",
+        StepEnum.RCX.value,
+        StepEnum.STA.value,
+    )
+    assert data_api.step_config_keys("placement", "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys("synthesis", "yosys") == ()
+    assert data_api.step_config_keys("placement", None) == ()
+
+
+def test_step_config_keys_accept_cli_tokens_and_internal_step_names():
+    cases = [
+        ("floorplan", StepEnum.FLOORPLAN.value),
+        (StepEnum.FLOORPLAN.value, StepEnum.FLOORPLAN.value),
+        ("fixfanout", StepEnum.NETLIST_OPT.value),
+        (StepEnum.NETLIST_OPT.value, StepEnum.NETLIST_OPT.value),
+        ("placement", StepEnum.PLACEMENT.value),
+        (StepEnum.PLACEMENT.value, StepEnum.PLACEMENT.value),
+        ("routing", StepEnum.ROUTING.value),
+        (StepEnum.ROUTING.value, StepEnum.ROUTING.value),
+        ("optdrv", StepEnum.TIMING_OPT_DRV.value),
+        (StepEnum.TIMING_OPT_DRV.value, StepEnum.TIMING_OPT_DRV.value),
+        ("opthold", StepEnum.TIMING_OPT_HOLD.value),
+        (StepEnum.TIMING_OPT_HOLD.value, StepEnum.TIMING_OPT_HOLD.value),
+        ("optsetup", StepEnum.TIMING_OPT_SETUP.value),
+        (StepEnum.TIMING_OPT_SETUP.value, StepEnum.TIMING_OPT_SETUP.value),
+        ("rcx", StepEnum.RCX.value),
+        (StepEnum.RCX.value, StepEnum.RCX.value),
+        ("sta", StepEnum.STA.value),
+    ]
+
+    for token, config_key in cases:
+        keys = data_api.step_config_keys(token, "ecc")
+        assert keys[:2] == ("flow", "db")
+        assert config_key in keys
+
+
+def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    config_dir = workspace_dir / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "flow_config.json").write_text("{}")
+    (config_dir / "cts_default_config.json").write_text("{}")
+
+    assert data_api.step_config_paths(workspace_dir, "cts", "ecc") == (
+        config_dir / "flow_config.json",
+        config_dir / "db_default_config.json",
+        config_dir / "cts_default_config.json",
+    )
+    assert data_api.step_config_paths(workspace_dir, "cts", "ecc", existing_only=True) == (
+        config_dir / "flow_config.json",
+        config_dir / "cts_default_config.json",
+    )
+    assert data_api.step_config_paths(str(workspace_dir), "placement", "dreamplace") == (
+        config_dir / "dreamplace.json",
+    )
+    assert data_api.step_config_paths(workspace_dir, "synthesis", "yosys") == ()
 
 
 def test_create_workspace_persists_pdk_root_in_parameters(
