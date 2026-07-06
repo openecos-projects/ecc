@@ -219,6 +219,49 @@ def test_create_workspace_materializes_inline_pdk_json_before_data_api(monkeypat
     assert seen["pdk_json"] == pdk_json
 
 
+def test_create_workspace_with_inline_pdk_json_uses_real_data_api(monkeypatch, tmp_path):
+    pdk_root = tmp_path / "pdk"
+    tech = pdk_root / "tech.lef"
+    lef = pdk_root / "stdcell.lef"
+    liberty = pdk_root / "stdcell.lib"
+    for path in (tech, lef, liberty):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("VERSION 5.8 ;\n")
+
+    workspace_dir = tmp_path / "workspace"
+    monkeypatch.setattr(
+        "chipcompiler.runtime.workspace_api.build_flow_for_workspace",
+        lambda _workspace: SimpleNamespace(),
+    )
+
+    api = WorkspaceRuntimeApi()
+    result = api.create_workspace(
+        WorkspaceCreateRequest(
+            directory=str(workspace_dir),
+            pdk="ics55",
+            pdk_json={
+                "name": "ics55",
+                "root": str(pdk_root),
+                "tech": str(tech),
+                "lefs": [str(lef)],
+                "libs": [str(liberty)],
+            },
+            parameters={
+                "Design": "gcd",
+                "Top module": "gcd",
+                "Clock": "clk",
+            },
+        )
+    )
+
+    assert result["directory"] == str(workspace_dir.resolve())
+    pdk_config_path = workspace_dir / "home" / "pdk.json"
+    assert pdk_config_path.is_file()
+    parameters = json.loads((workspace_dir / "home" / "parameters.json").read_text())
+    assert parameters["PDK Config"] == str(pdk_config_path.resolve())
+    assert api.sessions.get_session(result["workspaceId"]).directory == workspace_dir.resolve()
+
+
 def test_open_workspace_loads_without_creating_step_workspaces(monkeypatch, tmp_path):
     capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()

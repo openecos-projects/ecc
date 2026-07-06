@@ -1088,9 +1088,9 @@ def create_workspace(directory : str | Path,
     if workspace.pdk.root:
         workspace.parameters.data["PDK Root"] = str(workspace.pdk.root)
     if pdk_json:
-        pdk_config_path = os.path.abspath(f"{directory}/home/pdk.json")
+        pdk_config_path = home_dir / "pdk.json"
         shutil.copy(pdk_json, pdk_config_path)
-        workspace.parameters.data["PDK Config"] = pdk_config_path
+        workspace.parameters.data["PDK Config"] = str(pdk_config_path)
 
     # save parameter
     save_parameter(workspace.parameters)
