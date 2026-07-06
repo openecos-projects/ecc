@@ -170,7 +170,7 @@ def build_step_config_items(
         read_flow_json,
         step_dir_tool,
     )
-    from chipcompiler.cli.workspace.config_view import workspace_config_files
+    from chipcompiler.cli.inspection.step_config import step_config_files
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     flow_data = read_flow_json(run_dir)
@@ -194,7 +194,7 @@ def build_step_config_items(
     items = []
     display_run = run_id or "default"
 
-    for fpath in workspace_config_files(run_dir, step_token, tool):
+    for fpath in step_config_files(run_dir, step_token, tool):
         items.append(
             {
                 "kind": "config",

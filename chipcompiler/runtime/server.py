@@ -3,7 +3,9 @@ from __future__ import annotations
 from jsonrpcserver import Error
 
 import chipcompiler
-from chipcompiler.runtime.requests import RequestValidationError, parse_request
+from chipcompiler.runtime import methods
+from chipcompiler.runtime.methods import runtime_method_names
+from chipcompiler.runtime.requests import RequestValidationError, parse_request_model
 from chipcompiler.runtime.rpc_dispatch import RpcDispatcher
 from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
 
@@ -13,19 +15,7 @@ BASE_CAPABILITIES = (
     "rpc.ping",
     "rpc.shutdown",
 )
-RUNTIME_METHODS = {
-    "workspace.create": "create_workspace",
-    "workspace.open": "open_workspace",
-    "workspace.close": "close_workspace",
-    "workspace.home": "workspace_home",
-    "workspace.info": "workspace_info",
-    "workspace.refresh_config": "refresh_config",
-    "workspace.sync_config": "sync_config",
-    "workspace.reset_flow": "reset_flow",
-    "flow.run": "flow_run",
-    "flow.run_step": "flow_run_step",
-}
-CAPABILITIES = (*BASE_CAPABILITIES, *RUNTIME_METHODS)
+CAPABILITIES = (*BASE_CAPABILITIES, *runtime_method_names())
 
 ERROR_CODES = {
     "workspace_session_not_found": -32010,
@@ -74,16 +64,22 @@ class RuntimeServer:
         return {"ok": True}
 
     def _register_runtime_methods(self) -> None:
-        for method_name, api_method_name in RUNTIME_METHODS.items():
+        for spec in methods.RUNTIME_METHODS:
+            api_method = getattr(self.api, spec.handler_name, None)
+            if not callable(api_method):
+                raise TypeError(
+                    f"runtime method {spec.method_name} handler "
+                    f"{spec.handler_name} is not callable"
+                )
             self.dispatcher.add_method(
-                method_name,
-                self._runtime_method_handler(method_name, api_method_name),
+                spec.method_name,
+                self._runtime_method_handler(spec, api_method),
             )
 
-    def _runtime_method_handler(self, method_name: str, api_method_name: str):
+    def _runtime_method_handler(self, spec, api_method):
         def handler(**params):
             try:
-                request = parse_request(method_name, params)
+                request = parse_request_model(spec.request_model, params)
             except RequestValidationError as exc:
                 return Error(
                     -32602,
@@ -91,7 +87,6 @@ class RuntimeServer:
                     {"message": exc.reason},
                 )
 
-            api_method = getattr(self.api, api_method_name)
             try:
                 return api_method(request)
             except RuntimeApiError as exc:

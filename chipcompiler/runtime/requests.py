@@ -64,19 +64,6 @@ class RequestValidationError(ValueError):
         self.reason = reason
 
 
-REQUEST_MODELS = {
-    "workspace.create": WorkspaceCreateRequest,
-    "workspace.open": WorkspaceOpenRequest,
-    "workspace.close": WorkspaceCloseRequest,
-    "workspace.home": WorkspaceIdRequest,
-    "workspace.refresh_config": WorkspaceIdRequest,
-    "workspace.reset_flow": WorkspaceIdRequest,
-    "workspace.sync_config": WorkspaceSyncConfigRequest,
-    "workspace.info": WorkspaceInfoRequest,
-    "flow.run": FlowRunRequest,
-    "flow.run_step": FlowRunStepRequest,
-}
-
 FIELD_ALIASES = {
     "pdkRoot": "pdk_root",
     "pdkJson": "pdk_json",
@@ -91,10 +78,7 @@ FIELD_ALIASES = {
 }
 
 
-def parse_request(method: str, params: object):
-    model = REQUEST_MODELS.get(method)
-    if model is None:
-        raise RequestValidationError(f"unsupported method: {method}")
+def parse_request_model(model: type, params: object):
     if not isinstance(params, dict):
         raise RequestValidationError("params must be an object")
 

@@ -35,7 +35,7 @@ _STEP_CONFIG_FILES = {
 }
 
 
-def workspace_config_files(run_dir: str, step_token: str, tool: str | None) -> list[str]:
+def step_config_files(run_dir: str, step_token: str, tool: str | None) -> list[str]:
     filenames = _STEP_CONFIG_FILES.get((step_token, (tool or "").lower()), ())
     config_dir = os.path.join(run_dir, "config")
     return [

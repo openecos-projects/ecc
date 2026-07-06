@@ -233,6 +233,35 @@ def test_open_workspace_loads_without_creating_step_workspaces(monkeypatch, tmp_
     assert not DummyFlow.instances[0].created
 
 
+def test_create_workspace_replaces_existing_same_directory_session(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+
+    opened = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
+    opened_session = api.sessions.get_session(opened["workspaceId"])
+    opened_session.db_handle = object()
+    created = api.create_workspace(WorkspaceCreateRequest(directory=str(ws)))
+
+    assert created["workspaceId"] != opened["workspaceId"]
+    assert opened_session.db_handle is None
+    with pytest.raises(RuntimeApiError, match="workspace session not found"):
+        api.workspace_home(WorkspaceIdRequest(workspace_id=opened["workspaceId"]))
+    created_session = api.sessions.get_session(created["workspaceId"])
+    assert created_session.workspace is not opened_session.workspace
+
+
+def test_open_workspace_reuses_existing_same_directory_session(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+
+    first = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
+    first_session = api.sessions.get_session(first["workspaceId"])
+    second = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
+
+    assert second["workspaceId"] == first["workspaceId"]
+    assert api.sessions.get_session(second["workspaceId"]).workspace is first_session.workspace
+
+
 def test_workspace_home_and_info_use_session_id(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     monkeypatch.setattr(

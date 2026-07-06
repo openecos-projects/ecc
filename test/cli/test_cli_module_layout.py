@@ -64,7 +64,14 @@ def test_param_handler_lives_under_handlers_package():
 
 
 def test_inspection_modules_live_under_inspection_package():
-    for module_name in ("discovery", "artifacts", "config_view", "diagnose", "log_view"):
+    for module_name in (
+        "discovery",
+        "artifacts",
+        "config_view",
+        "diagnose",
+        "log_view",
+        "step_config",
+    ):
         module = importlib.import_module(f"chipcompiler.cli.inspection.{module_name}")
         assert module.__name__ == f"chipcompiler.cli.inspection.{module_name}"
 
@@ -75,13 +82,12 @@ def test_rendering_modules_live_under_rendering_package():
         assert module.__name__ == f"chipcompiler.cli.rendering.{module_name}"
 
 
-def test_workspace_modules_live_under_workspace_package():
-    for module_name in ("config_view",):
-        module = importlib.import_module(f"chipcompiler.cli.workspace.{module_name}")
-        assert module.__name__ == f"chipcompiler.cli.workspace.{module_name}"
-
-
 def test_legacy_root_modules_are_not_importable():
     for module_name in LEGACY_MODULES:
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module(f"chipcompiler.cli.{module_name}")
+
+
+def test_workspace_config_view_module_is_not_importable():
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("chipcompiler.cli.workspace.config_view")

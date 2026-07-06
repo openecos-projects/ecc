@@ -27,6 +27,23 @@ def test_open_reuses_existing_session_for_same_directory(tmp_path):
     assert second.workspace == "first"
 
 
+def test_create_replaces_existing_session_for_same_directory(tmp_path):
+    registry = WorkspaceSessionRegistry()
+
+    first = registry.open_session(tmp_path / "ws", workspace="first")
+    first.db_handle = object()
+    second = registry.create_session(Path(tmp_path / "ws"), workspace="second")
+
+    assert second.workspace_id != first.workspace_id
+    assert second.directory == first.directory
+    assert second.workspace == "second"
+    assert first.db_handle is None
+    assert registry.get_session(second.workspace_id) is second
+    with pytest.raises(WorkspaceSessionNotFound, match=first.workspace_id):
+        registry.get_session(first.workspace_id)
+    assert registry.open_session(tmp_path / "ws", workspace="third") is second
+
+
 def test_get_session_rejects_unknown_and_closed_workspace_id(tmp_path):
     registry = WorkspaceSessionRegistry()
     session = registry.open_session(tmp_path / "ws", workspace=object())

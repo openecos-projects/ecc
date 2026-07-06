@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from chipcompiler.runtime.methods import RUNTIME_METHODS
 from chipcompiler.runtime.requests import WorkspaceOpenRequest
 from chipcompiler.runtime.server import RuntimeServer
 from chipcompiler.runtime.workspace_api import RuntimeApiError
@@ -9,6 +10,38 @@ from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 def _dispatch(server: RuntimeServer, payload: str) -> dict:
     return json.loads(server.dispatch(payload))
+
+
+class CompleteFakeApi:
+    def create_workspace(self, _request):
+        raise AssertionError("unexpected create_workspace call")
+
+    def open_workspace(self, _request):
+        raise AssertionError("unexpected open_workspace call")
+
+    def close_workspace(self, _request):
+        raise AssertionError("unexpected close_workspace call")
+
+    def workspace_home(self, _request):
+        raise AssertionError("unexpected workspace_home call")
+
+    def workspace_info(self, _request):
+        raise AssertionError("unexpected workspace_info call")
+
+    def refresh_config(self, _request):
+        raise AssertionError("unexpected refresh_config call")
+
+    def sync_config(self, _request):
+        raise AssertionError("unexpected sync_config call")
+
+    def reset_flow(self, _request):
+        raise AssertionError("unexpected reset_flow call")
+
+    def flow_run(self, _request):
+        raise AssertionError("unexpected flow_run call")
+
+    def flow_run_step(self, _request):
+        raise AssertionError("unexpected flow_run_step call")
 
 
 def test_rpc_hello_returns_version_and_capabilities():
@@ -66,7 +99,7 @@ def test_unknown_method_keeps_request_id():
 
 
 def test_workspace_method_dispatches_typed_request_to_runtime_api():
-    class FakeApi:
+    class FakeApi(CompleteFakeApi):
         def open_workspace(self, request):
             assert isinstance(request, WorkspaceOpenRequest)
             return {"workspaceId": "workspace-1", "directory": request.directory}
@@ -100,7 +133,7 @@ def test_request_validation_errors_map_to_json_rpc_invalid_params():
 
 
 def test_workspace_session_errors_map_to_json_rpc_runtime_error():
-    class FakeApi:
+    class FakeApi(CompleteFakeApi):
         def workspace_home(self, _request):
             raise RuntimeApiError(
                 "workspace_session_not_found",
@@ -120,7 +153,7 @@ def test_workspace_session_errors_map_to_json_rpc_runtime_error():
 
 
 def test_workspace_api_user_exceptions_map_to_command_failed():
-    class FakeApi:
+    class FakeApi(CompleteFakeApi):
         def open_workspace(self, _request):
             raise ValueError("PDK tech LEF is missing")
 
@@ -139,18 +172,7 @@ def test_workspace_api_user_exceptions_map_to_command_failed():
 
 @pytest.mark.parametrize(
     "method",
-    [
-        "workspace.create",
-        "workspace.open",
-        "workspace.close",
-        "workspace.home",
-        "workspace.info",
-        "workspace.refresh_config",
-        "workspace.sync_config",
-        "workspace.reset_flow",
-        "flow.run",
-        "flow.run_step",
-    ],
+    [spec.method_name for spec in RUNTIME_METHODS],
 )
 def test_first_slice_methods_are_registered(method):
     server = RuntimeServer()
@@ -158,3 +180,34 @@ def test_first_slice_methods_are_registered(method):
     response = _dispatch(server, f'{{"jsonrpc":"2.0","method":"{method}","id":1}}')
 
     assert response["error"]["code"] != -32601
+
+
+def test_runtime_server_fails_when_registered_api_handler_is_missing(monkeypatch):
+    from chipcompiler.runtime import methods
+
+    missing_spec = methods.RuntimeMethodSpec(
+        method_name="workspace.missing_handler",
+        request_model=WorkspaceOpenRequest,
+        handler_name="missing_handler",
+    )
+    monkeypatch.setattr(methods, "RUNTIME_METHODS", (missing_spec,))
+
+    with pytest.raises(TypeError, match="missing_handler"):
+        RuntimeServer()
+
+
+def test_runtime_server_fails_when_registered_api_handler_is_not_callable(monkeypatch):
+    from chipcompiler.runtime import methods
+
+    class FakeApi:
+        open_workspace = object()
+
+    spec = methods.RuntimeMethodSpec(
+        method_name="workspace.open",
+        request_model=WorkspaceOpenRequest,
+        handler_name="open_workspace",
+    )
+    monkeypatch.setattr(methods, "RUNTIME_METHODS", (spec,))
+
+    with pytest.raises(TypeError, match="open_workspace"):
+        RuntimeServer(api=FakeApi())

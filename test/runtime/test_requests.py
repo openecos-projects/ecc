@@ -2,6 +2,7 @@ from dataclasses import is_dataclass
 
 import pytest
 
+from chipcompiler.runtime.methods import runtime_method_by_name
 from chipcompiler.runtime.requests import (
     FlowRunRequest,
     FlowRunStepRequest,
@@ -12,14 +13,20 @@ from chipcompiler.runtime.requests import (
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
     WorkspaceSyncConfigRequest,
-    parse_request,
+    parse_request_model,
 )
+
+
+def _parse_runtime_request(method: str, params: object):
+    spec = runtime_method_by_name(method)
+    assert spec is not None
+    return parse_request_model(spec.request_model, params)
 
 
 def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
     pdk_json = {"name": "ics55", "lef": ["tech.lef"]}
 
-    request = parse_request(
+    request = _parse_runtime_request(
         "workspace.create",
         {
             "directory": "/work/ws",
@@ -71,7 +78,7 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
     ],
 )
 def test_first_slice_payloads_parse_to_typed_request_models(method, params, request_type):
-    request = parse_request(method, params)
+    request = _parse_runtime_request(method, params)
 
     assert isinstance(request, request_type)
     assert is_dataclass(request)
@@ -79,23 +86,32 @@ def test_first_slice_payloads_parse_to_typed_request_models(method, params, requ
 
 def test_missing_required_field_reports_field_name():
     with pytest.raises(RequestValidationError) as exc_info:
-        parse_request("flow.run_step", {"workspaceId": "ws-1"})
+        _parse_runtime_request("flow.run_step", {"workspaceId": "ws-1"})
 
     assert exc_info.value.reason == "missing required field: step"
 
 
 def test_unknown_fields_are_rejected():
     with pytest.raises(RequestValidationError) as exc_info:
-        parse_request("workspace.open", {"directory": "/work/ws", "extra": True})
+        _parse_runtime_request("workspace.open", {"directory": "/work/ws", "extra": True})
 
     assert exc_info.value.reason == "unknown field: extra"
 
 
 def test_params_must_be_an_object():
     with pytest.raises(RequestValidationError, match="params must be an object"):
-        parse_request("workspace.open", None)
+        _parse_runtime_request("workspace.open", None)
+
+
+def test_workspace_info_accepts_info_id_alias():
+    request = _parse_runtime_request(
+        "workspace.info",
+        {"workspaceId": "ws-1", "step": "Synthesis", "infoId": "timing"},
+    )
+
+    assert isinstance(request, WorkspaceInfoRequest)
+    assert request.info_id == "timing"
 
 
 def test_unknown_runtime_method_has_no_request_model():
-    with pytest.raises(RequestValidationError, match="unsupported method"):
-        parse_request("workspace.signoff", {"workspaceId": "ws-1"})
+    assert runtime_method_by_name("workspace.signoff") is None
