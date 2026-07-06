@@ -422,6 +422,20 @@ def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
     assert data_api.step_config_paths(workspace_dir, "synthesis", "yosys") == ()
 
 
+def test_workspace_data_does_not_import_cli_step_normalization():
+    source = Path("chipcompiler/data/workspace.py").read_text()
+
+    assert "normalize_step_name" not in source
+    assert "chipcompiler.cli" not in source
+
+
+def test_data_package_does_not_import_cli_modules():
+    for source_path in Path("chipcompiler/data").rglob("*.py"):
+        source = source_path.read_text()
+        assert "from chipcompiler.cli" not in source, source_path
+        assert "import chipcompiler.cli" not in source, source_path
+
+
 def test_create_workspace_persists_pdk_root_in_parameters(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
