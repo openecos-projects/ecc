@@ -576,8 +576,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     router["RT"]["-top_routing_layer"] = workspace.parameters.data.get("Top layer", "")
     json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 
-    _apply_parameter_mappings_to_workspace_config(workspace)
-
     # rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
     # rcx["pdk"] = "ics55" if workspace.pdk.name == "ics55" else ""
     # rcx["mapping_file"] = workspace.pdk.mapping_file
@@ -604,6 +602,8 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     dreamplace["base_design_name"] = workspace.design.name
     dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
     json_write(workspace.config["dreamplace"], dreamplace)
+
+    _apply_parameter_mappings_to_workspace_config(workspace)
 
 
 def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path) -> bool:

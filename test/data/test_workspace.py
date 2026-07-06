@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import chipcompiler.data as data_api
@@ -34,6 +35,36 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.STA.value: "sta.json",
     "dreamplace": "dreamplace.json",
 }
+
+ROUTABILITY_FLAG_STRING_CASES = (
+    ("true", 1),
+    ("false", 0),
+    ("2", 2),
+    ("maybe", 1),
+)
+
+
+def _create_loaded_ics55_workspace(
+    tmp_path,
+    workspace_name,
+    minimal_ics55_pdk_factory,
+    default_ics55_parameters,
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / f"{workspace_name}_pdk")
+    rtl_path = tmp_path / f"{workspace_name}.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / workspace_name
+    create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=str(pdk_root),
+    )
+
+    return workspace_dir, load_workspace(str(workspace_dir))
 
 
 def test_create_workspace_returns_path_fields_and_persists_string_paths(
@@ -606,6 +637,27 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert dreamplace["routability_opt_flag"] == 0
 
 
+def test_refresh_workspace_config_preserves_routability_flag_string_coercion(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    for index, (raw_value, expected) in enumerate(ROUTABILITY_FLAG_STRING_CASES):
+        workspace_dir, workspace = _create_loaded_ics55_workspace(
+            tmp_path,
+            f"workspace_param_flag_{index}",
+            minimal_ics55_pdk_factory,
+            default_ics55_parameters,
+        )
+        parameter_path = workspace_dir / "home" / "parameters.json"
+        params = json_read(parameter_path)
+        params["Routability opt flag"] = raw_value
+        json_write(parameter_path, params)
+
+        refresh_workspace_config(workspace)
+
+        dreamplace = json_read(workspace.config["dreamplace"])
+        assert dreamplace["routability_opt_flag"] == expected
+
+
 def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -637,6 +689,31 @@ def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshe
     assert params["Bottom layer"] == "MET4"
     assert params["Top layer"] == "MET7"
     assert db["LayerSettings"]["routing_layer_1st"] == "MET4"
+
+
+def test_sync_workspace_config_to_parameters_preserves_routability_flag_string_coercion(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    for index, (raw_value, expected) in enumerate(ROUTABILITY_FLAG_STRING_CASES):
+        workspace_dir, workspace = _create_loaded_ics55_workspace(
+            tmp_path,
+            f"workspace_config_flag_{index}",
+            minimal_ics55_pdk_factory,
+            default_ics55_parameters,
+        )
+        parameter_path = workspace_dir / "home" / "parameters.json"
+        params = json_read(parameter_path)
+        params["Routability opt flag"] = -1
+        json_write(parameter_path, params)
+
+        dreamplace = json_read(workspace.config["dreamplace"])
+        dreamplace["routability_opt_flag"] = raw_value
+        json_write(workspace.config["dreamplace"], dreamplace)
+
+        assert sync_workspace_config_to_parameters(workspace, workspace.config["dreamplace"]) is True
+
+        params = json_read(parameter_path)
+        assert params["Routability opt flag"] == expected
 
 
 def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
