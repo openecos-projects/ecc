@@ -113,5 +113,19 @@ def test_workspace_info_accepts_info_id_alias():
     assert request.info_id == "timing"
 
 
+@pytest.mark.parametrize(
+    ("method", "params"),
+    [
+        ("flow.run", {"workspaceId": "ws-1", "rerun": "false"}),
+        ("flow.run_step", {"workspaceId": "ws-1", "step": "Synthesis", "rerun": "true"}),
+    ],
+)
+def test_rerun_must_be_boolean(method, params):
+    with pytest.raises(RequestValidationError) as exc_info:
+        _parse_runtime_request(method, params)
+
+    assert exc_info.value.reason == "rerun must be a boolean"
+
+
 def test_unknown_runtime_method_has_no_request_model():
     assert runtime_method_by_name("workspace.signoff") is None

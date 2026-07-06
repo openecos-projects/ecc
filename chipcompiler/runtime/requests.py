@@ -102,6 +102,9 @@ def parse_request_model(model: type, params: object):
         if required and _is_missing(values[field.name]):
             raise RequestValidationError(f"missing required field: {field.name}")
 
+        if field.name == "rerun" and not isinstance(values[field.name], bool):
+            raise RequestValidationError("rerun must be a boolean")
+
     return model(**values)
 
 
