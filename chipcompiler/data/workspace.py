@@ -160,14 +160,13 @@ def _workspace_step_enum(step: str | StepEnum) -> StepEnum | None:
 
 def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
     config_dir = Path(workspace_dir) / "config"
-    paths = {"dir": config_dir}
-    paths.update(
-        {
+    return {
+        "dir": config_dir,
+        **{
             config_key: config_dir / filename
             for config_key, filename in _WORKSPACE_CONFIG_FILENAMES.items()
-        }
-    )
-    return paths
+        },
+    }
 
 
 def workspace_config_path(workspace_dir: str | Path, config_key: str) -> Path | None:
@@ -189,12 +188,15 @@ def step_config_paths(
     existing_only: bool = False,
 ) -> tuple[Path, ...]:
     paths = workspace_config_paths(workspace_dir)
-    result = tuple(
-        path for config_key in step_config_keys(step, tool) if (path := paths.get(config_key))
-    )
-    if existing_only:
-        return tuple(path for path in result if path.is_file())
-    return result
+    result = []
+    for config_key in step_config_keys(step, tool):
+        path = paths.get(config_key)
+        if path is None:
+            continue
+        if existing_only and not path.is_file():
+            continue
+        result.append(path)
+    return tuple(result)
 
 
 def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:

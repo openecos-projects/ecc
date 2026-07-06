@@ -347,7 +347,6 @@ class TestConfigStepResolved:
 
     def test_config_cli_tokens_use_internal_flow_step_names(
         self,
-        tmp_path,
         capsys,
         create_cli_project,
         create_flow_json,
@@ -528,7 +527,6 @@ class TestDirectoryOnlyStepConfig:
 
     def test_dir_only_routing_uses_internal_step_directory_prefix(
         self,
-        tmp_path,
         capsys,
         create_cli_project,
         create_flow_json,

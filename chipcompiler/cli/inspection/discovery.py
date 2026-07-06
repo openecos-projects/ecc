@@ -82,12 +82,13 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
         return result
     for entry in os.listdir(run_dir):
         full = os.path.join(run_dir, entry)
-        if os.path.isdir(full) and "_" in entry:
-            name = step_dir_step_name(full)
-            if name is None:
-                continue
-            token = normalize_step_name(name)
-            result[token] = full
+        if not os.path.isdir(full):
+            continue
+        name = step_dir_step_name(full)
+        if name is None:
+            continue
+        token = normalize_step_name(name)
+        result[token] = full
     return result
 
 

@@ -30,12 +30,12 @@ def _has_metrics(run_dir: str, step_token: str) -> bool:
     return bool(discover_metrics(run_dir, step_token))
 
 
-def _has_config_files(run_dir: str, step_token: str | None, tool: str | None) -> bool:
+def _has_config_files(run_dir: str, config_step: str | None, tool: str | None) -> bool:
     from chipcompiler.data import step_config_paths
 
-    if step_token is None:
+    if config_step is None:
         return False
-    return bool(step_config_paths(run_dir, step_token, tool, existing_only=True))
+    return bool(step_config_paths(run_dir, config_step, tool, existing_only=True))
 
 
 def _make_issue(
