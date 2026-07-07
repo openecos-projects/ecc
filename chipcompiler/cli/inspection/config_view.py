@@ -190,10 +190,11 @@ def build_step_config_items(
     step_info = flow_step_by_token.get(step_token, {})
     data_step = step_info.get("name")
     tool = step_info.get("tool")
-    if tool is None and step_token in step_dirs:
-        tool = step_dir_tool(step_dirs[step_token])
-    if data_step is None and step_token in step_dirs:
-        data_step = step_dir_step_name(step_dirs[step_token])
+    step_dir = step_dirs.get(step_token)
+    if tool is None and step_dir is not None:
+        tool = step_dir_tool(step_dir)
+    if data_step is None and step_dir is not None:
+        data_step = step_dir_step_name(step_dir)
 
     items = []
     display_run = run_id or "default"
