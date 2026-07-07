@@ -835,6 +835,21 @@ def _copy_file_safely(src: str, dst: str, logger, context: str) -> bool:
             logger.error(f"Error copying {context}: {e}")
         return False
 
+
+def _workspace_directory_has_existing_data(workspace_dir: Path) -> bool:
+    if not workspace_dir.exists():
+        return False
+    if not workspace_dir.is_dir():
+        return True
+
+    try:
+        next(workspace_dir.iterdir())
+    except StopIteration:
+        return False
+    except OSError:
+        return True
+    return True
+
                      
 def create_workspace(directory : str | Path,
                      origin_def : str | Path,
@@ -844,7 +859,8 @@ def create_workspace(directory : str | Path,
                      input_filelist : str | Path = "",
                      pdk_root : str | Path = "",
                      pdk_json : str | Path = "",
-                     flow_config : dict | None = None) -> Workspace:
+                     flow_config : dict | None = None,
+                     sdc : str | Path = "") -> Workspace:
     """
     Create a workspace for chip design flow.
 
@@ -854,6 +870,7 @@ def create_workspace(directory : str | Path,
         origin_verilog: Original verilog file path (RTL or synthesized netlist)
         pdk: PDK information (LEF, Liberty, SDC, etc.)
         parameters: Design parameters (clock, frequency, etc.)
+        sdc: Optional timing constraints file copied into workspace/origin/
         input_filelist: Optional filelist for synthesis (SystemVerilog sources)
 
     Returns:
@@ -872,6 +889,9 @@ def create_workspace(directory : str | Path,
     origin_dir = workspace_dir / "origin"
     home_dir = workspace_dir / "home"
     log_dir = workspace_dir / "log"
+    if _workspace_directory_has_existing_data(workspace_dir):
+        return None
+
     try:
         workspace_dir.mkdir(parents=True, exist_ok=True)
     except OSError as error:
@@ -886,6 +906,10 @@ def create_workspace(directory : str | Path,
         
     if isinstance(pdk, str):
         workspace.pdk = get_pdk(pdk_name=pdk, pdk_root=pdk_root, pdk_config=pdk_json)
+
+    explicit_sdc_path = Path(sdc).expanduser().resolve() if sdc else None
+    if explicit_sdc_path is not None:
+        workspace.pdk.sdc = explicit_sdc_path
     
     #update config
     if isinstance(parameters, Parameters):

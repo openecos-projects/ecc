@@ -262,7 +262,8 @@ class EngineFlow:
                                    eda=step["tool"],
                                    input_def=input_def,
                                    input_verilog=input_verilog,
-                                   input_db=input_db)
+                                   input_db=input_db,
+                                   initialize_config=True)
             # save workspace step
             if eda_step is not None:
                 if pre_step is not None \

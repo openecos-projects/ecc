@@ -23,6 +23,13 @@ def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
                 message=[f"missing required field: {missing[0]}"],
             )
 
+        if _workspace_directory_has_existing_data(request.directory):
+            return workspace_response(
+                "create_workspace",
+                "failed",
+                message=[f"workspace already exists: {os.path.abspath(request.directory)}"],
+            )
+
         input_filelist = request.filelist
         if not input_filelist:
             rtl_paths = normalize_rtl_list(request.rtl_list)
@@ -37,6 +44,7 @@ def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
             parameters=request.parameters,
             origin_def=request.origin_def,
             origin_verilog=request.origin_verilog,
+            sdc=request.sdc,
             input_filelist=input_filelist,
             pdk_root=request.pdk_root,
             pdk_json=request.pdk_json,
@@ -75,6 +83,22 @@ def create_workspace_from_request(request: WorkspaceCreateRequest) -> dict:
         data={"directory": directory, "workspace_id": directory},
         message=[f"create workspace success : {directory}"],
     )
+
+
+def _workspace_directory_has_existing_data(directory: str) -> bool:
+    workspace_dir = Path(directory).expanduser()
+    if not workspace_dir.exists():
+        return False
+    if not workspace_dir.is_dir():
+        return True
+
+    try:
+        next(workspace_dir.iterdir())
+    except StopIteration:
+        return False
+    except OSError:
+        return True
+    return True
 
 
 def load_workspace(directory: str) -> dict:

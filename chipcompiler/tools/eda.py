@@ -58,7 +58,8 @@ def create_step(workspace : Workspace,
                input_db : Path | None = None,
                output_def : Path | None = None,
                output_verilog : Path | None = None,
-               output_gds : Path | None = None) -> WorkspaceStep:
+               output_gds : Path | None = None,
+               initialize_config : bool = False) -> WorkspaceStep:
     """
     Create and return an EDA tool instance based on the given step and eda tool name.
     """
@@ -81,8 +82,8 @@ def create_step(workspace : Workspace,
     # build step sub workspace
     eda_module.build_step_space(step)
     
-    # update config
-    # eda_module.build_step_config(workspace, step)
+    if initialize_config:
+        eda_module.build_step_config(workspace, step)
     
     return step
 

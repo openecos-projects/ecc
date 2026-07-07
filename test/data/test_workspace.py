@@ -51,6 +51,22 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert isinstance(flow_config["ConfigPath"]["idb_path"], str)
 
 
+def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    (workspace_dir / "home").mkdir(parents=True)
+    (workspace_dir / "home" / "parameters.json").write_text("{}")
+
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog="",
+        pdk="ics55",
+        parameters={},
+    )
+
+    assert workspace is None
+
+
 def test_create_workspace_persists_dynamic_flow_steps(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -134,6 +150,104 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "sta",
         "Harden",
     ]
+
+
+def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuilds_flow(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    source_workspace = tmp_path / "source"
+    floorplan_output = source_workspace / "Floorplan_ecc" / "output"
+    floorplan_output.mkdir(parents=True)
+    source_process_dir = source_workspace / "legalization_dreamplace"
+    source_process_dir.mkdir()
+    (source_process_dir / "checklist.json").write_text('{"state":"success"}\n')
+    (source_workspace / "home").mkdir()
+    (source_workspace / "home" / "flow.json").write_text('{"steps":[{"state":"Success"}]}\n')
+    def_path = floorplan_output / "gcd_Floorplan.def.gz"
+    def_path.write_text("def from floorplan\n")
+    netlist_path = floorplan_output / "gcd_Floorplan.v.gz"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    sdc_path = source_workspace / "origin" / "gcd.sdc"
+    sdc_path.parent.mkdir()
+    sdc_path.write_text("create_clock -name clk -period 10 [get_ports clk]\n")
+
+    workspace_dir = tmp_path / "ws_0008"
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=netlist_path,
+        sdc=sdc_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={
+            "start_step": "fixFanout",
+            "end_step": "legalization",
+        },
+    )
+
+    assert workspace is not None
+    assert (workspace_dir / "origin" / "gcd_Floorplan.def.gz").read_text() == "def from floorplan\n"
+    assert "module gcd" in (workspace_dir / "origin" / "gcd_Floorplan.v.gz").read_text()
+    assert (workspace_dir / "origin" / "gcd.sdc").read_text() == sdc_path.read_text()
+    assert not (workspace_dir / "Floorplan_ecc").exists()
+    assert not (workspace_dir / "legalization_dreamplace").exists()
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [step["name"] for step in flow_data["steps"]] == [
+        "fixFanout",
+        "place",
+        "CTS",
+        "legalization",
+    ]
+    assert all(step["state"] == "Unstart" for step in flow_data["steps"])
+    assert all(step["runtime"] == "" for step in flow_data["steps"])
+    assert all(step["peak memory (mb)"] == 0 for step in flow_data["steps"])
+
+
+def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    def_path = tmp_path / "gcd_floorplan.def.gz"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    netlist_path = tmp_path / "gcd_floorplan.v.gz"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=netlist_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={
+            "start_step": "CTS",
+            "end_step": "CTS",
+        },
+    )
+
+    from chipcompiler.cli.workspace.service import build_flow_for_workspace
+
+    build_flow_for_workspace(workspace)
+
+    step_dir = workspace_dir / "CTS_ecc"
+    step_subflow = json_read(step_dir / "subflow.json")
+    step_checklist = json_read(step_dir / "checklist.json")
+    home_checklist = json_read(workspace_dir / "home" / "checklist.json")
+
+    assert [step["name"] for step in step_subflow["steps"]] == [
+        "load data",
+        "run CTS",
+        "save data",
+        "analysis",
+    ]
+    assert all(step["state"] == "Unstart" for step in step_subflow["steps"])
+    assert len(step_checklist["checklist"]) > 0
+    assert len(home_checklist["checklist"]) == len(step_checklist["checklist"])
+    assert {item["state"] for item in home_checklist["checklist"]} == {"Unstart"}
 
 
 def test_load_workspace_restores_path_fields_from_existing_json(
