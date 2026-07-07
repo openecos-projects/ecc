@@ -114,7 +114,7 @@ def create_ecc_workspace_config(run_dir, step_config):
 
 def has_disclosure(line):
     return bool(
-        re.search(r"ecc (?:check|run|status|log|metrics|artifacts|config|diagnose|param)\b", line)
+        re.search(r"ecc (?:check|run|status|log|config|param)\b", line)
         or '"ecc ' in line
         or "=ecc " in line
     )

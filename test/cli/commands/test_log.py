@@ -513,38 +513,6 @@ class TestLogNoErrorsInDisclosure:
         out = capsys.readouterr().out
         assert "--errors" not in out
 
-    def test_metrics_disclosure_no_errors(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
-        os.makedirs(step_dir, exist_ok=True)
-        analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
-        os.makedirs(analysis_dir, exist_ok=True)
-        with open(os.path.join(analysis_dir, "Synthesis_metrics.json"), "w") as f:
-            json.dump({"Cell number": 100}, f)
-
-        rc = cli_main.run(["metrics", "synthesis", "--project", project_dir])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "--errors" not in out
-
-    def test_artifacts_log_disclosure_no_errors(
-        self, tmp_path, capsys, create_cli_project, create_flow_json
-    ):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        create_flow_json(run_dir, profile="main")
-        log_dir = os.path.join(run_dir, "CTS_ecc", "log")
-        os.makedirs(log_dir, exist_ok=True)
-        with open(os.path.join(log_dir, "cts.log"), "w") as f:
-            f.write("log content\n")
-
-        rc = cli_main.run(["artifacts", "cts", "--project", project_dir])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "--errors" not in out
-
-
 class TestLogUnreadableFile:
     """AC-9: Unreadable log files return non-zero with OS error."""
 

@@ -340,7 +340,6 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 "status": "success",
                 "workspace": run_dir,
                 "inspect_cmd": disclosure_cmd("ecc status", project),
-                "metrics_cmd": disclosure_cmd("ecc metrics", project),
                 "log_cmd": disclosure_cmd("ecc log", project),
             }
         ]

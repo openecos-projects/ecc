@@ -213,98 +213,6 @@ def render_status(records, file=None, color=True):
     target.write("\n")
 
 
-def render_metrics(records, file=None, color=True):
-    target = file or sys.stdout
-    first = records[0]
-
-    if first.get("kind") == "error" or first.get("status") in (
-        "missing",
-        "unknown_step",
-        "corrupt",
-    ):
-        render_generic_block(records, file=file, color=color, tag="metrics")
-        return
-
-    if first.get("metrics_status") == "none":
-        target.write(f"{render_header('metrics', color)}\n")
-        target.write("  No metrics available.\n")
-        if first.get("inspect_cmd"):
-            target.write(
-                render_field("inspect", first["inspect_cmd"], color, dim_label=True) + "\n"
-            )
-        target.write("\n")
-        return
-
-    target.write(f"{render_header('metrics', color)}\n")
-
-    current_step = None
-    for r in records:
-        step = r.get("step", r.get("metric_step", ""))
-        if step != current_step:
-            if current_step is not None:
-                target.write("\n")
-            current_step = step
-            target.write(f"  {style(step, CYAN, color) if color else step}:\n")
-
-        metric = r.get("metric", "")
-        value = r.get("value", "")
-        if metric:
-            target.write(f"    {metric}: {value}\n")
-        elif r.get("status"):
-            target.write(f"    {status_style(r['status'], color)}\n")
-        if r.get("source"):
-            target.write(render_field("source", r["source"], color, dim_label=True) + "\n")
-        if r.get("inspect"):
-            target.write(render_field("inspect", r["inspect"], color, dim_label=True) + "\n")
-
-    target.write("\n")
-
-
-def render_artifacts(records, file=None, color=True):
-    target = file or sys.stdout
-    first = records[0]
-
-    if first.get("kind") == "error" or first.get("status") in ("unknown_step",):
-        render_generic_block(records, file=file, color=color, tag="artifacts")
-        return
-
-    if first.get("artifacts_status") == "none":
-        target.write(f"{render_header('artifacts', color)}\n")
-        target.write("  No artifacts found.\n")
-        if first.get("inspect_cmd"):
-            target.write(
-                render_field("inspect", first["inspect_cmd"], color, dim_label=True) + "\n"
-            )
-        target.write("\n")
-        return
-
-    target.write(f"{render_header('artifacts', color)}\n")
-
-    current_step = None
-    for r in records:
-        step = r.get("step", "")
-        if step != current_step:
-            if current_step is not None:
-                target.write("\n")
-            current_step = step
-            target.write(f"  {style(step, CYAN, color) if color else step}:\n")
-
-        artifact = r.get("artifact", "")
-        role = r.get("role", "")
-        path = r.get("path", "")
-        target.write(f"    {artifact} ({role})\n")
-        if path:
-            target.write(render_field("path", path, color, dim_label=True) + "\n")
-        if r.get("inspect"):
-            target.write(render_field("inspect", r["inspect"], color, dim_label=True) + "\n")
-        if r.get("metrics"):
-            target.write(render_field("metrics", r["metrics"], color, dim_label=True) + "\n")
-        if r.get("config"):
-            target.write(render_field("config", r["config"], color, dim_label=True) + "\n")
-
-    target.write("\n")
-
-
 def render_config(records, file=None, color=True):
     target = file or sys.stdout
     first = records[0]
@@ -321,10 +229,6 @@ def render_config(records, file=None, color=True):
             else "  No configuration found.\n"
         )
         target.write(msg)
-        if first.get("artifacts"):
-            target.write(
-                render_field("artifacts", first["artifacts"], color, dim_label=True) + "\n"
-            )
         target.write("\n")
         return
 
@@ -364,48 +268,6 @@ def render_config(records, file=None, color=True):
     target.write("\n")
 
 
-def render_diagnose(records, file=None, color=True):
-    target = file or sys.stdout
-    first = records[0]
-
-    if first.get("kind") == "error":
-        render_generic_block(records, file=file, color=color, tag="diagnose")
-        return
-
-    if first.get("status") == "clean":
-        target.write(f"{render_header('diagnose', color)}\n")
-        target.write(f"  {status_style('clean', color)} No issues found.\n")
-        _render_disclosure_fields(target, first, color)
-        target.write("\n")
-        return
-
-    target.write(f"{render_header('diagnose', color)}\n")
-
-    by_severity = {}
-    for r in records:
-        sev = r.get("severity", "info")
-        by_severity.setdefault(sev, []).append(r)
-
-    for severity in ("error", "warning", "info"):
-        issues = by_severity.get(severity, [])
-        if not issues:
-            continue
-        sev_label = status_style(severity, color)
-        target.write(f"  {sev_label}:\n")
-        for r in issues:
-            issue = r.get("issue", "")
-            target.write(f"    {issue}\n")
-            if r.get("evidence"):
-                target.write(f"      evidence: {r['evidence']}\n")
-            if r.get("step"):
-                target.write(f"      step: {r['step']}\n")
-            if r.get("count"):
-                target.write(f"      count: {r['count']}\n")
-            _render_step_disclosure(target, r, color, indent="      ")
-
-    target.write("\n")
-
-
 def render_error(records, file=None, color=True):
     target = file or sys.stdout
     target.write(f"{render_header('error', color)}\n")
@@ -438,8 +300,6 @@ def _render_disclosure_fields(target, record, color):
             "start_cmd",
             "log",
             "config",
-            "artifacts",
-            "metrics",
         ):
             continue
         value = record.get(key)
@@ -450,7 +310,7 @@ def _render_disclosure_fields(target, record, color):
 
 
 def _render_step_disclosure(target, record, color, indent="      "):
-    for key in ("metrics_cmd", "log_cmd", "log", "artifacts", "config", "start_cmd", "inspect"):
+    for key in ("log_cmd", "log", "config", "start_cmd", "inspect"):
         value = record.get(key)
         if not value:
             continue
@@ -468,9 +328,6 @@ def get_pretty_renderer(command):
         "check": render_check,
         "run": render_run_summary,
         "status": render_status,
-        "metrics": render_metrics,
-        "artifacts": render_artifacts,
         "config": render_config,
-        "diagnose": render_diagnose,
     }
     return registry.get(command)

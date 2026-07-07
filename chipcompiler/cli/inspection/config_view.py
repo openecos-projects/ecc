@@ -225,7 +225,6 @@ def build_step_config_items(
                 "scope": "step",
                 "step": step_token,
                 "config_status": "none",
-                "artifacts": disclosure_cmd(f"ecc artifacts {step_token}", project, run_id),
             }
         ], 0
 

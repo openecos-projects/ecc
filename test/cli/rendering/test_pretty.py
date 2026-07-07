@@ -158,39 +158,6 @@ class TestPlainFlagAcceptance:
         assert "\x1b[" not in out
         assert "status=" in out
 
-    def test_metrics_plain(self, tmp_path, capsys, create_cli_project, create_flow_json):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        create_flow_json(run_dir, profile="pretty")
-        analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
-        os.makedirs(analysis_dir, exist_ok=True)
-        with open(os.path.join(analysis_dir, "Synthesis_metrics.json"), "w") as f:
-            json.dump({"Cell number": 312}, f)
-        rc = cli_main.run(["metrics", "synthesis", "--plain", "--project", project_dir])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "\x1b[" not in out
-        assert "metric=" in out
-
-    def test_artifacts_plain(self, tmp_path, capsys, create_cli_project, create_flow_json):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        create_flow_json(run_dir, profile="pretty")
-        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
-        os.makedirs(step_dir, exist_ok=True)
-        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
-            f.write("ok\n")
-        rc = cli_main.run(["artifacts", "--plain", "--project", project_dir])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "\x1b[" not in out
-
-    def test_diagnose_plain(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        cli_main.run(["diagnose", "--plain", "--project", project_dir])
-        out = capsys.readouterr().out
-        assert "\x1b[" not in out
-
     def test_config_plain(self, tmp_path, monkeypatch, capsys, create_cli_project):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -248,43 +215,6 @@ class TestPrettyDefaultOutput:
         out = capsys.readouterr().out
         assert "synthesis (yosys)" in out
         assert "cts (ecc)" in out
-
-    def test_metrics_groups_by_step(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        for step_dir_name in ["Synthesis_yosys", "CTS_ecc"]:
-            analysis = os.path.join(run_dir, step_dir_name, "analysis")
-            os.makedirs(analysis, exist_ok=True)
-            metrics_name = step_dir_name.split("_")[0] + "_metrics.json"
-            with open(os.path.join(analysis, metrics_name), "w") as f:
-                json.dump({"Cell number": 100}, f)
-        rc = cli_main.run(["metrics", "--project", project_dir])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "[metrics]" in out
-        assert "synthesis:" in out
-        assert "cts:" in out
-
-    def test_diagnose_clean_has_header(
-        self, tmp_path, capsys, create_cli_project, create_flow_json
-    ):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        create_flow_json(
-            run_dir,
-            [
-                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-            ],
-        )
-        step_dir = os.path.join(run_dir, "CTS_ecc", "log")
-        os.makedirs(step_dir, exist_ok=True)
-        with open(os.path.join(step_dir, "cts.log"), "w") as f:
-            f.write("ok\n")
-        rc = cli_main.run(["diagnose", "--project", project_dir])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "[diagnose]" in out
-        assert "clean" in out
 
     def test_error_output_has_error_header(self, tmp_path, capsys):
         rc = cli_main.run(["check", "--project", str(tmp_path)])
@@ -358,22 +288,6 @@ class TestJsonUnchanged:
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
         assert data["records"][0]["run"] == "default"
-
-    def test_metrics_jsonl_unchanged(self, tmp_path, capsys, create_cli_project, create_flow_json):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        create_flow_json(run_dir, profile="pretty")
-        analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
-        os.makedirs(analysis_dir, exist_ok=True)
-        with open(os.path.join(analysis_dir, "Synthesis_metrics.json"), "w") as f:
-            json.dump({"Cell number": 312}, f)
-        rc = cli_main.run(["metrics", "synthesis", "--jsonl", "--project", project_dir])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "\x1b[" not in out
-        objects = [json.loads(line) for line in out.strip().split("\n")]
-        assert any("metric" in o for o in objects)
-
 
 # ---------------------------------------------------------------------------
 # Regression: multi-record error rendering (Codex Round 1 finding)

@@ -1,4 +1,3 @@
-import json
 import os
 
 from chipcompiler.cli import main as cli_main
@@ -33,22 +32,6 @@ class TestDisclosureCommands:
         create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert has_disclosure(out)
-
-    def test_metrics_lines_have_disclosure(
-        self, tmp_path, capsys, create_cli_project, has_disclosure
-    ):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-
-        analysis_dir = os.path.join(run_dir, "Synthesis_yosys", "analysis")
-        os.makedirs(analysis_dir, exist_ok=True)
-        with open(os.path.join(analysis_dir, "Synthesis_metrics.json"), "w") as f:
-            json.dump({"Cell number": 312}, f)
-
-        rc = cli_main.run(["metrics", "synthesis", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert has_disclosure(out)

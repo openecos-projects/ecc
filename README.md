@@ -65,7 +65,6 @@ Then validate and run:
 nix run . -- check --project gcd
 nix run . -- run --project gcd
 nix run . -- status --project gcd
-nix run . -- metrics --project gcd
 nix run . -- log --project gcd
 ```
 

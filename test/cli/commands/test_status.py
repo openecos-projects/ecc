@@ -29,8 +29,13 @@ class TestStatus:
         records = data["records"]
         assert records[0]["run"] == "default"
         assert records[0]["status"] == "success"
+        assert "inspect_cmd" in records[0]
+        assert "log_cmd" in records[0]
+        assert "metrics_cmd" not in records[0]
         step_records = [r for r in records if "step" in r]
         assert len(step_records) == 2
+        assert all("log_cmd" in r for r in step_records)
+        assert all("metrics_cmd" not in r for r in step_records)
 
     def test_status_jsonl(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()

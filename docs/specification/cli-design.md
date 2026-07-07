@@ -39,16 +39,14 @@ Detailed information must be available through explicit follow-up commands.
 The disclosure path is:
 
 ```text
-summary -> diagnosis -> evidence -> raw data
+summary -> evidence -> raw data
 ```
 
 Examples:
 
 ```bash
 ecc status
-ecc diagnose cts
 ecc log cts
-ecc artifacts cts
 ecc config cts --resolved
 ```
 
@@ -63,13 +61,13 @@ Use stable `key="command"` fields. Current run and step summary records use a
 fields without the suffix:
 
 ```text
-step=cts status=failed runtime=0:00:37 metrics_cmd="ecc metrics cts" log_cmd="ecc log cts"
+step=cts status=failed runtime=0:00:37 log_cmd="ecc log cts"
 ```
 
 Do not rely on prose such as:
 
 ```text
-Run ecc diagnose cts for more details.
+Run the log command for more details.
 ```
 
 The command field names should be stable across releases:
@@ -77,12 +75,9 @@ The command field names should be stable across releases:
 | Field | Purpose |
 | --- | --- |
 | `inspect` | Show detailed object state |
-| `diagnose` | Explain failures or quality issues |
 | `log` | Show available logs or step log content |
-| `artifacts` | List output artifacts |
 | `config` | Show resolved configuration |
-| `metrics` | Show metrics |
-| `*_cmd` | Current record suffix for command-valued variants such as `inspect_cmd`, `metrics_cmd`, `log_cmd`, and `start_cmd` |
+| `*_cmd` | Current record suffix for command-valued variants such as `inspect_cmd`, `log_cmd`, and `start_cmd` |
 | `open` | Open a viewer or report (planned) |
 
 ### Stable Text Output
@@ -94,11 +89,10 @@ mode.
 Recommended style:
 
 ```text
-run=default status=failed workspace=runs/default inspect_cmd="ecc status" metrics_cmd="ecc metrics" log_cmd="ecc log"
-step=synthesis tool=yosys status=success runtime=0:00:18 metrics_cmd="ecc metrics synthesis" log_cmd="ecc log synthesis"
-step=floorplan tool=ecc status=success runtime=0:00:04 metrics_cmd="ecc metrics floorplan" log_cmd="ecc log floorplan"
-metric=gp_hpwl step=placement value=18423 source=Placement_ecc/analysis/place_metrics.json inspect="ecc metrics placement --json"
-artifact=design.def step=placement role=output path=runs/default/Placement_ecc/output/design.def inspect="ecc artifacts placement --json" config="ecc config placement --resolved"
+run=default status=failed workspace=runs/default inspect_cmd="ecc status" log_cmd="ecc log"
+step=synthesis tool=yosys status=success runtime=0:00:18 log_cmd="ecc log synthesis"
+step=floorplan tool=ecc status=success runtime=0:00:04 log_cmd="ecc log floorplan"
+config=place_default_config.json scope=step step=placement role=config path=runs/default/config/place_default_config.json inspect="ecc config placement --resolved --json"
 ```
 
 Current implementation note: `--plain` provides this stable key-value output.
@@ -126,8 +120,8 @@ Use `--json` for object-level output and `--jsonl` for stream or list output.
 Example:
 
 ```jsonl
-{"step":"synthesis","tool":"yosys","status":"success","runtime":"0:00:18","metrics_cmd":"ecc metrics synthesis","log_cmd":"ecc log synthesis"}
-{"metric":"gp_hpwl","step":"placement","value":18423,"source":"Placement_ecc/analysis/place_metrics.json","inspect":"ecc metrics placement --json"}
+{"step":"synthesis","tool":"yosys","status":"success","runtime":"0:00:18","log_cmd":"ecc log synthesis"}
+{"config":"place_default_config.json","scope":"step","step":"placement","role":"config","path":"runs/default/config/place_default_config.json","inspect":"ecc config placement --resolved --json"}
 ```
 
 Text output and JSON output should describe the same objects. The text output is
@@ -139,7 +133,7 @@ Current implementation status:
 | --- | --- |
 | `ecc init` | `--plain` |
 | `ecc check` | `--json`, `--plain` |
-| `ecc run`, `ecc status`, `ecc log`, `ecc metrics`, `ecc artifacts`, `ecc config`, `ecc diagnose` | `--json`, `--jsonl`, `--plain` |
+| `ecc run`, `ecc status`, `ecc log`, `ecc config` | `--json`, `--jsonl`, `--plain` |
 | `ecc param list/show/set/unset/diff` | `--json`, `--jsonl`, `--plain` |
 | `ecc version` | `--json` |
 
@@ -204,10 +198,7 @@ ecc check
 ecc run
 ecc status
 ecc log
-ecc metrics
-ecc artifacts
 ecc config
-ecc diagnose
 ecc param
 ecc rpc
 ```
@@ -222,13 +213,14 @@ Responsibilities:
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
 | `ecc run` | Execute the configured default flow |
 | `ecc status` | Summarize run and step state |
-| `ecc diagnose` | Explain failures or QoR problems with evidence |
-| `ecc metrics` | Show run-level or step-level metrics |
 | `ecc log` | Show available logs or complete step log content |
-| `ecc artifacts` | List generated files and disclosure commands |
 | `ecc config` | Show user or resolved configuration |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
 | `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |
+
+The former standalone metrics, artifact listing, and diagnosis commands are no
+longer part of the public root command surface. Metrics files and generated
+artifacts remain part of the workspace data model and flow outputs.
 
 ### Project-Oriented Entry
 
@@ -292,7 +284,7 @@ an absolute run directory:
 ```bash
 ecc status --run-id default
 ecc log cts --run-id run_005
-ecc metrics cts --run-id sweeps/sweep_001/run_004
+ecc config cts --resolved --run-id sweeps/sweep_001/run_004
 ```
 
 Run tags and `ecc diff` remain planned work.
@@ -376,10 +368,9 @@ kind=<object-kind> key=value ... disclosure_key="ecc command ..."
 Examples:
 
 ```text
-run=default status=success workspace=runs/default inspect_cmd="ecc status" metrics_cmd="ecc metrics" log_cmd="ecc log"
-step=routing tool=ecc status=failed runtime=0:03:42 metrics_cmd="ecc metrics routing" log_cmd="ecc log routing"
-metric=max_wns step=cts value=-0.083 source=runs/default/CTS_ecc/analysis/CTS_metrics.json inspect="ecc metrics cts --json"
-artifact=design.def step=placement role=output path=runs/default/Placement_ecc/output/design.def inspect="ecc artifacts placement --json" config="ecc config placement --resolved"
+run=default status=success workspace=runs/default inspect_cmd="ecc status" log_cmd="ecc log"
+step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
+config=rt_default_config.json scope=step step=routing role=config path=runs/default/config/rt_default_config.json inspect="ecc config routing --resolved --json"
 ```
 
 Rules:
@@ -419,18 +410,6 @@ step=routing status=unknown_step inspect="ecc status"
 
 For human readability, a short paragraph may follow, but agents should be able
 to use the first line alone.
-
-### Diagnosis Output
-
-Diagnosis must include evidence, not only suggestions:
-
-```text
-issue=log_errors severity=error run=default step=cts count=12 evidence="ecc log cts" artifacts="ecc artifacts cts"
-issue=missing_metrics severity=warning run=default step=cts evidence="ecc metrics cts --json" log="ecc log cts"
-issue=config_unavailable severity=info run=default step=cts evidence="ecc config cts --resolved" artifacts="ecc artifacts cts"
-```
-
-Suggestions should be traceable to metrics, reports, or logs.
 
 ## Configuration Direction
 
@@ -493,7 +472,6 @@ events.jsonl
 Agent-oriented commands can then be layered on top:
 
 ```bash
-ecc diagnose
 ecc explain routing
 ecc suggest --goal "fix hold"
 ecc summarize run latest
@@ -513,32 +491,28 @@ commands.
 - [x] `ecc run`
 - [x] `ecc status`
 - [x] `ecc log`
-- [x] `ecc metrics`
 - [x] Stable grep-friendly summary output through `--plain`
-- [x] `--json` and `--jsonl` for status and metrics
+- [x] `--json` and `--jsonl` for status, log, run, config, and param commands
 
 Success criteria:
 
 - [x] A user can create a project, run the default RTL-to-GDS flow, inspect status,
-  inspect logs, and read metrics without writing Python.
+  and inspect logs without writing Python.
 - [x] Plain summary records include disclosure commands for follow-up
   inspection.
 
 ### Phase 2: Debug And Traceability
 
-- [x] `ecc diagnose`
-- [x] `ecc artifacts`
 - [x] `ecc config --resolved`
 - [x] Run selection for inspection commands with `--run-id`
 - [x] Parameter overrides with `ecc param` and `ecc run --set`
 - [x] Private runtime sidecar under `ecc rpc serve --stdio`
 - [ ] Run tags and run comparison basics
-- [x] Structured issue and artifact metadata
 
 Success criteria:
 
-- [x] A failed step can be investigated through `ecc status -> ecc diagnose -> ecc
-  log/artifacts/config`.
+- [x] A failed step can be investigated through status, log, and resolved config
+  output.
 - [x] Agent frameworks can follow disclosure commands from `--plain`, `--json`,
   or `--jsonl` output without parsing prose.
 

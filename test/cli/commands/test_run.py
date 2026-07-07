@@ -187,5 +187,5 @@ class TestRun:
         assert record["run"] == "default"
         assert record["status"] == "success"
         assert "inspect_cmd" in record
-        assert "metrics_cmd" in record
+        assert "metrics_cmd" not in record
         assert "log_cmd" in record

@@ -7,12 +7,10 @@ from chipcompiler.cli.command_handlers import project as project_handlers
 from chipcompiler.cli.core.inputs import (
     CheckInput,
     ConfigInput,
-    DiagnoseInput,
     InitInput,
     LogInput,
     RunInput,
     StatusInput,
-    StepInspectInput,
     output_options,
     project_options,
 )
@@ -32,10 +30,7 @@ def register_project_commands(app: typer.Typer) -> None:
     app.command("run", help="Run the configured RTL-to-GDS flow")(run_cmd)
     app.command("status", help="Show run and step status")(status_cmd)
     app.command("log", help="Show available logs or step log content")(log_cmd)
-    app.command("metrics", help="Show run or step metrics")(metrics_cmd)
-    app.command("artifacts", help="List generated artifacts")(artifacts_cmd)
     app.command("config", help="Show resolved project or step configuration")(config_cmd)
-    app.command("diagnose", help="Diagnose run or step issues")(diagnose_cmd)
 
 
 def init_cmd(
@@ -113,38 +108,6 @@ def log_cmd(
     execute_command("log", command_input, inspect_handlers.log)
 
 
-def metrics_cmd(
-    step: Annotated[str | None, typer.Argument()] = None,
-    project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
-    plain: PlainOption = False,
-    run_id: RunIdOption = None,
-) -> None:
-    command_input = StepInspectInput(
-        output=output_options(json_output, jsonl, plain),
-        project=project_options(project, run_id),
-        step=step,
-    )
-    execute_command("metrics", command_input, inspect_handlers.metrics)
-
-
-def artifacts_cmd(
-    step: Annotated[str | None, typer.Argument()] = None,
-    project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
-    plain: PlainOption = False,
-    run_id: RunIdOption = None,
-) -> None:
-    command_input = StepInspectInput(
-        output=output_options(json_output, jsonl, plain),
-        project=project_options(project, run_id),
-        step=step,
-    )
-    execute_command("artifacts", command_input, inspect_handlers.artifacts)
-
-
 def config_cmd(
     step: Annotated[str | None, typer.Argument()] = None,
     resolved: Annotated[bool, typer.Option("--resolved")] = False,
@@ -163,19 +126,3 @@ def config_cmd(
         resolved=resolved,
     )
     execute_command("config", command_input, inspect_handlers.config)
-
-
-def diagnose_cmd(
-    step: Annotated[str | None, typer.Argument()] = None,
-    project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
-    plain: PlainOption = False,
-    run_id: RunIdOption = None,
-) -> None:
-    command_input = DiagnoseInput(
-        output=output_options(json_output, jsonl, plain),
-        project=project_options(project, run_id),
-        step=step,
-    )
-    execute_command("diagnose", command_input, inspect_handlers.diagnose)

@@ -83,31 +83,6 @@ class TestRunIdResolution:
         out = capsys.readouterr().out
         assert "--run-id run_005" in out
 
-    def test_metrics_preserves_run_id(
-        self, tmp_path, capsys, create_cli_project, create_flow_json, create_step_dir
-    ):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "run_006")
-        create_flow_json(
-            run_dir,
-            [
-                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
-            ],
-        )
-        create_step_dir(
-            run_dir,
-            "CTS",
-            "ecc",
-            subdirs=["analysis"],
-            files={"analysis/CTS_metrics.json": json.dumps({"Frequency [MHz]": 450.0})},
-        )
-
-        rc = cli_main.run(["metrics", "cts", "--run-id", "run_006", "--project", project_dir])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "--run-id run_006" in out
-
-
 class TestRunIdDisclosure:
     def test_explicit_default_preserved_in_disclosure(
         self, tmp_path, capsys, create_cli_project, create_flow_json

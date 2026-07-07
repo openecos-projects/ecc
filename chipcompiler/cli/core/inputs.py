@@ -44,13 +44,6 @@ class StatusInput:
 
 
 @dataclass(frozen=True)
-class StepInspectInput:
-    output: OutputOptions
-    project: ProjectOptions
-    step: str | None = None
-
-
-@dataclass(frozen=True)
 class LogInput:
     output: OutputOptions
     project: ProjectOptions
@@ -64,13 +57,6 @@ class ConfigInput:
     project: ProjectOptions
     step: str | None = None
     resolved: bool = False
-
-
-@dataclass(frozen=True)
-class DiagnoseInput:
-    output: OutputOptions
-    project: ProjectOptions
-    step: str | None = None
 
 
 @dataclass(frozen=True)

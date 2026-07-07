@@ -67,9 +67,7 @@ def test_param_handler_lives_under_handlers_package():
 def test_inspection_modules_live_under_inspection_package():
     for module_name in (
         "discovery",
-        "artifacts",
         "config_view",
-        "diagnose",
         "log_view",
     ):
         module = importlib.import_module(f"chipcompiler.cli.inspection.{module_name}")
@@ -98,6 +96,35 @@ def test_inspection_step_config_module_is_not_importable():
         importlib.import_module("chipcompiler.cli.inspection.step_config")
 
 
+def test_removed_inspection_command_modules_are_not_importable():
+    for module_name in ("artifacts", "diagnose"):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(f"chipcompiler.cli.inspection.{module_name}")
+
+
+def test_project_command_module_does_not_expose_removed_command_wrappers():
+    module = importlib.import_module("chipcompiler.cli.commands.project")
+
+    for name in ("metrics_cmd", "artifacts_cmd", "diagnose_cmd"):
+        assert not hasattr(module, name)
+
+
+def test_removed_command_input_dataclasses_are_not_exposed():
+    module = importlib.import_module("chipcompiler.cli.core.inputs")
+
+    for name in ("StepInspectInput", "DiagnoseInput"):
+        assert not hasattr(module, name)
+
+
+def test_pretty_renderers_do_not_expose_removed_commands():
+    module = importlib.import_module("chipcompiler.cli.rendering.pretty")
+
+    for name in ("render_metrics", "render_artifacts", "render_diagnose"):
+        assert not hasattr(module, name)
+    for command in ("metrics", "artifacts", "diagnose"):
+        assert module.get_pretty_renderer(command) is None
+
+
 def test_production_code_does_not_import_inspection_step_config():
     package_root = Path(__file__).parents[2] / "chipcompiler"
 
@@ -120,4 +147,17 @@ def test_cli_does_not_import_workspace_config_metadata_maps():
     for source_path in package_root.rglob("*.py"):
         source = source_path.read_text()
         for name in forbidden_names:
+            assert name not in source, source_path
+
+
+def test_production_code_does_not_import_removed_inspection_modules():
+    package_root = Path(__file__).parents[2] / "chipcompiler"
+    forbidden_imports = (
+        "chipcompiler.cli.inspection.artifacts",
+        "chipcompiler.cli.inspection.diagnose",
+    )
+
+    for source_path in package_root.rglob("*.py"):
+        source = source_path.read_text()
+        for name in forbidden_imports:
             assert name not in source, source_path
