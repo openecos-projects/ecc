@@ -105,6 +105,15 @@ def test_ecc_tools_module_imports_installed_native_extension():
     assert module.get_ecc() is not None
 
 
+def test_close_resets_native_data_without_flow_exit():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    module.close()
+
+    assert module.ecc.calls == [("reset_data", (), {})]
+
+
 def test_init_rcx_passes_pdk_when_configured():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()

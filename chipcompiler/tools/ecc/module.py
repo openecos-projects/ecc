@@ -43,6 +43,10 @@ class ECCToolsModule:
         """exit ECC tools"""
         self.ecc.flow_exit()
 
+    def close(self):
+        """release ECC data without terminating the host process"""
+        self.reset_data()
+
     def get_dmInst_ptr(self):
         return self.ecc.get_dmInst()
         
