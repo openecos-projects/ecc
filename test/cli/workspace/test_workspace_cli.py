@@ -139,7 +139,12 @@ def _workspace(directory):
 
 
 def _install_runtime_mocks(monkeypatch, tmp_path, create_workspace_files=True):
-    capture = {"create_kwargs": None, "loaded": []}
+    capture = {
+        "create_kwargs": None,
+        "input_filelist_lines": [],
+        "workspace_entries_when_create_called": [],
+        "loaded": [],
+    }
 
     DummyFlow.instances = []
     DummyFlow.next_run_states = []
@@ -149,6 +154,15 @@ def _install_runtime_mocks(monkeypatch, tmp_path, create_workspace_files=True):
 
     def fake_create_workspace(**kwargs):
         capture["create_kwargs"] = kwargs
+        input_filelist = kwargs.get("input_filelist")
+        if input_filelist and os.path.exists(input_filelist):
+            with open(input_filelist, encoding="utf-8") as f:
+                capture["input_filelist_lines"] = f.read().splitlines()
+        workspace_dir = os.path.abspath(kwargs["directory"])
+        if os.path.isdir(workspace_dir):
+            capture["workspace_entries_when_create_called"] = sorted(
+                os.listdir(workspace_dir)
+            )
         return _workspace(os.path.abspath(kwargs["directory"]))
 
     def fake_load_workspace(directory):
@@ -375,7 +389,10 @@ def test_create_input_json_resolves_relative_rtl_from_json_dir(
     assert rc == 0
     assert data["response"] == "success"
     assert os.path.basename(capture["create_kwargs"]["input_filelist"]) == "filelist"
-    assert (ws / "filelist").read_text().splitlines() == [str(project / "rtl" / "top.v")]
+    assert not str(capture["create_kwargs"]["input_filelist"]).startswith(str(ws))
+    assert capture["input_filelist_lines"] == [str(project / "rtl" / "top.v")]
+    assert capture["workspace_entries_when_create_called"] == []
+    assert not (ws / "filelist").exists()
 
 
 def test_create_input_json_resolves_relative_filelist_from_json_dir(
@@ -627,10 +644,13 @@ def test_create_flags_assemble_data_and_param_json(monkeypatch, tmp_path, capsys
         "Core": {"Margin": [1, 2]},
     }
     assert os.path.basename(kwargs["input_filelist"]) == "filelist"
-    assert (ws / "filelist").read_text().splitlines() == [
+    assert not str(kwargs["input_filelist"]).startswith(str(ws))
+    assert capture["input_filelist_lines"] == [
         str(project / "a.v"),
         str(project / "b.v"),
     ]
+    assert capture["workspace_entries_when_create_called"] == []
+    assert not (ws / "filelist").exists()
 
 
 def test_create_rejects_mixed_input_json_and_field_flags(tmp_path, capsys):
