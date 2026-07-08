@@ -199,6 +199,10 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 ]
             )
 
+    # TODO: Move non-interactive project run preparation/execution into
+    # chipcompiler.runtime.project_runner.run_project or
+    # chipcompiler.engine.project_run.prepare_and_run. Keep CLI ownership limited
+    # to input parsing, progress renderer selection, and CommandResult mapping.
     run_dir = os.path.join(project_dir, "runs", "default")
     flow_json = os.path.join(run_dir, "home", "flow.json")
 

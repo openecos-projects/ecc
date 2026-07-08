@@ -6,6 +6,8 @@ from chipcompiler.cli.rendering.pretty import BLUE, BOLD, CYAN, DIM, RED, RESET,
 from chipcompiler.cli.rendering.render import _plain_value
 
 
+# TODO: Move tool-specific log parsing/rendering workarounds into ecc-tools and
+# ecc-dreamplace once those tools expose structured log levels or diagnostics.
 class LineKind(enum.Enum):
     ERROR = "error"
     WARNING = "warning"

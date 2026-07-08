@@ -373,6 +373,9 @@ def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]
     return overrides, errors
 
 
+# TODO: Move ecc.toml parameter editing into chipcompiler.data.project_config_edit
+# or the future EccTomlConfig owner. CLI should only call the edit operation and
+# translate its result into command records.
 def _write_param_to_toml(config_path: str, key: str, value: object) -> None:
     group, _, name = key.partition(".")
 

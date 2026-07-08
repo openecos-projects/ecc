@@ -9,6 +9,8 @@ FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
 RTL_SUFFIXES = {".v", ".sv", ".svh", ".vh"}
 
 
+# TODO: Move ecc.toml parsing and validation into chipcompiler.data.project_config
+# as EccTomlConfig; then delete this module or keep only thin CLI glue here.
 @dataclass
 class ProjectConfig:
     design_name: str = ""

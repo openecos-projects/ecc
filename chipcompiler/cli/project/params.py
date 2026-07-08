@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+# TODO: Move parameter schemas, resolution, TOML validation, and backend mapping
+# into chipcompiler.data.parameter_schema. Keep only CLI "--set key=value" string
+# parsing glue in the CLI layer.
 @dataclass(frozen=True)
 class ParamSchema:
     param: str
