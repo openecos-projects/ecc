@@ -33,6 +33,8 @@ def run_stdio_server(
 
         for message in messages:
             response = runtime_server.dispatch(message)
+            if runtime_server.should_exit and not response:
+                break
             if not response:
                 continue
             output_stream.write(encode_content_length_frame(response))

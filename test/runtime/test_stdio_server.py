@@ -120,6 +120,16 @@ def test_stdio_server_does_not_write_response_for_notification():
     assert stdout.getvalue() == b""
 
 
+def test_stdio_server_stops_after_shutdown_notification_in_buffer():
+    stdin = io.BytesIO(_notification("rpc.shutdown") + _request("rpc.ping", 1))
+    stdout = io.BytesIO()
+
+    rc = run_stdio_server(stdin, stdout, server=RuntimeServer())
+
+    assert rc == 0
+    assert stdout.getvalue() == b""
+
+
 def test_stdio_server_redirects_print_noise_away_from_protocol_stdout(capfd):
     server = RuntimeServer()
     server.dispatcher.add_method("test.noisyPrint", lambda: print("tool output") or {"ok": True})
