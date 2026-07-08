@@ -224,15 +224,14 @@ class WorkspaceRuntimeApi:
                 raise RuntimeApiError("command_failed", f"step not found: {request.step}")
 
             try:
-                if not request.rerun and engine_flow.check_state(
+                step_already_succeeded = not request.rerun and engine_flow.check_state(
                     name=workspace_step.name,
                     tool=workspace_step.tool,
                     state=_success_state(),
-                ):
-                    state = engine_flow.run_step(workspace_step, request.rerun)
-                else:
+                )
+                if not step_already_succeeded:
                     _init_db_engine_for_workspace_step(engine_flow, workspace_step)
-                    state = engine_flow.run_step(workspace_step, request.rerun)
+                state = engine_flow.run_step(workspace_step, request.rerun)
             finally:
                 if should_capture:
                     self._capture_flow_db(
