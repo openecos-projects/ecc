@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -19,11 +20,18 @@ class WorkspaceSessionNotFound(KeyError):
     pass
 
 
+def _close_db_handle(db_handle: Any) -> None:
+    close = getattr(db_handle, "close", None)
+    if callable(close):
+        close()
+
+
 class WorkspaceSessionRegistry:
-    def __init__(self):
+    def __init__(self, db_releaser: Callable[[Any], None] | None = _close_db_handle):
         self._next_id = 1
         self._sessions: dict[str, WorkspaceSession] = {}
         self._sessions_by_directory: dict[Path, str] = {}
+        self._db_releaser = db_releaser
         self._lock = threading.Lock()
 
     def create_session(self, directory: str | Path, *, workspace: Any) -> WorkspaceSession:
@@ -56,9 +64,12 @@ class WorkspaceSessionRegistry:
     def close_all(self) -> None:
         with self._lock:
             for session in self._sessions.values():
-                session.db_handle = None
+                self._release_session_db(session)
             self._sessions.clear()
             self._sessions_by_directory.clear()
+
+    def release_session_db(self, session: WorkspaceSession) -> bool:
+        return self._release_session_db(session)
 
     def _create_session(self, directory: Path, *, workspace: Any) -> WorkspaceSession:
         workspace_id = f"workspace-{self._next_id}"
@@ -76,5 +87,15 @@ class WorkspaceSessionRegistry:
         session = self._sessions.pop(workspace_id, None)
         if session is None:
             raise WorkspaceSessionNotFound(workspace_id)
-        session.db_handle = None
+        self._release_session_db(session)
         self._sessions_by_directory.pop(session.directory, None)
+
+    def _release_session_db(self, session: WorkspaceSession) -> bool:
+        db_handle = session.db_handle
+        if db_handle is None:
+            return False
+
+        session.db_handle = None
+        if self._db_releaser is not None:
+            self._db_releaser(db_handle)
+        return True

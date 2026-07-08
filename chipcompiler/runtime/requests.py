@@ -58,6 +58,17 @@ class FlowRunStepRequest:
     rerun: bool = False
 
 
+@dataclass(frozen=True)
+class DbEnsureRequest:
+    workspace_id: str
+    step: str = ""
+
+
+@dataclass(frozen=True)
+class DbReleaseRequest:
+    workspace_id: str
+
+
 class RequestValidationError(ValueError):
     def __init__(self, reason: str):
         super().__init__(reason)

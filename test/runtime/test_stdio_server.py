@@ -175,6 +175,32 @@ def test_rpc_stdio_subprocess_smoke():
     assert responses[1]["result"] == {"ok": True}
 
 
+def test_rpc_stdio_subprocess_persistent_db_smoke():
+    stdin = _request("rpc.hello", 1, {"version": 1}) + _request("rpc.shutdown", 2)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "chipcompiler.cli.main",
+            "rpc",
+            "serve",
+            "--stdio",
+            "--persistent-db",
+        ],
+        input=stdin,
+        cwd=os.getcwd(),
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    responses = _decode_output(completed.stdout)
+    assert [response["id"] for response in responses] == [1, 2]
+    assert "db.ensure" in responses[0]["result"]["capabilities"]
+    assert "db.release" in responses[0]["result"]["capabilities"]
+
+
 def test_rpc_stdio_subprocess_workspace_open_home_smoke(tmp_path):
     ws = _create_real_workspace(tmp_path)
     process = subprocess.Popen(

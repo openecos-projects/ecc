@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from chipcompiler.runtime.methods import RUNTIME_METHODS
-from chipcompiler.runtime.requests import WorkspaceOpenRequest
+from chipcompiler.runtime.methods import RUNTIME_METHODS, runtime_methods
+from chipcompiler.runtime.requests import DbEnsureRequest, DbReleaseRequest, WorkspaceOpenRequest
 from chipcompiler.runtime.server import RuntimeServer
 from chipcompiler.runtime.workspace_api import RuntimeApiError
 
@@ -43,6 +43,12 @@ class CompleteFakeApi:
     def flow_run_step(self, _request):
         raise AssertionError("unexpected flow_run_step call")
 
+    def db_ensure(self, _request):
+        raise AssertionError("unexpected db_ensure call")
+
+    def db_release(self, _request):
+        raise AssertionError("unexpected db_release call")
+
 
 def test_rpc_hello_returns_version_and_capabilities():
     server = RuntimeServer()
@@ -57,6 +63,20 @@ def test_rpc_hello_returns_version_and_capabilities():
     assert response["result"]["eccVersion"]
     assert "rpc.ping" in response["result"]["capabilities"]
     assert "rpc.shutdown" in response["result"]["capabilities"]
+    assert "db.ensure" not in response["result"]["capabilities"]
+    assert "db.release" not in response["result"]["capabilities"]
+
+
+def test_rpc_hello_reports_persistent_db_capabilities_when_enabled():
+    server = RuntimeServer(persistent_db_enabled=True)
+
+    response = _dispatch(
+        server,
+        '{"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello"}',
+    )
+
+    assert "db.ensure" in response["result"]["capabilities"]
+    assert "db.release" in response["result"]["capabilities"]
 
 
 def test_rpc_hello_rejects_incompatible_version():
@@ -89,6 +109,26 @@ def test_rpc_shutdown_marks_server_for_graceful_exit():
     assert server.should_exit
 
 
+def test_rpc_shutdown_releases_runtime_sessions():
+    class FakeSessions:
+        def __init__(self):
+            self.closed = False
+
+        def close_all(self):
+            self.closed = True
+
+    class FakeApi(CompleteFakeApi):
+        sessions = FakeSessions()
+
+    api = FakeApi()
+    server = RuntimeServer(api=api)
+
+    response = _dispatch(server, '{"jsonrpc":"2.0","method":"rpc.shutdown","id":3}')
+
+    assert response == {"jsonrpc": "2.0", "result": {"ok": True}, "id": 3}
+    assert api.sessions.closed
+
+
 def test_unknown_method_keeps_request_id():
     server = RuntimeServer()
 
@@ -116,6 +156,72 @@ def test_workspace_method_dispatches_typed_request_to_runtime_api():
         "result": {"workspaceId": "workspace-1", "directory": "/ws"},
         "id": 4,
     }
+
+
+def test_persistent_db_methods_dispatch_typed_requests_to_runtime_api():
+    seen = []
+
+    class FakeApi(CompleteFakeApi):
+        def db_ensure(self, request):
+            seen.append(request)
+            assert isinstance(request, DbEnsureRequest)
+            return {
+                "workspaceId": request.workspace_id,
+                "enabled": True,
+                "active": True,
+                "reused": False,
+                "step": request.step,
+            }
+
+        def db_release(self, request):
+            seen.append(request)
+            assert isinstance(request, DbReleaseRequest)
+            return {"workspaceId": request.workspace_id, "released": True}
+
+    server = RuntimeServer(api=FakeApi(), persistent_db_enabled=True)
+
+    ensure_response = _dispatch(
+        server,
+        (
+            '{"jsonrpc":"2.0","method":"db.ensure",'
+            '"params":{"workspaceId":"workspace-1","step":"Floorplan"},"id":8}'
+        ),
+    )
+    release_response = _dispatch(
+        server,
+        (
+            '{"jsonrpc":"2.0","method":"db.release",'
+            '"params":{"workspaceId":"workspace-1"},"id":9}'
+        ),
+    )
+
+    assert ensure_response["result"] == {
+        "workspaceId": "workspace-1",
+        "enabled": True,
+        "active": True,
+        "reused": False,
+        "step": "Floorplan",
+    }
+    assert release_response["result"] == {
+        "workspaceId": "workspace-1",
+        "released": True,
+    }
+    assert [type(request) for request in seen] == [DbEnsureRequest, DbReleaseRequest]
+
+
+def test_persistent_db_methods_are_not_registered_by_default():
+    server = RuntimeServer()
+
+    response = _dispatch(
+        server,
+        (
+            '{"jsonrpc":"2.0","method":"db.ensure",'
+            '"params":{"workspaceId":"workspace-1"},"id":10}'
+        ),
+    )
+
+    assert response["id"] == 10
+    assert response["error"]["code"] == -32601
 
 
 def test_request_validation_errors_map_to_json_rpc_invalid_params():
@@ -176,6 +282,18 @@ def test_workspace_api_user_exceptions_map_to_command_failed():
 )
 def test_first_slice_methods_are_registered(method):
     server = RuntimeServer()
+
+    response = _dispatch(server, f'{{"jsonrpc":"2.0","method":"{method}","id":1}}')
+
+    assert response["error"]["code"] != -32601
+
+
+@pytest.mark.parametrize(
+    "method",
+    [spec.method_name for spec in runtime_methods(persistent_db_enabled=True)],
+)
+def test_enabled_persistent_db_runtime_methods_are_registered(method):
+    server = RuntimeServer(api=CompleteFakeApi(), persistent_db_enabled=True)
 
     response = _dispatch(server, f'{{"jsonrpc":"2.0","method":"{method}","id":1}}')
 

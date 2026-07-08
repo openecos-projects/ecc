@@ -301,7 +301,12 @@ class EngineFlow:
 
     def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
         if workspace_step.tool == "sizer" and state == StateEnum.Success:
+            engine_db = self.engine_db
             self.engine_db = None
+            if engine_db is not None:
+                close = getattr(engine_db, "close", None)
+                if callable(close):
+                    close()
     
     def run_steps(self, rerun=False) -> bool:
         """

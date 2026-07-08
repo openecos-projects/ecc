@@ -328,11 +328,13 @@ The supported runtime surface is the private stdio sidecar:
 
 ```bash
 ecc rpc serve --stdio
+ecc rpc serve --stdio --persistent-db
 ```
 
 The sidecar uses JSON-RPC 2.0 payloads framed with `Content-Length` headers.
 After `workspace.create` or `workspace.open`, follow-up calls use the returned
-`workspaceId` rather than repeatedly passing the workspace directory.
+`workspaceId` rather than repeatedly passing the workspace directory. The
+default sidecar does not advertise or persist native DB handles.
 
 First-slice runtime methods include:
 
@@ -351,6 +353,19 @@ workspace.reset_flow
 flow.run
 flow.run_step
 ```
+
+`--persistent-db` is an opt-in process capability. When enabled, `rpc.hello`
+also advertises:
+
+```text
+db.ensure
+db.release
+```
+
+These DB methods are not part of the default first-slice method list. They start
+and stop session-scoped DB reuse explicitly; `workspace.open`,
+`workspace.create`, `flow.run`, and `flow.run_step` must not start persistent DB
+reuse for a session that has not called `db.ensure`.
 
 The former custom workspace JSON object is not part of the supported output
 contract. See `docs/workspace-cli.md` for framing examples and method payloads.

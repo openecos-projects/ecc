@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any, Final, Generic, TypeVar
 
 from chipcompiler.runtime.requests import (
+    DbEnsureRequest,
+    DbReleaseRequest,
     FlowRunRequest,
     FlowRunStepRequest,
     WorkspaceCloseRequest,
@@ -78,12 +80,42 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
 )
 
 
-def runtime_method_names() -> tuple[str, ...]:
-    return tuple(spec.method_name for spec in RUNTIME_METHODS)
+PERSISTENT_DB_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
+    RuntimeMethodSpec(
+        method_name="db.ensure",
+        request_model=DbEnsureRequest,
+        handler_name="db_ensure",
+    ),
+    RuntimeMethodSpec(
+        method_name="db.release",
+        request_model=DbReleaseRequest,
+        handler_name="db_release",
+    ),
+)
 
 
-def runtime_method_by_name(method_name: str) -> RuntimeMethodSpec[Any] | None:
-    for spec in RUNTIME_METHODS:
+def runtime_methods(*, persistent_db_enabled: bool = False) -> tuple[RuntimeMethodSpec[Any], ...]:
+    if persistent_db_enabled:
+        return (*RUNTIME_METHODS, *PERSISTENT_DB_METHODS)
+    return RUNTIME_METHODS
+
+
+def runtime_method_names(*, persistent_db_enabled: bool = False) -> tuple[str, ...]:
+    return tuple(
+        spec.method_name for spec in runtime_methods(persistent_db_enabled=persistent_db_enabled)
+    )
+
+
+def persistent_db_method_names() -> tuple[str, ...]:
+    return tuple(spec.method_name for spec in PERSISTENT_DB_METHODS)
+
+
+def runtime_method_by_name(
+    method_name: str,
+    *,
+    persistent_db_enabled: bool = False,
+) -> RuntimeMethodSpec[Any] | None:
+    for spec in runtime_methods(persistent_db_enabled=persistent_db_enabled):
         if spec.method_name == method_name:
             return spec
     return None

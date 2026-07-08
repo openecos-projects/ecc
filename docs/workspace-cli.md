@@ -6,6 +6,13 @@ Workspace operations are exposed through the private ECC runtime sidecar:
 ecc rpc serve --stdio
 ```
 
+Persistent ECC DB reuse is disabled by default. To expose the explicit DB
+lifecycle methods, start the sidecar with:
+
+```bash
+ecc rpc serve --stdio --persistent-db
+```
+
 The sidecar speaks JSON-RPC 2.0 over stdio. Each JSON-RPC payload is framed with
 a `Content-Length` header. Stdout is reserved for framed protocol messages;
 diagnostics and tool output belong on stderr.
@@ -51,6 +58,10 @@ first-slice method list:
 
 The result includes `version`, `eccVersion`, and `capabilities`.
 
+Default `ecc rpc serve --stdio` capabilities do not include persistent DB
+methods. When `--persistent-db` is enabled, `rpc.hello` also advertises
+`db.ensure` and `db.release`.
+
 ## Open A Workspace
 
 Open an existing workspace directory:
@@ -78,6 +89,10 @@ The result returns a session identifier:
 Follow-up workspace and flow calls use `workspaceId`. They do not take the
 workspace directory again unless the method explicitly documents a directory
 parameter.
+
+Opening or creating a workspace does not initialize persistent native DB state.
+Persistent DB reuse starts only after an explicit `db.ensure` call in a sidecar
+process started with `--persistent-db`.
 
 ## Create A Workspace
 
@@ -182,6 +197,58 @@ Run a single step:
   "id": "step-1"
 }
 ```
+
+## Persistent DB Lifecycle
+
+Persistent DB lifecycle calls are private runtime capabilities and are available
+only when the sidecar was started with `--persistent-db`.
+
+Ensure a session-scoped DB handle:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "db.ensure",
+  "params": {
+    "workspaceId": "workspace-1",
+    "step": "Floorplan"
+  },
+  "id": "db-ensure-1"
+}
+```
+
+The `step` field is optional. When omitted, ECC uses the existing flow rule for
+selecting the first unfinished step. A successful result reports whether the
+handle is active and whether an existing handle was reused:
+
+```json
+{
+  "workspaceId": "workspace-1",
+  "enabled": true,
+  "active": true,
+  "reused": false,
+  "step": "Floorplan"
+}
+```
+
+Release the active session DB handle:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "db.release",
+  "params": {
+    "workspaceId": "workspace-1"
+  },
+  "id": "db-release-1"
+}
+```
+
+`db.release` is idempotent and returns `released: false` when the session has no
+active DB handle. Workspace refresh, changed config sync, reset, rerun, close,
+replacement, and shutdown release stale handles. `flow.run` and `flow.run_step`
+reuse and capture DB state only when the session already has an active handle
+from `db.ensure`; otherwise their DB use remains transient.
 
 ## Shutdown
 

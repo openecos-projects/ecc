@@ -4,6 +4,8 @@ import pytest
 
 from chipcompiler.runtime.methods import runtime_method_by_name
 from chipcompiler.runtime.requests import (
+    DbEnsureRequest,
+    DbReleaseRequest,
     FlowRunRequest,
     FlowRunStepRequest,
     RequestValidationError,
@@ -17,8 +19,8 @@ from chipcompiler.runtime.requests import (
 )
 
 
-def _parse_runtime_request(method: str, params: object):
-    spec = runtime_method_by_name(method)
+def _parse_runtime_request(method: str, params: object, *, persistent_db_enabled=False):
+    spec = runtime_method_by_name(method, persistent_db_enabled=persistent_db_enabled)
     assert spec is not None
     return parse_request_model(spec.request_model, params)
 
@@ -84,6 +86,37 @@ def test_first_slice_payloads_parse_to_typed_request_models(method, params, requ
     assert is_dataclass(request)
 
 
+@pytest.mark.parametrize(
+    ("method", "params", "request_type"),
+    [
+        (
+            "db.ensure",
+            {"workspaceId": "ws-1", "step": "Floorplan"},
+            DbEnsureRequest,
+        ),
+        ("db.ensure", {"workspaceId": "ws-1"}, DbEnsureRequest),
+        ("db.release", {"workspaceId": "ws-1"}, DbReleaseRequest),
+    ],
+)
+def test_persistent_db_payloads_parse_to_typed_request_models(method, params, request_type):
+    request = _parse_runtime_request(method, params, persistent_db_enabled=True)
+
+    assert isinstance(request, request_type)
+    assert is_dataclass(request)
+    assert request.workspace_id == "ws-1"
+
+
+def test_db_ensure_step_is_optional():
+    request = _parse_runtime_request(
+        "db.ensure",
+        {"workspaceId": "ws-1"},
+        persistent_db_enabled=True,
+    )
+
+    assert isinstance(request, DbEnsureRequest)
+    assert request.step == ""
+
+
 def test_missing_required_field_reports_field_name():
     with pytest.raises(RequestValidationError) as exc_info:
         _parse_runtime_request("flow.run_step", {"workspaceId": "ws-1"})
@@ -96,6 +129,28 @@ def test_unknown_fields_are_rejected():
         _parse_runtime_request("workspace.open", {"directory": "/work/ws", "extra": True})
 
     assert exc_info.value.reason == "unknown field: extra"
+
+
+def test_db_method_unknown_fields_are_rejected():
+    with pytest.raises(RequestValidationError) as exc_info:
+        _parse_runtime_request(
+            "db.ensure",
+            {"workspaceId": "ws-1", "extra": True},
+            persistent_db_enabled=True,
+        )
+
+    assert exc_info.value.reason == "unknown field: extra"
+
+
+def test_db_method_blank_workspace_id_is_rejected():
+    with pytest.raises(RequestValidationError) as exc_info:
+        _parse_runtime_request(
+            "db.release",
+            {"workspaceId": "  "},
+            persistent_db_enabled=True,
+        )
+
+    assert exc_info.value.reason == "missing required field: workspace_id"
 
 
 def test_params_must_be_an_object():
@@ -129,3 +184,4 @@ def test_rerun_must_be_boolean(method, params):
 
 def test_unknown_runtime_method_has_no_request_model():
     assert runtime_method_by_name("workspace.signoff") is None
+    assert runtime_method_by_name("db.ensure") is None

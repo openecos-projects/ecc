@@ -15,6 +15,7 @@ def test_rpc_serve_help_returns_zero_and_lists_stdio(capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "--stdio" in out
+    assert "--persistent-db" in out
 
 
 def test_rpc_serve_requires_stdio(capsys):
@@ -22,3 +23,10 @@ def test_rpc_serve_requires_stdio(capsys):
 
     assert rc != 0
     assert "--stdio" in capsys.readouterr().err
+
+
+def test_run_help_does_not_list_persistent_db(capsys):
+    rc = cli_main.run(["run", "--help"])
+
+    assert rc == 0
+    assert "--persistent-db" not in capsys.readouterr().out

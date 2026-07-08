@@ -8,6 +8,8 @@ import pytest
 
 from chipcompiler.data import StateEnum
 from chipcompiler.runtime.requests import (
+    DbEnsureRequest,
+    DbReleaseRequest,
     FlowRunRequest,
     FlowRunStepRequest,
     WorkspaceCreateRequest,
@@ -16,6 +18,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceOpenRequest,
     WorkspaceSyncConfigRequest,
 )
+from chipcompiler.runtime.sessions import WorkspaceSessionRegistry
 from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
 
 
@@ -23,6 +26,7 @@ class DummyEngineDB:
     def __init__(self, flow):
         self.flow = flow
         self.initialized = False
+        self.close_calls = 0
 
     def has_init(self):
         return self.initialized
@@ -30,15 +34,29 @@ class DummyEngineDB:
     def create_db_engine(self, step):
         self.flow.init_db_engine_calls += 1
         self.flow.init_db_engine_steps.append(None if step is None else step.name)
+        self.flow.init_db_engine_inputs.append(
+            (
+                None if step is None else getattr(step, "input_def", ""),
+                None if step is None else getattr(step, "input_verilog", ""),
+            )
+        )
         self.flow.call_order.append(("init_db_engine",))
-        self.initialized = True
-        return True
+        self.initialized = self.flow.next_init_success
+        return self.initialized
+
+    def close(self):
+        if not self.initialized:
+            return
+        self.close_calls += 1
+        self.initialized = False
 
 
 class DummyFlow:
     instances = []
     next_run_states = []
+    next_init_success = True
     successful_steps = set()
+    workspace_step_specs = None
 
     def __init__(self, workspace):
         self.workspace = workspace
@@ -47,13 +65,17 @@ class DummyFlow:
         self.prepared_for_rerun = False
         self.run_steps_calls = []
         self.run_calls = []
+        self.flow_init_db_engine_calls = 0
         self.init_db_engine_calls = 0
         self.init_db_engine_steps = []
+        self.init_db_engine_inputs = []
         self.call_order = []
-        self.workspace_steps = [
-            SimpleNamespace(name="Synthesis", tool="yosys"),
-            SimpleNamespace(name="Floorplan", tool="ecc"),
-        ]
+        specs = self.workspace_step_specs or (
+            {"name": "Synthesis", "tool": "yosys"},
+            {"name": "Floorplan", "tool": "ecc"},
+        )
+        self.workspace_steps = [SimpleNamespace(**spec) for spec in specs]
+        self.completed_steps = set()
         self.engine_db = DummyEngineDB(self)
         DummyFlow.instances.append(self)
 
@@ -73,19 +95,42 @@ class DummyFlow:
         self.run_steps_calls.append(rerun)
         success = True
         for workspace_step in self.workspace_steps:
+            self.init_db_engine()
             state = self.run_step(workspace_step, rerun)
             if state != StateEnum.Success:
                 success = False
                 break
         return success
 
+    def init_db_engine(self):
+        self.flow_init_db_engine_calls += 1
+        self.call_order.append(("flow_init_db_engine",))
+        if self.engine_db is None:
+            self.engine_db = DummyEngineDB(self)
+        workspace_step = self.workspace_steps[0]
+        for candidate in self.workspace_steps:
+            if candidate.name not in self.completed_steps:
+                workspace_step = candidate
+                break
+        return self.engine_db.create_db_engine(workspace_step)
+
     def run_step(self, workspace_step, rerun=False):
         name = workspace_step if isinstance(workspace_step, str) else workspace_step.name
         self.run_calls.append((name, rerun))
         self.call_order.append(("run_step", name, rerun))
-        if DummyFlow.next_run_states:
-            return DummyFlow.next_run_states.pop(0)
-        return StateEnum.Success
+        state = (
+            DummyFlow.next_run_states.pop(0)
+            if DummyFlow.next_run_states
+            else StateEnum.Success
+        )
+        if state == StateEnum.Success:
+            self.completed_steps.add(name)
+            workspace_step_object = self.get_workspace_step(name)
+            if getattr(workspace_step_object, "tool", "") == "sizer":
+                if self.engine_db is not None:
+                    self.engine_db.close()
+                self.engine_db = None
+        return state
 
     def get_workspace_step(self, name):
         for step in self.workspace_steps:
@@ -119,7 +164,9 @@ def _install_runtime_mocks(monkeypatch, tmp_path):
     capture = {"create_kwargs": None, "loaded": []}
     DummyFlow.instances = []
     DummyFlow.next_run_states = []
+    DummyFlow.next_init_success = True
     DummyFlow.successful_steps = set()
+    DummyFlow.workspace_step_specs = None
 
     def fake_create_workspace(**kwargs):
         capture["create_kwargs"] = kwargs
@@ -375,6 +422,78 @@ def test_refresh_sync_and_reset_flow_use_session(monkeypatch, tmp_path):
     assert prepared == [(ws.resolve(), DummyFlow.instances[-1])]
 
 
+def test_refresh_config_releases_active_session_db(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    db_handle = api.sessions.get_session(workspace_id).db_handle
+
+    result = api.refresh_config(WorkspaceIdRequest(workspace_id=workspace_id))
+
+    assert result == {"directory": str(ws.resolve()), "refreshed": True}
+    assert db_handle.close_calls == 1
+    assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_sync_config_releases_active_session_db_only_when_parameters_change(
+    monkeypatch,
+    tmp_path,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    config_dir = ws / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "route.json"
+    config_path.write_text("{}")
+    changed = [False, True]
+
+    monkeypatch.setattr(
+        "chipcompiler.data.sync_workspace_config_to_parameters",
+        lambda _workspace, _path: changed.pop(0),
+    )
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    db_handle = api.sessions.get_session(workspace_id).db_handle
+
+    unchanged = api.sync_config(
+        WorkspaceSyncConfigRequest(workspace_id=workspace_id, config_path=str(config_path))
+    )
+    assert unchanged["parametersChanged"] is False
+    assert unchanged["refreshed"] is False
+    assert db_handle.close_calls == 0
+
+    changed_result = api.sync_config(
+        WorkspaceSyncConfigRequest(workspace_id=workspace_id, config_path=str(config_path))
+    )
+
+    assert changed_result["parametersChanged"] is True
+    assert changed_result["refreshed"] is True
+    assert db_handle.close_calls == 1
+    assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_reset_flow_releases_active_session_db_before_prepare(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    prepared = []
+
+    def prepare(workspace, flow):
+        prepared.append((workspace.directory, flow))
+        assert api.sessions.get_session(workspace_id).db_handle is None
+
+    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", prepare)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    db_handle = api.sessions.get_session(workspace_id).db_handle
+
+    result = api.reset_flow(WorkspaceIdRequest(workspace_id=workspace_id))
+
+    assert result == {"directory": str(ws.resolve())}
+    assert db_handle.close_calls == 1
+    assert prepared == [(ws.resolve(), DummyFlow.instances[-1])]
+
+
 def test_refresh_config_waits_for_session_mutation_lock(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()
@@ -453,6 +572,155 @@ def test_unknown_session_returns_structured_runtime_error():
     assert exc_info.value.code == "workspace_session_not_found"
 
 
+def test_db_ensure_rejects_disabled_runtime_api(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        api.db_ensure(DbEnsureRequest(workspace_id=workspace_id))
+
+    assert exc_info.value.code == "command_failed"
+    assert exc_info.value.message == "persistent_db_disabled"
+
+
+def test_db_ensure_initializes_requested_step_and_stores_session_db(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.db_ensure(
+        DbEnsureRequest(workspace_id=workspace_id, step="Floorplan")
+    )
+
+    flow = DummyFlow.instances[-1]
+    session = api.sessions.get_session(workspace_id)
+    assert result == {
+        "workspaceId": workspace_id,
+        "enabled": True,
+        "active": True,
+        "reused": False,
+        "step": "Floorplan",
+    }
+    assert flow.init_db_engine_steps == ["Floorplan"]
+    assert session.db_handle is flow.engine_db
+    assert session.db_handle.has_init()
+
+
+def test_db_ensure_without_step_uses_flow_selection_rule(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.db_ensure(DbEnsureRequest(workspace_id=workspace_id))
+
+    flow = DummyFlow.instances[-1]
+    assert result == {
+        "workspaceId": workspace_id,
+        "enabled": True,
+        "active": True,
+        "reused": False,
+        "step": "",
+    }
+    assert flow.flow_init_db_engine_calls == 1
+    assert flow.init_db_engine_steps == ["Synthesis"]
+    assert api.sessions.get_session(workspace_id).db_handle is flow.engine_db
+
+
+def test_db_ensure_reuses_initialized_session_db(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    first = api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    db_handle = api.sessions.get_session(workspace_id).db_handle
+
+    second = api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+
+    assert first["reused"] is False
+    assert second == {
+        "workspaceId": workspace_id,
+        "enabled": True,
+        "active": True,
+        "reused": True,
+        "step": "Floorplan",
+    }
+    assert api.sessions.get_session(workspace_id).db_handle is db_handle
+
+
+def test_db_ensure_unknown_step_returns_runtime_error(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Missing"))
+
+    assert exc_info.value.code == "command_failed"
+    assert exc_info.value.message == "step not found: Missing"
+    assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_db_ensure_does_not_store_uninitialized_db(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.next_init_success = False
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.db_ensure(
+        DbEnsureRequest(workspace_id=workspace_id, step="Floorplan")
+    )
+
+    assert result == {
+        "workspaceId": workspace_id,
+        "enabled": True,
+        "active": False,
+        "reused": False,
+        "step": "Floorplan",
+    }
+    assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_db_release_closes_and_clears_active_session_db(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    db_handle = api.sessions.get_session(workspace_id).db_handle
+
+    result = api.db_release(DbReleaseRequest(workspace_id=workspace_id))
+
+    assert result == {"workspaceId": workspace_id, "released": True}
+    assert db_handle.close_calls == 1
+    assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_db_release_is_idempotent_when_no_db_is_active(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.db_release(DbReleaseRequest(workspace_id=workspace_id))
+
+    assert result == {"workspaceId": workspace_id, "released": False}
+
+
+def test_db_release_closes_db_with_injected_session_registry(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(
+        sessions=WorkspaceSessionRegistry(),
+        persistent_db_enabled=True,
+    )
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    db_handle = api.sessions.get_session(workspace_id).db_handle
+
+    result = api.db_release(DbReleaseRequest(workspace_id=workspace_id))
+
+    assert result == {"workspaceId": workspace_id, "released": True}
+    assert db_handle.close_calls == 1
+    assert api.sessions.get_session(workspace_id).db_handle is None
+
+
 def test_runtime_modules_do_not_import_typer_or_click():
     for path in Path("chipcompiler/runtime").glob("*.py"):
         source = path.read_text()
@@ -478,6 +746,185 @@ def test_flow_run_uses_run_steps_and_prepare_on_rerun(monkeypatch, tmp_path):
     assert flow.run_steps_calls == [True]
 
 
+def test_flow_run_without_active_session_db_does_not_capture_transient_db(
+    monkeypatch,
+    tmp_path,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.flow_run(FlowRunRequest(workspace_id=workspace_id, rerun=False))
+
+    flow = DummyFlow.instances[-1]
+    assert result == {"rerun": False}
+    assert flow.engine_db.has_init()
+    assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_flow_run_with_active_session_db_injects_and_captures_final_db(
+    monkeypatch,
+    tmp_path,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    db_handle = api.sessions.get_session(workspace_id).db_handle
+
+    result = api.flow_run(FlowRunRequest(workspace_id=workspace_id, rerun=False))
+
+    flow = DummyFlow.instances[-1]
+    assert result == {"rerun": False}
+    assert flow.engine_db is db_handle
+    assert api.sessions.get_session(workspace_id).db_handle is db_handle
+    assert db_handle.close_calls == 0
+
+
+def test_flow_run_rerun_releases_stale_db_and_captures_new_db(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    prepared = []
+
+    def prepare(workspace, flow):
+        prepared.append((workspace.directory, flow))
+        assert api.sessions.get_session(workspace_id).db_handle is None
+
+    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", prepare)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    stale_db = api.sessions.get_session(workspace_id).db_handle
+
+    result = api.flow_run(FlowRunRequest(workspace_id=workspace_id, rerun=True))
+
+    flow = DummyFlow.instances[-1]
+    assert result == {"rerun": True}
+    assert stale_db.close_calls == 1
+    assert prepared == [(ws.resolve(), flow)]
+    assert api.sessions.get_session(workspace_id).db_handle is flow.engine_db
+    assert flow.engine_db is not stale_db
+    assert flow.engine_db.has_init()
+
+
+def test_flow_run_sizer_boundary_captures_post_sizer_db(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    sizer_def = str(ws / "Timing optimization_sizer" / "output" / "sizer.def")
+    sizer_verilog = str(ws / "Timing optimization_sizer" / "output" / "sizer.v")
+    DummyFlow.workspace_step_specs = (
+        {"name": "Floorplan", "tool": "ecc", "input_def": "origin.def"},
+        {
+            "name": "Timing optimization",
+            "tool": "sizer",
+            "input_def": "floorplan.def",
+            "input_verilog": "floorplan.v",
+            "output": {"def": sizer_def, "verilog": sizer_verilog},
+        },
+        {
+            "name": "Legalization",
+            "tool": "ecc",
+            "input_def": sizer_def,
+            "input_verilog": sizer_verilog,
+        },
+    )
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    pre_sizer_db = api.sessions.get_session(workspace_id).db_handle
+
+    result = api.flow_run(FlowRunRequest(workspace_id=workspace_id, rerun=False))
+
+    flow = DummyFlow.instances[-1]
+    post_sizer_db = api.sessions.get_session(workspace_id).db_handle
+    assert result == {"rerun": False}
+    assert pre_sizer_db.close_calls == 1
+    assert post_sizer_db is flow.engine_db
+    assert post_sizer_db is not pre_sizer_db
+    assert post_sizer_db.has_init()
+    assert flow.init_db_engine_steps[-1] == "Legalization"
+    assert flow.init_db_engine_inputs[-1] == (sizer_def, sizer_verilog)
+
+
+def test_flow_run_sizer_boundary_failure_captures_post_sizer_db(
+    monkeypatch,
+    tmp_path,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    sizer_def = str(ws / "Timing optimization_sizer" / "output" / "sizer.def")
+    sizer_verilog = str(ws / "Timing optimization_sizer" / "output" / "sizer.v")
+    DummyFlow.workspace_step_specs = (
+        {"name": "Floorplan", "tool": "ecc", "input_def": "origin.def"},
+        {
+            "name": "Timing optimization",
+            "tool": "sizer",
+            "input_def": "floorplan.def",
+            "input_verilog": "floorplan.v",
+            "output": {"def": sizer_def, "verilog": sizer_verilog},
+        },
+        {
+            "name": "Legalization",
+            "tool": "ecc",
+            "input_def": sizer_def,
+            "input_verilog": sizer_verilog,
+        },
+    )
+    DummyFlow.next_run_states = [
+        StateEnum.Success,
+        StateEnum.Success,
+        StateEnum.Imcomplete,
+    ]
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    pre_sizer_db = api.sessions.get_session(workspace_id).db_handle
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        api.flow_run(FlowRunRequest(workspace_id=workspace_id, rerun=False))
+
+    flow = DummyFlow.instances[-1]
+    post_sizer_db = api.sessions.get_session(workspace_id).db_handle
+    assert exc_info.value.code == "command_failed"
+    assert pre_sizer_db.close_calls == 1
+    assert post_sizer_db is flow.engine_db
+    assert post_sizer_db is not pre_sizer_db
+    assert post_sizer_db.has_init()
+    assert flow.init_db_engine_steps[-1] == "Legalization"
+
+
+def test_flow_run_sizer_boundary_exception_captures_post_sizer_db(
+    monkeypatch,
+    tmp_path,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.workspace_step_specs = (
+        {"name": "Floorplan", "tool": "ecc"},
+        {"name": "Timing optimization", "tool": "sizer"},
+        {"name": "Legalization", "tool": "ecc"},
+    )
+
+    def run_steps_raises_after_post_sizer_db(self, rerun=False):
+        del rerun
+        self.engine_db.close()
+        self.engine_db = DummyEngineDB(self)
+        self.engine_db.create_db_engine(self.workspace_steps[-1])
+        raise ValueError("post-sizer failure")
+
+    monkeypatch.setattr(DummyFlow, "run_steps", run_steps_raises_after_post_sizer_db)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    pre_sizer_db = api.sessions.get_session(workspace_id).db_handle
+
+    with pytest.raises(ValueError, match="post-sizer failure"):
+        api.flow_run(FlowRunRequest(workspace_id=workspace_id, rerun=False))
+
+    flow = DummyFlow.instances[-1]
+    post_sizer_db = api.sessions.get_session(workspace_id).db_handle
+    assert pre_sizer_db.close_calls == 1
+    assert post_sizer_db is flow.engine_db
+    assert post_sizer_db is not pre_sizer_db
+    assert post_sizer_db.has_init()
+
+
 def test_flow_run_step_initializes_db_before_direct_step(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()
@@ -495,6 +942,92 @@ def test_flow_run_step_initializes_db_before_direct_step(monkeypatch, tmp_path):
         ("run_step", "Synthesis", False),
     ]
     assert flow.run_steps_calls == []
+    assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_flow_run_step_with_active_session_db_injects_and_captures_final_db(
+    monkeypatch,
+    tmp_path,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    db_handle = api.sessions.get_session(workspace_id).db_handle
+
+    result = api.flow_run_step(
+        FlowRunStepRequest(workspace_id=workspace_id, step="Floorplan", rerun=False)
+    )
+
+    flow = DummyFlow.instances[-1]
+    assert result == {"step": "Floorplan", "state": "Success"}
+    assert flow.engine_db is db_handle
+    assert api.sessions.get_session(workspace_id).db_handle is db_handle
+    assert db_handle.close_calls == 0
+
+
+def test_flow_run_step_successful_sizer_releases_active_session_db(
+    monkeypatch,
+    tmp_path,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.workspace_step_specs = (
+        {"name": "Floorplan", "tool": "ecc"},
+        {"name": "Timing optimization", "tool": "sizer"},
+    )
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    pre_sizer_db = api.sessions.get_session(workspace_id).db_handle
+
+    result = api.flow_run_step(
+        FlowRunStepRequest(
+            workspace_id=workspace_id,
+            step="Timing optimization",
+            rerun=False,
+        )
+    )
+
+    flow = DummyFlow.instances[-1]
+    assert result == {"step": "Timing optimization", "state": "Success"}
+    assert flow.engine_db is None
+    assert pre_sizer_db.close_calls == 1
+    assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_flow_run_step_sizer_exception_clears_closed_session_db(
+    monkeypatch,
+    tmp_path,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.workspace_step_specs = (
+        {"name": "Floorplan", "tool": "ecc"},
+        {"name": "Timing optimization", "tool": "sizer"},
+    )
+
+    def run_step_raises_after_sizer_boundary(self, workspace_step, rerun=False):
+        del workspace_step, rerun
+        self.engine_db.close()
+        self.engine_db = None
+        raise ValueError("sizer failure")
+
+    monkeypatch.setattr(DummyFlow, "run_step", run_step_raises_after_sizer_boundary)
+    api = WorkspaceRuntimeApi(persistent_db_enabled=True)
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
+    pre_sizer_db = api.sessions.get_session(workspace_id).db_handle
+
+    with pytest.raises(ValueError, match="sizer failure"):
+        api.flow_run_step(
+            FlowRunStepRequest(
+                workspace_id=workspace_id,
+                step="Timing optimization",
+                rerun=False,
+            )
+        )
+
+    assert pre_sizer_db.close_calls == 1
+    assert api.sessions.get_session(workspace_id).db_handle is None
 
 
 def test_flow_run_step_rerun_refreshes_before_db_init(monkeypatch, tmp_path):

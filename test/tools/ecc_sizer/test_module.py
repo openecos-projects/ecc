@@ -427,6 +427,10 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
+    class ExplodingEccModule:
+        def __getattribute__(self, name):
+            raise AssertionError(f"Sizer runner used ecc_module.{name}")
+
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
@@ -453,7 +457,11 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Success
+    assert sizer_runner.run_step(
+        workspace,
+        step,
+        ecc_module=ExplodingEccModule(),
+    ) == StateEnum.Success
     assert _subflow_states(step)["run sizer"] == StateEnum.Success.value
     assert calls == [
         (
@@ -637,10 +645,21 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
             "gds": str(tmp_path / "post.gds"),
         },
     )
+    pre_sizer_db_closed = []
+
+    class CloseableDb:
+        engine = "pre-sizer-db"
+
+        def has_init(self):
+            return True
+
+        def close(self):
+            pre_sizer_db_closed.append(True)
+
     engine_flow = EngineFlow(workspace=None)
     engine_flow.workspace = workspace
     engine_flow.workspace_steps = [sizer_step, post_sizer_step]
-    engine_flow.engine_db = SimpleNamespace(engine="pre-sizer-db", has_init=lambda: True)
+    engine_flow.engine_db = CloseableDb()
 
     init_seen = []
     run_seen = []
@@ -648,6 +667,7 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     def fake_init_db_engine():
         init_seen.append(None if engine_flow.engine_db is None else engine_flow.engine_db.engine)
         if engine_flow.engine_db is None:
+            assert pre_sizer_db_closed == [True]
             engine_flow.engine_db = SimpleNamespace(engine="post-sizer-db", has_init=lambda: True)
         return True
 
@@ -672,4 +692,5 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
 
     assert engine_flow.run_steps() is True
     assert init_seen == ["pre-sizer-db", None]
+    assert pre_sizer_db_closed == [True]
     assert run_seen == [("sizer", "pre-sizer-db"), ("ecc", "post-sizer-db")]

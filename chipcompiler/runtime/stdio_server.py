@@ -16,8 +16,9 @@ def run_stdio_server(
     output_stream: BinaryIO,
     *,
     server: RuntimeServer | None = None,
+    persistent_db_enabled: bool = False,
 ) -> int:
-    runtime_server = server or RuntimeServer()
+    runtime_server = server or RuntimeServer(persistent_db_enabled=persistent_db_enabled)
     decoder = ContentLengthDecoder()
 
     while not runtime_server.should_exit:
@@ -49,5 +50,9 @@ def _read_chunk(input_stream: BinaryIO) -> bytes:
     return input_stream.read(8192)
 
 
-def main() -> int:
-    return run_stdio_server(sys.stdin.buffer, sys.stdout.buffer)
+def main(*, persistent_db_enabled: bool = False) -> int:
+    return run_stdio_server(
+        sys.stdin.buffer,
+        sys.stdout.buffer,
+        persistent_db_enabled=persistent_db_enabled,
+    )

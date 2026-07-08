@@ -19,6 +19,14 @@ class EngineDB:
     def engine(self):
         return self.ecc_module
 
+    def close(self) -> None:
+        if self.ecc_module is None:
+            return
+
+        ecc_module = self.ecc_module
+        self.ecc_module = None
+        ecc_module.exit()
+
     def create_db_engine(self, step: WorkspaceStep) -> bool:
         """
         create db engine from ecc module

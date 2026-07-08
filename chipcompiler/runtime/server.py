@@ -4,7 +4,6 @@ from jsonrpcserver import Error
 
 import chipcompiler
 from chipcompiler.runtime import methods
-from chipcompiler.runtime.methods import runtime_method_names
 from chipcompiler.runtime.requests import RequestValidationError, parse_request_model
 from chipcompiler.runtime.rpc_dispatch import RpcDispatcher
 from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
@@ -15,7 +14,6 @@ BASE_CAPABILITIES = (
     "rpc.ping",
     "rpc.shutdown",
 )
-CAPABILITIES = (*BASE_CAPABILITIES, *runtime_method_names())
 
 ERROR_CODES = {
     "workspace_session_not_found": -32010,
@@ -25,12 +23,27 @@ ERROR_CODES = {
 
 
 class RuntimeServer:
-    def __init__(self, api: WorkspaceRuntimeApi | None = None):
+    def __init__(
+        self,
+        api: WorkspaceRuntimeApi | None = None,
+        *,
+        persistent_db_enabled: bool = False,
+    ):
+        self.persistent_db_enabled = persistent_db_enabled
         self.dispatcher = RpcDispatcher()
-        self.api = api or WorkspaceRuntimeApi()
+        self.api = api or WorkspaceRuntimeApi(persistent_db_enabled=persistent_db_enabled)
         self.should_exit = False
         self._register_base_methods()
         self._register_runtime_methods()
+
+    @property
+    def capabilities(self) -> tuple[str, ...]:
+        return (
+            *BASE_CAPABILITIES,
+            *methods.runtime_method_names(
+                persistent_db_enabled=self.persistent_db_enabled,
+            ),
+        )
 
     def dispatch(self, payload: bytes | str) -> str:
         return self.dispatcher.dispatch(payload)
@@ -50,7 +63,7 @@ class RuntimeServer:
         return {
             "version": PROTOCOL_VERSION,
             "eccVersion": getattr(chipcompiler, "__version__", "unknown"),
-            "capabilities": list(CAPABILITIES),
+            "capabilities": list(self.capabilities),
         }
 
     def _ping(self) -> dict:
@@ -64,7 +77,9 @@ class RuntimeServer:
         return {"ok": True}
 
     def _register_runtime_methods(self) -> None:
-        for spec in methods.RUNTIME_METHODS:
+        for spec in methods.runtime_methods(
+            persistent_db_enabled=self.persistent_db_enabled,
+        ):
             api_method = getattr(self.api, spec.handler_name, None)
             if not callable(api_method):
                 raise TypeError(

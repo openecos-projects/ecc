@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from chipcompiler.runtime.requests import (
+    DbEnsureRequest,
+    DbReleaseRequest,
     FlowRunRequest,
     FlowRunStepRequest,
     WorkspaceCreateRequest,
@@ -35,8 +37,14 @@ class RuntimeApiError(RuntimeError):
 
 
 class WorkspaceRuntimeApi:
-    def __init__(self, sessions: WorkspaceSessionRegistry | None = None):
-        self.sessions = sessions or WorkspaceSessionRegistry()
+    def __init__(
+        self,
+        sessions: WorkspaceSessionRegistry | None = None,
+        *,
+        persistent_db_enabled: bool = False,
+    ):
+        self.persistent_db_enabled = persistent_db_enabled
+        self.sessions = sessions or WorkspaceSessionRegistry(db_releaser=_close_db_handle)
 
     def create_workspace(self, request: WorkspaceCreateRequest) -> dict:
         if not request.directory:
@@ -109,6 +117,7 @@ class WorkspaceRuntimeApi:
 
     def refresh_config(self, request: WorkspaceIdRequest) -> dict:
         def refresh(session: WorkspaceSession) -> dict:
+            self._release_session_db(session)
             self._refresh_workspace_config(session.workspace)
             return {"directory": str(session.directory), "refreshed": True}
 
@@ -132,6 +141,7 @@ class WorkspaceRuntimeApi:
             )
             refreshed = False
             if parameters_changed:
+                self._release_session_db(session)
                 self._refresh_workspace_config(session.workspace)
                 refreshed = True
             return {
@@ -145,6 +155,7 @@ class WorkspaceRuntimeApi:
 
     def reset_flow(self, request: WorkspaceIdRequest) -> dict:
         def reset(session: WorkspaceSession) -> dict:
+            self._release_session_db(session)
             engine_flow = build_flow_for_workspace(session.workspace)
             self._prepare_workspace_for_rerun(session.workspace, engine_flow)
             return {"directory": str(session.directory)}
@@ -160,10 +171,27 @@ class WorkspaceRuntimeApi:
 
     def flow_run(self, request: FlowRunRequest) -> dict:
         def run(session: WorkspaceSession) -> dict:
-            engine_flow = build_flow_for_workspace(session.workspace)
+            should_capture = self._should_capture_session_db(session)
+            previous_db = session.db_handle if should_capture else None
+            if request.rerun and should_capture:
+                self._release_session_db(session)
+                previous_db = None
+
+            engine_flow = self._build_flow_for_session(
+                session,
+                attach_session_db=should_capture and not request.rerun,
+            )
             if request.rerun:
                 self._prepare_workspace_for_rerun(session.workspace, engine_flow)
-            ok = engine_flow.run_steps(rerun=request.rerun)
+            try:
+                ok = engine_flow.run_steps(rerun=request.rerun)
+            finally:
+                if should_capture:
+                    self._capture_flow_db(
+                        session,
+                        engine_flow,
+                        previous_handle=previous_db,
+                    )
             if not ok:
                 raise RuntimeApiError(
                     "command_failed",
@@ -176,7 +204,16 @@ class WorkspaceRuntimeApi:
 
     def flow_run_step(self, request: FlowRunStepRequest) -> dict:
         def run_step(session: WorkspaceSession) -> dict:
-            engine_flow = build_flow_for_workspace(session.workspace)
+            should_capture = self._should_capture_session_db(session)
+            previous_db = session.db_handle if should_capture else None
+            if request.rerun and should_capture:
+                self._release_session_db(session)
+                previous_db = None
+
+            engine_flow = self._build_flow_for_session(
+                session,
+                attach_session_db=should_capture and not request.rerun,
+            )
             if request.rerun:
                 self._refresh_workspace_config(session.workspace)
 
@@ -184,15 +221,23 @@ class WorkspaceRuntimeApi:
             if workspace_step is None:
                 raise RuntimeApiError("command_failed", f"step not found: {request.step}")
 
-            if not request.rerun and engine_flow.check_state(
-                name=workspace_step.name,
-                tool=workspace_step.tool,
-                state=_success_state(),
-            ):
-                state = engine_flow.run_step(workspace_step, request.rerun)
-            else:
-                _init_db_engine_for_workspace_step(engine_flow, workspace_step)
-                state = engine_flow.run_step(workspace_step, request.rerun)
+            try:
+                if not request.rerun and engine_flow.check_state(
+                    name=workspace_step.name,
+                    tool=workspace_step.tool,
+                    state=_success_state(),
+                ):
+                    state = engine_flow.run_step(workspace_step, request.rerun)
+                else:
+                    _init_db_engine_for_workspace_step(engine_flow, workspace_step)
+                    state = engine_flow.run_step(workspace_step, request.rerun)
+            finally:
+                if should_capture:
+                    self._capture_flow_db(
+                        session,
+                        engine_flow,
+                        previous_handle=previous_db,
+                    )
 
             state_value = _state_value(state)
             result = {"step": request.step, "state": state_value}
@@ -205,6 +250,55 @@ class WorkspaceRuntimeApi:
             return result
 
         return self._with_session_mutation_lock(request.workspace_id, run_step)
+
+    def db_ensure(self, request: DbEnsureRequest) -> dict:
+        self._require_persistent_db()
+
+        def ensure(session: WorkspaceSession) -> dict:
+            db_handle = session.db_handle
+            if _db_handle_is_initialized(db_handle):
+                return _db_ensure_result(
+                    workspace_id=session.workspace_id,
+                    step=request.step,
+                    active=True,
+                    reused=True,
+                )
+
+            engine_flow = build_flow_for_workspace(session.workspace)
+            if db_handle is not None:
+                engine_flow.engine_db = db_handle
+
+            if request.step:
+                workspace_step = engine_flow.get_workspace_step(request.step)
+                if workspace_step is None:
+                    raise RuntimeApiError(
+                        "command_failed",
+                        f"step not found: {request.step}",
+                    )
+                initialized = _init_db_engine_for_workspace_step(engine_flow, workspace_step)
+            else:
+                initialized = engine_flow.init_db_engine()
+
+            flow_db = getattr(engine_flow, "engine_db", None)
+            active = bool(initialized and _db_handle_is_initialized(flow_db))
+            session.db_handle = flow_db if active else None
+            return _db_ensure_result(
+                workspace_id=session.workspace_id,
+                step=request.step,
+                active=active,
+                reused=False,
+            )
+
+        return self._with_session_mutation_lock(request.workspace_id, ensure)
+
+    def db_release(self, request: DbReleaseRequest) -> dict:
+        self._require_persistent_db()
+
+        def release(session: WorkspaceSession) -> dict:
+            released = self._release_session_db(session)
+            return {"workspaceId": session.workspace_id, "released": released}
+
+        return self._with_session_mutation_lock(request.workspace_id, release)
 
     def _load_workspace(self, directory: str):
         if not directory:
@@ -227,6 +321,45 @@ class WorkspaceRuntimeApi:
                 "workspace_session_not_found",
                 f"workspace session not found: {workspace_id}",
             ) from exc
+
+    def _require_persistent_db(self) -> None:
+        if not self.persistent_db_enabled:
+            raise RuntimeApiError("command_failed", "persistent_db_disabled")
+
+    def _release_session_db(self, session: WorkspaceSession) -> bool:
+        return self.sessions.release_session_db(session)
+
+    def _should_capture_session_db(self, session: WorkspaceSession) -> bool:
+        return self.persistent_db_enabled and _db_handle_is_initialized(session.db_handle)
+
+    def _build_flow_for_session(
+        self,
+        session: WorkspaceSession,
+        *,
+        attach_session_db: bool,
+    ):
+        engine_flow = build_flow_for_workspace(session.workspace)
+        if attach_session_db:
+            engine_flow.engine_db = session.db_handle
+        return engine_flow
+
+    def _capture_flow_db(
+        self,
+        session: WorkspaceSession,
+        engine_flow,
+        *,
+        previous_handle,
+    ) -> None:
+        flow_db = getattr(engine_flow, "engine_db", None)
+        if _db_handle_is_initialized(flow_db):
+            session.db_handle = flow_db
+            if previous_handle is not None and previous_handle is not flow_db:
+                _close_db_handle(previous_handle)
+            return
+
+        session.db_handle = None
+        if previous_handle is not None:
+            _close_db_handle(previous_handle)
 
     def _with_session_mutation_lock(
         self,
@@ -264,6 +397,32 @@ def build_flow_for_workspace(workspace, create_step_workspaces: bool = True):
 
 def _workspace_session_result(session: WorkspaceSession) -> dict:
     return {"workspaceId": session.workspace_id, "directory": str(session.directory)}
+
+
+def _db_ensure_result(
+    *,
+    workspace_id: str,
+    step: str,
+    active: bool,
+    reused: bool,
+) -> dict:
+    return {
+        "workspaceId": workspace_id,
+        "enabled": True,
+        "active": active,
+        "reused": reused,
+        "step": step,
+    }
+
+
+def _db_handle_is_initialized(db_handle) -> bool:
+    return db_handle is not None and db_handle.has_init()
+
+
+def _close_db_handle(db_handle) -> None:
+    close = getattr(db_handle, "close", None)
+    if callable(close):
+        close()
 
 
 def _normalize_rtl_list(rtl_list: list[str]) -> list[str]:

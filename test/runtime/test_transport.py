@@ -67,3 +67,18 @@ def test_workspace_rpc_doc_content_lengths_match_payloads():
     assert frames
     for declared, payload in frames:
         assert int(declared) == len(payload.encode("utf-8"))
+
+
+def test_workspace_rpc_docs_cover_opt_in_persistent_db_surface():
+    source = Path("docs/workspace-cli.md").read_text(encoding="utf-8")
+    cli_design = Path("docs/specification/cli-design.md").read_text(encoding="utf-8")
+
+    for text in (source, cli_design):
+        assert "--persistent-db" in text
+        assert "db.ensure" in text
+        assert "db.release" in text
+    assert "default sidecar does not advertise or persist native DB handles" in cli_design
+    assert (
+        "Opening or creating a workspace does not initialize persistent native DB state"
+        in source
+    )
