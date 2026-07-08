@@ -746,7 +746,7 @@ def test_flow_run_uses_run_steps_and_prepare_on_rerun(monkeypatch, tmp_path):
     assert flow.run_steps_calls == [True]
 
 
-def test_flow_run_without_active_session_db_does_not_capture_transient_db(
+def test_flow_run_without_active_session_db_closes_transient_db(
     monkeypatch,
     tmp_path,
 ):
@@ -758,7 +758,8 @@ def test_flow_run_without_active_session_db_does_not_capture_transient_db(
 
     flow = DummyFlow.instances[-1]
     assert result == {"rerun": False}
-    assert flow.engine_db.has_init()
+    assert not flow.engine_db.has_init()
+    assert flow.engine_db.close_calls == 1
     assert api.sessions.get_session(workspace_id).db_handle is None
 
 
@@ -942,6 +943,8 @@ def test_flow_run_step_initializes_db_before_direct_step(monkeypatch, tmp_path):
         ("run_step", "Synthesis", False),
     ]
     assert flow.run_steps_calls == []
+    assert not flow.engine_db.has_init()
+    assert flow.engine_db.close_calls == 1
     assert api.sessions.get_session(workspace_id).db_handle is None
 
 

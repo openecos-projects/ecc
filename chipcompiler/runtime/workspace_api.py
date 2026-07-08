@@ -192,6 +192,8 @@ class WorkspaceRuntimeApi:
                         engine_flow,
                         previous_handle=previous_db,
                     )
+                else:
+                    self._close_transient_flow_db(engine_flow)
             if not ok:
                 raise RuntimeApiError(
                     "command_failed",
@@ -238,6 +240,8 @@ class WorkspaceRuntimeApi:
                         engine_flow,
                         previous_handle=previous_db,
                     )
+                else:
+                    self._close_transient_flow_db(engine_flow)
 
             state_value = _state_value(state)
             result = {"step": request.step, "state": state_value}
@@ -360,6 +364,9 @@ class WorkspaceRuntimeApi:
         session.db_handle = None
         if previous_handle is not None:
             _close_db_handle(previous_handle)
+
+    def _close_transient_flow_db(self, engine_flow) -> None:
+        _close_db_handle(getattr(engine_flow, "engine_db", None))
 
     def _with_session_mutation_lock(
         self,
