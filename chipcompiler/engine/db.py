@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StepEnum
+from chipcompiler.data import Workspace, WorkspaceStep
+
 
 class EngineDB:
     """
@@ -60,6 +60,5 @@ class EngineDB:
         for example, 
         if step is "place", read instances data from step output def file and update to db egine.
         """
-        def_file = step.output["def"]
-        
+        _ = step.output["def"]
         self.ecc_module.read_def()

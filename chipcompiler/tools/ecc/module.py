@@ -1,15 +1,10 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
+import json
 import os
 import shutil
 from pathlib import Path
+
 from numpy import double
-import json
-import math
-import re
-from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
-from typing import Any
 
 from chipcompiler.utility.path import path_text, path_texts
 
@@ -184,9 +179,6 @@ class ECCToolsModule:
                                        node_x, 
                                        node_y)
     
-    def write_abstract_lef(self, output_lef_path: str):
-        return self.ecc.write_abstract_lef(output_lef_path)
-    
     ########################################################################
     # data io api
     ########################################################################
@@ -223,8 +215,10 @@ class ECCToolsModule:
 
     def verilog_save(self, 
                      output_verilog, 
-                     cell_names: set = set()):
+                     cell_names: set | None = None):
         """verilog save"""
+        if cell_names is None:
+            cell_names = set()
         self.ecc.netlist_save(
             netlist_path=path_text(output_verilog),
             exclude_cell_names=cell_names
@@ -379,7 +373,9 @@ class ECCToolsModule:
     ):
         return self.ecc.report_route(path=path_text(path), net=net, summary=summary)
 
-    def report_place_distribution(self, prefixes: list[str] = []):
+    def report_place_distribution(self, prefixes: list[str] | None = None):
+        if prefixes is None:
+            prefixes = []
         return self.ecc.report_place_distribution(prefixes=prefixes)
 
     def report_prefixed_instance(
@@ -748,16 +744,22 @@ class ECCToolsModule:
     def add_segment_stripe(
         self,
         net_name: str = "",
-        point_list: list[float] = [],
+        point_list: list[float] | None = None,
         layer: str = "",
         width: int = 0,
-        point_begin: list[float] = [],
+        point_begin: list[float] | None = None,
         layer_start: str = "",
-        point_end: list[float] = [],
+        point_end: list[float] | None = None,
         layer_end: str = "",
         via_width: int = 0,
         via_height: int = 0,
     ):
+        if point_list is None:
+            point_list = []
+        if point_begin is None:
+            point_begin = []
+        if point_end is None:
+            point_end = []
         return self.ecc.add_segment_stripe(
             net_name=net_name,
             point_list=point_list,
@@ -798,13 +800,15 @@ class ECCToolsModule:
                         layer: str, 
                         width: int, 
                         height: int, 
-                        sides: list[str] = []):
+                        sides: list[str] | None = None):
         """
         layer : layer place io pins
         witdh : io pin width, in dbu
         height : io pin height, in dbu
         sides : "left", "rigth", "top", "bottom", if empty, place io pins around die.
         """
+        if sides is None:
+            sides = []
         return self.ecc.auto_place_pins(
             layer=layer, 
             width=width, 
@@ -901,7 +905,9 @@ class ECCToolsModule:
     ########################################################################
     # routing api
     ########################################################################
-    def run_ert(self, config: str = "", config_dict: dict[str, str] = {}):
+    def run_ert(self, config: str = "", config_dict: dict[str, str] | None = None):
+        if config_dict is None:
+            config_dict = {}
         return self.ecc.run_ert(config=path_text(config), config_dict=config_dict)
 
     def run_routing(self, config: str):
@@ -921,13 +927,14 @@ class ECCToolsModule:
         self.ecc.feature_route(path=path_text(json_path))
         
     def is_rt_timing_enable(self, config : str):
-        import os
-        import json
         if os.path.exists(config):
-            with open(config, "r", encoding="utf-8") as f_reader:  
+            with open(config, encoding="utf-8") as f_reader:
                 json_data = json.load(f_reader)
                 # check if time enable
-                if json_data is not None and json_data.get("RT", {}).get("-enable_timing", "0") == "1":
+                if (
+                    json_data is not None
+                    and json_data.get("RT", {}).get("-enable_timing", "0") == "1"
+                ):
                     return True
         return False
 
@@ -954,10 +961,12 @@ class ECCToolsModule:
         config: str = "",
         work_dir: str = "",
         output_dir: str = "",
-        lib_paths: list[str] = [],
+        lib_paths: list[str] | None = None,
         sdc_path: str = "",
         spef_path: str = "",
     ):
+        if lib_paths is None:
+            lib_paths = []
         self.ecc.lib_init(lib_paths=path_texts(lib_paths))
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
@@ -1132,15 +1141,15 @@ class ECCToolsModule:
     def report_timing(self,
                       digits: int = 3,
                       delay_type: str = "max_min",
-                      exclude_cell_names: list[str] = [],
+                      exclude_cell_names: list[str] | None = None,
                       derate: bool = False,
                       is_clock_cap: bool = False,
                       is_not_bak_rpt: bool = True,
                       max_path: int = 3,
                       nworst: int = 1,
-                      from_list: list[str] = [],
-                      through: list[list[str]] = [],
-                      to_list: list[str] = [],
+                      from_list: list[str] | None = None,
+                      through: list[list[str]] | None = None,
+                      to_list: list[str] | None = None,
                       is_json: bool = True):
         """
         report timing
