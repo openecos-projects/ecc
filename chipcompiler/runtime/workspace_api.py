@@ -50,11 +50,15 @@ class WorkspaceRuntimeApi:
         if not request.directory:
             raise RuntimeApiError("invalid_request", "missing required field: directory")
 
+        temp_filelist_dir = None
         input_filelist = request.filelist
         if not input_filelist:
             rtl_paths = _normalize_rtl_list(request.rtl_list or [])
             if rtl_paths:
-                input_filelist = _write_filelist(request.directory, rtl_paths)
+                temp_filelist_dir = tempfile.TemporaryDirectory(
+                    prefix="ecc-workspace-filelist-"
+                )
+                input_filelist = _write_filelist(temp_filelist_dir.name, rtl_paths)
 
         import chipcompiler.data as data_api
 
@@ -73,6 +77,8 @@ class WorkspaceRuntimeApi:
         finally:
             if pdk_json_temp_path is not None:
                 pdk_json_temp_path.unlink(missing_ok=True)
+            if temp_filelist_dir is not None:
+                temp_filelist_dir.cleanup()
         if workspace is None:
             raise RuntimeApiError(
                 "command_failed",

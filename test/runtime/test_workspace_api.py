@@ -160,8 +160,13 @@ def _workspace(directory: Path):
     )
 
 
-def _install_runtime_mocks(monkeypatch, tmp_path):
-    capture = {"create_kwargs": None, "loaded": []}
+def _install_runtime_mocks(monkeypatch, tmp_path, *, create_workspace_files=True):
+    capture = {
+        "create_kwargs": None,
+        "input_filelist_lines": [],
+        "loaded": [],
+        "workspace_entries_when_create_called": [],
+    }
     DummyFlow.instances = []
     DummyFlow.next_run_states = []
     DummyFlow.next_init_success = True
@@ -170,6 +175,16 @@ def _install_runtime_mocks(monkeypatch, tmp_path):
 
     def fake_create_workspace(**kwargs):
         capture["create_kwargs"] = kwargs
+        input_filelist = kwargs.get("input_filelist")
+        if input_filelist and Path(input_filelist).exists():
+            capture["input_filelist_lines"] = Path(input_filelist).read_text(
+                encoding="utf-8"
+            ).splitlines()
+        workspace_dir = Path(kwargs["directory"])
+        if workspace_dir.is_dir():
+            capture["workspace_entries_when_create_called"] = sorted(
+                path.name for path in workspace_dir.iterdir()
+            )
         return _workspace(Path(kwargs["directory"]))
 
     def fake_load_workspace(directory):
@@ -187,10 +202,11 @@ def _install_runtime_mocks(monkeypatch, tmp_path):
     )
 
     ws = tmp_path / "workspace"
-    (ws / "home").mkdir(parents=True)
-    (ws / "home" / "parameters.json").write_text("{}")
-    (ws / "home" / "flow.json").write_text(json.dumps({"steps": []}))
-    (ws / "home" / "home.json").write_text("{}")
+    if create_workspace_files:
+        (ws / "home").mkdir(parents=True)
+        (ws / "home" / "parameters.json").write_text("{}")
+        (ws / "home" / "flow.json").write_text(json.dumps({"steps": []}))
+        (ws / "home" / "home.json").write_text("{}")
     return capture, ws
 
 
@@ -240,6 +256,37 @@ def test_create_workspace_returns_plain_runtime_result_and_session(monkeypatch, 
     assert isinstance(capture["create_kwargs"]["pdk_json"], str)
     assert DummyFlow.instances[0].created
     assert api.sessions.get_session(result["workspaceId"]).directory == ws.resolve()
+
+
+def test_create_workspace_writes_rtl_list_filelist_outside_workspace(
+    monkeypatch,
+    tmp_path,
+):
+    capture, ws = _install_runtime_mocks(
+        monkeypatch,
+        tmp_path,
+        create_workspace_files=False,
+    )
+    project = tmp_path / "project"
+    project.mkdir()
+    rtl_paths = [str(project / "a.v"), str(project / "b.v")]
+    api = WorkspaceRuntimeApi()
+
+    api.create_workspace(
+        WorkspaceCreateRequest(
+            directory=str(ws),
+            pdk="ics55",
+            parameters={"Design": "gcd"},
+            rtl_list=rtl_paths,
+        )
+    )
+
+    input_filelist = Path(capture["create_kwargs"]["input_filelist"])
+    assert input_filelist.name == "filelist"
+    assert not input_filelist.is_relative_to(ws)
+    assert capture["input_filelist_lines"] == rtl_paths
+    assert capture["workspace_entries_when_create_called"] == []
+    assert not (ws / "filelist").exists()
 
 
 def test_create_workspace_materializes_inline_pdk_json_before_data_api(monkeypatch, tmp_path):
