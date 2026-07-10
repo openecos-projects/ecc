@@ -25,16 +25,18 @@ runs:
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
     - name: Install hosted native build dependencies
-      if: ${{ inputs.build-all == 'true' }}
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential cmake ninja-build pkg-config patchelf mold lld \
-          libboost-all-dev libcairo2-dev libgflags-dev libgoogle-glog-dev \
-          flex libfl-dev bison libeigen3-dev libgtest-dev libtbb-dev libhwloc-dev \
-          libcurl4-openssl-dev libunwind-dev libmetis-dev libgmp-dev \
-          tcl-dev unzip zip
+        dnf install -y epel-release dnf-plugins-core
+        dnf config-manager --set-enabled crb || true
+        dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+        dnf install -y \
+          cmake ninja-build pkgconfig patchelf mold lld \
+          boost-devel cairo-devel gflags-devel glog-devel \
+          flex flex-devel bison eigen3-devel gtest-devel \
+          tbb-devel hwloc-devel libcurl-devel libunwind-devel \
+          metis-devel gmp-devel tcl-devel \
+          unzip zip gh
 
     - name: Setup Rust
       if: ${{ inputs.build-all == 'true' }}

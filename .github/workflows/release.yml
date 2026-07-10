@@ -32,7 +32,8 @@ jobs:
   build:
     name: Build CLI Bundle
     needs: check-version
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
