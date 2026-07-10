@@ -3,7 +3,12 @@ import json
 import pytest
 
 from chipcompiler.runtime.methods import RUNTIME_METHODS, runtime_methods
-from chipcompiler.runtime.requests import DbEnsureRequest, DbReleaseRequest, WorkspaceOpenRequest
+from chipcompiler.runtime.requests import (
+    DbEnsureRequest,
+    DbReleaseRequest,
+    WorkspaceExportSignoffRequest,
+    WorkspaceOpenRequest,
+)
 from chipcompiler.runtime.server import RuntimeServer
 from chipcompiler.runtime.workspace_api import RuntimeApiError
 
@@ -36,6 +41,9 @@ class CompleteFakeApi:
 
     def reset_flow(self, _request):
         raise AssertionError("unexpected reset_flow call")
+
+    def export_signoff(self, _request):
+        raise AssertionError("unexpected export_signoff call")
 
     def flow_run(self, _request):
         raise AssertionError("unexpected flow_run call")
@@ -155,6 +163,30 @@ def test_workspace_method_dispatches_typed_request_to_runtime_api():
         "jsonrpc": "2.0",
         "result": {"workspaceId": "workspace-1", "directory": "/ws"},
         "id": 4,
+    }
+
+
+def test_workspace_export_signoff_dispatches_exact_output_path():
+    class FakeApi(CompleteFakeApi):
+        def export_signoff(self, request):
+            assert isinstance(request, WorkspaceExportSignoffRequest)
+            return {"outputPath": request.output_path}
+
+    server = RuntimeServer(api=FakeApi())
+
+    response = _dispatch(
+        server,
+        (
+            '{"jsonrpc":"2.0","method":"workspace.export_signoff",'
+            '"params":{"workspaceId":"workspace-1",'
+            '"outputPath":"/exports/custom.tar.gz "},"id":5}'
+        ),
+    )
+
+    assert response == {
+        "jsonrpc": "2.0",
+        "result": {"outputPath": "/exports/custom.tar.gz "},
+        "id": 5,
     }
 
 

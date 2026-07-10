@@ -39,6 +39,12 @@ class WorkspaceSyncConfigRequest:
 
 
 @dataclass(frozen=True)
+class WorkspaceExportSignoffRequest:
+    workspace_id: str
+    output_path: str
+
+
+@dataclass(frozen=True)
 class WorkspaceInfoRequest:
     workspace_id: str
     step: str
@@ -84,6 +90,7 @@ FIELD_ALIASES = {
     "rtlList": "rtl_list",
     "workspaceId": "workspace_id",
     "configPath": "config_path",
+    "outputPath": "output_path",
     "infoId": "info_id",
     "id": "info_id",
 }

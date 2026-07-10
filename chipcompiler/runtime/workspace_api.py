@@ -13,6 +13,7 @@ from chipcompiler.runtime.requests import (
     FlowRunRequest,
     FlowRunStepRequest,
     WorkspaceCreateRequest,
+    WorkspaceExportSignoffRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
@@ -167,6 +168,20 @@ class WorkspaceRuntimeApi:
             return {"directory": str(session.directory)}
 
         return self._with_session_mutation_lock(request.workspace_id, reset)
+
+    def export_signoff(self, request: WorkspaceExportSignoffRequest) -> dict:
+        def export(session: WorkspaceSession) -> dict:
+            from chipcompiler.runtime.signoff_export import (
+                export_signoff_package_archive,
+            )
+
+            output_path = export_signoff_package_archive(
+                session.workspace,
+                request.output_path,
+            )
+            return {"outputPath": output_path}
+
+        return self._with_session_mutation_lock(request.workspace_id, export)
 
     def close_workspace(self, request: WorkspaceIdRequest) -> dict:
         def close(session: WorkspaceSession) -> dict:

@@ -11,6 +11,7 @@ from chipcompiler.runtime.requests import (
     RequestValidationError,
     WorkspaceCloseRequest,
     WorkspaceCreateRequest,
+    WorkspaceExportSignoffRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
@@ -61,6 +62,11 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
         ("workspace.home", {"workspaceId": "ws-1"}, WorkspaceIdRequest),
         ("workspace.refresh_config", {"workspaceId": "ws-1"}, WorkspaceIdRequest),
         ("workspace.reset_flow", {"workspaceId": "ws-1"}, WorkspaceIdRequest),
+        (
+            "workspace.export_signoff",
+            {"workspaceId": "ws-1", "outputPath": "/exports/custom.tar.gz"},
+            WorkspaceExportSignoffRequest,
+        ),
         (
             "workspace.sync_config",
             {"workspaceId": "ws-1", "configPath": "/work/ws/config/route.json"},
@@ -166,6 +172,19 @@ def test_workspace_info_accepts_info_id_alias():
 
     assert isinstance(request, WorkspaceInfoRequest)
     assert request.info_id == "timing"
+
+
+def test_workspace_export_signoff_preserves_exact_output_path():
+    request = _parse_runtime_request(
+        "workspace.export_signoff",
+        {
+            "workspaceId": "ws-1",
+            "outputPath": "/exports/custom.tar.gz ",
+        },
+    )
+
+    assert isinstance(request, WorkspaceExportSignoffRequest)
+    assert request.output_path == "/exports/custom.tar.gz "
 
 
 @pytest.mark.parametrize(
