@@ -1,3 +1,5 @@
+import queue
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -34,6 +36,52 @@ def test_workspace_export_signoff_returns_exact_output_path(monkeypatch, tmp_pat
 
     assert result == {"outputPath": str(output_path)}
     assert calls == [(workspace, str(output_path))]
+
+
+def test_workspace_export_signoff_waits_for_session_mutation_lock(monkeypatch, tmp_path):
+    workspace = SimpleNamespace(directory=tmp_path / "workspace")
+    sessions = WorkspaceSessionRegistry()
+    session = sessions.open_session(workspace.directory, workspace=workspace)
+    output_path = tmp_path / "export.tar.gz"
+    entered = threading.Event()
+    results = queue.Queue()
+
+    def fake_export(_workspace, requested_output):
+        entered.set()
+        return requested_output
+
+    monkeypatch.setattr(
+        "chipcompiler.runtime.signoff_export.export_signoff_package_archive",
+        fake_export,
+    )
+    api = WorkspaceRuntimeApi(sessions=sessions)
+
+    def run_export():
+        try:
+            results.put(
+                api.export_signoff(
+                    WorkspaceExportSignoffRequest(
+                        workspace_id=session.workspace_id,
+                        output_path=str(output_path),
+                    )
+                )
+            )
+        except BaseException as error:  # pragma: no cover - re-raised below
+            results.put(error)
+
+    with session.mutation_lock:
+        worker = threading.Thread(target=run_export)
+        worker.start()
+        assert not entered.wait(0.1)
+        assert worker.is_alive()
+
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    result = results.get_nowait()
+    if isinstance(result, BaseException):
+        raise result
+    assert result == {"outputPath": str(output_path)}
+    assert entered.is_set()
 
 
 def test_export_signoff_package_archive_collects_temporarily_and_replaces_atomically(
