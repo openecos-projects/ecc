@@ -1,7 +1,20 @@
 from chipcompiler.pyinstaller_utils import (
+    collect_package_extension_binaries,
     filter_collected_payloads,
     filter_hiddenimports,
 )
+
+
+def test_collect_package_extension_binaries_checks_sibling_bin(tmp_path):
+    package_dir = tmp_path / "ecc_tools_bin"
+    package_dir.mkdir()
+    extension = tmp_path / "bin" / "ecc_py.cpython-311-x86_64-linux-gnu.so"
+    extension.parent.mkdir()
+    extension.touch()
+
+    assert collect_package_extension_binaries(
+        [package_dir], "ecc_py*.so", "ecc_tools_bin"
+    ) == [(str(extension), "ecc_tools_bin")]
 
 
 def test_pyinstaller_payload_filter_excludes_oversized_paths():
@@ -41,6 +54,17 @@ def test_pyinstaller_payload_filter_keeps_torch_runtime_binaries():
     ]
 
     assert filter_collected_payloads(payloads) == payloads
+
+
+def test_pyinstaller_payload_filter_keeps_ecc_tools_python_extension():
+    payload = (
+        "ecc_tools_bin/ecc_py.cpython-311-x86_64-linux-gnu.so",
+        "/repo/chipcompiler/thirdparty/ecc-tools/ecc_tools_bin/"
+        "ecc_py.cpython-311-x86_64-linux-gnu.so",
+        "EXTENSION",
+    )
+
+    assert filter_collected_payloads([payload]) == [payload]
 
 
 def test_pyinstaller_hiddenimport_filter_keeps_public_torch_imports():

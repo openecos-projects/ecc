@@ -207,7 +207,7 @@ class SignoffPackageCollector:
         expected_spefs = set()
         for item in sta_matrix:
             expected_spefs.add(
-                f"{design}_{item['rcx_corner']}_{self._temperature_token(item['temperature'])}C.spef"
+                f"{top_module}_{item['rcx_corner']}_{self._temperature_token(item['temperature'])}C.spef"
             )
             report_dir = (
                 workspace_dir
@@ -221,22 +221,22 @@ class SignoffPackageCollector:
                 f"{self._temperature_token(item['temperature'])}/"
                 f"{item['rcx_corner']}"
             )
-            for suffix in (
-                ".rpt.json",
-                ".rpt",
-                ".cap",
-                ".fanout",
-                ".trans",
-                "_hold.skew",
-                "_setup.skew",
-            ):
+            qor_summary = report_dir / "qor_summary.rpt"
+            add_file(
+                role="final.sta_report",
+                source=qor_summary,
+                destination=f"{report_dest}/{qor_summary.name}",
+                required=True,
+            )
+            for report_path in sorted(report_dir.glob("*.rpt")):
+                if report_path == qor_summary:
+                    continue
                 add_file(
                     role="final.sta_report",
-                    source=report_dir / f"{top_module}{suffix}",
-                    destination=f"{report_dest}/{top_module}{suffix}",
-                    required=suffix in (".rpt.json", ".rpt"),
+                    source=report_path,
+                    destination=f"{report_dest}/{report_path.name}",
                 )
-            item["report"] = f"{report_dest}/{top_module}.rpt.json"
+            item["report"] = f"{report_dest}/{qor_summary.name}"
 
         rcx_output_dir = workspace_dir / "RCX_ecc" / "output"
         spef_paths = sorted(rcx_output_dir.glob("*.spef")) if rcx_output_dir.is_dir() else []

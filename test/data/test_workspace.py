@@ -4,7 +4,13 @@ from pathlib import Path
 
 import chipcompiler.data as data_api
 import chipcompiler.data.workspace as workspace_data
-from chipcompiler.data import StepEnum, create_workspace, load_workspace
+from chipcompiler.data import (
+    OriginDesign,
+    StepEnum,
+    WorkspaceStep,
+    create_workspace,
+    load_workspace,
+)
 from chipcompiler.data.workspace import (
     Workspace,
     build_workspace_config_paths,
@@ -12,9 +18,9 @@ from chipcompiler.data.workspace import (
     prepare_workspace_for_rerun,
     refresh_workspace_config,
     sync_workspace_config_to_parameters,
+    update_step_config,
 )
 from chipcompiler.utility import json_read, json_write
-
 
 EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     "flow": "flow_config.json",
@@ -42,6 +48,34 @@ ROUTABILITY_FLAG_STRING_CASES = (
     ("2", 2),
     ("maybe", 1),
 )
+
+
+def test_rcx_step_config_uses_top_module_for_spef_paths(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    db_config = config_dir / "db.json"
+    rcx_config = config_dir / "rcx.json"
+    json_write(db_config, {"INPUT": {}, "OUTPUT": {}})
+    json_write(
+        rcx_config,
+        {"corners": [{"name": "Cworst", "temperature": [125]}]},
+    )
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="project_gcd_ws_0002", top_module="gcd"),
+        config={"db": db_config, StepEnum.RCX.value: rcx_config},
+    )
+    step = WorkspaceStep(
+        name=StepEnum.RCX.value,
+        input={"def": None, "verilog": None},
+        output={"dir": tmp_path / "RCX_ecc" / "output"},
+    )
+
+    update_step_config(workspace, step)
+
+    assert json_read(rcx_config)["corners"][0]["spef_file"] == [
+        {"125": str(tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef")}
+    ]
 
 
 def _create_loaded_ics55_workspace(

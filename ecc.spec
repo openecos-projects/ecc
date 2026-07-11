@@ -14,7 +14,11 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_data_files, copy_metadata
 
-from chipcompiler.pyinstaller_utils import filter_collected_payloads, filter_hiddenimports
+from chipcompiler.pyinstaller_utils import (
+    collect_package_extension_binaries,
+    filter_collected_payloads,
+    filter_hiddenimports,
+)
 
 ECC_DIR = Path(SPECPATH)
 HOOKS_DIR = ECC_DIR / "hooks"
@@ -192,8 +196,11 @@ def collect_ecc_tools_extension_binaries():
     if module_spec is None or module_spec.submodule_search_locations is None:
         return []
 
-    package_dir = Path(next(iter(module_spec.submodule_search_locations)))
-    return [(str(extension), "ecc_tools_bin") for extension in package_dir.glob("ecc_py*.so")]
+    return collect_package_extension_binaries(
+        module_spec.submodule_search_locations,
+        "ecc_py*.so",
+        "ecc_tools_bin",
+    )
 
 
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")

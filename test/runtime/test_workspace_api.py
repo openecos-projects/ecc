@@ -258,6 +258,21 @@ def test_create_workspace_returns_plain_runtime_result_and_session(monkeypatch, 
     assert api.sessions.get_session(result["workspaceId"]).directory == ws.resolve()
 
 
+def test_create_workspace_forwards_dynamic_flow_config(monkeypatch, tmp_path):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    flow_config = {
+        "start_step": "Synthesis",
+        "end_step": "Harden",
+        "steps": ["Synthesis", "RCX", "sta", "Harden"],
+    }
+
+    WorkspaceRuntimeApi().create_workspace(
+        WorkspaceCreateRequest(directory=str(ws), flow_config=flow_config)
+    )
+
+    assert capture["create_kwargs"]["flow_config"] == flow_config
+
+
 def test_create_workspace_writes_rtl_list_filelist_outside_workspace(
     monkeypatch,
     tmp_path,

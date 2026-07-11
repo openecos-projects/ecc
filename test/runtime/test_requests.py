@@ -28,6 +28,11 @@ def _parse_runtime_request(method: str, params: object, *, persistent_db_enabled
 
 def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
     pdk_json = {"name": "ics55", "lef": ["tech.lef"]}
+    flow_config = {
+        "start_step": "Synthesis",
+        "end_step": "Harden",
+        "steps": ["Synthesis", "RCX", "sta", "Harden"],
+    }
 
     request = _parse_runtime_request(
         "workspace.create",
@@ -40,6 +45,7 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
             "originVerilog": "/in.v",
             "paramJson": {"Design": "gcd"},
             "rtlList": ["a.v"],
+            "flowConfig": flow_config,
         },
     )
 
@@ -52,6 +58,7 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
     assert request.origin_verilog == "/in.v"
     assert request.parameters == {"Design": "gcd"}
     assert request.rtl_list == ["a.v"]
+    assert request.flow_config == flow_config
 
 
 @pytest.mark.parametrize(

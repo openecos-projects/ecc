@@ -956,8 +956,8 @@ class EccRcxChecklist(EccChecklist):
 
     def spef_corner_name(self,
                          spef_path : str) -> str:
-        design_name = self.workspace.design.name \
-            or self.workspace.design.top_module
+        design_name = self.workspace.design.top_module \
+            or self.workspace.design.name
         name = os.path.basename(spef_path)
         if name.endswith(".spef"):
             name = name[:-5]

@@ -46,6 +46,7 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
         liberty.get("corner"): liberty
         for liberty in sta_data.get("liberty", [])
     }
+    spef_design_name = workspace.design.top_module or workspace.design.name
     items = []
 
     for signoff_group in sta_data.get("signoff", []):
@@ -68,7 +69,7 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
                     "liberty_files": liberty_files,
                     "spef_file": os.path.join(
                         rcx_output_dir,
-                        f"{workspace.design.name}_{rcx_corner_name}_"
+                        f"{spef_design_name}_{rcx_corner_name}_"
                         f"{temperature_token(temperature)}C.spef",
                     ),
                 })
@@ -1006,7 +1007,7 @@ def run_sta(workspace: Workspace,
         ecc_module.run_timing(
             config=workspace.config.get(StepEnum.STA.value, ""),
             output_dir=report_dir,
-            work_dir=step.directory,
+            work_dir=step.data.get(StepEnum.STA.value, ""),
             lib_paths=liberty_files,
             sdc_path=workspace.pdk.sdc,
             spef_path=spef_file,

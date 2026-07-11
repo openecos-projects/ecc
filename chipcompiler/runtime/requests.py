@@ -15,6 +15,7 @@ class WorkspaceCreateRequest:
     origin_verilog: str = ""
     filelist: str = ""
     rtl_list: list[str] | None = None
+    flow_config: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,7 @@ class RequestValidationError(ValueError):
 
 
 FIELD_ALIASES = {
+    "flowConfig": "flow_config",
     "pdkRoot": "pdk_root",
     "pdkJson": "pdk_json",
     "originDef": "origin_def",

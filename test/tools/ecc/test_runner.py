@@ -1,5 +1,8 @@
-from chipcompiler.data import OriginDesign, PDK, Workspace, WorkspaceStep
+import json
+
+from chipcompiler.data import PDK, OriginDesign, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc import runner as ecc_runner
+from chipcompiler.tools.ecc.checklist import EccRcxChecklist
 
 
 class FakeEccModule:
@@ -58,3 +61,36 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
 
     assert module is FakeEccModule.instances[-1]
     assert ("read_def", str(design_def)) in module.calls
+
+
+def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    sta_config = config_dir / "sta.json"
+    rcx_config = config_dir / "rcx.json"
+    sta_config.write_text(json.dumps({
+        "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
+        "signoff": [{"MAX": ["Cworst"]}],
+    }))
+    rcx_config.write_text(json.dumps({"output": str(tmp_path / "RCX_ecc" / "output")}))
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="project_gcd_ws_0002", top_module="gcd"),
+        config={"sta": sta_config, "RCX": rcx_config},
+    )
+
+    items = ecc_runner.collect_sta_signoff_items(workspace)
+
+    assert items[0]["spef_file"] == str(
+        tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef"
+    )
+
+
+def test_rcx_checklist_strips_top_module_from_spef_corner(tmp_path):
+    checklist = EccRcxChecklist.__new__(EccRcxChecklist)
+    checklist.workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="project_gcd_ws_0002", top_module="gcd"),
+    )
+
+    assert checklist.spef_corner_name("/rcx/gcd_Cworst_125C.spef") == "Cworst"
