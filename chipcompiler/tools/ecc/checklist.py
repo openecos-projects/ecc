@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 import glob
 import os
+import re
 
 from chipcompiler.data import (
     Workspace, 
@@ -11,6 +12,18 @@ from chipcompiler.data import (
     CheckState
 )
 from chipcompiler.utility import json_read
+
+STA_REPORT_FILENAMES = (
+    "qor_summary.rpt",
+    "timing_max_in2out.rpt",
+    "timing_max_in2reg.rpt",
+    "timing_max_reg2out.rpt",
+    "timing_max_reg2reg.rpt",
+    "timing_min_in2out.rpt",
+    "timing_min_in2reg.rpt",
+    "timing_min_reg2out.rpt",
+    "timing_min_reg2reg.rpt",
+)
 
 class EccChecklist:
     CHECKLIST_ITEMS = {
@@ -1059,16 +1072,6 @@ class EccStaChecklist(EccChecklist):
             pass
         return str(temperature).replace("-", "m").replace(".", "p")
 
-    def collect_sta_report_paths(self) -> list:
-        output_dir = self.workspace_step.output.get("dir", "")
-        if not output_dir or not os.path.isdir(output_dir):
-            return []
-
-        return sorted(glob.glob(
-            os.path.join(output_dir, "**", "*.rpt.json"),
-            recursive=True,
-        ))
-
     def expected_sta_report_paths(self) -> list:
         sta_config = self.workspace.config.get(StepEnum.STA.value, "")
         sta_data = json_read(sta_config)
@@ -1076,8 +1079,6 @@ class EccStaChecklist(EccChecklist):
             return []
 
         output_dir = self.workspace_step.output.get("dir", "")
-        top_module = self.workspace.design.top_module \
-            or self.workspace.design.name
         liberty_by_corner = {
             liberty.get("corner"): liberty
             for liberty in sta_data.get("liberty", [])
@@ -1094,70 +1095,86 @@ class EccStaChecklist(EccChecklist):
                     corner_name,
                     self.temperature_token(liberty.get("temperature")),
                 )
+                if isinstance(rcx_corner_names, str):
+                    rcx_corner_names = [rcx_corner_names]
                 for rcx_corner_name in rcx_corner_names:
-                    expected_paths.append(os.path.join(
+                    corner_dir = os.path.join(
                         output_dir,
                         report_corner_dir,
                         rcx_corner_name,
-                        f"{top_module}.rpt.json",
-                    ))
+                    )
+                    expected_paths.extend(
+                        os.path.join(corner_dir, report_name)
+                        for report_name in STA_REPORT_FILENAMES
+                    )
 
         return expected_paths
 
-    def load_sta_reports(self) -> list:
-        reports = []
-        for path in self.collect_sta_report_paths():
-            data = json_read(path)
-            if len(data) > 0:
-                reports.append((path, data))
+    def collect_sta_qor_paths(self, expected_paths: list[str]) -> list[str]:
+        qor_paths = [
+            path
+            for path in expected_paths
+            if os.path.basename(path) == "qor_summary.rpt"
+        ]
+        if qor_paths:
+            return qor_paths
 
-        return reports
+        output_dir = self.workspace_step.output.get("dir", "")
+        if not output_dir or not os.path.isdir(output_dir):
+            return []
+        return sorted(glob.glob(
+            os.path.join(output_dir, "**", "qor_summary.rpt"),
+            recursive=True,
+        ))
 
-    def sta_report_has_violation(self,
-                                 data : dict,
-                                 delay_type : str) -> bool:
-        for slack_item in data.get("slack", []):
-            if slack_item.get("delay_type", "") != delay_type:
+    def parse_qor_summary(self, path: str) -> dict | None:
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as file:
+                lines = file.read().splitlines()
+        except OSError:
+            return None
+
+        for line in lines:
+            fields = line.split()
+            if len(fields) < 8 or fields[0] in {"Path", "Summary"}:
                 continue
+            try:
+                frequency_mhz = self.frequency_mhz(fields[-4])
+                if frequency_mhz is None:
+                    continue
+                return {
+                    "frequency_mhz": frequency_mhz,
+                    "hold_tns": float(fields[-2]),
+                    "hold_wns": float(fields[-3]),
+                    "max_tns": float(fields[-6]),
+                    "max_wns": float(fields[-7]),
+                }
+            except ValueError:
+                continue
+        return None
 
-            tns = self.to_float(slack_item.get("TNS"), 0.0)
-            wns = self.to_float(slack_item.get("WNS"), 0.0)
-            if tns is None or wns is None or tns < 0 or wns < 0:
-                return True
-
-        return False
-
-    def sta_report_has_delay_type(self,
-                                  data : dict,
-                                  delay_type : str) -> bool:
-        return any(
-            slack_item.get("delay_type", "") == delay_type
-            for slack_item in data.get("slack", [])
+    def frequency_mhz(self, value: str) -> float | None:
+        match = re.fullmatch(
+            r"([+-]?(?:\d+(?:\.\d*)?|\.\d+))(GHz|MHz|kHz|Hz)", value
         )
-
-    def sta_report_frequency(self,
-                             data : dict,
-                             target_frequency : float) -> float | None:
-        max_wns = None
-        for slack_item in data.get("slack", []):
-            if slack_item.get("delay_type", "") == "max":
-                max_wns = self.to_float(slack_item.get("WNS"))
-                break
-
-        if target_frequency <= 0 or max_wns is None:
+        if match is None:
             return None
+        frequency = float(match.group(1))
+        scale = {"GHz": 1000.0, "MHz": 1.0, "kHz": 0.001, "Hz": 0.000001}
+        return frequency * scale[match.group(2)]
 
-        clk_period = 1000.0 / target_frequency
-        if clk_period - max_wns <= 0:
-            return None
-
-        return 1000.0 / (clk_period - max_wns)
+    def load_sta_qor_summaries(self, qor_paths: list[str]) -> list[dict]:
+        return [
+            summary
+            for path in qor_paths
+            if (summary := self.parse_qor_summary(path)) is not None
+        ]
 
     def check(self) -> bool:
         step = StepEnum.STA.value
-        reports = self.load_sta_reports()
-        report_paths = [path for path, _ in reports]
         expected_paths = self.expected_sta_report_paths()
+        qor_paths = self.collect_sta_qor_paths(expected_paths)
+        summaries = self.load_sta_qor_summaries(qor_paths)
         target_frequency = self.to_float(
             self.workspace.parameters.data.get("Frequency max [MHz]", 0),
             0.0,
@@ -1169,31 +1186,27 @@ class EccStaChecklist(EccChecklist):
                 for path in expected_paths
             )
         else:
-            signoff_success = len(reports) > 0
+            signoff_success = len(qor_paths) > 0 and all(
+                os.path.isfile(path) and os.path.getsize(path) > 0
+                for path in qor_paths
+            )
 
-        setup_success = len(reports) > 0 and all(
-            self.sta_report_has_delay_type(data, "max")
-            and not self.sta_report_has_violation(data, "max")
-            for _, data in reports
+        summaries_complete = len(summaries) == len(qor_paths) and len(qor_paths) > 0
+        setup_success = summaries_complete and all(
+            summary["max_tns"] >= 0 and summary["max_wns"] >= 0
+            for summary in summaries
         )
-        hold_success = len(reports) > 0 and all(
-            self.sta_report_has_delay_type(data, "min")
-            and not self.sta_report_has_violation(data, "min")
-            for _, data in reports
+        hold_success = summaries_complete and all(
+            summary["hold_tns"] >= 0 and summary["hold_wns"] >= 0
+            for summary in summaries
         )
-
-        frequencies = [
-            self.sta_report_frequency(data, target_frequency)
-            for _, data in reports
-        ]
         frequency_success = (
-            len(reports) > 0
+            summaries_complete
             and target_frequency > 0
-            and all(freq is not None and freq >= target_frequency
-                    for freq in frequencies)
+            and all(summary["frequency_mhz"] >= target_frequency for summary in summaries)
         )
 
-        reports_parse_success = len(report_paths) == len(reports) and len(reports) > 0
+        reports_parse_success = summaries_complete
         checks = [
             ("STA", "check STA signoff matrix", signoff_success),
             ("Timing", "check setup timing", setup_success),

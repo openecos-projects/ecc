@@ -9,6 +9,18 @@ from pathlib import Path
 
 from chipcompiler.data import StateEnum, StepEnum, Workspace
 
+STA_REPORT_FILENAMES = (
+    "qor_summary.rpt",
+    "timing_max_in2out.rpt",
+    "timing_max_in2reg.rpt",
+    "timing_max_reg2out.rpt",
+    "timing_max_reg2reg.rpt",
+    "timing_min_in2out.rpt",
+    "timing_min_in2reg.rpt",
+    "timing_min_reg2out.rpt",
+    "timing_min_reg2reg.rpt",
+)
+
 
 @dataclass(frozen=True)
 class SignoffPackageOptions:
@@ -16,6 +28,7 @@ class SignoffPackageOptions:
     archive: bool = True
     include_debug: bool = False
     allow_incomplete: bool = False
+    materialize: bool = True
 
 
 @dataclass
@@ -27,7 +40,19 @@ class SignoffPackageResult:
     summary_path: str | None = None
     copied: list[dict] = field(default_factory=list)
     missing_required: list[str] = field(default_factory=list)
+    missing_optional: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    issues: list["SignoffPackageIssue"] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SignoffPackageIssue:
+    kind: str
+    label: str
+    location: str
+    reason: str
+    required: bool
+    destination: str
 
 
 class SignoffPackageCollector:
@@ -59,18 +84,20 @@ class SignoffPackageCollector:
 
         package_root = Path(options.output_dir) if options.output_dir else workspace_dir / "signoff"
         package_dir = package_root / f"{design}_signoff_package"
-        if package_dir.exists():
-            shutil.rmtree(package_dir)
-        package_dir.mkdir(parents=True, exist_ok=True)
+        if options.materialize:
+            if package_dir.exists():
+                shutil.rmtree(package_dir)
+            package_dir.mkdir(parents=True, exist_ok=True)
 
         copied: list[dict] = []
         missing_required: list[str] = []
+        missing_optional: list[str] = []
         warnings: list[str] = []
+        issues: list[SignoffPackageIssue] = []
 
-        def add_file(role: str,
-                     source: Path | None,
-                     destination: str,
-                     required: bool = False) -> None:
+        def add_file(
+            role: str, source: Path | None, destination: str, required: bool = False
+        ) -> None:
             self._add_file(
                 workspace_dir=workspace_dir,
                 package_dir=package_dir,
@@ -80,6 +107,9 @@ class SignoffPackageCollector:
                 required=required,
                 copied=copied,
                 missing_required=missing_required,
+                missing_optional=missing_optional,
+                issues=issues,
+                materialize=options.materialize,
             )
 
         flow_path = workspace_dir / "home" / "flow.json"
@@ -91,6 +121,16 @@ class SignoffPackageCollector:
         for step_name, state in required_steps.items():
             if state != StateEnum.Success.value:
                 missing_required.append(f"flow step {step_name} is {state or 'missing'}")
+                issues.append(
+                    SignoffPackageIssue(
+                        kind="flow",
+                        label=f"{step_name} flow step",
+                        location=step_name,
+                        reason=f"State is {state or 'missing'}",
+                        required=True,
+                        destination=f"flow step {step_name}",
+                    )
+                )
 
         config_dir = workspace_dir / "config"
         required_configs = {
@@ -101,6 +141,16 @@ class SignoffPackageCollector:
         }
         if not config_dir.is_dir():
             missing_required.append("config directory")
+            issues.append(
+                SignoffPackageIssue(
+                    kind="resource",
+                    label="Config directory",
+                    location="config",
+                    reason="Required directory does not exist",
+                    required=True,
+                    destination="config directory",
+                )
+            )
         else:
             for config_file in sorted(path for path in config_dir.rglob("*") if path.is_file()):
                 rel = config_file.relative_to(config_dir).as_posix()
@@ -113,27 +163,57 @@ class SignoffPackageCollector:
             for config_name in sorted(required_configs):
                 if not (config_dir / config_name).is_file():
                     missing_required.append(f"config/{config_name}")
+                    issues.append(
+                        SignoffPackageIssue(
+                            kind="resource",
+                            label=f"Config {config_name}",
+                            location=f"config/{config_name}",
+                            reason="Required file is missing or empty",
+                            required=True,
+                            destination=f"config/{config_name}",
+                        )
+                    )
 
         db_config = self._read_json(config_dir / "db_default_config.json")
-        origin_verilog = self._find_one(
+        origin_verilog, origin_verilog_reason = self._find_one(
             workspace_dir / "origin",
             preferred_name=f"{design}.v",
             pattern="*.v",
-            missing_label="origin Verilog",
-            missing_required=missing_required,
         )
+        if origin_verilog is None:
+            missing_required.append("origin Verilog")
+            issues.append(
+                SignoffPackageIssue(
+                    kind="resource",
+                    label="Origin Verilog",
+                    location=f"origin/{design}.v",
+                    reason=origin_verilog_reason,
+                    required=True,
+                    destination=f"initial/{design}.v",
+                )
+            )
         origin_sdc = self._path_from_config(
             workspace_dir,
             db_config.get("INPUT", {}).get("sdc_path", ""),
         )
         if origin_sdc is None:
-            origin_sdc = self._find_one(
+            origin_sdc, origin_sdc_reason = self._find_one(
                 workspace_dir / "origin",
                 preferred_name=f"{design}.sdc",
                 pattern="*.sdc",
-                missing_label="origin SDC",
-                missing_required=missing_required,
             )
+            if origin_sdc is None:
+                missing_required.append("origin SDC")
+                issues.append(
+                    SignoffPackageIssue(
+                        kind="resource",
+                        label="Origin SDC",
+                        location=f"origin/{design}.sdc",
+                        reason=origin_sdc_reason,
+                        required=True,
+                        destination=f"initial/{design}.sdc",
+                    )
+                )
 
         add_file(
             role="harden.gds",
@@ -154,23 +234,15 @@ class SignoffPackageCollector:
             required=True,
         )
         add_file(
-            role="harden.lib_check_sources",
-            source=(
-                workspace_dir
-                / "Harden_ecc"
-                / "output"
-                / f"{design}_Harden.lib.check_sources.tsv"
-            ),
-            destination=f"harden/{design}.lib.check_sources.tsv",
-        )
-        add_file(
             role="harden.image",
             source=workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.png",
             destination=f"harden/{design}.png",
         )
 
-        add_file("initial.verilog", origin_verilog, f"initial/{design}.v", required=True)
-        add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
+        if origin_verilog is not None:
+            add_file("initial.verilog", origin_verilog, f"initial/{design}.v", required=True)
+        if origin_sdc is not None:
+            add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
         add_file(
             "initial.parameters",
             workspace_dir / "home" / "parameters.json",
@@ -221,22 +293,22 @@ class SignoffPackageCollector:
                 f"{self._temperature_token(item['temperature'])}/"
                 f"{item['rcx_corner']}"
             )
-            qor_summary = report_dir / "qor_summary.rpt"
-            add_file(
-                role="final.sta_report",
-                source=qor_summary,
-                destination=f"{report_dest}/{qor_summary.name}",
-                required=True,
-            )
+            for report_name in STA_REPORT_FILENAMES:
+                add_file(
+                    role="final.sta_report",
+                    source=report_dir / report_name,
+                    destination=f"{report_dest}/{report_name}",
+                    required=True,
+                )
             for report_path in sorted(report_dir.glob("*.rpt")):
-                if report_path == qor_summary:
+                if report_path.name in STA_REPORT_FILENAMES:
                     continue
                 add_file(
                     role="final.sta_report",
                     source=report_path,
                     destination=f"{report_dest}/{report_path.name}",
                 )
-            item["report"] = f"{report_dest}/{qor_summary.name}"
+            item["report"] = f"{report_dest}/qor_summary.rpt"
 
         rcx_output_dir = workspace_dir / "RCX_ecc" / "output"
         spef_paths = sorted(rcx_output_dir.glob("*.spef")) if rcx_output_dir.is_dir() else []
@@ -265,6 +337,16 @@ class SignoffPackageCollector:
                 )
         else:
             missing_required.append("RCX SPEF files")
+            issues.append(
+                SignoffPackageIssue(
+                    kind="resource",
+                    label="RCX SPEF files",
+                    location="RCX_ecc/output",
+                    reason="No SPEF files were found",
+                    required=True,
+                    destination="RCX SPEF files",
+                )
+            )
 
         add_file("status.flow", flow_path, "final/reports/flow.json", required=True)
         add_file(
@@ -283,6 +365,9 @@ class SignoffPackageCollector:
                     destination_dir=f"final/reports/{step_name}/{kind}",
                     role=f"report.{kind}",
                     copied=copied,
+                    missing_optional=missing_optional,
+                    issues=issues,
+                    materialize=options.materialize,
                 )
 
         if options.include_debug:
@@ -290,23 +375,21 @@ class SignoffPackageCollector:
                 workspace_dir=workspace_dir,
                 package_dir=package_dir,
                 copied=copied,
+                missing_optional=missing_optional,
+                issues=issues,
+                materialize=options.materialize,
             )
 
         checklist_counts = self._checklist_counts(checklist_data)
         if checklist_counts.get("warning", 0) or checklist_counts.get("failed", 0):
             warnings.append(
-                "home checklist contains failed or warning items; "
-                "see final/reports/checklist.json"
+                "home checklist contains failed or warning items; see final/reports/checklist.json"
             )
+        issues.extend(self._checklist_issues(checklist_data))
 
-        metrics = self._read_json(
-            workspace_dir / "drc_ecc" / "analysis" / "drc_metrics.json"
-        )
+        metrics = self._read_json(workspace_dir / "drc_ecc" / "analysis" / "drc_metrics.json")
         ok = len(missing_required) == 0
-        flow_success = all(
-            state == StateEnum.Success.value
-            for state in required_steps.values()
-        )
+        flow_success = all(state == StateEnum.Success.value for state in required_steps.values())
         summary = {
             "schema_version": 1,
             "status": "ok" if ok else "incomplete",
@@ -338,10 +421,10 @@ class SignoffPackageCollector:
             "metrics": metrics,
             "sta_matrix": sta_matrix,
             "missing_required": missing_required,
+            "missing_optional": missing_optional,
             "warnings": warnings,
         }
         summary_path = package_dir / "summary.json"
-        summary_path.write_text(json.dumps(summary, indent=2))
 
         manifest = {
             "schema_version": 1,
@@ -356,28 +439,32 @@ class SignoffPackageCollector:
             },
             "files": copied,
             "missing_required": missing_required,
+            "missing_optional": missing_optional,
             "warnings": warnings,
         }
         manifest_path = package_dir / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, indent=2))
-
-        readme_path = package_dir / "README.md"
-        readme_path.write_text(
-            f"# {design} Signoff Package\n\n"
-            f"- Workspace: {workspace_dir.resolve()}\n"
-            f"- Status: {summary['status']}\n"
-            "- Harden outputs are under `harden/`.\n"
-            "- Final physical resources are under `final/`.\n"
-        )
 
         archive_path = None
-        if options.archive and (ok or options.allow_incomplete):
-            archive_path = str(package_dir.with_suffix(".tar.gz"))
-            archive_file = Path(archive_path)
-            if archive_file.exists():
-                archive_file.unlink()
-            with tarfile.open(archive_file, "w:gz") as archive:
-                archive.add(package_dir, arcname=package_dir.name)
+        if options.materialize:
+            summary_path.write_text(json.dumps(summary, indent=2))
+            manifest_path.write_text(json.dumps(manifest, indent=2))
+
+            readme_path = package_dir / "README.md"
+            readme_path.write_text(
+                f"# {design} Signoff Package\n\n"
+                f"- Workspace: {workspace_dir.resolve()}\n"
+                f"- Status: {summary['status']}\n"
+                "- Harden outputs are under `harden/`.\n"
+                "- Final physical resources are under `final/`.\n"
+            )
+
+            if options.archive and (ok or options.allow_incomplete):
+                archive_path = str(package_dir.with_suffix(".tar.gz"))
+                archive_file = Path(archive_path)
+                if archive_file.exists():
+                    archive_file.unlink()
+                with tarfile.open(archive_file, "w:gz") as archive:
+                    archive.add(package_dir, arcname=package_dir.name)
 
         return SignoffPackageResult(
             ok=ok,
@@ -387,42 +474,78 @@ class SignoffPackageCollector:
             summary_path=str(summary_path),
             copied=copied,
             missing_required=missing_required,
+            missing_optional=missing_optional,
             warnings=warnings,
+            issues=issues,
         )
 
-    def _add_file(self,
-                  workspace_dir: Path,
-                  package_dir: Path,
-                  role: str,
-                  source: Path | None,
-                  destination: str,
-                  required: bool,
-                  copied: list[dict],
-                  missing_required: list[str]) -> None:
+    def _add_file(
+        self,
+        workspace_dir: Path,
+        package_dir: Path,
+        role: str,
+        source: Path | None,
+        destination: str,
+        required: bool,
+        copied: list[dict],
+        missing_required: list[str],
+        missing_optional: list[str],
+        issues: list[SignoffPackageIssue],
+        materialize: bool,
+    ) -> None:
         if source is None or not source.is_file() or source.stat().st_size <= 0:
             if required:
                 missing_required.append(destination)
+            else:
+                missing_optional.append(destination)
+            issues.append(
+                SignoffPackageIssue(
+                    kind="resource",
+                    label=role,
+                    location=self._review_source_path(workspace_dir, source, destination),
+                    reason=(
+                        "Required file is missing or empty"
+                        if required
+                        else "Optional file is missing or empty"
+                    ),
+                    required=required,
+                    destination=destination,
+                )
+            )
             return
 
-        target = package_dir / destination
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-        copied.append({
-            "role": role,
-            "required": required,
-            "source": self._source_path(workspace_dir, source),
-            "destination": destination,
-            "size_bytes": target.stat().st_size,
-            "sha256": self._sha256(target),
-        })
+        if materialize:
+            target = package_dir / destination
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            size_bytes = target.stat().st_size
+            sha256 = self._sha256(target)
+        else:
+            size_bytes = source.stat().st_size
+            sha256 = None
+        copied.append(
+            {
+                "role": role,
+                "required": required,
+                "source": self._source_path(workspace_dir, source),
+                "destination": destination,
+                "size_bytes": size_bytes,
+                "sha256": sha256,
+            }
+        )
 
-    def _copy_tree_files(self,
-                         workspace_dir: Path,
-                         package_dir: Path,
-                         source_dir: Path,
-                         destination_dir: str,
-                         role: str,
-                         copied: list[dict]) -> None:
+    def _copy_tree_files(
+        self,
+        workspace_dir: Path,
+        package_dir: Path,
+        source_dir: Path,
+        destination_dir: str,
+        role: str,
+        copied: list[dict],
+        missing_optional: list[str],
+        issues: list[SignoffPackageIssue],
+        materialize: bool,
+    ) -> None:
         if not source_dir.is_dir():
             return
         for source in sorted(path for path in source_dir.rglob("*") if path.is_file()):
@@ -436,12 +559,20 @@ class SignoffPackageCollector:
                 required=False,
                 copied=copied,
                 missing_required=[],
+                missing_optional=missing_optional,
+                issues=issues,
+                materialize=materialize,
             )
 
-    def _collect_debug_files(self,
-                             workspace_dir: Path,
-                             package_dir: Path,
-                             copied: list[dict]) -> None:
+    def _collect_debug_files(
+        self,
+        workspace_dir: Path,
+        package_dir: Path,
+        copied: list[dict],
+        missing_optional: list[str],
+        issues: list[SignoffPackageIssue],
+        materialize: bool,
+    ) -> None:
         patterns = [
             "*_ecc/feature/*",
             "*_ecc/subflow.json",
@@ -462,6 +593,9 @@ class SignoffPackageCollector:
                     required=False,
                     copied=copied,
                     missing_required=[],
+                    missing_optional=missing_optional,
+                    issues=issues,
+                    materialize=materialize,
                 )
         output_db_dirs = sorted(workspace_dir.glob("*_ecc/output/*_db"))
         output_view_dirs = sorted(workspace_dir.glob("*_ecc/output/*_view"))
@@ -475,6 +609,9 @@ class SignoffPackageCollector:
                 destination_dir=f"debug/{source.relative_to(workspace_dir).as_posix()}",
                 role="debug",
                 copied=copied,
+                missing_optional=missing_optional,
+                issues=issues,
+                materialize=materialize,
             )
 
     def _read_json(self, path: Path) -> dict:
@@ -492,9 +629,7 @@ class SignoffPackageCollector:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    def _path_from_config(self,
-                          workspace_dir: Path,
-                          path_text: str) -> Path | None:
+    def _path_from_config(self, workspace_dir: Path, path_text: str) -> Path | None:
         if not path_text:
             return None
         path = Path(path_text)
@@ -508,23 +643,34 @@ class SignoffPackageCollector:
         except ValueError:
             return str(source)
 
-    def _find_one(self,
-                  directory: Path,
-                  preferred_name: str,
-                  pattern: str,
-                  missing_label: str,
-                  missing_required: list[str]) -> Path | None:
+    def _review_source_path(
+        self,
+        workspace_dir: Path,
+        source: Path | None,
+        fallback: str,
+    ) -> str:
+        if source is None:
+            return fallback
+        try:
+            return source.relative_to(workspace_dir).as_posix()
+        except ValueError:
+            return source.name
+
+    def _find_one(
+        self,
+        directory: Path,
+        preferred_name: str,
+        pattern: str,
+    ) -> tuple[Path | None, str]:
         preferred = directory / preferred_name
         if preferred.is_file():
-            return preferred
+            return preferred, ""
         matches = sorted(directory.glob(pattern)) if directory.is_dir() else []
         if len(matches) == 1:
-            return matches[0]
+            return matches[0], ""
         if len(matches) > 1:
-            missing_required.append(f"{missing_label}: multiple matches")
-            return None
-        missing_required.append(missing_label)
-        return None
+            return None, "Multiple matching files found"
+        return None, "Required file is missing or empty"
 
     def _design_from_outputs(self, workspace_dir: Path) -> str:
         for pattern, suffix in (
@@ -557,6 +703,8 @@ class SignoffPackageCollector:
     def _checklist_counts(self, checklist_data: dict) -> dict:
         counts = {"passed": 0, "warning": 0, "failed": 0}
         for item in checklist_data.get("checklist", []):
+            if not isinstance(item, dict):
+                continue
             state = str(item.get("state", "")).lower()
             if state == "passed":
                 counts["passed"] += 1
@@ -565,6 +713,33 @@ class SignoffPackageCollector:
             elif state == "failed":
                 counts["failed"] += 1
         return counts
+
+    def _checklist_issues(self, checklist_data: dict) -> list[SignoffPackageIssue]:
+        issues = []
+        for item in checklist_data.get("checklist", []):
+            if not isinstance(item, dict):
+                continue
+            state = str(item.get("state", "")).strip()
+            normalized_state = state.lower()
+            if normalized_state not in {"warning", "failed"}:
+                continue
+            scope = " / ".join(
+                str(item.get(key, "")).strip()
+                for key in ("step", "type", "item")
+                if str(item.get(key, "")).strip()
+            )
+            info = str(item.get("info", "")).strip()
+            issues.append(
+                SignoffPackageIssue(
+                    kind="checklist",
+                    label=str(item.get("item", "Checklist item")).strip() or "Checklist item",
+                    location=scope or "home/checklist.json",
+                    reason=f"{state or normalized_state.title()}{f': {info}' if info else ''}",
+                    required=False,
+                    destination="final/reports/checklist.json",
+                )
+            )
+        return issues
 
     def _sta_matrix(self, sta_config: dict) -> list[dict]:
         liberty_by_corner = {
@@ -581,11 +756,13 @@ class SignoffPackageCollector:
                 if isinstance(rcx_corners, str):
                     rcx_corners = [rcx_corners]
                 for rcx_corner in rcx_corners:
-                    matrix.append({
-                        "lib_corner": lib_corner,
-                        "temperature": liberty.get("temperature", ""),
-                        "rcx_corner": rcx_corner,
-                    })
+                    matrix.append(
+                        {
+                            "lib_corner": lib_corner,
+                            "temperature": liberty.get("temperature", ""),
+                            "rcx_corner": rcx_corner,
+                        }
+                    )
         return matrix
 
     def _temperature_token(self, temperature) -> str:

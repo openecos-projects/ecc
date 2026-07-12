@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from chipcompiler.runtime import signoff_export
 from chipcompiler.runtime.requests import WorkspaceExportSignoffRequest
 from chipcompiler.runtime.sessions import WorkspaceSessionRegistry
 from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
@@ -82,6 +83,178 @@ def test_workspace_export_signoff_waits_for_session_mutation_lock(monkeypatch, t
         raise result
     assert result == {"outputPath": str(output_path)}
     assert entered.is_set()
+
+
+def test_inspect_signoff_package_returns_grouped_review_with_actionable_details(
+    monkeypatch,
+):
+    class FakeFlow:
+        def __init__(self, workspace):
+            assert workspace == "workspace"
+
+        def collect_signoff_package(self, options):
+            assert options.archive is False
+            assert options.materialize is False
+            return SimpleNamespace(
+                copied=[
+                    {
+                        "destination": "initial/gcd.v",
+                        "size_bytes": 10,
+                    },
+                    {
+                        "destination": "config/sta.json",
+                        "size_bytes": 20,
+                    },
+                    {
+                        "destination": "final/timing/sta/MAX_125/RCworst/qor_summary.rpt",
+                        "size_bytes": 30,
+                    },
+                ],
+                missing_required=["harden/gcd.gds", "flow step RCX is Failed"],
+                missing_optional=["final/design/gcd.png"],
+                warnings=["home checklist contains failed or warning items"],
+                issues=[
+                    SimpleNamespace(
+                        kind="resource",
+                        label="harden.gds",
+                        location="Harden_ecc/output/gcd_Harden.gds",
+                        reason="Required file is missing or empty",
+                        required=True,
+                        destination="harden/gcd.gds",
+                    ),
+                    SimpleNamespace(
+                        kind="flow",
+                        label="RCX flow step",
+                        location="RCX",
+                        reason="State is Failed",
+                        required=True,
+                        destination="flow step RCX",
+                    ),
+                    SimpleNamespace(
+                        kind="resource",
+                        label="final.design.image",
+                        location="filler_ecc/output/gcd_filler.png",
+                        reason="Optional file is missing or empty",
+                        required=False,
+                        destination="final/design/gcd.png",
+                    ),
+                    SimpleNamespace(
+                        kind="checklist",
+                        label="check setup slack",
+                        location="STA / Timing / check setup slack",
+                        reason="Failed: WNS is negative",
+                        required=False,
+                        destination="final/reports/checklist.json",
+                    ),
+                ],
+            )
+
+    monkeypatch.setattr(signoff_export, "EngineFlow", FakeFlow)
+
+    review = signoff_export.inspect_signoff_package("workspace")
+
+    assert review["status"] == "blocked"
+    assert [group["id"] for group in review["groups"]] == [
+        "initial",
+        "config",
+        "harden",
+        "final_design",
+        "sta",
+        "spef",
+        "reports",
+    ]
+    assert review["groups"][2] == {
+        "id": "harden",
+        "label": "Harden",
+        "status": "blocked",
+        "available": 0,
+        "expected": 1,
+        "summary": "1 required resource missing",
+    }
+    assert review["groups"][3]["status"] == "attention"
+    assert [risk["severity"] for risk in review["risks"]] == [
+        "blocked",
+        "blocked",
+        "warning",
+        "warning",
+    ]
+    harden_risk = next(
+        risk for risk in review["risks"] if risk["title"] == "Harden resources missing"
+    )
+    assert harden_risk["details"] == [
+        {
+            "kind": "resource",
+            "label": "harden.gds",
+            "location": "Harden_ecc/output/gcd_Harden.gds",
+            "reason": "Required file is missing or empty",
+        }
+    ]
+    flow_risk = next(
+        risk for risk in review["risks"] if risk["title"] == "Flow requirements not complete"
+    )
+    assert flow_risk["details"] == [
+        {
+            "kind": "flow",
+            "label": "RCX flow step",
+            "location": "RCX",
+            "reason": "State is Failed",
+        }
+    ]
+    checklist_risk = next(
+        risk for risk in review["risks"] if risk["title"] == "Checklist attention"
+    )
+    assert checklist_risk["details"] == [
+        {
+            "kind": "checklist",
+            "label": "check setup slack",
+            "location": "STA / Timing / check setup slack",
+            "reason": "Failed: WNS is negative",
+        }
+    ]
+    assert all(
+        not detail["location"].startswith("/")
+        for risk in review["risks"]
+        for detail in risk["details"]
+    )
+
+
+def test_workspace_inspect_signoff_waits_for_session_mutation_lock(monkeypatch, tmp_path):
+    workspace = SimpleNamespace(directory=tmp_path / "workspace")
+    sessions = WorkspaceSessionRegistry()
+    session = sessions.open_session(workspace.directory, workspace=workspace)
+    entered = threading.Event()
+    results = queue.Queue()
+
+    def fake_inspect(active_workspace):
+        assert active_workspace is workspace
+        entered.set()
+        return {"status": "ready", "groups": [], "risks": []}
+
+    monkeypatch.setattr(signoff_export, "inspect_signoff_package", fake_inspect)
+    api = WorkspaceRuntimeApi(sessions=sessions)
+    request_class = getattr(
+        __import__("chipcompiler.runtime.requests", fromlist=["WorkspaceInspectSignoffRequest"]),
+        "WorkspaceInspectSignoffRequest",
+    )
+
+    def run_inspection():
+        try:
+            results.put(api.inspect_signoff(request_class(workspace_id=session.workspace_id)))
+        except BaseException as error:  # pragma: no cover - re-raised below
+            results.put(error)
+
+    with session.mutation_lock:
+        worker = threading.Thread(target=run_inspection)
+        worker.start()
+        assert not entered.wait(0.1)
+        assert worker.is_alive()
+
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    result = results.get_nowait()
+    if isinstance(result, BaseException):
+        raise result
+    assert result == {"status": "ready", "groups": [], "risks": []}
 
 
 def test_export_signoff_package_archive_collects_temporarily_and_replaces_atomically(

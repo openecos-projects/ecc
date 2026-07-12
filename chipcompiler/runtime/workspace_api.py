@@ -15,6 +15,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
     WorkspaceIdRequest,
+    WorkspaceInspectSignoffRequest,
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
     WorkspaceSyncConfigRequest,
@@ -56,9 +57,7 @@ class WorkspaceRuntimeApi:
         if not input_filelist:
             rtl_paths = _normalize_rtl_list(request.rtl_list or [])
             if rtl_paths:
-                temp_filelist_dir = tempfile.TemporaryDirectory(
-                    prefix="ecc-workspace-filelist-"
-                )
+                temp_filelist_dir = tempfile.TemporaryDirectory(prefix="ecc-workspace-filelist-")
                 input_filelist = _write_filelist(temp_filelist_dir.name, rtl_paths)
 
         import chipcompiler.data as data_api
@@ -183,6 +182,14 @@ class WorkspaceRuntimeApi:
             return {"outputPath": output_path}
 
         return self._with_session_mutation_lock(request.workspace_id, export)
+
+    def inspect_signoff(self, request: WorkspaceInspectSignoffRequest) -> dict:
+        def inspect(session: WorkspaceSession) -> dict:
+            from chipcompiler.runtime.signoff_export import inspect_signoff_package
+
+            return inspect_signoff_package(session.workspace)
+
+        return self._with_session_mutation_lock(request.workspace_id, inspect)
 
     def close_workspace(self, request: WorkspaceIdRequest) -> dict:
         def close(session: WorkspaceSession) -> dict:

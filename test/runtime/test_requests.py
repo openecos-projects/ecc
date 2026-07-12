@@ -13,6 +13,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
     WorkspaceIdRequest,
+    WorkspaceInspectSignoffRequest,
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
     WorkspaceSyncConfigRequest,
@@ -73,6 +74,11 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
             "workspace.export_signoff",
             {"workspaceId": "ws-1", "outputPath": "/exports/custom.tar.gz"},
             WorkspaceExportSignoffRequest,
+        ),
+        (
+            "workspace.inspect_signoff",
+            {"workspaceId": "ws-1"},
+            WorkspaceInspectSignoffRequest,
         ),
         (
             "workspace.sync_config",
