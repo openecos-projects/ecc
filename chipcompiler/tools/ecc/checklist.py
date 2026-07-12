@@ -997,8 +997,8 @@ class EccRcxChecklist(EccChecklist):
 
     def check_spef_file(self,
                         spef_path : str) -> bool:
-        design_name = self.workspace.design.name \
-            or self.workspace.design.top_module
+        design_name = self.workspace.design.top_module \
+            or self.workspace.design.name
         tokens = ["*SPEF", "*DESIGN", "*NAME_MAP"]
         if design_name:
             tokens.append(f"*DESIGN \"{design_name}\"")

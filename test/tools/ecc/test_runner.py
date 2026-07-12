@@ -94,3 +94,15 @@ def test_rcx_checklist_strips_top_module_from_spef_corner(tmp_path):
     )
 
     assert checklist.spef_corner_name("/rcx/gcd_Cworst_125C.spef") == "Cworst"
+
+
+def test_rcx_checklist_uses_top_module_for_spef_design_token(tmp_path):
+    spef = tmp_path / "gcd_Cworst_125C.spef"
+    spef.write_text('*SPEF "IEEE 1481-1998"\n*DESIGN "gcd"\n*NAME_MAP\n')
+    checklist = EccRcxChecklist.__new__(EccRcxChecklist)
+    checklist.workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="project_gcd_ws_0002", top_module="gcd"),
+    )
+
+    assert checklist.check_spef_file(str(spef)) is True
