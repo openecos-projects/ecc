@@ -15,6 +15,7 @@ class WorkspaceCreateRequest:
     origin_verilog: str = ""
     filelist: str = ""
     rtl_list: list[str] | None = None
+    sdc: str = ""
     flow_config: dict[str, Any] | None = None
 
 

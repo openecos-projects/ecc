@@ -46,6 +46,7 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
             "originVerilog": "/in.v",
             "paramJson": {"Design": "gcd"},
             "rtlList": ["a.v"],
+            "sdc": "/constraints/top.sdc",
             "flowConfig": flow_config,
         },
     )
@@ -59,6 +60,7 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
     assert request.origin_verilog == "/in.v"
     assert request.parameters == {"Design": "gcd"}
     assert request.rtl_list == ["a.v"]
+    assert request.sdc == "/constraints/top.sdc"
     assert request.flow_config == flow_config
 
 

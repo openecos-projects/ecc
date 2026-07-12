@@ -73,6 +73,7 @@ class WorkspaceRuntimeApi:
                 input_filelist=input_filelist,
                 pdk_root=request.pdk_root,
                 pdk_json=pdk_json,
+                sdc=request.sdc,
                 flow_config=request.flow_config,
             )
         finally:
