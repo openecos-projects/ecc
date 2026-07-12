@@ -1134,15 +1134,16 @@ class EccStaChecklist(EccChecklist):
         except OSError:
             return None
 
+        path_group_summaries = []
         for line in lines:
             fields = line.split()
-            if len(fields) < 8 or fields[0] in {"Path", "Summary"}:
+            if len(fields) < 8 or fields[0] == "Path":
                 continue
             try:
                 frequency_mhz = self.frequency_mhz(fields[-4])
                 if frequency_mhz is None:
                     continue
-                return {
+                summary = {
                     "frequency_mhz": frequency_mhz,
                     "hold_tns": float(fields[-2]),
                     "hold_wns": float(fields[-3]),
@@ -1151,6 +1152,20 @@ class EccStaChecklist(EccChecklist):
                 }
             except ValueError:
                 continue
+            if fields[0] == "Summary":
+                return summary
+            path_group_summaries.append(summary)
+
+        if path_group_summaries:
+            return {
+                "frequency_mhz": min(
+                    summary["frequency_mhz"] for summary in path_group_summaries
+                ),
+                "hold_tns": min(summary["hold_tns"] for summary in path_group_summaries),
+                "hold_wns": min(summary["hold_wns"] for summary in path_group_summaries),
+                "max_tns": min(summary["max_tns"] for summary in path_group_summaries),
+                "max_wns": min(summary["max_wns"] for summary in path_group_summaries),
+            }
         return None
 
     def frequency_mhz(self, value: str) -> float | None:

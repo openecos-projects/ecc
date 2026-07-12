@@ -26,17 +26,30 @@ clk                       2.500      0.000       0    100MHz       1.250      0.
 Summary                   2.500      0.000       0    100MHz       1.250      0.000       0
 """
 
+QOR_SUMMARY_WITH_FAILING_SUMMARY = """\
+Path Group                  WNS        TNS     NVP      FREQ      WNS(H)     TNS(H)  NVP(H)
+-------------------------------------------------------------------------------------------
+clk                       2.500      0.000       0    100MHz       1.250      0.000       0
+data                     -0.500     -1.000       1     90MHz      -0.250     -0.500       1
+-------------------------------------------------------------------------------------------
+Summary                  -0.500     -1.000       1     90MHz      -0.250     -0.500       1
+"""
+
 
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
 
 
-def _sta_checker(tmp_path: Path, report_names=STA_REPORT_NAMES) -> EccStaChecklist:
+def _sta_checker(
+    tmp_path: Path,
+    report_names=STA_REPORT_NAMES,
+    qor_summary: str = QOR_SUMMARY,
+) -> EccStaChecklist:
     output_dir = tmp_path / "sta_ecc" / "output"
     report_dir = output_dir / "MAX_125" / "RCworst"
     for report_name in report_names:
-        text = QOR_SUMMARY if report_name == "qor_summary.rpt" else "timing paths\n"
+        text = qor_summary if report_name == "qor_summary.rpt" else "timing paths\n"
         _write(report_dir / report_name, text)
 
     sta_config = tmp_path / "config" / "sta.json"
@@ -84,3 +97,12 @@ def test_sta_checklist_fails_matrix_when_a_path_report_is_missing(tmp_path):
 
     assert checker.check() is False
     assert _item_state(checker, "check STA signoff matrix") == "Failed"
+
+
+def test_sta_checklist_uses_qor_summary_row_for_timing_status(tmp_path):
+    checker = _sta_checker(tmp_path, qor_summary=QOR_SUMMARY_WITH_FAILING_SUMMARY)
+
+    assert checker.check() is False
+    assert _item_state(checker, "check setup timing") == "Failed"
+    assert _item_state(checker, "check hold timing") == "Failed"
+    assert _item_state(checker, "check frequency requirement") == "Failed"
