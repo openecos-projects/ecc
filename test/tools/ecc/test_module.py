@@ -6,10 +6,17 @@ from types import SimpleNamespace
 
 import chipcompiler.utility as chipcompiler_utility
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
+from chipcompiler.tools.ecc import metrics as ecc_metrics
 from chipcompiler.tools.ecc import plot as ecc_plot
 from chipcompiler.tools.ecc import service as ecc_service
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
-from chipcompiler.tools.ecc.metrics import build_metrics_net_opt
+from chipcompiler.tools.ecc.metrics import (
+    build_metrics_cts,
+    build_metrics_drc,
+    build_metrics_net_opt,
+    build_metrics_placement,
+    build_metrics_routing,
+)
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.subflow import EccSubFlow
 
@@ -389,6 +396,503 @@ def test_ecc_metrics_accept_path_feature_paths(tmp_path):
     ]
 
 
+def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    workspace.parameters.data["Max fanout"] = 20
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.NETLIST_OPT.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["db"].write_text(
+        json.dumps(
+            {
+                "Design Layout": {
+                    "die_area": 2259.861,
+                    "die_bounding_width": 47.538,
+                    "die_bounding_height": 47.538,
+                    "die_usage": 0.34,
+                    "core_usage": 0.42,
+                },
+                "Design Statis": {
+                    "num_iopins": 58,
+                    "num_instances": 615,
+                    "num_nets": 361,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_net_opt(workspace, step)
+
+    assert metrics is not None
+    assert step.analysis["qor_metrics"].exists()
+    qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    assert qor_metrics["schema_version"] == 1
+    assert qor_metrics["tool"] == "ecc"
+    assert qor_metrics["step"] == StepEnum.NETLIST_OPT.value
+    assert qor_metrics["design"] == "gcd"
+
+    records = {record["name"]: record for record in qor_metrics["metrics"]}
+    assert records["fanout_max"] == {
+        "name": "fanout_max",
+        "display_name": "Max Fanout",
+        "value": 20,
+        "unit": "count",
+        "dimension": "routability_physical",
+        "polarity": "lower_is_better",
+        "source_file": str(step.analysis["metrics"]),
+        "confidence": "high",
+    }
+    assert records["core_utilization"]["value"] == 0.42
+    assert records["core_utilization"]["polarity"] == "target_range"
+    assert records["die_area"]["unit"] == "um^2"
+
+
+def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    workspace.parameters.data["Max fanout"] = 20
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.NETLIST_OPT.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["db"].write_text(
+        json.dumps(
+            {
+                "Design Layout": {
+                    "die_area": 2259.861,
+                    "die_bounding_width": 47.538,
+                    "die_bounding_height": 47.538,
+                    "die_usage": 0.34,
+                    "core_usage": 0.42,
+                },
+                "Design Statis": {
+                    "num_iopins": 58,
+                    "num_instances": 615,
+                    "num_nets": 361,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_net_opt(workspace, step)
+
+    assert metrics is not None
+    assert step.analysis["qor_summary"].exists()
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    assert summary["schema_version"] == 1
+    assert summary["tool"] == "ecc"
+    assert summary["step"] == StepEnum.NETLIST_OPT.value
+    assert summary["design"] == "gcd"
+    assert summary["status"] == "green"
+    assert summary["metric_count"] == len(qor_metrics["metrics"])
+    assert summary["source_file"] == str(step.analysis["qor_metrics"])
+    assert summary["blocking_issues"] == []
+    assert summary["missing_metrics"] == []
+    assert summary["dimensions"]["routability_physical"]["metric_count"] >= 1
+
+
+def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.DRC.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["step"].write_text(
+        json.dumps({"drc": {"number": 3}}),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_drc(workspace, step)
+
+    assert metrics is not None
+    assert step.analysis["qor_summary"].exists()
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert summary["status"] == "blocked"
+    assert summary["blocking_issues"] == [
+        {
+            "metric": "drc_count",
+            "display_name": "DRC Count",
+            "value": 3,
+            "reason": "DRC violations are present.",
+        }
+    ]
+
+
+def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.PLACEMENT.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["map"].write_text(
+        json.dumps(
+            {
+                "Wirelength": {
+                    "HPWL": 3880214,
+                    "GRWL": 4509000,
+                    "FLUTE": 4562638,
+                },
+                "Congestion": {
+                    "overflow": {
+                        "total": {"union": 13},
+                        "max": {"union": 3},
+                    },
+                    "utilization": {
+                        "rudy": {"max": {"union": 0.004728000145405531}},
+                        "lutrudy": {"max": {"union": 0.005274999886751175}},
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_placement(workspace, step)
+
+    assert metrics.data["HPWL"] == 3880.214
+    assert metrics.data["GRWL"] == 4509
+    assert metrics.data["FLUTE"] == 4562.638
+    assert metrics.data["place_congestion_egr_overflow_total"] == 13
+    assert metrics.data["place_congestion_egr_overflow_max"] == 3
+    assert metrics.data["place_rudy_utilization_max"] == 0.004728000145405531
+    assert metrics.data["place_lutrudy_utilization_max"] == 0.005274999886751175
+
+    records = {
+        record["name"]: record
+        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
+            "metrics"
+        ]
+    }
+    assert records["place_hpwl"]["value"] == 3880.214
+    assert records["place_grwl"]["value"] == 4509
+    assert records["place_congestion_egr_overflow_total"]["value"] == 13
+    assert records["place_lutrudy_utilization_max"]["value"] == 0.005274999886751175
+    hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
+    assert hotspots["schema_version"] == 1
+    assert hotspots["tool"] == "ecc"
+    assert hotspots["step"] == StepEnum.PLACEMENT.value
+    hotspot_records = {record["metric"]: record for record in hotspots["hotspots"]}
+    assert hotspot_records["place_congestion_egr_overflow_total"] == {
+        "kind": "congestion",
+        "severity": "warning",
+        "metric": "place_congestion_egr_overflow_total",
+        "display_name": "Place EGR Overflow Total",
+        "value": 13,
+        "unit": "count",
+        "dimension": "routability_physical",
+        "source_file": str(step.analysis["qor_metrics"]),
+        "description": "Placement EGR overflow is present.",
+    }
+    assert hotspot_records["place_congestion_egr_overflow_max"]["value"] == 3
+
+
+def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.CTS.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["step"].write_text(
+        json.dumps(
+            {
+                "CTS": {
+                    "buffer_area": 8.4,
+                    "buffer_num": 3,
+                    "clock_path_max_buffer": 2,
+                    "clock_path_min_buffer": 2,
+                    "max_clock_wirelength": 97514,
+                    "max_level_of_clock_tree": 2,
+                    "total_clock_wirelength": 261677,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_cts(workspace, step)
+
+    assert metrics.data["max_clock_wirelength"] == 97514
+    assert metrics.data["max_level_of_clock_tree"] == 2
+    records = {
+        record["name"]: record
+        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
+            "metrics"
+        ]
+    }
+    assert records["cts_clock_wirelength_max"]["value"] == 97514
+    assert records["cts_clock_tree_max_level"]["value"] == 2
+
+
+def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.ROUTING.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["step"].write_text(
+        json.dumps(
+            {
+                "route": {
+                    "LA": {
+                        "total_demand": 10431,
+                        "total_overflow": 2,
+                    },
+                    "DR": [
+                        {
+                            "iter": 1,
+                            "total_patch_num": 48,
+                            "total_via_num": 1477,
+                            "total_violation_num": 5,
+                            "total_wire_length": 5200.535,
+                        },
+                        {
+                            "iter": 3,
+                            "total_patch_num": 46,
+                            "total_via_num": 1470,
+                            "total_violation_num": 0,
+                            "total_wire_length": 5198.943,
+                        },
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_routing(workspace, step)
+
+    assert metrics.data["route_la_total_overflow"] == 2
+    assert metrics.data["route_la_total_demand"] == 10431
+    assert metrics.data["route_dr_total_violation_count"] == 0
+    assert metrics.data["route_dr_total_patch_count"] == 46
+    assert metrics.data["route_dr_total_wirelength"] == 5198.943
+    assert metrics.data["route_dr_total_via_count"] == 1470
+
+    records = {
+        record["name"]: record
+        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
+            "metrics"
+        ]
+    }
+    assert records["route_la_total_overflow"]["value"] == 2
+    assert records["route_dr_total_violation_count"]["value"] == 0
+    assert records["route_dr_total_wirelength"]["value"] == 5198.943
+    hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
+    hotspot_records = {record["metric"]: record for record in hotspots["hotspots"]}
+    assert hotspot_records["route_la_total_overflow"] == {
+        "kind": "routing_overflow",
+        "severity": "critical",
+        "metric": "route_la_total_overflow",
+        "display_name": "Route LA Overflow",
+        "value": 2,
+        "unit": "count",
+        "dimension": "routability_physical",
+        "source_file": str(step.analysis["qor_metrics"]),
+        "description": "Route layer assignment overflow is present.",
+    }
+    assert "route_dr_total_violation_count" not in hotspot_records
+
+
+def test_ecc_metrics_qor_summary_lists_missing_supported_route_metrics(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.ROUTING.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["db"].write_text(
+        json.dumps({"Nets": {"wire_len": 5198.943, "num_via": 1470}}),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_routing(workspace, step)
+
+    assert metrics is not None
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert summary["missing_metrics"] == [
+        "route_dr_total_violation_count",
+        "route_dr_total_patch_count",
+        "route_dr_total_wirelength",
+        "route_dr_total_via_count",
+        "route_la_total_overflow",
+        "route_la_total_demand",
+    ]
+
+
+def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.RCX.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    existing_spef = [
+        step.output["dir"] / "gcd_Cbest_125C.spef",
+        step.output["dir"] / "gcd_Cworst_125C.spef",
+    ]
+    missing_spef = step.output["dir"] / "gcd_TYPICAL_25C.spef"
+    for spef_path in existing_spef:
+        spef_path.write_text("*SPEF\n", encoding="utf-8")
+    step.output["spef"] = [*existing_spef, missing_spef]
+    step.output["def"].write_text("def", encoding="utf-8")
+    step.output["gds"].write_text("gds", encoding="utf-8")
+
+    metrics = ecc_metrics.build_metrics_rcx(workspace, step)
+
+    assert metrics.data["rcx_spef_file_count"] == 2
+    assert metrics.data["rcx_expected_corner_count"] == 3
+    assert metrics.data["rcx_missing_corner_count"] == 1
+    assert metrics.data["rcx_output_def_exists"] == 1
+    assert metrics.data["rcx_output_gds_exists"] == 1
+    records = {
+        record["name"]: record
+        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
+            "metrics"
+        ]
+    }
+    assert records["rcx_spef_file_count"]["value"] == 2
+    assert records["rcx_missing_corner_count"]["value"] == 1
+
+
+def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.STA.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+
+    reports = {
+        step.output["dir"] / "MAX_125" / "RCworst" / "gcd.rpt.json": {
+            "summary": [{"delay_type": "max", "freq": "750.0"}],
+            "slack": [
+                {"delay_type": "max", "TNS": "-1.200", "WNS": "-0.200"},
+                {"delay_type": "min", "TNS": "0.000", "WNS": "0.100"},
+            ],
+        },
+        step.output["dir"] / "MIN_m40" / "Cbest" / "gcd.rpt.json": {
+            "summary": [{"delay_type": "max", "freq": "900.0"}],
+            "slack": [
+                {"delay_type": "max", "TNS": "0.000", "WNS": "0.300"},
+                {"delay_type": "min", "TNS": "-0.100", "WNS": "-0.050"},
+            ],
+        },
+    }
+    for report_path, payload in reports.items():
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    metrics = ecc_metrics.build_metrics_sta(workspace, step)
+
+    assert metrics.data["max_WNS"] == -0.2
+    assert metrics.data["max_TNS"] == -1.2
+    assert metrics.data["min_WNS"] == -0.05
+    assert metrics.data["min_TNS"] == -0.1
+    assert metrics.data["Frequency [MHz]"] == 750
+    assert metrics.data["sta_corner_count"] == 2
+    assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
+    assert metrics.data["sta_worst_hold_corner"] == "MIN_m40/Cbest"
+    records = {
+        record["name"]: record
+        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
+            "metrics"
+        ]
+    }
+    assert records["sta_setup_wns"]["value"] == -0.2
+    assert records["sta_hold_wns"]["value"] == -0.05
+    assert records["sta_frequency_mhz"]["value"] == 750
+    assert records["sta_corner_count"]["value"] == 2
+
+
+def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.HARDEN.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.output["gds"].write_text("gds", encoding="utf-8")
+    step.output["lef"].write_text("lef", encoding="utf-8")
+    step.output["lib"].write_text("lib", encoding="utf-8")
+    step.output["image"].write_text("png", encoding="utf-8")
+
+    metrics = ecc_metrics.build_metrics_harden(workspace, step)
+
+    assert metrics.data["harden_gds_exists"] == 1
+    assert metrics.data["harden_lef_exists"] == 1
+    assert metrics.data["harden_lib_exists"] == 1
+    assert metrics.data["harden_preview_exists"] == 1
+    assert metrics.data["harden_lib_check_exists"] == 0
+    assert metrics.data["harden_artifact_missing_count"] == 1
+    records = {
+        record["name"]: record
+        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
+            "metrics"
+        ]
+    }
+    assert records["harden_artifact_missing_count"]["value"] == 1
+    assert records["harden_gds_exists"]["value"] == 1
+
+
 def test_ecc_plot_step_metrics_accepts_path_metrics(tmp_path, monkeypatch):
     workspace = Workspace(
         directory=tmp_path,
@@ -534,6 +1038,9 @@ def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):
     assert step.output["dir"] == expected_output_dir
     assert step.output["view_json"] == expected_view_dir
     assert step.output["view_json_edits"] == expected_view_dir / "edits" / "layout_edits.json"
+    assert step.analysis["qor_metrics"] == expected_step_dir / "analysis" / "qor_metrics.json"
+    assert step.analysis["qor_summary"] == expected_step_dir / "analysis" / "qor_summary.json"
+    assert step.analysis["qor_hotspots"] == expected_step_dir / "analysis" / "qor_hotspots.json"
     assert str(step.output["view_json"]) == (
         f"{expected_step_dir}/output/gcd_{StepEnum.PLACEMENT.value}_view"
     )
@@ -628,6 +1135,9 @@ def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
     }
     assert ecc_service.get_step_info(workspace, step, "analysis") == {
         "metrics": str(step.analysis["metrics"]),
+        "qor_metrics": str(step.analysis["qor_metrics"]),
+        "qor_summary": str(step.analysis["qor_summary"]),
+        "qor_hotspots": str(step.analysis["qor_hotspots"]),
         "statis": str(step.analysis["statis_csv"]),
         "data summary": str(step.feature["db"]),
         "step feature": str(step.feature["step"]),

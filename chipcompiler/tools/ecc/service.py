@@ -101,6 +101,9 @@ def build_analysis(workspace: Workspace,
                    step: WorkspaceStep) -> dict:          
     info = {
         "metrics" : step.analysis.get('metrics', ""),
+        "qor_metrics" : step.analysis.get('qor_metrics', ""),
+        "qor_summary" : step.analysis.get('qor_summary', ""),
+        "qor_hotspots" : step.analysis.get('qor_hotspots', ""),
         "statis" : step.analysis.get('statis_csv', ""),
         "data summary" : step.feature.get('db', ""),
         "step feature" : step.feature.get('step', ""),
