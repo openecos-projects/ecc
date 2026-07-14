@@ -78,6 +78,12 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], runtime_env))
     monkeypatch.setattr(runner, "check_slang_plugin", fake_check_slang_plugin)
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    sta_calls = []
+    monkeypatch.setattr(
+        runner,
+        "_run_ecc_synthesis_sta",
+        lambda **kwargs: sta_calls.append(kwargs) or True,
+    )
 
     result = runner.run_step(workspace=workspace, step=step)
 
@@ -90,6 +96,42 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
     assert run_calls[0]["cmd"] == ["yosys", "yosys_synthesis.tcl"]
     assert run_calls[0]["cwd"] == str(step.script["dir"])
     assert run_calls[0]["env"] == runtime_env
+    assert sta_calls == [{"workspace": workspace, "step": step, "ecc_module": None}]
+    assert ("run yosys", StateEnum.Success) in updates
+    assert ("analysis", StateEnum.Success) in updates
+
+
+def test_run_step_keeps_synthesis_success_when_sta_report_fails(tmp_path, monkeypatch):
+    workspace, step, output_file, _ = _build_workspace_and_step(tmp_path)
+    updates = []
+
+    class FakeSubFlow:
+        def __init__(self, workspace, workspace_step):
+            pass
+
+        def update_step(self, step_name, state, runtime="", memory=0, info=None):
+            updates.append((step_name, state))
+
+    class FakeChecklist:
+        def __init__(self, workspace, workspace_step):
+            pass
+
+        def check(self):
+            return None
+
+    def fake_run(cmd, cwd, env, stdout, stderr):
+        output_file.write_text("module top(); endmodule\n")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(runner, "YosysSubFlow", FakeSubFlow)
+    monkeypatch.setattr(runner, "YosysChecklist", FakeChecklist)
+    monkeypatch.setattr(runner, "build_step_metrics", lambda workspace, step: None)
+    monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], {"PATH": "/tmp"}))
+    monkeypatch.setattr(runner, "check_slang_plugin", lambda *args, **kwargs: True)
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner, "_run_ecc_synthesis_sta", lambda **kwargs: False)
+
+    assert runner.run_step(workspace=workspace, step=step) is True
     assert ("run yosys", StateEnum.Success) in updates
     assert ("analysis", StateEnum.Success) in updates
 

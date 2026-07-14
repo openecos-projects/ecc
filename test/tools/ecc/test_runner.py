@@ -1,6 +1,6 @@
 import json
 
-from chipcompiler.data import PDK, OriginDesign, Workspace, WorkspaceStep
+from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.checklist import EccRcxChecklist
 
@@ -27,6 +27,38 @@ class FakeEccModule:
 
     def read_def(self, path):
         self.calls.append(("read_def", path))
+
+
+class FakeSynthesisStaModule:
+    def __init__(self):
+        self.calls = []
+
+    def init_config(self, **kwargs):
+        self.calls.append(("init_config", kwargs))
+
+    def init_techlef(self, path):
+        self.calls.append(("init_techlef", path))
+
+    def init_lefs(self, paths):
+        self.calls.append(("init_lefs", paths))
+
+    def read_verilog(self, **kwargs):
+        self.calls.append(("read_verilog", kwargs))
+
+    def run_timing(self, **kwargs):
+        self.calls.append(("run_timing", kwargs))
+
+
+class FakeLogger:
+    def __init__(self):
+        self.infos = []
+        self.warnings = []
+
+    def info(self, message, *args):
+        self.infos.append((message, args))
+
+    def warning(self, message, *args):
+        self.warnings.append((message, args))
 
 
 def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monkeypatch):
@@ -61,6 +93,93 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
 
     assert module is FakeEccModule.instances[-1]
     assert ("read_def", str(design_def)) in module.calls
+
+
+def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report(
+        tmp_path, monkeypatch):
+    netlist = tmp_path / "output" / "gcd.v"
+    techlef = tmp_path / "pdk" / "tech.lef"
+    lef = tmp_path / "pdk" / "std.lef"
+    liberty = tmp_path / "pdk" / "std.lib"
+    sdc = tmp_path / "gcd.sdc"
+    for path in (netlist, techlef, lef, liberty, sdc):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+
+    logger = FakeLogger()
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(tech=techlef, lefs=[lef], libs=[liberty], sdc=sdc),
+        config={
+            "flow": tmp_path / "config" / "flow.json",
+            "db": tmp_path / "config" / "db.json",
+            StepEnum.STA.value: tmp_path / "config" / "sta.json",
+        },
+        logger=logger,
+    )
+    step = WorkspaceStep(
+        output={"verilog": netlist},
+        data={"dir": tmp_path / "Synthesis_yosys" / "data"},
+        feature={"dir": tmp_path / "Synthesis_yosys" / "feature"},
+        report={"dir": tmp_path / "Synthesis_yosys" / "report"},
+    )
+    module = FakeSynthesisStaModule()
+    monkeypatch.setattr(ecc_runner, "ECCToolsModule", lambda: module)
+
+    assert ecc_runner.run_sta_without_spef(workspace, step) is True
+
+    assert module.calls == [
+        (
+            "init_config",
+            {
+                "flow_config": workspace.config["flow"],
+                "db_config": workspace.config["db"],
+                "output_dir": step.data["dir"],
+                "feature_dir": step.feature["dir"],
+            },
+        ),
+        ("init_techlef", techlef),
+        ("init_lefs", [lef]),
+        ("read_verilog", {"verilog": netlist, "top_module": "gcd"}),
+        (
+            "run_timing",
+            {
+                "config": workspace.config[StepEnum.STA.value],
+                "work_dir": step.data["dir"] / "sta",
+                "output_dir": step.report["dir"],
+                "lib_paths": [liberty],
+                "sdc_path": sdc,
+            },
+        ),
+    ]
+    assert (step.data["dir"] / "sta").is_dir()
+    assert step.report["dir"].is_dir()
+    assert logger.warnings == []
+
+
+def test_run_sta_without_spef_warns_when_sdc_is_missing(tmp_path):
+    netlist = tmp_path / "output" / "gcd.v"
+    liberty = tmp_path / "pdk" / "std.lib"
+    for path in (netlist, liberty):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+
+    logger = FakeLogger()
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(libs=[liberty], sdc=tmp_path / "missing.sdc"),
+        logger=logger,
+    )
+    step = WorkspaceStep(
+        output={"verilog": netlist},
+        data={"dir": tmp_path / "Synthesis_yosys" / "data"},
+        report={"dir": tmp_path / "Synthesis_yosys" / "report"},
+    )
+
+    assert ecc_runner.run_sta_without_spef(workspace, step) is False
+    assert logger.warnings[0][0] == "Post-synthesis STA failed; synthesis result is kept: %s"
 
 
 def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):

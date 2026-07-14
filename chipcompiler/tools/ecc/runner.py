@@ -203,6 +203,81 @@ def get_eda_instance(workspace: Workspace,
     
     return ecc_module
 
+
+def run_sta_without_spef(workspace: Workspace,
+                         step: WorkspaceStep,
+                         ecc_module: ECCToolsModule | None = None) -> bool:
+    """Generate a netlist-level STA report after synthesis.
+
+    STA is supplemental to synthesis, so callers can retain a successful
+    synthesis result when this function returns ``False``.
+    """
+    try:
+        netlist_path = step.output.get("verilog", "")
+        liberty_paths = workspace.pdk.libs
+        sdc_path = workspace.pdk.sdc
+        data_dir = step.data.get("dir", "")
+        report_dir = step.report.get("dir", "")
+
+        if not netlist_path or not os.path.isfile(netlist_path):
+            raise FileNotFoundError(f"synthesis netlist does not exist: {netlist_path}")
+
+        missing_liberty_paths = [
+            liberty_path for liberty_path in liberty_paths
+            if not os.path.isfile(liberty_path)
+        ]
+        if not liberty_paths or missing_liberty_paths:
+            raise FileNotFoundError(
+                "STA liberty files are missing: "
+                f"{missing_liberty_paths or liberty_paths}"
+            )
+
+        if not sdc_path or not os.path.isfile(sdc_path):
+            raise FileNotFoundError(f"STA SDC does not exist: {sdc_path}")
+        if not data_dir or not report_dir:
+            raise ValueError("synthesis STA data or report directory is not configured")
+
+        work_dir = Path(data_dir) / "sta"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        report_dir = Path(report_dir)
+        report_dir.mkdir(parents=True, exist_ok=True)
+
+        if ecc_module is None:
+            ecc_module = ECCToolsModule()
+            ecc_module.init_config(
+                flow_config=workspace.config.get("flow", ""),
+                db_config=workspace.config.get("db", ""),
+                output_dir=step.data.get("dir", ""),
+                feature_dir=step.feature.get("dir", ""),
+            )
+        else:
+            ecc_module.update_step_paths(
+                output_dir=step.data.get("dir", ""),
+                feature_dir=step.feature.get("dir", ""),
+            )
+
+        ecc_module.init_techlef(workspace.pdk.tech)
+        ecc_module.init_lefs(workspace.pdk.lefs)
+        ecc_module.read_verilog(
+            verilog=netlist_path,
+            top_module=workspace.design.top_module,
+        )
+        ecc_module.run_timing(
+            config=workspace.config.get(StepEnum.STA.value, ""),
+            work_dir=work_dir,
+            output_dir=report_dir,
+            lib_paths=liberty_paths,
+            sdc_path=sdc_path,
+        )
+    except Exception as exc:
+        workspace.logger.warning(
+            "Post-synthesis STA failed; synthesis result is kept: %s", exc
+        )
+        return False
+
+    workspace.logger.info("Post-synthesis STA report saved to %s", report_dir)
+    return True
+
 def save_data(workspace: Workspace,
               step: WorkspaceStep,
               ecc_module : ECCToolsModule,

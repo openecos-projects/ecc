@@ -52,6 +52,25 @@ def _write_fixed_netlist(src_path: str, dst_path: str) -> bool:
     return True
 
 
+def _run_ecc_synthesis_sta(workspace: Workspace,
+                           step: WorkspaceStep,
+                           ecc_module=None) -> bool:
+    """Run optional ECC STA without making ECC a Yosys import dependency."""
+    try:
+        from chipcompiler.tools.ecc.runner import run_sta_without_spef
+
+        return run_sta_without_spef(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+        )
+    except Exception as exc:
+        workspace.logger.warning(
+            "Post-synthesis STA is unavailable; synthesis result is kept: %s", exc
+        )
+        return False
+
+
 def run_step(workspace: Workspace,
              step: WorkspaceStep,
              ecc_module=None) -> bool:
@@ -64,7 +83,7 @@ def run_step(workspace: Workspace,
     Args:
         workspace: The workspace containing design info
         step: The step workspace with paths and config
-        ecc_module: Not used for yosys (kept for API compatibility)
+        ecc_module: Optional ECC instance used for the post-synthesis STA report
 
     Returns:
         True if synthesis succeeded, False otherwise
@@ -124,6 +143,12 @@ def run_step(workspace: Workspace,
             fixed_netlist = step.output.get("fixed_verilog", "")
             if fixed_netlist:
                 _write_fixed_netlist(step.output["verilog"], fixed_netlist)
+
+            _run_ecc_synthesis_sta(
+                workspace=workspace,
+                step=step,
+                ecc_module=ecc_module,
+            )
             
             build_step_metrics(workspace=workspace, step=step)
             
