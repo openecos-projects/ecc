@@ -274,6 +274,10 @@ class ECCToolsModule:
         """
         return self.ecc.view_json_apply_edits(edits_path=path_text(edits_path), compress=compress)
 
+    def geometry_snapshot_save(self, output_dir: PathArg):
+        """Export the current in-memory IDB geometry for GUI rendering."""
+        return self.ecc.geometry_snapshot_save(output_dir=path_text(output_dir))
+
     def save_data(self, path: PathArg):
         """save ECC data"""
         return self.ecc.save_data(path=path_text(path))

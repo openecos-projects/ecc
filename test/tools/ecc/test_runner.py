@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from chipcompiler.data import (
     PDK,
@@ -12,6 +13,7 @@ from chipcompiler.data import (
     StepInput,
     Workspace,
 )
+from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.checklist import EccRcxChecklist
@@ -101,6 +103,44 @@ class FakeCtsModule:
     def feature_cts_timing(self):
         self.calls.append(("feature_cts_timing", {}))
         return self.timing_quality
+
+
+class SnapshotSaveEccModule:
+    def __init__(self, write_snapshot: bool):
+        self.write_snapshot = write_snapshot
+        self.geometry_output = None
+
+    def def_save(self, **_kwargs):
+        return True
+
+    def verilog_save(self, **_kwargs):
+        return True
+
+    def gds_save(self, **_kwargs):
+        return True
+
+    def save_data(self, **_kwargs):
+        return True
+
+    def geometry_snapshot_save(self, output_dir):
+        self.geometry_output = output_dir
+        if not self.write_snapshot:
+            return False
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        (Path(output_dir) / "geometry.manifest").write_text("schema=ecc.geometry.v1\n")
+        return True
+
+    def view_json_save(self, **_kwargs):
+        return True
+
+    def view_json_apply_edits(self, **_kwargs):
+        return True
+
+    def feature_sammry(self, **_kwargs):
+        return True
+
+    def report_summary(self, **_kwargs):
+        return True
 
 
 def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monkeypatch):
@@ -414,3 +454,46 @@ def test_rcx_checklist_uses_top_module_for_spef_design_token(tmp_path):
     )
 
     assert checklist.check_spef_file(str(spef)) is True
+
+
+def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    step = build_step(workspace, StepEnum.ROUTING.value, None, None)
+    module = SnapshotSaveEccModule(write_snapshot=True)
+
+    assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
+    assert module.geometry_output == step.output.geometry
+    assert step.output.geometry_manifest is not None
+    assert step.output.geometry_manifest.is_file()
+
+
+def test_save_data_fails_when_geometry_snapshot_cannot_be_written(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    step = build_step(workspace, StepEnum.ROUTING.value, None, None)
+
+    assert (
+        ecc_runner.save_data(
+            workspace,
+            step,
+            SnapshotSaveEccModule(write_snapshot=False),
+            feature_step=False,
+        )
+        is False
+    )
+
+
+def test_engine_flow_requires_geometry_manifest_for_physical_steps(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    step = build_step(workspace, StepEnum.ROUTING.value, None, None)
+    build_step_space(step)
+    for output_path in (step.output.def_, step.output.verilog, step.output.gds):
+        assert output_path is not None
+        output_path.write_text("", encoding="utf-8")
+    assert step.output.geometry_manifest is not None
+    step.output.geometry_manifest.parent.mkdir(parents=True)
+    step.output.geometry_manifest.write_text("schema=ecc.geometry.v1\n", encoding="utf-8")
+
+    assert EngineFlow(workspace).check_step_result(step) is True
+
+    step.output.geometry_manifest.unlink()
+    assert EngineFlow(workspace).check_step_result(step) is False

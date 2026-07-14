@@ -51,6 +51,8 @@ class YosysOutput(OutputPaths):
 @dataclass
 class EccOutput(OutputPaths):
     gds: Path | None = None
+    geometry: Path | None = None
+    geometry_manifest: Path | None = None
     view_json: Path | None = None
     view_json_edits: Path | None = None
     lef: Path | None = None

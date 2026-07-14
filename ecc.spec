@@ -229,6 +229,7 @@ binaries.extend(klayout_binaries)
 binaries.extend(dreamplace_binaries)
 binaries.extend(torch_binaries)
 binaries.extend(collect_platform_runtime_libs())
+binaries = filter_collected_payloads(binaries)
 
 hiddenimports = []
 hiddenimports.extend(HIDDENIMPORTS)
@@ -238,6 +239,8 @@ hiddenimports.extend(klayout_hiddenimports)
 hiddenimports.extend(dreamplace_hiddenimports)
 hiddenimports.extend(torch_hiddenimports)
 hiddenimports = filter_hiddenimports(hiddenimports)
+
+datas = filter_collected_payloads(datas)
 
 a = Analysis(
     [str(ECC_DIR / "packaging" / "run_ecc.py")],
@@ -249,9 +252,6 @@ a = Analysis(
     excludes=EXCLUDES,
     noarchive=False,
 )
-
-a.datas = filter_collected_payloads(a.datas)
-a.binaries = filter_collected_payloads(a.binaries)
 
 pyz = PYZ(a.pure, a.zipped_data)
 

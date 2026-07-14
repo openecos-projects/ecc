@@ -18,6 +18,24 @@ from chipcompiler.utility.log import redirect_stdio_to_file
 
 logger = logging.getLogger(__name__)
 
+_GEOMETRY_SNAPSHOT_STEPS = frozenset(
+    {
+        StepEnum.FLOORPLAN.value,
+        StepEnum.NETLIST_OPT.value,
+        StepEnum.PLACEMENT.value,
+        StepEnum.CTS.value,
+        StepEnum.PNP.value,
+        StepEnum.TIMING_OPT.value,
+        StepEnum.TIMING_OPT_DRV.value,
+        StepEnum.TIMING_OPT_HOLD.value,
+        StepEnum.TIMING_OPT_SETUP.value,
+        StepEnum.LEGALIZATION.value,
+        StepEnum.ROUTING.value,
+        StepEnum.DRC.value,
+        StepEnum.FILLER.value,
+    }
+)
+
 
 def get_process_rss_mb(pid: int) -> float:
     peak_memory = 0
@@ -221,6 +239,9 @@ class EngineFlow:
                     and os.path.exists(gds or "")
                 ):
                     success = True
+        if success and workspace_step.name in _GEOMETRY_SNAPSHOT_STEPS:
+            geometry_manifest = ecc_output.geometry_manifest if ecc_output else None
+            return geometry_manifest is not None and geometry_manifest.is_file()
         return success
 
     def collect_signoff_package(

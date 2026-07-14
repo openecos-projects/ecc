@@ -230,6 +230,17 @@ def test_view_json_apply_edits_passes_compress_option():
     ]
 
 
+def test_geometry_snapshot_save_passes_output_directory():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    assert module.geometry_snapshot_save(Path("/tmp/geometry")) is True
+
+    assert module.ecc.calls == [
+        ("geometry_snapshot_save", (), {"output_dir": "/tmp/geometry"}),
+    ]
+
+
 def test_ecc_binding_wrappers_stringify_path_arguments(tmp_path):
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()

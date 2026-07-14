@@ -17,6 +17,24 @@ from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.utility import json_read
 
+_GEOMETRY_SNAPSHOT_STEPS = frozenset(
+    {
+        StepEnum.FLOORPLAN.value,
+        StepEnum.NETLIST_OPT.value,
+        StepEnum.PLACEMENT.value,
+        StepEnum.CTS.value,
+        StepEnum.PNP.value,
+        StepEnum.TIMING_OPT.value,
+        StepEnum.TIMING_OPT_DRV.value,
+        StepEnum.TIMING_OPT_HOLD.value,
+        StepEnum.TIMING_OPT_SETUP.value,
+        StepEnum.LEGALIZATION.value,
+        StepEnum.ROUTING.value,
+        StepEnum.DRC.value,
+        StepEnum.FILLER.value,
+    }
+)
+
 
 def temperature_token(temperature) -> str:
     try:
@@ -349,6 +367,19 @@ def save_data(
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
     ecc_module.gds_save(output_path=step.output.gds or "")
     ecc_module.save_data(path=step.output.db or "")
+    if step.name in _GEOMETRY_SNAPSHOT_STEPS:
+        geometry_dir = step.output.geometry or ""
+        geometry_manifest = step.output.geometry_manifest
+        if not ecc_module.geometry_snapshot_save(output_dir=geometry_dir):
+            workspace.logger.error("Failed to write geometry snapshot for %s", step.name)
+            return False
+        if geometry_manifest is None or not geometry_manifest.is_file():
+            workspace.logger.error(
+                "Geometry snapshot manifest is missing for %s: %s",
+                step.name,
+                geometry_manifest,
+            )
+            return False
     # ecc_module.json_save(path=step.output.json or "")
     ecc_module.view_json_save(
         output_dir=step.output.view_json or "", json_format="compact", compress=True
