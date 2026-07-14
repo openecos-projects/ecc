@@ -34,9 +34,12 @@ def collect_package_extension_binaries(search_locations, pattern, destination):
         package_dir = Path(location)
         for candidate_dir in (package_dir, package_dir.parent / "bin"):
             for extension in candidate_dir.glob(pattern):
+                entry = (str(extension), destination)
+                if payload_is_excluded(entry):
+                    continue
                 if extension.name in collected_names:
                     continue
-                binaries.append((str(extension), destination))
+                binaries.append(entry)
                 collected_names.add(extension.name)
     return binaries
 
