@@ -13,6 +13,7 @@ from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.metrics import (
     build_metrics_cts,
     build_metrics_drc,
+    build_metrics_legalization,
     build_metrics_net_opt,
     build_metrics_placement,
     build_metrics_routing,
@@ -414,6 +415,7 @@ def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
             {
                 "Design Layout": {
                     "die_area": 2259.861,
+                    "core_area": 1778.432,
                     "die_bounding_width": 47.538,
                     "die_bounding_height": 47.538,
                     "die_usage": 0.34,
@@ -452,7 +454,38 @@ def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
     }
     assert records["core_utilization"]["value"] == 0.42
     assert records["core_utilization"]["polarity"] == "target_range"
+    assert records["core_area"]["value"] == 1778.432
     assert records["die_area"]["unit"] == "um^2"
+
+
+def test_ecc_metrics_uses_actual_db_max_fanout_before_configured_target(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    workspace.parameters.data["Max fanout"] = 20
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.NETLIST_OPT.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["db"].write_text(
+        json.dumps({"Pins": {"max_fanout": 37}}),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_net_opt(workspace, step)
+
+    assert metrics.data["Max fanout"] == 37
+    records = {
+        record["name"]: record
+        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
+            "metrics"
+        ]
+    }
+    assert records["fanout_max"]["value"] == 37
 
 
 def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
@@ -537,6 +570,47 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
             "reason": "DRC violations are present.",
         }
     ]
+
+
+def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    drc_step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.DRC.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(drc_step)
+    drc_step.feature["step"].write_text(json.dumps({"drc": {}}), encoding="utf-8")
+
+    drc_metrics = build_metrics_drc(workspace, drc_step)
+
+    assert "drc_num" not in drc_metrics.data
+    drc_summary = json.loads(drc_step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert drc_summary["missing_metrics"] == ["drc_count"]
+
+    legal_step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.LEGALIZATION.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(legal_step)
+    legal_step.feature["step"].write_text(
+        json.dumps({"legalization": {}}),
+        encoding="utf-8",
+    )
+
+    legal_metrics = build_metrics_legalization(workspace, legal_step)
+
+    assert "total_movement" not in legal_metrics.data
+    legal_summary = json.loads(
+        legal_step.analysis["qor_summary"].read_text(encoding="utf-8")
+    )
+    assert legal_summary["missing_metrics"] == ["legal_total_movement"]
 
 
 def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
@@ -817,19 +891,21 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     build_step_space(step)
 
     reports = {
-        step.output["dir"] / "MAX_125" / "RCworst" / "gcd.rpt.json": {
-            "summary": [{"delay_type": "max", "freq": "750.0"}],
-            "slack": [
-                {"delay_type": "max", "TNS": "-1.200", "WNS": "-0.200"},
-                {"delay_type": "min", "TNS": "0.000", "WNS": "0.100"},
-            ],
+        step.output["dir"] / "MAX_125" / "RCworst" / "qor_summary.json": {
+            "path_groups": [],
+            "summary": {
+                "setup": {"wns": -0.2, "tns": -1.2, "nvp": 3, "frequency_mhz": 750},
+                "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
+            },
+            "design_statistics": {},
         },
-        step.output["dir"] / "MIN_m40" / "Cbest" / "gcd.rpt.json": {
-            "summary": [{"delay_type": "max", "freq": "900.0"}],
-            "slack": [
-                {"delay_type": "max", "TNS": "0.000", "WNS": "0.300"},
-                {"delay_type": "min", "TNS": "-0.100", "WNS": "-0.050"},
-            ],
+        step.output["dir"] / "MIN_m40" / "Cbest" / "qor_summary.json": {
+            "path_groups": [],
+            "summary": {
+                "setup": {"wns": 0.3, "tns": 0.0, "nvp": 0, "frequency_mhz": 900},
+                "hold": {"wns": -0.05, "tns": -0.1, "nvp": 1},
+            },
+            "design_statistics": {},
         },
     }
     for report_path, payload in reports.items():
@@ -844,8 +920,13 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert metrics.data["min_TNS"] == -0.1
     assert metrics.data["Frequency [MHz]"] == 750
     assert metrics.data["sta_corner_count"] == 2
+    assert metrics.data["sta_expected_corner_count"] == 2
+    assert metrics.data["sta_missing_corner_count"] == 0
+    assert metrics.data["setup_violation_count"] == 3
+    assert metrics.data["hold_violation_count"] == 1
     assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
     assert metrics.data["sta_worst_hold_corner"] == "MIN_m40/Cbest"
+    assert step.analysis["metrics"].name == "sta_metrics.json"
     records = {
         record["name"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
@@ -856,6 +937,97 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert records["sta_hold_wns"]["value"] == -0.05
     assert records["sta_frequency_mhz"]["value"] == 750
     assert records["sta_corner_count"]["value"] == 2
+    assert records["sta_setup_violation_count"]["value"] == 3
+    assert records["sta_hold_violation_count"]["value"] == 1
+    assert records["sta_setup_wns"]["corner"] == "MAX_125/RCworst"
+    assert records["sta_hold_wns"]["corner"] == "MIN_m40/Cbest"
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert summary["status"] == "blocked"
+    assert all(not gate["passed"] for gate in summary["hard_gates"][:6])
+
+
+def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.STA.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    sta_config = tmp_path / "config" / "sta.json"
+    sta_config.parent.mkdir(parents=True, exist_ok=True)
+    sta_config.write_text(
+        json.dumps({
+            "liberty": [
+                {"corner": "MAX", "temperature": 125},
+                {"corner": "MIN", "temperature": -40},
+            ],
+            "signoff": [{"MAX": ["RCworst"], "MIN": ["Cbest"]}],
+        }),
+        encoding="utf-8",
+    )
+    workspace.config[StepEnum.STA.value] = sta_config
+    report_path = step.output["dir"] / "MAX_125" / "RCworst" / "qor_summary.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps({
+            "path_groups": [],
+            "summary": {
+                "setup": {"wns": 0.1, "tns": 0.0, "nvp": 0, "frequency_mhz": 750},
+                "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
+            },
+            "design_statistics": {},
+        }),
+        encoding="utf-8",
+    )
+
+    metrics = ecc_metrics.build_metrics_sta(workspace, step)
+
+    assert metrics.data["sta_corner_count"] == 1
+    assert metrics.data["sta_expected_corner_count"] == 2
+    assert metrics.data["sta_missing_corner_count"] == 1
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    coverage_gate = next(
+        gate for gate in summary["hard_gates"]
+        if gate["id"] == "sta_corner_coverage_complete"
+    )
+    assert coverage_gate["passed"] is False
+    assert summary["status"] == "blocked"
+
+
+def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.STA.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    legacy_path = step.output["dir"] / "MAX_125" / "RCworst" / "gcd.rpt.json"
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_path.write_text(
+        json.dumps({
+            "summary": [{"delay_type": "max", "freq": 750}],
+            "slack": [{"delay_type": "max", "WNS": 0.1, "TNS": 0.0}],
+        }),
+        encoding="utf-8",
+    )
+
+    metrics = ecc_metrics.build_metrics_sta(workspace, step)
+
+    assert "max_WNS" not in metrics.data
+    assert metrics.data["sta_corner_count"] == 0
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert "sta_setup_wns" in summary["missing_metrics"]
+    assert summary["status"] == "blocked"
 
 
 def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):

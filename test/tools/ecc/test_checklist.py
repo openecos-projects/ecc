@@ -18,39 +18,56 @@ STA_REPORT_NAMES = (
     "timing_min_reg2reg.rpt",
 )
 
-QOR_SUMMARY = """\
-Path Group                  WNS        TNS     NVP      FREQ      WNS(H)     TNS(H)  NVP(H)
--------------------------------------------------------------------------------------------
-clk                       2.500      0.000       0    100MHz       1.250      0.000       0
--------------------------------------------------------------------------------------------
-Summary                   2.500      0.000       0    100MHz       1.250      0.000       0
-"""
 
-QOR_SUMMARY_WITH_FAILING_SUMMARY = """\
-Path Group                  WNS        TNS     NVP      FREQ      WNS(H)     TNS(H)  NVP(H)
--------------------------------------------------------------------------------------------
-clk                       2.500      0.000       0    100MHz       1.250      0.000       0
-data                     -0.500     -1.000       1     90MHz      -0.250     -0.500       1
--------------------------------------------------------------------------------------------
-Summary                  -0.500     -1.000       1     90MHz      -0.250     -0.500       1
-"""
+def qor_summary(
+    *,
+    setup_wns=2.5,
+    setup_tns=0.0,
+    setup_nvp=0,
+    frequency_mhz=100,
+    hold_wns=1.25,
+    hold_tns=0.0,
+    hold_nvp=0,
+):
+    return {
+        "path_groups": [],
+        "summary": {
+            "setup": {
+                "wns": setup_wns,
+                "tns": setup_tns,
+                "nvp": setup_nvp,
+                "frequency_mhz": frequency_mhz,
+            },
+            "hold": {
+                "wns": hold_wns,
+                "tns": hold_tns,
+                "nvp": hold_nvp,
+            },
+        },
+        "design_statistics": {},
+    }
 
 
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
 
 
 def _sta_checker(
     tmp_path: Path,
+    *,
     report_names=STA_REPORT_NAMES,
-    qor_summary: str = QOR_SUMMARY,
+    summary=None,
+    frequency_target=100,
+    text_report="legacy signoff report\n",
 ) -> EccStaChecklist:
     output_dir = tmp_path / "sta_ecc" / "output"
     report_dir = output_dir / "MAX_125" / "RCworst"
     for report_name in report_names:
-        text = qor_summary if report_name == "qor_summary.rpt" else "timing paths\n"
-        _write(report_dir / report_name, text)
+        _write(report_dir / report_name, text_report)
+
+    if summary is not None:
+        _write(report_dir / "qor_summary.json", json.dumps(summary))
 
     sta_config = tmp_path / "config" / "sta.json"
     _write(
@@ -67,7 +84,7 @@ def _sta_checker(
         config={StepEnum.STA.value: str(sta_config)},
         design=SimpleNamespace(name="gcd", top_module="gcd"),
         home=SimpleNamespace(update_checklist=lambda **kwargs: None),
-        parameters=SimpleNamespace(data={"Frequency max [MHz]": 100}),
+        parameters=SimpleNamespace(data={"Frequency max [MHz]": frequency_target}),
     )
     workspace_step = SimpleNamespace(
         checklist={"path": str(checklist_path)},
@@ -82,27 +99,67 @@ def _item_state(checker: EccStaChecklist, item: str) -> str:
     return next(row["state"] for row in data["checklist"] if row["item"] == item)
 
 
-def test_sta_checklist_validates_current_text_reports(tmp_path):
-    checker = _sta_checker(tmp_path)
+def test_sta_checklist_validates_current_json_summary(tmp_path):
+    checker = _sta_checker(tmp_path, summary=qor_summary())
 
     assert checker.check() is True
     assert _item_state(checker, "check STA signoff matrix") == "Passed"
+    assert _item_state(checker, "check STA QoR summary data") == "Passed"
     assert _item_state(checker, "check setup timing") == "Passed"
     assert _item_state(checker, "check hold timing") == "Passed"
     assert _item_state(checker, "check frequency requirement") == "Passed"
+    assert _item_state(checker, "check timing exceptions") == "Warning"
+    assert _item_state(checker, "check STA DRV violations") == "Warning"
 
 
 def test_sta_checklist_fails_matrix_when_a_path_report_is_missing(tmp_path):
-    checker = _sta_checker(tmp_path, STA_REPORT_NAMES[:-1])
+    checker = _sta_checker(
+        tmp_path,
+        report_names=STA_REPORT_NAMES[:-1],
+        summary=qor_summary(),
+    )
 
     assert checker.check() is False
     assert _item_state(checker, "check STA signoff matrix") == "Failed"
 
 
-def test_sta_checklist_uses_qor_summary_row_for_timing_status(tmp_path):
-    checker = _sta_checker(tmp_path, qor_summary=QOR_SUMMARY_WITH_FAILING_SUMMARY)
+def test_sta_checklist_requires_current_qor_summary_json(tmp_path):
+    checker = _sta_checker(tmp_path)
+
+    assert checker.check() is False
+    assert _item_state(checker, "check STA signoff matrix") == "Failed"
+    assert _item_state(checker, "check STA QoR summary data") == "Failed"
+
+
+def test_sta_checklist_uses_json_nvp_not_text_report_columns(tmp_path):
+    checker = _sta_checker(
+        tmp_path,
+        summary=qor_summary(setup_nvp=1),
+        text_report="text report format changed\n",
+    )
 
     assert checker.check() is False
     assert _item_state(checker, "check setup timing") == "Failed"
-    assert _item_state(checker, "check hold timing") == "Failed"
-    assert _item_state(checker, "check frequency requirement") == "Failed"
+    assert _item_state(checker, "check hold timing") == "Passed"
+    assert _item_state(checker, "check frequency requirement") == "Passed"
+
+
+def test_sta_checklist_rejects_incomplete_qor_summary_json(tmp_path):
+    checker = _sta_checker(
+        tmp_path,
+        summary={"path_groups": [], "summary": {"setup": None, "hold": None}},
+    )
+
+    assert checker.check() is False
+    assert _item_state(checker, "check STA QoR summary data") == "Failed"
+
+
+def test_sta_checklist_warns_when_frequency_target_is_not_configured(tmp_path):
+    checker = _sta_checker(
+        tmp_path,
+        summary=qor_summary(),
+        frequency_target=0,
+    )
+
+    assert checker.check() is True
+    assert _item_state(checker, "check frequency requirement") == "Warning"

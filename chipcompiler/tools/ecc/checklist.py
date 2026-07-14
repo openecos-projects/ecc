@@ -2,7 +2,6 @@
 # -*- encoding: utf-8 -*-
 import glob
 import os
-import re
 
 from chipcompiler.data import (
     Workspace, 
@@ -12,17 +11,10 @@ from chipcompiler.data import (
     CheckState
 )
 from chipcompiler.utility import json_read
-
-STA_REPORT_FILENAMES = (
-    "qor_summary.rpt",
-    "timing_max_in2out.rpt",
-    "timing_max_in2reg.rpt",
-    "timing_max_reg2out.rpt",
-    "timing_max_reg2reg.rpt",
-    "timing_min_in2out.rpt",
-    "timing_min_in2reg.rpt",
-    "timing_min_reg2out.rpt",
-    "timing_min_reg2reg.rpt",
+from chipcompiler.tools.ecc.sta_qor import (
+    read_sta_qor_summary,
+    sta_qor_summary_paths,
+    sta_report_artifact_paths,
 )
 
 class EccChecklist:
@@ -113,6 +105,7 @@ class EccChecklist:
         ],
         StepEnum.STA: [
             ("STA", "check STA signoff matrix"),
+            ("STA", "check STA QoR summary data"),
             ("Timing", "check setup timing"),
             ("Timing", "check hold timing"),
             ("Timing", "check frequency requirement"),
@@ -1062,181 +1055,123 @@ class EccRcxChecklist(EccChecklist):
 
 
 class EccStaChecklist(EccChecklist):
-    def temperature_token(self,
-                          temperature) -> str:
-        try:
-            numeric = float(temperature)
-            if numeric.is_integer():
-                temperature = int(numeric)
-        except (TypeError, ValueError):
-            pass
-        return str(temperature).replace("-", "m").replace(".", "p")
-
     def expected_sta_report_paths(self) -> list:
-        sta_config = self.workspace.config.get(StepEnum.STA.value, "")
-        sta_data = json_read(sta_config)
-        if len(sta_data) == 0:
-            return []
-
-        output_dir = self.workspace_step.output.get("dir", "")
-        liberty_by_corner = {
-            liberty.get("corner"): liberty
-            for liberty in sta_data.get("liberty", [])
-        }
-        expected_paths = []
-
-        for signoff_group in sta_data.get("signoff", []):
-            for corner_name, rcx_corner_names in signoff_group.items():
-                liberty = liberty_by_corner.get(corner_name)
-                if liberty is None:
-                    continue
-
-                report_corner_dir = "{}_{}".format(
-                    corner_name,
-                    self.temperature_token(liberty.get("temperature")),
-                )
-                if isinstance(rcx_corner_names, str):
-                    rcx_corner_names = [rcx_corner_names]
-                for rcx_corner_name in rcx_corner_names:
-                    corner_dir = os.path.join(
-                        output_dir,
-                        report_corner_dir,
-                        rcx_corner_name,
-                    )
-                    expected_paths.extend(
-                        os.path.join(corner_dir, report_name)
-                        for report_name in STA_REPORT_FILENAMES
-                    )
-
-        return expected_paths
-
-    def collect_sta_qor_paths(self, expected_paths: list[str]) -> list[str]:
-        qor_paths = [
-            path
-            for path in expected_paths
-            if os.path.basename(path) == "qor_summary.rpt"
+        return [
+            str(path)
+            for _, path in sta_report_artifact_paths(
+                workspace=self.workspace,
+                output_dir=self.workspace_step.output.get("dir", ""),
+            )
         ]
-        if qor_paths:
-            return qor_paths
 
-        output_dir = self.workspace_step.output.get("dir", "")
-        if not output_dir or not os.path.isdir(output_dir):
-            return []
-        return sorted(glob.glob(
-            os.path.join(output_dir, "**", "qor_summary.rpt"),
-            recursive=True,
-        ))
-
-    def parse_qor_summary(self, path: str) -> dict | None:
-        try:
-            with open(path, encoding="utf-8", errors="ignore") as file:
-                lines = file.read().splitlines()
-        except OSError:
-            return None
-
-        path_group_summaries = []
-        for line in lines:
-            fields = line.split()
-            if len(fields) < 8 or fields[0] == "Path":
-                continue
-            try:
-                frequency_mhz = self.frequency_mhz(fields[-4])
-                if frequency_mhz is None:
-                    continue
-                summary = {
-                    "frequency_mhz": frequency_mhz,
-                    "hold_tns": float(fields[-2]),
-                    "hold_wns": float(fields[-3]),
-                    "max_tns": float(fields[-6]),
-                    "max_wns": float(fields[-7]),
-                }
-            except ValueError:
-                continue
-            if fields[0] == "Summary":
-                return summary
-            path_group_summaries.append(summary)
-
-        if path_group_summaries:
-            return {
-                "frequency_mhz": min(
-                    summary["frequency_mhz"] for summary in path_group_summaries
-                ),
-                "hold_tns": min(summary["hold_tns"] for summary in path_group_summaries),
-                "hold_wns": min(summary["hold_wns"] for summary in path_group_summaries),
-                "max_tns": min(summary["max_tns"] for summary in path_group_summaries),
-                "max_wns": min(summary["max_wns"] for summary in path_group_summaries),
-            }
-        return None
-
-    def frequency_mhz(self, value: str) -> float | None:
-        match = re.fullmatch(
-            r"([+-]?(?:\d+(?:\.\d*)?|\.\d+))(GHz|MHz|kHz|Hz)", value
+    def collect_sta_qor_paths(self) -> list:
+        return sta_qor_summary_paths(
+            workspace=self.workspace,
+            output_dir=self.workspace_step.output.get("dir", ""),
         )
-        if match is None:
-            return None
-        frequency = float(match.group(1))
-        scale = {"GHz": 1000.0, "MHz": 1.0, "kHz": 0.001, "Hz": 0.000001}
-        return frequency * scale[match.group(2)]
 
-    def load_sta_qor_summaries(self, qor_paths: list[str]) -> list[dict]:
+    def load_sta_qor_summaries(self, qor_paths: list) -> list:
         return [
             summary
-            for path in qor_paths
-            if (summary := self.parse_qor_summary(path)) is not None
+            for corner, path in qor_paths
+            if (summary := read_sta_qor_summary(corner, path)) is not None
         ]
 
     def check(self) -> bool:
         step = StepEnum.STA.value
-        expected_paths = self.expected_sta_report_paths()
-        qor_paths = self.collect_sta_qor_paths(expected_paths)
+        artifact_paths = sta_report_artifact_paths(
+            workspace=self.workspace,
+            output_dir=self.workspace_step.output.get("dir", ""),
+        )
+        expected_paths = [str(path) for _, path in artifact_paths]
+        qor_paths = self.collect_sta_qor_paths()
         summaries = self.load_sta_qor_summaries(qor_paths)
         target_frequency = self.to_float(
             self.workspace.parameters.data.get("Frequency max [MHz]", 0),
             0.0,
         )
 
-        if expected_paths:
-            signoff_success = all(
-                os.path.isfile(path) and os.path.getsize(path) > 0
-                for path in expected_paths
-            )
-        else:
-            signoff_success = len(qor_paths) > 0 and all(
-                os.path.isfile(path) and os.path.getsize(path) > 0
-                for path in qor_paths
-            )
-
+        missing_artifacts = [
+            f"{corner}/{path.name}"
+            for corner, path in artifact_paths
+            if not self.check_file(path)
+        ]
+        signoff_success = len(expected_paths) > 0 and not missing_artifacts
         summaries_complete = len(summaries) == len(qor_paths) and len(qor_paths) > 0
+        invalid_summaries = [
+            f"{corner}/{path.name}"
+            for corner, path in qor_paths
+            if read_sta_qor_summary(corner, path) is None
+        ]
         setup_success = summaries_complete and all(
-            summary["max_tns"] >= 0 and summary["max_wns"] >= 0
+            summary.setup_wns >= 0
+            and summary.setup_tns >= 0
+            and summary.setup_nvp == 0
             for summary in summaries
         )
         hold_success = summaries_complete and all(
-            summary["hold_tns"] >= 0 and summary["hold_wns"] >= 0
+            summary.hold_wns >= 0
+            and summary.hold_tns >= 0
+            and summary.hold_nvp == 0
             for summary in summaries
         )
-        frequency_success = (
+        frequency_success = target_frequency > 0 and (
             summaries_complete
-            and target_frequency > 0
-            and all(summary["frequency_mhz"] >= target_frequency for summary in summaries)
+            and all(summary.frequency_mhz >= target_frequency for summary in summaries)
         )
-
-        reports_parse_success = summaries_complete
+        setup_info = "" if setup_success else "STA setup QoR data is missing or has violations"
+        hold_info = "" if hold_success else "STA hold QoR data is missing or has violations"
+        frequency_warning = target_frequency <= 0
+        if frequency_warning:
+            frequency_info = "Frequency max [MHz] is not configured"
+        elif frequency_success:
+            frequency_info = ""
+        else:
+            frequency_info = "STA frequency does not meet the configured target"
         checks = [
-            ("STA", "check STA signoff matrix", signoff_success),
-            ("Timing", "check setup timing", setup_success),
-            ("Timing", "check hold timing", hold_success),
-            ("Timing", "check frequency requirement", frequency_success),
-            ("Timing", "check timing exceptions", reports_parse_success),
-            ("DRV", "check STA DRV violations", reports_parse_success),
+            (
+                "STA",
+                "check STA signoff matrix",
+                signoff_success,
+                False,
+                "" if signoff_success else f"Missing STA artifacts: {', '.join(missing_artifacts)}",
+            ),
+            (
+                "STA",
+                "check STA QoR summary data",
+                summaries_complete,
+                False,
+                "" if summaries_complete else (
+                    "Missing or invalid STA QoR summaries: "
+                    f"{', '.join(invalid_summaries)}"
+                ),
+            ),
+            ("Timing", "check setup timing", setup_success, False, setup_info),
+            ("Timing", "check hold timing", hold_success, False, hold_info),
+            (
+                "Timing",
+                "check frequency requirement",
+                frequency_success,
+                frequency_warning,
+                frequency_info,
+            ),
+            (
+                "Timing",
+                "check timing exceptions",
+                False,
+                True,
+                "No structured timing-exception result is available",
+            ),
+            (
+                "DRV",
+                "check STA DRV violations",
+                False,
+                True,
+                "No reliable structured STA DRV result is available",
+            ),
         ]
 
-        warning_items = {
-            "check timing exceptions",
-            "check STA DRV violations",
-        }
-        for type, item, success in checks:
-            warning = item in warning_items
+        for type, item, success, warning, info in checks:
             state = CheckState.Passed
             if not success:
                 state = CheckState.Warning if warning else CheckState.Failed
@@ -1245,11 +1180,11 @@ class EccStaChecklist(EccChecklist):
                 type=type,
                 item=item,
                 state=state,
-                info="" if success else f"{item} check failed",
+                info=info,
             )
 
         self.workspace_step.checklist["checklist"] = Checklist(
             path=self.workspace_step.checklist.get("path", "")
         ).data
 
-        return all(success or item in warning_items for _, item, success in checks)
+        return all(success or warning for _, _, success, warning, _ in checks)

@@ -246,7 +246,10 @@ def build_step(workspace: Workspace,
     analysis_dir = step.directory / "analysis"
     step.analysis = {
         "dir": analysis_dir,
-        "metrics": analysis_dir / f"{step.name}_metrics.json"
+        "metrics": analysis_dir / f"{step.name}_metrics.json",
+        "qor_metrics": analysis_dir / "qor_metrics.json",
+        "qor_summary": analysis_dir / "qor_summary.json",
+        "qor_hotspots": analysis_dir / "qor_hotspots.json",
     }  
     
     # build sub flow paths and data

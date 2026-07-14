@@ -14,12 +14,52 @@ from chipcompiler.data import (
 from chipcompiler.utility import json_read, json_write, dict_to_str
 
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
+from chipcompiler.tools.ecc.sta_qor import (
+    STA_QOR_SUMMARY_FILENAME,
+    read_sta_qor_summary,
+    sta_qor_summary_paths,
+)
 
 
 QOR_METRIC_MAP = {
+    "Cell area": {
+        "name": "synthesis_cell_area",
+        "display_name": "Synthesis Cell Area",
+        "unit": "um^2",
+        "dimension": "area_cost",
+        "polarity": "lower_is_better",
+    },
+    "Cell number": {
+        "name": "synthesis_cell_count",
+        "display_name": "Synthesis Cell Count",
+        "unit": "count",
+        "dimension": "area_cost",
+        "polarity": "trend_only",
+    },
+    "Wire number": {
+        "name": "synthesis_wire_count",
+        "display_name": "Synthesis Wire Count",
+        "unit": "count",
+        "dimension": "routability_physical",
+        "polarity": "trend_only",
+    },
+    "Port number": {
+        "name": "synthesis_port_count",
+        "display_name": "Synthesis Port Count",
+        "unit": "count",
+        "dimension": "routability_physical",
+        "polarity": "trend_only",
+    },
     "Die area [μm^2]": {
         "name": "die_area",
         "display_name": "Die Area",
+        "unit": "um^2",
+        "dimension": "area_cost",
+        "polarity": "lower_is_better",
+    },
+    "Core area [μm^2]": {
+        "name": "core_area",
+        "display_name": "Core Area",
         "unit": "um^2",
         "dimension": "area_cost",
         "polarity": "lower_is_better",
@@ -360,6 +400,34 @@ QOR_METRIC_MAP = {
         "dimension": "timing",
         "polarity": "trend_only",
     },
+    "sta_expected_corner_count": {
+        "name": "sta_expected_corner_count",
+        "display_name": "STA Expected Corner Count",
+        "unit": "count",
+        "dimension": "timing",
+        "polarity": "trend_only",
+    },
+    "sta_missing_corner_count": {
+        "name": "sta_missing_corner_count",
+        "display_name": "STA Missing Corner Count",
+        "unit": "count",
+        "dimension": "timing",
+        "polarity": "lower_is_better",
+    },
+    "setup_violation_count": {
+        "name": "sta_setup_violation_count",
+        "display_name": "STA Setup Violation Count",
+        "unit": "count",
+        "dimension": "timing",
+        "polarity": "lower_is_better",
+    },
+    "hold_violation_count": {
+        "name": "sta_hold_violation_count",
+        "display_name": "STA Hold Violation Count",
+        "unit": "count",
+        "dimension": "timing",
+        "polarity": "lower_is_better",
+    },
     "harden_gds_exists": {
         "name": "harden_gds_exists",
         "display_name": "Harden GDS Exists",
@@ -413,6 +481,9 @@ QOR_BLOCKING_METRIC_REASONS = {
     "sta_setup_tns": "STA setup TNS is negative.",
     "sta_hold_wns": "STA hold WNS is negative.",
     "sta_hold_tns": "STA hold TNS is negative.",
+    "sta_setup_violation_count": "STA setup violating paths are present.",
+    "sta_hold_violation_count": "STA hold violating paths are present.",
+    "sta_missing_corner_count": "STA QoR summaries are missing for configured corners.",
     "harden_artifact_missing_count": "Harden output artifacts are missing.",
 }
 
@@ -450,6 +521,12 @@ QOR_HOTSPOT_METRIC_HINTS = {
 }
 
 QOR_EXPECTED_METRICS_BY_STEP = {
+    StepEnum.SYNTHESIS.value: [
+        "synthesis_cell_area",
+        "synthesis_cell_count",
+        "synthesis_wire_count",
+        "synthesis_port_count",
+    ],
     StepEnum.FLOORPLAN.value: [
         "die_area",
         "die_width",
@@ -522,6 +599,10 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "sta_hold_tns",
         "sta_frequency_mhz",
         "sta_corner_count",
+        "sta_expected_corner_count",
+        "sta_missing_corner_count",
+        "sta_setup_violation_count",
+        "sta_hold_violation_count",
     ],
     StepEnum.HARDEN.value: [
         "harden_gds_exists",
@@ -627,12 +708,34 @@ def _artifact_exists(primary_path, output_dir, pattern: str) -> int:
     return 1 if _existing_files_in(output_dir, pattern) else 0
 
 
-def _sta_corner_label(output_dir, report_path: Path) -> str:
-    try:
-        relative_parent = report_path.parent.relative_to(Path(output_dir))
-    except ValueError:
-        return report_path.parent.name
-    return str(relative_parent) if str(relative_parent) != "." else report_path.parent.name
+STA_QOR_CORNER_FIELDS = {
+    "max_WNS": "sta_worst_setup_corner",
+    "max_TNS": "sta_worst_setup_tns_corner",
+    "min_WNS": "sta_worst_hold_corner",
+    "min_TNS": "sta_worst_hold_tns_corner",
+    "Frequency [MHz]": "sta_worst_frequency_corner",
+    "setup_violation_count": "sta_corner_scope",
+    "hold_violation_count": "sta_corner_scope",
+    "sta_corner_count": "sta_corner_scope",
+    "sta_expected_corner_count": "sta_corner_scope",
+    "sta_missing_corner_count": "sta_corner_scope",
+}
+
+
+def _sta_qor_record_corner(step_metrics: StepMetrics, legacy_name: str) -> str | None:
+    corner_key = STA_QOR_CORNER_FIELDS.get(legacy_name)
+    if corner_key is None:
+        return None
+
+    corner = step_metrics.data.get(corner_key)
+    return corner if isinstance(corner, str) and corner else None
+
+
+def _sta_qor_source_file(step: WorkspaceStep) -> str | None:
+    output_dir = step.output.get("dir")
+    if output_dir is None or output_dir == "":
+        return None
+    return str(Path(output_dir) / "**" / STA_QOR_SUMMARY_FILENAME)
 
 
 def build_qor_metrics_payload(workspace: Workspace,
@@ -649,7 +752,7 @@ def build_qor_metrics_payload(workspace: Workspace,
         if value is None:
             continue
 
-        records.append({
+        record = {
             "name": mapping["name"],
             "display_name": mapping["display_name"],
             "value": value,
@@ -658,7 +761,15 @@ def build_qor_metrics_payload(workspace: Workspace,
             "polarity": mapping["polarity"],
             "source_file": source_file,
             "confidence": "high",
-        })
+        }
+        if step.name == StepEnum.STA.value:
+            corner = _sta_qor_record_corner(step_metrics, legacy_name)
+            if corner is not None:
+                record["corner"] = corner
+            sta_source_file = _sta_qor_source_file(step)
+            if sta_source_file is not None:
+                record["source_file"] = sta_source_file
+        records.append(record)
 
     return {
         "schema_version": 1,
@@ -680,6 +791,9 @@ def _is_blocking_qor_record(record: dict) -> bool:
         "route_dr_total_violation_count",
         "route_la_total_overflow",
         "rcx_missing_corner_count",
+        "sta_setup_violation_count",
+        "sta_hold_violation_count",
+        "sta_missing_corner_count",
         "harden_artifact_missing_count",
     }:
         return value > 0
@@ -725,6 +839,58 @@ def _qor_missing_metrics(step: WorkspaceStep, records: list[dict]) -> list[str]:
     ]
 
 
+def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
+    values = {
+        record.get("name"): _qor_number(record.get("value"))
+        for record in records
+    }
+    gate_specs = (
+        ("sta_setup_wns_clean", "sta_setup_wns", 0.0, lambda value: value >= 0),
+        ("sta_setup_tns_clean", "sta_setup_tns", 0.0, lambda value: value >= 0),
+        (
+            "sta_setup_violation_free",
+            "sta_setup_violation_count",
+            0.0,
+            lambda value: value == 0,
+        ),
+        ("sta_hold_wns_clean", "sta_hold_wns", 0.0, lambda value: value >= 0),
+        ("sta_hold_tns_clean", "sta_hold_tns", 0.0, lambda value: value >= 0),
+        (
+            "sta_hold_violation_free",
+            "sta_hold_violation_count",
+            0.0,
+            lambda value: value == 0,
+        ),
+    )
+    hard_gates = []
+    for gate_id, metric, threshold, predicate in gate_specs:
+        actual = values.get(metric)
+        hard_gates.append({
+            "id": gate_id,
+            "passed": actual is not None and predicate(actual),
+            "metric": metric,
+            "threshold": threshold,
+            "actual": actual,
+            "cap_if_failed": 70,
+        })
+
+    expected_count = values.get("sta_expected_corner_count")
+    actual_count = values.get("sta_corner_count")
+    hard_gates.append({
+        "id": "sta_corner_coverage_complete",
+        "passed": (
+            expected_count is not None
+            and expected_count > 0
+            and actual_count == expected_count
+        ),
+        "metric": "sta_corner_count",
+        "threshold": expected_count,
+        "actual": actual_count,
+        "cap_if_failed": 70,
+    })
+    return hard_gates
+
+
 def build_qor_summary_payload(workspace: Workspace,
                               step: WorkspaceStep,
                               step_metrics: StepMetrics) -> dict:
@@ -746,9 +912,16 @@ def build_qor_summary_payload(workspace: Workspace,
         if issue is not None:
             blocking_issues.append(issue)
 
+    hard_gates = (
+        _sta_qor_hard_gates(records)
+        if step.name == StepEnum.STA.value
+        else []
+    )
+    failed_hard_gates = [gate for gate in hard_gates if not gate["passed"]]
+
     if len(records) == 0:
         status = "empty"
-    elif blocking_issues:
+    elif blocking_issues or failed_hard_gates:
         status = "blocked"
     else:
         status = "green"
@@ -762,6 +935,7 @@ def build_qor_summary_payload(workspace: Workspace,
         "metric_count": len(records),
         "dimensions": dimensions,
         "blocking_issues": blocking_issues,
+        "hard_gates": hard_gates,
         "missing_metrics": _qor_missing_metrics(step, records),
         "source_file": str(step.analysis.get("qor_metrics", step_metrics.path)),
     }
@@ -946,7 +1120,7 @@ def build_metrics_timing(workspace: Workspace,
     
     data = json_read(step.feature.get('timing', ""))
     max_WNS = None
-    if len(data) > 0:
+    if isinstance(data, dict) and len(data) > 0:
         for slack_item in data.get('slack', []):
             type = slack_item.get("delay_type", "")
             metrics[f"{type}_TNS"] = slack_item.get("TNS", 0)
@@ -973,15 +1147,33 @@ def build_metrics_db(workspace: Workspace,
     metrics['Tool'] = step.tool
     
     data = json_read(step.feature.get('db', ""))
-    if len(data) > 0:
-        metrics["Die area [μm^2]"] = f"{round(data.get('Design Layout', {}).get('die_area', 0.0), 3)}"
-        metrics["Die width [um]"] = f"{data.get('Design Layout', {}).get('die_bounding_width', 0.0)}"
-        metrics["Die height [um]"] = f"{data.get('Design Layout', {}).get('die_bounding_height', 0.0)}"
-        metrics["Die util"] = f"{round(data.get('Design Layout', {}).get('die_usage', 0.0), 2)}"
-        metrics["Core util"] = f"{round(data.get('Design Layout', {}).get('core_usage', 0.0), 2)}"
-        metrics["Total io pins"] = data.get('Design Statis', {}).get('num_iopins', 0)
-        metrics["Total instances"] = data.get('Design Statis', {}).get('num_instances', 0)
-        metrics["Total nets"] = data.get('Design Statis', {}).get('num_nets', 0)
+    if isinstance(data, dict):
+        layout = data.get('Design Layout', {})
+        statistics = data.get('Design Statis', {})
+        layout = layout if isinstance(layout, dict) else {}
+        statistics = statistics if isinstance(statistics, dict) else {}
+
+        for label, key, decimals in (
+            ("Die area [μm^2]", "die_area", 3),
+            ("Core area [μm^2]", "core_area", 3),
+            ("Die width [um]", "die_bounding_width", None),
+            ("Die height [um]", "die_bounding_height", None),
+            ("Die util", "die_usage", 2),
+            ("Core util", "core_usage", 2),
+        ):
+            value = _qor_number(layout.get(key))
+            if value is None:
+                continue
+            if decimals is not None:
+                value = round(value, decimals)
+            metrics[label] = f"{value}"
+
+        for label, key in (
+            ("Total io pins", "num_iopins"),
+            ("Total instances", "num_instances"),
+            ("Total nets", "num_nets"),
+        ):
+            _add_number_metric(metrics, label, statistics.get(key))
         
     metrics.update(build_metrics_timing(workspace=workspace, step=step))
 
@@ -1033,10 +1225,13 @@ def build_metrics_net_opt(workspace: Workspace,
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
     
-    # # step matrics
     json_path = step.feature.get('step', "")
-
-    metrics["Max fanout"] = workspace.parameters.data.get("Max fanout", 0)
+    db_data = json_read(step.feature.get('db', ""))
+    pins = db_data.get("Pins", {}) if isinstance(db_data, dict) else {}
+    fanout = pins.get("max_fanout") if isinstance(pins, dict) else None
+    if fanout is None:
+        fanout = workspace.parameters.data.get("Max fanout")
+    _add_number_metric(metrics, "Max fanout", fanout)
     
     step_metrics.data = metrics
     
@@ -1102,8 +1297,10 @@ def build_metrics_drc(workspace: Workspace,
     # step matrics
     json_path = step.feature.get('step', "")
     data = json_read(json_path)
-    if len(data) > 0:
-        metrics["drc_num"] = data.get("drc", {}).get("number", 0)
+    if isinstance(data, dict):
+        drc = data.get("drc", {})
+        if isinstance(drc, dict):
+            _add_number_metric(metrics, "drc_num", drc.get("number"))
     
     step_metrics.data = metrics
     
@@ -1135,14 +1332,18 @@ def build_metrics_routing(workspace: Workspace,
     # step matrics
     json_path = step.feature.get('db', "")
     data = json_read(json_path)
-    if len(data) > 0:
-        metrics["wire_len"] = data.get("Nets", {}).get("wire_len", 0)
-        metrics["num_via"] = data.get("Nets", {}).get("num_via", 0)
+    if isinstance(data, dict):
+        nets = data.get("Nets", {})
+        if isinstance(nets, dict):
+            _add_number_metric(metrics, "wire_len", nets.get("wire_len"))
+            _add_number_metric(metrics, "num_via", nets.get("num_via"))
 
     route_data = json_read(step.feature.get('step', ""))
-    if len(route_data) > 0:
+    if isinstance(route_data, dict):
         route = route_data.get("route", {})
+        route = route if isinstance(route, dict) else {}
         la = route.get("LA", {})
+        la = la if isinstance(la, dict) else {}
         _add_number_metric(
             metrics,
             "route_la_total_overflow",
@@ -1255,54 +1456,65 @@ def build_metrics_sta(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
 
     output_dir = Path(step.output.get("dir", ""))
-    report_paths = sorted(output_dir.rglob("*.rpt.json")) if output_dir.is_dir() else []
+    qor_paths = sta_qor_summary_paths(workspace, output_dir)
+    summaries = [
+        summary
+        for corner, report_path in qor_paths
+        if (summary := read_sta_qor_summary(corner, report_path)) is not None
+    ]
     setup_wns = None
     setup_tns = None
     setup_corner = ""
+    setup_tns_corner = ""
     hold_wns = None
     hold_tns = None
     hold_corner = ""
+    hold_tns_corner = ""
     frequency = None
+    frequency_corner = ""
+    setup_violation_count = 0
+    hold_violation_count = 0
 
-    for report_path in report_paths:
-        data = json_read(report_path)
-        corner_label = _sta_corner_label(output_dir, report_path)
-        for slack_item in data.get("slack", []):
-            delay_type = slack_item.get("delay_type", "")
-            wns = _qor_number(slack_item.get("WNS"))
-            tns = _qor_number(slack_item.get("TNS"))
-            if delay_type == "max":
-                if wns is not None and (setup_wns is None or wns < setup_wns):
-                    setup_wns = wns
-                    setup_corner = corner_label
-                if tns is not None and (setup_tns is None or tns < setup_tns):
-                    setup_tns = tns
-            elif delay_type == "min":
-                if wns is not None and (hold_wns is None or wns < hold_wns):
-                    hold_wns = wns
-                    hold_corner = corner_label
-                if tns is not None and (hold_tns is None or tns < hold_tns):
-                    hold_tns = tns
-
-        for summary_item in data.get("summary", []):
-            if summary_item.get("delay_type", "") != "max":
-                continue
-            item_frequency = _qor_number(summary_item.get("freq"))
-            if item_frequency is not None and (
-                frequency is None or item_frequency < frequency
-            ):
-                frequency = item_frequency
+    for summary in summaries:
+        if setup_wns is None or summary.setup_wns < setup_wns:
+            setup_wns = summary.setup_wns
+            setup_corner = summary.corner
+        if setup_tns is None or summary.setup_tns < setup_tns:
+            setup_tns = summary.setup_tns
+            setup_tns_corner = summary.corner
+        if hold_wns is None or summary.hold_wns < hold_wns:
+            hold_wns = summary.hold_wns
+            hold_corner = summary.corner
+        if hold_tns is None or summary.hold_tns < hold_tns:
+            hold_tns = summary.hold_tns
+            hold_tns_corner = summary.corner
+        if frequency is None or summary.frequency_mhz < frequency:
+            frequency = summary.frequency_mhz
+            frequency_corner = summary.corner
+        setup_violation_count += summary.setup_nvp
+        hold_violation_count += summary.hold_nvp
 
     _add_number_metric(metrics, "max_WNS", setup_wns)
     _add_number_metric(metrics, "max_TNS", setup_tns)
     _add_number_metric(metrics, "min_WNS", hold_wns)
     _add_number_metric(metrics, "min_TNS", hold_tns)
     _add_number_metric(metrics, "Frequency [MHz]", frequency)
-    metrics["sta_corner_count"] = len(report_paths)
+    metrics["setup_violation_count"] = setup_violation_count
+    metrics["hold_violation_count"] = hold_violation_count
+    metrics["sta_corner_count"] = len(summaries)
+    metrics["sta_expected_corner_count"] = len(qor_paths)
+    metrics["sta_missing_corner_count"] = len(qor_paths) - len(summaries)
+    metrics["sta_corner_scope"] = "all_configured_corners"
     if setup_corner:
         metrics["sta_worst_setup_corner"] = setup_corner
+    if setup_tns_corner:
+        metrics["sta_worst_setup_tns_corner"] = setup_tns_corner
     if hold_corner:
         metrics["sta_worst_hold_corner"] = hold_corner
+    if hold_tns_corner:
+        metrics["sta_worst_hold_tns_corner"] = hold_tns_corner
+    if frequency_corner:
+        metrics["sta_worst_frequency_corner"] = frequency_corner
 
     step_metrics.data = metrics
     image_path = str(step.output.get("image", ""))
@@ -1381,8 +1593,14 @@ def build_metrics_legalization(workspace: Workspace,
     # step matrics
     json_path = step.feature.get('step', "")
     data = json_read(json_path)
-    if len(data) > 0:
-        metrics["total_movement"] = data.get("legalization", {}).get("total_movement", 0)
+    if isinstance(data, dict):
+        legalization = data.get("legalization", {})
+        if isinstance(legalization, dict):
+            _add_number_metric(
+                metrics,
+                "total_movement",
+                legalization.get("total_movement"),
+            )
     
     step_metrics.data = metrics
     
@@ -1489,14 +1707,19 @@ def build_metrics_cts(workspace: Workspace,
     # step matrics
     json_path = step.feature.get('step', "")
     data = json_read(json_path)
-    if len(data) > 0:
-        metrics["buffer_num"] = data.get("CTS", {}).get("buffer_num", 0)
-        metrics["buffer_area"] = data.get("CTS", {}).get("buffer_area", 0)
-        metrics["clock_path_max_buffer"] = data.get("CTS", {}).get("clock_path_max_buffer", 0)
-        metrics["clock_path_min_buffer"] = data.get("CTS", {}).get("clock_path_min_buffer", 0)
-        metrics["total_clock_wirelength"] = data.get("CTS", {}).get("total_clock_wirelength", 0)
-        metrics["max_clock_wirelength"] = data.get("CTS", {}).get("max_clock_wirelength", 0)
-        metrics["max_level_of_clock_tree"] = data.get("CTS", {}).get("max_level_of_clock_tree", 0)
+    if isinstance(data, dict):
+        cts = data.get("CTS", {})
+        cts = cts if isinstance(cts, dict) else {}
+        for metric, source_key in (
+            ("buffer_num", "buffer_num"),
+            ("buffer_area", "buffer_area"),
+            ("clock_path_max_buffer", "clock_path_max_buffer"),
+            ("clock_path_min_buffer", "clock_path_min_buffer"),
+            ("total_clock_wirelength", "total_clock_wirelength"),
+            ("max_clock_wirelength", "max_clock_wirelength"),
+            ("max_level_of_clock_tree", "max_level_of_clock_tree"),
+        ):
+            _add_number_metric(metrics, metric, cts.get(source_key))
     
     step_metrics.data = metrics
     
@@ -1528,23 +1751,33 @@ def build_metrics_placement(workspace: Workspace,
     # step matrics
     json_path = step.feature.get('step', "")
     data = json_read(json_path)
-    if len(data) > 0:
-        metrics["overflow"] = data.get("place", {}).get("overflow", 0)
-        metrics["overflow_number"] = data.get("place", {}).get("overflow_number", 0)
-        metrics["bin_number"] = data.get("place", {}).get("bin_number", 0)
-        metrics["GP HPWL"] = data.get("place", {}).get("gplace", {}).get("HPWL", 0) / 1000
-        metrics["DP HPWL"] = data.get("place", {}).get("dplace", {}).get("STWL", 0) / 1000
+    if isinstance(data, dict):
+        place = data.get("place", {})
+        place = place if isinstance(place, dict) else {}
+        _add_number_metric(metrics, "overflow", place.get("overflow"))
+        _add_number_metric(metrics, "overflow_number", place.get("overflow_number"))
+        _add_number_metric(metrics, "bin_number", place.get("bin_number"))
+        gplace = place.get("gplace", {})
+        dplace = place.get("dplace", {})
+        if isinstance(gplace, dict):
+            _add_number_metric(metrics, "GP HPWL", gplace.get("HPWL"), scale=0.001)
+        if isinstance(dplace, dict):
+            _add_number_metric(metrics, "DP HPWL", dplace.get("STWL"), scale=0.001)
 
     map_data = json_read(step.feature.get('map', ""))
-    if len(map_data) > 0:
+    if isinstance(map_data, dict):
         wirelength = map_data.get("Wirelength", {})
+        wirelength = wirelength if isinstance(wirelength, dict) else {}
         _add_number_metric(metrics, "HPWL", wirelength.get("HPWL"), scale=0.001)
         _add_number_metric(metrics, "GRWL", wirelength.get("GRWL"), scale=0.001)
         _add_number_metric(metrics, "FLUTE", wirelength.get("FLUTE"), scale=0.001)
 
         congestion = map_data.get("Congestion", {})
+        congestion = congestion if isinstance(congestion, dict) else {}
         overflow = congestion.get("overflow", {})
         utilization = congestion.get("utilization", {})
+        overflow = overflow if isinstance(overflow, dict) else {}
+        utilization = utilization if isinstance(utilization, dict) else {}
         _add_number_metric(
             metrics,
             "place_congestion_egr_overflow_total",

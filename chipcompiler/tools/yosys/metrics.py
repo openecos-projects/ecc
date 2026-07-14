@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, save_metrics
+from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics
 from chipcompiler.utility import json_read, dict_to_str
+from chipcompiler.tools.ecc.metrics import save_step_metrics
 
 
 def build_step_metrics(workspace: Workspace,
@@ -43,6 +44,6 @@ def build_step_metrics(workspace: Workspace,
     
     workspace.logger.info("\nmetrics - \n%s", dict_to_str(step_metrics.data))
 
-    if save_metrics(step_metrics):
+    if save_step_metrics(workspace, step, step_metrics):
         return step_metrics
     return None
