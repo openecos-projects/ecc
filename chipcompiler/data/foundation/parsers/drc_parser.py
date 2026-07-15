@@ -6,8 +6,7 @@ from typing import Any
 
 
 def parse_drc_artifacts(stage_dir: Path) -> dict[str, Any]:
-    violation_path = stage_dir / "data" / "drc" / "violation_map.json"
-    metric_path = stage_dir / "analysis" / f"{stage_dir.name.split('_', 1)[0]}_metrics.json"
+    violation_path, metric_path = _drc_artifact_paths(stage_dir)
     violations = _parse_violation_map(violation_path)
     metrics = _read_json(metric_path)
     metric_count = _to_int(metrics.get("drc_num"))
@@ -19,6 +18,18 @@ def parse_drc_artifacts(stage_dir: Path) -> dict[str, Any]:
         "source": str(violation_path),
         "metrics_source": str(metric_path),
     }
+
+
+def _drc_artifact_paths(stage_dir: Path) -> tuple[Path, Path]:
+    if stage_dir.name == "drc_final_ecc":
+        return (
+            stage_dir / "data" / "drc_final" / "violation_map.json",
+            stage_dir / "analysis" / "drc_final_metrics.json",
+        )
+    return (
+        stage_dir / "data" / "drc" / "violation_map.json",
+        stage_dir / "analysis" / f"{stage_dir.name.split('_', 1)[0]}_metrics.json",
+    )
 
 
 def _parse_violation_map(path: Path) -> list[dict[str, Any]]:

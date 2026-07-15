@@ -657,6 +657,37 @@ def test_iccd_full_v1_extractor_writes_parquet_contract_and_no_legacy_defaults(t
     assert top_nets[0]["provenance"]["query"]["provenance_id"]
 
 
+def test_iccd_full_v1_extractor_parses_drc_final_artifacts(tmp_path: Path):
+    ws = _make_workspace(tmp_path)
+    flow_path = ws / "home" / "flow.json"
+    flow = json.loads(flow_path.read_text(encoding="utf-8"))
+    flow["steps"].append({"name": "drc_final", "tool": "ecc", "state": "Success"})
+    _write_json(flow_path, flow)
+    _write_json(
+        ws / "drc_final_ecc" / "data" / "drc_final" / "violation_map.json",
+        [
+            {
+                "type": "short",
+                "rule": "M2.SHORT",
+                "layer": "MET2",
+                "bbox": [20, 20, 80, 80],
+                "count": 2,
+            }
+        ],
+    )
+    _write_json(
+        ws / "drc_final_ecc" / "analysis" / "drc_final_metrics.json",
+        {"Tool": "ecc", "drc_num": 2},
+    )
+
+    result = FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True)
+
+    patches = _read_jsonl(result.foundation_dir / "vectors" / "patches" / "drc_final.jsonl")
+    assert patches[0]["drc_context"]["count"] == 2
+    assert patches[0]["drc_context"]["by_type"] == {"short": 2}
+    assert patches[0]["drc_context"]["by_layer"] == {"MET2": 2}
+
+
 
 def test_iccd_fast_profile_skips_audit_and_route_detail_tables(tmp_path: Path):
     import pyarrow.parquet as pq

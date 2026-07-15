@@ -6096,6 +6096,7 @@ def _stage_directory_name(stage_name: str) -> str:
         "legalization": "legalization_dreamplace",
         "route": "route_ecc",
         "drc": "drc_ecc",
+        "drc_final": "drc_final_ecc",
         "filler": "filler_ecc",
     }
     return mapping.get(stage_name, stage_name)
