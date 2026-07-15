@@ -42,6 +42,21 @@ _STAGE_DIR_OVERRIDES = {
 }
 _ENTITY_NAMES = ("instances", "nets", "pins", "wires", "routing_graphs", "timing_paths", "patches")
 _TECH_REQUIRED_TABLES = {"tech_layers": "layers", "tech_vias": "vias", "library_cells": "cells"}
+_ATTRIBUTION_INPUT_TABLES = (
+    "drc_violations",
+    "wire_segments",
+    "run_stage_patch_features",
+    "instance_stage_state",
+    "pin_stage_state",
+)
+_ATTRIBUTION_RULE_VERSIONS = {
+    "C1": "clock_placement_attribution.v1",
+    "R1": "route_local.v1",
+    "R3": "congestion_or_pin_access.v1",
+    "D1": "native_drc_wire_via_open_short.v1",
+    "D2": "native_drc_overlap_site_row.v1",
+}
+_ATTRIBUTION_SEED_ID_LIMIT = 32
 _BASE_DELTA_STATIC_TABLES = frozenset({
     "designs",
     "tech_layers",
@@ -323,6 +338,7 @@ class FoundationExtractor:
                 canonical_maps=canonical_maps,
                 labels=labels,
                 metrics=metrics,
+                drc_reports=drc_reports,
                 skip_tables=_BASE_DELTA_STATIC_TABLES if scope == "variant_delta" else frozenset(),
                 materialize_audit_tables=materialize_audit_tables,
                 route_detail_level=route_detail_level,
@@ -425,6 +441,8 @@ class FoundationExtractor:
                 metrics,
                 stage_index,
                 public_labels,
+                manifest=manifest,
+                drc_violation_rows=table_rows.get("drc_violations", ()),
                 include_raw_refs=bool(include_raw_refs),
                 route_completion_mode=route_completion_mode,
                 route_detail_level=route_detail_level,
@@ -2312,6 +2330,7 @@ class FoundationExtractor:
         canonical_maps: CanonicalMaps,
         labels: dict[str, Any],
         metrics: dict[str, Any],
+        drc_reports: dict[str, dict[str, Any]] | None = None,
         skip_tables: frozenset[str] | set[str] | None = None,
         materialize_audit_tables: bool = True,
         route_detail_level: str = "full",
@@ -2370,6 +2389,7 @@ class FoundationExtractor:
                 for index, stage in enumerate(stages)
             ],
             "artifacts": self._artifact_table_rows(design_id, run_id, stage_ids, labels, metrics),
+            "drc_violations": self._drc_violation_rows(design_id, run_id, drc_reports or {}),
             "provenance": [],
             "semantic_blocks": self._semantic_block_rows(design_id, run_id, stages) if materialize_audit_tables else [],
             "run_stage_patch_maps": self._patch_map_rows(design_id, run_id, stage_ids, canonical_grid, canonical_maps),
@@ -2420,10 +2440,49 @@ class FoundationExtractor:
                     "run_stage_patch_features": tables["run_stage_patch_features"],
                     "stage_deltas": tables["stage_deltas"],
                     "semantic_blocks": tables["semantic_blocks"],
+                    "drc_violations": tables["drc_violations"],
                 }
             )
         tables["_manifest_design_row"] = design_rows
         return tables
+
+    def _drc_violation_rows(
+        self,
+        design_id: str,
+        run_id: str,
+        drc_reports: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        rows = []
+        for stage_name, report in sorted(drc_reports.items()):
+            for violation in report.get("violations", []):
+                source_index = _to_int_or_none(violation.get("id"))
+                native_type = str(violation.get("type") or "unknown")
+                bbox = violation.get("bbox")
+                layer = violation.get("layer")
+                source = str(violation.get("source") or report.get("source") or "")
+                availability = "available" if bbox and layer else "partial"
+                rows.append(
+                    {
+                        "design_id": design_id,
+                        "run_id": run_id,
+                        "stage_name": stage_name,
+                        "violation_id": _stable_id(
+                            "drc_violation", run_id, stage_name, source_index
+                        ),
+                        "native_type": native_type,
+                        "normalized_class": (
+                            "short" if native_type.casefold() == "short" else "other"
+                        ),
+                        "rule": violation.get("rule"),
+                        "layer": layer,
+                        "bbox_json": json_value(bbox) if bbox else None,
+                        "count": _to_int_or_none(violation.get("count")) or 1,
+                        "source_artifact_id": _source_artifact_id(source) if source else None,
+                        "source_index": source_index,
+                        "availability": availability,
+                    }
+                )
+        return rows
 
     def _artifact_table_rows(
         self, design_id: str, run_id: str, stage_ids: dict[str, str], labels: dict[str, Any], metrics: dict[str, Any]
@@ -2566,7 +2625,7 @@ class FoundationExtractor:
                     "artifact_id": artifact_id,
                     "derived_from_artifact_ids": json_value(sorted(set(derived_from_artifact_ids or []))),
                     "source_section": source_section,
-                    "source_index": None if source_index is None else str(source_index),
+                    "source_index": source_index,
                     "availability_code": availability_code,
                     "null_reason": None if null_reason is None else str(null_reason),
                     "confidence": float(confidence),
@@ -2597,6 +2656,17 @@ class FoundationExtractor:
                 source_section=str(row.get("source_doc") or "legacy_schema_migration"),
                 availability_code="available",
                 notes=str(row.get("preserved_reason") or "Preserved semantic block."),
+            )
+        for row in tables.get("drc_violations", ()):
+            add(
+                _stable_id("provenance", "drc_violation", row.get("violation_id")),
+                target_table="drc_violations",
+                target_key=row.get("violation_id"),
+                artifact_id=row.get("source_artifact_id"),
+                source_section="drc_violation_map",
+                source_index=row.get("source_index"),
+                availability_code=str(row.get("availability") or "missing"),
+                notes="Parsed from a native DRC violation record.",
             )
         return list(rows.values())
 
@@ -3653,6 +3723,9 @@ class FoundationExtractor:
                 "agent_run_summary": "foundation_data/ecc/views/agent/run_summary.json",
                 "agent_qor_snapshot": "foundation_data/ecc/views/agent/qor_snapshot.json",
                 "agent_evidence_index": "foundation_data/ecc/views/agent/evidence_index.json",
+                "agent_attribution_inputs": (
+                    "foundation_data/ecc/views/agent/attribution_inputs.v1.json"
+                ),
                 "ml_dataset_index": "foundation_data/ecc/views/ml/dataset_index.json",
                 "ml_task_views": "foundation_data/ecc/views/ml/task_views.json",
                 "ml_progressive_patch_dataset": "foundation_data/ecc/views/ml/progressive_patch_dataset.json",
@@ -3807,6 +3880,8 @@ class FoundationExtractor:
         stage_index: dict,
         labels: dict,
         *,
+        manifest: dict[str, Any],
+        drc_violation_rows: Iterable[dict[str, Any]],
         include_raw_refs: bool,
         route_completion_mode: str,
         route_detail_level: str,
@@ -3878,6 +3953,10 @@ class FoundationExtractor:
             },
         )
         write_json(self.foundation_dir / "views" / "agent" / "qor_snapshot.json", {"metrics": metrics, "labels": labels})
+        write_json(
+            self.foundation_dir / "views" / "agent" / "attribution_inputs.v1.json",
+            self._attribution_inputs_view(manifest, drc_violation_rows),
+        )
         top_patches = _top_patch_view_items(self._vector_records)
         top_nets = _top_net_view_items(self._vector_records)
         write_json(self.foundation_dir / "views" / "agent" / "top_patches.json", {"items": top_patches})
@@ -3897,6 +3976,40 @@ class FoundationExtractor:
                 },
             },
         )
+
+    def _attribution_inputs_view(
+        self,
+        manifest: dict[str, Any],
+        drc_violation_rows: Iterable[dict[str, Any]],
+    ) -> dict[str, Any]:
+        table_registry = manifest.get("tables") or {}
+        table_refs = {
+            name: {
+                "ref": table_registry[name]["path"],
+                "sha256": table_registry[name]["sha256"],
+            }
+            for name in _ATTRIBUTION_INPUT_TABLES
+        }
+        rows = list(drc_violation_rows)
+        drc_available = any(
+            status == "available"
+            for status in (self._quality.get("availability", {}).get("drc", {}) or {}).values()
+        )
+        wire_available = table_registry["wire_segments"]["row_count"] > 0
+        drc_wire_available = drc_available and wire_available
+        seed_ids = _attribution_seed_ids(rows)
+        short_seed_ids = _attribution_seed_ids(rows, native_type="short")
+        return {
+            "schema_version": "foundation_data/ecc/attribution_inputs.v1",
+            "design_id": manifest.get("design_id"),
+            "run_id": manifest.get("run_id"),
+            "tables": table_refs,
+            "profiles": _attribution_profile_inputs(
+                drc_wire_available=drc_wire_available,
+                seed_ids=seed_ids,
+                short_seed_ids=short_seed_ids,
+            ),
+        }
 
     def _record_raw_ref(self, stage: StageInfo, path: Path, artifact_type: str, metadata: dict[str, Any]) -> None:
         try:
@@ -6067,6 +6180,7 @@ def _workspace_relative_artifact_path(value: Any) -> str:
         "CTS_ecc",
         "legalization_dreamplace",
         "route_ecc",
+        "drc_final_ecc",
         "drc_ecc",
         "filler_ecc",
         "home",
@@ -6078,6 +6192,51 @@ def _workspace_relative_artifact_path(value: Any) -> str:
 
 def _source_artifact_id(value: Any) -> str:
     return _stable_id("artifact", _workspace_relative_artifact_path(value))
+
+
+def _attribution_seed_ids(
+    rows: Iterable[dict[str, Any]], *, native_type: str | None = None
+) -> list[str]:
+    return sorted(
+        {
+            str(row["violation_id"])
+            for row in rows
+            if row.get("availability") == "available"
+            and (
+                native_type is None
+                or str(row.get("native_type") or "").casefold() == native_type
+            )
+        }
+    )[:_ATTRIBUTION_SEED_ID_LIMIT]
+
+
+def _attribution_profile_input(
+    availability: str,
+    profile_id: str,
+    seed_ids: list[str],
+) -> dict[str, Any]:
+    return {
+        "availability": availability,
+        "rule_version": _ATTRIBUTION_RULE_VERSIONS[profile_id],
+        "seed_ids": seed_ids,
+    }
+
+
+def _attribution_profile_inputs(
+    *,
+    drc_wire_available: bool,
+    seed_ids: list[str],
+    short_seed_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    availability = "available" if drc_wire_available else "missing"
+    return {
+        "C1": _attribution_profile_input("missing", "C1", []),
+        "R1": _attribution_profile_input(availability, "R1", seed_ids),
+        "R3": _attribution_profile_input("missing", "R3", []),
+        "D1": _attribution_profile_input(availability, "D1", short_seed_ids),
+        "D2": _attribution_profile_input("missing", "D2", []),
+    }
+
 
 def _metric_artifact_relative_path(stage_name: str, metric_name: str) -> str:
     directory = _stage_directory_name(stage_name)
@@ -6747,6 +6906,15 @@ def _to_float(value: Any) -> float | None:
         return float(value)
     match = __import__("re").search(r"-?\d+(?:\.\d+)?", str(value))
     return float(match.group(0)) if match else None
+
+
+def _to_int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _runtime_to_seconds(value: Any) -> float | None:

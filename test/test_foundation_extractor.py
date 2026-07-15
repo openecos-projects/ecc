@@ -688,6 +688,88 @@ def test_iccd_full_v1_extractor_parses_drc_final_artifacts(tmp_path: Path):
     assert patches[0]["drc_context"]["by_layer"] == {"MET2": 2}
 
 
+def test_iccd_full_v1_extractor_publishes_drc_attribution_inputs(tmp_path: Path):
+    import pyarrow.parquet as pq
+
+    ws = _make_workspace(tmp_path)
+    result = FoundationExtractor(ws, profile="iccd_full_v1").extract()
+    foundation_dir = result.foundation_dir
+    manifest = json.loads((foundation_dir / "manifest.json").read_text(encoding="utf-8"))
+    schema = json.loads((foundation_dir / "schema.json").read_text(encoding="utf-8"))
+
+    table_meta = manifest["tables"]["drc_violations"]
+    rows = pq.read_table(foundation_dir / table_meta["path"]).to_pylist()
+    short = next(row for row in rows if row["native_type"] == "short")
+    artifact_ids = {
+        row["artifact_id"]
+        for row in pq.read_table(
+            foundation_dir / manifest["tables"]["artifacts"]["path"]
+        ).to_pylist()
+    }
+    drc_provenance = pq.read_table(
+        foundation_dir / manifest["tables"]["provenance"]["path"]
+    ).to_pylist()
+
+    assert schema["tables"]["drc_violations"]["primary_key"] == [
+        "design_id",
+        "run_id",
+        "stage_name",
+        "violation_id",
+    ]
+    assert len(rows) == 2
+    assert {row["stage_name"] for row in rows} == {"drc"}
+    assert short["normalized_class"] == "short"
+    assert short["layer"] == "MET2"
+    assert json.loads(short["bbox_json"]) == {
+        "llx": 20.0,
+        "lly": 20.0,
+        "urx": 80.0,
+        "ury": 80.0,
+    }
+    assert short["availability"] == "available"
+    assert short["source_artifact_id"] in artifact_ids
+    assert any(
+        row["target_table"] == "drc_violations"
+        and row["artifact_id"] == short["source_artifact_id"]
+        for row in drc_provenance
+    )
+
+    inputs = json.loads(
+        (foundation_dir / "views" / "agent" / "attribution_inputs.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert set(inputs) == {"schema_version", "design_id", "run_id", "tables", "profiles"}
+    assert inputs["schema_version"] == "foundation_data/ecc/attribution_inputs.v1"
+    assert inputs["design_id"] == manifest["design_id"]
+    assert inputs["run_id"] == manifest["run_id"]
+    assert set(inputs["tables"]) == {
+        "drc_violations",
+        "wire_segments",
+        "run_stage_patch_features",
+        "instance_stage_state",
+        "pin_stage_state",
+    }
+    assert inputs["tables"]["drc_violations"] == {
+        "ref": table_meta["path"],
+        "sha256": table_meta["sha256"],
+    }
+    assert all(set(table) == {"ref", "sha256"} for table in inputs["tables"].values())
+    assert set(inputs["profiles"]) == {"C1", "R1", "R3", "D1", "D2"}
+    assert inputs["profiles"]["R1"]["rule_version"] == "route_local.v1"
+    assert inputs["profiles"]["R1"]["availability"] == "available"
+    assert inputs["profiles"]["D1"]["rule_version"] == "native_drc_wire_via_open_short.v1"
+    assert inputs["profiles"]["D1"]["seed_ids"] == [short["violation_id"]]
+    assert len(inputs["profiles"]["R1"]["seed_ids"]) <= 32
+    assert all(
+        set(profile) == {"availability", "rule_version", "seed_ids"}
+        for profile in inputs["profiles"].values()
+    )
+    assert inputs["profiles"]["C1"]["availability"] == "missing"
+    assert inputs["profiles"]["R3"]["availability"] == "missing"
+    assert inputs["profiles"]["D2"]["availability"] == "missing"
+
+
 
 def test_iccd_fast_profile_skips_audit_and_route_detail_tables(tmp_path: Path):
     import pyarrow.parquet as pq
