@@ -340,11 +340,11 @@ def run_sta_without_spef(
         workspace.logger.warning("Post-synthesis STA failed; synthesis result is kept: %s", exc)
         return False
 
-    workspace.logger.info(
-        "Post-synthesis STA artifacts saved to report=%s feature=%s",
-        report_dir,
-        feature_dir,
-    )
+        workspace.logger.info(
+            "Post-synthesis STA artifacts saved to report=%s feature=%s",
+            report_dir,
+            feature_dir,
+        )
     return True
 
 
