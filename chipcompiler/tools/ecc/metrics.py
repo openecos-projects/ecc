@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from math import isfinite
+from csv import reader as csv_reader
+from math import ceil, isfinite
 from pathlib import Path
 
 from chipcompiler.data import (
@@ -614,6 +615,41 @@ QOR_EXPECTED_METRICS_BY_STEP = {
     ],
 }
 
+HARDEN_SIGNOFF_SOURCE_SPECS = (
+    {
+        "id": "final_drc_clean",
+        "label": "Final DRC",
+        "step": StepEnum.DRC.value,
+        "required_hard_gates": (),
+    },
+    {
+        "id": "final_sta_setup_clean",
+        "label": "Final STA Setup",
+        "step": StepEnum.STA.value,
+        "required_hard_gates": (
+            "sta_setup_wns_clean",
+            "sta_setup_tns_clean",
+            "sta_setup_violation_free",
+        ),
+    },
+    {
+        "id": "final_sta_hold_clean",
+        "label": "Final STA Hold",
+        "step": StepEnum.STA.value,
+        "required_hard_gates": (
+            "sta_hold_wns_clean",
+            "sta_hold_tns_clean",
+            "sta_hold_violation_free",
+        ),
+    },
+    {
+        "id": "final_rcx_corner_complete",
+        "label": "Final RCX Corner Coverage",
+        "step": StepEnum.RCX.value,
+        "required_hard_gates": (),
+    },
+)
+
 
 def _qor_number(value):
     if isinstance(value, bool):
@@ -683,6 +719,255 @@ def _latest_route_iteration(items):
             latest_iter = item_iter
 
     return latest
+
+
+def _route_layer_sort_key(layer: str) -> tuple[int, float | str, str]:
+    layer_index = _qor_number(layer)
+    if layer_index is None:
+        return (1, layer, layer)
+    return (0, float(layer_index), layer)
+
+
+def _route_layer_metrics(route: dict, source_file) -> dict:
+    la = route.get("LA", {})
+    la = la if isinstance(la, dict) else {}
+    dr = _latest_route_iteration(route.get("DR", []))
+    dr = dr if isinstance(dr, dict) else {}
+
+    la_maps = {
+        "demand": la.get("routing_demand_map"),
+        "overflow": la.get("routing_overflow_map"),
+        "wirelength": la.get("routing_wire_length_map"),
+        "via_count": la.get("cut_via_num_map"),
+    }
+    dr_maps = {
+        "wirelength": dr.get("routing_wire_length_map"),
+        "via_count": dr.get("cut_via_num_map"),
+        "violation_count": dr.get("routing_violation_num_map"),
+        "patch_count": dr.get("routing_patch_num_map"),
+    }
+    la_maps = {
+        name: {str(layer): value for layer, value in values.items()}
+        for name, values in la_maps.items()
+        if isinstance(values, dict)
+    }
+    dr_maps = {
+        name: {str(layer): value for layer, value in values.items()}
+        for name, values in dr_maps.items()
+        if isinstance(values, dict)
+    }
+    layers = sorted(
+        {
+            layer
+            for values in (*la_maps.values(), *dr_maps.values())
+            for layer in values
+        },
+        key=_route_layer_sort_key,
+    )
+
+    records = []
+    for layer in layers:
+        record = {"layer": layer}
+        layer_index = _qor_number(layer)
+        if layer_index is not None:
+            record["layer_index"] = layer_index
+
+        la_record = {
+            name: number
+            for name, values in la_maps.items()
+            if (number := _qor_number(values.get(layer))) is not None
+        }
+        if la_record:
+            record["la"] = la_record
+
+        dr_record = {
+            name: number
+            for name, values in dr_maps.items()
+            if (number := _qor_number(values.get(layer))) is not None
+        }
+        if dr_record:
+            record["dr"] = dr_record
+        records.append(record)
+
+    return {
+        "schema_version": 1,
+        "source_file": str(source_file),
+        "final_dr_iteration": _qor_number(dr.get("iter")),
+        "layers": records,
+    }
+
+
+def _map_csv_statistics(source_file) -> dict:
+    path = Path(source_file) if source_file else None
+    statistics = {
+        "source_file": str(path) if path is not None else "",
+        "available": path is not None and path.is_file(),
+    }
+    if not statistics["available"]:
+        return statistics
+
+    values = []
+    row_count = 0
+    column_count = 0
+    try:
+        with path.open(newline="", encoding="utf-8") as file:
+            for row in csv_reader(file):
+                if not row:
+                    continue
+                row_count += 1
+                column_count = max(column_count, len(row))
+                values.extend(
+                    number
+                    for value in row
+                    if (number := _qor_number(value)) is not None
+                )
+    except (OSError, UnicodeDecodeError):
+        statistics["available"] = False
+        return statistics
+
+    statistics.update({
+        "row_count": row_count,
+        "column_count": column_count,
+        "value_count": len(values),
+    })
+    if not values:
+        return statistics
+
+    max_value = max(values)
+    nonzero_count = sum(value != 0 for value in values)
+    top_count = max(1, ceil(len(values) * 0.05))
+    top_values = sorted(values, reverse=True)[:top_count]
+    high_bin_threshold = max_value * 0.9
+    high_bin_count = (
+        sum(value >= high_bin_threshold for value in values)
+        if max_value > 0
+        else 0
+    )
+    statistics.update({
+        "nonzero_count": nonzero_count,
+        "nonzero_ratio": nonzero_count / len(values),
+        "max": max_value,
+        "top_5_percent_average": sum(top_values) / len(top_values),
+        "high_bin_threshold": high_bin_threshold,
+        "high_bin_count": high_bin_count,
+        "high_bin_ratio": high_bin_count / len(values),
+    })
+    return statistics
+
+
+def _place_map_metrics(map_data: dict, source_file) -> dict:
+    records = []
+    congestion = map_data.get("Congestion", {})
+    congestion = congestion if isinstance(congestion, dict) else {}
+    congestion_maps = congestion.get("map", {})
+    congestion_maps = congestion_maps if isinstance(congestion_maps, dict) else {}
+    for metric, directions in sorted(congestion_maps.items()):
+        if not isinstance(directions, dict):
+            continue
+        for direction, csv_path in sorted(directions.items()):
+            if not isinstance(csv_path, (str, Path)) or not csv_path:
+                continue
+            records.append({
+                "group": "congestion",
+                "metric": metric,
+                "direction": direction,
+                **_map_csv_statistics(csv_path),
+            })
+
+    density = map_data.get("Density", {})
+    density = density if isinstance(density, dict) else {}
+    for group, maps in sorted(density.items()):
+        if not isinstance(maps, dict):
+            continue
+        for metric, csv_path in sorted(maps.items()):
+            if not isinstance(csv_path, (str, Path)) or not csv_path:
+                continue
+            records.append({
+                "group": group,
+                "metric": metric,
+                **_map_csv_statistics(csv_path),
+            })
+
+    return {
+        "schema_version": 1,
+        "source_file": str(source_file),
+        "top_average_definition": "mean of the highest 5 percent of valid bins",
+        "high_bin_definition": "valid bins at or above 90 percent of the map peak",
+        "maps": records,
+    }
+
+
+def _sta_path_group_metrics(summaries) -> dict:
+    records = []
+    for summary in summaries:
+        payload = json_read(summary.path)
+        path_groups = payload.get("path_groups", []) if isinstance(payload, dict) else []
+        if not isinstance(path_groups, list):
+            continue
+        for path_group in path_groups:
+            if not isinstance(path_group, dict):
+                continue
+            name = path_group.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+            record = {
+                "corner": summary.corner,
+                "path_group": name,
+                "source_file": str(summary.path),
+            }
+            for analysis_type, fields in (
+                ("setup", ("wns", "tns", "nvp", "frequency_mhz")),
+                ("hold", ("wns", "tns", "nvp")),
+            ):
+                analysis = path_group.get(analysis_type)
+                analysis = analysis if isinstance(analysis, dict) else {}
+                values = {
+                    field: number
+                    for field in fields
+                    if (number := _qor_number(analysis.get(field))) is not None
+                }
+                if values:
+                    record[analysis_type] = values
+            records.append(record)
+
+    records.sort(key=lambda record: (record["path_group"], record["corner"]))
+    aggregates = []
+    for name in sorted({record["path_group"] for record in records}):
+        group_records = [record for record in records if record["path_group"] == name]
+        aggregate = {
+            "path_group": name,
+            "corner_count": len(group_records),
+        }
+        for analysis_type, fields in (
+            ("setup", ("wns", "tns", "frequency_mhz", "nvp")),
+            ("hold", ("wns", "tns", "nvp")),
+        ):
+            analysis = {}
+            for field in fields:
+                values = [
+                    (record, record.get(analysis_type, {}).get(field))
+                    for record in group_records
+                    if _qor_number(record.get(analysis_type, {}).get(field)) is not None
+                ]
+                if not values:
+                    continue
+                if field == "nvp":
+                    analysis["nvp_total"] = sum(value for _, value in values)
+                    continue
+                worst_record, worst_value = min(values, key=lambda item: item[1])
+                key = "minimum_frequency_mhz" if field == "frequency_mhz" else f"worst_{field}"
+                analysis[key] = worst_value
+                analysis[f"{key}_corner"] = worst_record["corner"]
+            if analysis:
+                aggregate[analysis_type] = analysis
+        aggregates.append(aggregate)
+
+    return {
+        "schema_version": 1,
+        "source_files": [str(summary.path) for summary in summaries],
+        "records": records,
+        "path_groups": aggregates,
+    }
 
 
 def _existing_files_in(directory, pattern: str) -> list[Path]:
@@ -839,6 +1124,140 @@ def _qor_missing_metrics(step: WorkspaceStep, records: list[dict]) -> list[str]:
     ]
 
 
+def _workspace_step_completed(workspace: Workspace, step_name: str) -> bool:
+    flow_data = workspace.flow.data
+    flow_steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+    if not isinstance(flow_steps, list) or len(flow_steps) == 0:
+        return True
+
+    for flow_step in flow_steps:
+        if not isinstance(flow_step, dict) or flow_step.get("name") != step_name:
+            continue
+        return flow_step.get("state") == "Success"
+    return False
+
+
+def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
+    workspace_dir = workspace.directory
+    summary_path = (
+        Path(workspace_dir)
+        / f"{source_step}_ecc"
+        / "analysis"
+        / "qor_summary.json"
+        if workspace_dir is not None
+        else None
+    )
+    summary = json_read(summary_path) if summary_path is not None else None
+    available = (
+        isinstance(summary, dict)
+        and summary.get("schema_version") == 1
+        and isinstance(summary.get("status"), str)
+    )
+    hard_gates = summary.get("hard_gates", []) if available else []
+    return {
+        "step": source_step,
+        "path": str(summary_path) if summary_path is not None else "",
+        "flow_completed": _workspace_step_completed(workspace, source_step),
+        "available": available,
+        "status": summary.get("status") if available else None,
+        "hard_gates": hard_gates if isinstance(hard_gates, list) else [],
+    }
+
+
+def _harden_source_passed(source: dict, required_hard_gates: tuple[str, ...]) -> bool:
+    if not source["flow_completed"] or not source["available"]:
+        return False
+    if source["status"] != "green":
+        return False
+    if len(required_hard_gates) == 0:
+        return True
+
+    gates = {
+        gate.get("id"): gate
+        for gate in source["hard_gates"]
+        if isinstance(gate, dict) and isinstance(gate.get("id"), str)
+    }
+    return all(gates.get(gate_id, {}).get("passed") is True for gate_id in required_hard_gates)
+
+
+def _harden_source_reason(source: dict, label: str) -> str:
+    if not source["flow_completed"]:
+        return f"{label} flow is not completed."
+    if not source["available"]:
+        return f"{label} QoR summary is missing."
+    if source["status"] != "green":
+        return f"{label} QoR summary is {source['status']}."
+    return f"{label} QoR hard gates are incomplete."
+
+
+def _harden_qor_signoff(workspace: Workspace, records: list[dict]) -> dict:
+    sources = []
+    hard_gates = []
+    blocking_issues = []
+
+    for spec in HARDEN_SIGNOFF_SOURCE_SPECS:
+        source = _harden_signoff_source(workspace, spec["step"])
+        passed = _harden_source_passed(source, spec["required_hard_gates"])
+        sources.append({
+            "id": spec["id"],
+            "step": source["step"],
+            "path": source["path"],
+            "available": source["available"],
+            "flow_completed": source["flow_completed"],
+            "status": source["status"],
+        })
+        hard_gates.append({
+            "id": spec["id"],
+            "passed": passed,
+            "metric": f"{spec['step']}_qor_summary",
+            "threshold": "green",
+            "actual": source["status"],
+            "cap_if_failed": 70,
+        })
+        if not passed:
+            blocking_issues.append({
+                "metric": spec["id"],
+                "display_name": spec["label"],
+                "value": source["status"],
+                "reason": _harden_source_reason(source, spec["label"]),
+            })
+
+    values = {
+        record.get("name"): _qor_number(record.get("value"))
+        for record in records
+    }
+    artifact_missing_count = values.get("harden_artifact_missing_count")
+    artifacts_complete = artifact_missing_count == 0
+    source_gates_passed = all(gate["passed"] for gate in hard_gates)
+    package_complete = artifacts_complete and source_gates_passed
+    hard_gates.append({
+        "id": "final_package_complete",
+        "passed": package_complete,
+        "metric": "harden_artifact_missing_count",
+        "threshold": 0,
+        "actual": artifact_missing_count,
+        "cap_if_failed": 70,
+    })
+    if not artifacts_complete:
+        blocking_issues.append({
+            "metric": "final_package_complete",
+            "display_name": "Final Package Complete",
+            "value": artifact_missing_count,
+            "reason": "Harden output artifacts are missing.",
+        })
+
+    return {
+        "sources": sources,
+        "hard_gates": hard_gates,
+        "blocking_issues": blocking_issues,
+        "missing_sources": [
+            source["id"]
+            for source in sources
+            if not source["available"] or not source["flow_completed"]
+        ],
+    }
+
+
 def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
     values = {
         record.get("name"): _qor_number(record.get("value"))
@@ -912,11 +1331,18 @@ def build_qor_summary_payload(workspace: Workspace,
         if issue is not None:
             blocking_issues.append(issue)
 
+    harden_signoff = (
+        _harden_qor_signoff(workspace, records)
+        if step.name == StepEnum.HARDEN.value
+        else None
+    )
     hard_gates = (
         _sta_qor_hard_gates(records)
         if step.name == StepEnum.STA.value
-        else []
+        else harden_signoff["hard_gates"] if harden_signoff is not None else []
     )
+    if harden_signoff is not None:
+        blocking_issues.extend(harden_signoff["blocking_issues"])
     failed_hard_gates = [gate for gate in hard_gates if not gate["passed"]]
 
     if len(records) == 0:
@@ -926,7 +1352,7 @@ def build_qor_summary_payload(workspace: Workspace,
     else:
         status = "green"
 
-    return {
+    summary = {
         "schema_version": 1,
         "tool": step.tool,
         "step": step.name,
@@ -939,6 +1365,12 @@ def build_qor_summary_payload(workspace: Workspace,
         "missing_metrics": _qor_missing_metrics(step, records),
         "source_file": str(step.analysis.get("qor_metrics", step_metrics.path)),
     }
+    if harden_signoff is not None:
+        summary["final_signoff"] = {
+            "sources": harden_signoff["sources"],
+            "missing_sources": harden_signoff["missing_sources"],
+        }
+    return summary
 
 
 def _qor_hotspot_record(record: dict, source_file: str) -> dict | None:
@@ -1342,6 +1774,10 @@ def build_metrics_routing(workspace: Workspace,
     if isinstance(route_data, dict):
         route = route_data.get("route", {})
         route = route if isinstance(route, dict) else {}
+        metrics["route_layer_metrics"] = _route_layer_metrics(
+            route,
+            step.feature.get("step", ""),
+        )
         la = route.get("LA", {})
         la = la if isinstance(la, dict) else {}
         _add_number_metric(
@@ -1462,6 +1898,7 @@ def build_metrics_sta(workspace: Workspace,
         for corner, report_path in qor_paths
         if (summary := read_sta_qor_summary(corner, report_path)) is not None
     ]
+    metrics["sta_path_group_metrics"] = _sta_path_group_metrics(summaries)
     setup_wns = None
     setup_tns = None
     setup_corner = ""
@@ -1766,6 +2203,10 @@ def build_metrics_placement(workspace: Workspace,
 
     map_data = json_read(step.feature.get('map', ""))
     if isinstance(map_data, dict):
+        metrics["place_map_metrics"] = _place_map_metrics(
+            map_data,
+            step.feature.get("map", ""),
+        )
         wirelength = map_data.get("Wirelength", {})
         wirelength = wirelength if isinstance(wirelength, dict) else {}
         _add_number_metric(metrics, "HPWL", wirelength.get("HPWL"), scale=0.001)

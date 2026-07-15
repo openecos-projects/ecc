@@ -625,6 +625,14 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    egr_union_csv = tmp_path / "place_egr_union_overflow.csv"
+    egr_union_csv.write_text("0,1\n2,3\n", encoding="utf-8")
+    cell_density_csv = tmp_path / "place_allcell_density.csv"
+    cell_density_csv.write_text("0,0.5\n1,invalid\n", encoding="utf-8")
+    pin_density_csv = tmp_path / "place_allcell_pin_density.csv"
+    pin_density_csv.write_text("0,2\n4,6\n", encoding="utf-8")
+    margin_union_csv = tmp_path / "place_union_margin.csv"
+    margin_union_csv.write_text("10,20\n30,40\n", encoding="utf-8")
     step.feature["map"].write_text(
         json.dumps(
             {
@@ -634,6 +642,9 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
                     "FLUTE": 4562638,
                 },
                 "Congestion": {
+                    "map": {
+                        "egr": {"union": str(egr_union_csv)},
+                    },
                     "overflow": {
                         "total": {"union": 13},
                         "max": {"union": 3},
@@ -642,6 +653,11 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
                         "rudy": {"max": {"union": 0.004728000145405531}},
                         "lutrudy": {"max": {"union": 0.005274999886751175}},
                     },
+                },
+                "Density": {
+                    "cell": {"allcell_density": str(cell_density_csv)},
+                    "pin": {"allcell_pin_density": str(pin_density_csv)},
+                    "margin": {"union": str(margin_union_csv)},
                 },
             }
         ),
@@ -657,6 +673,32 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     assert metrics.data["place_congestion_egr_overflow_max"] == 3
     assert metrics.data["place_rudy_utilization_max"] == 0.004728000145405531
     assert metrics.data["place_lutrudy_utilization_max"] == 0.005274999886751175
+    map_records = {
+        (record["group"], record["metric"], record.get("direction")): record
+        for record in metrics.data["place_map_metrics"]["maps"]
+    }
+    assert metrics.data["place_map_metrics"]["source_file"] == str(step.feature["map"])
+    assert map_records[("congestion", "egr", "union")] == {
+        "group": "congestion",
+        "metric": "egr",
+        "direction": "union",
+        "source_file": str(egr_union_csv),
+        "available": True,
+        "row_count": 2,
+        "column_count": 2,
+        "value_count": 4,
+        "nonzero_count": 3,
+        "nonzero_ratio": 0.75,
+        "max": 3,
+        "top_5_percent_average": 3,
+        "high_bin_threshold": 2.7,
+        "high_bin_count": 1,
+        "high_bin_ratio": 0.25,
+    }
+    assert map_records[("cell", "allcell_density", None)]["value_count"] == 3
+    assert map_records[("cell", "allcell_density", None)]["max"] == 1
+    assert map_records[("pin", "allcell_pin_density", None)]["high_bin_count"] == 1
+    assert map_records[("margin", "union", None)]["top_5_percent_average"] == 40
 
     records = {
         record["name"]: record
@@ -668,6 +710,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     assert records["place_grwl"]["value"] == 4509
     assert records["place_congestion_egr_overflow_total"]["value"] == 13
     assert records["place_lutrudy_utilization_max"]["value"] == 0.005274999886751175
+    assert "place_map_metrics" not in records
     hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
     assert hotspots["schema_version"] == 1
     assert hotspots["tool"] == "ecc"
@@ -747,19 +790,31 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
             {
                 "route": {
                     "LA": {
+                        "cut_via_num_map": {"1": 100, "2": 200},
+                        "routing_demand_map": {"1": 500, "2": 750},
+                        "routing_overflow_map": {"1": 2, "2": 0},
+                        "routing_wire_length_map": {"1": 125.5, "2": 240.25},
                         "total_demand": 10431,
                         "total_overflow": 2,
                     },
                     "DR": [
                         {
+                            "cut_via_num_map": {"1": 101, "2": 201},
                             "iter": 1,
+                            "routing_patch_num_map": {"1": 4, "2": 5},
+                            "routing_violation_num_map": {"1": 3, "2": 2},
+                            "routing_wire_length_map": {"1": 130, "2": 245},
                             "total_patch_num": 48,
                             "total_via_num": 1477,
                             "total_violation_num": 5,
                             "total_wire_length": 5200.535,
                         },
                         {
+                            "cut_via_num_map": {"1": 99, "2": 198},
                             "iter": 3,
+                            "routing_patch_num_map": {"1": 1, "2": 3},
+                            "routing_violation_num_map": {"1": 0, "2": 0},
+                            "routing_wire_length_map": {"1": 126.5, "2": 241.75},
                             "total_patch_num": 46,
                             "total_via_num": 1470,
                             "total_violation_num": 0,
@@ -780,6 +835,45 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
     assert metrics.data["route_dr_total_patch_count"] == 46
     assert metrics.data["route_dr_total_wirelength"] == 5198.943
     assert metrics.data["route_dr_total_via_count"] == 1470
+    assert metrics.data["route_layer_metrics"] == {
+        "schema_version": 1,
+        "source_file": str(step.feature["step"]),
+        "final_dr_iteration": 3,
+        "layers": [
+            {
+                "layer": "1",
+                "layer_index": 1,
+                "la": {
+                    "demand": 500,
+                    "overflow": 2,
+                    "wirelength": 125.5,
+                    "via_count": 100,
+                },
+                "dr": {
+                    "wirelength": 126.5,
+                    "via_count": 99,
+                    "violation_count": 0,
+                    "patch_count": 1,
+                },
+            },
+            {
+                "layer": "2",
+                "layer_index": 2,
+                "la": {
+                    "demand": 750,
+                    "overflow": 0,
+                    "wirelength": 240.25,
+                    "via_count": 200,
+                },
+                "dr": {
+                    "wirelength": 241.75,
+                    "via_count": 198,
+                    "violation_count": 0,
+                    "patch_count": 3,
+                },
+            },
+        ],
+    }
 
     records = {
         record["name"]: record
@@ -790,6 +884,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
     assert records["route_la_total_overflow"]["value"] == 2
     assert records["route_dr_total_violation_count"]["value"] == 0
     assert records["route_dr_total_wirelength"]["value"] == 5198.943
+    assert "route_layer_metrics" not in records
     hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
     hotspot_records = {record["metric"]: record for record in hotspots["hotspots"]}
     assert hotspot_records["route_la_total_overflow"] == {
@@ -892,7 +987,18 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
 
     reports = {
         step.output["dir"] / "MAX_125" / "RCworst" / "qor_summary.json": {
-            "path_groups": [],
+            "path_groups": [
+                {
+                    "name": "core",
+                    "setup": {"wns": -0.2, "tns": -1.2, "nvp": 3, "frequency_mhz": 750},
+                    "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
+                },
+                {
+                    "name": "io",
+                    "setup": {"wns": -0.1, "tns": -0.4, "nvp": 1, "frequency_mhz": 800},
+                    "hold": {"wns": -0.2, "tns": -0.2, "nvp": 2},
+                },
+            ],
             "summary": {
                 "setup": {"wns": -0.2, "tns": -1.2, "nvp": 3, "frequency_mhz": 750},
                 "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
@@ -900,7 +1006,18 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
             "design_statistics": {},
         },
         step.output["dir"] / "MIN_m40" / "Cbest" / "qor_summary.json": {
-            "path_groups": [],
+            "path_groups": [
+                {
+                    "name": "core",
+                    "setup": {"wns": 0.3, "tns": 0.0, "nvp": 0, "frequency_mhz": 900},
+                    "hold": {"wns": -0.05, "tns": -0.1, "nvp": 1},
+                },
+                {
+                    "name": "io",
+                    "setup": {"wns": 0.2, "tns": -0.1, "nvp": 0, "frequency_mhz": 880},
+                    "hold": {"wns": 0.2, "tns": 0.0, "nvp": 0},
+                },
+            ],
             "summary": {
                 "setup": {"wns": 0.3, "tns": 0.0, "nvp": 0, "frequency_mhz": 900},
                 "hold": {"wns": -0.05, "tns": -0.1, "nvp": 1},
@@ -927,6 +1044,43 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
     assert metrics.data["sta_worst_hold_corner"] == "MIN_m40/Cbest"
     assert step.analysis["metrics"].name == "sta_metrics.json"
+    sta_path_group_metrics = metrics.data["sta_path_group_metrics"]
+    assert len(sta_path_group_metrics["records"]) == 4
+    core_group = next(
+        group for group in sta_path_group_metrics["path_groups"]
+        if group["path_group"] == "core"
+    )
+    assert core_group == {
+        "path_group": "core",
+        "corner_count": 2,
+        "setup": {
+            "worst_wns": -0.2,
+            "worst_wns_corner": "MAX_125/RCworst",
+            "worst_tns": -1.2,
+            "worst_tns_corner": "MAX_125/RCworst",
+            "minimum_frequency_mhz": 750,
+            "minimum_frequency_mhz_corner": "MAX_125/RCworst",
+            "nvp_total": 3,
+        },
+        "hold": {
+            "worst_wns": -0.05,
+            "worst_wns_corner": "MIN_m40/Cbest",
+            "worst_tns": -0.1,
+            "worst_tns_corner": "MIN_m40/Cbest",
+            "nvp_total": 1,
+        },
+    }
+    io_record = next(
+        record for record in sta_path_group_metrics["records"]
+        if record["path_group"] == "io" and record["corner"] == "MAX_125/RCworst"
+    )
+    assert io_record["setup"] == {
+        "wns": -0.1,
+        "tns": -0.4,
+        "nvp": 1,
+        "frequency_mhz": 800,
+    }
+    assert io_record["hold"] == {"wns": -0.2, "tns": -0.2, "nvp": 2}
     records = {
         record["name"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
@@ -941,6 +1095,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert records["sta_hold_violation_count"]["value"] == 1
     assert records["sta_setup_wns"]["corner"] == "MAX_125/RCworst"
     assert records["sta_hold_wns"]["corner"] == "MIN_m40/Cbest"
+    assert "sta_path_group_metrics" not in records
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     assert summary["status"] == "blocked"
     assert all(not gate["passed"] for gate in summary["hard_gates"][:6])
@@ -1063,6 +1218,136 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
     }
     assert records["harden_artifact_missing_count"]["value"] == 1
     assert records["harden_gds_exists"]["value"] == 1
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert summary["status"] == "blocked"
+    assert summary["final_signoff"]["missing_sources"] == [
+        "final_drc_clean",
+        "final_sta_setup_clean",
+        "final_sta_hold_clean",
+        "final_rcx_corner_complete",
+    ]
+
+
+def _write_harden_signoff_summary(tmp_path, step_name, *, status="green", hard_gates=None):
+    summary_path = tmp_path / f"{step_name}_ecc" / "analysis" / "qor_summary.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "step": step_name,
+            "status": status,
+            "hard_gates": hard_gates or [],
+            "blocking_issues": [],
+            "missing_metrics": [],
+        }),
+        encoding="utf-8",
+    )
+
+
+def _write_harden_output_artifacts(step):
+    for output_key, contents in (
+        ("gds", "gds"),
+        ("lef", "lef"),
+        ("lib", "lib"),
+        ("image", "png"),
+    ):
+        step.output[output_key].write_text(contents, encoding="utf-8")
+    Path(f"{step.output['lib']}.check_sources.tsv").write_text(
+        "source\n",
+        encoding="utf-8",
+    )
+
+
+def _green_sta_hard_gates():
+    return [
+        {"id": gate_id, "passed": True}
+        for gate_id in (
+            "sta_setup_wns_clean",
+            "sta_setup_tns_clean",
+            "sta_setup_violation_free",
+            "sta_hold_wns_clean",
+            "sta_hold_tns_clean",
+            "sta_hold_violation_free",
+        )
+    ]
+
+
+def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.DRC.value, "state": "Success"},
+            {"name": StepEnum.STA.value, "state": "Success"},
+            {"name": StepEnum.RCX.value, "state": "Success"},
+        ]
+    }
+    _write_harden_signoff_summary(tmp_path, StepEnum.DRC.value)
+    _write_harden_signoff_summary(
+        tmp_path,
+        StepEnum.STA.value,
+        hard_gates=_green_sta_hard_gates(),
+    )
+    _write_harden_signoff_summary(tmp_path, StepEnum.RCX.value)
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.HARDEN.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    _write_harden_output_artifacts(step)
+
+    ecc_metrics.build_metrics_harden(workspace, step)
+
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    gates = {gate["id"]: gate for gate in summary["hard_gates"]}
+    assert summary["status"] == "green"
+    assert all(gate["passed"] for gate in gates.values())
+    assert summary["blocking_issues"] == []
+    assert summary["final_signoff"]["missing_sources"] == []
+
+
+def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.DRC.value, "state": "Incomplete"},
+            {"name": StepEnum.STA.value, "state": "Success"},
+            {"name": StepEnum.RCX.value, "state": "Success"},
+        ]
+    }
+    _write_harden_signoff_summary(tmp_path, StepEnum.DRC.value)
+    _write_harden_signoff_summary(
+        tmp_path,
+        StepEnum.STA.value,
+        hard_gates=_green_sta_hard_gates(),
+    )
+    _write_harden_signoff_summary(tmp_path, StepEnum.RCX.value)
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.HARDEN.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    _write_harden_output_artifacts(step)
+
+    ecc_metrics.build_metrics_harden(workspace, step)
+
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    gates = {gate["id"]: gate for gate in summary["hard_gates"]}
+    issues = {issue["metric"]: issue for issue in summary["blocking_issues"]}
+    assert summary["status"] == "blocked"
+    assert gates["final_drc_clean"]["passed"] is False
+    assert gates["final_package_complete"]["passed"] is False
+    assert issues["final_drc_clean"]["reason"] == "Final DRC flow is not completed."
+    assert "final_drc_clean" in summary["final_signoff"]["missing_sources"]
 
 
 def test_ecc_plot_step_metrics_accepts_path_metrics(tmp_path, monkeypatch):
