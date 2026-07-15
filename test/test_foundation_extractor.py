@@ -749,12 +749,18 @@ def test_iccd_full_v1_extractor_publishes_drc_attribution_inputs(tmp_path: Path)
         "run_stage_patch_features",
         "instance_stage_state",
         "pin_stage_state",
+        "placement_rows",
+        "instance_row_refs",
+        "clock_instance_refs",
     }
     assert inputs["tables"]["drc_violations"] == {
         "ref": table_meta["path"],
         "sha256": table_meta["sha256"],
     }
     assert all(set(table) == {"ref", "sha256"} for table in inputs["tables"].values())
+    assert manifest["tables"]["placement_rows"]["row_count"] > 0
+    assert manifest["tables"]["instance_row_refs"]["row_count"] == 0
+    assert manifest["tables"]["clock_instance_refs"]["row_count"] == 0
     assert set(inputs["profiles"]) == {"C1", "R1", "R3", "D1", "D2"}
     assert inputs["profiles"]["R1"]["rule_version"] == "route_local.v1"
     assert inputs["profiles"]["R1"]["availability"] == "available"
@@ -768,6 +774,55 @@ def test_iccd_full_v1_extractor_publishes_drc_attribution_inputs(tmp_path: Path)
     assert inputs["profiles"]["C1"]["availability"] == "missing"
     assert inputs["profiles"]["R3"]["availability"] == "missing"
     assert inputs["profiles"]["D2"]["availability"] == "missing"
+
+
+def test_instance_row_refs_require_explicit_def_row_lattice_alignment():
+    placement_rows = [
+        {
+            "design_id": "design_1",
+            "run_id": "run_1",
+            "stage_name": "drc",
+            "row_id": "row_1",
+            "origin_x": 0.0,
+            "origin_y": 20.0,
+            "count_x": 2,
+            "count_y": 1,
+            "step_x": 10.0,
+            "step_y": 10.0,
+        }
+    ]
+    instances = [
+        {
+            "design_id": "design_1",
+            "run_id": "run_1",
+            "stage_name": "drc",
+            "instance_key": "U1",
+            "origin_x": 10.0,
+            "origin_y": 20.0,
+        },
+        {
+            "design_id": "design_1",
+            "run_id": "run_1",
+            "stage_name": "drc",
+            "instance_key": "U2",
+            "origin_x": 5.0,
+            "origin_y": 20.0,
+        },
+    ]
+
+    refs = extractor_module._instance_row_ref_rows(instances, placement_rows)
+
+    assert refs == [
+        {
+            "design_id": "design_1",
+            "run_id": "run_1",
+            "stage_name": "drc",
+            "instance_key": "U1",
+            "row_id": "row_1",
+            "relation": "origin_on_row_lattice",
+            "availability": "available",
+        }
+    ]
 
 
 

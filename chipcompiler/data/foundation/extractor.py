@@ -48,6 +48,9 @@ _ATTRIBUTION_INPUT_TABLES = (
     "run_stage_patch_features",
     "instance_stage_state",
     "pin_stage_state",
+    "placement_rows",
+    "instance_row_refs",
+    "clock_instance_refs",
 )
 _ATTRIBUTION_RULE_VERSIONS = {
     "C1": "clock_placement_attribution.v1",
@@ -339,6 +342,7 @@ class FoundationExtractor:
                 labels=labels,
                 metrics=metrics,
                 drc_reports=drc_reports,
+                def_data=def_data,
                 skip_tables=_BASE_DELTA_STATIC_TABLES if scope == "variant_delta" else frozenset(),
                 materialize_audit_tables=materialize_audit_tables,
                 route_detail_level=route_detail_level,
@@ -2331,6 +2335,7 @@ class FoundationExtractor:
         labels: dict[str, Any],
         metrics: dict[str, Any],
         drc_reports: dict[str, dict[str, Any]] | None = None,
+        def_data: dict[str, DefData] | None = None,
         skip_tables: frozenset[str] | set[str] | None = None,
         materialize_audit_tables: bool = True,
         route_detail_level: str = "full",
@@ -2358,6 +2363,8 @@ class FoundationExtractor:
         ]
         if "designs" not in skip:
             tables["designs"] = design_rows
+        instance_stage_state = self._instance_stage_state_rows(design_id, run_id, stages)
+        placement_rows = self._placement_row_rows(design_id, run_id, def_data or {})
         tables.update({
             "runs": [
                 {
@@ -2404,7 +2411,10 @@ class FoundationExtractor:
             "run_patch_route_label_layers": self._route_label_layer_rows(design_id, run_id, labels),
             "patch_entity_refs": self._patch_entity_ref_rows(design_id, run_id, stages) if materialize_audit_tables else [],
             "instances": self._instance_rows(design_id, stages),
-            "instance_stage_state": self._instance_stage_state_rows(design_id, run_id, stages),
+            "instance_stage_state": instance_stage_state,
+            "placement_rows": placement_rows,
+            "instance_row_refs": _instance_row_ref_rows(instance_stage_state, placement_rows),
+            "clock_instance_refs": [],
             "pins": self._pin_rows(design_id, stages),
             "pin_stage_state": self._pin_stage_state_rows(design_id, run_id, stages),
             "nets": self._net_rows(design_id, stages),
@@ -2480,6 +2490,34 @@ class FoundationExtractor:
                         "source_artifact_id": _source_artifact_id(source) if source else None,
                         "source_index": source_index,
                         "availability": availability,
+                    }
+                )
+        return rows
+
+    def _placement_row_rows(
+        self,
+        design_id: str,
+        run_id: str,
+        def_data: dict[str, DefData],
+    ) -> list[dict[str, Any]]:
+        rows = []
+        for stage_name, parsed in sorted(def_data.items()):
+            for row in parsed.rows:
+                rows.append(
+                    {
+                        "design_id": design_id,
+                        "run_id": run_id,
+                        "stage_name": stage_name,
+                        "row_id": _stable_id("placement_row", run_id, stage_name, row.name),
+                        "site": row.site,
+                        "origin_x": row.x,
+                        "origin_y": row.y,
+                        "orientation": row.orient,
+                        "count_x": row.count_x,
+                        "count_y": row.count_y,
+                        "step_x": row.step_x,
+                        "step_y": row.step_y,
+                        "availability": "available",
                     }
                 )
         return rows
@@ -3996,6 +4034,8 @@ class FoundationExtractor:
             for status in (self._quality.get("availability", {}).get("drc", {}) or {}).values()
         )
         wire_available = table_registry["wire_segments"]["row_count"] > 0
+        row_refs_available = table_registry["instance_row_refs"]["row_count"] > 0
+        clock_refs_available = table_registry["clock_instance_refs"]["row_count"] > 0
         drc_wire_available = drc_available and wire_available
         seed_ids = _attribution_seed_ids(rows)
         short_seed_ids = _attribution_seed_ids(rows, native_type="short")
@@ -4006,6 +4046,8 @@ class FoundationExtractor:
             "tables": table_refs,
             "profiles": _attribution_profile_inputs(
                 drc_wire_available=drc_wire_available,
+                d2_available=drc_available and row_refs_available,
+                c1_available=clock_refs_available,
                 seed_ids=seed_ids,
                 short_seed_ids=short_seed_ids,
             ),
@@ -6225,17 +6267,68 @@ def _attribution_profile_input(
 def _attribution_profile_inputs(
     *,
     drc_wire_available: bool,
+    d2_available: bool,
+    c1_available: bool,
     seed_ids: list[str],
     short_seed_ids: list[str],
 ) -> dict[str, dict[str, Any]]:
     availability = "available" if drc_wire_available else "missing"
+    d2_status = "available" if d2_available else "missing"
+    c1_status = "available" if c1_available else "missing"
     return {
-        "C1": _attribution_profile_input("missing", "C1", []),
+        "C1": _attribution_profile_input(c1_status, "C1", []),
         "R1": _attribution_profile_input(availability, "R1", seed_ids),
         "R3": _attribution_profile_input("missing", "R3", []),
         "D1": _attribution_profile_input(availability, "D1", short_seed_ids),
-        "D2": _attribution_profile_input("missing", "D2", []),
+        "D2": _attribution_profile_input(d2_status, "D2", seed_ids if d2_available else []),
     }
+
+
+def _instance_row_ref_rows(
+    instance_rows: Iterable[dict[str, Any]],
+    placement_rows: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows_by_stage: dict[str, list[dict[str, Any]]] = {}
+    for row in placement_rows:
+        rows_by_stage.setdefault(str(row["stage_name"]), []).append(row)
+    refs = []
+    for instance in instance_rows:
+        for row in rows_by_stage.get(str(instance["stage_name"]), []):
+            if not _instance_origin_in_placement_row(instance, row):
+                continue
+            refs.append(
+                {
+                    "design_id": instance["design_id"],
+                    "run_id": instance["run_id"],
+                    "stage_name": instance["stage_name"],
+                    "instance_key": instance["instance_key"],
+                    "row_id": row["row_id"],
+                    "relation": "origin_on_row_lattice",
+                    "availability": "available",
+                }
+            )
+    return refs
+
+
+def _instance_origin_in_placement_row(
+    instance: dict[str, Any], row: dict[str, Any]
+) -> bool:
+    x = instance.get("origin_x")
+    y = instance.get("origin_y")
+    if x is None or y is None:
+        return False
+    return _lattice_contains(
+        float(x), float(row["origin_x"]), int(row["count_x"]), float(row["step_x"])
+    ) and _lattice_contains(
+        float(y), float(row["origin_y"]), int(row["count_y"]), float(row["step_y"])
+    )
+
+
+def _lattice_contains(value: float, origin: float, count: int, step: float) -> bool:
+    if count <= 0 or step <= 0:
+        return False
+    offset = (value - origin) / step
+    return 0 <= offset < count and abs(offset - round(offset)) < 1e-6
 
 
 def _metric_artifact_relative_path(stage_name: str, metric_name: str) -> str:
