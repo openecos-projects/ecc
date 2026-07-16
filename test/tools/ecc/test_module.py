@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import chipcompiler.utility as chipcompiler_utility
+import pytest
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
 from chipcompiler.tools.ecc import plot as ecc_plot
@@ -50,6 +51,23 @@ class FakeEcc:
 
     def init_sta(self, **kwargs):
         self.calls.append(("init_sta", kwargs))
+        return True
+
+    def run_sta(self):
+        self.calls.append(("run_sta", (), {}))
+        config_dict = None
+        for call in reversed(self.calls):
+            if len(call) == 2 and call[0] == "init_sta":
+                config_dict = call[1]["config_dict"]
+                break
+        assert config_dict is not None
+        report_dir = Path(config_dict["-temp_directory_path"]) / "timing_reporter"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        if config_dict.get("-output_timing_reports") == "1":
+            (report_dir / "qor_summary.rpt").write_text("report\n", encoding="utf-8")
+        if config_dict.get("-output_timing_features") == "1":
+            (report_dir / "qor_summary.json").write_text("{}\n", encoding="utf-8")
+            (report_dir / "timing_paths.json").write_text("{}\n", encoding="utf-8")
         return True
 
     def read_liberty(self, lib_paths):
@@ -197,7 +215,7 @@ def test_view_json_apply_edits_passes_compress_option():
     ]
 
 
-def test_ecc_binding_wrappers_stringify_path_arguments():
+def test_ecc_binding_wrappers_stringify_path_arguments(tmp_path):
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
@@ -222,11 +240,13 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     )
     module.run_timing(
         config=Path("/ws/config/sta.json"),
-        work_dir=Path("/ws/sta_work"),
-        output_dir=Path("/ws/sta_report"),
+        work_dir=tmp_path / "sta_work",
+        report_dir=tmp_path / "sta_report",
+        feature_dir=tmp_path / "sta_feature",
         lib_paths=[Path("/pdk/lib.lib")],
         sdc_path=Path("/ws/design.sdc"),
         spef_path=Path("/ws/design.spef"),
+        corner="MAX_125/RCworst",
     )
 
     assert module.ecc.calls == [
@@ -265,12 +285,64 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
             "init_sta",
             {
                 "config": "/ws/config/sta.json",
-                "config_dict": {"-temp_directory_path": "/ws/sta_work"},
+                "config_dict": {
+                    "-temp_directory_path": str(tmp_path / "sta_work"),
+                    "-output_timing_reports": "1",
+                    "-output_timing_features": "1",
+                    "-timing_path_limit": "20",
+                    "-timing_corner": "MAX_125/RCworst",
+                },
             },
         ),
         ("run_sta", (), {}),
         ("destroy_sta", (), {}),
     ]
+
+
+def test_run_timing_splits_text_reports_and_structured_artifacts(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    report_dir = tmp_path / "report" / "MAX_125" / "RCworst"
+    feature_dir = tmp_path / "feature" / "MAX_125" / "RCworst"
+
+    module.run_timing(
+        work_dir=tmp_path / "data" / "sta",
+        report_dir=report_dir,
+        feature_dir=feature_dir,
+        output_modes=("structured", "report"),
+        max_paths_per_analysis=7,
+        corner="MAX_125/RCworst",
+    )
+
+    assert (report_dir / "qor_summary.rpt").is_file()
+    assert (feature_dir / "qor_summary.json").is_file()
+    assert (feature_dir / "timing_paths.json").is_file()
+    init_config = next(
+        call[1]
+        for call in module.ecc.calls
+        if len(call) == 2 and call[0] == "init_sta"
+    )
+    assert init_config["config_dict"] == {
+        "-temp_directory_path": str(tmp_path / "data" / "sta"),
+        "-output_timing_reports": "1",
+        "-output_timing_features": "1",
+        "-timing_path_limit": "7",
+        "-timing_corner": "MAX_125/RCworst",
+    }
+
+
+def test_run_timing_rejects_invalid_output_modes(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    with pytest.raises(ValueError, match="Unsupported STA output modes"):
+        module.run_timing(
+            work_dir=tmp_path / "data" / "sta",
+            feature_dir=tmp_path / "feature",
+            output_modes=("structured", "raw"),
+        )
+
+    assert module.ecc.calls == []
 
 
 def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
@@ -986,7 +1058,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     build_step_space(step)
 
     reports = {
-        step.output["dir"] / "MAX_125" / "RCworst" / "qor_summary.json": {
+        step.feature["dir"] / "MAX_125" / "RCworst" / "qor_summary.json": {
             "path_groups": [
                 {
                     "name": "core",
@@ -1005,7 +1077,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
             },
             "design_statistics": {},
         },
-        step.output["dir"] / "MIN_m40" / "Cbest" / "qor_summary.json": {
+        step.feature["dir"] / "MIN_m40" / "Cbest" / "qor_summary.json": {
             "path_groups": [
                 {
                     "name": "core",
@@ -1028,6 +1100,67 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     for report_path, payload in reports.items():
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(payload), encoding="utf-8")
+    timing_paths = {
+        "MAX_125/RCworst": {
+            "schema_version": 1,
+            "corner": "MAX_125/RCworst",
+            "path_limit": 20,
+            "paths": [{
+                "path_id": "setup_path",
+                "analysis_type": "setup",
+                "path_group": "core",
+                "start_point": "u_launch:CK",
+                "end_point": "u_capture:D",
+                "launch_clock": "clk",
+                "capture_clock": "clk",
+                "check_type": "setup",
+                "slack_ns": -0.2,
+                "arrival_ns": 1.2,
+                "required_ns": 1.0,
+                "cppr_ns": 0.0,
+                "stages": [{
+                    "kind": "cell_arc",
+                    "pin": "u_buf:Y",
+                    "instance": "u_buf",
+                    "cell": "BUFX3",
+                    "incremental_delay_ns": 0.12,
+                    "arrival_ns": 1.2,
+                    "transition": "rise",
+                }],
+            }],
+        },
+        "MIN_m40/Cbest": {
+            "schema_version": 1,
+            "corner": "MIN_m40/Cbest",
+            "path_limit": 20,
+            "paths": [{
+                "path_id": "hold_path",
+                "analysis_type": "hold",
+                "path_group": "core",
+                "start_point": "u_launch:CK",
+                "end_point": "u_capture:D",
+                "launch_clock": "clk",
+                "capture_clock": "clk",
+                "check_type": "hold",
+                "slack_ns": -0.05,
+                "arrival_ns": 0.25,
+                "required_ns": 0.2,
+                "cppr_ns": 0.0,
+                "stages": [{
+                    "kind": "net_arc",
+                    "pin": "u_net:Y",
+                    "instance": "u_net",
+                    "cell": "",
+                    "incremental_delay_ns": 0.08,
+                    "arrival_ns": 0.25,
+                    "transition": "fall",
+                }],
+            }],
+        },
+    }
+    for corner, payload in timing_paths.items():
+        path = step.feature["dir"] / corner / "timing_paths.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
 
     metrics = ecc_metrics.build_metrics_sta(workspace, step)
 
@@ -1099,6 +1232,14 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     assert summary["status"] == "blocked"
     assert all(not gate["passed"] for gate in summary["hard_gates"][:6])
+    issues = json.loads(step.analysis["sta_timing_issues"].read_text(encoding="utf-8"))
+    assert issues["near_fail_slack_ns"] == 0.05
+    assert [issue["issue_id"] for issue in issues["issues"]] == [
+        "sta_timing:MAX_125/RCworst:setup:setup_path",
+        "sta_timing:MIN_m40/Cbest:hold:hold_path",
+    ]
+    assert issues["issues"][0]["dominant_stages"][0]["pin"] == "u_buf:Y"
+    assert issues["issues"][0]["source_file"] == "feature/MAX_125/RCworst/timing_paths.json"
 
 
 def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
@@ -1126,9 +1267,9 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
         encoding="utf-8",
     )
     workspace.config[StepEnum.STA.value] = sta_config
-    report_path = step.output["dir"] / "MAX_125" / "RCworst" / "qor_summary.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
+    feature_path = step.feature["dir"] / "MAX_125" / "RCworst" / "qor_summary.json"
+    feature_path.parent.mkdir(parents=True, exist_ok=True)
+    feature_path.write_text(
         json.dumps({
             "path_groups": [],
             "summary": {
@@ -1498,6 +1639,15 @@ def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):
     assert step.analysis["qor_metrics"] == expected_step_dir / "analysis" / "qor_metrics.json"
     assert step.analysis["qor_summary"] == expected_step_dir / "analysis" / "qor_summary.json"
     assert step.analysis["qor_hotspots"] == expected_step_dir / "analysis" / "qor_hotspots.json"
+    assert step.analysis["sta_timing_issues"] == (
+        expected_step_dir / "analysis" / "sta_timing_issues.json"
+    )
+    assert step.report["sta"] == {"dir": expected_step_dir / "report"}
+    assert step.feature["sta"] == {
+        "dir": expected_step_dir / "feature",
+        "qor_summary_root": expected_step_dir / "feature",
+        "timing_paths_root": expected_step_dir / "feature",
+    }
     assert str(step.output["view_json"]) == (
         f"{expected_step_dir}/output/gcd_{StepEnum.PLACEMENT.value}_view"
     )
@@ -1601,8 +1751,10 @@ def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
         "step report": str(step.report["db"]),
     }
     assert ecc_service.get_step_info(workspace, step, "sta") == {
-        key: str(value)
-        for key, value in step.report["sta"].items()
+        "report_root": str(step.report["dir"]),
+        "feature_root": str(step.feature["dir"]),
+        "qor_summary_root": str(step.feature["dir"]),
+        "timing_paths_root": str(step.feature["dir"]),
     }
 
 

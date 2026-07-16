@@ -18,7 +18,9 @@ from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     read_sta_qor_summary,
+    read_sta_timing_paths,
     sta_qor_summary_paths,
+    sta_timing_paths_paths,
 )
 
 
@@ -970,6 +972,99 @@ def _sta_path_group_metrics(summaries) -> dict:
     }
 
 
+def _sta_timing_issue_source_file(step: WorkspaceStep, path: Path) -> str:
+    try:
+        return path.relative_to(step.directory).as_posix()
+    except (TypeError, ValueError):
+        return str(path)
+
+
+def _sta_timing_issues_payload(workspace: Workspace,
+                               step: WorkspaceStep,
+                               timing_artifacts,
+                               expected_paths: list[tuple[str, Path]]) -> dict:
+    issues = []
+    source_files = []
+    for artifact in timing_artifacts:
+        source_file = _sta_timing_issue_source_file(step, artifact.path)
+        source_files.append(source_file)
+        for timing_path in artifact.paths:
+            slack = _qor_number(timing_path.get("slack_ns"))
+            if slack is None or slack >= STA_TIMING_NEAR_FAIL_SLACK_NS:
+                continue
+            stages = [
+                stage
+                for stage in timing_path.get("stages", [])
+                if isinstance(stage, dict)
+            ]
+            dominant_stages = sorted(
+                stages,
+                key=lambda stage: (
+                    -(_qor_number(stage.get("incremental_delay_ns")) or 0.0),
+                    str(stage.get("pin", "")),
+                ),
+            )
+            analysis_type = timing_path["analysis_type"]
+            path_id = timing_path["path_id"]
+            issues.append({
+                "issue_id": f"sta_timing:{artifact.corner}:{analysis_type}:{path_id}",
+                "severity": "critical" if slack < 0 else "warning",
+                "corner": artifact.corner,
+                "analysis_type": analysis_type,
+                "path_group": timing_path["path_group"],
+                "start_point": timing_path["start_point"],
+                "end_point": timing_path["end_point"],
+                "launch_clock": timing_path["launch_clock"],
+                "capture_clock": timing_path["capture_clock"],
+                "check_type": timing_path["check_type"],
+                "slack_ns": slack,
+                "arrival_ns": _qor_number(timing_path.get("arrival_ns")),
+                "required_ns": _qor_number(timing_path.get("required_ns")),
+                "cppr_ns": _qor_number(timing_path.get("cppr_ns")),
+                "source_file": source_file,
+                "dominant_stages": dominant_stages,
+            })
+
+    loaded_corners = {artifact.corner for artifact in timing_artifacts}
+    missing_corners = sorted(
+        corner for corner, _ in expected_paths if corner not in loaded_corners
+    )
+    issues.sort(key=lambda issue: (
+        issue["slack_ns"],
+        issue["corner"],
+        issue["analysis_type"],
+        issue["issue_id"],
+    ))
+    return {
+        "schema_version": 1,
+        "tool": "ecc",
+        "step": StepEnum.STA.value,
+        "design": workspace.design.name,
+        "near_fail_slack_ns": STA_TIMING_NEAR_FAIL_SLACK_NS,
+        "source_files": sorted(source_files),
+        "missing_corners": missing_corners,
+        "issues": issues,
+    }
+
+
+def _save_sta_timing_issues(workspace: Workspace,
+                            step: WorkspaceStep,
+                            timing_artifacts,
+                            expected_paths: list[tuple[str, Path]]) -> bool:
+    output_path = step.analysis.get("sta_timing_issues")
+    if output_path is None:
+        return True
+    return json_write(
+        file_path=output_path,
+        data=_sta_timing_issues_payload(
+            workspace=workspace,
+            step=step,
+            timing_artifacts=timing_artifacts,
+            expected_paths=expected_paths,
+        ),
+    )
+
+
 def _existing_files_in(directory, pattern: str) -> list[Path]:
     try:
         path = Path(directory)
@@ -1005,6 +1100,7 @@ STA_QOR_CORNER_FIELDS = {
     "sta_expected_corner_count": "sta_corner_scope",
     "sta_missing_corner_count": "sta_corner_scope",
 }
+STA_TIMING_NEAR_FAIL_SLACK_NS = 0.05
 
 
 def _sta_qor_record_corner(step_metrics: StepMetrics, legacy_name: str) -> str | None:
@@ -1017,10 +1113,10 @@ def _sta_qor_record_corner(step_metrics: StepMetrics, legacy_name: str) -> str |
 
 
 def _sta_qor_source_file(step: WorkspaceStep) -> str | None:
-    output_dir = step.output.get("dir")
-    if output_dir is None or output_dir == "":
+    feature_dir = step.feature.get("dir")
+    if feature_dir is None or feature_dir == "":
         return None
-    return str(Path(output_dir) / "**" / STA_QOR_SUMMARY_FILENAME)
+    return str(Path(feature_dir) / "**" / STA_QOR_SUMMARY_FILENAME)
 
 
 def build_qor_metrics_payload(workspace: Workspace,
@@ -1891,13 +1987,26 @@ def build_metrics_sta(workspace: Workspace,
     metrics = {}
     metrics.update(build_metrics_db(workspace, step))
 
-    output_dir = Path(step.output.get("dir", ""))
-    qor_paths = sta_qor_summary_paths(workspace, output_dir)
+    feature_dir = Path(step.feature.get("dir", ""))
+    qor_paths = sta_qor_summary_paths(workspace, feature_dir)
     summaries = [
         summary
-        for corner, report_path in qor_paths
-        if (summary := read_sta_qor_summary(corner, report_path)) is not None
+        for corner, feature_path in qor_paths
+        if (summary := read_sta_qor_summary(corner, feature_path)) is not None
     ]
+    timing_paths = sta_timing_paths_paths(workspace, feature_dir)
+    timing_artifacts = [
+        artifact
+        for corner, feature_path in timing_paths
+        if (artifact := read_sta_timing_paths(corner, feature_path)) is not None
+    ]
+    if not _save_sta_timing_issues(
+        workspace=workspace,
+        step=step,
+        timing_artifacts=timing_artifacts,
+        expected_paths=timing_paths,
+    ):
+        return None
     metrics["sta_path_group_metrics"] = _sta_path_group_metrics(summaries)
     setup_wns = None
     setup_tns = None

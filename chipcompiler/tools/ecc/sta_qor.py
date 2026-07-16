@@ -18,7 +18,8 @@ STA_TEXT_REPORT_FILENAMES = (
     "timing_min_reg2reg.rpt",
 )
 STA_QOR_SUMMARY_FILENAME = "qor_summary.json"
-STA_REPORT_FILENAMES = (*STA_TEXT_REPORT_FILENAMES, STA_QOR_SUMMARY_FILENAME)
+STA_TIMING_PATHS_FILENAME = "timing_paths.json"
+STA_REPORT_FILENAMES = STA_TEXT_REPORT_FILENAMES
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,14 @@ class StaQorSummary:
     hold_nvp: int
 
 
+@dataclass(frozen=True)
+class StaTimingPaths:
+    corner: str
+    path: Path
+    path_limit: int
+    paths: tuple[dict, ...]
+
+
 def temperature_token(temperature) -> str:
     try:
         numeric = float(temperature)
@@ -44,23 +53,44 @@ def temperature_token(temperature) -> str:
     return str(temperature).replace("-", "m").replace(".", "p")
 
 
-def _output_root(output_dir) -> Path | None:
-    if output_dir is None or output_dir == "":
+def _artifact_root(root) -> Path | None:
+    if root is None or root == "":
         return None
     try:
-        return Path(output_dir)
+        return Path(root)
     except TypeError:
         return None
 
 
-def configured_sta_report_directories(workspace: Workspace,
-                                      output_dir) -> list[tuple[str, Path]]:
+def _safe_dir_name(name: str) -> str:
+    value = "".join(
+        character if character.isalnum() or character in ("-", "_", ".") else "_"
+        for character in name.strip()
+    )
+    return value or "unknown"
+
+
+def sta_artifact_directory(
+    root,
+    corner_name: str,
+    temperature,
+    rcx_corner_name: str,
+) -> Path | None:
+    artifact_root = _artifact_root(root)
+    if artifact_root is None:
+        return None
+    report_corner_dir = f"{corner_name}_{temperature_token(temperature)}"
+    return artifact_root / _safe_dir_name(report_corner_dir) / _safe_dir_name(rcx_corner_name)
+
+
+def configured_sta_artifact_directories(workspace: Workspace,
+                                        root) -> list[tuple[str, Path]]:
     sta_data = json_read(workspace.config.get(StepEnum.STA.value, ""))
     if not isinstance(sta_data, dict):
         return []
 
-    root = _output_root(output_dir)
-    if root is None:
+    artifact_root = _artifact_root(root)
+    if artifact_root is None:
         return []
 
     liberty_by_corner = {
@@ -83,60 +113,65 @@ def configured_sta_report_directories(workspace: Workspace,
             if not isinstance(rcx_corner_names, list):
                 continue
 
-            report_corner_dir = "{}_{}".format(
-                corner_name,
-                temperature_token(liberty.get("temperature")),
-            )
             for rcx_corner_name in rcx_corner_names:
                 if not isinstance(rcx_corner_name, str):
                     continue
-                report_dir = root / report_corner_dir / rcx_corner_name
-                if report_dir in seen_paths:
+                artifact_dir = sta_artifact_directory(
+                    artifact_root,
+                    corner_name,
+                    liberty.get("temperature"),
+                    rcx_corner_name,
+                )
+                if artifact_dir is None or artifact_dir in seen_paths:
                     continue
-                seen_paths.add(report_dir)
+                seen_paths.add(artifact_dir)
                 report_directories.append((
-                    f"{report_corner_dir}/{rcx_corner_name}",
-                    report_dir,
+                    artifact_dir.relative_to(artifact_root).as_posix(),
+                    artifact_dir,
                 ))
 
     return report_directories
 
 
-def sta_qor_summary_paths(workspace: Workspace,
-                           output_dir) -> list[tuple[str, Path]]:
-    report_directories = configured_sta_report_directories(workspace, output_dir)
-    if report_directories:
-        return [
-            (corner, report_dir / STA_QOR_SUMMARY_FILENAME)
-            for corner, report_dir in report_directories
-        ]
+def _artifact_paths(workspace: Workspace, root, filename: str) -> list[tuple[str, Path]]:
+    directories = configured_sta_artifact_directories(workspace, root)
+    if directories:
+        return [(corner, artifact_dir / filename) for corner, artifact_dir in directories]
 
-    root = _output_root(output_dir)
-    if root is None or not root.is_dir():
+    artifact_root = _artifact_root(root)
+    if artifact_root is None or not artifact_root.is_dir():
         return []
 
     paths = []
-    for path in sorted(root.rglob(STA_QOR_SUMMARY_FILENAME)):
+    for path in sorted(artifact_root.rglob(filename)):
         try:
-            corner = path.parent.relative_to(root).as_posix()
+            corner = path.parent.relative_to(artifact_root).as_posix()
         except ValueError:
             corner = path.parent.name
         paths.append((corner, path))
     return paths
 
 
-def sta_report_artifact_paths(workspace: Workspace,
-                              output_dir) -> list[tuple[str, Path]]:
-    report_directories = configured_sta_report_directories(workspace, output_dir)
-    if not report_directories:
-        report_directories = [
-            (corner, path.parent)
-            for corner, path in sta_qor_summary_paths(workspace, output_dir)
-        ]
+def sta_qor_summary_paths(workspace: Workspace,
+                           feature_root,
+                           legacy_output_root=None) -> list[tuple[str, Path]]:
+    feature_paths = _artifact_paths(workspace, feature_root, STA_QOR_SUMMARY_FILENAME)
+    if legacy_output_root is None or any(path.is_file() for _, path in feature_paths):
+        return feature_paths
+    return _artifact_paths(workspace, legacy_output_root, STA_QOR_SUMMARY_FILENAME)
 
+
+def sta_timing_paths_paths(workspace: Workspace,
+                           feature_root) -> list[tuple[str, Path]]:
+    return _artifact_paths(workspace, feature_root, STA_TIMING_PATHS_FILENAME)
+
+
+def sta_report_artifact_paths(workspace: Workspace,
+                              report_root) -> list[tuple[str, Path]]:
+    report_directories = configured_sta_artifact_directories(workspace, report_root)
     return [
-        (corner, report_dir / report_name)
-        for corner, report_dir in report_directories
+        (corner, artifact_dir / report_name)
+        for corner, artifact_dir in report_directories
         for report_name in STA_REPORT_FILENAMES
     ]
 
@@ -199,4 +234,82 @@ def read_sta_qor_summary(corner: str, path: Path) -> StaQorSummary | None:
         hold_wns=hold_wns,
         hold_tns=hold_tns,
         hold_nvp=hold_nvp,
+    )
+
+
+def _is_valid_timing_path_number(value) -> bool:
+    return value is None or _finite_number(value) is not None
+
+
+def read_sta_timing_paths(corner: str, path: Path) -> StaTimingPaths | None:
+    if not path.is_file() or path.stat().st_size <= 0:
+        return None
+
+    data = json_read(path)
+    if not isinstance(data, dict) or data.get("schema_version") != 1:
+        return None
+    if data.get("corner") != corner:
+        return None
+    path_limit = data.get("path_limit")
+    if isinstance(path_limit, bool) or not isinstance(path_limit, int) or path_limit < 0:
+        return None
+    paths = data.get("paths")
+    if not isinstance(paths, list):
+        return None
+
+    required_strings = (
+        "path_id",
+        "path_group",
+        "start_point",
+        "end_point",
+        "launch_clock",
+        "capture_clock",
+        "check_type",
+    )
+    seen_ids = set()
+    valid_paths = []
+    for timing_path in paths:
+        if not isinstance(timing_path, dict):
+            return None
+        if timing_path.get("analysis_type") not in ("setup", "hold"):
+            return None
+        if any(
+            not isinstance(timing_path.get(field), str) or not timing_path[field]
+            for field in required_strings
+        ):
+            return None
+        path_id = timing_path["path_id"]
+        if path_id in seen_ids:
+            return None
+        seen_ids.add(path_id)
+        if not all(
+            _is_valid_timing_path_number(timing_path.get(field))
+            for field in ("slack_ns", "arrival_ns", "required_ns", "cppr_ns")
+        ):
+            return None
+        if _finite_number(timing_path.get("slack_ns")) is None:
+            return None
+        stages = timing_path.get("stages")
+        if not isinstance(stages, list):
+            return None
+        for stage in stages:
+            if not isinstance(stage, dict):
+                return None
+            if any(
+                not isinstance(stage.get(field), str)
+                for field in ("kind", "pin", "instance", "cell", "transition")
+            ):
+                return None
+            if not all(
+                _is_valid_timing_path_number(stage.get(field))
+                for field in ("incremental_delay_ns", "arrival_ns")
+            ):
+                return None
+        valid_paths.append(timing_path)
+
+    return StaTimingPaths(
+        corner=corner,
+        path=path,
+        path_limit=path_limit,
+        paths=tuple(valid_paths),
     )

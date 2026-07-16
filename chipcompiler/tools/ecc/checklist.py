@@ -13,8 +13,10 @@ from chipcompiler.data import (
 from chipcompiler.utility import json_read
 from chipcompiler.tools.ecc.sta_qor import (
     read_sta_qor_summary,
+    read_sta_timing_paths,
     sta_qor_summary_paths,
     sta_report_artifact_paths,
+    sta_timing_paths_paths,
 )
 
 class EccChecklist:
@@ -1060,14 +1062,20 @@ class EccStaChecklist(EccChecklist):
             str(path)
             for _, path in sta_report_artifact_paths(
                 workspace=self.workspace,
-                output_dir=self.workspace_step.output.get("dir", ""),
+                report_root=self.workspace_step.report.get("dir", ""),
             )
         ]
 
     def collect_sta_qor_paths(self) -> list:
         return sta_qor_summary_paths(
             workspace=self.workspace,
-            output_dir=self.workspace_step.output.get("dir", ""),
+            feature_root=self.workspace_step.feature.get("dir", ""),
+        )
+
+    def collect_sta_timing_paths(self) -> list:
+        return sta_timing_paths_paths(
+            workspace=self.workspace,
+            feature_root=self.workspace_step.feature.get("dir", ""),
         )
 
     def load_sta_qor_summaries(self, qor_paths: list) -> list:
@@ -1080,11 +1088,12 @@ class EccStaChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.STA.value
         artifact_paths = sta_report_artifact_paths(
-            workspace=self.workspace,
-            output_dir=self.workspace_step.output.get("dir", ""),
-        )
+                workspace=self.workspace,
+                report_root=self.workspace_step.report.get("dir", ""),
+            )
         expected_paths = [str(path) for _, path in artifact_paths]
         qor_paths = self.collect_sta_qor_paths()
+        timing_paths = self.collect_sta_timing_paths()
         summaries = self.load_sta_qor_summaries(qor_paths)
         target_frequency = self.to_float(
             self.workspace.parameters.data.get("Frequency max [MHz]", 0),
@@ -1102,6 +1111,19 @@ class EccStaChecklist(EccChecklist):
             f"{corner}/{path.name}"
             for corner, path in qor_paths
             if read_sta_qor_summary(corner, path) is None
+        ]
+        valid_timing_paths = [
+            artifact
+            for corner, path in timing_paths
+            if (artifact := read_sta_timing_paths(corner, path)) is not None
+        ]
+        timing_paths_complete = (
+            len(valid_timing_paths) == len(timing_paths) and len(timing_paths) > 0
+        )
+        invalid_timing_paths = [
+            f"{corner}/{path.name}"
+            for corner, path in timing_paths
+            if read_sta_timing_paths(corner, path) is None
         ]
         setup_success = summaries_complete and all(
             summary.setup_wns >= 0
@@ -1144,6 +1166,16 @@ class EccStaChecklist(EccChecklist):
                 "" if summaries_complete else (
                     "Missing or invalid STA QoR summaries: "
                     f"{', '.join(invalid_summaries)}"
+                ),
+            ),
+            (
+                "STA",
+                "check STA timing path data",
+                timing_paths_complete,
+                False,
+                "" if timing_paths_complete else (
+                    "Missing or invalid STA timing paths: "
+                    f"{', '.join(invalid_timing_paths)}"
                 ),
             ),
             ("Timing", "check setup timing", setup_success, False, setup_info),

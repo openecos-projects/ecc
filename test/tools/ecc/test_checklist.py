@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from chipcompiler.data import StepEnum
 from chipcompiler.tools.ecc.checklist import EccStaChecklist
+from chipcompiler.tools.ecc.sta_qor import sta_qor_summary_paths
 
 
 STA_REPORT_NAMES = (
@@ -48,6 +49,41 @@ def qor_summary(
     }
 
 
+def timing_paths(*, slack_ns=-0.025):
+    return {
+        "schema_version": 1,
+        "corner": "MAX_125/RCworst",
+        "path_limit": 20,
+        "paths": [
+            {
+                "path_id": "timing_path_a",
+                "analysis_type": "setup",
+                "path_group": "core",
+                "start_point": "u_launch:CK",
+                "end_point": "u_capture:D",
+                "launch_clock": "clk",
+                "capture_clock": "clk",
+                "check_type": "setup",
+                "slack_ns": slack_ns,
+                "arrival_ns": 1.025,
+                "required_ns": 1.0,
+                "cppr_ns": 0.0,
+                "stages": [
+                    {
+                        "kind": "cell_arc",
+                        "pin": "u_buf:Y",
+                        "instance": "u_buf",
+                        "cell": "BUFX3",
+                        "incremental_delay_ns": 0.12,
+                        "arrival_ns": 1.025,
+                        "transition": "rise",
+                    },
+                ],
+            },
+        ],
+    }
+
+
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -58,16 +94,21 @@ def _sta_checker(
     *,
     report_names=STA_REPORT_NAMES,
     summary=None,
+    paths=None,
     frequency_target=100,
     text_report="legacy signoff report\n",
 ) -> EccStaChecklist:
-    output_dir = tmp_path / "sta_ecc" / "output"
-    report_dir = output_dir / "MAX_125" / "RCworst"
+    report_root = tmp_path / "sta_ecc" / "report"
+    feature_root = tmp_path / "sta_ecc" / "feature"
+    report_dir = report_root / "MAX_125" / "RCworst"
+    feature_dir = feature_root / "MAX_125" / "RCworst"
     for report_name in report_names:
         _write(report_dir / report_name, text_report)
 
     if summary is not None:
-        _write(report_dir / "qor_summary.json", json.dumps(summary))
+        _write(feature_dir / "qor_summary.json", json.dumps(summary))
+    if paths is not None:
+        _write(feature_dir / "timing_paths.json", json.dumps(paths))
 
     sta_config = tmp_path / "config" / "sta.json"
     _write(
@@ -89,7 +130,8 @@ def _sta_checker(
     workspace_step = SimpleNamespace(
         checklist={"path": str(checklist_path)},
         name=StepEnum.STA.value,
-        output={"dir": str(output_dir)},
+        report={"dir": str(report_root)},
+        feature={"dir": str(feature_root)},
     )
     return EccStaChecklist(workspace, workspace_step)
 
@@ -100,11 +142,12 @@ def _item_state(checker: EccStaChecklist, item: str) -> str:
 
 
 def test_sta_checklist_validates_current_json_summary(tmp_path):
-    checker = _sta_checker(tmp_path, summary=qor_summary())
+    checker = _sta_checker(tmp_path, summary=qor_summary(), paths=timing_paths())
 
     assert checker.check() is True
     assert _item_state(checker, "check STA signoff matrix") == "Passed"
     assert _item_state(checker, "check STA QoR summary data") == "Passed"
+    assert _item_state(checker, "check STA timing path data") == "Passed"
     assert _item_state(checker, "check setup timing") == "Passed"
     assert _item_state(checker, "check hold timing") == "Passed"
     assert _item_state(checker, "check frequency requirement") == "Passed"
@@ -117,6 +160,7 @@ def test_sta_checklist_fails_matrix_when_a_path_report_is_missing(tmp_path):
         tmp_path,
         report_names=STA_REPORT_NAMES[:-1],
         summary=qor_summary(),
+        paths=timing_paths(),
     )
 
     assert checker.check() is False
@@ -124,10 +168,10 @@ def test_sta_checklist_fails_matrix_when_a_path_report_is_missing(tmp_path):
 
 
 def test_sta_checklist_requires_current_qor_summary_json(tmp_path):
-    checker = _sta_checker(tmp_path)
+    checker = _sta_checker(tmp_path, paths=timing_paths())
 
     assert checker.check() is False
-    assert _item_state(checker, "check STA signoff matrix") == "Failed"
+    assert _item_state(checker, "check STA signoff matrix") == "Passed"
     assert _item_state(checker, "check STA QoR summary data") == "Failed"
 
 
@@ -135,6 +179,7 @@ def test_sta_checklist_uses_json_nvp_not_text_report_columns(tmp_path):
     checker = _sta_checker(
         tmp_path,
         summary=qor_summary(setup_nvp=1),
+        paths=timing_paths(),
         text_report="text report format changed\n",
     )
 
@@ -148,6 +193,7 @@ def test_sta_checklist_rejects_incomplete_qor_summary_json(tmp_path):
     checker = _sta_checker(
         tmp_path,
         summary={"path_groups": [], "summary": {"setup": None, "hold": None}},
+        paths=timing_paths(),
     )
 
     assert checker.check() is False
@@ -158,8 +204,39 @@ def test_sta_checklist_warns_when_frequency_target_is_not_configured(tmp_path):
     checker = _sta_checker(
         tmp_path,
         summary=qor_summary(),
+        paths=timing_paths(),
         frequency_target=0,
     )
 
     assert checker.check() is True
     assert _item_state(checker, "check frequency requirement") == "Warning"
+
+
+def test_sta_checklist_rejects_malformed_timing_paths_json(tmp_path):
+    checker = _sta_checker(
+        tmp_path,
+        summary=qor_summary(),
+        paths={"schema_version": 1, "corner": "MAX_125/RCworst", "path_limit": 20, "paths": [{}]},
+    )
+
+    assert checker.check() is False
+    assert _item_state(checker, "check STA timing path data") == "Failed"
+
+
+def test_sta_summary_legacy_fallback_is_explicit_and_never_masks_feature_data(tmp_path):
+    workspace = SimpleNamespace(config={StepEnum.STA.value: ""})
+    feature_root = tmp_path / "feature"
+    legacy_root = tmp_path / "output"
+    legacy_path = legacy_root / "MAX_125" / "RCworst" / "qor_summary.json"
+    _write(legacy_path, json.dumps(qor_summary()))
+
+    assert sta_qor_summary_paths(workspace, feature_root, legacy_root) == [
+        ("MAX_125/RCworst", legacy_path),
+    ]
+
+    feature_path = feature_root / "MAX_125" / "RCworst" / "qor_summary.json"
+    _write(feature_path, json.dumps(qor_summary()))
+
+    assert sta_qor_summary_paths(workspace, feature_root, legacy_root) == [
+        ("MAX_125/RCworst", feature_path),
+    ]

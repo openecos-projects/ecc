@@ -12,15 +12,8 @@ from chipcompiler.tools.ecc.plot import ECCToolsPlot
 from chipcompiler.tools.ecc.metrics import build_step_metrics
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.checklist import EccChecklist
+from chipcompiler.tools.ecc.sta_qor import sta_artifact_directory
 from chipcompiler.utility import json_read
-
-
-def safe_dir_name(name: str) -> str:
-    value = "".join(
-        char if char.isalnum() or char in ("-", "_", ".") else "_"
-        for char in name.strip()
-    )
-    return value or "spef"
 
 
 def temperature_token(temperature) -> str:
@@ -269,7 +262,8 @@ def run_sta_without_spef(workspace: Workspace,
         liberty_paths = workspace.pdk.libs
         sdc_path = workspace.pdk.sdc
         data_dir = step.data.get("dir", "")
-        report_dir = step.report.get("dir", "")
+        report_root = step.report.get("dir", "")
+        feature_root = step.feature.get("dir", "")
 
         if not netlist_path or not os.path.isfile(netlist_path):
             raise FileNotFoundError(f"synthesis netlist does not exist: {netlist_path}")
@@ -286,13 +280,14 @@ def run_sta_without_spef(workspace: Workspace,
 
         if not sdc_path or not os.path.isfile(sdc_path):
             raise FileNotFoundError(f"STA SDC does not exist: {sdc_path}")
-        if not data_dir or not report_dir:
-            raise ValueError("synthesis STA data or report directory is not configured")
+        if not data_dir or not report_root or not feature_root:
+            raise ValueError("synthesis STA data, report, or feature directory is not configured")
 
         work_dir = Path(data_dir) / "sta"
         work_dir.mkdir(parents=True, exist_ok=True)
-        report_dir = Path(report_dir)
-        report_dir.mkdir(parents=True, exist_ok=True)
+        corner = "post_synthesis"
+        report_dir = Path(report_root) / corner
+        feature_dir = Path(feature_root) / corner
 
         if ecc_module is None:
             ecc_module = ECCToolsModule()
@@ -317,9 +312,11 @@ def run_sta_without_spef(workspace: Workspace,
         ecc_module.run_timing(
             config=workspace.config.get(StepEnum.STA.value, ""),
             work_dir=work_dir,
-            output_dir=report_dir,
+            report_dir=report_dir,
+            feature_dir=feature_dir,
             lib_paths=liberty_paths,
             sdc_path=sdc_path,
+            corner=corner,
         )
     except Exception as exc:
         workspace.logger.warning(
@@ -327,7 +324,11 @@ def run_sta_without_spef(workspace: Workspace,
         )
         return False
 
-    workspace.logger.info("Post-synthesis STA report saved to %s", report_dir)
+    workspace.logger.info(
+        "Post-synthesis STA artifacts saved to report=%s feature=%s",
+        report_dir,
+        feature_dir,
+    )
     return True
 
 def save_data(workspace: Workspace,
@@ -1124,29 +1125,49 @@ def run_sta(workspace: Workspace,
                                  state=StateEnum.Imcomplete)
             return False
 
-        report_corner_dir = f"{corner_name}_{temperature_token(temperature)}"
-        report_dir = os.path.join(
-            step.output.get("dir", ""),
-            safe_dir_name(report_corner_dir),
-            safe_dir_name(rcx_corner_name),
+        report_dir = sta_artifact_directory(
+            step.report.get("dir", ""),
+            corner_name,
+            temperature,
+            rcx_corner_name,
         )
-        os.makedirs(report_dir, exist_ok=True)
+        feature_dir = sta_artifact_directory(
+            step.feature.get("dir", ""),
+            corner_name,
+            temperature,
+            rcx_corner_name,
+        )
+        if report_dir is None or feature_dir is None:
+            workspace.logger.error(
+                "STA report or feature directory is not configured for %s/%s",
+                corner_name,
+                rcx_corner_name,
+            )
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
+                                 state=StateEnum.Imcomplete)
+            return False
+
+        corner = f"{report_dir.parent.name}/{report_dir.name}"
 
         ecc_module.run_timing(
             config=workspace.config.get(StepEnum.STA.value, ""),
-            output_dir=report_dir,
             work_dir=step.data.get(StepEnum.STA.value, ""),
+            report_dir=report_dir,
+            feature_dir=feature_dir,
             lib_paths=liberty_files,
             sdc_path=workspace.pdk.sdc,
             spef_path=spef_file,
+            output_modes=("report", "structured"),
+            corner=corner,
         )
 
         workspace.logger.info(
-            "STA report for %s/%s at %sC saved to %s",
+            "STA artifacts for %s/%s at %sC saved to report=%s feature=%s",
             corner_name,
             rcx_corner_name,
             temperature,
             report_dir,
+            feature_dir,
         )
 
     sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Success)

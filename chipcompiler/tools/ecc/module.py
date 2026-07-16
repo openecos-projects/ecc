@@ -9,6 +9,33 @@ from numpy import double
 from chipcompiler.utility.path import path_text, path_texts
 
 
+STA_OUTPUT_MODES = frozenset(("report", "structured"))
+STA_STRUCTURED_FILENAMES = ("qor_summary.json", "timing_paths.json")
+
+
+def _normalize_sta_output_modes(output_modes) -> tuple[str, ...]:
+    if isinstance(output_modes, str):
+        output_modes = (output_modes,)
+    try:
+        modes = tuple(dict.fromkeys(output_modes))
+    except TypeError as exc:
+        raise ValueError("STA output_modes must be an iterable of mode names") from exc
+    if not modes:
+        raise ValueError("STA output_modes must request report, structured, or both")
+    invalid_modes = set(modes) - STA_OUTPUT_MODES
+    if invalid_modes:
+        raise ValueError(f"Unsupported STA output modes: {sorted(invalid_modes)}")
+    return modes
+
+
+def _copy_sta_artifact(source_path: Path, destination_dir: Path) -> None:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    target_path = destination_dir / source_path.name
+    temporary_path = target_path.with_name(f".{target_path.name}.tmp")
+    shutil.copy2(source_path, temporary_path)
+    temporary_path.replace(target_path)
+
+
 class ECCToolsModule:
     """
     python api package of ECC.
@@ -963,19 +990,44 @@ class ECCToolsModule:
         self,
         config: str = "",
         work_dir: str = "",
-        output_dir: str = "",
+        report_dir: str = "",
+        feature_dir: str = "",
         lib_paths: list[str] | None = None,
         sdc_path: str = "",
         spef_path: str = "",
+        output_modes: tuple[str, ...] = ("report", "structured"),
+        max_paths_per_analysis: int = 20,
+        corner: str = "",
     ):
         if lib_paths is None:
             lib_paths = []
+        modes = _normalize_sta_output_modes(output_modes)
+        if not work_dir:
+            raise ValueError("STA work_dir is required for artifact collection")
+        if (
+            isinstance(max_paths_per_analysis, bool)
+            or not isinstance(max_paths_per_analysis, int)
+            or max_paths_per_analysis <= 0
+        ):
+            raise ValueError("STA max_paths_per_analysis must be a positive integer")
+        if "report" in modes and not report_dir:
+            raise ValueError("STA report_dir is required when report output is requested")
+        if "structured" in modes and not feature_dir:
+            raise ValueError("STA feature_dir is required when structured output is requested")
+
         self.ecc.lib_init(lib_paths=path_texts(lib_paths))
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
         config_dict = {}
         if work_dir:
             config_dict["-temp_directory_path"] = path_text(work_dir)
+        config_dict.update({
+            "-output_timing_reports": "1" if "report" in modes else "0",
+            "-output_timing_features": "1" if "structured" in modes else "0",
+            "-timing_path_limit": str(max_paths_per_analysis),
+        })
+        if corner:
+            config_dict["-timing_corner"] = corner
         self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
         try:
             self.ecc.run_sta()
@@ -983,15 +1035,28 @@ class ECCToolsModule:
             self.ecc.destroy_sta()
 
         timing_report_dir = Path(work_dir) / "timing_reporter"
-        if output_dir and timing_report_dir.is_dir():
-            output_path = Path(output_dir)
-            output_path.mkdir(parents=True, exist_ok=True)
-            for source_path in timing_report_dir.iterdir():
-                target_path = output_path / source_path.name
-                if source_path.is_dir():
-                    shutil.copytree(source_path, target_path, dirs_exist_ok=True)
-                elif source_path.is_file():
-                    shutil.copy2(source_path, target_path)
+        if not timing_report_dir.is_dir():
+            raise FileNotFoundError(
+                f"iSTA timing reporter output directory does not exist: {timing_report_dir}"
+            )
+
+        source_paths = [path for path in timing_report_dir.iterdir() if path.is_file()]
+        report_paths = [path for path in source_paths if path.suffix != ".json"]
+        structured_paths = [path for path in source_paths if path.suffix == ".json"]
+        if "report" in modes:
+            if not report_paths:
+                raise FileNotFoundError("iSTA did not produce requested text reports")
+            for source_path in report_paths:
+                _copy_sta_artifact(source_path, Path(report_dir))
+        if "structured" in modes:
+            names = {path.name for path in structured_paths}
+            missing = [name for name in STA_STRUCTURED_FILENAMES if name not in names]
+            if missing:
+                raise FileNotFoundError(
+                    f"iSTA did not produce requested structured artifacts: {', '.join(missing)}"
+                )
+            for source_path in structured_paths:
+                _copy_sta_artifact(source_path, Path(feature_dir))
 
     def run_sta(self, output_dir: str):
         return None
