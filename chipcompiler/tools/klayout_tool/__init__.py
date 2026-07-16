@@ -4,6 +4,7 @@ from .runner import (
     run_step,
     save_gds_image,
 )
+from .image import save_snapshot_image
 from .utility import is_eda_exist
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "run_step",
     "KlayoutModule",
     "save_gds_image",
+    "save_snapshot_image",
 ]

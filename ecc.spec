@@ -96,6 +96,7 @@ HIDDENIMPORTS = [
     "chipcompiler.tools.yosys.utility",
     "chipcompiler.tools.klayout_tool",
     "chipcompiler.tools.klayout_tool.builder",
+    "chipcompiler.tools.klayout_tool.image",
     "chipcompiler.tools.klayout_tool.runner",
     "chipcompiler.tools.klayout_tool.module",
     "chipcompiler.tools.klayout_tool.utility",

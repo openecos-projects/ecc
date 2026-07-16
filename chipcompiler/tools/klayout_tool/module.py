@@ -2,10 +2,9 @@
 import os
 from pathlib import Path
 
-from klayout import lay
+from chipcompiler.tools.klayout_tool.image import save_snapshot_image as render_snapshot_image
 
 from chipcompiler.data import EccOutput, Workspace, WorkspaceStep
-from chipcompiler.utility.path import path_text
 
 
 class KlayoutModule:
@@ -49,19 +48,9 @@ class KlayoutModule:
             weight (int, optional): Image width. Defaults to 1920
             height (int, optional): Image height. Defaults to 1920
         """
-        # Set display configuration options
-        lv = lay.LayoutView()
-        lv.set_config("background-color", "#F5F5F5")  # background of ECOS MERGE tab
-        lv.set_config("grid-visible", "false")
-        lv.set_config("grid-show-ruler", "false")
-        lv.set_config("text-visible", "false")
-
-        # Load the GDS file
-        lv.load_layout(path_text(gds_file), 0)
-        lv.max_hier()
-
-        # Event processing for delayed configuration events
-        lv.timer()
-
-        # Save the image
-        lv.save_image(path_text(img_file), weight, height)
+        return render_snapshot_image(
+            gds_file=gds_file,
+            img_file=img_file,
+            width=weight,
+            height=height,
+        )

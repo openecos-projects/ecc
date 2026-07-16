@@ -51,6 +51,19 @@ def version_cmd(
         click.echo(version_text(payload))
 
 
+@app.command("layout-image", help="Render a GDS file into a layout image")
+def layout_image_cmd(
+    gds: Annotated[str, typer.Option("--gds", help="Input GDS path")],
+    image: Annotated[str, typer.Option("--image", help="Output image path")],
+    width: Annotated[int, typer.Option("--width", min=1)] = 1920,
+    height: Annotated[int, typer.Option("--height", min=1)] = 1920,
+) -> None:
+    from chipcompiler.tools.klayout_tool.image import save_snapshot_image
+
+    if not save_snapshot_image(gds_file=gds, img_file=image, width=width, height=height):
+        raise click.ClickException(f"Failed to render layout image from {gds} to {image}")
+
+
 register_project_commands(app)
 app.add_typer(param_app, name="param")
 app.add_typer(rpc_app, name="rpc")
