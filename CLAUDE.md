@@ -20,6 +20,12 @@ import.
 
 For integrating thirdparty tools, see [docs/development.md](docs/development.md#integrating-a-thirdparty-tool).
 
+## Ignore Python 2 compatibility
+
+This project uses Python 3+. You should not use the `__future__` module.
+
+If you need to worry about feature compatibility between different 3.xx point releases, check the closest pyproject.toml's requires-python field to see what minimum runtime version is supported.
+
 # Gotchas
 
 - ECC-Tools tool identifier in code is `"ecc"`, not `"ecc-tools"`. Wrapper: `chipcompiler/tools/ecc/`
