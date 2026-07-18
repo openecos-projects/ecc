@@ -979,6 +979,30 @@ def _sta_timing_issue_source_file(step: WorkspaceStep, path: Path) -> str:
         return str(path)
 
 
+def _sta_timing_artifact_paths_payload(step: WorkspaceStep,
+                                        timing_artifacts) -> list[dict]:
+    report_root = step.report.get("dir")
+    artifact_paths = []
+    for artifact in sorted(timing_artifacts, key=lambda artifact: artifact.corner):
+        feature_dir = artifact.path.parent
+        report_dir = Path(report_root) / artifact.corner if report_root else None
+        artifact_paths.append({
+            "corner": artifact.corner,
+            "report_dir": (
+                _sta_timing_issue_source_file(step, report_dir)
+                if report_dir is not None
+                else ""
+            ),
+            "feature_dir": _sta_timing_issue_source_file(step, feature_dir),
+            "qor_summary_file": _sta_timing_issue_source_file(
+                step,
+                feature_dir / STA_QOR_SUMMARY_FILENAME,
+            ),
+            "timing_paths_file": _sta_timing_issue_source_file(step, artifact.path),
+        })
+    return artifact_paths
+
+
 def _sta_timing_issues_payload(workspace: Workspace,
                                step: WorkspaceStep,
                                timing_artifacts,
@@ -1042,6 +1066,7 @@ def _sta_timing_issues_payload(workspace: Workspace,
         "design": workspace.design.name,
         "near_fail_slack_ns": STA_TIMING_NEAR_FAIL_SLACK_NS,
         "source_files": sorted(source_files),
+        "artifact_paths": _sta_timing_artifact_paths_payload(step, timing_artifacts),
         "missing_corners": missing_corners,
         "issues": issues,
     }
@@ -1492,6 +1517,73 @@ def _qor_hotspot_record(record: dict, source_file: str) -> dict | None:
     }
 
 
+def _drc_rule_display_name(rule: str) -> str:
+    characters = []
+    for index, character in enumerate(rule):
+        previous = rule[index - 1] if index else ""
+        if character.isupper() and (previous.islower() or previous.isdigit()):
+            characters.append(" ")
+        characters.append(character)
+
+    return " ".join("".join(characters).replace("_", " ").replace("-", " ").split())
+
+
+def _drc_rule_layer_hotspot_records(step: WorkspaceStep) -> list[dict]:
+    feature_path = step.feature.get("step")
+    if feature_path is None:
+        return []
+
+    feature = json_read(feature_path)
+    if not isinstance(feature, dict):
+        return []
+    drc = feature.get("drc")
+    if not isinstance(drc, dict):
+        return []
+    distribution = drc.get("distribution")
+    if not isinstance(distribution, dict):
+        return []
+
+    records = []
+    for raw_rule, rule_data in distribution.items():
+        if not isinstance(raw_rule, str) or not raw_rule.strip():
+            continue
+        if not isinstance(rule_data, dict):
+            continue
+        layers = rule_data.get("layers")
+        if not isinstance(layers, dict):
+            continue
+
+        for raw_layer, layer_data in layers.items():
+            if not isinstance(raw_layer, str) or not raw_layer.strip():
+                continue
+            if not isinstance(layer_data, dict):
+                continue
+            value = _qor_number(layer_data.get("number"))
+            if value is None or value <= 0:
+                continue
+            records.append((raw_rule, raw_layer, value))
+
+    records.sort(key=lambda item: (-float(item[2]), item[0], item[1]))
+    source_file = str(feature_path)
+    hotspots = []
+    for raw_rule, raw_layer, value in records[:10]:
+        display_rule = _drc_rule_display_name(raw_rule)
+        hotspots.append(
+            {
+                "kind": "drc_rule_layer",
+                "severity": "critical",
+                "metric": f"drc:{raw_rule}:{raw_layer}",
+                "display_name": f"{display_rule} · {raw_layer}",
+                "value": value,
+                "unit": "count",
+                "dimension": "clock_robustness_dfm",
+                "source_file": source_file,
+                "description": f"{value} DRC violations: {display_rule} on {raw_layer}.",
+            }
+        )
+    return hotspots
+
+
 def build_qor_hotspots_payload(workspace: Workspace,
                                step: WorkspaceStep,
                                step_metrics: StepMetrics) -> dict:
@@ -1507,6 +1599,9 @@ def build_qor_hotspots_payload(workspace: Workspace,
         hotspot = _qor_hotspot_record(record, source_file)
         if hotspot is not None:
             hotspots.append(hotspot)
+
+    if step.name == StepEnum.DRC.value:
+        hotspots.extend(_drc_rule_layer_hotspot_records(step))
 
     return {
         "schema_version": 1,

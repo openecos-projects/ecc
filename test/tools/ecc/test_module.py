@@ -642,6 +642,84 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
             "reason": "DRC violations are present.",
         }
     ]
+    hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
+    assert hotspots["hotspots"] == []
+
+
+def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.DRC.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["step"].write_text(
+        json.dumps(
+            {
+                "drc": {
+                    "number": 99,
+                    "distribution": {
+                        "Antenna": {"layers": {"M1": {"number": 12}}},
+                        "MinimumSpacing": {
+                            "layers": {
+                                "M3": {
+                                    "number": 12,
+                                    "violation_detail": [{"bbox": [1, 2, 3, 4]}],
+                                },
+                                "M4": {"number": 12},
+                            }
+                        },
+                        "MinimumWidth": {"layers": {"M2": {"number": 11}}},
+                        "Rule05": {"layers": {"M5": {"number": 10}}},
+                        "Rule06": {"layers": {"M6": {"number": 9}}},
+                        "Rule07": {"layers": {"M7": {"number": 8}}},
+                        "Rule08": {"layers": {"M8": {"number": 7}}},
+                        "Rule09": {"layers": {"M9": {"number": 6}}},
+                        "Rule10": {"layers": {"M10": {"number": 5}}},
+                        "Rule11": {"layers": {"M11": {"number": 4}}},
+                        "Zero": {"layers": {"M12": {"number": 0}}},
+                        "Invalid": {"layers": {"M13": {"number": "invalid"}}},
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_drc(workspace, step)
+
+    assert metrics.data["drc_num"] == 99
+    hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
+    records = hotspots["hotspots"]
+    assert [(record["metric"], record["value"]) for record in records] == [
+        ("drc:Antenna:M1", 12),
+        ("drc:MinimumSpacing:M3", 12),
+        ("drc:MinimumSpacing:M4", 12),
+        ("drc:MinimumWidth:M2", 11),
+        ("drc:Rule05:M5", 10),
+        ("drc:Rule06:M6", 9),
+        ("drc:Rule07:M7", 8),
+        ("drc:Rule08:M8", 7),
+        ("drc:Rule09:M9", 6),
+        ("drc:Rule10:M10", 5),
+    ]
+    assert records[1] == {
+        "kind": "drc_rule_layer",
+        "severity": "critical",
+        "metric": "drc:MinimumSpacing:M3",
+        "display_name": "Minimum Spacing · M3",
+        "value": 12,
+        "unit": "count",
+        "dimension": "clock_robustness_dfm",
+        "source_file": str(step.feature["step"]),
+        "description": "12 DRC violations: Minimum Spacing on M3.",
+    }
+    assert all("violation_detail" not in record and "bbox" not in record for record in records)
 
 
 def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
@@ -1240,6 +1318,22 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     ]
     assert issues["issues"][0]["dominant_stages"][0]["pin"] == "u_buf:Y"
     assert issues["issues"][0]["source_file"] == "feature/MAX_125/RCworst/timing_paths.json"
+    assert issues["artifact_paths"] == [
+        {
+            "corner": "MAX_125/RCworst",
+            "report_dir": "report/MAX_125/RCworst",
+            "feature_dir": "feature/MAX_125/RCworst",
+            "qor_summary_file": "feature/MAX_125/RCworst/qor_summary.json",
+            "timing_paths_file": "feature/MAX_125/RCworst/timing_paths.json",
+        },
+        {
+            "corner": "MIN_m40/Cbest",
+            "report_dir": "report/MIN_m40/Cbest",
+            "feature_dir": "feature/MIN_m40/Cbest",
+            "qor_summary_file": "feature/MIN_m40/Cbest/qor_summary.json",
+            "timing_paths_file": "feature/MIN_m40/Cbest/timing_paths.json",
+        },
+    ]
 
 
 def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
