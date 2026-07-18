@@ -10,7 +10,7 @@ from chipcompiler.utility.path import path_text, path_texts
 
 
 STA_OUTPUT_MODES = frozenset(("report", "structured"))
-STA_STRUCTURED_FILENAMES = ("qor_summary.json", "timing_paths.json")
+STA_REQUIRED_STRUCTURED_FILENAMES = ("qor_summary.json",)
 
 
 def _normalize_sta_output_modes(output_modes) -> tuple[str, ...]:
@@ -1050,7 +1050,10 @@ class ECCToolsModule:
                 _copy_sta_artifact(source_path, Path(report_dir))
         if "structured" in modes:
             names = {path.name for path in structured_paths}
-            missing = [name for name in STA_STRUCTURED_FILENAMES if name not in names]
+            missing = [
+                name for name in STA_REQUIRED_STRUCTURED_FILENAMES
+                if name not in names
+            ]
             if missing:
                 raise FileNotFoundError(
                     f"iSTA did not produce requested structured artifacts: {', '.join(missing)}"

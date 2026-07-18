@@ -28,6 +28,10 @@ class FakeEcc:
         self.calls = []
         self.generated_timing_lib_name = "gcd_max.lib"
         self.generated_timing_lib_contents = "library (gcd_max) {}\n"
+        self.structured_timing_filenames = (
+            "qor_summary.json",
+            "timing_paths.json",
+        )
 
     def flow_init(self, **kwargs):
         self.calls.append(("flow_init", kwargs))
@@ -66,8 +70,8 @@ class FakeEcc:
         if config_dict.get("-output_timing_reports") == "1":
             (report_dir / "qor_summary.rpt").write_text("report\n", encoding="utf-8")
         if config_dict.get("-output_timing_features") == "1":
-            (report_dir / "qor_summary.json").write_text("{}\n", encoding="utf-8")
-            (report_dir / "timing_paths.json").write_text("{}\n", encoding="utf-8")
+            for filename in self.structured_timing_filenames:
+                (report_dir / filename).write_text("{}\n", encoding="utf-8")
         return True
 
     def read_liberty(self, lib_paths):
@@ -329,6 +333,23 @@ def test_run_timing_splits_text_reports_and_structured_artifacts(tmp_path):
         "-timing_path_limit": "7",
         "-timing_corner": "MAX_125/RCworst",
     }
+
+
+def test_run_timing_accepts_qor_summary_without_timing_paths(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    module.ecc.structured_timing_filenames = ("qor_summary.json",)
+    feature_dir = tmp_path / "feature" / "MAX_125" / "RCworst"
+
+    module.run_timing(
+        work_dir=tmp_path / "data" / "sta",
+        feature_dir=feature_dir,
+        output_modes=("structured",),
+        corner="MAX_125/RCworst",
+    )
+
+    assert (feature_dir / "qor_summary.json").is_file()
+    assert not (feature_dir / "timing_paths.json").exists()
 
 
 def test_run_timing_rejects_invalid_output_modes(tmp_path):
@@ -1442,6 +1463,35 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert records["sta_hold_violation_count"]["value"] == 1
     assert records["sta_setup_wns"]["corner"] == "MAX_125/RCworst"
     assert records["sta_hold_wns"]["corner"] == "MIN_m40/Cbest"
+    assert records["sta_setup_wns"]["source"] == {
+        "kind": "feature",
+        "path": "feature/MAX_125/RCworst/qor_summary.json",
+        "selector": "/summary/setup/wns",
+    }
+    assert records["sta_hold_wns"]["source"] == {
+        "kind": "feature",
+        "path": "feature/MIN_m40/Cbest/qor_summary.json",
+        "selector": "/summary/hold/wns",
+    }
+    assert records["sta_setup_violation_count"]["source"] == {
+        "kind": "feature",
+        "path": "feature/sta.step.json",
+        "selector": "/sta/setup_violation_count",
+    }
+    assert records["sta_corner_count"]["source"] == {
+        "kind": "feature",
+        "path": "feature/sta.step.json",
+        "selector": "/sta/corner_count",
+    }
+    assert json.loads(step.feature["step"].read_text(encoding="utf-8"))["sta"] == {
+        "corner_count": 2,
+        "expected_corner_count": 2,
+        "missing_corner_count": 0,
+        "setup_violation_count": 3,
+        "hold_violation_count": 1,
+        "loaded_corners": ["MAX_125/RCworst", "MIN_m40/Cbest"],
+        "missing_corners": [],
+    }
     assert "sta_path_group_metrics" not in records
     details = {
         detail["id"]: detail

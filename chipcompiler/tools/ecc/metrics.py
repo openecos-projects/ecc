@@ -1262,8 +1262,14 @@ _STA_FEATURE_SELECTORS = {
     "sta_hold_wns": "/summary/hold/wns",
     "sta_hold_tns": "/summary/hold/tns",
     "sta_frequency_mhz": "/summary/setup/frequency_mhz",
-    "sta_setup_violation_count": "/summary/setup/nvp",
-    "sta_hold_violation_count": "/summary/hold/nvp",
+}
+
+_STA_AGGREGATE_FEATURE_SELECTORS = {
+    "sta_corner_count": "/sta/corner_count",
+    "sta_expected_corner_count": "/sta/expected_corner_count",
+    "sta_missing_corner_count": "/sta/missing_corner_count",
+    "sta_setup_violation_count": "/sta/setup_violation_count",
+    "sta_hold_violation_count": "/sta/hold_violation_count",
 }
 
 
@@ -1328,11 +1334,14 @@ def _metric_feature_source(step: WorkspaceStep,
             "harden_preview_exists": "/harden/artifacts/harden_preview_exists",
             "harden_artifact_missing_count": "/harden/artifact_missing_count",
         }.get(metric_id, "")
-    elif metric_id.startswith("sta_"):
+    elif metric_id in _STA_FEATURE_SELECTORS:
         feature_dir = step.feature.get("dir")
         if feature_dir and corner:
             feature_path = Path(feature_dir) / corner / STA_QOR_SUMMARY_FILENAME
         selector = _STA_FEATURE_SELECTORS.get(metric_id, "")
+    elif metric_id in _STA_AGGREGATE_FEATURE_SELECTORS:
+        feature_path = step.feature.get("step")
+        selector = _STA_AGGREGATE_FEATURE_SELECTORS[metric_id]
 
     path = _relative_step_path(step, feature_path)
     if path is None:
@@ -2454,6 +2463,26 @@ def build_metrics_sta(workspace: Workspace,
         metrics["sta_worst_hold_tns_corner"] = hold_tns_corner
     if frequency_corner:
         metrics["sta_worst_frequency_corner"] = frequency_corner
+
+    loaded_corners = {summary.corner for summary in summaries}
+    expected_corners = [corner for corner, _ in qor_paths]
+    if not _save_step_feature_facts(
+        step,
+        "sta",
+        {
+            "corner_count": metrics["sta_corner_count"],
+            "expected_corner_count": metrics["sta_expected_corner_count"],
+            "missing_corner_count": metrics["sta_missing_corner_count"],
+            "setup_violation_count": setup_violation_count,
+            "hold_violation_count": hold_violation_count,
+            "loaded_corners": sorted(loaded_corners),
+            "missing_corners": [
+                corner for corner in expected_corners
+                if corner not in loaded_corners
+            ],
+        },
+    ):
+        return None
 
     step_metrics.data = metrics
     image_path = str(step.output.get("image", ""))
