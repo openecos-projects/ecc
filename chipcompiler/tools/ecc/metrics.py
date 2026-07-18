@@ -8,7 +8,6 @@ from chipcompiler.data import (
     Workspace, 
     WorkspaceStep, 
     StepMetrics, 
-    save_metrics,
     StepEnum,
     StateEnum
 )
@@ -1113,6 +1112,16 @@ def _artifact_exists(primary_path, output_dir, pattern: str) -> int:
     return 1 if _existing_files_in(output_dir, pattern) else 0
 
 
+def _save_step_feature_facts(step: WorkspaceStep, key: str, facts: dict) -> bool:
+    feature_path = step.feature.get("step")
+    if feature_path is None:
+        return False
+    existing = json_read(feature_path)
+    payload = existing if isinstance(existing, dict) else {}
+    payload[key] = facts
+    return json_write(file_path=feature_path, data=payload)
+
+
 STA_QOR_CORNER_FIELDS = {
     "max_WNS": "sta_worst_setup_corner",
     "max_TNS": "sta_worst_setup_tns_corner",
@@ -1144,11 +1153,255 @@ def _sta_qor_source_file(step: WorkspaceStep) -> str | None:
     return str(Path(feature_dir) / "**" / STA_QOR_SUMMARY_FILENAME)
 
 
+def _relative_step_path(step: WorkspaceStep, path) -> str | None:
+    if path is None or path == "":
+        return None
+    try:
+        candidate = Path(path)
+        return candidate.relative_to(step.directory).as_posix()
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalise_feature_paths(step: WorkspaceStep, value):
+    if isinstance(value, Path):
+        return _relative_step_path(step, value) or ""
+    if isinstance(value, list):
+        return [_normalise_feature_paths(step, item) for item in value]
+    if isinstance(value, dict):
+        normalised = {}
+        for key, item in value.items():
+            if key in {"source_file", "feature_source", "source_files"}:
+                if isinstance(item, list):
+                    normalised[key] = [
+                        _relative_step_path(step, path) or ""
+                        for path in item
+                    ]
+                else:
+                    normalised[key] = _relative_step_path(step, item) or ""
+            else:
+                normalised[key] = _normalise_feature_paths(step, item)
+        return normalised
+    return value
+
+
+def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, str, str]:
+    scope = step.name.lower().replace(" ", "_")
+    project_role = "trend"
+    step_role = "secondary"
+
+    if step.name == StepEnum.SYNTHESIS.value:
+        scope = "synthesis"
+        step_role = "primary"
+    elif step.name == StepEnum.FLOORPLAN.value:
+        scope = "floorplan"
+        step_role = "primary"
+    elif step.name == StepEnum.NETLIST_OPT.value:
+        scope = "fanout_repair"
+        step_role = "primary" if metric_id == "fanout_max" else "secondary"
+    elif step.name == StepEnum.PLACEMENT.value:
+        scope = "placement"
+        step_role = "primary" if metric_id.startswith("place_") else "secondary"
+    elif step.name == StepEnum.CTS.value:
+        scope = "cts"
+        step_role = "primary" if metric_id.startswith("cts_") or metric_id == "clock_wirelength" else "secondary"
+    elif step.name == StepEnum.LEGALIZATION.value:
+        scope = "legalization"
+        step_role = "primary"
+    elif step.name == StepEnum.ROUTING.value:
+        scope = "final_route"
+        project_role = "gate" if metric_id in {
+            "route_dr_total_violation_count",
+            "route_la_total_overflow",
+        } else "final"
+        step_role = "primary"
+    elif step.name == StepEnum.DRC.value:
+        scope = "final_drc"
+        project_role = "gate" if metric_id == "drc_count" else "final"
+        step_role = "primary"
+    elif step.name == StepEnum.RCX.value:
+        scope = "signoff_rcx"
+        project_role = "gate" if metric_id == "rcx_missing_corner_count" else "final"
+        step_role = "primary"
+    elif step.name == StepEnum.STA.value:
+        scope = "all_configured_corners"
+        project_role = "gate" if metric_id in {
+            "sta_setup_wns",
+            "sta_setup_tns",
+            "sta_hold_wns",
+            "sta_hold_tns",
+            "sta_setup_violation_count",
+            "sta_hold_violation_count",
+            "sta_missing_corner_count",
+        } else "final"
+        step_role = "primary"
+    elif step.name == StepEnum.HARDEN.value:
+        scope = "final_delivery"
+        project_role = "gate" if metric_id == "harden_artifact_missing_count" else "final"
+        step_role = "primary"
+
+    return scope, project_role, step_role
+
+
+_DB_FEATURE_SELECTORS = {
+    "die_area": "/Design Layout/die_area",
+    "core_area": "/Design Layout/core_area",
+    "die_width": "/Design Layout/die_bounding_width",
+    "die_height": "/Design Layout/die_bounding_height",
+    "die_utilization": "/Design Layout/die_usage",
+    "core_utilization": "/Design Layout/core_usage",
+    "io_pin_count": "/Design Statis/num_iopins",
+    "instance_count": "/Design Statis/num_instances",
+    "net_count": "/Design Statis/num_nets",
+}
+
+
+_STA_FEATURE_SELECTORS = {
+    "sta_setup_wns": "/summary/setup/wns",
+    "sta_setup_tns": "/summary/setup/tns",
+    "sta_hold_wns": "/summary/hold/wns",
+    "sta_hold_tns": "/summary/hold/tns",
+    "sta_frequency_mhz": "/summary/setup/frequency_mhz",
+    "sta_setup_violation_count": "/summary/setup/nvp",
+    "sta_hold_violation_count": "/summary/hold/nvp",
+}
+
+
+def _metric_feature_source(step: WorkspaceStep,
+                           metric_id: str,
+                           corner: str | None = None) -> dict | None:
+    feature_path = None
+    selector = ""
+
+    if metric_id.startswith("synthesis_"):
+        feature_path = step.feature.get("stat")
+        selector = {
+            "synthesis_cell_area": "/design/area",
+            "synthesis_cell_count": "/design/num_cells",
+            "synthesis_wire_count": "/design/num_wires",
+            "synthesis_port_count": "/design/num_port_bits",
+        }.get(metric_id, "")
+    elif metric_id in _DB_FEATURE_SELECTORS:
+        feature_path = step.feature.get("db")
+        selector = _DB_FEATURE_SELECTORS[metric_id]
+    elif metric_id == "fanout_max":
+        feature_path = step.feature.get("db")
+        selector = "/Pins/max_fanout"
+    elif metric_id.startswith("place_"):
+        feature_path = step.feature.get("map") if metric_id in {
+            "place_hpwl",
+            "place_grwl",
+            "place_flute_wirelength",
+            "place_congestion_egr_overflow_total",
+            "place_congestion_egr_overflow_max",
+            "place_rudy_utilization_max",
+            "place_lutrudy_utilization_max",
+        } else step.feature.get("step")
+    elif metric_id.startswith("cts_") or metric_id in {
+        "clock_wirelength",
+        "clock_path_max_buffer",
+        "clock_path_min_buffer",
+    }:
+        feature_path = step.feature.get("step")
+        selector = {
+            "clock_path_max_buffer": "/CTS/clock_path_max_buffer",
+            "clock_path_min_buffer": "/CTS/clock_path_min_buffer",
+        }.get(metric_id, "")
+    elif metric_id == "legal_total_movement":
+        feature_path = step.feature.get("step")
+    elif metric_id in {"route_wirelength", "route_via_count"}:
+        feature_path = step.feature.get("db")
+    elif metric_id.startswith("route_") or metric_id == "drc_count":
+        feature_path = step.feature.get("step")
+    elif metric_id.startswith("rcx_") or metric_id.startswith("harden_"):
+        feature_path = step.feature.get("step")
+        selector = {
+            "rcx_spef_file_count": "/rcx/spef_file_count",
+            "rcx_expected_corner_count": "/rcx/expected_corner_count",
+            "rcx_missing_corner_count": "/rcx/missing_corner_count",
+            "rcx_output_def_exists": "/rcx/output_def_exists",
+            "rcx_output_gds_exists": "/rcx/output_gds_exists",
+            "harden_gds_exists": "/harden/artifacts/harden_gds_exists",
+            "harden_lef_exists": "/harden/artifacts/harden_lef_exists",
+            "harden_lib_exists": "/harden/artifacts/harden_lib_exists",
+            "harden_lib_check_exists": "/harden/artifacts/harden_lib_check_exists",
+            "harden_preview_exists": "/harden/artifacts/harden_preview_exists",
+            "harden_artifact_missing_count": "/harden/artifact_missing_count",
+        }.get(metric_id, "")
+    elif metric_id.startswith("sta_"):
+        feature_dir = step.feature.get("dir")
+        if feature_dir and corner:
+            feature_path = Path(feature_dir) / corner / STA_QOR_SUMMARY_FILENAME
+        selector = _STA_FEATURE_SELECTORS.get(metric_id, "")
+
+    path = _relative_step_path(step, feature_path)
+    if path is None:
+        return None
+    return {
+        "kind": "feature",
+        "path": path,
+        "selector": selector,
+    }
+
+
+def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[dict]:
+    details = []
+    detail_specs = (
+        ("place_map_metrics", "place_map_summary", step.feature.get("map")),
+        ("route_layer_metrics", "layer_table", step.feature.get("step")),
+        ("sta_path_group_metrics", "path_group_table", step.feature.get("dir")),
+    )
+    for detail_id, presentation, feature_path in detail_specs:
+        summary = step_metrics.data.get(detail_id)
+        if not isinstance(summary, dict):
+            continue
+        if detail_id == "sta_path_group_metrics":
+            source_files = summary.get("source_files")
+            if isinstance(source_files, list) and source_files:
+                feature_path = source_files[0]
+        source_path = _relative_step_path(step, feature_path)
+        if source_path is None:
+            continue
+        details.append({
+            "id": detail_id,
+            "presentation": presentation,
+            "summary": _normalise_feature_paths(step, summary),
+            "feature_source": {
+                "kind": "feature",
+                "path": source_path,
+                "selector": "",
+            },
+        })
+    if step.name == StepEnum.DRC.value:
+        feature_path = step.feature.get("step")
+        source_path = _relative_step_path(step, feature_path)
+        if source_path is not None:
+            rule_layers = [
+                {
+                    "metric_id": record["metric_id"],
+                    "display_name": record["display_name"],
+                    "value": record["value"],
+                    "unit": record["unit"],
+                }
+                for record in _drc_rule_layer_hotspot_records(step)
+            ]
+            details.append({
+                "id": "drc_rule_layer_summary",
+                "presentation": "rule_layer_table",
+                "summary": {"top_violations": rule_layers},
+                "feature_source": {
+                    "kind": "feature",
+                    "path": source_path,
+                    "selector": "/drc/distribution",
+                },
+            })
+    return details
+
+
 def build_qor_metrics_payload(workspace: Workspace,
                               step: WorkspaceStep,
                               step_metrics: StepMetrics) -> dict:
     records = []
-    source_file = str(step_metrics.path)
     for legacy_name, raw_value in step_metrics.data.items():
         mapping = QOR_METRIC_MAP.get(legacy_name)
         if mapping is None:
@@ -1158,36 +1411,57 @@ def build_qor_metrics_payload(workspace: Workspace,
         if value is None:
             continue
 
+        metric_id = mapping["name"]
+        corner = _sta_qor_record_corner(step_metrics, legacy_name)
+        scope, project_role, step_role = _metric_scope_and_roles(step, metric_id)
+        if step.name == StepEnum.STA.value and corner is not None:
+            scope = "all_configured_corners"
         record = {
-            "name": mapping["name"],
+            "id": metric_id,
             "display_name": mapping["display_name"],
             "value": value,
             "unit": mapping["unit"],
-            "dimension": mapping["dimension"],
-            "polarity": mapping["polarity"],
-            "source_file": source_file,
+            "category": mapping["dimension"],
+            "direction": mapping["polarity"],
+            "scope": scope,
+            "corner": corner,
+            "project_role": project_role,
+            "step_role": step_role,
             "confidence": "high",
         }
-        if step.name == StepEnum.STA.value:
-            corner = _sta_qor_record_corner(step_metrics, legacy_name)
-            if corner is not None:
-                record["corner"] = corner
-            sta_source_file = _sta_qor_source_file(step)
-            if sta_source_file is not None:
-                record["source_file"] = sta_source_file
+        source = _metric_feature_source(step, metric_id, corner=corner)
+        if source is not None:
+            record["source"] = source
         records.append(record)
 
+    records.sort(key=lambda record: record["id"])
+    details = _qor_detail_records(step, step_metrics)
+    sources = []
+    seen_sources = set()
+    for record in [*records, *details]:
+        source = record.get("source", record.get("feature_source"))
+        if not isinstance(source, dict):
+            continue
+        key = (source.get("kind"), source.get("path"))
+        if not isinstance(key[1], str) or not key[1] or key in seen_sources:
+            continue
+        seen_sources.add(key)
+        sources.append({"kind": key[0], "path": key[1]})
+
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "tool": step.tool,
         "step": step.name,
         "design": workspace.design.name,
+        "status": "success",
         "metrics": records,
+        "details": details,
+        "sources": sources,
     }
 
 
 def _is_blocking_qor_record(record: dict) -> bool:
-    metric_name = record.get("name")
+    metric_name = record.get("id")
     value = _qor_number(record.get("value"))
     if value is None:
         return False
@@ -1196,10 +1470,8 @@ def _is_blocking_qor_record(record: dict) -> bool:
         "drc_count",
         "route_dr_total_violation_count",
         "route_la_total_overflow",
-        "rcx_missing_corner_count",
         "sta_setup_violation_count",
         "sta_hold_violation_count",
-        "sta_missing_corner_count",
         "harden_artifact_missing_count",
     }:
         return value > 0
@@ -1219,9 +1491,9 @@ def _qor_blocking_issue(record: dict) -> dict | None:
     if not _is_blocking_qor_record(record):
         return None
 
-    metric_name = record.get("name")
+    metric_name = record.get("id")
     return {
-        "metric": metric_name,
+        "metric_id": metric_name,
         "display_name": record.get("display_name", metric_name),
         "value": record.get("value"),
         "reason": QOR_BLOCKING_METRIC_REASONS.get(
@@ -1234,9 +1506,9 @@ def _qor_blocking_issue(record: dict) -> dict | None:
 def _qor_missing_metrics(step: WorkspaceStep, records: list[dict]) -> list[str]:
     expected_metrics = QOR_EXPECTED_METRICS_BY_STEP.get(step.name, [])
     available_metrics = {
-        record.get("name")
+        record.get("id")
         for record in records
-        if isinstance(record.get("name"), str)
+        if isinstance(record.get("id"), str)
     }
     return [
         metric_name
@@ -1271,13 +1543,12 @@ def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
     summary = json_read(summary_path) if summary_path is not None else None
     available = (
         isinstance(summary, dict)
-        and summary.get("schema_version") == 1
+        and summary.get("schema_version") == 2
         and isinstance(summary.get("status"), str)
     )
     hard_gates = summary.get("hard_gates", []) if available else []
     return {
         "step": source_step,
-        "path": str(summary_path) if summary_path is not None else "",
         "flow_completed": _workspace_step_completed(workspace, source_step),
         "available": available,
         "status": summary.get("status") if available else None,
@@ -1288,7 +1559,7 @@ def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
 def _harden_source_passed(source: dict, required_hard_gates: tuple[str, ...]) -> bool:
     if not source["flow_completed"] or not source["available"]:
         return False
-    if source["status"] != "green":
+    if source["status"] != "pass":
         return False
     if len(required_hard_gates) == 0:
         return True
@@ -1306,7 +1577,7 @@ def _harden_source_reason(source: dict, label: str) -> str:
         return f"{label} flow is not completed."
     if not source["available"]:
         return f"{label} QoR summary is missing."
-    if source["status"] != "green":
+    if source["status"] != "pass":
         return f"{label} QoR summary is {source['status']}."
     return f"{label} QoR hard gates are incomplete."
 
@@ -1322,7 +1593,7 @@ def _harden_qor_signoff(workspace: Workspace, records: list[dict]) -> dict:
         sources.append({
             "id": spec["id"],
             "step": source["step"],
-            "path": source["path"],
+            "analysis_file": "qor_summary.json",
             "available": source["available"],
             "flow_completed": source["flow_completed"],
             "status": source["status"],
@@ -1331,20 +1602,19 @@ def _harden_qor_signoff(workspace: Workspace, records: list[dict]) -> dict:
             "id": spec["id"],
             "passed": passed,
             "metric": f"{spec['step']}_qor_summary",
-            "threshold": "green",
+            "threshold": "pass",
             "actual": source["status"],
-            "cap_if_failed": 70,
         })
         if not passed:
             blocking_issues.append({
-                "metric": spec["id"],
+                "metric_id": spec["id"],
                 "display_name": spec["label"],
                 "value": source["status"],
                 "reason": _harden_source_reason(source, spec["label"]),
             })
 
     values = {
-        record.get("name"): _qor_number(record.get("value"))
+        record.get("id"): _qor_number(record.get("value"))
         for record in records
     }
     artifact_missing_count = values.get("harden_artifact_missing_count")
@@ -1357,11 +1627,10 @@ def _harden_qor_signoff(workspace: Workspace, records: list[dict]) -> dict:
         "metric": "harden_artifact_missing_count",
         "threshold": 0,
         "actual": artifact_missing_count,
-        "cap_if_failed": 70,
     })
     if not artifacts_complete:
         blocking_issues.append({
-            "metric": "final_package_complete",
+            "metric_id": "final_package_complete",
             "display_name": "Final Package Complete",
             "value": artifact_missing_count,
             "reason": "Harden output artifacts are missing.",
@@ -1381,7 +1650,7 @@ def _harden_qor_signoff(workspace: Workspace, records: list[dict]) -> dict:
 
 def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
     values = {
-        record.get("name"): _qor_number(record.get("value"))
+        record.get("id"): _qor_number(record.get("value"))
         for record in records
     }
     gate_specs = (
@@ -1411,13 +1680,13 @@ def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
             "metric": metric,
             "threshold": threshold,
             "actual": actual,
-            "cap_if_failed": 70,
         })
 
     expected_count = values.get("sta_expected_corner_count")
     actual_count = values.get("sta_corner_count")
     hard_gates.append({
         "id": "sta_corner_coverage_complete",
+        "kind": "coverage",
         "passed": (
             expected_count is not None
             and expected_count > 0
@@ -1426,7 +1695,6 @@ def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
         "metric": "sta_corner_count",
         "threshold": expected_count,
         "actual": actual_count,
-        "cap_if_failed": 70,
     })
     return hard_gates
 
@@ -1444,7 +1712,7 @@ def build_qor_summary_payload(workspace: Workspace,
     blocking_issues = []
 
     for record in records:
-        dimension = record.get("dimension", "unknown")
+        dimension = record.get("category", "unknown")
         dimensions.setdefault(dimension, {"metric_count": 0})
         dimensions[dimension]["metric_count"] += 1
 
@@ -1466,15 +1734,27 @@ def build_qor_summary_payload(workspace: Workspace,
         blocking_issues.extend(harden_signoff["blocking_issues"])
     failed_hard_gates = [gate for gate in hard_gates if not gate["passed"]]
 
-    if len(records) == 0:
-        status = "empty"
-    elif blocking_issues or failed_hard_gates:
-        status = "blocked"
+    missing_metrics = _qor_missing_metrics(step, records)
+    values = {
+        record.get("id"): _qor_number(record.get("value"))
+        for record in records
+    }
+    incomplete_coverage = any(
+        values.get(metric_id, 0) > 0
+        for metric_id in ("rcx_missing_corner_count", "sta_missing_corner_count")
+    ) or any(
+        gate.get("kind") == "coverage" and not gate.get("passed")
+        for gate in hard_gates
+    )
+    if blocking_issues or failed_hard_gates:
+        status = "incomplete" if incomplete_coverage and not blocking_issues else "blocked"
+    elif len(records) == 0 or missing_metrics or incomplete_coverage:
+        status = "incomplete"
     else:
-        status = "green"
+        status = "pass"
 
     summary = {
-        "schema_version": 1,
+        "schema_version": 2,
         "tool": step.tool,
         "step": step.name,
         "design": workspace.design.name,
@@ -1483,8 +1763,14 @@ def build_qor_summary_payload(workspace: Workspace,
         "dimensions": dimensions,
         "blocking_issues": blocking_issues,
         "hard_gates": hard_gates,
-        "missing_metrics": _qor_missing_metrics(step, records),
-        "source_file": str(step.analysis.get("qor_metrics", step_metrics.path)),
+        "missing_metrics": [
+            {
+                "metric_id": metric_id,
+                "reason": "The required feature metric is unavailable.",
+            }
+            for metric_id in missing_metrics
+        ],
+        "metrics_file": "qor_metrics.json",
     }
     if harden_signoff is not None:
         summary["final_signoff"] = {
@@ -1494,8 +1780,8 @@ def build_qor_summary_payload(workspace: Workspace,
     return summary
 
 
-def _qor_hotspot_record(record: dict, source_file: str) -> dict | None:
-    metric_name = record.get("name")
+def _qor_hotspot_record(record: dict) -> dict | None:
+    metric_name = record.get("id")
     hint = QOR_HOTSPOT_METRIC_HINTS.get(metric_name)
     if hint is None:
         return None
@@ -1507,12 +1793,12 @@ def _qor_hotspot_record(record: dict, source_file: str) -> dict | None:
     return {
         "kind": hint["kind"],
         "severity": hint["severity"],
-        "metric": metric_name,
+        "metric_id": metric_name,
         "display_name": record.get("display_name", metric_name),
         "value": record.get("value"),
         "unit": record.get("unit"),
-        "dimension": record.get("dimension"),
-        "source_file": source_file,
+        "category": record.get("category"),
+        "source": record.get("source"),
         "description": hint["description"],
     }
 
@@ -1564,7 +1850,7 @@ def _drc_rule_layer_hotspot_records(step: WorkspaceStep) -> list[dict]:
             records.append((raw_rule, raw_layer, value))
 
     records.sort(key=lambda item: (-float(item[2]), item[0], item[1]))
-    source_file = str(feature_path)
+    source_file = _relative_step_path(step, feature_path)
     hotspots = []
     for raw_rule, raw_layer, value in records[:10]:
         display_rule = _drc_rule_display_name(raw_rule)
@@ -1572,12 +1858,16 @@ def _drc_rule_layer_hotspot_records(step: WorkspaceStep) -> list[dict]:
             {
                 "kind": "drc_rule_layer",
                 "severity": "critical",
-                "metric": f"drc:{raw_rule}:{raw_layer}",
+                "metric_id": f"drc:{raw_rule}:{raw_layer}",
                 "display_name": f"{display_rule} · {raw_layer}",
                 "value": value,
                 "unit": "count",
-                "dimension": "clock_robustness_dfm",
-                "source_file": source_file,
+                "category": "clock_robustness_dfm",
+                "source": {
+                    "kind": "feature",
+                    "path": source_file,
+                    "selector": f"/drc/distribution/{raw_rule}/layers/{raw_layer}",
+                },
                 "description": f"{value} DRC violations: {display_rule} on {raw_layer}.",
             }
         )
@@ -1592,11 +1882,10 @@ def build_qor_hotspots_payload(workspace: Workspace,
         step=step,
         step_metrics=step_metrics,
     )
-    source_file = str(step.analysis.get("qor_metrics", step_metrics.path))
     hotspots = []
 
     for record in qor_metrics["metrics"]:
-        hotspot = _qor_hotspot_record(record, source_file)
+        hotspot = _qor_hotspot_record(record)
         if hotspot is not None:
             hotspots.append(hotspot)
 
@@ -1604,11 +1893,10 @@ def build_qor_hotspots_payload(workspace: Workspace,
         hotspots.extend(_drc_rule_layer_hotspot_records(step))
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "tool": step.tool,
         "step": step.name,
         "design": workspace.design.name,
-        "source_file": source_file,
         "hotspots": hotspots,
     }
 
@@ -1667,8 +1955,6 @@ def save_qor_hotspots(workspace: Workspace,
 def save_step_metrics(workspace: Workspace,
                       step: WorkspaceStep,
                       step_metrics: StepMetrics) -> bool:
-    if not save_metrics(step_metrics):
-        return False
     if not save_qor_metrics(workspace=workspace, step=step, step_metrics=step_metrics):
         return False
     if not save_qor_summary(workspace=workspace, step=step, step_metrics=step_metrics):
@@ -2058,6 +2344,18 @@ def build_metrics_rcx(workspace: Workspace,
         output_dir,
         "*.gds",
     )
+    if not _save_step_feature_facts(
+        step,
+        "rcx",
+        {
+            "spef_file_count": metrics["rcx_spef_file_count"],
+            "expected_corner_count": metrics["rcx_expected_corner_count"],
+            "missing_corner_count": metrics["rcx_missing_corner_count"],
+            "output_def_exists": metrics["rcx_output_def_exists"],
+            "output_gds_exists": metrics["rcx_output_gds_exists"],
+        },
+    ):
+        return None
 
     step_metrics.data = metrics
     image_path = str(step.output.get("image", ""))
@@ -2205,6 +2503,15 @@ def build_metrics_harden(workspace: Workspace,
     metrics["harden_artifact_missing_count"] = sum(
         1 for exists in artifact_checks.values() if exists == 0
     )
+    if not _save_step_feature_facts(
+        step,
+        "harden",
+        {
+            "artifacts": artifact_checks,
+            "artifact_missing_count": metrics["harden_artifact_missing_count"],
+        },
+    ):
+        return None
 
     step_metrics.data = metrics
     image_path = str(step.output.get("image", ""))

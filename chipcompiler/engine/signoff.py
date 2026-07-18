@@ -387,7 +387,9 @@ class SignoffPackageCollector:
             )
         issues.extend(self._checklist_issues(checklist_data))
 
-        metrics = self._read_json(workspace_dir / "drc_ecc" / "analysis" / "drc_metrics.json")
+        qor_metrics = self._read_json(
+            workspace_dir / "drc_ecc" / "analysis" / "qor_metrics.json"
+        )
         ok = len(missing_required) == 0
         flow_success = all(state == StateEnum.Success.value for state in required_steps.values())
         summary = {
@@ -418,7 +420,7 @@ class SignoffPackageCollector:
                 "gds": f"final/design/{design}.gds",
                 "image": f"final/design/{design}.png",
             },
-            "metrics": metrics,
+            "qor_metrics": qor_metrics,
             "sta_matrix": sta_matrix,
             "missing_required": missing_required,
             "missing_optional": missing_optional,

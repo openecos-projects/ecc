@@ -508,24 +508,32 @@ def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
     assert metrics is not None
     assert step.analysis["qor_metrics"].exists()
     qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
-    assert qor_metrics["schema_version"] == 1
+    assert qor_metrics["schema_version"] == 2
     assert qor_metrics["tool"] == "ecc"
     assert qor_metrics["step"] == StepEnum.NETLIST_OPT.value
     assert qor_metrics["design"] == "gcd"
 
-    records = {record["name"]: record for record in qor_metrics["metrics"]}
+    records = {record["id"]: record for record in qor_metrics["metrics"]}
     assert records["fanout_max"] == {
-        "name": "fanout_max",
+        "id": "fanout_max",
         "display_name": "Max Fanout",
         "value": 20,
         "unit": "count",
-        "dimension": "routability_physical",
-        "polarity": "lower_is_better",
-        "source_file": str(step.analysis["metrics"]),
+        "category": "routability_physical",
+        "direction": "lower_is_better",
+        "scope": "fanout_repair",
+        "corner": None,
+        "project_role": "trend",
+        "step_role": "primary",
         "confidence": "high",
+        "source": {
+            "kind": "feature",
+            "path": "feature/fixFanout.db.json",
+            "selector": "/Pins/max_fanout",
+        },
     }
     assert records["core_utilization"]["value"] == 0.42
-    assert records["core_utilization"]["polarity"] == "target_range"
+    assert records["core_utilization"]["direction"] == "target_range"
     assert records["core_area"]["value"] == 1778.432
     assert records["die_area"]["unit"] == "um^2"
 
@@ -552,7 +560,7 @@ def test_ecc_metrics_uses_actual_db_max_fanout_before_configured_target(tmp_path
 
     assert metrics.data["Max fanout"] == 37
     records = {
-        record["name"]: record
+        record["id"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
             "metrics"
         ]
@@ -599,13 +607,13 @@ def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
     assert step.analysis["qor_summary"].exists()
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
-    assert summary["schema_version"] == 1
+    assert summary["schema_version"] == 2
     assert summary["tool"] == "ecc"
     assert summary["step"] == StepEnum.NETLIST_OPT.value
     assert summary["design"] == "gcd"
-    assert summary["status"] == "green"
+    assert summary["status"] == "pass"
     assert summary["metric_count"] == len(qor_metrics["metrics"])
-    assert summary["source_file"] == str(step.analysis["qor_metrics"])
+    assert summary["metrics_file"] == "qor_metrics.json"
     assert summary["blocking_issues"] == []
     assert summary["missing_metrics"] == []
     assert summary["dimensions"]["routability_physical"]["metric_count"] >= 1
@@ -636,7 +644,7 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
     assert summary["status"] == "blocked"
     assert summary["blocking_issues"] == [
         {
-            "metric": "drc_count",
+            "metric_id": "drc_count",
             "display_name": "DRC Count",
             "value": 3,
             "reason": "DRC violations are present.",
@@ -696,7 +704,7 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
     assert metrics.data["drc_num"] == 99
     hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
     records = hotspots["hotspots"]
-    assert [(record["metric"], record["value"]) for record in records] == [
+    assert [(record["metric_id"], record["value"]) for record in records] == [
         ("drc:Antenna:M1", 12),
         ("drc:MinimumSpacing:M3", 12),
         ("drc:MinimumSpacing:M4", 12),
@@ -711,15 +719,94 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
     assert records[1] == {
         "kind": "drc_rule_layer",
         "severity": "critical",
-        "metric": "drc:MinimumSpacing:M3",
+        "metric_id": "drc:MinimumSpacing:M3",
         "display_name": "Minimum Spacing · M3",
         "value": 12,
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
-        "source_file": str(step.feature["step"]),
+        "category": "clock_robustness_dfm",
+        "source": {
+            "kind": "feature",
+            "path": "feature/drc.step.json",
+            "selector": "/drc/distribution/MinimumSpacing/layers/M3",
+        },
         "description": "12 DRC violations: Minimum Spacing on M3.",
     }
     assert all("violation_detail" not in record and "bbox" not in record for record in records)
+    qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    details = {detail["id"]: detail for detail in qor_metrics["details"]}
+    assert details["drc_rule_layer_summary"] == {
+        "id": "drc_rule_layer_summary",
+        "presentation": "rule_layer_table",
+        "summary": {
+            "top_violations": [
+                {
+                    "metric_id": "drc:Antenna:M1",
+                    "display_name": "Antenna · M1",
+                    "value": 12,
+                    "unit": "count",
+                },
+                {
+                    "metric_id": "drc:MinimumSpacing:M3",
+                    "display_name": "Minimum Spacing · M3",
+                    "value": 12,
+                    "unit": "count",
+                },
+                {
+                    "metric_id": "drc:MinimumSpacing:M4",
+                    "display_name": "Minimum Spacing · M4",
+                    "value": 12,
+                    "unit": "count",
+                },
+                {
+                    "metric_id": "drc:MinimumWidth:M2",
+                    "display_name": "Minimum Width · M2",
+                    "value": 11,
+                    "unit": "count",
+                },
+                {
+                    "metric_id": "drc:Rule05:M5",
+                    "display_name": "Rule05 · M5",
+                    "value": 10,
+                    "unit": "count",
+                },
+                {
+                    "metric_id": "drc:Rule06:M6",
+                    "display_name": "Rule06 · M6",
+                    "value": 9,
+                    "unit": "count",
+                },
+                {
+                    "metric_id": "drc:Rule07:M7",
+                    "display_name": "Rule07 · M7",
+                    "value": 8,
+                    "unit": "count",
+                },
+                {
+                    "metric_id": "drc:Rule08:M8",
+                    "display_name": "Rule08 · M8",
+                    "value": 7,
+                    "unit": "count",
+                },
+                {
+                    "metric_id": "drc:Rule09:M9",
+                    "display_name": "Rule09 · M9",
+                    "value": 6,
+                    "unit": "count",
+                },
+                {
+                    "metric_id": "drc:Rule10:M10",
+                    "display_name": "Rule10 · M10",
+                    "value": 5,
+                    "unit": "count",
+                },
+            ],
+        },
+        "feature_source": {
+            "kind": "feature",
+            "path": "feature/drc.step.json",
+            "selector": "/drc/distribution",
+        },
+    }
 
 
 def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
@@ -740,7 +827,10 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
 
     assert "drc_num" not in drc_metrics.data
     drc_summary = json.loads(drc_step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert drc_summary["missing_metrics"] == ["drc_count"]
+    assert drc_summary["missing_metrics"] == [{
+        "metric_id": "drc_count",
+        "reason": "The required feature metric is unavailable.",
+    }]
 
     legal_step = build_step(
         workspace=workspace,
@@ -760,7 +850,10 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
     legal_summary = json.loads(
         legal_step.analysis["qor_summary"].read_text(encoding="utf-8")
     )
-    assert legal_summary["missing_metrics"] == ["legal_total_movement"]
+    assert legal_summary["missing_metrics"] == [{
+        "metric_id": "legal_total_movement",
+        "reason": "The required feature metric is unavailable.",
+    }]
 
 
 def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
@@ -851,7 +944,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     assert map_records[("margin", "union", None)]["top_5_percent_average"] == 40
 
     records = {
-        record["name"]: record
+        record["id"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
             "metrics"
         ]
@@ -861,20 +954,30 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     assert records["place_congestion_egr_overflow_total"]["value"] == 13
     assert records["place_lutrudy_utilization_max"]["value"] == 0.005274999886751175
     assert "place_map_metrics" not in records
+    details = {
+        detail["id"]: detail
+        for detail in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"]
+    }
+    assert details["place_map_metrics"]["presentation"] == "place_map_summary"
+    assert details["place_map_metrics"]["feature_source"]["path"] == "feature/place.map.json"
     hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
-    assert hotspots["schema_version"] == 1
+    assert hotspots["schema_version"] == 2
     assert hotspots["tool"] == "ecc"
     assert hotspots["step"] == StepEnum.PLACEMENT.value
-    hotspot_records = {record["metric"]: record for record in hotspots["hotspots"]}
+    hotspot_records = {record["metric_id"]: record for record in hotspots["hotspots"]}
     assert hotspot_records["place_congestion_egr_overflow_total"] == {
         "kind": "congestion",
         "severity": "warning",
-        "metric": "place_congestion_egr_overflow_total",
+        "metric_id": "place_congestion_egr_overflow_total",
         "display_name": "Place EGR Overflow Total",
         "value": 13,
         "unit": "count",
-        "dimension": "routability_physical",
-        "source_file": str(step.analysis["qor_metrics"]),
+        "category": "routability_physical",
+        "source": {
+            "kind": "feature",
+            "path": "feature/place.map.json",
+            "selector": "",
+        },
         "description": "Placement EGR overflow is present.",
     }
     assert hotspot_records["place_congestion_egr_overflow_max"]["value"] == 3
@@ -914,13 +1017,23 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
     assert metrics.data["max_clock_wirelength"] == 97514
     assert metrics.data["max_level_of_clock_tree"] == 2
     records = {
-        record["name"]: record
+        record["id"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
             "metrics"
         ]
     }
     assert records["cts_clock_wirelength_max"]["value"] == 97514
     assert records["cts_clock_tree_max_level"]["value"] == 2
+    assert records["clock_path_max_buffer"]["source"] == {
+        "kind": "feature",
+        "path": "feature/CTS.step.json",
+        "selector": "/CTS/clock_path_max_buffer",
+    }
+    assert records["clock_path_min_buffer"]["source"] == {
+        "kind": "feature",
+        "path": "feature/CTS.step.json",
+        "selector": "/CTS/clock_path_min_buffer",
+    }
 
 
 def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
@@ -1026,7 +1139,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
     }
 
     records = {
-        record["name"]: record
+        record["id"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
             "metrics"
         ]
@@ -1035,17 +1148,27 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
     assert records["route_dr_total_violation_count"]["value"] == 0
     assert records["route_dr_total_wirelength"]["value"] == 5198.943
     assert "route_layer_metrics" not in records
+    details = {
+        detail["id"]: detail
+        for detail in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"]
+    }
+    assert details["route_layer_metrics"]["presentation"] == "layer_table"
+    assert details["route_layer_metrics"]["feature_source"]["path"] == "feature/route.step.json"
     hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
-    hotspot_records = {record["metric"]: record for record in hotspots["hotspots"]}
+    hotspot_records = {record["metric_id"]: record for record in hotspots["hotspots"]}
     assert hotspot_records["route_la_total_overflow"] == {
         "kind": "routing_overflow",
         "severity": "critical",
-        "metric": "route_la_total_overflow",
+        "metric_id": "route_la_total_overflow",
         "display_name": "Route LA Overflow",
         "value": 2,
         "unit": "count",
-        "dimension": "routability_physical",
-        "source_file": str(step.analysis["qor_metrics"]),
+        "category": "routability_physical",
+        "source": {
+            "kind": "feature",
+            "path": "feature/route.step.json",
+            "selector": "",
+        },
         "description": "Route layer assignment overflow is present.",
     }
     assert "route_dr_total_violation_count" not in hotspot_records
@@ -1072,7 +1195,7 @@ def test_ecc_metrics_qor_summary_lists_missing_supported_route_metrics(tmp_path)
 
     assert metrics is not None
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert summary["missing_metrics"] == [
+    assert [item["metric_id"] for item in summary["missing_metrics"]] == [
         "route_dr_total_violation_count",
         "route_dr_total_patch_count",
         "route_dr_total_wirelength",
@@ -1113,13 +1236,26 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     assert metrics.data["rcx_output_def_exists"] == 1
     assert metrics.data["rcx_output_gds_exists"] == 1
     records = {
-        record["name"]: record
+        record["id"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
             "metrics"
         ]
     }
     assert records["rcx_spef_file_count"]["value"] == 2
     assert records["rcx_missing_corner_count"]["value"] == 1
+    assert records["rcx_missing_corner_count"]["source"] == {
+        "kind": "feature",
+        "path": "feature/RCX.step.json",
+        "selector": "/rcx/missing_corner_count",
+    }
+    rcx_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
+    assert rcx_feature["rcx"] == {
+        "spef_file_count": 2,
+        "expected_corner_count": 3,
+        "missing_corner_count": 1,
+        "output_def_exists": 1,
+        "output_gds_exists": 1,
+    }
 
 
 def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
@@ -1254,7 +1390,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert metrics.data["hold_violation_count"] == 1
     assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
     assert metrics.data["sta_worst_hold_corner"] == "MIN_m40/Cbest"
-    assert step.analysis["metrics"].name == "sta_metrics.json"
+    assert step.analysis["metrics"].name == "qor_metrics.json"
     sta_path_group_metrics = metrics.data["sta_path_group_metrics"]
     assert len(sta_path_group_metrics["records"]) == 4
     core_group = next(
@@ -1293,7 +1429,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     }
     assert io_record["hold"] == {"wns": -0.2, "tns": -0.2, "nvp": 2}
     records = {
-        record["name"]: record
+        record["id"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
             "metrics"
         ]
@@ -1307,6 +1443,14 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert records["sta_setup_wns"]["corner"] == "MAX_125/RCworst"
     assert records["sta_hold_wns"]["corner"] == "MIN_m40/Cbest"
     assert "sta_path_group_metrics" not in records
+    details = {
+        detail["id"]: detail
+        for detail in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"]
+    }
+    assert details["sta_path_group_metrics"]["presentation"] == "path_group_table"
+    assert details["sta_path_group_metrics"]["feature_source"]["path"] == (
+        "feature/MAX_125/RCworst/qor_summary.json"
+    )
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     assert summary["status"] == "blocked"
     assert all(not gate["passed"] for gate in summary["hard_gates"][:6])
@@ -1386,7 +1530,7 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
         if gate["id"] == "sta_corner_coverage_complete"
     )
     assert coverage_gate["passed"] is False
-    assert summary["status"] == "blocked"
+    assert summary["status"] == "incomplete"
 
 
 def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
@@ -1416,8 +1560,10 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
     assert "max_WNS" not in metrics.data
     assert metrics.data["sta_corner_count"] == 0
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert "sta_setup_wns" in summary["missing_metrics"]
-    assert summary["status"] == "blocked"
+    assert "sta_setup_wns" in {
+        item["metric_id"] for item in summary["missing_metrics"]
+    }
+    assert summary["status"] == "incomplete"
 
 
 def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
@@ -1446,13 +1592,20 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
     assert metrics.data["harden_lib_check_exists"] == 0
     assert metrics.data["harden_artifact_missing_count"] == 1
     records = {
-        record["name"]: record
+        record["id"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
             "metrics"
         ]
     }
     assert records["harden_artifact_missing_count"]["value"] == 1
     assert records["harden_gds_exists"]["value"] == 1
+    assert records["harden_artifact_missing_count"]["source"] == {
+        "kind": "feature",
+        "path": "feature/Harden.step.json",
+        "selector": "/harden/artifact_missing_count",
+    }
+    harden_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
+    assert harden_feature["harden"]["artifact_missing_count"] == 1
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     assert summary["status"] == "blocked"
     assert summary["final_signoff"]["missing_sources"] == [
@@ -1463,12 +1616,12 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
     ]
 
 
-def _write_harden_signoff_summary(tmp_path, step_name, *, status="green", hard_gates=None):
+def _write_harden_signoff_summary(tmp_path, step_name, *, status="pass", hard_gates=None):
     summary_path = tmp_path / f"{step_name}_ecc" / "analysis" / "qor_summary.json"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(
         json.dumps({
-            "schema_version": 1,
+            "schema_version": 2,
             "step": step_name,
             "status": status,
             "hard_gates": hard_gates or [],
@@ -1539,7 +1692,7 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
 
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     gates = {gate["id"]: gate for gate in summary["hard_gates"]}
-    assert summary["status"] == "green"
+    assert summary["status"] == "pass"
     assert all(gate["passed"] for gate in gates.values())
     assert summary["blocking_issues"] == []
     assert summary["final_signoff"]["missing_sources"] == []
@@ -1577,7 +1730,7 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
 
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     gates = {gate["id"]: gate for gate in summary["hard_gates"]}
-    issues = {issue["metric"]: issue for issue in summary["blocking_issues"]}
+    issues = {issue["metric_id"]: issue for issue in summary["blocking_issues"]}
     assert summary["status"] == "blocked"
     assert gates["final_drc_clean"]["passed"] is False
     assert gates["final_package_complete"]["passed"] is False

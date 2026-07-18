@@ -141,8 +141,14 @@ class YosysSynthesisChecklist(YosysChecklist):
 
     def check(self) -> bool:
         step = StepEnum.SYNTHESIS.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
+        qor_metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
         stat = json_read(self.workspace_step.feature.get("stat", ""))
+        records = qor_metrics.get("metrics", []) if isinstance(qor_metrics, dict) else []
+        metric_values = {
+            record.get("id"): record.get("value")
+            for record in records
+            if isinstance(record, dict) and isinstance(record.get("id"), str)
+        }
 
         try:
             log_text = read_text_maybe_gzip(self.workspace_step.log.get("file", ""))
@@ -172,9 +178,9 @@ class YosysSynthesisChecklist(YosysChecklist):
         }
         design_stat = stat.get("design", {})
         cell_number = self.to_float(
-            metrics.get("Cell number", design_stat.get("num_cells")), 0.0)
+            metric_values.get("synthesis_cell_count", design_stat.get("num_cells")), 0.0)
         cell_area = self.to_float(
-            metrics.get("Cell area", design_stat.get("area")), 0.0)
+            metric_values.get("synthesis_cell_area", design_stat.get("area")), 0.0)
         log_lower = log_text.lower()
         log_success = (
             len(log_text) > 0

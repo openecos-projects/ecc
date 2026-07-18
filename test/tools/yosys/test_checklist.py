@@ -23,8 +23,14 @@ def test_synthesis_checklist_reads_gzip_mapped_netlist(tmp_path):
     lib = _write_text(tmp_path / "lib" / "std.lib", "library(std) {}\n")
     log = _write_text(tmp_path / "Synthesis_yosys" / "log" / "Synthesis.log", "End of script.\n")
     metrics = _write_json(
-        tmp_path / "Synthesis_yosys" / "analysis" / "Synthesis_metrics.json",
-        {"Cell number": 1, "Cell area": 1.0},
+        tmp_path / "Synthesis_yosys" / "analysis" / "qor_metrics.json",
+        {
+            "schema_version": 2,
+            "metrics": [
+                {"id": "synthesis_cell_count", "value": 1},
+                {"id": "synthesis_cell_area", "value": 1.0},
+            ],
+        },
     )
     stat = _write_json(
         tmp_path / "Synthesis_yosys" / "feature" / "Synthesis_stat.json",

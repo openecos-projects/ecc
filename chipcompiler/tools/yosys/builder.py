@@ -244,10 +244,11 @@ def build_step(workspace: Workspace,
     }
 
     analysis_dir = step.directory / "analysis"
+    qor_metrics_path = analysis_dir / "qor_metrics.json"
     step.analysis = {
         "dir": analysis_dir,
-        "metrics": analysis_dir / f"{step.name}_metrics.json",
-        "qor_metrics": analysis_dir / "qor_metrics.json",
+        "metrics": qor_metrics_path,
+        "qor_metrics": qor_metrics_path,
         "qor_summary": analysis_dir / "qor_summary.json",
         "qor_hotspots": analysis_dir / "qor_hotspots.json",
     }  

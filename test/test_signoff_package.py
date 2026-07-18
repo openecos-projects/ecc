@@ -81,7 +81,30 @@ def _make_signoff_workspace(
     for report_name in STA_REPORT_NAMES:
         _write(sta_dir / report_name, f"{report_name}\n")
 
-    _write_json(workspace_dir / "route_ecc" / "analysis" / "route_metrics.json", {})
+    _write_json(
+        workspace_dir / "route_ecc" / "analysis" / "qor_metrics.json",
+        {
+            "schema_version": 2,
+            "metrics": [],
+            "details": [],
+            "sources": [],
+        },
+    )
+    _write_json(
+        workspace_dir / "drc_ecc" / "analysis" / "qor_metrics.json",
+        {
+            "schema_version": 2,
+            "metrics": [
+                {
+                    "id": "drc_count",
+                    "value": 0,
+                    "unit": "count",
+                }
+            ],
+            "details": [],
+            "sources": [],
+        },
+    )
     _write(workspace_dir / "route_ecc" / "report" / "route.db.rpt")
     return workspace_dir
 
@@ -121,6 +144,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
 
     summary = json.loads((package_dir / "summary.json").read_text())
     assert summary["final"]["verilog"] == "final/design/gcd.v.gz"
+    assert summary["qor_metrics"]["schema_version"] == 2
     assert summary["sta_matrix"][0]["report"] == (
         "final/timing/sta/MAX_125/RCworst/qor_summary.rpt"
     )
@@ -128,7 +152,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     manifest = json.loads((package_dir / "manifest.json").read_text())
     destinations = {item["destination"] for item in manifest["files"]}
     assert "final/design/gcd.def.gz" in destinations
-    assert "final/reports/route/analysis/route_metrics.json" in destinations
+    assert "final/reports/route/analysis/qor_metrics.json" in destinations
     assert {
         f"final/timing/sta/MAX_125/RCworst/{report_name}" for report_name in STA_REPORT_NAMES
     }.issubset(destinations)
