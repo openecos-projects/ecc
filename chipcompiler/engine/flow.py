@@ -457,6 +457,7 @@ class EngineFlow:
             daemon=True,
         )
         memory_monitor.start()
+        result = False
         try:
             from chipcompiler.tools import run_step as run_tool_step
 
@@ -478,11 +479,16 @@ class EngineFlow:
         runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
 
         # determine and save state
-        state = (
-            StateEnum.Success
-            if self.check_step_result(workspace_step=workspace_step)
-            else StateEnum.Imcomplete
-        )
+        if result is StateEnum.Invalid:
+            state = StateEnum.Invalid
+        elif result is True or result is StateEnum.Success:
+            state = (
+                StateEnum.Success
+                if self.check_step_result(workspace_step=workspace_step)
+                else StateEnum.Imcomplete
+            )
+        else:
+            state = StateEnum.Imcomplete
         self.set_state(
             name=workspace_step.name,
             tool=workspace_step.tool,

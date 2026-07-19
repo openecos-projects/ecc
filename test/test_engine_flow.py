@@ -16,6 +16,7 @@ from chipcompiler.data import (
     YosysOutput,
     YosysStep,
 )
+from chipcompiler.data.workspace import Flow
 from chipcompiler.engine.flow import EngineFlow
 
 
@@ -75,6 +76,41 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
             "size_bytes": len(sdc_contents.encode("utf-8")),
         }
     }
+
+
+@pytest.mark.parametrize(
+    ("tool_outcome", "expected_state"),
+    [
+        (False, StateEnum.Imcomplete),
+        (StateEnum.Invalid, StateEnum.Invalid),
+        (RuntimeError("native tool failed"), StateEnum.Imcomplete),
+    ],
+)
+def test_engine_flow_requires_successful_tool_result(
+    monkeypatch,
+    tmp_path,
+    tool_outcome,
+    expected_state,
+):
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
+    engine_flow = EngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+
+    def run_step(**_kwargs):
+        if isinstance(tool_outcome, Exception):
+            raise tool_outcome
+        return tool_outcome
+
+    monkeypatch.setattr(tools, "run_step", run_step)
+
+    assert engine_flow.run_step(workspace_step) is expected_state
+    assert engine_flow.check_state("route", "ecc", expected_state)
 
 
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
