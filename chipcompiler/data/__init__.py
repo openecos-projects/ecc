@@ -1,3 +1,21 @@
+from .candidate_capabilities import export_candidate_capabilities
+from .candidate_contract import validate_candidate_step_contract
+from .candidate_input_binding import (
+    bind_candidate_input,
+    input_binding_candidate_id,
+    reapply_candidate_input_binding,
+)
+from .candidate_materialization import (
+    materialize_candidate_config,
+    materialized_candidate_id,
+    reapply_materialized_candidate_config,
+    validate_materialized_candidate_config,
+)
+from .candidate_registry import (
+    candidate_capability_registry,
+    candidate_knob_registry,
+    candidate_registry_digest,
+)
 from .checklist import Checklist, CheckState
 from .home import HomeData
 from .parameter import (
@@ -96,6 +114,18 @@ __all__ = [
     "refresh_workspace_config",
     "sync_workspace_config_to_parameters",
     "update_step_config",
+    "bind_candidate_input",
+    "candidate_knob_registry",
+    "candidate_capability_registry",
+    "candidate_registry_digest",
+    "export_candidate_capabilities",
+    "input_binding_candidate_id",
+    "materialized_candidate_id",
+    "validate_materialized_candidate_config",
+    "reapply_candidate_input_binding",
+    "materialize_candidate_config",
+    "reapply_materialized_candidate_config",
+    "validate_candidate_step_contract",
     "PDK",
     "get_pdk",
     "OriginDesign",

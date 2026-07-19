@@ -101,6 +101,10 @@ def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool
     # update config
     eda_module.build_step_config(workspace, step)
 
+    # Tool builders can overwrite PDK- or parameter-derived config fields.
+    from chipcompiler.data import reapply_materialized_candidate_config
+
+    reapply_materialized_candidate_config(workspace, step.name)
     log_workspace_step(step, workspace.logger)
 
     return eda_module.run_step(workspace=workspace, step=step, ecc_module=ecc_module)

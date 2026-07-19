@@ -89,6 +89,55 @@ def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
     assert params.verilog_input == ""
 
 
+def test_build_legalization_params_consumes_dreamplace_config(tmp_path):
+    config_path = tmp_path / "dreamplace.json"
+    json_write(
+        config_path,
+        {
+            "cell_padding_x": 320,
+            "bndry_padding_x": 12,
+            "bndry_padding_y": 8,
+            "detailed_place_flag": 1,
+            "num_threads": 4,
+            "deterministic_flag": 0,
+        },
+    )
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    result_dir = tmp_path / "data" / "legalization"
+    step_data = EccData(
+        dir=tmp_path / "data",
+        steps={StepEnum.LEGALIZATION.value: result_dir},
+    )
+    step = EccStep(
+        name=StepEnum.LEGALIZATION.value,
+        data=step_data,
+    )
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=None,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+        output_def=tmp_path / "output.def",
+        output_verilog=tmp_path / "output.v",
+    )
+
+    params = module._build_params(FakeParams, legalize_only=True)
+
+    assert params.cell_padding_x == 320
+    assert params.bndry_padding_x == 12
+    assert params.bndry_padding_y == 8
+    assert params.detailed_place_flag == 1
+    assert params.num_threads == 4
+    assert params.deterministic_flag == 0
+    assert params.global_place_flag == 0
+    assert params.legalize_flag == 1
+
+
 def test_dreamplace_step_info_stringifies_path_config(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
