@@ -451,6 +451,10 @@ class ECCToolsModule:
     
     def report_cts(self, output : str):
         self.ecc.cts_report(path_text(output))
+
+    def feature_cts_timing(self) -> dict:
+        """Return post-optimization CTS FastSTA timing aggregates."""
+        return self.ecc.cts_timing_feature()
     
     def feature_cts_map(self, 
                         json_path: str, 

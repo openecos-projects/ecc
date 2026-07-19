@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import hashlib
 import logging
 import os
 import time
@@ -307,6 +308,49 @@ class EngineFlow:
                 close = getattr(engine_db, "close", None)
                 if callable(close):
                     close()
+
+    def timing_constraint_facts(self) -> dict:
+        sdc_path = self.workspace.pdk.sdc
+        if sdc_path is None:
+            return {"availability": "missing_source"}
+
+        try:
+            path = os.fspath(sdc_path)
+            size_bytes = os.path.getsize(path)
+            digest = hashlib.sha256()
+            with open(path, "rb") as sdc_file:
+                for chunk in iter(lambda: sdc_file.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except OSError:
+            return {"availability": "unreadable"}
+
+        return {
+            "availability": "available",
+            "sha256": digest.hexdigest(),
+            "size_bytes": size_bytes,
+        }
+
+    def save_step_flow_facts(self,
+                             workspace_step: WorkspaceStep,
+                             state: StateEnum,
+                             runtime_seconds: float,
+                             peak_memory_mb: float,
+                             timing_constraints: dict) -> bool:
+        feature_path = workspace_step.feature.get("step")
+        if feature_path is None or feature_path == "":
+            return False
+
+        from chipcompiler.utility import json_read, json_write
+
+        existing = json_read(feature_path)
+        payload = existing if isinstance(existing, dict) else {}
+        payload["run"] = {
+            "state": state.value,
+            "runtime_seconds": round(runtime_seconds, 3),
+            "peak_memory_mb": round(peak_memory_mb, 3),
+        }
+        payload["constraints"] = {"sdc": timing_constraints}
+        return json_write(file_path=feature_path, data=payload)
     
     def run_steps(self, rerun=False) -> bool:
         """
@@ -359,6 +403,7 @@ class EngineFlow:
 
         # set state ongoing
         start_time = time.time()
+        timing_constraints = self.timing_constraint_facts()
         self.set_state(name=workspace_step.name,
                        tool=workspace_step.tool,
                        state=StateEnum.Ongoing)
@@ -415,6 +460,31 @@ class EngineFlow:
 
         # save layout snapshot on success
         if state == StateEnum.Success:
+            if self.save_step_flow_facts(
+                workspace_step=workspace_step,
+                state=state,
+                runtime_seconds=elapsed,
+                peak_memory_mb=peak_memory_mb,
+                timing_constraints=timing_constraints,
+            ):
+                try:
+                    from chipcompiler.tools import build_step_metrics
+
+                    if build_step_metrics(workspace=self.workspace, step=workspace_step) is None:
+                        self.workspace.logger.warning(
+                            "[QOR] %s run facts were saved but analysis refresh is unavailable",
+                            step_tag,
+                        )
+                except Exception:
+                    self.workspace.logger.exception(
+                        "[QOR] %s failed to refresh analysis after saving run facts",
+                        step_tag,
+                    )
+            else:
+                self.workspace.logger.warning(
+                    "[QOR] %s has no step feature path; run facts were not saved",
+                    step_tag,
+                )
             from chipcompiler.tools import save_layout_image
             save_layout_image(workspace=self.workspace, step=workspace_step)
 

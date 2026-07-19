@@ -255,6 +255,30 @@ QOR_METRIC_MAP = {
         "dimension": "clock_robustness_dfm",
         "polarity": "lower_is_better",
     },
+    "cts_worst_optimized_skew_ns": {
+        "name": "cts_worst_optimized_skew_ns",
+        "display_name": "CTS Worst Optimized Skew Estimate",
+        "unit": "ns",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "lower_is_better",
+        "confidence": "medium",
+    },
+    "cts_worst_max_insertion_latency_ns": {
+        "name": "cts_worst_max_insertion_latency_ns",
+        "display_name": "CTS Worst Max Insertion Latency Estimate",
+        "unit": "ns",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "lower_is_better",
+        "confidence": "medium",
+    },
+    "cts_skew_target_unmet_count": {
+        "name": "cts_skew_target_unmet_count",
+        "display_name": "CTS Skew Target Unmet Count",
+        "unit": "count",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "lower_is_better",
+        "confidence": "medium",
+    },
     "total_movement": {
         "name": "legal_total_movement",
         "display_name": "Legal Total Movement",
@@ -343,6 +367,34 @@ QOR_METRIC_MAP = {
         "name": "rcx_missing_corner_count",
         "display_name": "RCX Missing Corner Count",
         "unit": "count",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "lower_is_better",
+    },
+    "rcx_spef_parse_failure_count": {
+        "name": "rcx_spef_parse_failure_count",
+        "display_name": "RCX SPEF Parse Failure Count",
+        "unit": "count",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "lower_is_better",
+    },
+    "rcx_worst_total_capacitance_ff": {
+        "name": "rcx_worst_total_capacitance_ff",
+        "display_name": "RCX Worst Total Capacitance",
+        "unit": "fF",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "lower_is_better",
+    },
+    "rcx_worst_coupling_capacitance_ff": {
+        "name": "rcx_worst_coupling_capacitance_ff",
+        "display_name": "RCX Worst Coupling Capacitance",
+        "unit": "fF",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "lower_is_better",
+    },
+    "rcx_worst_total_resistance_ohm": {
+        "name": "rcx_worst_total_resistance_ohm",
+        "display_name": "RCX Worst Total Resistance",
+        "unit": "ohm",
         "dimension": "clock_robustness_dfm",
         "polarity": "lower_is_better",
     },
@@ -479,6 +531,7 @@ QOR_BLOCKING_METRIC_REASONS = {
     "route_dr_total_violation_count": "Route detailed routing violations are present.",
     "route_la_total_overflow": "Route layer assignment overflow is present.",
     "rcx_missing_corner_count": "RCX expected SPEF corners are missing.",
+    "rcx_spef_parse_failure_count": "RCX SPEF electrical data could not be parsed.",
     "sta_setup_wns": "STA setup WNS is negative.",
     "sta_setup_tns": "STA setup TNS is negative.",
     "sta_hold_wns": "STA hold WNS is negative.",
@@ -570,6 +623,9 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "clock_wirelength",
         "cts_clock_wirelength_max",
         "cts_clock_tree_max_level",
+        "cts_worst_optimized_skew_ns",
+        "cts_worst_max_insertion_latency_ns",
+        "cts_skew_target_unmet_count",
     ],
     StepEnum.LEGALIZATION.value: [
         "legal_total_movement",
@@ -591,6 +647,10 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "rcx_spef_file_count",
         "rcx_expected_corner_count",
         "rcx_missing_corner_count",
+        "rcx_spef_parse_failure_count",
+        "rcx_worst_total_capacitance_ff",
+        "rcx_worst_coupling_capacitance_ff",
+        "rcx_worst_total_resistance_ohm",
         "rcx_output_def_exists",
         "rcx_output_gds_exists",
     ],
@@ -1029,6 +1089,12 @@ def _sta_timing_issues_payload(workspace: Workspace,
             )
             analysis_type = timing_path["analysis_type"]
             path_id = timing_path["path_id"]
+            launch_clock_delay = _qor_number(
+                timing_path.get("launch_clock_network_delay_ns")
+            )
+            capture_clock_delay = _qor_number(
+                timing_path.get("capture_clock_network_delay_ns")
+            )
             issues.append({
                 "issue_id": f"sta_timing:{artifact.corner}:{analysis_type}:{path_id}",
                 "severity": "critical" if slack < 0 else "warning",
@@ -1044,6 +1110,13 @@ def _sta_timing_issues_payload(workspace: Workspace,
                 "arrival_ns": _qor_number(timing_path.get("arrival_ns")),
                 "required_ns": _qor_number(timing_path.get("required_ns")),
                 "cppr_ns": _qor_number(timing_path.get("cppr_ns")),
+                "launch_clock_network_delay_ns": launch_clock_delay,
+                "capture_clock_network_delay_ns": capture_clock_delay,
+                "clock_network_delay_delta_ns": (
+                    capture_clock_delay - launch_clock_delay
+                    if launch_clock_delay is not None and capture_clock_delay is not None
+                    else None
+                ),
                 "source_file": source_file,
                 "dominant_stages": dominant_stages,
             })
@@ -1112,6 +1185,220 @@ def _artifact_exists(primary_path, output_dir, pattern: str) -> int:
     return 1 if _existing_files_in(output_dir, pattern) else 0
 
 
+_SPEF_CAPACITANCE_UNIT_TO_FF = {
+    "F": 1.0e15,
+    "MF": 1.0e12,
+    "UF": 1.0e9,
+    "NF": 1.0e6,
+    "PF": 1.0e3,
+    "FF": 1.0,
+    "AF": 1.0e-3,
+}
+_SPEF_RESISTANCE_UNIT_TO_OHM = {
+    "OHM": 1.0,
+    "KOHM": 1.0e3,
+    "MOHM": 1.0e6,
+}
+
+
+def _spef_unit_scale(tokens: list[str], units: dict[str, float]) -> float | None:
+    if len(tokens) != 3:
+        return None
+    multiplier = _qor_number(tokens[1])
+    unit_scale = units.get(tokens[2].upper())
+    if multiplier is None or multiplier <= 0 or unit_scale is None:
+        return None
+    return float(multiplier) * unit_scale
+
+
+def _spef_entry_value(tokens: list[str]) -> float | None:
+    value = _qor_number(tokens[-1])
+    if value is None or value < 0:
+        return None
+    return float(value)
+
+
+def _read_spef_electrical_summary(spef_path: Path) -> dict | None:
+    """Read bounded RC totals without retaining the SPEF's net-level content."""
+    try:
+        lines = spef_path.open(encoding="utf-8", errors="strict")
+    except (OSError, UnicodeError):
+        return None
+
+    has_header = False
+    capacitance_scale = None
+    resistance_scale = None
+    section = ""
+    net_count = 0
+    ground_capacitance_ff = 0.0
+    coupling_capacitance_ff = 0.0
+    resistance_ohm = 0.0
+    ground_capacitance_count = 0
+    coupling_capacitance_count = 0
+    resistance_count = 0
+
+    try:
+        with lines:
+            for raw_line in lines:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                tokens = line.split()
+                directive = tokens[0]
+                if directive == "*SPEF":
+                    has_header = True
+                    section = ""
+                    continue
+                if directive == "*C_UNIT":
+                    capacitance_scale = _spef_unit_scale(
+                        tokens, _SPEF_CAPACITANCE_UNIT_TO_FF
+                    )
+                    continue
+                if directive == "*R_UNIT":
+                    resistance_scale = _spef_unit_scale(
+                        tokens, _SPEF_RESISTANCE_UNIT_TO_OHM
+                    )
+                    continue
+                if directive == "*D_NET":
+                    if len(tokens) < 3 or _spef_entry_value(tokens) is None:
+                        return None
+                    net_count += 1
+                    section = ""
+                    continue
+                if directive == "*CAP":
+                    section = "cap"
+                    continue
+                if directive == "*RES":
+                    section = "res"
+                    continue
+                if directive == "*END":
+                    section = ""
+                    continue
+                if directive.startswith("*"):
+                    continue
+
+                if section == "cap":
+                    if len(tokens) not in (3, 4):
+                        return None
+                    value = _spef_entry_value(tokens)
+                    if value is None or capacitance_scale is None:
+                        return None
+                    if len(tokens) == 3:
+                        ground_capacitance_ff += value * capacitance_scale
+                        ground_capacitance_count += 1
+                    else:
+                        coupling_capacitance_ff += value * capacitance_scale
+                        coupling_capacitance_count += 1
+                elif section == "res":
+                    if len(tokens) != 4:
+                        return None
+                    value = _spef_entry_value(tokens)
+                    if value is None or resistance_scale is None:
+                        return None
+                    resistance_ohm += value * resistance_scale
+                    resistance_count += 1
+    except (OSError, UnicodeError):
+        return None
+
+    if not has_header or capacitance_scale is None or resistance_scale is None:
+        return None
+
+    return {
+        "net_count": net_count,
+        "ground_capacitance_count": ground_capacitance_count,
+        "ground_capacitance_ff": round(ground_capacitance_ff, 6),
+        "coupling_capacitance_count": coupling_capacitance_count,
+        "coupling_capacitance_ff": round(coupling_capacitance_ff, 6),
+        "total_capacitance_ff": round(
+            ground_capacitance_ff + coupling_capacitance_ff, 6
+        ),
+        "resistance_count": resistance_count,
+        "total_resistance_ohm": round(resistance_ohm, 6),
+    }
+
+
+def _rcx_spef_corner_name(workspace: Workspace, spef_path: Path) -> str:
+    design_name = workspace.design.top_module or workspace.design.name
+    name = spef_path.stem
+    prefix = f"{design_name}_" if design_name else ""
+    return name[len(prefix):] if prefix and name.startswith(prefix) else name
+
+
+def save_rcx_spef_feature_facts(workspace: Workspace, step: WorkspaceStep) -> bool:
+    """Persist bounded RCX electrical summaries before QoR analysis reads them."""
+    output_dir = step.output.get("dir", "")
+    actual_spef_paths = _existing_files_in(output_dir, "*.spef")
+    expected_spef_paths = [
+        Path(spef_path)
+        for spef_path in step.output.get("spef", [])
+        if spef_path
+    ]
+    missing_spef_paths = [
+        spef_path
+        for spef_path in expected_spef_paths
+        if not spef_path.is_file()
+    ]
+    corner_summaries = []
+    parse_failures = []
+    for spef_path in actual_spef_paths:
+        summary = _read_spef_electrical_summary(spef_path)
+        corner = _rcx_spef_corner_name(workspace, spef_path)
+        if summary is None:
+            parse_failures.append({"corner": corner, "reason": "invalid_spef"})
+            continue
+        corner_summaries.append({"corner": corner, **summary})
+
+    total_capacitances = [
+        summary["total_capacitance_ff"] for summary in corner_summaries
+    ]
+    coupling_capacitances = [
+        summary["coupling_capacitance_ff"] for summary in corner_summaries
+    ]
+    total_resistances = [
+        summary["total_resistance_ohm"] for summary in corner_summaries
+    ]
+    facts = {
+        "spef_file_count": len(actual_spef_paths),
+        "expected_corner_count": (
+            len(expected_spef_paths) if expected_spef_paths else len(actual_spef_paths)
+        ),
+        "missing_corner_count": len(missing_spef_paths),
+        "output_def_exists": _artifact_exists(
+            step.output.get("def", ""), output_dir, "*_RCX.def.gz"
+        ),
+        "output_gds_exists": _artifact_exists(
+            step.output.get("gds", ""), output_dir, "*.gds"
+        ),
+        "electrical_summary": {
+            "schema_version": 1,
+            "parsed_corner_count": len(corner_summaries),
+            "parse_failure_count": len(parse_failures),
+            "corners": corner_summaries,
+            "parse_failures": parse_failures,
+            "worst_total_capacitance_ff": max(total_capacitances, default=None),
+            "worst_coupling_capacitance_ff": max(coupling_capacitances, default=None),
+            "worst_total_resistance_ohm": max(total_resistances, default=None),
+        },
+    }
+    return _save_step_feature_facts(step, "rcx", facts)
+
+
+def save_cts_timing_feature_facts(step: WorkspaceStep,
+                                  timing_quality: dict) -> bool:
+    """Merge iCTS post-optimization FastSTA timing facts into CTS feature data."""
+    if not isinstance(timing_quality, dict):
+        return False
+    feature_path = step.feature.get("step")
+    feature = json_read(feature_path)
+    cts = feature.get("CTS") if isinstance(feature, dict) else None
+    cts = cts if isinstance(cts, dict) else {}
+    return _save_step_feature_facts(
+        step,
+        "CTS",
+        {**cts, "timing_quality": timing_quality},
+    )
+
+
 def _save_step_feature_facts(step: WorkspaceStep, key: str, facts: dict) -> bool:
     feature_path = step.feature.get("step")
     if feature_path is None:
@@ -1161,6 +1448,20 @@ def _relative_step_path(step: WorkspaceStep, path) -> str | None:
         return candidate.relative_to(step.directory).as_posix()
     except (TypeError, ValueError):
         return None
+
+
+def _is_feature_source(source) -> bool:
+    if not isinstance(source, dict) or source.get("kind") != "feature":
+        return False
+    path = source.get("path")
+    selector = source.get("selector")
+    return (
+        isinstance(path, str)
+        and path.startswith("feature/")
+        and ".." not in Path(path).parts
+        and isinstance(selector, str)
+        and (selector == "" or selector.startswith("/"))
+    )
 
 
 def _normalise_feature_paths(step: WorkspaceStep, value):
@@ -1272,6 +1573,86 @@ _STA_AGGREGATE_FEATURE_SELECTORS = {
     "sta_hold_violation_count": "/sta/hold_violation_count",
 }
 
+_RUN_FEATURE_METRICS = (
+    ("runtime_seconds", "Step Runtime", "s", "/run/runtime_seconds"),
+    ("peak_memory_mb", "Peak Memory", "MB", "/run/peak_memory_mb"),
+)
+
+
+def _run_feature_qor_records(step: WorkspaceStep) -> list[dict]:
+    feature_path = step.feature.get("step")
+    source_path = _relative_step_path(step, feature_path)
+    if source_path is None:
+        return []
+
+    feature = json_read(feature_path)
+    run = feature.get("run") if isinstance(feature, dict) else None
+    if not isinstance(run, dict):
+        return []
+
+    records = []
+    for metric_id, display_name, unit, selector in _RUN_FEATURE_METRICS:
+        value = _qor_number(run.get(metric_id))
+        if value is None or value < 0:
+            continue
+        records.append({
+            "id": metric_id,
+            "display_name": display_name,
+            "value": value,
+            "unit": unit,
+            "category": "runtime",
+            "direction": "lower_is_better",
+            "scope": f"{step.name.lower()}_execution",
+            "corner": None,
+            "project_role": "trend",
+            "step_role": "secondary",
+            "confidence": "high",
+            "source": {
+                "kind": "feature",
+                "path": source_path,
+                "selector": selector,
+            },
+        })
+    return records
+
+
+def _timing_constraint_context(step: WorkspaceStep) -> dict | None:
+    feature_path = step.feature.get("step")
+    source_path = _relative_step_path(step, feature_path)
+    if source_path is None:
+        return None
+
+    feature = json_read(feature_path)
+    constraints = feature.get("constraints") if isinstance(feature, dict) else None
+    sdc = constraints.get("sdc") if isinstance(constraints, dict) else None
+    if not isinstance(sdc, dict) or sdc.get("availability") != "available":
+        return None
+
+    digest = sdc.get("sha256")
+    size_bytes = _qor_number(sdc.get("size_bytes"))
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or size_bytes is None
+        or size_bytes < 0
+        or size_bytes != int(size_bytes)
+    ):
+        return None
+    try:
+        int(digest, 16)
+    except ValueError:
+        return None
+
+    return {
+        "sdc_sha256": digest.lower(),
+        "sdc_size_bytes": int(size_bytes),
+        "source": {
+            "kind": "feature",
+            "path": source_path,
+            "selector": "/constraints/sdc",
+        },
+    }
+
 
 def _metric_feature_source(step: WorkspaceStep,
                            metric_id: str,
@@ -1312,6 +1693,15 @@ def _metric_feature_source(step: WorkspaceStep,
         selector = {
             "clock_path_max_buffer": "/CTS/clock_path_max_buffer",
             "clock_path_min_buffer": "/CTS/clock_path_min_buffer",
+            "cts_worst_optimized_skew_ns": (
+                "/CTS/timing_quality/worst_optimized_skew_ns"
+            ),
+            "cts_worst_max_insertion_latency_ns": (
+                "/CTS/timing_quality/worst_max_insertion_latency_ns"
+            ),
+            "cts_skew_target_unmet_count": (
+                "/CTS/timing_quality/target_unmet_count"
+            ),
         }.get(metric_id, "")
     elif metric_id == "legal_total_movement":
         feature_path = step.feature.get("step")
@@ -1325,6 +1715,18 @@ def _metric_feature_source(step: WorkspaceStep,
             "rcx_spef_file_count": "/rcx/spef_file_count",
             "rcx_expected_corner_count": "/rcx/expected_corner_count",
             "rcx_missing_corner_count": "/rcx/missing_corner_count",
+            "rcx_spef_parse_failure_count": (
+                "/rcx/electrical_summary/parse_failure_count"
+            ),
+            "rcx_worst_total_capacitance_ff": (
+                "/rcx/electrical_summary/worst_total_capacitance_ff"
+            ),
+            "rcx_worst_coupling_capacitance_ff": (
+                "/rcx/electrical_summary/worst_coupling_capacitance_ff"
+            ),
+            "rcx_worst_total_resistance_ohm": (
+                "/rcx/electrical_summary/worst_total_resistance_ohm"
+            ),
             "rcx_output_def_exists": "/rcx/output_def_exists",
             "rcx_output_gds_exists": "/rcx/output_gds_exists",
             "harden_gds_exists": "/harden/artifacts/harden_gds_exists",
@@ -1357,7 +1759,9 @@ def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[
     details = []
     detail_specs = (
         ("place_map_metrics", "place_map_summary", step.feature.get("map")),
+        ("cts_clock_skew_metrics", "cts_clock_skew_table", step.feature.get("step")),
         ("route_layer_metrics", "layer_table", step.feature.get("step")),
+        ("rcx_electrical_corner_metrics", "rcx_spef_corner_table", step.feature.get("step")),
         ("sta_path_group_metrics", "path_group_table", step.feature.get("dir")),
     )
     for detail_id, presentation, feature_path in detail_specs:
@@ -1366,8 +1770,9 @@ def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[
             continue
         if detail_id == "sta_path_group_metrics":
             source_files = summary.get("source_files")
-            if isinstance(source_files, list) and source_files:
-                feature_path = source_files[0]
+            if not isinstance(source_files, list) or not source_files:
+                continue
+            feature_path = source_files[0]
         source_path = _relative_step_path(step, feature_path)
         if source_path is None:
             continue
@@ -1378,7 +1783,14 @@ def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[
             "feature_source": {
                 "kind": "feature",
                 "path": source_path,
-                "selector": "",
+                "selector": (
+                    "/CTS/timing_quality"
+                    if detail_id == "cts_clock_skew_metrics"
+                    else
+                    "/rcx/electrical_summary"
+                    if detail_id == "rcx_electrical_corner_metrics"
+                    else ""
+                ),
             },
         })
     if step.name == StepEnum.DRC.value:
@@ -1411,6 +1823,7 @@ def build_qor_metrics_payload(workspace: Workspace,
                               step: WorkspaceStep,
                               step_metrics: StepMetrics) -> dict:
     records = []
+    invalid_metric_source_ids = []
     for legacy_name, raw_value in step_metrics.data.items():
         mapping = QOR_METRIC_MAP.get(legacy_name)
         if mapping is None:
@@ -1436,18 +1849,35 @@ def build_qor_metrics_payload(workspace: Workspace,
             "corner": corner,
             "project_role": project_role,
             "step_role": step_role,
-            "confidence": "high",
+            "confidence": mapping.get("confidence", "high"),
         }
         source = _metric_feature_source(step, metric_id, corner=corner)
-        if source is not None:
-            record["source"] = source
+        if not _is_feature_source(source):
+            invalid_metric_source_ids.append(metric_id)
+            continue
+        record["source"] = source
         records.append(record)
 
+    for record in _run_feature_qor_records(step):
+        if _is_feature_source(record.get("source")):
+            records.append(record)
+        else:
+            invalid_metric_source_ids.append(record["id"])
     records.sort(key=lambda record: record["id"])
-    details = _qor_detail_records(step, step_metrics)
+    details = []
+    invalid_detail_ids = []
+    for detail in _qor_detail_records(step, step_metrics):
+        if _is_feature_source(detail.get("feature_source")):
+            details.append(detail)
+        else:
+            invalid_detail_ids.append(detail["id"])
+    timing_constraints = _timing_constraint_context(step)
     sources = []
     seen_sources = set()
-    for record in [*records, *details]:
+    source_records = [*records, *details]
+    if timing_constraints is not None and _is_feature_source(timing_constraints["source"]):
+        source_records.append({"source": timing_constraints["source"]})
+    for record in source_records:
         source = record.get("source", record.get("feature_source"))
         if not isinstance(source, dict):
             continue
@@ -1457,7 +1887,7 @@ def build_qor_metrics_payload(workspace: Workspace,
         seen_sources.add(key)
         sources.append({"kind": key[0], "path": key[1]})
 
-    return {
+    payload = {
         "schema_version": 2,
         "tool": step.tool,
         "step": step.name,
@@ -1466,7 +1896,19 @@ def build_qor_metrics_payload(workspace: Workspace,
         "metrics": records,
         "details": details,
         "sources": sources,
+        "integrity": {
+            "status": (
+                "pass"
+                if not invalid_metric_source_ids and not invalid_detail_ids
+                else "incomplete"
+            ),
+            "invalid_metric_source_ids": sorted(set(invalid_metric_source_ids)),
+            "invalid_detail_ids": sorted(set(invalid_detail_ids)),
+        },
     }
+    if timing_constraints is not None and _is_feature_source(timing_constraints["source"]):
+        payload["context"] = {"timing_constraints": timing_constraints}
+    return payload
 
 
 def _is_blocking_qor_record(record: dict) -> bool:
@@ -1479,6 +1921,7 @@ def _is_blocking_qor_record(record: dict) -> bool:
         "drc_count",
         "route_dr_total_violation_count",
         "route_la_total_overflow",
+        "rcx_spef_parse_failure_count",
         "sta_setup_violation_count",
         "sta_hold_violation_count",
         "harden_artifact_missing_count",
@@ -1744,6 +2187,12 @@ def build_qor_summary_payload(workspace: Workspace,
     failed_hard_gates = [gate for gate in hard_gates if not gate["passed"]]
 
     missing_metrics = _qor_missing_metrics(step, records)
+    integrity = qor_metrics.get("integrity")
+    invalid_metric_source_ids = set(
+        integrity.get("invalid_metric_source_ids", [])
+        if isinstance(integrity, dict)
+        else []
+    )
     values = {
         record.get("id"): _qor_number(record.get("value"))
         for record in records
@@ -1775,7 +2224,11 @@ def build_qor_summary_payload(workspace: Workspace,
         "missing_metrics": [
             {
                 "metric_id": metric_id,
-                "reason": "The required feature metric is unavailable.",
+                "reason": (
+                    "The metric source is outside the current step feature directory."
+                    if metric_id in invalid_metric_source_ids
+                    else "The required feature metric is unavailable."
+                ),
             }
             for metric_id in missing_metrics
         ],
@@ -1961,6 +2414,22 @@ def save_qor_hotspots(workspace: Workspace,
     )
 
 
+def _remove_legacy_step_metric_artifacts(step: WorkspaceStep) -> bool:
+    analysis_dir = step.analysis.get("dir")
+    if analysis_dir is None or analysis_dir == "":
+        return True
+
+    legacy_prefix = f"{step.name}_metrics"
+    try:
+        for suffix in (".json", ".png"):
+            legacy_path = Path(analysis_dir) / f"{legacy_prefix}{suffix}"
+            if legacy_path.is_file():
+                legacy_path.unlink()
+    except OSError:
+        return False
+    return True
+
+
 def save_step_metrics(workspace: Workspace,
                       step: WorkspaceStep,
                       step_metrics: StepMetrics) -> bool:
@@ -1968,7 +2437,9 @@ def save_step_metrics(workspace: Workspace,
         return False
     if not save_qor_summary(workspace=workspace, step=step, step_metrics=step_metrics):
         return False
-    return save_qor_hotspots(workspace=workspace, step=step, step_metrics=step_metrics)
+    if not save_qor_hotspots(workspace=workspace, step=step, step_metrics=step_metrics):
+        return False
+    return _remove_legacy_step_metric_artifacts(step)
 
 
 def build_step_metrics(workspace: Workspace, 
@@ -2317,54 +2788,51 @@ def build_metrics_routing(workspace: Workspace,
 def build_metrics_rcx(workspace: Workspace,
                       step: WorkspaceStep) -> StepMetrics:
     """
-    Build RCX output completeness metrics.
+    Build RCX metrics from its bounded feature facts.
     """
     step_metrics = StepMetrics()
     step_metrics.path = step.analysis['metrics']
 
     metrics = {}
     metrics.update(build_metrics_db(workspace, step))
-
-    output_dir = step.output.get("dir", "")
-    actual_spef_paths = _existing_files_in(output_dir, "*.spef")
-    expected_spef_paths = [
-        Path(spef_path)
-        for spef_path in step.output.get("spef", [])
-        if spef_path
-    ]
-    missing_spef_paths = [
-        spef_path
-        for spef_path in expected_spef_paths
-        if not spef_path.is_file()
-    ]
-
-    metrics["rcx_spef_file_count"] = len(actual_spef_paths)
-    metrics["rcx_expected_corner_count"] = (
-        len(expected_spef_paths) if expected_spef_paths else len(actual_spef_paths)
-    )
-    metrics["rcx_missing_corner_count"] = len(missing_spef_paths)
-    metrics["rcx_output_def_exists"] = _artifact_exists(
-        step.output.get("def", ""),
-        output_dir,
-        "*_RCX.def.gz",
-    )
-    metrics["rcx_output_gds_exists"] = _artifact_exists(
-        step.output.get("gds", ""),
-        output_dir,
-        "*.gds",
-    )
-    if not _save_step_feature_facts(
-        step,
-        "rcx",
-        {
-            "spef_file_count": metrics["rcx_spef_file_count"],
-            "expected_corner_count": metrics["rcx_expected_corner_count"],
-            "missing_corner_count": metrics["rcx_missing_corner_count"],
-            "output_def_exists": metrics["rcx_output_def_exists"],
-            "output_gds_exists": metrics["rcx_output_gds_exists"],
-        },
+    feature = json_read(step.feature.get("step", ""))
+    rcx = feature.get("rcx") if isinstance(feature, dict) else None
+    rcx = rcx if isinstance(rcx, dict) else {}
+    for metric_id, feature_key in (
+        ("rcx_spef_file_count", "spef_file_count"),
+        ("rcx_expected_corner_count", "expected_corner_count"),
+        ("rcx_missing_corner_count", "missing_corner_count"),
+        ("rcx_output_def_exists", "output_def_exists"),
+        ("rcx_output_gds_exists", "output_gds_exists"),
     ):
-        return None
+        _add_number_metric(metrics, metric_id, rcx.get(feature_key))
+
+    electrical_summary = rcx.get("electrical_summary")
+    electrical_summary = (
+        electrical_summary if isinstance(electrical_summary, dict) else {}
+    )
+    for metric_id, feature_key in (
+        ("rcx_spef_parse_failure_count", "parse_failure_count"),
+        ("rcx_worst_total_capacitance_ff", "worst_total_capacitance_ff"),
+        ("rcx_worst_coupling_capacitance_ff", "worst_coupling_capacitance_ff"),
+        ("rcx_worst_total_resistance_ohm", "worst_total_resistance_ohm"),
+    ):
+        _add_number_metric(metrics, metric_id, electrical_summary.get(feature_key))
+    if electrical_summary:
+        metrics["rcx_electrical_corner_metrics"] = {
+            "schema_version": electrical_summary.get("schema_version"),
+            "parsed_corner_count": electrical_summary.get("parsed_corner_count"),
+            "parse_failure_count": electrical_summary.get("parse_failure_count"),
+            "worst_total_capacitance_ff": electrical_summary.get(
+                "worst_total_capacitance_ff"
+            ),
+            "worst_coupling_capacitance_ff": electrical_summary.get(
+                "worst_coupling_capacitance_ff"
+            ),
+            "worst_total_resistance_ohm": electrical_summary.get(
+                "worst_total_resistance_ohm"
+            ),
+        }
 
     step_metrics.data = metrics
     image_path = str(step.output.get("image", ""))
@@ -2697,6 +3165,37 @@ def build_metrics_cts(workspace: Workspace,
             ("max_level_of_clock_tree", "max_level_of_clock_tree"),
         ):
             _add_number_metric(metrics, metric, cts.get(source_key))
+        timing_quality = cts.get("timing_quality")
+        timing_quality = (
+            timing_quality if isinstance(timing_quality, dict) else {}
+        )
+        if timing_quality.get("availability") == "available":
+            _add_number_metric(
+                metrics,
+                "cts_worst_optimized_skew_ns",
+                timing_quality.get("worst_optimized_skew_ns"),
+            )
+            _add_number_metric(
+                metrics,
+                "cts_worst_max_insertion_latency_ns",
+                timing_quality.get("worst_max_insertion_latency_ns"),
+            )
+            _add_number_metric(
+                metrics,
+                "cts_skew_target_unmet_count",
+                timing_quality.get("target_unmet_count"),
+            )
+            metrics["cts_clock_skew_metrics"] = {
+                "schema_version": timing_quality.get("schema_version"),
+                "clock_count": timing_quality.get("clock_count"),
+                "target_unmet_count": timing_quality.get("target_unmet_count"),
+                "worst_optimized_skew_ns": timing_quality.get(
+                    "worst_optimized_skew_ns"
+                ),
+                "worst_max_insertion_latency_ns": timing_quality.get(
+                    "worst_max_insertion_latency_ns"
+                ),
+            }
     
     step_metrics.data = metrics
     

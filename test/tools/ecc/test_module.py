@@ -74,6 +74,16 @@ class FakeEcc:
                 (report_dir / filename).write_text("{}\n", encoding="utf-8")
         return True
 
+    def cts_timing_feature(self):
+        self.calls.append(("cts_timing_feature", (), {}))
+        return {
+            "schema_version": 1,
+            "analysis_stage": "cts_fast_sta_post_optimization",
+            "availability": "unavailable",
+            "clock_count": 0,
+            "clocks": [],
+        }
+
     def read_liberty(self, lib_paths):
         self.calls.append(("read_liberty", lib_paths))
         return True
@@ -397,6 +407,7 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.report_drc(Path("/ws/report/drc.rpt"))
     module.run_cts(Path("/ws/config/cts.json"), Path("/ws/data/cts"))
     module.report_cts(Path("/ws/report/cts"))
+    module.feature_cts_timing()
     module.feature_cts_map(Path("/ws/feature/cts_map.json"))
     module.init_drc(Path("/ws/data/drc"))
     module.run_drc(Path("/ws/config/drc.json"), Path("/ws/report/drc.rpt"))
@@ -1027,16 +1038,31 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
                     "max_clock_wirelength": 97514,
                     "max_level_of_clock_tree": 2,
                     "total_clock_wirelength": 261677,
+                    "timing_quality": {
+                        "schema_version": 1,
+                        "analysis_stage": "cts_fast_sta_post_optimization",
+                        "availability": "available",
+                        "clock_count": 2,
+                        "target_unmet_count": 1,
+                        "worst_optimized_skew_ns": 0.11,
+                        "worst_max_insertion_latency_ns": 0.42,
+                    },
                 }
             }
         ),
         encoding="utf-8",
     )
+    legacy_metrics = step.analysis["dir"] / "CTS_metrics.json"
+    legacy_preview = step.analysis["dir"] / "CTS_metrics.png"
+    legacy_metrics.write_text("{}", encoding="utf-8")
+    legacy_preview.write_text("legacy", encoding="utf-8")
 
     metrics = build_metrics_cts(workspace, step)
 
     assert metrics.data["max_clock_wirelength"] == 97514
     assert metrics.data["max_level_of_clock_tree"] == 2
+    assert not legacy_metrics.exists()
+    assert not legacy_preview.exists()
     records = {
         record["id"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
@@ -1045,6 +1071,62 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
     }
     assert records["cts_clock_wirelength_max"]["value"] == 97514
     assert records["cts_clock_tree_max_level"]["value"] == 2
+    assert records["cts_worst_optimized_skew_ns"] == {
+        "id": "cts_worst_optimized_skew_ns",
+        "display_name": "CTS Worst Optimized Skew Estimate",
+        "value": 0.11,
+        "unit": "ns",
+        "category": "clock_robustness_dfm",
+        "direction": "lower_is_better",
+        "scope": "cts",
+        "corner": None,
+        "project_role": "trend",
+        "step_role": "primary",
+        "confidence": "medium",
+        "source": {
+            "kind": "feature",
+            "path": "feature/CTS.step.json",
+            "selector": "/CTS/timing_quality/worst_optimized_skew_ns",
+        },
+    }
+    assert records["cts_worst_max_insertion_latency_ns"] == {
+        "id": "cts_worst_max_insertion_latency_ns",
+        "display_name": "CTS Worst Max Insertion Latency Estimate",
+        "value": 0.42,
+        "unit": "ns",
+        "category": "clock_robustness_dfm",
+        "direction": "lower_is_better",
+        "scope": "cts",
+        "corner": None,
+        "project_role": "trend",
+        "step_role": "primary",
+        "confidence": "medium",
+        "source": {
+            "kind": "feature",
+            "path": "feature/CTS.step.json",
+            "selector": "/CTS/timing_quality/worst_max_insertion_latency_ns",
+        },
+    }
+    details = {
+        detail["id"]: detail
+        for detail in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"]
+    }
+    assert details["cts_clock_skew_metrics"] == {
+        "id": "cts_clock_skew_metrics",
+        "presentation": "cts_clock_skew_table",
+        "summary": {
+            "schema_version": 1,
+            "clock_count": 2,
+            "target_unmet_count": 1,
+            "worst_optimized_skew_ns": 0.11,
+            "worst_max_insertion_latency_ns": 0.42,
+        },
+        "feature_source": {
+            "kind": "feature",
+            "path": "feature/CTS.step.json",
+            "selector": "/CTS/timing_quality",
+        },
+    }
     assert records["clock_path_max_buffer"]["source"] == {
         "kind": "feature",
         "path": "feature/CTS.step.json",
@@ -1055,6 +1137,100 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "path": "feature/CTS.step.json",
         "selector": "/CTS/clock_path_min_buffer",
     }
+
+
+def test_ecc_metrics_persists_structured_cts_timing_without_log(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.CTS.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["step"].write_text(json.dumps({"CTS": {}}), encoding="utf-8")
+    timing_quality = {
+        "schema_version": 1,
+        "analysis_stage": "cts_fast_sta_post_optimization",
+        "availability": "available",
+        "clock_count": 2,
+        "clocks": [
+            {
+                "clock": "clk_a",
+                "sink_count": 10,
+                "target_skew_ns": 0.08,
+                "initial_skew_ns": 0.12,
+                "optimized_skew_ns": 0.06,
+                "min_insertion_latency_ns": 0.11,
+                "max_insertion_latency_ns": 0.31,
+                "mean_insertion_latency_ns": 0.2,
+                "target_met": True,
+            },
+            {
+                "clock": "clk_b",
+                "sink_count": 12,
+                "target_skew_ns": 0.05,
+                "initial_skew_ns": 0.04,
+                "optimized_skew_ns": 0.07,
+                "min_insertion_latency_ns": 0.13,
+                "max_insertion_latency_ns": 0.42,
+                "mean_insertion_latency_ns": 0.25,
+                "target_met": False,
+            },
+        ],
+        "worst_optimized_skew_ns": 0.07,
+        "worst_max_insertion_latency_ns": 0.42,
+        "target_unmet_count": 1,
+    }
+
+    assert ecc_metrics.save_cts_timing_feature_facts(step, timing_quality)
+    metrics = build_metrics_cts(workspace, step)
+
+    assert metrics.data["cts_worst_optimized_skew_ns"] == 0.07
+    assert metrics.data["cts_worst_max_insertion_latency_ns"] == 0.42
+    assert metrics.data["cts_skew_target_unmet_count"] == 1
+    feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
+    assert feature["CTS"]["timing_quality"] == timing_quality
+
+
+def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.CTS.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    untraceable_feature = tmp_path / "untraceable_cts.step.json"
+    untraceable_feature.write_text(
+        json.dumps({"CTS": {"buffer_num": 3}}),
+        encoding="utf-8",
+    )
+    step.feature["step"] = untraceable_feature
+
+    metrics = build_metrics_cts(workspace, step)
+
+    assert metrics.data["buffer_num"] == 3
+    payload = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    assert payload["metrics"] == []
+    assert payload["integrity"] == {
+        "status": "incomplete",
+        "invalid_metric_source_ids": ["cts_buffer_count"],
+        "invalid_detail_ids": [],
+    }
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert summary["status"] == "incomplete"
+    assert {
+        "metric_id": "cts_buffer_count",
+        "reason": "The metric source is outside the current step feature directory.",
+    } in summary["missing_metrics"]
 
 
 def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
@@ -1243,17 +1419,50 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
         step.output["dir"] / "gcd_Cworst_125C.spef",
     ]
     missing_spef = step.output["dir"] / "gcd_TYPICAL_25C.spef"
-    for spef_path in existing_spef:
-        spef_path.write_text("*SPEF\n", encoding="utf-8")
+    existing_spef[0].write_text(
+        """*SPEF \"IEEE 1481-1998\"
+*C_UNIT 1.0 PF
+*R_UNIT 1.0 KOHM
+*D_NET net_a 0.75
+*CAP
+1 net_a:1 0.25
+2 net_a:1 net_a:2 0.50
+*RES
+1 net_a:1 net_a:2 2.0
+*END
+""",
+        encoding="utf-8",
+    )
+    existing_spef[1].write_text(
+        """*SPEF \"IEEE 1481-1998\"
+*C_UNIT 1.0 FF
+*R_UNIT 1.0 OHM
+*D_NET net_b 15.0
+*CAP
+1 net_b:1 5.0
+2 net_b:1 net_b:2 10.0
+*RES
+1 net_b:1 net_b:2 20.0
+*END
+""",
+        encoding="utf-8",
+    )
     step.output["spef"] = [*existing_spef, missing_spef]
     step.output["def"].write_text("def", encoding="utf-8")
     step.output["gds"].write_text("gds", encoding="utf-8")
 
+    assert ecc_metrics.save_rcx_spef_feature_facts(workspace, step)
+    for spef_path in existing_spef:
+        spef_path.unlink()
     metrics = ecc_metrics.build_metrics_rcx(workspace, step)
 
     assert metrics.data["rcx_spef_file_count"] == 2
     assert metrics.data["rcx_expected_corner_count"] == 3
     assert metrics.data["rcx_missing_corner_count"] == 1
+    assert metrics.data["rcx_spef_parse_failure_count"] == 0
+    assert metrics.data["rcx_worst_total_capacitance_ff"] == 750
+    assert metrics.data["rcx_worst_coupling_capacitance_ff"] == 500
+    assert metrics.data["rcx_worst_total_resistance_ohm"] == 2000
     assert metrics.data["rcx_output_def_exists"] == 1
     assert metrics.data["rcx_output_gds_exists"] == 1
     records = {
@@ -1264,19 +1473,112 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     }
     assert records["rcx_spef_file_count"]["value"] == 2
     assert records["rcx_missing_corner_count"]["value"] == 1
+    assert records["rcx_worst_total_capacitance_ff"]["source"] == {
+        "kind": "feature",
+        "path": "feature/RCX.step.json",
+        "selector": "/rcx/electrical_summary/worst_total_capacitance_ff",
+    }
+    assert json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"] == [
+        {
+            "id": "rcx_electrical_corner_metrics",
+            "presentation": "rcx_spef_corner_table",
+            "summary": {
+                "schema_version": 1,
+                "parsed_corner_count": 2,
+                "parse_failure_count": 0,
+                "worst_total_capacitance_ff": 750,
+                "worst_coupling_capacitance_ff": 500,
+                "worst_total_resistance_ohm": 2000,
+            },
+            "feature_source": {
+                "kind": "feature",
+                "path": "feature/RCX.step.json",
+                "selector": "/rcx/electrical_summary",
+            },
+        }
+    ]
     assert records["rcx_missing_corner_count"]["source"] == {
         "kind": "feature",
         "path": "feature/RCX.step.json",
         "selector": "/rcx/missing_corner_count",
     }
     rcx_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
-    assert rcx_feature["rcx"] == {
-        "spef_file_count": 2,
-        "expected_corner_count": 3,
-        "missing_corner_count": 1,
-        "output_def_exists": 1,
-        "output_gds_exists": 1,
+    assert rcx_feature["rcx"]["electrical_summary"] == {
+        "schema_version": 1,
+        "parsed_corner_count": 2,
+        "parse_failure_count": 0,
+        "corners": [
+            {
+                "corner": "Cbest_125C",
+                "net_count": 1,
+                "ground_capacitance_count": 1,
+                "ground_capacitance_ff": 250,
+                "coupling_capacitance_count": 1,
+                "coupling_capacitance_ff": 500,
+                "total_capacitance_ff": 750,
+                "resistance_count": 1,
+                "total_resistance_ohm": 2000,
+            },
+            {
+                "corner": "Cworst_125C",
+                "net_count": 1,
+                "ground_capacitance_count": 1,
+                "ground_capacitance_ff": 5,
+                "coupling_capacitance_count": 1,
+                "coupling_capacitance_ff": 10,
+                "total_capacitance_ff": 15,
+                "resistance_count": 1,
+                "total_resistance_ohm": 20,
+            },
+        ],
+        "parse_failures": [],
+        "worst_total_capacitance_ff": 750,
+        "worst_coupling_capacitance_ff": 500,
+        "worst_total_resistance_ohm": 2000,
     }
+
+
+def test_ecc_metrics_blocks_invalid_rcx_spef_electrical_data(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.RCX.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    spef_path = step.output["dir"] / "gcd_Cbest_125C.spef"
+    spef_path.write_text(
+        """*SPEF \"IEEE 1481-1998\"
+*C_UNIT 1.0 FF
+*R_UNIT 1.0 OHM
+*D_NET net_a 1.0
+*CAP
+invalid cap record
+*END
+""",
+        encoding="utf-8",
+    )
+    step.output["spef"] = [spef_path]
+
+    assert ecc_metrics.save_rcx_spef_feature_facts(workspace, step)
+    metrics = ecc_metrics.build_metrics_rcx(workspace, step)
+
+    assert metrics.data["rcx_spef_parse_failure_count"] == 1
+    assert "rcx_worst_total_capacitance_ff" not in metrics.data
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert summary["status"] == "blocked"
+    assert summary["blocking_issues"] == [
+        {
+            "metric_id": "rcx_spef_parse_failure_count",
+            "display_name": "RCX SPEF Parse Failure Count",
+            "value": 1,
+            "reason": "RCX SPEF electrical data could not be parsed.",
+        }
+    ]
 
 
 def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
@@ -1353,6 +1655,8 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
                 "arrival_ns": 1.2,
                 "required_ns": 1.0,
                 "cppr_ns": 0.0,
+                "launch_clock_network_delay_ns": 0.12,
+                "capture_clock_network_delay_ns": 0.18,
                 "stages": [{
                     "kind": "cell_arc",
                     "pin": "u_buf:Y",
@@ -1381,6 +1685,8 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
                 "arrival_ns": 0.25,
                 "required_ns": 0.2,
                 "cppr_ns": 0.0,
+                "launch_clock_network_delay_ns": 0.08,
+                "capture_clock_network_delay_ns": 0.04,
                 "stages": [{
                     "kind": "net_arc",
                     "pin": "u_net:Y",
@@ -1512,6 +1818,9 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     ]
     assert issues["issues"][0]["dominant_stages"][0]["pin"] == "u_buf:Y"
     assert issues["issues"][0]["source_file"] == "feature/MAX_125/RCworst/timing_paths.json"
+    assert issues["issues"][0]["launch_clock_network_delay_ns"] == 0.12
+    assert issues["issues"][0]["capture_clock_network_delay_ns"] == 0.18
+    assert issues["issues"][0]["clock_network_delay_delta_ns"] == 0.06
     assert issues["artifact_paths"] == [
         {
             "corner": "MAX_125/RCworst",
@@ -1609,6 +1918,13 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
 
     assert "max_WNS" not in metrics.data
     assert metrics.data["sta_corner_count"] == 0
+    qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    assert qor_metrics["details"] == []
+    assert qor_metrics["integrity"] == {
+        "status": "pass",
+        "invalid_metric_source_ids": [],
+        "invalid_detail_ids": [],
+    }
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     assert "sta_setup_wns" in {
         item["metric_id"] for item in summary["missing_metrics"]

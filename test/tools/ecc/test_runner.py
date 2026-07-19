@@ -3,6 +3,7 @@ import json
 from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.checklist import EccRcxChecklist
+from chipcompiler.tools.ecc.builder import build_step, build_step_space
 
 
 class FakeEccModule:
@@ -69,6 +70,28 @@ class FakeSubFlow:
         self.updates.append(kwargs)
 
 
+class FakeCtsModule:
+    def __init__(self, timing_quality):
+        self.calls = []
+        self.timing_quality = timing_quality
+
+    def run_cts(self, **kwargs):
+        self.calls.append(("run_cts", kwargs))
+
+    def update_step_paths(self, **kwargs):
+        self.calls.append(("update_step_paths", kwargs))
+
+    def report_cts(self, **kwargs):
+        self.calls.append(("report_cts", kwargs))
+
+    def feature_cts_map(self, **kwargs):
+        self.calls.append(("feature_cts_map", kwargs))
+
+    def feature_cts_timing(self):
+        self.calls.append(("feature_cts_timing", {}))
+        return self.timing_quality
+
+
 def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monkeypatch):
     design_def = tmp_path / "origin" / "gcd.def"
     design_def.parent.mkdir()
@@ -101,6 +124,61 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
 
     assert module is FakeEccModule.instances[-1]
     assert ("read_def", str(design_def)) in module.calls
+
+
+def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        config={StepEnum.CTS.value: tmp_path / "config" / "cts.json"},
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.CTS.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    step.feature["step"].write_text(json.dumps({"CTS": {"buffer_num": 3}}))
+    timing_quality = {
+        "schema_version": 1,
+        "analysis_stage": "cts_fast_sta_post_optimization",
+        "availability": "available",
+        "clock_count": 1,
+        "clocks": [{
+            "clock": "clk",
+            "sink_count": 10,
+            "target_skew_ns": 0.08,
+            "initial_skew_ns": 0.05,
+            "optimized_skew_ns": 0.04,
+            "min_insertion_latency_ns": 0.12,
+            "max_insertion_latency_ns": 0.28,
+            "mean_insertion_latency_ns": 0.2,
+            "target_met": True,
+        }],
+        "worst_optimized_skew_ns": 0.04,
+        "worst_max_insertion_latency_ns": 0.28,
+        "target_unmet_count": 0,
+    }
+    module = FakeCtsModule(timing_quality)
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "save_data", lambda **kwargs: True)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **kwargs: None)
+
+    assert ecc_runner.run_cts(workspace, step, module) is True
+
+    feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
+    assert feature["CTS"] == {
+        "buffer_num": 3,
+        "timing_quality": timing_quality,
+    }
+    assert [call[0] for call in module.calls] == [
+        "update_step_paths",
+        "run_cts",
+        "report_cts",
+        "feature_cts_map",
+        "feature_cts_timing",
+    ]
 
 
 def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_feature(

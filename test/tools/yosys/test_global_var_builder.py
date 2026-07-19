@@ -139,14 +139,30 @@ def test_yosys_step_info_stringifies_path_payloads(tmp_path):
     assert get_step_info(workspace, step, "config") == {"path": str(workspace.config["flow"])}
 
 
-def test_filelist_mode_emits_filelist_path_and_no_rtl_file(tmp_path):
+def test_plain_verilog_filelist_uses_native_parser(tmp_path):
     filelist = _write_file(tmp_path / "sources.f", "top.v\n")
     workspace, step, _ = _build_workspace_and_step(tmp_path, filelist=filelist)
 
     text = yosys_builder.generate_global_var_tcl(workspace, step)
 
+    assert "set use_slang false" in text
+    assert "set filelist" not in text
+    assert "set rtl_file [list " in text
+    assert os.path.abspath(tmp_path / "top.v") in text
+    assert step.data["requires_slang"] is False
+
+
+def test_systemverilog_filelist_keeps_slang_mode(tmp_path):
+    source = _write_file(tmp_path / "top.sv", "module top; endmodule\n")
+    filelist = _write_file(tmp_path / "sources.f", f"{source}\n")
+    workspace, step, _ = _build_workspace_and_step(tmp_path, filelist=filelist)
+
+    text = yosys_builder.generate_global_var_tcl(workspace, step)
+
+    assert "set use_slang true" in text
     assert re.search(rf"^set\s+filelist\s+{re.escape(os.path.abspath(filelist))}$", text, re.M)
     assert "set rtl_file" not in text
+    assert step.data["requires_slang"] is True
 
 
 def test_rtl_mode_emits_rtl_file_as_tcl_list(tmp_path):
@@ -156,6 +172,8 @@ def test_rtl_mode_emits_rtl_file_as_tcl_list(tmp_path):
 
     assert "set rtl_file [list " in text
     assert os.path.abspath(rtl_file) in text
+    assert "set use_slang false" in text
+    assert step.data["requires_slang"] is False
 
 
 def test_lists_are_emitted_as_tcl_lists_without_split(tmp_path):

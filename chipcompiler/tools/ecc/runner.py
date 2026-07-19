@@ -9,7 +9,11 @@ from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.tools.ecc.plot import ECCToolsPlot
-from chipcompiler.tools.ecc.metrics import build_step_metrics
+from chipcompiler.tools.ecc.metrics import (
+    build_step_metrics,
+    save_cts_timing_feature_facts,
+    save_rcx_spef_feature_facts,
+)
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.sta_qor import sta_artifact_directory
@@ -587,6 +591,11 @@ def run_cts(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Success)
         
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        if not save_cts_timing_feature_facts(
+            step, ecc_module.feature_cts_timing()
+        ):
+            workspace.logger.error("Failed to persist CTS timing feature facts")
+            return False
             
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -1047,6 +1056,9 @@ def run_rcx(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
         
         save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False, report_timing=False)
+        if not save_rcx_spef_feature_facts(workspace=workspace, step=step):
+            workspace.logger.error("Failed to persist RCX SPEF feature facts")
+            return False
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 

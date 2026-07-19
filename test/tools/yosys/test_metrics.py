@@ -17,6 +17,25 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         input_verilog=tmp_path / "gcd.v",
     )
     build_step_space(step)
+    step.feature["step"].write_text(
+        json.dumps(
+            {
+                "run": {
+                    "state": "Success",
+                    "runtime_seconds": 12.345,
+                    "peak_memory_mb": 256.5,
+                },
+                "constraints": {
+                    "sdc": {
+                        "availability": "available",
+                        "sha256": "a" * 64,
+                        "size_bytes": 128,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     step.feature["stat"].write_text(
         json.dumps(
             {
@@ -52,6 +71,36 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         "kind": "feature",
         "path": "feature/Synthesis_stat.json",
         "selector": "/design/area",
+    }
+    assert records["runtime_seconds"] == {
+        "id": "runtime_seconds",
+        "display_name": "Step Runtime",
+        "value": 12.345,
+        "unit": "s",
+        "category": "runtime",
+        "direction": "lower_is_better",
+        "scope": "synthesis_execution",
+        "corner": None,
+        "project_role": "trend",
+        "step_role": "secondary",
+        "confidence": "high",
+        "source": {
+            "kind": "feature",
+            "path": "feature/Synthesis.step.json",
+            "selector": "/run/runtime_seconds",
+        },
+    }
+    assert records["peak_memory_mb"]["value"] == 256.5
+    assert qor_metrics["context"] == {
+        "timing_constraints": {
+            "sdc_sha256": "a" * 64,
+            "sdc_size_bytes": 128,
+            "source": {
+                "kind": "feature",
+                "path": "feature/Synthesis.step.json",
+                "selector": "/constraints/sdc",
+            },
+        }
     }
 
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))

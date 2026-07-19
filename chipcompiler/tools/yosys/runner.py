@@ -120,11 +120,12 @@ def run_step(workspace: Workspace,
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 
         with open(step.log["file"], "w") as log_file:
-            if not check_slang_plugin(
+            step_data = getattr(step, "data", {}) or {}
+            if step_data.get("requires_slang", True) and not check_slang_plugin(
                 yosys_cmd=yosys_cmd,
                 cwd_dir=cwd_dir,
                 yosys_env=yosys_env,
-                log_file=log_file
+                log_file=log_file,
             ):
                 sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
                 return False

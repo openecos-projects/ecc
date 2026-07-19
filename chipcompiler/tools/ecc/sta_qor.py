@@ -284,7 +284,14 @@ def read_sta_timing_paths(corner: str, path: Path) -> StaTimingPaths | None:
         seen_ids.add(path_id)
         if not all(
             _is_valid_timing_path_number(timing_path.get(field))
-            for field in ("slack_ns", "arrival_ns", "required_ns", "cppr_ns")
+            for field in (
+                "slack_ns",
+                "arrival_ns",
+                "required_ns",
+                "cppr_ns",
+                "launch_clock_network_delay_ns",
+                "capture_clock_network_delay_ns",
+            )
         ):
             return None
         if _finite_number(timing_path.get("slack_ns")) is None:
