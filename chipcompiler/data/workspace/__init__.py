@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
-from .parameter import (
+from ..parameter import (
     Parameters,
     get_parameters, 
     save_parameter, 
@@ -13,10 +13,10 @@ from .parameter import (
     update_parameters
 )
 
-from .home import HomeData
+from ..home import HomeData
 
-from .pdk import get_pdk, PDK
-from .step import StateEnum, StepEnum
+from ..pdk import get_pdk, PDK
+from ..step import StateEnum, StepEnum
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
 from chipcompiler.utility.path import path_is_within, path_text
@@ -509,7 +509,7 @@ def init_workspace_config(workspace: Workspace) -> None:
         workspace.config = build_workspace_config_paths(workspace)
 
     config_dir = workspace.config["dir"]
-    root_dir = Path(__file__).resolve().parent.parent
+    root_dir = Path(__file__).resolve().parent.parent.parent
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
     dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace.json"
 
