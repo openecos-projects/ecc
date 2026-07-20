@@ -6,7 +6,9 @@ import chipcompiler.data as data_api
 import chipcompiler.data.workspace as workspace_data
 from chipcompiler.data import (
     OriginDesign,
+    OutputPaths,
     StepEnum,
+    StepInput,
     WorkspaceStep,
     create_workspace,
     load_workspace,
@@ -67,8 +69,8 @@ def test_rcx_step_config_uses_top_module_for_spef_paths(tmp_path):
     )
     step = WorkspaceStep(
         name=StepEnum.RCX.value,
-        input={"def": None, "verilog": None},
-        output={"dir": tmp_path / "RCX_ecc" / "output"},
+        input=StepInput(def_=None, verilog=None),
+        output=OutputPaths(dir=tmp_path / "RCX_ecc" / "output"),
     )
 
     update_step_config(workspace, step)

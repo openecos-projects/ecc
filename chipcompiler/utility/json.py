@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 
@@ -80,7 +81,7 @@ def dict_to_str(d, indent=0):
     - Nested dictionaries become titled sections.
     - Lists of dictionaries become row tables with an index column.
     """
-    def _render_dict_block(mapping: dict, lines: list[str], base_indent: int, depth: int,
+    def _render_dict_block(mapping: Mapping, lines: list[str], base_indent: int, depth: int,
                            title: str | None, is_root: bool = False) -> None:
         current_indent = base_indent + depth
     
@@ -240,7 +241,7 @@ def dict_to_str(d, indent=0):
     def _normalize_cell(value) -> str:
         return str(value).replace('\n', '\\n')
     
-    if not isinstance(d, dict):
+    if not isinstance(d, Mapping):
         return _format_inline_value(d)
 
     lines = []

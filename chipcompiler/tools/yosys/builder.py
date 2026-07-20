@@ -6,7 +6,21 @@ from pathlib import Path
 
 from rosettakit import tcl
 
-from chipcompiler.data import Workspace, WorkspaceStep
+from chipcompiler.data import (
+    AnalysisPaths,
+    ChecklistState,
+    LogPaths,
+    OutputPaths,
+    ScriptPaths,
+    StepData,
+    StepFeature,
+    StepInput,
+    StepReport,
+    SubflowState,
+    Workspace,
+    WorkspaceStep,
+    YosysStep,
+)
 from chipcompiler.utility import json_read
 
 
@@ -181,16 +195,16 @@ def build_step(workspace: Workspace,
     Note: input_def is not used for synthesis, only input_verilog (RTL).
     Synthesis doesn't produce DEF; output_def points to verilog for flow compatibility.
     """
-    step = WorkspaceStep()
+    step = YosysStep()
     step.name = step_name
     step.tool = "yosys"
     step.version = "0.1"
 
     step.directory = Path(workspace.directory) / f"{step.name}_{step.tool}"
 
-    step.input = {
-        "verilog": Path(input_verilog) if input_verilog else None,
-    }
+    step.input = StepInput(
+        verilog=Path(input_verilog) if input_verilog else None,
+    )
 
     output_dir = step.directory / "output"
     if output_verilog is None:
@@ -201,65 +215,65 @@ def build_step(workspace: Workspace,
         output_def = output_dir / f"{workspace.design.name}_{step.name}.def.gz"
     else:
         output_def = Path(output_def)
-    step.output = {
-        "dir": output_dir,
-        "def": output_def,
-        "verilog": output_verilog,
-        "fixed_verilog": output_dir / f"{workspace.design.name}_{step.name}_fixed.v.gz",
-        "json": output_dir / f"{workspace.design.name}_{step.name}.json",
-        "report": output_dir / f"{workspace.design.name}_{step.name}.rpt",
-        "image": output_dir / f"{workspace.design.name}_{step.name}.png"
-    }
+    step.output = OutputPaths(
+        dir=output_dir,
+        def_=output_def,
+        verilog=output_verilog,
+        fixed_verilog=output_dir / f"{workspace.design.name}_{step.name}_fixed.v.gz",
+        json=output_dir / f"{workspace.design.name}_{step.name}.json",
+        report=output_dir / f"{workspace.design.name}_{step.name}.rpt",
+        image=output_dir / f"{workspace.design.name}_{step.name}.png",
+    )
 
     data_dir = step.directory / "data"
-    step.data = {
-        "dir": data_dir,
-        "tmp": data_dir / "tmp",
-    }
+    step.data = StepData(
+        dir=data_dir,
+        tmp=data_dir / "tmp",
+    )
 
     feature_dir = step.directory / "feature"
-    step.feature = {
-        "dir": feature_dir,
-        "generic_stat": feature_dir / f"{step.name}_generic_stat.json",
-        "stat": feature_dir / f"{step.name}_stat.json",
-    }
+    step.feature = StepFeature(
+        dir=feature_dir,
+        generic_stat=feature_dir / f"{step.name}_generic_stat.json",
+        stat=feature_dir / f"{step.name}_stat.json",
+    )
 
     report_dir = step.directory / "report"
-    step.report = {
-        "dir": report_dir,
-        "stat": report_dir / f"{step.name}_stat.json",
-        "check": report_dir / f"{step.name}_check.rpt",
-    }
+    step.report = StepReport(
+        dir=report_dir,
+        stat=report_dir / f"{step.name}_stat.json",
+        check=report_dir / f"{step.name}_check.rpt",
+    )
 
     log_dir = step.directory / "log"
-    step.log = {
-        "dir": log_dir,
-        "file": log_dir / f"{step.name}.log",
-    }
+    step.log = LogPaths(
+        dir=log_dir,
+        file=log_dir / f"{step.name}.log",
+    )
 
     script_dir = step.directory / "script"
-    step.script = {
-        "dir": script_dir,
-        "main": script_dir / f"{step.name}_main.tcl",
-    }
+    step.script = ScriptPaths(
+        dir=script_dir,
+        main=script_dir / f"{step.name}_main.tcl",
+    )
 
     analysis_dir = step.directory / "analysis"
-    step.analysis = {
-        "dir": analysis_dir,
-        "metrics": analysis_dir / f"{step.name}_metrics.json"
-    }  
-    
+    step.analysis = AnalysisPaths(
+        dir=analysis_dir,
+        metrics=analysis_dir / f"{step.name}_metrics.json",
+    )
+
     # build sub flow paths and data
-    step.subflow = {
-        "path": step.directory / "subflow.json",
-        "steps": []
-    }  
-    
+    step.subflow = SubflowState(
+        path=step.directory / "subflow.json",
+        steps=[],
+    )
+
     # build checklist paths and data
-    step.checklist = {
-        "path": step.directory / "checklist.json",
-        "checklist": []
-    }
+    step.checklist = ChecklistState(
+        path=step.directory / "checklist.json",
+        checklist=[],
+    )
 
     return step
 

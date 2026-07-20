@@ -25,7 +25,9 @@ from z3 import (
 )
 
 from chipcompiler.data import (
+    LogPaths,
     OriginDesign,
+    OutputPaths,
     StateEnum,
     Workspace,
     WorkspaceStep,
@@ -322,12 +324,12 @@ def test_run_steps_stops_on_failure(tmp_path: Path, fail_index: int) -> None:
             name=f"step_{i}",
             tool="mock",
             directory=step_dir,
-            output={
-                "verilog": os.path.join(output_dir, "design.v"),
-                "def": os.path.join(output_dir, "design.def"),
-                "gds": os.path.join(output_dir, "design.gds"),
-            },
-            log={"file": os.path.join(step_dir, "log.txt")},
+            output=OutputPaths(
+                verilog=Path(output_dir) / "design.v",
+                def_=Path(output_dir) / "design.def",
+                gds=Path(output_dir) / "design.gds",
+            ),
+            log=LogPaths(file=Path(step_dir) / "log.txt"),
         )
         flow.workspace_steps.append(ws_step)
 
