@@ -8,19 +8,25 @@ place-and-route ``data.steps`` mapping with its ``workdir_for`` /
 
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.data import (
     EccData,
     EccOutput,
+    EccReport,
     EccStep,
     OriginDesign,
     OutputPaths,
+    StaReportPaths,
     Workspace,
     WorkspaceStep,
     WorkspaceStepBase,
     YosysStep,
 )
+from chipcompiler.data.workspace import log_workspace_step, step_group_to_dict
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.yosys import builder as yosys_builder
+from chipcompiler.utility.log import Logger
 
 
 def test_workspace_step_is_base_alias():
@@ -52,10 +58,10 @@ def test_def_keyword_is_exposed_as_def_attribute():
 
 
 def test_no_value_coercion_str_stays_str():
-    # Tools/tests sometimes seed a str; the layout must not coerce it to Path.
-    output = OutputPaths(dir="/some/str/path")
-    assert output.dir == "/some/str/path"
-    assert isinstance(output.dir, str)
+    # `db` legitimately holds a str (sizer uses ""); the layout must not coerce it.
+    output = EccOutput(db="/some/str/path")
+    assert output.db == "/some/str/path"
+    assert isinstance(output.db, str)
 
 
 def test_sizer_empty_db_stays_empty_string():
@@ -102,3 +108,72 @@ def test_build_step_returns_correct_variant(tmp_path):
     )
     assert isinstance(ecc_step, EccStep)
     assert isinstance(ecc_step, WorkspaceStep)
+
+
+def test_group_to_dict_projects_legacy_keys():
+    output = EccOutput(dir=Path("/d"), def_=Path("/x.def"), spef=[Path("/a.spef")])
+    projected = step_group_to_dict(output)
+    # "def_" is projected as the legacy "def" key; every declared field appears.
+    assert projected["def"] == Path("/x.def")
+    assert "def_" not in projected
+    assert projected["dir"] == Path("/d")
+    assert projected["spef"] == [Path("/a.spef")]
+
+
+def test_group_to_dict_flattens_data_steps_and_nested_sta():
+    data = EccData(dir=Path("/d"), steps={"Timing optimization": Path("/d/to")})
+    projected = step_group_to_dict(data)
+    # per-step dirs are flattened to top-level keys; "steps" itself is dropped.
+    assert projected["Timing optimization"] == Path("/d/to")
+    assert projected["dir"] == Path("/d")
+    assert "steps" not in projected
+
+    report = EccReport(dir=Path("/r"), sta=StaReportPaths(timing=Path("/r/t.rpt")))
+    projected = step_group_to_dict(report)
+    # nested StaReportPaths becomes a nested dict.
+    assert projected["sta"] == {
+        "timing": Path("/r/t.rpt"),
+        "hold": None,
+        "setup": None,
+        "cap": None,
+        "fanout": None,
+        "trans": None,
+    }
+
+
+class _CapturingLogger(Logger):
+    """Logger subclass that records the rendered group tables from info(...)."""
+
+    def __init__(self) -> None:
+        super().__init__(name="test-capture")
+        self.messages: list[str] = []
+
+    def info(self, msg: str, *args, **kwargs) -> None:
+        self.messages.append(msg % args if args else msg)
+
+
+def test_log_workspace_step_renders_legacy_tables(tmp_path):
+    # The whole facade path must still render key/value tables (not dataclass repr).
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = ecc_builder.build_step(
+        workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v"
+    )
+    logger = _CapturingLogger()
+    log_workspace_step(step, logger)
+    rendered = "\n".join(logger.messages)
+    # legacy key/value tables present; typed-dataclass repr absent.
+    assert "def" in rendered
+    assert "EccOutput(" not in rendered
+    assert "StaReportPaths(" not in rendered
+
+
+def test_load_metrics_requires_present_metrics_path():
+    from chipcompiler.analysis.step import StepMetricsBuilder
+
+    builder = StepMetricsBuilder(workspace=Workspace())
+    step = EccStep(name="place")  # analysis.metrics is None (never set)
+    with pytest.raises(ValueError):
+        builder.load(step)
