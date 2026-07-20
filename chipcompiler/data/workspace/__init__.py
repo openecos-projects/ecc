@@ -64,9 +64,13 @@ class Workspace:
 def step_group_to_dict(group: Any) -> dict:
     """Project a typed path group back to its legacy-key dict for logging.
 
-    Renames ``def_`` to ``"def"``, flattens ``EccData.steps`` into the dynamic
-    per-step keys, recurses into nested groups (e.g. ``report.sta``), and emits
-    only the fields the concrete variant actually carries.
+    Reproduces the pre-migration per-builder key set: a scalar/path field is
+    emitted only when populated (so a variant's inherited-but-unset fields — e.g.
+    ``db`` on a synthesis output, or ``sizer_env`` on a non-sizer script — do not
+    appear), while list/mapping payloads (``spef``/``steps``/``checklist``) are
+    always emitted as the builders always initialized them. Renames ``def_`` to
+    ``"def"``, flattens ``EccData.steps`` into its dynamic per-step keys, and
+    recurses into nested groups (e.g. ``report.sta``).
     """
     result: dict = {}
     for f in fields(group):
@@ -76,6 +80,10 @@ def step_group_to_dict(group: Any) -> dict:
         value = getattr(group, f.name)
         if is_dataclass(value) and not isinstance(value, type):
             value = step_group_to_dict(value)
+        elif value is None:
+            # A field this builder never populated (inherited from the base or a
+            # sibling variant); it was not in the legacy dict, so skip it.
+            continue
         key = "def" if f.name == "def_" else f.name
         result[key] = value
     return result
