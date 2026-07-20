@@ -96,7 +96,7 @@ class YosysSynthesisChecklist(YosysChecklist):
 
         step = StepEnum.SYNTHESIS.value
         qor_metrics = QorMetrics(self.workspace_step.analysis.metrics or "")
-        stat = json_read(self.workspace_step.feature.get("stat", ""))
+        stat = json_read(self.workspace_step.feature.stat or "")
 
         try:
             log_text = read_text_maybe_gzip(self.workspace_step.log.file or "")

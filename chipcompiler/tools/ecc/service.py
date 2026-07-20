@@ -104,9 +104,9 @@ def build_analysis(workspace: Workspace,
         "qor_summary" : step.analysis.qor_summary or "",
         "qor_hotspots" : step.analysis.qor_hotspots or "",
         "statis" : step.analysis.statis_csv or "",
-        "data summary" : step.feature.get('db', ""),
-        "step feature" : step.feature.get('step', ""),
-        "step report" : step.report.get('db', "")
+        "data summary" : step.feature.db or "",
+        "step feature" : step.feature.step or "",
+        "step report" : step.report.db or ""
     }
     
     return info
@@ -148,7 +148,7 @@ def build_maps_congestion(workspace: Workspace,
                           step: WorkspaceStep) -> dict:     
     info = {}
     
-    json_data = json_read(step.feature.get("map", ""))
+    json_data = json_read(step.feature.map or "")
     if len(json_data) > 0:
         json_cong = json_data.get("Congestion", {})
         json_map = json_cong.get("map", {})
@@ -235,7 +235,7 @@ def build_maps_density(workspace: Workspace,
                        step: WorkspaceStep) -> dict:     
     info = {}
     
-    json_data = json_read(step.feature.get("map", ""))
+    json_data = json_read(step.feature.map or "")
     if len(json_data) > 0:
         json_density = json_data.get("Density", {})
         
@@ -285,17 +285,17 @@ def build_checklist(workspace: Workspace,
     
     return info
 
-def build_sta(workspace: Workspace, 
-                    step: WorkspaceStep) -> dict:          
-    sta_report = step.report.get("sta", {})
-    sta_feature = step.feature.get("sta", {})
+def build_sta(workspace: Workspace,
+                    step: WorkspaceStep) -> dict:
+    sta_report = step.report.sta or {}
+    sta_feature = step.feature.sta or {}
     return {
-        "report_root": sta_report.get("dir", step.report.get("dir", "")),
-        "feature_root": sta_feature.get("dir", step.feature.get("dir", "")),
+        "report_root": sta_report.get("dir", step.report.dir or ""),
+        "feature_root": sta_feature.get("dir", step.feature.dir or ""),
         "qor_summary_root": sta_feature.get(
-            "qor_summary_root", step.feature.get("dir", "")
+            "qor_summary_root", step.feature.dir or ""
         ),
         "timing_paths_root": sta_feature.get(
-            "timing_paths_root", step.feature.get("dir", "")
+            "timing_paths_root", step.feature.dir or ""
         ),
     }

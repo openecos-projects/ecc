@@ -3197,7 +3197,7 @@ def build_step_metrics(
         return metrics
 
     info = {}
-    data = json_read(step.feature.get("db", ""))
+    data = json_read(step.feature.db or "")
     if data is not None:
         instance_num = data.get("Design Statis", {}).get("num_instances", 0)
         info["instance"] = instance_num
@@ -3246,7 +3246,7 @@ def build_metrics_db(workspace: Workspace, step: WorkspaceStep) -> dict:
 
     metrics["Tool"] = step.tool
 
-    data = json_read(step.feature.get("db", ""))
+    data = json_read(step.feature.db or "")
     if isinstance(data, dict):
         layout = data.get("Design Layout", {})
         statistics = data.get("Design Statis", {})
@@ -3293,7 +3293,7 @@ def build_metrics_floorplan(workspace: Workspace, step: WorkspaceStep) -> StepMe
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.get("step", "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if len(data) > 0:
         # Add floorplan specific metrics here
@@ -3360,7 +3360,7 @@ def build_metrics_filler(workspace: Workspace, step: WorkspaceStep) -> StepMetri
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.get("step", "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if len(data) > 0:
         # Add filler specific metrics here
@@ -3393,7 +3393,7 @@ def build_metrics_drc(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.get("step", "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if isinstance(data, dict):
         drc = data.get("drc", {})
@@ -3427,7 +3427,7 @@ def build_metrics_routing(workspace: Workspace, step: WorkspaceStep) -> StepMetr
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.get("db", "")
+    json_path = step.feature.db or ""
     data = json_read(json_path)
     if isinstance(data, dict):
         nets = data.get("Nets", {})
@@ -3754,7 +3754,7 @@ def build_metrics_legalization(workspace: Workspace, step: WorkspaceStep) -> Ste
     # Current legalization feature output only carries run facts.  Movement
     # totals are no longer emitted by the tool, so do not synthesize a stale
     # V3 metric requirement from an absent legacy field.
-    json_path = step.feature.get("step", "")
+    json_path = step.feature.step or ""
 
     step_metrics.data = metrics
 
@@ -3783,7 +3783,7 @@ def build_metrics_timing_opt_hold(workspace: Workspace, step: WorkspaceStep) -> 
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.get("step", "")
+    json_path = step.feature.step or ""
     # data = json_read(json_path)
     # if len(data) > 0:
     #     for clk_item in data.get("optHold", {}).get("clocks_timing", []):
@@ -3820,7 +3820,7 @@ def build_metrics_timing_opt_drv(workspace: Workspace, step: WorkspaceStep) -> S
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.get("step", "")
+    json_path = step.feature.step or ""
     # data = json_read(json_path)
     # if len(data) > 0:
     #     for clk_item in data.get("optDrv", {}).get("clocks_timing", []):
@@ -3857,7 +3857,7 @@ def build_metrics_cts(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.get("step", "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if isinstance(data, dict):
         cts = data.get("CTS", {})
@@ -3929,13 +3929,13 @@ def build_metrics_placement(workspace: Workspace, step: WorkspaceStep) -> StepMe
     # Placement congestion and wirelength are emitted through place.map.json.
     # The old place.step.json overflow/bin fields are not part of the current
     # DreamPlace feature contract.
-    json_path = step.feature.get("step", "")
+    json_path = step.feature.step or ""
 
-    map_data = json_read(step.feature.get("map", ""))
+    map_data = json_read(step.feature.map or "")
     if isinstance(map_data, dict):
         metrics["place_map_metrics"] = _place_map_metrics(
             map_data,
-            step.feature.get("map", ""),
+            step.feature.map or "",
         )
         wirelength = map_data.get("Wirelength", {})
         wirelength = wirelength if isinstance(wirelength, dict) else {}

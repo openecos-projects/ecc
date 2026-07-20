@@ -61,7 +61,7 @@ class ECCToolsPlot:
         return plot_metrics(metrics=metrics, output_path=image_path)
 
     def plot_placement_heatmap(self) -> bool:
-        json_map_path = self.step.feature.get("map", "")
+        json_map_path = self.step.feature.map or ""
         json_map = json_read(json_map_path)
         if not json_map:
             return False
@@ -142,7 +142,7 @@ class ECCToolsPlot:
         # build layer header
         layers = []
         layer_dict = {} # layer drc number distribution
-        db_json = json_read(self.step.feature.get("db", ""))
+        db_json = json_read(self.step.feature.db or "")
         
         # Get cut layers
         for item in db_json.get("Layers", {}).get("cut_layers", []):
@@ -164,7 +164,7 @@ class ECCToolsPlot:
         layer_names.append("total")
         
         # build drc statis
-        drc_json = json_read(self.step.feature.get("step", ""))
+        drc_json = json_read(self.step.feature.step or "")
         if len(drc_json) == 0:
             return False
         
@@ -219,7 +219,7 @@ class ECCToolsPlot:
         return True
     
     def plot_instance_distribution(self) -> bool:
-        data = json_read(self.step.feature.get("db", ""))
+        data = json_read(self.step.feature.db or "")
         if not data or "Instances" not in data:
             self.workspace.logger.warning("No Instances data found for plotting.")
             return False
@@ -241,7 +241,7 @@ class ECCToolsPlot:
             }
         
         # Save the plot
-        db_path = self.step.feature.get("db", "")
+        db_path = self.step.feature.db or ""
         if db_path:
             image_path = str(db_path).replace(".json", ".inst_dist.png")
             from chipcompiler.utility import plot_bar_chart
@@ -269,7 +269,7 @@ class ECCToolsPlot:
         return True
     
     def plot_pin_distribution(self) -> bool:
-        data = json_read(self.step.feature.get("db", ""))
+        data = json_read(self.step.feature.db or "")
         if not data or "Pins" not in data:
             self.workspace.logger.warning("No Pins data found for plotting.")
             return False
@@ -291,7 +291,7 @@ class ECCToolsPlot:
             }
         
         # Save the plot
-        db_path = self.step.feature.get("db", "")
+        db_path = self.step.feature.db or ""
         if db_path:
             image_path = str(db_path).replace(".json", ".pin_dist.png")
             from chipcompiler.utility import plot_bar_chart
@@ -317,7 +317,7 @@ class ECCToolsPlot:
         return True
     
     def plot_layer_via_distribution(self) -> bool:
-        data = json_read(self.step.feature.get("db", ""))
+        data = json_read(self.step.feature.db or "")
         if not data or "Layers" not in data:
             self.workspace.logger.warning("No Layers data found for plotting.")
             return False
@@ -338,7 +338,7 @@ class ECCToolsPlot:
             }
         
         # Save the plot
-        db_path = self.step.feature.get("db", "")
+        db_path = self.step.feature.db or ""
         if db_path:
             image_path = str(db_path).replace(".json", ".layer_via_dist.png")
             from chipcompiler.utility import plot_bar_chart
@@ -366,7 +366,7 @@ class ECCToolsPlot:
         return True
     
     def plot_layer_wire_distribution(self) -> bool:
-        data = json_read(self.step.feature.get("db", ""))
+        data = json_read(self.step.feature.db or "")
         if not data or "Layers" not in data:
             self.workspace.logger.warning("No Layers data found for plotting.")
             return False
@@ -387,7 +387,7 @@ class ECCToolsPlot:
             }
         
         # Save the plot
-        db_path = self.step.feature.get("db", "")
+        db_path = self.step.feature.db or ""
         if db_path:
             image_path = str(db_path).replace(".json", ".layer_wire_dist.png")
             from chipcompiler.utility import plot_bar_chart

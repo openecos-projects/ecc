@@ -124,10 +124,10 @@ class DreamplaceChecklist:
         return QorMetrics(self.workspace_step.analysis.metrics or "")
 
     def feature_db(self) -> dict:
-        return json_read(self.workspace_step.feature.get("db", ""))
+        return json_read(self.workspace_step.feature.db or "")
 
     def feature_map(self) -> dict:
-        return json_read(self.workspace_step.feature.get("map", ""))
+        return json_read(self.workspace_step.feature.map or "")
 
     def dreamplace_config(self) -> dict:
         return json_read(self.workspace.config.get("dreamplace", ""))

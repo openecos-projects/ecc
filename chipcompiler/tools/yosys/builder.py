@@ -132,11 +132,11 @@ def generate_global_var_tcl(workspace: Workspace,
 
     # Convert all paths to absolute since Yosys runs in script/ subdirectory
     netlist_file = _abspath(step.output.get("verilog", ""))
-    timing_cell_stat_rpt = _abspath(step.report.get("stat", ""))
-    timing_cell_count_rpt = _abspath(step.report.get("check", ""))
-    generic_stat_json = _abspath(step.report.get("stat", ""))
-    synth_stat_json = _abspath(step.feature.get("stat", ""))
-    synth_check_rpt = _abspath(step.report.get("check", ""))
+    timing_cell_stat_rpt = _abspath(step.report.stat)
+    timing_cell_count_rpt = _abspath(step.report.check)
+    generic_stat_json = _abspath(step.report.stat)
+    synth_stat_json = _abspath(step.feature.stat)
+    synth_check_rpt = _abspath(step.report.check)
     data_dir = _abspath(step.data.get("dir", ""))
 
     keep_hierarchy = "false"
@@ -335,10 +335,10 @@ def build_step_space(step: WorkspaceStep) -> None:
     Path(step.output.get("dir", step_directory / "output")).mkdir(parents=True, exist_ok=True)
     Path(step.data.get("dir", step_directory / "data")).mkdir(parents=True, exist_ok=True)
     Path(step.data.get("tmp", step_directory / "data" / "tmp")).mkdir(parents=True, exist_ok=True)
-    Path(step.report.get("dir", step_directory / "report")).mkdir(parents=True, exist_ok=True)
+    Path(step.report.dir or step_directory / "report").mkdir(parents=True, exist_ok=True)
     Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
     Path(step.script.dir or step_directory / "script").mkdir(parents=True, exist_ok=True)
-    Path(step.feature.get("dir", step_directory / "feature")).mkdir(parents=True, exist_ok=True)
+    Path(step.feature.dir or step_directory / "feature").mkdir(parents=True, exist_ok=True)
     Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
 
 

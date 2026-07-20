@@ -151,7 +151,7 @@ def create_db_engine(workspace: Workspace,
         ecc_module.init_config(flow_config=workspace.config.get("flow"),
                              db_config=workspace.config.get("db"),
                              output_dir=step.data.get("dir"),
-                             feature_dir=step.feature.get("dir"))
+                             feature_dir=step.feature.dir)
     
         db_path = step.input.db or ""
         if ecc_module.is_db_data_exists(db_path):
@@ -186,7 +186,7 @@ def create_db_engine(workspace: Workspace,
         ecc_module.init_config(flow_config=workspace.config.get("flow"),
                              db_config=workspace.config.get("db"),
                              output_dir=step.data.get("dir"),
-                             feature_dir=step.feature.get("dir"))
+                             feature_dir=step.feature.dir)
 
         ecc_module.init_techlef(workspace.pdk.tech)
         ecc_module.init_lefs(workspace.pdk.lefs)
@@ -247,7 +247,7 @@ def get_eda_instance(workspace: Workspace,
     if ecc_module is not None:
         ecc_module.update_step_paths(
             output_dir=step.data.get("dir", ""),
-            feature_dir=step.feature.get("dir", ""),
+            feature_dir=step.feature.dir or "",
         )
     
     return ecc_module
@@ -266,8 +266,8 @@ def run_sta_without_spef(workspace: Workspace,
         liberty_paths = workspace.pdk.libs
         sdc_path = workspace.pdk.sdc
         data_dir = step.data.get("dir", "")
-        report_root = step.report.get("dir", "")
-        feature_root = step.feature.get("dir", "")
+        report_root = step.report.dir or ""
+        feature_root = step.feature.dir or ""
 
         if not netlist_path or not os.path.isfile(netlist_path):
             raise FileNotFoundError(f"synthesis netlist does not exist: {netlist_path}")
@@ -299,12 +299,12 @@ def run_sta_without_spef(workspace: Workspace,
                 flow_config=workspace.config.get("flow", ""),
                 db_config=workspace.config.get("db", ""),
                 output_dir=step.data.get("dir", ""),
-                feature_dir=step.feature.get("dir", ""),
+                feature_dir=step.feature.dir or "",
             )
         else:
             ecc_module.update_step_paths(
                 output_dir=step.data.get("dir", ""),
-                feature_dir=step.feature.get("dir", ""),
+                feature_dir=step.feature.dir or "",
             )
 
         ecc_module.init_techlef(workspace.pdk.tech)
@@ -357,12 +357,12 @@ def save_data(workspace: Workspace,
                               compress=True)
     ecc_module.view_json_apply_edits(edits_path=step.output.get("view_json_edits", ""),
                                      compress=True)
-    ecc_module.feature_sammry(json_path=step.feature.get("db", ""))
+    ecc_module.feature_sammry(json_path=step.feature.db or "")
     if feature_step:
         ecc_module.feature_step(step=step.name,
-                            json_path=step.feature.get("step", ""))
+                            json_path=step.feature.step or "")
     
-    ecc_module.report_summary(path=step.report.get("db", ""))
+    ecc_module.report_summary(path=step.report.db or "")
     
     if report_timing:
         ecc_module.release_sta()
@@ -374,7 +374,7 @@ def save_data(workspace: Workspace,
         ecc_module.release_sta()
     
     # update parameters
-    db_json = json_read(step.feature.get("db", ""))
+    db_json = json_read(step.feature.db or "")
     if len(db_json) > 0: 
         from chipcompiler.data.parameter import update_parameters, save_parameter
         die_bounding_width = db_json.get("Design Layout", {}).get("die_bounding_width", 0)
@@ -551,7 +551,7 @@ def run_placement(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
         ecc_module.run_placement(config=workspace.config.get(f"{StepEnum.PLACEMENT.value}"))
-        ecc_module.feature_placement_map(json_path=step.feature.get("map", ""))
+        ecc_module.feature_placement_map(json_path=step.feature.map or "")
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
         
@@ -586,7 +586,7 @@ def run_cts(workspace: Workspace,
         
         ecc_module.report_cts(output=step.data.get(f"{StepEnum.CTS.value}", ""))
         
-        ecc_module.feature_cts_map(json_path=step.feature.get("map", ""))
+        ecc_module.feature_cts_map(json_path=step.feature.map or "")
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Success)
         
@@ -728,13 +728,13 @@ def run_drc(workspace: Workspace,
         
         ecc_module.init_drc(output_dir=step.data.get(f"{StepEnum.DRC.value}", ""))
         ecc_module.run_drc(config=workspace.config.get(f"{StepEnum.DRC.value}", ""),
-                         report_path=step.report.get("step", ""))
+                         report_path=step.report.step or "")
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
         
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
         
-        ecc_module.save_drc(feature_path=step.feature.get("step", ""))
+        ecc_module.save_drc(feature_path=step.feature.step or "")
    
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
