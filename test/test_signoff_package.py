@@ -84,7 +84,7 @@ def _make_signoff_workspace(
     _write_json(
         workspace_dir / "route_ecc" / "analysis" / "qor_metrics.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "metrics": [],
             "details": [],
             "sources": [],
@@ -93,7 +93,7 @@ def _make_signoff_workspace(
     _write_json(
         workspace_dir / "drc_ecc" / "analysis" / "qor_metrics.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "metrics": [
                 {
                     "id": "drc_count",
@@ -144,7 +144,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
 
     summary = json.loads((package_dir / "summary.json").read_text())
     assert summary["final"]["verilog"] == "final/design/gcd.v.gz"
-    assert summary["qor_metrics"]["schema_version"] == 2
+    assert summary["qor_metrics"]["schema_version"] == 3
     assert summary["sta_matrix"][0]["report"] == (
         "final/timing/sta/MAX_125/RCworst/qor_summary.rpt"
     )

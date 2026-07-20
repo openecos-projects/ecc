@@ -25,7 +25,7 @@ def test_synthesis_checklist_reads_gzip_mapped_netlist(tmp_path):
     metrics = _write_json(
         tmp_path / "Synthesis_yosys" / "analysis" / "qor_metrics.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "metrics": [
                 {"id": "synthesis_cell_count", "value": 1},
                 {"id": "synthesis_cell_area", "value": 1.0},

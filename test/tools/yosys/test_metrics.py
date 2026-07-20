@@ -61,7 +61,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
     assert not (step.analysis["dir"] / "Synthesis_metrics.json").exists()
 
     qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
-    assert qor_metrics["schema_version"] == 2
+    assert qor_metrics["schema_version"] == 3
     records = {record["id"]: record for record in qor_metrics["metrics"]}
     assert records["synthesis_cell_area"]["value"] == 456.79
     assert records["synthesis_cell_count"]["value"] == 123
@@ -83,6 +83,8 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         "corner": None,
         "project_role": "trend",
         "step_role": "secondary",
+        "analysis_group": "runtime",
+        "rating": {"gate": False, "score": False, "trend": True},
         "confidence": "high",
         "source": {
             "kind": "feature",

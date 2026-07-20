@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import re
 from csv import reader as csv_reader
 from math import ceil, isfinite
 from pathlib import Path
@@ -20,6 +21,7 @@ from chipcompiler.tools.ecc.sta_qor import (
     read_sta_timing_paths,
     sta_qor_summary_paths,
     sta_timing_paths_paths,
+    temperature_token,
 )
 
 
@@ -530,8 +532,6 @@ QOR_BLOCKING_METRIC_REASONS = {
     "drc_count": "DRC violations are present.",
     "route_dr_total_violation_count": "Route detailed routing violations are present.",
     "route_la_total_overflow": "Route layer assignment overflow is present.",
-    "rcx_missing_corner_count": "RCX expected SPEF corners are missing.",
-    "rcx_spef_parse_failure_count": "RCX SPEF electrical data could not be parsed.",
     "sta_setup_wns": "STA setup WNS is negative.",
     "sta_setup_tns": "STA setup TNS is negative.",
     "sta_hold_wns": "STA hold WNS is negative.",
@@ -958,7 +958,8 @@ def _place_map_metrics(map_data: dict, source_file) -> dict:
     }
 
 
-def _sta_path_group_metrics(summaries) -> dict:
+def _sta_path_group_metrics(summaries, corner_contexts: dict[str, dict] | None = None) -> dict:
+    corner_contexts = corner_contexts or {}
     records = []
     for summary in summaries:
         payload = json_read(summary.path)
@@ -976,6 +977,9 @@ def _sta_path_group_metrics(summaries) -> dict:
                 "path_group": name,
                 "source_file": str(summary.path),
             }
+            context = corner_contexts.get(summary.corner)
+            if isinstance(context, dict):
+                record["corner_context"] = context
             for analysis_type, fields in (
                 ("setup", ("wns", "tns", "nvp", "frequency_mhz")),
                 ("hold", ("wns", "tns", "nvp")),
@@ -1324,6 +1328,103 @@ def _rcx_spef_corner_name(workspace: Workspace, spef_path: Path) -> str:
     return name[len(prefix):] if prefix and name.startswith(prefix) else name
 
 
+def _rcx_signoff_metrics(workspace: Workspace,
+                          actual_spef_paths: list[Path],
+                          expected_spef_paths: list[Path],
+                          missing_spef_paths: list[Path],
+                          corner_summaries: list[dict],
+                          parse_failures: list[dict]) -> dict:
+    expected_corners = [
+        _rcx_spef_corner_name(workspace, spef_path)
+        for spef_path in expected_spef_paths
+    ]
+    missing_corners = [
+        _rcx_spef_corner_name(workspace, spef_path)
+        for spef_path in missing_spef_paths
+    ]
+    summaries_by_corner = {
+        summary["corner"]: summary
+        for summary in corner_summaries
+        if isinstance(summary.get("corner"), str)
+    }
+    failures_by_corner = {
+        failure["corner"]: failure
+        for failure in parse_failures
+        if isinstance(failure.get("corner"), str)
+    }
+    all_corners = sorted({
+        *expected_corners,
+        *(_rcx_spef_corner_name(workspace, path) for path in actual_spef_paths),
+    })
+    rc_corners = []
+    for corner in all_corners:
+        summary = summaries_by_corner.get(corner)
+        if corner in failures_by_corner:
+            availability = "unparseable"
+            reason = failures_by_corner[corner].get("reason")
+        elif summary is not None:
+            availability = "available"
+            reason = None
+        else:
+            availability = "missing"
+            reason = "missing_spef"
+        rc_corners.append({
+            "rc_corner": corner,
+            "label": corner,
+            "availability": availability,
+            "reason": reason,
+            **({
+                "total_capacitance_ff": summary["total_capacitance_ff"],
+                "coupling_capacitance_ff": summary["coupling_capacitance_ff"],
+                "total_resistance_ohm": summary["total_resistance_ohm"],
+            } if summary is not None else {}),
+        })
+
+    configured_or_produced = bool(expected_spef_paths or actual_spef_paths)
+    if not configured_or_produced:
+        coverage_status = "unavailable"
+    elif missing_corners or parse_failures:
+        coverage_status = "incomplete"
+    else:
+        coverage_status = "pass"
+    envelope_status = (
+        "pass" if corner_summaries else
+        "incomplete" if configured_or_produced else
+        "unavailable"
+    )
+    return {
+        "schema_version": 1,
+        "coverage": {
+            "status": coverage_status,
+            "expected_count": (
+                len(expected_spef_paths)
+                if expected_spef_paths else len(actual_spef_paths)
+            ),
+            "available_count": len(corner_summaries),
+            "missing_count": len(missing_corners),
+            "unparseable_count": len(parse_failures),
+            "missing_corners": missing_corners,
+            "unparseable_corners": sorted(failures_by_corner),
+        },
+        "rc_corners": rc_corners,
+        "parasitic_envelope": {
+            "status": envelope_status,
+            "worst_total_capacitance_ff": max(
+                (summary["total_capacitance_ff"] for summary in corner_summaries),
+                default=None,
+            ),
+            "worst_coupling_capacitance_ff": max(
+                (summary["coupling_capacitance_ff"] for summary in corner_summaries),
+                default=None,
+            ),
+            "worst_total_resistance_ohm": max(
+                (summary["total_resistance_ohm"] for summary in corner_summaries),
+                default=None,
+            ),
+        },
+    }
+
+
 def save_rcx_spef_feature_facts(workspace: Workspace, step: WorkspaceStep) -> bool:
     """Persist bounded RCX electrical summaries before QoR analysis reads them."""
     output_dir = step.output.get("dir", "")
@@ -1379,6 +1480,14 @@ def save_rcx_spef_feature_facts(workspace: Workspace, step: WorkspaceStep) -> bo
             "worst_coupling_capacitance_ff": max(coupling_capacitances, default=None),
             "worst_total_resistance_ohm": max(total_resistances, default=None),
         },
+        "signoff_metrics": _rcx_signoff_metrics(
+            workspace=workspace,
+            actual_spef_paths=actual_spef_paths,
+            expected_spef_paths=expected_spef_paths,
+            missing_spef_paths=missing_spef_paths,
+            corner_summaries=corner_summaries,
+            parse_failures=parse_failures,
+        ),
     }
     return _save_step_feature_facts(step, "rcx", facts)
 
@@ -1422,6 +1531,209 @@ STA_QOR_CORNER_FIELDS = {
     "sta_missing_corner_count": "sta_corner_scope",
 }
 STA_TIMING_NEAR_FAIL_SLACK_NS = 0.05
+_PROCESS_CORNER_PATTERN = re.compile(
+    r"(?:^|[_./-])(tt|ss|ff|sf|fs)(?=[_./-]|$)", re.IGNORECASE
+)
+_VOLTAGE_PATTERN = re.compile(r"(?:^|[_./-])(\d+p\d+)(?=[_./-]|$)", re.IGNORECASE)
+
+
+def _liberty_process_corner(paths) -> str:
+    corners = {
+        match.group(1).upper()
+        for path in paths if isinstance(path, str)
+        for match in [_PROCESS_CORNER_PATTERN.search(path)]
+        if match is not None
+    }
+    if len(corners) == 1:
+        return next(iter(corners))
+    return "mixed" if corners else "unknown"
+
+
+def _liberty_voltage(paths) -> float | None:
+    voltages = {
+        float(match.group(1).lower().replace("p", "."))
+        for path in paths if isinstance(path, str)
+        for match in [_VOLTAGE_PATTERN.search(path)]
+        if match is not None
+    }
+    return next(iter(voltages)) if len(voltages) == 1 else None
+
+
+def _format_signoff_corner_label(configured_role: str,
+                                  process_corner: str,
+                                  voltage_v: float | None,
+                                  temperature_c,
+                                  rc_corner: str) -> str:
+    voltage = f"{voltage_v:g} V" if voltage_v is not None else "voltage unknown"
+    temperature = _qor_number(temperature_c)
+    temperature_text = (
+        f"{temperature:g} C" if temperature is not None else "temperature unknown"
+    )
+    return " - ".join((
+        configured_role,
+        process_corner,
+        voltage,
+        temperature_text,
+        rc_corner,
+    ))
+
+
+def _sta_group_status(coverage_status: str,
+                      first_value,
+                      second_value,
+                      violation_count) -> str:
+    if first_value is None or second_value is None or violation_count is None:
+        return "unavailable" if coverage_status == "unavailable" else "incomplete"
+    if first_value < 0 or second_value < 0 or violation_count > 0:
+        return "blocked"
+    return "pass" if coverage_status == "pass" else "incomplete"
+
+
+def _sta_frequency_status(coverage_status: str, frequency) -> str:
+    if frequency is None:
+        return "unavailable" if coverage_status == "unavailable" else "incomplete"
+    return "pass" if coverage_status == "pass" else "incomplete"
+
+
+def _sta_signoff_metrics(workspace: Workspace,
+                          step: WorkspaceStep,
+                          qor_paths: list[tuple[str, Path]],
+                          summaries,
+                          setup_wns,
+                          setup_corner: str,
+                          setup_tns,
+                          setup_tns_corner: str,
+                          setup_violation_count,
+                          hold_wns,
+                          hold_corner: str,
+                          hold_tns,
+                          hold_tns_corner: str,
+                          hold_violation_count,
+                          frequency,
+                          frequency_corner: str) -> dict:
+    sta_data = json_read(workspace.config.get(StepEnum.STA.value, ""))
+    sta_data = sta_data if isinstance(sta_data, dict) else {}
+    liberty_by_role = {
+        liberty.get("corner"): liberty
+        for liberty in sta_data.get("liberty", [])
+        if isinstance(liberty, dict) and isinstance(liberty.get("corner"), str)
+    }
+    expected_paths_by_corner = dict(qor_paths)
+    summaries_by_corner = {summary.corner: summary for summary in summaries}
+    corners = []
+    for signoff_group in sta_data.get("signoff", []):
+        if not isinstance(signoff_group, dict):
+            continue
+        for configured_role, rc_corners in signoff_group.items():
+            liberty = liberty_by_role.get(configured_role)
+            if liberty is None:
+                continue
+            if isinstance(rc_corners, str):
+                rc_corners = [rc_corners]
+            if not isinstance(rc_corners, list):
+                continue
+            temperature_c = _qor_number(liberty.get("temperature"))
+            liberty_paths = liberty.get("path", [])
+            if isinstance(liberty_paths, str):
+                liberty_paths = [liberty_paths]
+            liberty_paths = liberty_paths if isinstance(liberty_paths, list) else []
+            process_corner = _liberty_process_corner(liberty_paths)
+            voltage_v = _liberty_voltage(liberty_paths)
+            for rc_corner in rc_corners:
+                if not isinstance(rc_corner, str) or not rc_corner:
+                    continue
+                sta_corner = (
+                    f"{configured_role}_{temperature_token(liberty.get('temperature'))}/"
+                    f"{rc_corner}"
+                )
+                expected_path = expected_paths_by_corner.get(sta_corner)
+                summary = summaries_by_corner.get(sta_corner)
+                if summary is not None:
+                    availability = "available"
+                    reason = None
+                elif expected_path is not None and expected_path.is_file():
+                    availability = "unparseable"
+                    reason = "invalid_qor_summary"
+                else:
+                    availability = "missing"
+                    reason = "missing_qor_summary"
+                corners.append({
+                    "sta_corner": sta_corner,
+                    "configured_role": configured_role,
+                    "process_corner": process_corner,
+                    "voltage_v": voltage_v,
+                    "temperature_c": temperature_c,
+                    "rc_corner": rc_corner,
+                    "label": _format_signoff_corner_label(
+                        configured_role,
+                        process_corner,
+                        voltage_v,
+                        temperature_c,
+                        rc_corner,
+                    ),
+                    "availability": availability,
+                    "reason": reason,
+                    "summary_file": _relative_step_path(step, expected_path),
+                })
+
+    available_corners = [
+        corner for corner in corners if corner["availability"] == "available"
+    ]
+    missing_corners = [
+        corner["sta_corner"] for corner in corners if corner["availability"] == "missing"
+    ]
+    unparseable_corners = [
+        corner["sta_corner"]
+        for corner in corners if corner["availability"] == "unparseable"
+    ]
+    if not corners:
+        coverage_status = "unavailable"
+    elif missing_corners or unparseable_corners:
+        coverage_status = "incomplete"
+    else:
+        coverage_status = "pass"
+
+    setup_status = _sta_group_status(
+        coverage_status, setup_wns, setup_tns, setup_violation_count
+    )
+    hold_status = _sta_group_status(
+        coverage_status, hold_wns, hold_tns, hold_violation_count
+    )
+    frequency_status = _sta_frequency_status(coverage_status, frequency)
+    return {
+        "schema_version": 1,
+        "coverage": {
+            "status": coverage_status,
+            "expected_count": len(corners),
+            "available_count": len(available_corners),
+            "missing_count": len(missing_corners),
+            "unparseable_count": len(unparseable_corners),
+            "missing_corners": missing_corners,
+            "unparseable_corners": unparseable_corners,
+        },
+        "corners": corners,
+        "setup": {
+            "status": setup_status,
+            "worst_wns_ns": setup_wns,
+            "worst_wns_corner": setup_corner or None,
+            "worst_tns_ns": setup_tns,
+            "worst_tns_corner": setup_tns_corner or None,
+            "violation_count": setup_violation_count,
+        },
+        "hold": {
+            "status": hold_status,
+            "worst_wns_ns": hold_wns,
+            "worst_wns_corner": hold_corner or None,
+            "worst_tns_ns": hold_tns,
+            "worst_tns_corner": hold_tns_corner or None,
+            "violation_count": hold_violation_count,
+        },
+        "frequency": {
+            "status": frequency_status,
+            "minimum_mhz": frequency,
+            "corner": frequency_corner or None,
+        },
+    }
 
 
 def _sta_qor_record_corner(step_metrics: StepMetrics, legacy_name: str) -> str | None:
@@ -1544,6 +1856,82 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
     return scope, project_role, step_role
 
 
+def _metric_analysis_group_and_rating(step: WorkspaceStep,
+                                      metric_id: str,
+                                      project_role: str,
+                                      direction: str) -> tuple[str, dict]:
+    rating = {
+        "gate": project_role == "gate",
+        "score": direction != "trend_only",
+        "trend": True,
+    }
+    group = f"{step.name.lower()}_metrics"
+    if metric_id in {"runtime_seconds", "peak_memory_mb"}:
+        return "runtime", {"gate": False, "score": False, "trend": True}
+    if step.name == StepEnum.RCX.value:
+        if metric_id in {
+            "rcx_spef_file_count",
+            "rcx_expected_corner_count",
+            "rcx_missing_corner_count",
+        }:
+            return "rcx_corner_coverage", {"gate": True, "score": False, "trend": True}
+        if metric_id == "rcx_spef_parse_failure_count":
+            return "rcx_parse_health", {"gate": True, "score": False, "trend": True}
+        if metric_id.startswith("rcx_worst_"):
+            return "rcx_parasitic_envelope", {
+                "gate": False,
+                "score": False,
+                "trend": True,
+            }
+    if step.name == StepEnum.STA.value:
+        if metric_id in {
+            "sta_corner_count",
+            "sta_expected_corner_count",
+            "sta_missing_corner_count",
+        }:
+            return "sta_signoff_coverage", {"gate": True, "score": False, "trend": True}
+        if metric_id in {
+            "sta_setup_wns",
+            "sta_setup_tns",
+            "sta_setup_violation_count",
+        }:
+            return "sta_setup_closure", {"gate": True, "score": True, "trend": True}
+        if metric_id in {
+            "sta_hold_wns",
+            "sta_hold_tns",
+            "sta_hold_violation_count",
+        }:
+            return "sta_hold_closure", {"gate": True, "score": True, "trend": True}
+        if metric_id == "sta_frequency_mhz":
+            return "sta_frequency_margin", {"gate": False, "score": True, "trend": True}
+    return group, rating
+
+
+def _sta_corner_context(step: WorkspaceStep, corner: str | None) -> dict | None:
+    if step.name != StepEnum.STA.value or not corner:
+        return None
+    feature = json_read(step.feature.get("step", ""))
+    sta = feature.get("sta") if isinstance(feature, dict) else None
+    signoff_metrics = sta.get("signoff_metrics") if isinstance(sta, dict) else None
+    corners = signoff_metrics.get("corners") if isinstance(signoff_metrics, dict) else None
+    if not isinstance(corners, list):
+        return None
+    for item in corners:
+        if isinstance(item, dict) and item.get("sta_corner") == corner:
+            return {
+                key: item.get(key)
+                for key in (
+                    "configured_role",
+                    "process_corner",
+                    "voltage_v",
+                    "temperature_c",
+                    "rc_corner",
+                    "label",
+                )
+            }
+    return None
+
+
 _DB_FEATURE_SELECTORS = {
     "die_area": "/Design Layout/die_area",
     "core_area": "/Design Layout/core_area",
@@ -1566,11 +1954,11 @@ _STA_FEATURE_SELECTORS = {
 }
 
 _STA_AGGREGATE_FEATURE_SELECTORS = {
-    "sta_corner_count": "/sta/corner_count",
-    "sta_expected_corner_count": "/sta/expected_corner_count",
-    "sta_missing_corner_count": "/sta/missing_corner_count",
-    "sta_setup_violation_count": "/sta/setup_violation_count",
-    "sta_hold_violation_count": "/sta/hold_violation_count",
+    "sta_corner_count": "/sta/signoff_metrics/coverage/available_count",
+    "sta_expected_corner_count": "/sta/signoff_metrics/coverage/expected_count",
+    "sta_missing_corner_count": "/sta/signoff_metrics/coverage/missing_count",
+    "sta_setup_violation_count": "/sta/signoff_metrics/setup/violation_count",
+    "sta_hold_violation_count": "/sta/signoff_metrics/hold/violation_count",
 }
 
 _RUN_FEATURE_METRICS = (
@@ -1606,6 +1994,8 @@ def _run_feature_qor_records(step: WorkspaceStep) -> list[dict]:
             "corner": None,
             "project_role": "trend",
             "step_role": "secondary",
+            "analysis_group": "runtime",
+            "rating": {"gate": False, "score": False, "trend": True},
             "confidence": "high",
             "source": {
                 "kind": "feature",
@@ -1714,18 +2104,18 @@ def _metric_feature_source(step: WorkspaceStep,
         selector = {
             "rcx_spef_file_count": "/rcx/spef_file_count",
             "rcx_expected_corner_count": "/rcx/expected_corner_count",
-            "rcx_missing_corner_count": "/rcx/missing_corner_count",
+            "rcx_missing_corner_count": "/rcx/signoff_metrics/coverage/missing_count",
             "rcx_spef_parse_failure_count": (
-                "/rcx/electrical_summary/parse_failure_count"
+                "/rcx/signoff_metrics/coverage/unparseable_count"
             ),
             "rcx_worst_total_capacitance_ff": (
-                "/rcx/electrical_summary/worst_total_capacitance_ff"
+                "/rcx/signoff_metrics/parasitic_envelope/worst_total_capacitance_ff"
             ),
             "rcx_worst_coupling_capacitance_ff": (
-                "/rcx/electrical_summary/worst_coupling_capacitance_ff"
+                "/rcx/signoff_metrics/parasitic_envelope/worst_coupling_capacitance_ff"
             ),
             "rcx_worst_total_resistance_ohm": (
-                "/rcx/electrical_summary/worst_total_resistance_ohm"
+                "/rcx/signoff_metrics/parasitic_envelope/worst_total_resistance_ohm"
             ),
             "rcx_output_def_exists": "/rcx/output_def_exists",
             "rcx_output_gds_exists": "/rcx/output_gds_exists",
@@ -1787,7 +2177,7 @@ def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[
                     "/CTS/timing_quality"
                     if detail_id == "cts_clock_skew_metrics"
                     else
-                    "/rcx/electrical_summary"
+                    "/rcx/signoff_metrics"
                     if detail_id == "rcx_electrical_corner_metrics"
                     else ""
                 ),
@@ -1836,6 +2226,9 @@ def build_qor_metrics_payload(workspace: Workspace,
         metric_id = mapping["name"]
         corner = _sta_qor_record_corner(step_metrics, legacy_name)
         scope, project_role, step_role = _metric_scope_and_roles(step, metric_id)
+        analysis_group, rating = _metric_analysis_group_and_rating(
+            step, metric_id, project_role, mapping["polarity"]
+        )
         if step.name == StepEnum.STA.value and corner is not None:
             scope = "all_configured_corners"
         record = {
@@ -1849,8 +2242,13 @@ def build_qor_metrics_payload(workspace: Workspace,
             "corner": corner,
             "project_role": project_role,
             "step_role": step_role,
+            "analysis_group": analysis_group,
+            "rating": rating,
             "confidence": mapping.get("confidence", "high"),
         }
+        corner_context = _sta_corner_context(step, corner)
+        if corner_context is not None:
+            record["corner_context"] = corner_context
         source = _metric_feature_source(step, metric_id, corner=corner)
         if not _is_feature_source(source):
             invalid_metric_source_ids.append(metric_id)
@@ -1888,7 +2286,7 @@ def build_qor_metrics_payload(workspace: Workspace,
         sources.append({"kind": key[0], "path": key[1]})
 
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "tool": step.tool,
         "step": step.name,
         "design": workspace.design.name,
@@ -1995,7 +2393,7 @@ def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
     summary = json_read(summary_path) if summary_path is not None else None
     available = (
         isinstance(summary, dict)
-        and summary.get("schema_version") == 2
+        and summary.get("schema_version") == 3
         and isinstance(summary.get("status"), str)
     )
     hard_gates = summary.get("hard_gates", []) if available else []
@@ -2151,6 +2549,103 @@ def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
     return hard_gates
 
 
+def _signoff_readiness(step: WorkspaceStep) -> dict | None:
+    if step.name not in {StepEnum.RCX.value, StepEnum.STA.value}:
+        return None
+    feature = json_read(step.feature.get("step", ""))
+    feature_key = "rcx" if step.name == StepEnum.RCX.value else "sta"
+    facts = feature.get(feature_key) if isinstance(feature, dict) else None
+    signoff_metrics = facts.get("signoff_metrics") if isinstance(facts, dict) else None
+    if not isinstance(signoff_metrics, dict):
+        return {
+            "status": "unavailable",
+            "score_eligible": False,
+            "reason_codes": [f"{feature_key}_signoff_metrics_unavailable"],
+            "groups": [],
+            "ocv": {"status": "unavailable"},
+        }
+
+    coverage = signoff_metrics.get("coverage")
+    coverage = coverage if isinstance(coverage, dict) else {}
+    coverage_status = coverage.get("status", "unavailable")
+    groups = [{
+        "id": f"{feature_key}_corner_coverage" if feature_key == "rcx" else "sta_signoff_coverage",
+        "status": coverage_status,
+        "gate": True,
+    }]
+    if feature_key == "rcx":
+        parse_status = (
+            "incomplete"
+            if _qor_number(coverage.get("unparseable_count")) not in (None, 0)
+            else coverage_status
+        )
+        groups.extend((
+            {"id": "rcx_parse_health", "status": parse_status, "gate": True},
+            {
+                "id": "rcx_parasitic_envelope",
+                "status": (
+                    signoff_metrics.get("parasitic_envelope", {}).get("status", "unavailable")
+                    if isinstance(signoff_metrics.get("parasitic_envelope"), dict)
+                    else "unavailable"
+                ),
+                "gate": False,
+            },
+        ))
+    else:
+        for group_id, key, gate in (
+            ("sta_setup_closure", "setup", True),
+            ("sta_hold_closure", "hold", True),
+            ("sta_frequency_margin", "frequency", False),
+        ):
+            group = signoff_metrics.get(key)
+            groups.append({
+                "id": group_id,
+                "status": (
+                    group.get("status", "unavailable")
+                    if isinstance(group, dict) else "unavailable"
+                ),
+                "gate": gate,
+            })
+
+    gate_statuses = [group["status"] for group in groups if group["gate"]]
+    if any(status == "blocked" for status in gate_statuses):
+        status = "blocked"
+    elif any(status == "incomplete" for status in gate_statuses):
+        status = "incomplete"
+    elif gate_statuses and all(status == "unavailable" for status in gate_statuses):
+        status = "unavailable"
+    elif gate_statuses and all(status == "pass" for status in gate_statuses):
+        status = "pass"
+    else:
+        status = "incomplete"
+
+    reason_codes = []
+    if status == "unavailable":
+        reason_codes.append(f"{feature_key}_signoff_not_configured")
+    if _qor_number(coverage.get("missing_count")) not in (None, 0):
+        reason_codes.append(f"{feature_key}_corner_summary_missing")
+    if _qor_number(coverage.get("unparseable_count")) not in (None, 0):
+        reason_codes.append(f"{feature_key}_corner_summary_unparseable")
+    if feature_key == "sta":
+        if any(
+            group["id"] == "sta_setup_closure" and group["status"] == "blocked"
+            for group in groups
+        ):
+            reason_codes.append("sta_setup_closure_failed")
+        if any(
+            group["id"] == "sta_hold_closure" and group["status"] == "blocked"
+            for group in groups
+        ):
+            reason_codes.append("sta_hold_closure_failed")
+    return {
+        "status": status,
+        "score_eligible": status == "pass",
+        "reason_codes": reason_codes,
+        "groups": groups,
+        "ocv": {"status": "unavailable"},
+    }
+
+
 def build_qor_summary_payload(workspace: Workspace,
                               step: WorkspaceStep,
                               step_metrics: StepMetrics) -> dict:
@@ -2211,8 +2706,12 @@ def build_qor_summary_payload(workspace: Workspace,
     else:
         status = "pass"
 
+    signoff_readiness = _signoff_readiness(step)
+    if signoff_readiness is not None:
+        status = signoff_readiness["status"]
+
     summary = {
-        "schema_version": 2,
+        "schema_version": 3,
         "tool": step.tool,
         "step": step.name,
         "design": workspace.design.name,
@@ -2239,6 +2738,8 @@ def build_qor_summary_payload(workspace: Workspace,
             "sources": harden_signoff["sources"],
             "missing_sources": harden_signoff["missing_sources"],
         }
+    if signoff_readiness is not None:
+        summary["signoff_readiness"] = signoff_readiness
     return summary
 
 
@@ -2355,7 +2856,7 @@ def build_qor_hotspots_payload(workspace: Workspace,
         hotspots.extend(_drc_rule_layer_hotspot_records(step))
 
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "tool": step.tool,
         "step": step.name,
         "design": workspace.design.name,
@@ -2798,6 +3299,8 @@ def build_metrics_rcx(workspace: Workspace,
     feature = json_read(step.feature.get("step", ""))
     rcx = feature.get("rcx") if isinstance(feature, dict) else None
     rcx = rcx if isinstance(rcx, dict) else {}
+    signoff_metrics = rcx.get("signoff_metrics")
+    signoff_metrics = signoff_metrics if isinstance(signoff_metrics, dict) else {}
     for metric_id, feature_key in (
         ("rcx_spef_file_count", "spef_file_count"),
         ("rcx_expected_corner_count", "expected_corner_count"),
@@ -2832,6 +3335,8 @@ def build_metrics_rcx(workspace: Workspace,
             "worst_total_resistance_ohm": electrical_summary.get(
                 "worst_total_resistance_ohm"
             ),
+            "coverage": signoff_metrics.get("coverage"),
+            "rc_corners": signoff_metrics.get("rc_corners", []),
         }
 
     step_metrics.data = metrics
@@ -2877,7 +3382,6 @@ def build_metrics_sta(workspace: Workspace,
         expected_paths=timing_paths,
     ):
         return None
-    metrics["sta_path_group_metrics"] = _sta_path_group_metrics(summaries)
     setup_wns = None
     setup_tns = None
     setup_corner = ""
@@ -2934,6 +3438,35 @@ def build_metrics_sta(workspace: Workspace,
 
     loaded_corners = {summary.corner for summary in summaries}
     expected_corners = [corner for corner, _ in qor_paths]
+    signoff_metrics = _sta_signoff_metrics(
+        workspace=workspace,
+        step=step,
+        qor_paths=qor_paths,
+        summaries=summaries,
+        setup_wns=setup_wns,
+        setup_corner=setup_corner,
+        setup_tns=setup_tns,
+        setup_tns_corner=setup_tns_corner,
+        setup_violation_count=setup_violation_count,
+        hold_wns=hold_wns,
+        hold_corner=hold_corner,
+        hold_tns=hold_tns,
+        hold_tns_corner=hold_tns_corner,
+        hold_violation_count=hold_violation_count,
+        frequency=frequency,
+        frequency_corner=frequency_corner,
+    )
+    corner_contexts = {
+        corner["sta_corner"]: {
+            key: value
+            for key, value in corner.items()
+            if key not in {"availability", "reason", "summary_file"}
+        }
+        for corner in signoff_metrics["corners"]
+    }
+    metrics["sta_path_group_metrics"] = _sta_path_group_metrics(
+        summaries, corner_contexts
+    )
     if not _save_step_feature_facts(
         step,
         "sta",
@@ -2948,6 +3481,7 @@ def build_metrics_sta(workspace: Workspace,
                 corner for corner in expected_corners
                 if corner not in loaded_corners
             ],
+            "signoff_metrics": signoff_metrics,
         },
     ):
         return None

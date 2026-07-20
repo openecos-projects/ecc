@@ -540,7 +540,7 @@ def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
     assert metrics is not None
     assert step.analysis["qor_metrics"].exists()
     qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
-    assert qor_metrics["schema_version"] == 2
+    assert qor_metrics["schema_version"] == 3
     assert qor_metrics["tool"] == "ecc"
     assert qor_metrics["step"] == StepEnum.NETLIST_OPT.value
     assert qor_metrics["design"] == "gcd"
@@ -557,6 +557,8 @@ def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
         "corner": None,
         "project_role": "trend",
         "step_role": "primary",
+        "analysis_group": "fixfanout_metrics",
+        "rating": {"gate": False, "score": True, "trend": True},
         "confidence": "high",
         "source": {
             "kind": "feature",
@@ -639,7 +641,7 @@ def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
     assert step.analysis["qor_summary"].exists()
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
-    assert summary["schema_version"] == 2
+    assert summary["schema_version"] == 3
     assert summary["tool"] == "ecc"
     assert summary["step"] == StepEnum.NETLIST_OPT.value
     assert summary["design"] == "gcd"
@@ -993,7 +995,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     assert details["place_map_metrics"]["presentation"] == "place_map_summary"
     assert details["place_map_metrics"]["feature_source"]["path"] == "feature/place.map.json"
     hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
-    assert hotspots["schema_version"] == 2
+    assert hotspots["schema_version"] == 3
     assert hotspots["tool"] == "ecc"
     assert hotspots["step"] == StepEnum.PLACEMENT.value
     hotspot_records = {record["metric_id"]: record for record in hotspots["hotspots"]}
@@ -1082,6 +1084,8 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "corner": None,
         "project_role": "trend",
         "step_role": "primary",
+        "analysis_group": "cts_metrics",
+        "rating": {"gate": False, "score": True, "trend": True},
         "confidence": "medium",
         "source": {
             "kind": "feature",
@@ -1100,6 +1104,8 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "corner": None,
         "project_role": "trend",
         "step_role": "primary",
+        "analysis_group": "cts_metrics",
+        "rating": {"gate": False, "score": True, "trend": True},
         "confidence": "medium",
         "source": {
             "kind": "feature",
@@ -1476,31 +1482,34 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     assert records["rcx_worst_total_capacitance_ff"]["source"] == {
         "kind": "feature",
         "path": "feature/RCX.step.json",
-        "selector": "/rcx/electrical_summary/worst_total_capacitance_ff",
+        "selector": "/rcx/signoff_metrics/parasitic_envelope/worst_total_capacitance_ff",
     }
-    assert json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"] == [
-        {
-            "id": "rcx_electrical_corner_metrics",
-            "presentation": "rcx_spef_corner_table",
-            "summary": {
-                "schema_version": 1,
-                "parsed_corner_count": 2,
-                "parse_failure_count": 0,
-                "worst_total_capacitance_ff": 750,
-                "worst_coupling_capacitance_ff": 500,
-                "worst_total_resistance_ohm": 2000,
-            },
-            "feature_source": {
-                "kind": "feature",
-                "path": "feature/RCX.step.json",
-                "selector": "/rcx/electrical_summary",
-            },
-        }
-    ]
+    details = {
+        detail["id"]: detail
+        for detail in json.loads(
+            step.analysis["qor_metrics"].read_text(encoding="utf-8")
+        )["details"]
+    }
+    rcx_detail = details["rcx_electrical_corner_metrics"]
+    assert rcx_detail["presentation"] == "rcx_spef_corner_table"
+    assert rcx_detail["feature_source"] == {
+        "kind": "feature",
+        "path": "feature/RCX.step.json",
+        "selector": "/rcx/signoff_metrics",
+    }
+    assert rcx_detail["summary"]["coverage"] == {
+        "status": "incomplete",
+        "expected_count": 3,
+        "available_count": 2,
+        "missing_count": 1,
+        "unparseable_count": 0,
+        "missing_corners": ["TYPICAL_25C"],
+        "unparseable_corners": [],
+    }
     assert records["rcx_missing_corner_count"]["source"] == {
         "kind": "feature",
         "path": "feature/RCX.step.json",
-        "selector": "/rcx/missing_corner_count",
+        "selector": "/rcx/signoff_metrics/coverage/missing_count",
     }
     rcx_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
     assert rcx_feature["rcx"]["electrical_summary"] == {
@@ -1570,15 +1579,18 @@ invalid cap record
     assert metrics.data["rcx_spef_parse_failure_count"] == 1
     assert "rcx_worst_total_capacitance_ff" not in metrics.data
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert summary["status"] == "blocked"
-    assert summary["blocking_issues"] == [
-        {
-            "metric_id": "rcx_spef_parse_failure_count",
-            "display_name": "RCX SPEF Parse Failure Count",
-            "value": 1,
-            "reason": "RCX SPEF electrical data could not be parsed.",
-        }
-    ]
+    assert summary["status"] == "incomplete"
+    assert summary["signoff_readiness"] == {
+        "status": "incomplete",
+        "score_eligible": False,
+        "reason_codes": ["rcx_corner_summary_unparseable"],
+        "groups": [
+            {"id": "rcx_corner_coverage", "status": "incomplete", "gate": True},
+            {"id": "rcx_parse_health", "status": "incomplete", "gate": True},
+            {"id": "rcx_parasitic_envelope", "status": "incomplete", "gate": False},
+        ],
+        "ocv": {"status": "unavailable"},
+    }
 
 
 def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
@@ -1782,14 +1794,26 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert records["sta_setup_violation_count"]["source"] == {
         "kind": "feature",
         "path": "feature/sta.step.json",
-        "selector": "/sta/setup_violation_count",
+        "selector": "/sta/signoff_metrics/setup/violation_count",
     }
     assert records["sta_corner_count"]["source"] == {
         "kind": "feature",
         "path": "feature/sta.step.json",
-        "selector": "/sta/corner_count",
+        "selector": "/sta/signoff_metrics/coverage/available_count",
     }
-    assert json.loads(step.feature["step"].read_text(encoding="utf-8"))["sta"] == {
+    sta_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))["sta"]
+    assert {
+        key: sta_feature[key]
+        for key in (
+            "corner_count",
+            "expected_corner_count",
+            "missing_corner_count",
+            "setup_violation_count",
+            "hold_violation_count",
+            "loaded_corners",
+            "missing_corners",
+        )
+    } == {
         "corner_count": 2,
         "expected_corner_count": 2,
         "missing_corner_count": 0,
@@ -1798,6 +1822,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         "loaded_corners": ["MAX_125/RCworst", "MIN_m40/Cbest"],
         "missing_corners": [],
     }
+    assert sta_feature["signoff_metrics"]["coverage"]["status"] == "unavailable"
     assert "sta_path_group_metrics" not in records
     details = {
         detail["id"]: detail
@@ -1892,6 +1917,117 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
     assert summary["status"] == "incomplete"
 
 
+def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.STA.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    sta_config = tmp_path / "config" / "sta.json"
+    sta_config.parent.mkdir(parents=True, exist_ok=True)
+    sta_config.write_text(
+        json.dumps({
+            "liberty": [
+                {
+                    "corner": "MAX",
+                    "temperature": 125,
+                    "path": ["/pdk/lib/design_ss_rcworst_1p08_125.lib"],
+                },
+                {
+                    "corner": "MIN",
+                    "temperature": -40,
+                    "path": ["/pdk/lib/design_ff_rcbest_1p32_m40.lib"],
+                },
+            ],
+            "signoff": [{"MAX": ["RCworst"], "MIN": ["RCbest"]}],
+        }),
+        encoding="utf-8",
+    )
+    workspace.config[StepEnum.STA.value] = sta_config
+    for corner, setup, hold in (
+        (
+            "MAX_125/RCworst",
+            {"wns": 0.04, "tns": 0.0, "nvp": 0, "frequency_mhz": 700},
+            {"wns": 0.1, "tns": 0.0, "nvp": 0},
+        ),
+        (
+            "MIN_m40/RCbest",
+            {"wns": 0.2, "tns": 0.0, "nvp": 0, "frequency_mhz": 800},
+            {"wns": 0.03, "tns": 0.0, "nvp": 0},
+        ),
+    ):
+        summary_path = step.feature["dir"] / corner / "qor_summary.json"
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps({
+                "path_groups": [],
+                "summary": {"setup": setup, "hold": hold},
+                "design_statistics": {},
+            }),
+            encoding="utf-8",
+        )
+
+    metrics = ecc_metrics.build_metrics_sta(workspace, step)
+
+    feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))["sta"]
+    signoff = feature["signoff_metrics"]
+    assert signoff["coverage"] == {
+        "status": "pass",
+        "expected_count": 2,
+        "available_count": 2,
+        "missing_count": 0,
+        "unparseable_count": 0,
+        "missing_corners": [],
+        "unparseable_corners": [],
+    }
+    corners = {corner["sta_corner"]: corner for corner in signoff["corners"]}
+    assert corners["MAX_125/RCworst"] == {
+        "sta_corner": "MAX_125/RCworst",
+        "configured_role": "MAX",
+        "process_corner": "SS",
+        "voltage_v": 1.08,
+        "temperature_c": 125,
+        "rc_corner": "RCworst",
+        "label": "MAX - SS - 1.08 V - 125 C - RCworst",
+        "availability": "available",
+        "reason": None,
+        "summary_file": "feature/MAX_125/RCworst/qor_summary.json",
+    }
+    assert corners["MIN_m40/RCbest"]["process_corner"] == "FF"
+    assert corners["MIN_m40/RCbest"]["voltage_v"] == 1.32
+    records = {
+        record["id"]: record
+        for record in json.loads(
+            step.analysis["qor_metrics"].read_text(encoding="utf-8")
+        )["metrics"]
+    }
+    assert records["sta_setup_wns"]["analysis_group"] == "sta_setup_closure"
+    assert records["sta_setup_wns"]["corner_context"] == {
+        "configured_role": "MAX",
+        "process_corner": "SS",
+        "voltage_v": 1.08,
+        "temperature_c": 125,
+        "rc_corner": "RCworst",
+        "label": "MAX - SS - 1.08 V - 125 C - RCworst",
+    }
+    assert records["sta_setup_wns"]["rating"] == {
+        "gate": True,
+        "score": True,
+        "trend": True,
+    }
+    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert summary["status"] == "pass"
+    assert summary["signoff_readiness"]["score_eligible"] is True
+    assert summary["signoff_readiness"]["ocv"] == {"status": "unavailable"}
+    assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
+
+
 def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
@@ -1929,7 +2065,7 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
     assert "sta_setup_wns" in {
         item["metric_id"] for item in summary["missing_metrics"]
     }
-    assert summary["status"] == "incomplete"
+    assert summary["status"] == "unavailable"
 
 
 def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
@@ -1987,7 +2123,7 @@ def _write_harden_signoff_summary(tmp_path, step_name, *, status="pass", hard_ga
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(
         json.dumps({
-            "schema_version": 2,
+            "schema_version": 3,
             "step": step_name,
             "status": status,
             "hard_gates": hard_gates or [],
