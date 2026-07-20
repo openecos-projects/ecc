@@ -1869,6 +1869,12 @@ def _metric_analysis_group_and_rating(step: WorkspaceStep,
     if metric_id in {"runtime_seconds", "peak_memory_mb"}:
         return "runtime", {"gate": False, "score": False, "trend": True}
     if step.name == StepEnum.RCX.value:
+        if metric_id in {"rcx_output_def_exists", "rcx_output_gds_exists"}:
+            return "rcx_output_artifacts", {
+                "gate": False,
+                "score": False,
+                "trend": True,
+            }
         if metric_id in {
             "rcx_spef_file_count",
             "rcx_expected_corner_count",

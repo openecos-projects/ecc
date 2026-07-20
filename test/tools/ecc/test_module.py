@@ -1479,6 +1479,13 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     }
     assert records["rcx_spef_file_count"]["value"] == 2
     assert records["rcx_missing_corner_count"]["value"] == 1
+    assert records["rcx_output_def_exists"]["analysis_group"] == "rcx_output_artifacts"
+    assert records["rcx_output_def_exists"]["rating"] == {
+        "gate": False,
+        "score": False,
+        "trend": True,
+    }
+    assert records["rcx_output_gds_exists"]["rating"]["score"] is False
     assert records["rcx_worst_total_capacitance_ff"]["source"] == {
         "kind": "feature",
         "path": "feature/RCX.step.json",
