@@ -424,7 +424,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         for workspace_step in engine_flow.workspace_steps:
             step_token = normalize_step_name(workspace_step.name)
             tool = workspace_step.tool
-            log_path = workspace_step.log.get("file", "")
+            log_path = workspace_step.log.file or ""
 
             engine_flow.workspace.logger.log_section(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"

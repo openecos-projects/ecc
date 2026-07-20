@@ -97,7 +97,8 @@ class DreamplaceChecklist:
 
         return all(token in content for token in text_tokens)
 
-    def read_text(self, path: str) -> str:
+    def read_text(self,
+                  path : str | Path) -> str:
         if not path or not os.path.isfile(path):
             return ""
 
@@ -120,7 +121,7 @@ class DreamplaceChecklist:
         )
 
     def qor_metrics(self) -> QorMetrics:
-        return QorMetrics(self.workspace_step.analysis.get("metrics", ""))
+        return QorMetrics(self.workspace_step.analysis.metrics or "")
 
     def feature_db(self) -> dict:
         return json_read(self.workspace_step.feature.get("db", ""))
@@ -132,7 +133,7 @@ class DreamplaceChecklist:
         return json_read(self.workspace.config.get("dreamplace", ""))
 
     def log_text(self) -> str:
-        return self.read_text(self.workspace_step.log.get("file", ""))
+        return self.read_text(self.workspace_step.log.file or "")
 
     def update_checks(self, checks: list) -> bool:
         step = self.workspace_step.name

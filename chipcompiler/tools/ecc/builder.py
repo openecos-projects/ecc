@@ -207,9 +207,9 @@ def build_step_space(step: WorkspaceStep) -> None:
     Path(step.data.get("dir", step_directory / "data")).mkdir(parents=True, exist_ok=True)
     Path(step.feature.get("dir", step_directory / "feature")).mkdir(parents=True, exist_ok=True)
     Path(step.report.get("dir", step_directory / "report")).mkdir(parents=True, exist_ok=True)
-    Path(step.log.get("dir", step_directory / "log")).mkdir(parents=True, exist_ok=True)
-    Path(step.script.get("dir", step_directory / "script")).mkdir(parents=True, exist_ok=True)
-    Path(step.analysis.get("dir", step_directory / "analysis")).mkdir(parents=True, exist_ok=True)
+    Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
+    Path(step.script.dir or step_directory / "script").mkdir(parents=True, exist_ok=True)
+    Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
     
     # build data directory
     for directory in step.data.values():

@@ -16,9 +16,9 @@ def build_step_metrics(workspace: Workspace,
         StepMetrics: The populated step metrics object, or None if not available.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.get('metrics', '')
+    step_metrics.path = step.analysis.metrics or ""
 
-    stat_json_path = step.feature.get('stat')
+    stat_json_path = step.feature.stat or ""
     data = json_read(stat_json_path)
     if not data:
         return None

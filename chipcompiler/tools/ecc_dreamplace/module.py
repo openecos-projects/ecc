@@ -66,7 +66,7 @@ class DreamplaceModule:
         original_handlers = root_logger.handlers[:]
         original_level = root_logger.level
 
-        log_file = self.step.log.get("file") or self._log_path(legalize_only)
+        log_file = self.step.log.file or self._log_path(legalize_only)
         os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
 
         formatter = logging.Formatter("[%(levelname)-7s] %(message)s")

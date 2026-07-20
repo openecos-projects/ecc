@@ -95,11 +95,11 @@ class YosysSynthesisChecklist(YosysChecklist):
         return refresh_step_checklist(self.workspace, self.workspace_step)
 
         step = StepEnum.SYNTHESIS.value
-        qor_metrics = QorMetrics(self.workspace_step.analysis.get("metrics", ""))
+        qor_metrics = QorMetrics(self.workspace_step.analysis.metrics or "")
         stat = json_read(self.workspace_step.feature.get("stat", ""))
 
         try:
-            log_text = read_text_maybe_gzip(self.workspace_step.log.get("file", ""))
+            log_text = read_text_maybe_gzip(self.workspace_step.log.file or "")
         except (OSError, EOFError):
             log_text = ""
 

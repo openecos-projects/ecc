@@ -36,6 +36,6 @@ def build_checklist(step: WorkspaceStep) -> dict:
 
 def build_config(step: WorkspaceStep) -> dict:
     return {
-        "sizer_env": stringify_paths(step.script.get("sizer_env", "")),
-        "sizer_cmd": stringify_paths(step.script.get("sizer_cmd", "")),
+        "sizer_env": stringify_paths(step.script.sizer_env or ""),
+        "sizer_cmd": stringify_paths(step.script.sizer_cmd or ""),
     }

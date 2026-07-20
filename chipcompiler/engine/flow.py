@@ -409,7 +409,7 @@ class EngineFlow:
                        state=StateEnum.Ongoing)
 
         # run step
-        log_file = workspace_step.log.get("file", "")
+        log_file = workspace_step.log.file or ""
         if log_file:
             log_file = os.path.abspath(log_file)
             try:

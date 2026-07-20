@@ -4,12 +4,14 @@ import re
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
 import chipcompiler.cli.rendering.progress as progress
 from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.cli.inspection.log_view import LineKind, LogLine
+from chipcompiler.data import LogPaths
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.progress import (
     RunProgressRenderer,
@@ -641,7 +643,8 @@ def _make_ws(directory="/tmp", log_section_fn=None):
 
 
 def _make_step(name, tool, log_file=""):
-    return type("WSS", (), {"name": name, "tool": tool, "log": {"file": log_file}})()
+    log = LogPaths(file=Path(log_file)) if log_file else LogPaths()
+    return type("WSS", (), {"name": name, "tool": tool, "log": log})()
 
 
 def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=None):

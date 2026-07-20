@@ -8,7 +8,7 @@ from contextlib import suppress
 from pathlib import Path
 
 
-def json_read(file_path: Path) -> dict:
+def json_read(file_path: str | Path) -> dict:
     """
     Read a JSON file and return its content as a dictionary.
     """
@@ -31,7 +31,7 @@ def json_read(file_path: Path) -> dict:
     return data
 
 
-def json_write(file_path: Path, data: dict | None = None, indent=4) -> bool:
+def json_write(file_path: str | Path, data: dict | None = None, indent=4) -> bool:
     """
     Write a dictionary to a JSON file.
     """

@@ -13,7 +13,7 @@ class StepMetricsBuilder:
         """
         Load step metrics from the step analysis metrics file.
         """
-        step_metrics = load_metrics(step.analysis['metrics'])
+        step_metrics = load_metrics(step.analysis.metrics or "")
         return step_metrics
     
     def save(self, step: WorkspaceStep, step_metrics : StepMetrics) -> bool:
