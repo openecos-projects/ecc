@@ -121,9 +121,8 @@ def run_step(workspace: Workspace,
 
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 
-        with open(step.log["file"], "w") as log_file:
-            step_data = getattr(step, "data", {}) or {}
-            if step_data.get("requires_slang", True) and not check_slang_plugin(
+        with open(log_path, "w") as log_file:
+            if step.data.requires_slang and not check_slang_plugin(
                 yosys_cmd=yosys_cmd,
                 cwd_dir=cwd_dir,
                 yosys_env=yosys_env,

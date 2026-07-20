@@ -166,7 +166,7 @@ def generate_global_var_tcl(workspace: Workspace,
     script.blank_line()
 
     use_slang, native_rtl_files, slang_filelist = _yosys_source_config(workspace, step)
-    step.data["requires_slang"] = use_slang
+    step.data.requires_slang = use_slang
 
     script.set("use_slang", "true" if use_slang else "false")
     if use_slang and slang_filelist:
