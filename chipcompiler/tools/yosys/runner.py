@@ -121,7 +121,7 @@ def run_step(workspace: Workspace,
 
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 
-        with open(step.log["file"], "w") as log_file:
+        with open(log_path, "w") as log_file:
             if not check_slang_plugin(
                 yosys_cmd=yosys_cmd,
                 cwd_dir=cwd_dir,

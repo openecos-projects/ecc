@@ -1,9 +1,9 @@
-"""Behavior tests for the typed WorkspaceStep layout and its migration shim.
+"""Behavior tests for the typed WorkspaceStep layout.
 
-These pin the transitional dict-compatibility contract (AC-3): each path group
-is a typed dataclass that ALSO behaves like its former dict, so existing readers
-keep working unchanged while the migration proceeds. The shim is removed once all
-readers use attribute access; the attribute-access assertions here survive that.
+These pin the typed attribute contract of the step path groups: the step
+hierarchy (base + yosys/ecc variants), the ``"def"`` -> ``def_`` rename, the
+place-and-route ``data.steps`` mapping with its ``workdir_for`` /
+``iter_directories`` helpers, and that field values are never coerced.
 """
 
 from __future__ import annotations
@@ -15,8 +15,6 @@ from chipcompiler.data import (
     OriginDesign,
     OutputPaths,
     StepData,
-    StepInput,
-    SubflowState,
     Workspace,
     WorkspaceStep,
     WorkspaceStepBase,
@@ -41,91 +39,29 @@ def test_result_field_is_gone():
     assert not hasattr(WorkspaceStep(), "result")
 
 
-def test_get_read_matches_legacy_dict_defaults():
+def test_unset_group_fields_default_to_none():
     output = OutputPaths(dir=Path("/d"), verilog=Path("/v.v"))
-    assert output.get("verilog") == Path("/v.v")
-    assert output.get("gds") is None
-    assert output.get("gds", "") == ""
-    assert output.get("gds", []) == []
-
-
-def test_subscript_read_and_contains():
-    output = OutputPaths(dir=Path("/d"))
-    assert output["dir"] == Path("/d")
-    assert "dir" in output
-    assert "gds" not in output
-
-
-def test_subscript_write_adds_key():
-    output = OutputPaths(dir=Path("/d"))
-    output["spef"] = [Path("/a.spef")]
-    assert output["spef"] == [Path("/a.spef")]
-    assert "spef" in output
-    assert output.spef == [Path("/a.spef")]
-
-
-def test_def_keyword_key_round_trips_to_attribute():
-    output = OutputPaths(dir=Path("/d"))
-    output["def"] = Path("/x.def")
-    assert output["def"] == Path("/x.def")
-    assert output.def_ == output["def"]
-    assert "def" in dict(output)
-    assert "def_" not in dict(output)
-
-
-def test_dict_projects_only_assigned_keys():
-    output = OutputPaths(dir=Path("/d"), verilog=Path("/v.v"))
-    assert dict(output) == {"dir": Path("/d"), "verilog": Path("/v.v")}
-    # Unset typed fields read as None via attribute but are not projected.
+    assert output.dir == Path("/d")
+    assert output.verilog == Path("/v.v")
     assert output.gds is None
-    assert "gds" not in dict(output)
+    assert output.spef == []
 
 
-def test_values_and_items_match_projection():
-    output = OutputPaths(dir=Path("/d"), verilog=Path("/v.v"))
-    assert sorted(str(v) for v in output.values()) == ["/d", "/v.v"]
-    assert dict(output.items()) == {"dir": Path("/d"), "verilog": Path("/v.v")}
-    assert set(output.keys()) == {"dir", "verilog"}
-    assert len(output) == 2
-
-
-def test_iteration_yields_legacy_keys():
-    output = OutputPaths(dir=Path("/d"))
-    output["def"] = Path("/x.def")
-    assert list(output) == ["dir", "def"]
+def test_def_keyword_is_exposed_as_def_attribute():
+    output = OutputPaths(def_=Path("/x.def"))
+    assert output.def_ == Path("/x.def")
 
 
 def test_no_value_coercion_str_stays_str():
-    # Tools/tests sometimes seed a str; the shim must not coerce it to Path.
-    output = OutputPaths()
-    output["dir"] = "/some/str/path"
-    assert output["dir"] == "/some/str/path"
-    assert isinstance(output["dir"], str)
+    # Tools/tests sometimes seed a str; the layout must not coerce it to Path.
+    output = OutputPaths(dir="/some/str/path")
+    assert output.dir == "/some/str/path"
+    assert isinstance(output.dir, str)
 
 
 def test_sizer_empty_db_stays_empty_string():
     output = OutputPaths(db="")
-    assert output["db"] == ""
     assert output.db == ""
-    assert "db" in output
-
-
-def test_whole_dict_assignment_is_normalized_to_group():
-    # A plain dict assigned to a group is normalized into the typed group via
-    # __setattr__ (the transitional contract; pyright cannot express dict->group).
-    step = EccStep(name="Floorplan")
-    step.output = {"dir": Path("/d"), "def": Path("/x.def"), "db": ""}  # type: ignore[assignment]
-    assert isinstance(step.output, OutputPaths)
-    assert dict(step.output) == {"dir": Path("/d"), "def": Path("/x.def"), "db": ""}
-    assert step.output.def_ == step.output["def"]
-
-
-def test_input_dict_assignment_normalized():
-    step = EccStep(name="Floorplan")
-    step.input = {"def": Path("/i.def"), "verilog": Path("/i.v"), "db": None}  # type: ignore[assignment]
-    assert isinstance(step.input, StepInput)
-    assert step.input["def"] == Path("/i.def")
-    assert step.input.verilog == Path("/i.v")
 
 
 def test_data_supports_dynamic_step_keyed_directories():
@@ -139,17 +75,6 @@ def test_data_supports_dynamic_step_keyed_directories():
     assert step.data.workdir_for("Timing optimization") == Path("/data/to")
     assert step.data.workdir_for("unknown step") == Path("/data")
     assert step.data.dir == Path("/data")
-
-
-def test_dict_subflow_round_trips():
-    # Live path: the subflow modules do dict(self.workspace_step.subflow).
-    step = EccStep(name="Floorplan")
-    step.subflow = SubflowState(path=Path("/s/subflow.json"), steps=[])
-    materialized = dict(step.subflow)
-    assert materialized == {"path": Path("/s/subflow.json"), "steps": []}
-    # A later mutation to steps is visible through the mapping too.
-    step.subflow["steps"].append({"name": "load data"})
-    assert dict(step.subflow)["steps"] == [{"name": "load data"}]
 
 
 def test_data_iter_directories_for_build_step_space():
