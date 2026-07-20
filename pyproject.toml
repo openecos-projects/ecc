@@ -101,6 +101,7 @@ lint.select = [
   "UP",  # pyupgrade
 ]
 extend-include = ["*.spec"]
+exclude = ["thirdpraty/**/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
