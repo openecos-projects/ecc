@@ -3,10 +3,15 @@ import json
 import os
 import shutil
 from pathlib import Path
+from typing import TypeAlias
 
 from numpy import double
 
 from chipcompiler.utility.path import path_text, path_texts
+
+# Path arguments to the native-wrapper methods are normalized via path_text(),
+# so they accept a Path, a str, or None (a step group field is Path | None).
+PathArg: TypeAlias = str | Path | None
 
 
 class ECCToolsModule:
@@ -76,8 +81,8 @@ class ECCToolsModule:
     def init_config(self,
                     flow_config : str,
                     db_config : str,
-                    output_dir : str,
-                    feature_dir : str):
+                    output_dir : PathArg,
+                    feature_dir : PathArg):
         """init_config"""
         self.ecc.flow_init(
             flow_config=path_text(flow_config)
@@ -89,7 +94,7 @@ class ECCToolsModule:
             feature_path=path_text(feature_dir),
         )
 
-    def update_step_paths(self, output_dir: str, feature_dir: str):
+    def update_step_paths(self, output_dir: PathArg, feature_dir: PathArg):
         self.ecc.db_init(
             output_path=path_text(output_dir),
             feature_path=path_text(feature_dir),
@@ -313,7 +318,7 @@ class ECCToolsModule:
     ########################################################################
     # feature api
     ########################################################################
-    def feature_sammry(self, json_path: str):
+    def feature_sammry(self, json_path: PathArg):
         """
         generate feature summary
         """
@@ -321,7 +326,7 @@ class ECCToolsModule:
 
     def feature_step(self, 
                      step: str, 
-                     json_path: str):
+                     json_path: PathArg):
         """
         generate step feature
         """
@@ -353,7 +358,7 @@ class ECCToolsModule:
         return self.ecc.report_wirelength(path=path_text(path))
 
     def report_summary(self, 
-                       path: str):
+                       path: PathArg):
         """
         generate step report
         """
@@ -425,8 +430,8 @@ class ECCToolsModule:
     def report_cts(self, output : str):
         self.ecc.cts_report(path_text(output))
     
-    def feature_cts_map(self, 
-                        json_path: str, 
+    def feature_cts_map(self,
+                        json_path: PathArg,
                         map_grid_size=1):
         """
         generate cts map feature
@@ -446,15 +451,15 @@ class ECCToolsModule:
             temp_directory_path=path_text(output_dir),
             thread_number=therad_number)
         
-    def run_drc(self, 
-                config: str, 
-                report_path : str="") -> bool:
+    def run_drc(self,
+                config: str,
+                report_path : PathArg="") -> bool:
         """
         run drc check
         """
         self.ecc.run_drc(config=path_text(config), report=path_text(report_path))
         
-    def save_drc(self, feature_path: str):
+    def save_drc(self, feature_path: PathArg):
         """
         generate drc result
         """
@@ -842,7 +847,7 @@ class ECCToolsModule:
     def destroy_pl(self):
         return self.ecc.destroy_pl()
         
-    def feature_placement_map(self, json_path: str, map_grid_size=1):
+    def feature_placement_map(self, json_path: PathArg, map_grid_size=1):
         """
         generate placement map feature
         """

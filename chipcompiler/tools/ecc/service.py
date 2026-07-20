@@ -102,9 +102,9 @@ def build_analysis(workspace: Workspace,
     info = {
         "metrics" : step.analysis.metrics or "",
         "statis" : step.analysis.statis_csv or "",
-        "data summary" : step.feature.get('db', ""),
-        "step feature" : step.feature.get('step', ""),
-        "step report" : step.report.get('db', "")
+        "data summary" : step.feature.db or "",
+        "step feature" : step.feature.step or "",
+        "step report" : step.report.db or ""
     }
     
     return info
@@ -146,7 +146,7 @@ def build_maps_congestion(workspace: Workspace,
                           step: WorkspaceStep) -> dict:     
     info = {}
     
-    json_data = json_read(step.feature.get("map", ""))
+    json_data = json_read(step.feature.map or "")
     if len(json_data) > 0:
         json_cong = json_data.get("Congestion", {})
         json_map = json_cong.get("map", {})
@@ -233,7 +233,7 @@ def build_maps_density(workspace: Workspace,
                        step: WorkspaceStep) -> dict:     
     info = {}
     
-    json_data = json_read(step.feature.get("map", ""))
+    json_data = json_read(step.feature.map or "")
     if len(json_data) > 0:
         json_density = json_data.get("Density", {})
         
@@ -290,7 +290,7 @@ def build_sta(workspace: Workspace,
     if not sta_data_dir:
         sta_data_dir = os.path.join(step.directory, "data", "sta")
 
-    sta_report = step.report.get("sta", {})
+    sta_report = step.report.sta or {}
     info = {
         "timing": sta_report.get("timing", os.path.join(sta_data_dir, f"{top_module}.rpt")),
         "hold": sta_report.get("hold", os.path.join(sta_data_dir, f"{top_module}_hold.skew")),

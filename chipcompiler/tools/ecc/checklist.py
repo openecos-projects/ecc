@@ -264,7 +264,7 @@ class EccFloorplanChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.FLOORPLAN.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        db = json_read(self.workspace_step.feature.db or "")
         subflow = json_read(self.workspace_step.subflow.get("path", ""))
 
         try:
@@ -366,7 +366,7 @@ class EccNetlistOptChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.NETLIST_OPT.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        db = json_read(self.workspace_step.feature.db or "")
         config = json_read(self.workspace.config.get(StepEnum.NETLIST_OPT.value, ""))
 
         try:
@@ -453,8 +453,8 @@ class EccCtsChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.CTS.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
-        db = json_read(self.workspace_step.feature.get("db", ""))
-        feature = json_read(self.workspace_step.feature.get("step", "")).get("CTS", {})
+        db = json_read(self.workspace_step.feature.db or "")
+        feature = json_read(self.workspace_step.feature.step or "").get("CTS", {})
         config = json_read(self.workspace.config.get(StepEnum.CTS.value, ""))
 
         nets = db.get("Nets", {})
@@ -515,7 +515,7 @@ class EccCtsChecklist(EccChecklist):
 class EccTimingOptDrvChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.TIMING_OPT_DRV.value
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        db = json_read(self.workspace_step.feature.db or "")
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_DRV.value, ""))
 
         try:
@@ -576,7 +576,7 @@ class EccTimingOptHoldChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.TIMING_OPT_HOLD.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        db = json_read(self.workspace_step.feature.db or "")
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_HOLD.value, ""))
 
         buffer_cells = config.get("hold_insert_buffers", [])
@@ -629,7 +629,7 @@ class EccTimingOptSetupChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.TIMING_OPT_SETUP.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        db = json_read(self.workspace_step.feature.db or "")
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_SETUP.value, ""))
 
         buffer_cells = config.get("setup_insert_buffers", [])
@@ -682,8 +682,8 @@ class EccRoutingChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.ROUTING.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
-        db = json_read(self.workspace_step.feature.get("db", ""))
-        feature = json_read(self.workspace_step.feature.get("step", "")).get(
+        db = json_read(self.workspace_step.feature.db or "")
+        feature = json_read(self.workspace_step.feature.step or "").get(
             StepEnum.ROUTING.value, {})
         config = json_read(self.workspace.config.get(StepEnum.ROUTING.value, ""))
 
@@ -753,7 +753,7 @@ class EccDrcChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.DRC.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
-        feature = json_read(self.workspace_step.feature.get("step", "")).get("drc", {})
+        feature = json_read(self.workspace_step.feature.step or "").get("drc", {})
         output_success = all([
             self.check_file(self.workspace_step.output.get("def", "")),
             self.check_file(self.workspace_step.output.get("verilog", "")),
@@ -806,7 +806,7 @@ class EccDrcChecklist(EccChecklist):
 class EccFillerChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.FILLER.value
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        db = json_read(self.workspace_step.feature.db or "")
         subflow = json_read(self.workspace_step.subflow.get("path", ""))
         config = json_read(self.workspace.config.get(StepEnum.PLACEMENT.value, ""))
 

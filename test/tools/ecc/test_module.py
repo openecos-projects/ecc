@@ -385,7 +385,7 @@ def test_ecc_metrics_accept_path_feature_paths(tmp_path):
     metrics = build_metrics_net_opt(workspace, step)
 
     assert metrics.report == [
-        (str(step.feature["step"]).replace(".json", ".png"), f"{step.name} step metrics:\n")
+        (str(step.feature.step).replace(".json", ".png"), f"{step.name} step metrics:\n")
     ]
 
 
@@ -427,7 +427,8 @@ def test_ecc_plot_instance_distribution_accepts_path_feature_db(tmp_path, monkey
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["db"].write_text(
+    assert step.feature.db is not None
+    step.feature.db.write_text(
         json.dumps({"Instances": {"stdcell": {"num": 1, "area": 2, "pin_num": 3}}}),
         encoding="utf-8",
     )
@@ -444,7 +445,7 @@ def test_ecc_plot_instance_distribution_accepts_path_feature_db(tmp_path, monkey
 
     assert ecc_plot.ECCToolsPlot(workspace, step).plot_instance_distribution() is True
 
-    expected_image_path = str(step.feature["db"]).replace(".json", ".inst_dist.png")
+    expected_image_path = str(step.feature.db).replace(".json", ".inst_dist.png")
     assert plot_calls[0]["output_path"] == expected_image_path
     assert metric_calls == [expected_image_path]
 
@@ -461,7 +462,9 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["db"].write_text(
+    assert step.feature.db is not None
+    assert step.feature.step is not None
+    step.feature.db.write_text(
         json.dumps(
             {
                 "Layers": {
@@ -474,7 +477,7 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    step.feature["step"].write_text(
+    step.feature.step.write_text(
         json.dumps(
             {
                 "drc": {
@@ -560,8 +563,8 @@ def test_ecc_build_step_space_creates_path_directories(tmp_path):
     assert isinstance(step.output["dir"], Path)
     assert step.output["dir"].is_dir()
     assert step.data["dir"].is_dir()
-    assert step.feature["dir"].is_dir()
-    assert step.report["dir"].is_dir()
+    assert step.feature.dir and step.feature.dir.is_dir()
+    assert step.report.dir and step.report.dir.is_dir()
     assert step.log["dir"].is_dir()
     assert step.script["dir"].is_dir()
     assert step.analysis["dir"].is_dir()
@@ -629,13 +632,13 @@ def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
     assert ecc_service.get_step_info(workspace, step, "analysis") == {
         "metrics": str(step.analysis["metrics"]),
         "statis": str(step.analysis["statis_csv"]),
-        "data summary": str(step.feature["db"]),
-        "step feature": str(step.feature["step"]),
-        "step report": str(step.report["db"]),
+        "data summary": str(step.feature.db),
+        "step feature": str(step.feature.step),
+        "step report": str(step.report.db),
     }
     assert ecc_service.get_step_info(workspace, step, "sta") == {
         key: str(value)
-        for key, value in step.report["sta"].items()
+        for key, value in step.report.sta.items()
     }
 
 

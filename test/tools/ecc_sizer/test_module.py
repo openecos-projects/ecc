@@ -270,8 +270,8 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
     for path in (
         step.output["dir"],
         step.data["dir"],
-        step.feature["dir"],
-        step.report["dir"],
+        step.feature.dir,
+        step.report.dir,
         step.log["dir"],
         step.script["dir"],
         step.analysis["dir"],

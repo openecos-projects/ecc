@@ -79,7 +79,7 @@ def run_placement(workspace: Workspace,
         )
         reslut = dreamplace_module.run_placement()
     
-        ecc_module.feature_placement_map(json_path=step.feature["map"])
+        ecc_module.feature_placement_map(json_path=step.feature.map)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
         

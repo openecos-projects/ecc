@@ -79,8 +79,8 @@ def build_analysis(workspace: Workspace,
                    step: WorkspaceStep) -> dict:          
     info = {
         "metrics" : stringify_paths(step.analysis.metrics or ""),
-        "data summary" : stringify_paths(step.feature.get("stat", "")),
-        "step report" : stringify_paths(step.report.get("check", ""))
+        "data summary" : stringify_paths(step.feature.stat or ""),
+        "step report" : stringify_paths(step.report.check or "")
     }
     
     return info

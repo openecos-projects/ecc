@@ -51,7 +51,7 @@ def build_step_metrics(workspace: Workspace,
         return metrics
     
     info = {}        
-    data = json_read(step.feature.get("db", ""))
+    data = json_read(step.feature.db or "")
     if data is not None:
         instance_num = data.get("Design Statis", {}).get("num_instances", 0) 
         info["instance"] = instance_num
@@ -72,7 +72,7 @@ def build_metrics_timing(workspace: Workspace,
                          step: WorkspaceStep) -> dict:
     metrics = {}
     
-    data = json_read(step.feature.get('timing', ""))
+    data = json_read(step.feature.timing or "")
     max_WNS = None
     if len(data) > 0:
         for slack_item in data.get('slack', []):
@@ -100,7 +100,7 @@ def build_metrics_db(workspace: Workspace,
     
     metrics['Tool'] = step.tool
     
-    data = json_read(step.feature.get('db', ""))
+    data = json_read(step.feature.db or "")
     if len(data) > 0:
         metrics["Die area [μm^2]"] = f"{round(data.get('Design Layout', {}).get('die_area', 0.0), 3)}"
         metrics["Die width [um]"] = f"{data.get('Design Layout', {}).get('die_bounding_width', 0.0)}"
@@ -129,7 +129,7 @@ def build_metrics_floorplan(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    json_path = step.feature.get('step', "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if len(data) > 0:
         # Add floorplan specific metrics here
@@ -162,7 +162,7 @@ def build_metrics_net_opt(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # # step matrics
-    json_path = step.feature.get('step', "")
+    json_path = step.feature.step or ""
 
     metrics["Max fanout"] = workspace.parameters.data.get("Max fanout", 0)
     
@@ -194,7 +194,7 @@ def build_metrics_filler(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    json_path = step.feature.get('step', "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if len(data) > 0:
         # Add filler specific metrics here
@@ -228,7 +228,7 @@ def build_metrics_drc(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    json_path = step.feature.get('step', "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if len(data) > 0:
         metrics["drc_num"] = data.get("drc", {}).get("number", 0)
@@ -261,7 +261,7 @@ def build_metrics_routing(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    json_path = step.feature.get('db', "")
+    json_path = step.feature.db or ""
     data = json_read(json_path)
     if len(data) > 0:
         metrics["wire_len"] = data.get("Nets", {}).get("wire_len", 0)
@@ -295,7 +295,7 @@ def build_metrics_legalization(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    json_path = step.feature.get('step', "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if len(data) > 0:
         metrics["total_movement"] = data.get("legalization", {}).get("total_movement", 0)
@@ -328,7 +328,7 @@ def build_metrics_timing_opt_hold(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    json_path = step.feature.get('step', "")
+    json_path = step.feature.step or ""
     # data = json_read(json_path)
     # if len(data) > 0:
     #     for clk_item in data.get("optHold", {}).get("clocks_timing", []):
@@ -366,7 +366,7 @@ def build_metrics_timing_opt_drv(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    json_path = step.feature.get('step', "")
+    json_path = step.feature.step or ""
     # data = json_read(json_path)
     # if len(data) > 0:
     #     for clk_item in data.get("optDrv", {}).get("clocks_timing", []):
@@ -403,7 +403,7 @@ def build_metrics_cts(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    json_path = step.feature.get('step', "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if len(data) > 0:
         metrics["buffer_num"] = data.get("CTS", {}).get("buffer_num", 0)
@@ -440,7 +440,7 @@ def build_metrics_placement(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
     
     # step matrics
-    json_path = step.feature.get('step', "")
+    json_path = step.feature.step or ""
     data = json_read(json_path)
     if len(data) > 0:
         metrics["overflow"] = data.get("place", {}).get("overflow", 0)
