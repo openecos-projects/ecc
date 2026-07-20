@@ -147,12 +147,25 @@ class OutputPaths(_MigrationMapping):
 
 @dataclass
 class StepData(_MigrationMapping):
-    # Common fixed directories. Place-and-route steps additionally carry per-step
-    # working directories keyed by step name (StepEnum values, some containing
-    # spaces); during migration those are seeded through the mapping interface,
-    # and are moved onto an explicit `steps` mapping when readers are converted.
+    # Common fixed directories.
     dir: Path | None = _UNSET
     tmp: Path | None = _UNSET
+    # Place-and-route per-step working directories, keyed by step name (StepEnum
+    # values, some containing spaces), so they cannot be plain attributes.
+    steps: dict[str, Path] = _UNSET
+
+    def workdir_for(self, name: str) -> Path | None:
+        """Working directory for a step name, falling back to the base dir."""
+        steps = self.steps or {}
+        return steps.get(name, self.dir)
+
+    def iter_directories(self) -> Iterator[Path]:
+        """All concrete directories to create (base, tmp, and per-step)."""
+        if self.dir is not None:
+            yield self.dir
+        if self.tmp is not None:
+            yield self.tmp
+        yield from (self.steps or {}).values()
 
 
 @dataclass

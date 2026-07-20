@@ -30,7 +30,7 @@ class DreamplaceModule:
         self.output_def = str(output_def)
         self.output_verilog = str(output_verilog)
         self.param_path = workspace.config["dreamplace"]
-        self.result_dir = str(step.data.get(step.name, step.data["dir"]))
+        self.result_dir = str(step.data.workdir_for(step.name))
 
     def _build_params(self, params_cls, legalize_only: bool):
         with open(self.param_path, encoding="utf-8") as f_reader:

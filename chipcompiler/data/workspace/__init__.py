@@ -734,7 +734,7 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     if step.name == StepEnum.ROUTING.value:
         router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
         router["RT"]["-temp_directory_path"] = path_text(
-            step.data.get(f"{StepEnum.ROUTING.value}")
+            (step.data.steps or {}).get(StepEnum.ROUTING.value)
         )
         json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 

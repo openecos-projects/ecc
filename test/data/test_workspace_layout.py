@@ -129,13 +129,16 @@ def test_input_dict_assignment_normalized():
 
 
 def test_data_supports_dynamic_step_keyed_directories():
-    # ecc data is keyed by StepEnum values, some containing spaces.
-    step = EccStep(name="Timing optimization")
-    step.data = StepData(dir=Path("/data"))
-    step.data["Timing optimization"] = Path("/data/to")
-    assert step.data["Timing optimization"] == Path("/data/to")
-    assert step.data.get("Timing optimization") == Path("/data/to")
-    assert step.data.get("dir") == Path("/data")
+    # ecc data holds per-step working dirs keyed by StepEnum values (some with
+    # spaces) in an explicit `steps` mapping; workdir_for falls back to `dir`.
+    step = EccStep(
+        name="Timing optimization",
+        data=StepData(dir=Path("/data"), steps={"Timing optimization": Path("/data/to")}),
+    )
+    assert step.data.steps["Timing optimization"] == Path("/data/to")
+    assert step.data.workdir_for("Timing optimization") == Path("/data/to")
+    assert step.data.workdir_for("unknown step") == Path("/data")
+    assert step.data.dir == Path("/data")
 
 
 def test_dict_subflow_round_trips():
@@ -149,12 +152,13 @@ def test_dict_subflow_round_trips():
     assert dict(step.subflow)["steps"] == [{"name": "load data"}]
 
 
-def test_data_values_iteration_for_build_step_space():
-    # ecc build_step_space iterates step.data.values() to mkdir each directory.
-    step = EccStep(name="Floorplan")
-    step.data = StepData(dir=Path("/data"))
-    step.data["place"] = Path("/data/pl")
-    assert sorted(str(v) for v in step.data.values()) == ["/data", "/data/pl"]
+def test_data_iter_directories_for_build_step_space():
+    # ecc build_step_space iterates step.data.iter_directories() to mkdir each.
+    step = EccStep(
+        name="Floorplan",
+        data=StepData(dir=Path("/data"), steps={"place": Path("/data/pl")}),
+    )
+    assert sorted(str(v) for v in step.data.iter_directories()) == ["/data", "/data/pl"]
 
 
 def test_build_step_returns_correct_variant(tmp_path):

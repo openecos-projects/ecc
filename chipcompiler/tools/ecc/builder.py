@@ -95,24 +95,26 @@ def build_step(workspace: Workspace,
     
     # build data paths
     data_dir = step.directory / "data"
-    step.data = StepData(dir=data_dir)
-    step.data.update({
-        f"{StepEnum.FLOORPLAN.value}": data_dir / "fp",
-        f"{StepEnum.PNP.value}": data_dir / "pnp",
-        f"{StepEnum.PLACEMENT.value}": data_dir / "pl",
-        f"{StepEnum.LEGALIZATION.value}": data_dir / "pl",
-        f"{StepEnum.FILLER.value}": data_dir / "pl",
-        f"{StepEnum.CTS.value}": data_dir / "cts",
-        f"{StepEnum.NETLIST_OPT.value}": data_dir / "no",
-        f"{StepEnum.TIMING_OPT.value}": data_dir / "to",
-        f"{StepEnum.TIMING_OPT_DRV.value}": data_dir / "to",
-        f"{StepEnum.TIMING_OPT_HOLD.value}": data_dir / "to",
-        f"{StepEnum.TIMING_OPT_SETUP.value}": data_dir / "to",
-        f"{StepEnum.ROUTING.value}": data_dir / "rt",
-        f"{StepEnum.STA.value}": data_dir / "sta",
-        f"{StepEnum.DRC.value}": data_dir / "drc",
-        f"{StepEnum.RCX.value}": data_dir / "rcx",
-    })
+    step.data = StepData(
+        dir=data_dir,
+        steps={
+            f"{StepEnum.FLOORPLAN.value}": data_dir / "fp",
+            f"{StepEnum.PNP.value}": data_dir / "pnp",
+            f"{StepEnum.PLACEMENT.value}": data_dir / "pl",
+            f"{StepEnum.LEGALIZATION.value}": data_dir / "pl",
+            f"{StepEnum.FILLER.value}": data_dir / "pl",
+            f"{StepEnum.CTS.value}": data_dir / "cts",
+            f"{StepEnum.NETLIST_OPT.value}": data_dir / "no",
+            f"{StepEnum.TIMING_OPT.value}": data_dir / "to",
+            f"{StepEnum.TIMING_OPT_DRV.value}": data_dir / "to",
+            f"{StepEnum.TIMING_OPT_HOLD.value}": data_dir / "to",
+            f"{StepEnum.TIMING_OPT_SETUP.value}": data_dir / "to",
+            f"{StepEnum.ROUTING.value}": data_dir / "rt",
+            f"{StepEnum.STA.value}": data_dir / "sta",
+            f"{StepEnum.DRC.value}": data_dir / "drc",
+            f"{StepEnum.RCX.value}": data_dir / "rcx",
+        },
+    )
     
     # build feature paths
     feature_dir = step.directory / "feature"
@@ -200,7 +202,7 @@ def build_step_space(step: WorkspaceStep) -> None:
     
     step_directory.mkdir(parents=True, exist_ok=True)
     Path(step.output.get("dir", step_directory / "output")).mkdir(parents=True, exist_ok=True)
-    Path(step.data.get("dir", step_directory / "data")).mkdir(parents=True, exist_ok=True)
+    Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
     Path(step.feature.dir or step_directory / "feature").mkdir(parents=True, exist_ok=True)
     Path(step.report.dir or step_directory / "report").mkdir(parents=True, exist_ok=True)
     Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
@@ -208,7 +210,7 @@ def build_step_space(step: WorkspaceStep) -> None:
     Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
     
     # build data directory
-    for directory in step.data.values():
+    for directory in step.data.iter_directories():
         Path(directory).mkdir(parents=True, exist_ok=True)
         
     # create pl sub dir

@@ -286,7 +286,7 @@ def build_checklist(workspace: Workspace,
 def build_sta(workspace: Workspace, 
                     step: WorkspaceStep) -> dict:          
     top_module = workspace.design.top_module
-    sta_data_dir = step.data.get(f"{StepEnum.STA.value}", "")
+    sta_data_dir = (step.data.steps or {}).get(StepEnum.STA.value, "")
     if not sta_data_dir:
         sta_data_dir = os.path.join(step.directory, "data", "sta")
 

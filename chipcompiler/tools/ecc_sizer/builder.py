@@ -116,7 +116,7 @@ def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspa
 
 
 def _cmd_text(workspace: Workspace, step: WorkspaceStep) -> str:
-    output_dir = step.data.get(step.name, step.data["dir"])
+    output_dir = step.data.workdir_for(step.name)
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
 
     command.flag("useOpenSTA")

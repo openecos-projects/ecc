@@ -424,10 +424,10 @@ class ECCToolsModule:
     ########################################################################
     def run_cts(self, 
                 config: str, 
-                output : str) -> bool:
+                output : PathArg) -> bool:
         return self.ecc.run_cts(path_text(config), path_text(output))
     
-    def report_cts(self, output : str):
+    def report_cts(self, output : PathArg):
         self.ecc.cts_report(path_text(output))
     
     def feature_cts_map(self,
@@ -442,7 +442,7 @@ class ECCToolsModule:
     # DRC api
     ########################################################################
     def init_drc(self, 
-                 output_dir : str,
+                 output_dir : PathArg,
                  therad_number : int = 128):
         """
         init drc config
@@ -964,8 +964,8 @@ class ECCToolsModule:
     def run_timing(
         self,
         config: str = "",
-        work_dir: str = "",
-        output_dir: str = "",
+        work_dir: PathArg = "",
+        output_dir: PathArg = "",
         lib_paths: list[str] | None = None,
         sdc_path: str = "",
         spef_path: str = "",
@@ -984,7 +984,7 @@ class ECCToolsModule:
         finally:
             self.ecc.destroy_sta()
 
-        timing_report_dir = Path(work_dir) / "timing_reporter"
+        timing_report_dir = Path(work_dir or "") / "timing_reporter"
         if output_dir and timing_report_dir.is_dir():
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
@@ -999,7 +999,7 @@ class ECCToolsModule:
         return None
 
     def init_sta(self,
-                 output_dir : str,
+                 output_dir : PathArg,
                  top_module : str,
                  lib_paths : list[str],
                  sdc_path: str):
@@ -1078,7 +1078,7 @@ class ECCToolsModule:
         output_lib_path: str,
         analysis_mode: str = "max",
         config: str = "",
-        output_dir: str = "",
+        output_dir: PathArg = "",
         lib_paths: list[str] | None = None,
         sdc_path: str = "",
         spef_path: str = "",

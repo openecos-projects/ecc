@@ -135,6 +135,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report(
         feature=StepFeature(dir=tmp_path / "Synthesis_yosys" / "feature"),
         report=StepReport(dir=tmp_path / "Synthesis_yosys" / "report"),
     )
+    assert step.data.dir is not None
     module = FakeSynthesisStaModule()
     monkeypatch.setattr(ecc_runner, "ECCToolsModule", lambda: module)
 
@@ -146,7 +147,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report(
             {
                 "flow_config": workspace.config["flow"],
                 "db_config": workspace.config["db"],
-                "output_dir": step.data["dir"],
+                "output_dir": step.data.dir,
                 "feature_dir": step.feature.dir,
             },
         ),
@@ -157,14 +158,14 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report(
             "run_timing",
             {
                 "config": workspace.config[StepEnum.STA.value],
-                "work_dir": step.data["dir"] / "sta",
+                "work_dir": step.data.dir / "sta",
                 "output_dir": step.report.dir,
                 "lib_paths": [liberty],
                 "sdc_path": sdc,
             },
         ),
     ]
-    assert (step.data["dir"] / "sta").is_dir()
+    assert (step.data.dir / "sta").is_dir()
     assert step.report.dir and step.report.dir.is_dir()
     assert logger.warnings == []
 
