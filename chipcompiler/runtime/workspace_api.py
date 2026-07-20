@@ -529,9 +529,9 @@ def _build_workspace_step_for_info(workspace, flow_step: dict, previous_step):
         input_verilog = workspace.design.origin_verilog
         input_db = None
     else:
-        input_def = previous_step.output.get("def", "")
-        input_verilog = previous_step.output.get("verilog", "")
-        input_db = previous_step.output.get("db", "")
+        input_def = previous_step.output.def_ or ""
+        input_verilog = previous_step.output.verilog or ""
+        input_db = previous_step.output.db or ""
 
     builder = _load_tool_builder(tool)
     if builder is None or not hasattr(builder, "build_step"):

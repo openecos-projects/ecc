@@ -74,8 +74,8 @@ def run_placement(workspace: Workspace,
             ecc_module=ecc_module,
             input_def=step.input.def_ or "",
             input_verilog=step.input.verilog or "",
-            output_def=step.output.get("def", ""),
-            output_verilog=step.output.get("verilog", ""),
+            output_def=step.output.def_ or "",
+            output_verilog=step.output.verilog or "",
         )
         reslut = dreamplace_module.run_placement()
     
@@ -118,8 +118,8 @@ def run_legalization(workspace: Workspace,
             ecc_module=ecc_module,
             input_def=step.input.def_ or "",
             input_verilog=step.input.verilog or "",
-            output_def=step.output.get("def", ""),
-            output_verilog=step.output.get("verilog", ""),
+            output_def=step.output.def_ or "",
+            output_verilog=step.output.verilog or "",
         )
         reslut = dreamplace_module.run_legalization()
         

@@ -43,7 +43,7 @@ def build_step(
         tool="sizer",
         step_directory=step_directory,
     )
-    step.output["db"] = ""
+    step.output.db = ""
     script_dir = step.script.dir or step_directory / "script"
     step.script.sizer_env = script_dir / f"{workspace.design.name}.env_file"
     step.script.sizer_cmd = script_dir / f"{workspace.design.name}.cmd_file"
@@ -116,7 +116,7 @@ def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspa
 
 
 def _cmd_text(workspace: Workspace, step: WorkspaceStep) -> str:
-    output_dir = step.data.workdir_for(step.name)
+    output_dir = step.data.workdir_for(step.name) or ""
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
 
     command.flag("useOpenSTA")
@@ -148,12 +148,12 @@ def _cmd_text(workspace: Workspace, step: WorkspaceStep) -> str:
     command.option("outputPath", ".")
     command.option(
         "def_out_path",
-        os.path.relpath(step.output["def"], output_dir),
+        os.path.relpath(step.output.def_ or "", output_dir),
         value_type=cmdfile.ValueType.PATH,
     )
     command.option(
         "verilog_out_path",
-        os.path.relpath(step.output["verilog"], output_dir),
+        os.path.relpath(step.output.verilog or "", output_dir),
         value_type=cmdfile.ValueType.PATH,
     )
     _append_route_layer_options(command, workspace)

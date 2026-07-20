@@ -728,7 +728,7 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     db = json_read(workspace.config["db"])
     db["INPUT"]["def_path"] = path_text(step.input.def_)
     db["INPUT"]["verilog_path"] = path_text(step.input.verilog)
-    db["OUTPUT"]["output_dir_path"] = path_text(step.output.get("dir"))
+    db["OUTPUT"]["output_dir_path"] = path_text(step.output.dir)
     json_write(workspace.config["db"], db)
 
     if step.name == StepEnum.ROUTING.value:
@@ -740,7 +740,7 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
 
     if step.name == StepEnum.RCX.value:
         rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
-        rcx_output_dir = path_text(step.output.get("dir"))
+        rcx_output_dir = path_text(step.output.dir)
         spef_design_name = workspace.design.top_module or workspace.design.name
         rcx["output"] = rcx_output_dir
         for corner in rcx.get("corners", []):

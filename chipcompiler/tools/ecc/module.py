@@ -216,15 +216,17 @@ class ECCToolsModule:
         """init def"""
         self.ecc.def_init(def_path=path_text(path))
 
-    def read_verilog(self, verilog: str, top_module: str):
+    def read_verilog(self,
+                     verilog : PathArg,
+                     top_module: str):
         """init verilog"""
         self.ecc.verilog_init(path_text(verilog), top_module)
 
-    def def_save(self, def_path: str):
+    def def_save(self, def_path: PathArg):
         """save def file"""
         self.ecc.def_save(def_name=path_text(def_path))
 
-    def gds_save(self, output_path: str, is_harden: bool = False):
+    def gds_save(self, output_path: PathArg, is_harden: bool = False):
         """save gds file"""
         self.ecc.gds_save(path_text(output_path), is_harden)
 
@@ -243,7 +245,7 @@ class ECCToolsModule:
 
     def view_json_save(
         self,
-        output_dir: str,
+        output_dir: PathArg,
         json_format: str = "pretty",
         compress: bool = False,
     ):
@@ -264,7 +266,7 @@ class ECCToolsModule:
             compress=compress,
         )
 
-    def view_json_apply_edits(self, edits_path: str, compress: bool = False):
+    def view_json_apply_edits(self, edits_path: PathArg, compress: bool = False):
         """
         Apply edits generated for a view JSON package.
 
@@ -275,7 +277,7 @@ class ECCToolsModule:
         """
         return self.ecc.view_json_apply_edits(edits_path=path_text(edits_path), compress=compress)
 
-    def save_data(self, path: str):
+    def save_data(self, path: PathArg):
         """save ECC data"""
         return self.ecc.save_data(path=path_text(path))
 
@@ -977,7 +979,6 @@ class ECCToolsModule:
             config_dict["-temp_directory_path"] = path_text(work_dir)
         config_dict.update({
             "-output_timing_reports": "1" if "report" in modes else "0",
-            "-output_timing_features": "1" if "structured" in modes else "0",
             "-timing_path_limit": str(max_paths_per_analysis),
         })
         if corner:
@@ -1089,21 +1090,20 @@ class ECCToolsModule:
     def update_timing(self):
         return None
 
-    def write_abstract_lef(self, output_lef_path: str):
+    def write_abstract_lef(self, output_lef_path: PathArg):
         return self.ecc.write_abstract_lef(path_text(output_lef_path))
 
     def write_timing_model(
         self,
-        output_lib_path: str,
+        output_lib_path: PathArg,
         analysis_mode: str = "max",
         config: str = "",
         output_dir: PathArg = "",
         lib_paths: list[str] | None = None,
         sdc_path: str = "",
         spef_path: str = "",
-        design_name: str = "",
-    ):
-        output_lib_path = Path(output_lib_path)
+        design_name: str = ""):
+        output_lib_path = Path(output_lib_path or "")
         output_lib_path.parent.mkdir(parents=True, exist_ok=True)
 
         if lib_paths is None:

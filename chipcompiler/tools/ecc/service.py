@@ -52,8 +52,8 @@ def build_views(workspace: Workspace,
                                  step=step)
     
     info = {
-        "image" : step.output.get("image", ""),
-        "json" : step.output.get("json", ""),
+        "image" : step.output.image or "",
+        "json" : step.output.json or "",
         "metrics" : metrics.path,
         "information" : {}
     }
@@ -73,8 +73,8 @@ def build_metrics(workspace: Workspace,
 def build_layout(workspace: Workspace, 
                  step: WorkspaceStep) -> dict:
     info = {
-        "image" : step.output.get("image", ""),
-        "json" : step.output.get("json", "")
+        "image" : step.output.image or "",
+        "json" : step.output.json or ""
     }
     
     return info
@@ -82,7 +82,7 @@ def build_layout(workspace: Workspace,
 def build_subflow(workspace: Workspace, 
                   step: WorkspaceStep) -> dict:       
     info = {
-        "path" : step.subflow.get("path", "")
+        "path" : step.subflow.path or ""
     }
     
     return info
@@ -280,7 +280,7 @@ def build_maps_density(workspace: Workspace,
 def build_checklist(workspace: Workspace, 
                     step: WorkspaceStep) -> dict:          
     info = {
-        "path" : step.checklist.get("path", "")
+        "path" : step.checklist.path or ""
     }
     
     return info

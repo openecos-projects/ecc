@@ -131,7 +131,7 @@ def generate_global_var_tcl(workspace: Workspace,
     )
 
     # Convert all paths to absolute since Yosys runs in script/ subdirectory
-    netlist_file = _abspath(step.output.get("verilog", ""))
+    netlist_file = _abspath(step.output.verilog or "")
     timing_cell_stat_rpt = _abspath(step.report.stat)
     timing_cell_count_rpt = _abspath(step.report.check)
     generic_stat_json = _abspath(step.report.stat)
@@ -332,7 +332,7 @@ def build_step_space(step: WorkspaceStep) -> None:
     """
     step_directory = Path(step.directory)
     step_directory.mkdir(parents=True, exist_ok=True)
-    Path(step.output.get("dir", step_directory / "output")).mkdir(parents=True, exist_ok=True)
+    Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
     Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
     Path(step.data.tmp or step_directory / "data" / "tmp").mkdir(parents=True, exist_ok=True)
     Path(step.report.dir or step_directory / "report").mkdir(parents=True, exist_ok=True)

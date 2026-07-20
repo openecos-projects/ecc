@@ -205,7 +205,7 @@ def build_step_space(step: WorkspaceStep) -> None:
     step_directory = Path(step.directory)
     
     step_directory.mkdir(parents=True, exist_ok=True)
-    Path(step.output.get("dir", step_directory / "output")).mkdir(parents=True, exist_ok=True)
+    Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
     Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
     Path(step.feature.dir or step_directory / "feature").mkdir(parents=True, exist_ok=True)
     Path(step.report.dir or step_directory / "report").mkdir(parents=True, exist_ok=True)
@@ -250,7 +250,7 @@ def build_step_config(workspace: Workspace,
     if step.name == StepEnum.RCX.value:
         from chipcompiler.utility import json_read
         rcx_config = json_read(workspace.config[f"{StepEnum.RCX.value}"])
-        step.output["spef"] = [
+        step.output.spef = [
             spef_path
             for corner in rcx_config.get("corners", [])
             for spef_item in (

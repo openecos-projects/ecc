@@ -155,14 +155,14 @@ class EccChecklist:
 
     def build_checklist(self) -> list:
         refresh_step_checklist(self.workspace, self.workspace_step)
-        return self.workspace_step.checklist["checklist"]
+        return self.workspace_step.checklist.checklist
 
     def save(self) -> bool:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         return checklist.save()
 
     def update_item(self, step: str, type: str, item: str, state: str | CheckState, info: str = ""):
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         checklist.update(step=step, type=type, item=item, state=state, info=info)
 
     def check(self) -> bool:
@@ -190,7 +190,7 @@ class EccChecklist:
             return default
 
     def qor_metrics(self) -> QorMetrics:
-        return QorMetrics(self.workspace_step.analysis.get("metrics", ""))
+        return QorMetrics(self.workspace_step.analysis.metrics or "")
 
     def apply_checks(
         self, step: str, checks: list[tuple[str, str, bool, str]], warnings: set[str] | None = None
@@ -208,8 +208,8 @@ class EccChecklist:
                 info="" if success else info,
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
         return all(success or item in warnings for _, item, success, _ in checks)
 
@@ -220,12 +220,12 @@ class EccFloorplanChecklist(EccChecklist):
 
         step = StepEnum.FLOORPLAN.value
         metrics = self.qor_metrics()
-        db = json_read(self.workspace_step.feature.get("db", ""))
-        subflow = json_read(self.workspace_step.subflow.get("path", ""))
+        db = json_read(self.workspace_step.feature.db or "")
+        subflow = json_read(self.workspace_step.subflow.path or "")
 
         try:
             with open(
-                self.workspace_step.log.get("file", ""),
+                self.workspace_step.log.file or "",
                 encoding="utf-8",
                 errors="ignore",
             ) as file:
@@ -240,9 +240,9 @@ class EccFloorplanChecklist(EccChecklist):
         subflow_state = {item.get("name"): item.get("state") for item in subflow.get("steps", [])}
         output_success = all(
             [
-                self.check_file(self.workspace_step.output.get("def", "")),
-                self.check_file(self.workspace_step.output.get("verilog", "")),
-                self.check_file(self.workspace_step.output.get("gds", "")),
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
 
@@ -362,12 +362,12 @@ class EccNetlistOptChecklist(EccChecklist):
 
         step = StepEnum.NETLIST_OPT.value
         metrics = self.qor_metrics()
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        db = json_read(self.workspace_step.feature.db or "")
         config = json_read(self.workspace.config.get(StepEnum.NETLIST_OPT.value, ""))
 
         try:
             with open(
-                self.workspace_step.output.get("verilog", ""),
+                self.workspace_step.output.verilog or "",
                 encoding="utf-8",
                 errors="ignore",
             ) as file:
@@ -388,9 +388,9 @@ class EccNetlistOptChecklist(EccChecklist):
         db_nets = self.to_float(statis.get("num_nets"), 0.0)
         output_success = all(
             [
-                self.check_file(self.workspace_step.output.get("def", "")),
-                self.check_file(self.workspace_step.output.get("verilog", "")),
-                self.check_file(self.workspace_step.output.get("gds", "")),
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
 
@@ -456,7 +456,7 @@ class EccCtsChecklist(EccChecklist):
 
         step = StepEnum.CTS.value
         metrics = self.qor_metrics()
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        db = json_read(self.workspace_step.feature.db or "")
         config = json_read(self.workspace.config.get(StepEnum.CTS.value, ""))
 
         nets = db.get("Nets", {})
@@ -551,12 +551,12 @@ class EccTimingOptDrvChecklist(EccChecklist):
         return refresh_step_checklist(self.workspace, self.workspace_step)
 
         step = StepEnum.TIMING_OPT_DRV.value
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        db = json_read(self.workspace_step.feature.db or "")
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_DRV.value, ""))
 
         try:
             with open(
-                self.workspace_step.log.get("file", ""),
+                self.workspace_step.log.file or "",
                 encoding="utf-8",
                 errors="ignore",
             ) as file:
@@ -571,9 +571,9 @@ class EccTimingOptDrvChecklist(EccChecklist):
 
         output_success = all(
             [
-                self.check_file(self.workspace_step.output.get("def", "")),
-                self.check_file(self.workspace_step.output.get("verilog", "")),
-                self.check_file(self.workspace_step.output.get("gds", "")),
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
         log_success = not any(
@@ -611,8 +611,8 @@ class EccTimingOptDrvChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -623,8 +623,8 @@ class EccTimingOptHoldChecklist(EccChecklist):
         return refresh_step_checklist(self.workspace, self.workspace_step)
 
         step = StepEnum.TIMING_OPT_HOLD.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
+        db = json_read(self.workspace_step.feature.db or "")
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_HOLD.value, ""))
 
         buffer_cells = config.get("hold_insert_buffers", [])
@@ -633,9 +633,9 @@ class EccTimingOptHoldChecklist(EccChecklist):
 
         output_success = all(
             [
-                self.check_file(self.workspace_step.output.get("def", "")),
-                self.check_file(self.workspace_step.output.get("verilog", "")),
-                self.check_file(self.workspace_step.output.get("gds", "")),
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
         min_wns = self.to_float(metrics.get("min_WNS"))
@@ -669,8 +669,8 @@ class EccTimingOptHoldChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -681,8 +681,8 @@ class EccTimingOptSetupChecklist(EccChecklist):
         return refresh_step_checklist(self.workspace, self.workspace_step)
 
         step = StepEnum.TIMING_OPT_SETUP.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
-        db = json_read(self.workspace_step.feature.get("db", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
+        db = json_read(self.workspace_step.feature.db or "")
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_SETUP.value, ""))
 
         buffer_cells = config.get("setup_insert_buffers", [])
@@ -691,9 +691,9 @@ class EccTimingOptSetupChecklist(EccChecklist):
 
         output_success = all(
             [
-                self.check_file(self.workspace_step.output.get("def", "")),
-                self.check_file(self.workspace_step.output.get("verilog", "")),
-                self.check_file(self.workspace_step.output.get("gds", "")),
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
         max_wns = self.to_float(metrics.get("max_WNS"))
@@ -727,8 +727,8 @@ class EccTimingOptSetupChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -740,8 +740,8 @@ class EccRoutingChecklist(EccChecklist):
 
         step = StepEnum.ROUTING.value
         metrics = self.qor_metrics()
-        db = json_read(self.workspace_step.feature.get("db", ""))
-        feature = json_read(self.workspace_step.feature.get("step", "")).get(
+        db = json_read(self.workspace_step.feature.db or "")
+        feature = json_read(self.workspace_step.feature.step or "").get(
             StepEnum.ROUTING.value, {}
         )
         config = json_read(self.workspace.config.get(StepEnum.ROUTING.value, ""))
@@ -762,9 +762,9 @@ class EccRoutingChecklist(EccChecklist):
         timing_enabled = str(rt_config.get("-enable_timing", "0")) == "1"
         output_success = all(
             [
-                self.check_file(self.workspace_step.output.get("def", "")),
-                self.check_file(self.workspace_step.output.get("verilog", "")),
-                self.check_file(self.workspace_step.output.get("gds", "")),
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
 
@@ -820,12 +820,12 @@ class EccDrcChecklist(EccChecklist):
 
         step = StepEnum.DRC.value
         metrics = self.qor_metrics()
-        feature = json_read(self.workspace_step.feature.get("step", "")).get("drc", {})
+        feature = json_read(self.workspace_step.feature.step or "").get("drc", {})
         output_success = all(
             [
-                self.check_file(self.workspace_step.output.get("def", "")),
-                self.check_file(self.workspace_step.output.get("verilog", "")),
-                self.check_file(self.workspace_step.output.get("gds", "")),
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
 
@@ -883,13 +883,13 @@ class EccFillerChecklist(EccChecklist):
         return refresh_step_checklist(self.workspace, self.workspace_step)
 
         step = StepEnum.FILLER.value
-        db = json_read(self.workspace_step.feature.get("db", ""))
-        subflow = json_read(self.workspace_step.subflow.get("path", ""))
+        db = json_read(self.workspace_step.feature.db or "")
+        subflow = json_read(self.workspace_step.subflow.path or "")
         config = json_read(self.workspace.config.get(StepEnum.PLACEMENT.value, ""))
 
         try:
             with open(
-                self.workspace_step.log.get("file", ""),
+                self.workspace_step.log.file or "",
                 encoding="utf-8",
                 errors="ignore",
             ) as file:
@@ -904,9 +904,9 @@ class EccFillerChecklist(EccChecklist):
         pdk_fillers = getattr(self.workspace.pdk, "fillers", []) or []
         output_success = all(
             [
-                self.check_file(self.workspace_step.output.get("def", "")),
-                self.check_file(self.workspace_step.output.get("verilog", "")),
-                self.check_file(self.workspace_step.output.get("gds", "")),
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
         statis = db.get("Design Statis", {})
@@ -954,8 +954,8 @@ class EccFillerChecklist(EccChecklist):
             info="post-filler DRC is not run in current flow",
         )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -984,20 +984,20 @@ class EccHardenChecklist(EccChecklist):
                 "Output",
                 "check abstract LEF",
                 lef_metric == 1
-                and self.check_file(self.workspace_step.output.get("lef", ""), lef_tokens),
+                and self.check_file(self.workspace_step.output.lef or "", lef_tokens),
                 lef_error or "harden_lef_exists is not 1 or the LEF deliverable is missing/invalid",
             ),
             (
                 "Output",
                 "check timing model LIB",
                 lib_metric == 1
-                and self.check_file(self.workspace_step.output.get("lib", ""), lib_tokens),
+                and self.check_file(self.workspace_step.output.lib or "", lib_tokens),
                 lib_error or "harden_lib_exists is not 1 or the LIB deliverable is missing/invalid",
             ),
             (
                 "Output",
                 "check harden GDS",
-                gds_metric == 1 and self.check_file(self.workspace_step.output.get("gds", "")),
+                gds_metric == 1 and self.check_file(self.workspace_step.output.gds or ""),
                 gds_error or "harden_gds_exists is not 1 or the GDS deliverable is missing",
             ),
         ]
@@ -1018,11 +1018,11 @@ class EccHardenChecklist(EccChecklist):
 
 class EccRcxChecklist(EccChecklist):
     def collect_rcx_spef_paths(self) -> list:
-        spef_paths = self.workspace_step.output.get("spef", [])
+        spef_paths = self.workspace_step.output.spef or []
         if isinstance(spef_paths, str):
             spef_paths = [spef_paths]
 
-        output_dir = self.workspace_step.output.get("dir", "")
+        output_dir = self.workspace_step.output.dir or ""
         if output_dir and os.path.isdir(output_dir):
             spef_paths.extend(glob.glob(os.path.join(output_dir, "*.spef")))
 
@@ -1155,20 +1155,20 @@ class EccStaChecklist(EccChecklist):
             str(path)
             for _, path in sta_report_artifact_paths(
                 workspace=self.workspace,
-                report_root=self.workspace_step.report.get("dir", ""),
+                report_root=self.workspace_step.report.dir or "",
             )
         ]
 
     def collect_sta_qor_paths(self) -> list:
         return sta_qor_summary_paths(
             workspace=self.workspace,
-            feature_root=self.workspace_step.feature.get("dir", ""),
+            feature_root=self.workspace_step.feature.dir or "",
         )
 
     def collect_sta_timing_paths(self) -> list:
         return sta_timing_paths_paths(
             workspace=self.workspace,
-            feature_root=self.workspace_step.feature.get("dir", ""),
+            feature_root=self.workspace_step.feature.dir or "",
         )
 
     def load_sta_qor_summaries(self, qor_paths: list) -> list:
@@ -1184,7 +1184,7 @@ class EccStaChecklist(EccChecklist):
         step = StepEnum.STA.value
         artifact_paths = sta_report_artifact_paths(
             workspace=self.workspace,
-            report_root=self.workspace_step.report.get("dir", ""),
+            report_root=self.workspace_step.report.dir or "",
         )
         expected_paths = [str(path) for _, path in artifact_paths]
         qor_paths = self.collect_sta_qor_paths()
@@ -1302,8 +1302,8 @@ class EccStaChecklist(EccChecklist):
                 info=info,
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success or warning for _, _, success, warning, _ in checks)

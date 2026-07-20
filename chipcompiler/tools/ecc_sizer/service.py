@@ -10,9 +10,9 @@ def get_step_info(workspace: Workspace, step: WorkspaceStep, id: str) -> dict:
 
     match id:
         case "input":
-            step_info = stringify_paths(step.input)
+            step_info = build_input(step)
         case "output":
-            step_info = stringify_paths(step.output)
+            step_info = build_output(step)
         case "subflow":
             step_info = build_subflow(step)
         case "checklist":
@@ -26,12 +26,38 @@ def get_step_info(workspace: Workspace, step: WorkspaceStep, id: str) -> dict:
     return step_info
 
 
+def build_input(step: WorkspaceStep) -> dict:
+    return {
+        "def": stringify_paths(step.input.def_),
+        "verilog": stringify_paths(step.input.verilog),
+        "db": stringify_paths(step.input.db),
+    }
+
+
+def build_output(step: WorkspaceStep) -> dict:
+    output = step.output
+    return {
+        "dir": stringify_paths(output.dir),
+        "def": stringify_paths(output.def_),
+        "verilog": stringify_paths(output.verilog),
+        "gds": stringify_paths(output.gds),
+        "db": stringify_paths(output.db),
+        "image": stringify_paths(output.image),
+        "json": stringify_paths(output.json),
+        "view_json": stringify_paths(output.view_json),
+        "view_json_edits": stringify_paths(output.view_json_edits),
+        "lef": stringify_paths(output.lef),
+        "lib": stringify_paths(output.lib),
+        "spef": stringify_paths(output.spef),
+    }
+
+
 def build_subflow(step: WorkspaceStep) -> dict:
-    return {"path": stringify_paths(step.subflow.get("path", ""))}
+    return {"path": stringify_paths(step.subflow.path or "")}
 
 
 def build_checklist(step: WorkspaceStep) -> dict:
-    return {"path": stringify_paths(step.checklist.get("path", ""))}
+    return {"path": stringify_paths(step.checklist.path or "")}
 
 
 def build_config(step: WorkspaceStep) -> dict:

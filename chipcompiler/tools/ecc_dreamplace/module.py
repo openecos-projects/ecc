@@ -19,16 +19,16 @@ class DreamplaceModule:
         ecc_module: ECCToolsModule,
         input_def: str | Path | None,
         input_verilog: str | Path | None,
-        output_def: str,
-        output_verilog: str,
+        output_def: str | Path | None,
+        output_verilog: str | Path | None,
     ):
         self.workspace = workspace
         self.step = step
         self.ecc_module = ecc_module
         self.input_def = str(input_def or "")
         self.input_verilog = str(input_verilog or "")
-        self.output_def = str(output_def)
-        self.output_verilog = str(output_verilog)
+        self.output_def = str(output_def or "")
+        self.output_verilog = str(output_verilog or "")
         self.param_path = workspace.config["dreamplace"]
         self.result_dir = str(step.data.workdir_for(step.name))
 

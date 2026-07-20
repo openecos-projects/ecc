@@ -63,14 +63,14 @@ class DreamplaceChecklist:
 
     def build_checklist(self) -> list:
         refresh_step_checklist(self.workspace, self.workspace_step)
-        return self.workspace_step.checklist["checklist"]
+        return self.workspace_step.checklist.checklist
 
     def save(self) -> bool:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         return checklist.save()
 
     def update_item(self, step: str, type: str, item: str, state: str | CheckState, info: str = ""):
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         checklist.update(step=step, type=type, item=item, state=state, info=info)
 
     def set_item_state(self, step: str, type: str, item: str, state: CheckState, info: str = ""):
@@ -82,7 +82,7 @@ class DreamplaceChecklist:
     def check(self) -> bool:
         return refresh_step_checklist(self.workspace, self.workspace_step)
 
-    def check_file(self, path: str, text_tokens: list | None = None) -> bool:
+    def check_file(self, path: str | Path, text_tokens: list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
             return False
 
@@ -115,9 +115,10 @@ class DreamplaceChecklist:
             return default
 
     def step_file_success(self) -> bool:
+        output = self.workspace_step.output
         return all(
-            self.check_file(self.workspace_step.output.get(key, ""))
-            for key in ("def", "verilog", "gds")
+            self.check_file(path or "")
+            for path in (output.def_, output.verilog, output.gds)
         )
 
     def qor_metrics(self) -> QorMetrics:
@@ -161,8 +162,8 @@ class DreamplaceChecklist:
             )
             results.append(success or warning)
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(results)
@@ -186,7 +187,7 @@ class DreamplaceChecklist:
         return data
 
     def view_instances(self) -> dict:
-        view_dir = self.workspace_step.output.get("view_json", "")
+        view_dir = self.workspace_step.output.view_json or ""
         return json_read(Path(view_dir) / "design" / "instances.json")
 
     def count_unplaced_instances(self) -> int | None:

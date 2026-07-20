@@ -3,7 +3,7 @@ import gzip
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import LogPaths, ScriptPaths, StateEnum, StepInput
+from chipcompiler.data import LogPaths, OutputPaths, ScriptPaths, StateEnum, StepInput
 from chipcompiler.tools.yosys import runner
 
 
@@ -24,7 +24,7 @@ def _build_workspace_and_step(tmp_path: Path):
     )
     step = SimpleNamespace(
         input=StepInput(verilog=rtl_file),
-        output={"verilog": output_file},
+        output=OutputPaths(verilog=output_file),
         log=LogPaths(file=log_file),
         script=ScriptPaths(dir=script_dir),
         directory=tmp_path
@@ -90,11 +90,11 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
     assert result is True
     assert len(check_calls) == 1
     assert check_calls[0]["yosys_cmd"] == ["yosys"]
-    assert check_calls[0]["cwd"] == str(step.script["dir"])
+    assert check_calls[0]["cwd"] == str(step.script.dir)
     assert check_calls[0]["env"] == runtime_env
     assert len(run_calls) == 1
     assert run_calls[0]["cmd"] == ["yosys", "yosys_synthesis.tcl"]
-    assert run_calls[0]["cwd"] == str(step.script["dir"])
+    assert run_calls[0]["cwd"] == str(step.script.dir)
     assert run_calls[0]["env"] == runtime_env
     assert sta_calls == [{"workspace": workspace, "step": step, "ecc_module": None}]
     assert ("run yosys", StateEnum.Success) in updates

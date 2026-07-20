@@ -2287,7 +2287,7 @@ def test_ecc_plot_step_metrics_accepts_path_metrics(tmp_path, monkeypatch):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.analysis["metrics"].write_text("{}", encoding="utf-8")
+    step.analysis.metrics.write_text("{}", encoding="utf-8")
     calls = []
     monkeypatch.setattr(
         ecc_plot,
@@ -2297,7 +2297,7 @@ def test_ecc_plot_step_metrics_accepts_path_metrics(tmp_path, monkeypatch):
 
     assert ecc_plot.ECCToolsPlot(workspace, step).plot_step_metrics() is True
     assert calls == [
-        ({}, str(step.analysis["metrics"]).replace(".json", ".png")),
+        ({}, str(step.analysis.metrics).replace(".json", ".png")),
     ]
 
 
@@ -2392,8 +2392,8 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
 
     assert ecc_plot.ECCToolsPlot(workspace, step).plot_drc_statis() is True
 
-    expected_image_path = str(step.analysis["statis_csv"]).replace(".csv", ".png")
-    assert plot_calls[0]["input_path"] == str(step.analysis["statis_csv"])
+    expected_image_path = str(step.analysis.statis_csv).replace(".csv", ".png")
+    assert plot_calls[0]["input_path"] == str(step.analysis.statis_csv)
     assert plot_calls[0]["output_path"] == expected_image_path
     assert metric_calls == [expected_image_path]
 
@@ -2420,25 +2420,25 @@ def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):
     assert isinstance(step.directory, Path)
     assert step.input.def_ == input_def
     assert step.input.verilog == input_verilog
-    assert step.output["dir"] == expected_output_dir
-    assert step.output["view_json"] == expected_view_dir
-    assert step.output["view_json_edits"] == expected_view_dir / "edits" / "layout_edits.json"
-    assert step.analysis["qor_metrics"] == expected_step_dir / "analysis" / "qor_metrics.json"
-    assert step.analysis["qor_summary"] == expected_step_dir / "analysis" / "qor_summary.json"
-    assert step.analysis["qor_hotspots"] == expected_step_dir / "analysis" / "qor_hotspots.json"
-    assert step.analysis["sta_timing_issues"] == (
+    assert step.output.dir == expected_output_dir
+    assert step.output.view_json == expected_view_dir
+    assert step.output.view_json_edits == expected_view_dir / "edits" / "layout_edits.json"
+    assert step.analysis.qor_metrics == expected_step_dir / "analysis" / "qor_metrics.json"
+    assert step.analysis.qor_summary == expected_step_dir / "analysis" / "qor_summary.json"
+    assert step.analysis.qor_hotspots == expected_step_dir / "analysis" / "qor_hotspots.json"
+    assert step.analysis.sta_timing_issues == (
         expected_step_dir / "analysis" / "sta_timing_issues.json"
     )
-    assert step.report["sta"] == {"dir": expected_step_dir / "report"}
-    assert step.feature["sta"] == {
+    assert step.report.sta == {"dir": expected_step_dir / "report"}
+    assert step.feature.sta == {
         "dir": expected_step_dir / "feature",
         "qor_summary_root": expected_step_dir / "feature",
         "timing_paths_root": expected_step_dir / "feature",
     }
-    assert str(step.output["view_json"]) == (
+    assert str(step.output.view_json) == (
         f"{expected_step_dir}/output/gcd_{StepEnum.PLACEMENT.value}_view"
     )
-    assert str(step.output["view_json_edits"]) == (
+    assert str(step.output.view_json_edits) == (
         f"{expected_step_dir}/output/gcd_{StepEnum.PLACEMENT.value}_view/edits/layout_edits.json"
     )
 
@@ -2458,14 +2458,14 @@ def test_ecc_build_step_space_creates_path_directories(tmp_path):
 
     build_step_space(step)
 
-    assert isinstance(step.output["dir"], Path)
-    assert step.output["dir"].is_dir()
+    assert isinstance(step.output.dir, Path)
+    assert step.output.dir and step.output.dir.is_dir()
     assert step.data.dir and step.data.dir.is_dir()
     assert step.feature.dir and step.feature.dir.is_dir()
     assert step.report.dir and step.report.dir.is_dir()
-    assert step.log["dir"].is_dir()
-    assert step.script["dir"].is_dir()
-    assert step.analysis["dir"].is_dir()
+    assert step.log.dir and step.log.dir.is_dir()
+    assert step.script.dir and step.script.dir.is_dir()
+    assert step.analysis.dir and step.analysis.dir.is_dir()
     assert (step.directory / "data" / "pl" / "density").is_dir()
     assert (step.directory / "data" / "pl" / "report").is_dir()
 
@@ -2485,9 +2485,9 @@ def test_ecc_subflow_writes_path_payload_as_json_strings(tmp_path):
 
     EccSubFlow(workspace, step)
 
-    with open(step.subflow["path"], encoding="utf-8") as file:
+    with open(str(step.subflow.path), encoding="utf-8") as file:
         data = json.load(file)
-    assert data["path"] == str(step.subflow["path"])
+    assert data["path"] == str(step.subflow.path)
 
 
 def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
@@ -2509,30 +2509,30 @@ def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
     )
 
     assert ecc_service.get_step_info(workspace, step, "views") == {
-        "image": str(step.output["image"]),
-        "json": str(step.output["json"]),
+        "image": str(step.output.image),
+        "json": str(step.output.json),
         "metrics": str(tmp_path / "metrics.json"),
         "information": {},
     }
     assert ecc_service.get_step_info(workspace, step, "layout") == {
-        "image": str(step.output["image"]),
-        "json": str(step.output["json"]),
+        "image": str(step.output.image),
+        "json": str(step.output.json),
     }
     assert ecc_service.get_step_info(workspace, step, "metrics") == {
         "metrics": str(tmp_path / "metrics.json"),
     }
     assert ecc_service.get_step_info(workspace, step, "subflow") == {
-        "path": str(step.subflow["path"])
+        "path": str(step.subflow.path)
     }
     assert ecc_service.get_step_info(workspace, step, "config") == {
         "config": str(workspace.config[StepEnum.PLACEMENT.value]),
     }
     assert ecc_service.get_step_info(workspace, step, "analysis") == {
-        "metrics": str(step.analysis["metrics"]),
-        "qor_metrics": str(step.analysis["qor_metrics"]),
-        "qor_summary": str(step.analysis["qor_summary"]),
-        "qor_hotspots": str(step.analysis["qor_hotspots"]),
-        "statis": str(step.analysis["statis_csv"]),
+        "metrics": str(step.analysis.metrics),
+        "qor_metrics": str(step.analysis.qor_metrics),
+        "qor_summary": str(step.analysis.qor_summary),
+        "qor_hotspots": str(step.analysis.qor_hotspots),
+        "statis": str(step.analysis.statis_csv),
         "data summary": str(step.feature.db),
         "step feature": str(step.feature.step),
         "step report": str(step.report.db),
@@ -2564,9 +2564,9 @@ def test_ecc_builder_uses_explicit_step_directory(tmp_path):
     assert step.name == StepEnum.TIMING_OPT.value
     assert step.directory == step_directory
     assert isinstance(step.directory, Path)
-    assert step.output["dir"] == step_directory / "output"
+    assert step.output.dir == step_directory / "output"
     assert step.data.steps[StepEnum.TIMING_OPT.value] == step_directory / "data" / "to"
-    assert step.log["file"] == step_directory / "log" / f"{StepEnum.TIMING_OPT.value}.log"
-    assert str(step.output["dir"]) == f"{step_directory}/output"
+    assert step.log.file == step_directory / "log" / f"{StepEnum.TIMING_OPT.value}.log"
+    assert str(step.output.dir) == f"{step_directory}/output"
     assert str(step.data.steps[StepEnum.TIMING_OPT.value]) == f"{step_directory}/data/to"
-    assert str(step.log["file"]) == f"{step_directory}/log/{StepEnum.TIMING_OPT.value}.log"
+    assert str(step.log.file) == f"{step_directory}/log/{StepEnum.TIMING_OPT.value}.log"
