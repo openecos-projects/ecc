@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
+from chipcompiler.data import EccOutput, WorkspaceStep, Workspace, StateEnum, StepEnum
 from chipcompiler.utility.path import path_text
 from klayout import db
 from klayout import lay
@@ -21,9 +21,10 @@ class KlayoutModule:
         """
         Save the layout image to the specified path.
         """        
-        gds_file = self.step.output.gds
-        img_file = self.step.output.image
-        
+        output = self.step.output
+        gds_file = output.gds if isinstance(output, EccOutput) else None
+        img_file = output.image
+
         if gds_file is None or img_file is None or not os.path.exists(gds_file):
             return False
         

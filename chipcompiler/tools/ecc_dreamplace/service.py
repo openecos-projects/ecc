@@ -2,8 +2,9 @@
 # -*- encoding: utf-8 -*-
 import os
 from chipcompiler.data import (
-    Workspace, 
-    WorkspaceStep, 
+    EccStep,
+    Workspace,
+    WorkspaceStep,
     StepEnum
 )
 
@@ -11,7 +12,7 @@ from chipcompiler.utility import dict_to_str
 
     
 def get_step_info(workspace: Workspace, 
-                  step: WorkspaceStep,
+                  step: EccStep,
                   id : str) -> dict:
     """
     get step info by step and command id, return dict as resource definition

@@ -4,7 +4,7 @@ import sys
 import os
 from pathlib import Path
        
-from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
+from chipcompiler.data import EccStep, WorkspaceStep, Workspace, StateEnum, StepEnum
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.tools.ecc.plot import ECCToolsPlot
@@ -180,7 +180,7 @@ def create_db_engine(workspace: Workspace,
     return ecc_module
         
 def get_eda_instance(workspace: Workspace,
-                     step: WorkspaceStep,
+                     step: EccStep,
                      ecc_module: ECCToolsModule=None) -> ECCToolsModule:
     """
     ecc_module is ecc module from db engine, 
@@ -279,7 +279,7 @@ def run_sta_without_spef(workspace: Workspace,
     return True
 
 def save_data(workspace: Workspace,
-              step: WorkspaceStep,
+              step: EccStep,
               ecc_module : ECCToolsModule,
               feature_step : bool = True,
               report_timing : bool = False) -> bool:
@@ -361,7 +361,7 @@ def save_data(workspace: Workspace,
     return True
     
 def run_step(workspace: Workspace,
-             step: WorkspaceStep,
+             step: EccStep,
              ecc_module : ECCToolsModule | None = None) -> bool:
     if not is_eda_exist():
         return StateEnum.Invalid
@@ -425,7 +425,7 @@ def run_step(workspace: Workspace,
     return state
 
 def run_analysis(workspace: Workspace,
-                 step: WorkspaceStep,
+                 step: EccStep,
                  subflow : EccSubFlow):
     # save metrics
     build_step_metrics(workspace=workspace, 
@@ -442,7 +442,7 @@ def run_analysis(workspace: Workspace,
     checklist.check()
 
 def run_net_opt(workspace: Workspace,
-                step: WorkspaceStep,
+                step: EccStep,
                 ecc_module : ECCToolsModule = None) -> bool:
     """
     run net optimization
@@ -477,7 +477,7 @@ def run_net_opt(workspace: Workspace,
     return reslut
     
 def run_placement(workspace: Workspace,
-                  step: WorkspaceStep,
+                  step: EccStep,
                   ecc_module : ECCToolsModule = None) -> bool:
     """
     run placement
@@ -508,7 +508,7 @@ def run_placement(workspace: Workspace,
     return reslut
 
 def run_cts(workspace: Workspace,
-            step: WorkspaceStep,
+            step: EccStep,
             ecc_module : ECCToolsModule = None) -> bool:
     """
     run CTS
@@ -543,7 +543,7 @@ def run_cts(workspace: Workspace,
     return reslut
 
 def run_timing_opt_drv(workspace: Workspace,
-                       step: WorkspaceStep,
+                       step: EccStep,
                        ecc_module : ECCToolsModule = None) -> bool:
     """
     run timing optization drv
@@ -577,7 +577,7 @@ def run_timing_opt_drv(workspace: Workspace,
     return reslut
 
 def run_timing_opt_hold(workspace: Workspace,
-                        step: WorkspaceStep,
+                        step: EccStep,
                         ecc_module : ECCToolsModule = None) -> bool:
     """
     run timing optization hold 
@@ -607,7 +607,7 @@ def run_timing_opt_hold(workspace: Workspace,
     return reslut
 
 def run_routing(workspace: Workspace,
-                step: WorkspaceStep,
+                step: EccStep,
                 ecc_module : ECCToolsModule = None) -> bool:
     """
     run routing
@@ -646,7 +646,7 @@ def run_routing(workspace: Workspace,
 
 
 def run_drc(workspace: Workspace,
-            step: WorkspaceStep,
+            step: EccStep,
             ecc_module : ECCToolsModule = None) -> bool:
     """
     run chip drc
@@ -685,7 +685,7 @@ def run_drc(workspace: Workspace,
     return reslut
 
 def run_legalization(workspace: Workspace,
-                     step: WorkspaceStep,
+                     step: EccStep,
                      ecc_module : ECCToolsModule = None) -> bool:
     """
     run placement legalization
@@ -716,7 +716,7 @@ def run_legalization(workspace: Workspace,
     return reslut
 
 def run_filler(workspace: Workspace,
-               step: WorkspaceStep,
+               step: EccStep,
                ecc_module : ECCToolsModule = None) -> bool:
     """
     run placement filler
@@ -747,7 +747,7 @@ def run_filler(workspace: Workspace,
     return reslut
 
 def run_floorplan(workspace: Workspace,
-                  step: WorkspaceStep,
+                  step: EccStep,
                   ecc_module : ECCToolsModule = None) -> bool:
     """
     run floorplan
@@ -926,7 +926,7 @@ def run_floorplan(workspace: Workspace,
     return reslut 
 
 def run_harden(workspace: Workspace,
-               step: WorkspaceStep,
+               step: EccStep,
                ecc_module : ECCToolsModule = None) -> bool:
     """
     run harden, save design as Lef Macro and extract lib
@@ -969,7 +969,7 @@ def run_harden(workspace: Workspace,
     return reslut
 
 def run_rcx(workspace: Workspace,
-            step: WorkspaceStep,
+            step: EccStep,
             ecc_module : ECCToolsModule = None) -> bool:
     """
     run rcx
@@ -1004,7 +1004,7 @@ def run_rcx(workspace: Workspace,
 
 
 def run_sta(workspace: Workspace,
-            step: WorkspaceStep,
+            step: EccStep,
             ecc_module : ECCToolsModule = None) -> bool:
     """
     run sta

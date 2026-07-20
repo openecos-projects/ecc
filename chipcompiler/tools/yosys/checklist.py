@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, WorkspaceStep, YosysStep
 from chipcompiler.utility import json_read
 from chipcompiler.utility.gzip import read_text_maybe_gzip
 
@@ -21,7 +21,7 @@ class YosysChecklist:
 
     def __init__(self,
                  workspace : Workspace,
-                 workspace_step: WorkspaceStep,
+                 workspace_step: YosysStep,
                  init_checklist : bool = True):
         self.workspace = workspace
         self.workspace_step = workspace_step

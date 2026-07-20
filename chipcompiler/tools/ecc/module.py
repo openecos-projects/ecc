@@ -200,7 +200,7 @@ class ECCToolsModule:
         self.ecc.def_init(def_path=path_text(path))
 
     def read_verilog(self, 
-                     verilog : PathArg, 
+                     verilog : PathArg,
                      top_module: str):
         """init verilog"""
         self.ecc.verilog_init(path_text(verilog),

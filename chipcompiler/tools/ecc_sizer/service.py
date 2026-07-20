@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from chipcompiler.data import Workspace, WorkspaceStep
+from chipcompiler.data import EccStep, Workspace, WorkspaceStep
 from chipcompiler.utility import dict_to_str
 from chipcompiler.utility.path import stringify_paths
 
 
-def get_step_info(workspace: Workspace, step: WorkspaceStep, id: str) -> dict:
+def get_step_info(workspace: Workspace, step: EccStep, id: str) -> dict:
     step_info = {}
 
     match id:
@@ -26,7 +26,7 @@ def get_step_info(workspace: Workspace, step: WorkspaceStep, id: str) -> dict:
     return step_info
 
 
-def build_input(step: WorkspaceStep) -> dict:
+def build_input(step: EccStep) -> dict:
     return {
         "def": stringify_paths(step.input.def_),
         "verilog": stringify_paths(step.input.verilog),
@@ -34,7 +34,7 @@ def build_input(step: WorkspaceStep) -> dict:
     }
 
 
-def build_output(step: WorkspaceStep) -> dict:
+def build_output(step: EccStep) -> dict:
     output = step.output
     return {
         "dir": stringify_paths(output.dir),
@@ -52,15 +52,15 @@ def build_output(step: WorkspaceStep) -> dict:
     }
 
 
-def build_subflow(step: WorkspaceStep) -> dict:
+def build_subflow(step: EccStep) -> dict:
     return {"path": stringify_paths(step.subflow.path or "")}
 
 
-def build_checklist(step: WorkspaceStep) -> dict:
+def build_checklist(step: EccStep) -> dict:
     return {"path": stringify_paths(step.checklist.path or "")}
 
 
-def build_config(step: WorkspaceStep) -> dict:
+def build_config(step: EccStep) -> dict:
     return {
         "sizer_env": stringify_paths(step.script.sizer_env or ""),
         "sizer_cmd": stringify_paths(step.script.sizer_cmd or ""),

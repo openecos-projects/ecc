@@ -3,13 +3,13 @@ from __future__ import annotations
 import os
 import subprocess
 
-from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
+from chipcompiler.data import EccStep, StateEnum, Workspace, WorkspaceStep
 
 from .subflow import SizerSubFlow, SizerSubFlowEnum
 from .utility import get_sizer_command, is_eda_exist, is_sizer_runtime_exist
 
 
-def _has_required_outputs(step: WorkspaceStep) -> bool:
+def _has_required_outputs(step: EccStep) -> bool:
     return os.path.exists(step.output.def_ or "") and os.path.exists(
         step.output.verilog or ""
     )
@@ -17,7 +17,7 @@ def _has_required_outputs(step: WorkspaceStep) -> bool:
 
 def run_step(
     workspace: Workspace,
-    step: WorkspaceStep,
+    step: EccStep,
     ecc_module=None,
 ) -> StateEnum:
     del ecc_module

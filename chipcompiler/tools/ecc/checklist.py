@@ -6,10 +6,11 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import (
-    Workspace, 
-    WorkspaceStep, 
-    Checklist, 
-    StepEnum, 
+    EccStep,
+    Workspace,
+    WorkspaceStep,
+    Checklist,
+    StepEnum,
     CheckState
 )
 from chipcompiler.utility import json_read
@@ -130,7 +131,7 @@ class EccChecklist:
 
     def __init__(self,
                  workspace : Workspace,
-                 workspace_step: WorkspaceStep,
+                 workspace_step: EccStep,
                  init_checklist : bool = True):
         self.workspace = workspace
         self.workspace_step = workspace_step

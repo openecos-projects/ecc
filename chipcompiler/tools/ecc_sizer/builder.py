@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rosettakit import cmdfile
 
-from chipcompiler.data import Workspace, WorkspaceStep
+from chipcompiler.data import EccStep, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc import builder as ecc_builder
 
 from .utility import find_sizer_root
@@ -17,11 +17,11 @@ def build_step(
     step_name: str,
     input_def: Path | None,
     input_verilog: Path | None,
-    input_db: Path | None = None,
+    input_db: Path | str | None = None,
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
-) -> WorkspaceStep:
+) -> EccStep:
     safe_step_name = "_".join(step_name.split()).lower()
     step_directory = Path(workspace.directory) / f"{safe_step_name}_sizer"
     if output_def is None:
@@ -50,18 +50,18 @@ def build_step(
     return step
 
 
-def build_step_space(step: WorkspaceStep) -> None:
+def build_step_space(step: EccStep) -> None:
     ecc_builder.build_step_space(step)
 
 
-def build_sub_flow(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
+def build_sub_flow(workspace: Workspace, workspace_step: EccStep) -> None:
     from .subflow import SizerSubFlow
 
     subflow = SizerSubFlow(workspace=workspace, workspace_step=workspace_step)
     subflow.build_sub_flow()
 
 
-def build_checklist(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
+def build_checklist(workspace: Workspace, workspace_step: EccStep) -> None:
     from .checklist import SizerChecklist
 
     checklist = SizerChecklist(workspace=workspace, workspace_step=workspace_step)
@@ -115,7 +115,7 @@ def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspa
         command.option("max_route_layer", top)
 
 
-def _cmd_text(workspace: Workspace, step: WorkspaceStep) -> str:
+def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     output_dir = step.data.workdir_for(step.name) or ""
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
 
@@ -160,7 +160,7 @@ def _cmd_text(workspace: Workspace, step: WorkspaceStep) -> str:
     return command.build()
 
 
-def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
+def build_step_config(workspace: Workspace, step: EccStep) -> None:
     env_template = _sizer_env_template()
     env_path = step.script.sizer_env
     cmd_path = step.script.sizer_cmd

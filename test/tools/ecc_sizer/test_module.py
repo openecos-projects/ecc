@@ -10,8 +10,9 @@ from rosettakit.errors import ValidationError
 
 from chipcompiler.data import (
     PDK,
+    EccOutput,
+    EccStep,
     OriginDesign,
-    OutputPaths,
     Parameters,
     StateEnum,
     StepEnum,
@@ -606,10 +607,10 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
     output_def.write_text("def\n", encoding="utf-8")
     output_verilog.write_text("module gcd; endmodule\n", encoding="utf-8")
 
-    step = WorkspaceStep(
+    step = EccStep(
         name=StepEnum.TIMING_OPT.value,
         tool="sizer",
-        output=OutputPaths(
+        output=EccOutput(
             def_=output_def,
             verilog=output_verilog,
             gds=tmp_path / "missing.gds",
@@ -641,18 +642,18 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
         ]
     }
 
-    sizer_step = WorkspaceStep(
+    sizer_step = EccStep(
         name=StepEnum.TIMING_OPT.value,
         tool="sizer",
-        output=OutputPaths(
+        output=EccOutput(
             def_=tmp_path / "sizer.def",
             verilog=tmp_path / "sizer.v",
         ),
     )
-    post_sizer_step = WorkspaceStep(
+    post_sizer_step = EccStep(
         name=StepEnum.LEGALIZATION.value,
         tool="ecc",
-        output=OutputPaths(
+        output=EccOutput(
             def_=tmp_path / "post.def",
             verilog=tmp_path / "post.v",
             gds=tmp_path / "post.gds",

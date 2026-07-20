@@ -636,9 +636,14 @@ def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
         "step feature": str(step.feature.step),
         "step report": str(step.report.db),
     }
+    sta = step.report.sta
     assert ecc_service.get_step_info(workspace, step, "sta") == {
-        key: str(value)
-        for key, value in step.report.sta.items()
+        "timing": str(sta.timing),
+        "hold": str(sta.hold),
+        "setup": str(sta.setup),
+        "cap": str(sta.cap),
+        "fanout": str(sta.fanout),
+        "trans": str(sta.trans),
     }
 
 

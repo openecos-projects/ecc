@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from chipcompiler.data import (
+    EccStep,
     Workspace,
     WorkspaceStep,
     Checklist,
@@ -35,7 +36,7 @@ class DreamplaceChecklist:
 
     def __init__(self,
                  workspace : Workspace,
-                 workspace_step: WorkspaceStep,
+                 workspace_step: EccStep,
                  init_checklist : bool = True):
         self.workspace = workspace
         self.workspace_step = workspace_step

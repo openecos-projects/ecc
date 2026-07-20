@@ -1,16 +1,17 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 from chipcompiler.data import (
-    Workspace, 
-    WorkspaceStep, 
-    StepMetrics, 
+    EccStep,
+    Workspace,
+    WorkspaceStep,
+    StepMetrics,
 )
 
 from chipcompiler.tools.ecc.subflow import EccSubFlow
 
 
 def build_step_metrics(workspace: Workspace, 
-                       step: WorkspaceStep,
+                       step: EccStep,
                        subflow: EccSubFlow = None) -> StepMetrics:
     """
     Build and return a StepMetrics instance for the given workspace step.

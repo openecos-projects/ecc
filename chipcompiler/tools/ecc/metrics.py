@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 from chipcompiler.data import (
-    Workspace, 
-    WorkspaceStep, 
-    StepMetrics, 
+    EccStep,
+    Workspace,
+    WorkspaceStep,
+    StepMetrics,
     save_metrics,
     StepEnum,
     StateEnum
@@ -14,7 +15,7 @@ from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 
 
 def build_step_metrics(workspace: Workspace, 
-                       step: WorkspaceStep,
+                       step: EccStep,
                        subflow: EccSubFlow = None) -> StepMetrics:
     """
     Build and return a StepMetrics instance for the given workspace step.
@@ -69,7 +70,7 @@ def build_step_metrics(workspace: Workspace,
 
 
 def build_metrics_timing(workspace: Workspace, 
-                         step: WorkspaceStep) -> dict:
+                         step: EccStep) -> dict:
     metrics = {}
     
     data = json_read(step.feature.timing or "")
@@ -94,7 +95,7 @@ def build_metrics_timing(workspace: Workspace,
     return metrics
 
 def build_metrics_db(workspace: Workspace, 
-                    step: WorkspaceStep) -> dict:
+                    step: EccStep) -> dict:
     # db summary matrics
     metrics = {}
     
@@ -116,12 +117,12 @@ def build_metrics_db(workspace: Workspace,
     return metrics
 
 def build_metrics_floorplan(workspace: Workspace, 
-                            step: WorkspaceStep) -> StepMetrics:
+                            step: EccStep) -> StepMetrics:
     """
     Build and return floorplan metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
     
@@ -149,12 +150,12 @@ def build_metrics_floorplan(workspace: Workspace,
         return None
 
 def build_metrics_net_opt(workspace: Workspace, 
-                          step: WorkspaceStep) -> StepMetrics:
+                          step: EccStep) -> StepMetrics:
     """
     Build and return net operation metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
     
@@ -181,12 +182,12 @@ def build_metrics_net_opt(workspace: Workspace,
 
 
 def build_metrics_filler(workspace: Workspace, 
-                         step: WorkspaceStep) -> StepMetrics:
+                         step: EccStep) -> StepMetrics:
     """
     Build and return filler metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
     
@@ -215,12 +216,12 @@ def build_metrics_filler(workspace: Workspace,
 
 
 def build_metrics_drc(workspace: Workspace, 
-                      step: WorkspaceStep) -> StepMetrics:
+                      step: EccStep) -> StepMetrics:
     """
     Build and return DRC metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
 
@@ -248,12 +249,12 @@ def build_metrics_drc(workspace: Workspace,
 
 
 def build_metrics_routing(workspace: Workspace, 
-                          step: WorkspaceStep) -> StepMetrics:
+                          step: EccStep) -> StepMetrics:
     """
     Build and return routing metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
 
@@ -282,12 +283,12 @@ def build_metrics_routing(workspace: Workspace,
 
 
 def build_metrics_legalization(workspace: Workspace, 
-                               step: WorkspaceStep) -> StepMetrics:
+                               step: EccStep) -> StepMetrics:
     """
     Build and return legalization metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
     
@@ -315,12 +316,12 @@ def build_metrics_legalization(workspace: Workspace,
 
 
 def build_metrics_timing_opt_hold(workspace: Workspace, 
-                                  step: WorkspaceStep) -> StepMetrics:
+                                  step: EccStep) -> StepMetrics:
     """
     Build and return timing optimization (hold) metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
 
@@ -353,12 +354,12 @@ def build_metrics_timing_opt_hold(workspace: Workspace,
 
 
 def build_metrics_timing_opt_drv(workspace: Workspace, 
-                                 step: WorkspaceStep) -> StepMetrics:
+                                 step: EccStep) -> StepMetrics:
     """
     Build and return timing optimization (driver) metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
     
@@ -390,12 +391,12 @@ def build_metrics_timing_opt_drv(workspace: Workspace,
         return None 
 
 def build_metrics_cts(workspace: Workspace, 
-                      step: WorkspaceStep) -> StepMetrics:
+                      step: EccStep) -> StepMetrics:
     """
     Build and return CTS metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
     
@@ -427,12 +428,12 @@ def build_metrics_cts(workspace: Workspace,
 
 
 def build_metrics_placement(workspace: Workspace, 
-                            step: WorkspaceStep) -> StepMetrics:
+                            step: EccStep) -> StepMetrics:
     """
     Build and return placement metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""    
+    step_metrics.path = step.analysis.metrics or ""
     
     metrics = {}
     

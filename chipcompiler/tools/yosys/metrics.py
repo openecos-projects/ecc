@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, StepMetrics, save_metrics
+from chipcompiler.data import Workspace, WorkspaceStep, YosysStep, StepMetrics, save_metrics
 from chipcompiler.utility import json_read, dict_to_str
 
 
 def build_step_metrics(workspace: Workspace,
-                       step: WorkspaceStep) -> StepMetrics:
+                       step: YosysStep) -> StepMetrics:
     """
     Build and persist synthesis metrics from Yosys stat JSON.
     Args:

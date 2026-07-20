@@ -3,8 +3,9 @@
 import os
 
 from chipcompiler.data import (
-    Workspace, 
-    WorkspaceStep, 
+    EccStep,
+    Workspace,
+    WorkspaceStep,
     StepEnum
 )
 
@@ -14,7 +15,7 @@ from chipcompiler.utility import json_read, dict_to_str
 from chipcompiler.utility.path import stringify_paths
     
 def get_step_info(workspace: Workspace, 
-                  step: WorkspaceStep,
+                  step: EccStep,
                   id : str) -> dict:
     """
     get step info by step and command id, return dict as resource definition
@@ -48,7 +49,7 @@ def get_step_info(workspace: Workspace,
     return step_info
 
 def build_views(workspace: Workspace, 
-                step: WorkspaceStep) -> dict:
+                step: EccStep) -> dict:
     metrics = build_step_metrics(workspace=workspace,
                                  step=step)
     
@@ -62,7 +63,7 @@ def build_views(workspace: Workspace,
     return info
 
 def build_metrics(workspace: Workspace, 
-                  step: WorkspaceStep) -> dict:
+                  step: EccStep) -> dict:
     metrics = build_step_metrics(workspace=workspace,
                                  step=step)
     info = {
@@ -72,7 +73,7 @@ def build_metrics(workspace: Workspace,
     return info
 
 def build_layout(workspace: Workspace, 
-                 step: WorkspaceStep) -> dict:
+                 step: EccStep) -> dict:
     info = {
         "image" : step.output.image or "",
         "json" : step.output.json or ""
@@ -81,7 +82,7 @@ def build_layout(workspace: Workspace,
     return info
 
 def build_subflow(workspace: Workspace, 
-                  step: WorkspaceStep) -> dict:       
+                  step: EccStep) -> dict:
     info = {
         "path" : step.subflow.path or ""
     }
@@ -89,7 +90,7 @@ def build_subflow(workspace: Workspace,
     return info
 
 def build_config(workspace: Workspace,
-                 step: WorkspaceStep) -> dict:
+                 step: EccStep) -> dict:
     cfg = workspace.config or {}
     info = {
         "config": cfg.get(f"{step.name}", ""),
@@ -98,7 +99,7 @@ def build_config(workspace: Workspace,
     return info
 
 def build_analysis(workspace: Workspace, 
-                   step: WorkspaceStep) -> dict:          
+                   step: EccStep) -> dict:
     info = {
         "metrics" : step.analysis.metrics or "",
         "statis" : step.analysis.statis_csv or "",
@@ -110,7 +111,7 @@ def build_analysis(workspace: Workspace,
     return info
 
 def build_maps(workspace: Workspace, 
-               step: WorkspaceStep) -> dict:     
+               step: EccStep) -> dict:
     info = {}
      
     match StepEnum(step.name):
@@ -143,7 +144,7 @@ def csv2png(csv : str) -> str:
     return csv.replace(".csv", ".png")
     
 def build_maps_congestion(workspace: Workspace, 
-                          step: WorkspaceStep) -> dict:     
+                          step: EccStep) -> dict:
     info = {}
     
     json_data = json_read(step.feature.map or "")
@@ -230,7 +231,7 @@ def build_maps_congestion(workspace: Workspace,
 
 
 def build_maps_density(workspace: Workspace, 
-                       step: WorkspaceStep) -> dict:     
+                       step: EccStep) -> dict:
     info = {}
     
     json_data = json_read(step.feature.map or "")
@@ -276,28 +277,28 @@ def build_maps_density(workspace: Workspace,
     return info
 
 def build_checklist(workspace: Workspace, 
-                    step: WorkspaceStep) -> dict:          
+                    step: EccStep) -> dict:
     info = {
         "path" : step.checklist.path or ""
     }
     
     return info
 
-def build_sta(workspace: Workspace, 
-                    step: WorkspaceStep) -> dict:          
+def build_sta(workspace: Workspace,
+                    step: EccStep) -> dict:
     top_module = workspace.design.top_module
-    sta_data_dir = (step.data.steps or {}).get(StepEnum.STA.value, "")
-    if not sta_data_dir:
-        sta_data_dir = os.path.join(step.directory, "data", "sta")
+    sta_data_dir = step.data.steps.get(StepEnum.STA.value) or os.path.join(
+        str(step.directory), "data", "sta"
+    )
 
-    sta_report = step.report.sta or {}
+    sta = step.report.sta
     info = {
-        "timing": sta_report.get("timing", os.path.join(sta_data_dir, f"{top_module}.rpt")),
-        "hold": sta_report.get("hold", os.path.join(sta_data_dir, f"{top_module}_hold.skew")),
-        "setup": sta_report.get("setup", os.path.join(sta_data_dir, f"{top_module}_setup.skew")),
-        "cap": sta_report.get("cap", os.path.join(sta_data_dir, f"{top_module}.cap")),
-        "fanout": sta_report.get("fanout", os.path.join(sta_data_dir, f"{top_module}.fanout")),
-        "trans": sta_report.get("trans", os.path.join(sta_data_dir, f"{top_module}.trans")),
+        "timing": sta.timing or os.path.join(sta_data_dir, f"{top_module}.rpt"),
+        "hold": sta.hold or os.path.join(sta_data_dir, f"{top_module}_hold.skew"),
+        "setup": sta.setup or os.path.join(sta_data_dir, f"{top_module}_setup.skew"),
+        "cap": sta.cap or os.path.join(sta_data_dir, f"{top_module}.cap"),
+        "fanout": sta.fanout or os.path.join(sta_data_dir, f"{top_module}.fanout"),
+        "trans": sta.trans or os.path.join(sta_data_dir, f"{top_module}.trans"),
     }
 
     return info

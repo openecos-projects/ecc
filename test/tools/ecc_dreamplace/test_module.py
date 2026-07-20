@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from chipcompiler.data import OriginDesign, StepData, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
 from chipcompiler.tools.ecc_dreamplace.service import get_step_info
 from chipcompiler.utility import json_write
@@ -30,8 +30,8 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
         config={"dreamplace": config_path},
     )
     result_dir = tmp_path / "data" / "pl"
-    step_data = StepData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir})
-    step = WorkspaceStep(
+    step_data = EccData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir})
+    step = EccStep(
         name=StepEnum.PLACEMENT.value,
         data=step_data,
     )
@@ -68,8 +68,8 @@ def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
         config={"dreamplace": config_path},
     )
     result_dir = tmp_path / "data" / "pl"
-    step_data = StepData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir})
-    step = WorkspaceStep(
+    step_data = EccData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir})
+    step = EccStep(
         name=StepEnum.PLACEMENT.value,
         data=step_data,
     )
@@ -99,7 +99,7 @@ def test_dreamplace_step_info_stringifies_path_config(tmp_path):
         log_section=lambda *args, **kwargs: None,
         info=lambda *args, **kwargs: None,
     )
-    step = WorkspaceStep(name=StepEnum.PLACEMENT.value)
+    step = EccStep(name=StepEnum.PLACEMENT.value)
 
     assert get_step_info(workspace, step, "config") == {
         "config": str(workspace.config["dreamplace"]),

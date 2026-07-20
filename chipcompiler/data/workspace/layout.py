@@ -1,25 +1,23 @@
 #!/usr/bin/env python
 """Typed path-group layout for workspace steps.
 
-Every EDA tool step shares the same shape of "path groups" (``input``,
-``output``, ``data`` ...). Each group is a dataclass with named attributes, and
-the step itself is a small hierarchy: a shared :class:`WorkspaceStepBase` plus a
-:class:`YosysStep` (synthesis) and an :class:`EccStep` (place-and-route, reused
-by ecc/dreamplace/sizer). The two variants differ only by identity, so a group
-holds the union of the keys any tool uses for it and cross-tool readers need no
-narrowing.
+Two real step shapes exist: synthesis (:class:`YosysStep`) and place-and-route
+(:class:`EccStep`, reused by ecc/dreamplace/sizer). Each path group has a common
+base plus a per-shape variant that adds the tool-specific leaves. The step
+classes are frozen so a variant may override a group field with its narrower
+type (covariance) without a mutable-field variance error; the group dataclasses
+themselves stay mutable so a builder can still populate ``output.spef`` or a
+subflow's ``steps`` in place.
 
 The legacy dict key ``"def"`` is a Python keyword, so it is exposed as the
 attribute ``def_``.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# --- path groups shared by every step -------------------------------------
+# --- input -----------------------------------------------------------------
 
 @dataclass
 class StepInput:
@@ -28,73 +26,127 @@ class StepInput:
     db: Path | None = None
 
 
+# --- output ----------------------------------------------------------------
+
 @dataclass
 class OutputPaths:
-    # Common across tools.
     dir: Path | None = None
     def_: Path | None = None
     verilog: Path | None = None
     json: Path | None = None
     image: Path | None = None
-    # Synthesis extras.
+
+
+@dataclass
+class YosysOutput(OutputPaths):
     fixed_verilog: Path | None = None
     report: Path | None = None
-    # Place-and-route extras. `db` is `""` for sizer, a Path elsewhere.
-    db: Path | str | None = None
+
+
+@dataclass
+class EccOutput(OutputPaths):
     gds: Path | None = None
+    # `db` is `""` for sizer, a Path elsewhere.
+    db: Path | str | None = None
     view_json: Path | None = None
     view_json_edits: Path | None = None
     lef: Path | None = None
     lib: Path | None = None
-    spef: list = field(default_factory=list)
+    spef: list[Path] = field(default_factory=list)
 
+
+# --- data ------------------------------------------------------------------
 
 @dataclass
 class StepData:
-    # Common fixed directories.
     dir: Path | None = None
+
+    def workdir_for(self, name: str) -> Path | None:
+        """Working directory for a step name; overridden by :class:`EccData`."""
+        return self.dir
+
+    def iter_directories(self) -> Iterator[Path]:
+        """All concrete directories to create; extended by variants."""
+        if self.dir is not None:
+            yield self.dir
+
+
+@dataclass
+class YosysData(StepData):
     tmp: Path | None = None
-    # Place-and-route per-step working directories, keyed by step name (StepEnum
-    # values, some containing spaces), so they cannot be plain attributes.
+
+    def iter_directories(self) -> Iterator[Path]:
+        yield from super().iter_directories()
+        if self.tmp is not None:
+            yield self.tmp
+
+
+@dataclass
+class EccData(StepData):
+    # Per-step working directories keyed by step name (StepEnum values, some
+    # containing spaces), so they cannot be plain attributes.
     steps: dict[str, Path] = field(default_factory=dict)
 
     def workdir_for(self, name: str) -> Path | None:
-        """Working directory for a step name, falling back to the base dir."""
         return self.steps.get(name, self.dir)
 
     def iter_directories(self) -> Iterator[Path]:
-        """All concrete directories to create (base, tmp, and per-step)."""
-        if self.dir is not None:
-            yield self.dir
-        if self.tmp is not None:
-            yield self.tmp
+        yield from super().iter_directories()
         yield from self.steps.values()
 
+
+# --- feature ---------------------------------------------------------------
 
 @dataclass
 class StepFeature:
     dir: Path | None = None
-    # Synthesis extras.
+
+
+@dataclass
+class YosysFeature(StepFeature):
     generic_stat: Path | None = None
     stat: Path | None = None
-    # Place-and-route extras.
+
+
+@dataclass
+class EccFeature(StepFeature):
     db: Path | None = None
     step: Path | None = None
     map: Path | None = None
     timing: Path | None = None
 
 
+# --- report ----------------------------------------------------------------
+
+@dataclass
+class StaReportPaths:
+    timing: Path | None = None
+    hold: Path | None = None
+    setup: Path | None = None
+    cap: Path | None = None
+    fanout: Path | None = None
+    trans: Path | None = None
+
+
 @dataclass
 class StepReport:
     dir: Path | None = None
-    # Synthesis extras.
+
+
+@dataclass
+class YosysReport(StepReport):
     stat: Path | None = None
     check: Path | None = None
-    # Place-and-route extras. `sta` is a nested mapping of report paths.
+
+
+@dataclass
+class EccReport(StepReport):
     db: Path | None = None
     step: Path | None = None
-    sta: dict = field(default_factory=dict)
+    sta: StaReportPaths = field(default_factory=StaReportPaths)
 
+
+# --- log / script / analysis ----------------------------------------------
 
 @dataclass
 class LogPaths:
@@ -106,6 +158,10 @@ class LogPaths:
 class ScriptPaths:
     dir: Path | None = None
     main: Path | None = None
+
+
+@dataclass
+class EccScript(ScriptPaths):
     # Sizer extras.
     sizer_env: Path | None = None
     sizer_cmd: Path | None = None
@@ -115,9 +171,14 @@ class ScriptPaths:
 class AnalysisPaths:
     dir: Path | None = None
     metrics: Path | None = None
-    # Place-and-route extra.
+
+
+@dataclass
+class EccAnalysis(AnalysisPaths):
     statis_csv: Path | None = None
 
+
+# --- subflow / checklist ---------------------------------------------------
 
 @dataclass
 class SubflowState:
@@ -134,9 +195,13 @@ class ChecklistState:
 
 # --- step hierarchy --------------------------------------------------------
 
-@dataclass
+@dataclass(frozen=True)
 class WorkspaceStepBase:
-    """Shared spine for every EDA tool step."""
+    """Shared spine for every EDA tool step.
+
+    Frozen so the variants can override a group field with its narrower type;
+    the group objects stay mutable for in-place population by the builders.
+    """
 
     name: str = ""
     directory: Path | None = None
@@ -155,11 +220,23 @@ class WorkspaceStepBase:
     checklist: ChecklistState = field(default_factory=ChecklistState)
 
 
-@dataclass
+@dataclass(frozen=True)
 class YosysStep(WorkspaceStepBase):
     """Synthesis step."""
 
+    output: YosysOutput = field(default_factory=YosysOutput)
+    data: YosysData = field(default_factory=YosysData)
+    feature: YosysFeature = field(default_factory=YosysFeature)
+    report: YosysReport = field(default_factory=YosysReport)
 
-@dataclass
+
+@dataclass(frozen=True)
 class EccStep(WorkspaceStepBase):
     """Place-and-route step, shared by ecc, dreamplace and sizer."""
+
+    output: EccOutput = field(default_factory=EccOutput)
+    data: EccData = field(default_factory=EccData)
+    feature: EccFeature = field(default_factory=EccFeature)
+    report: EccReport = field(default_factory=EccReport)
+    script: EccScript = field(default_factory=EccScript)
+    analysis: EccAnalysis = field(default_factory=EccAnalysis)

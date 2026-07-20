@@ -8,8 +8,8 @@ from chipcompiler.data import (
     ChecklistState,
     LogPaths,
     OutputPaths,
-    StepFeature,
     StepInput,
+    YosysFeature,
 )
 from chipcompiler.tools.yosys.checklist import YosysSynthesisChecklist
 
@@ -58,7 +58,7 @@ def test_synthesis_checklist_reads_gzip_mapped_netlist(tmp_path):
         name="Synthesis",
         input=StepInput(verilog=rtl),
         analysis=AnalysisPaths(metrics=metrics),
-        feature=StepFeature(stat=stat),
+        feature=YosysFeature(stat=stat),
         log=LogPaths(file=log),
         output=OutputPaths(verilog=netlist),
         checklist=ChecklistState(path=checklist_path),
