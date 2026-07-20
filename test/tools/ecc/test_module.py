@@ -2460,7 +2460,7 @@ def test_ecc_build_step_space_creates_path_directories(tmp_path):
 
     assert isinstance(step.output["dir"], Path)
     assert step.output["dir"].is_dir()
-    assert step.data["dir"].is_dir()
+    assert step.data.dir and step.data.dir.is_dir()
     assert step.feature.dir and step.feature.dir.is_dir()
     assert step.report.dir and step.report.dir.is_dir()
     assert step.log["dir"].is_dir()
@@ -2565,8 +2565,8 @@ def test_ecc_builder_uses_explicit_step_directory(tmp_path):
     assert step.directory == step_directory
     assert isinstance(step.directory, Path)
     assert step.output["dir"] == step_directory / "output"
-    assert step.data[StepEnum.TIMING_OPT.value] == step_directory / "data" / "to"
+    assert step.data.steps[StepEnum.TIMING_OPT.value] == step_directory / "data" / "to"
     assert step.log["file"] == step_directory / "log" / f"{StepEnum.TIMING_OPT.value}.log"
     assert str(step.output["dir"]) == f"{step_directory}/output"
-    assert str(step.data[StepEnum.TIMING_OPT.value]) == f"{step_directory}/data/to"
+    assert str(step.data.steps[StepEnum.TIMING_OPT.value]) == f"{step_directory}/data/to"
     assert str(step.log["file"]) == f"{step_directory}/log/{StepEnum.TIMING_OPT.value}.log"

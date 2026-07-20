@@ -137,7 +137,7 @@ def generate_global_var_tcl(workspace: Workspace,
     generic_stat_json = _abspath(step.report.stat)
     synth_stat_json = _abspath(step.feature.stat)
     synth_check_rpt = _abspath(step.report.check)
-    data_dir = _abspath(step.data.get("dir", ""))
+    data_dir = _abspath(step.data.dir)
 
     keep_hierarchy = "false"
 
@@ -333,8 +333,8 @@ def build_step_space(step: WorkspaceStep) -> None:
     step_directory = Path(step.directory)
     step_directory.mkdir(parents=True, exist_ok=True)
     Path(step.output.get("dir", step_directory / "output")).mkdir(parents=True, exist_ok=True)
-    Path(step.data.get("dir", step_directory / "data")).mkdir(parents=True, exist_ok=True)
-    Path(step.data.get("tmp", step_directory / "data" / "tmp")).mkdir(parents=True, exist_ok=True)
+    Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
+    Path(step.data.tmp or step_directory / "data" / "tmp").mkdir(parents=True, exist_ok=True)
     Path(step.report.dir or step_directory / "report").mkdir(parents=True, exist_ok=True)
     Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
     Path(step.script.dir or step_directory / "script").mkdir(parents=True, exist_ok=True)
@@ -379,7 +379,8 @@ def build_step_config(workspace: Workspace,
 
     try:
         tcl_content = generate_global_var_tcl(workspace, step)
-        global_var_path = step.data['dir'] / 'global_var.tcl'
+        data_dir = step.data.dir or Path(step.directory or "") / "data"
+        global_var_path = data_dir / 'global_var.tcl'
         with global_var_path.open('w') as f:
             f.write(tcl_content)
     except (ValueError, OSError) as e:

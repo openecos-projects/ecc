@@ -191,8 +191,7 @@ def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
         config={"dreamplace": config_path},
     )
     result_dir = tmp_path / "data" / "pl"
-    step_data = StepData(dir=tmp_path / "data")
-    step_data[StepEnum.PLACEMENT.value] = result_dir
+    step_data = StepData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir})
     step = WorkspaceStep(
         name=StepEnum.PLACEMENT.value,
         data=step_data,

@@ -91,11 +91,11 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-outputPath ." in cmd_text
     expected_def_out = os.path.relpath(
         step.output["def"],
-        step.data[StepEnum.TIMING_OPT.value],
+        step.data.steps[StepEnum.TIMING_OPT.value],
     )
     expected_verilog_out = os.path.relpath(
         step.output["verilog"],
-        step.data[StepEnum.TIMING_OPT.value],
+        step.data.steps[StepEnum.TIMING_OPT.value],
     )
     assert f"-def_out_path {expected_def_out}" in cmd_text
     assert f"-verilog_out_path {expected_verilog_out}" in cmd_text
@@ -147,11 +147,11 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
 
     expected_def_out = os.path.relpath(
         step.output["def"],
-        step.data[StepEnum.TIMING_OPT.value],
+        step.data.steps[StepEnum.TIMING_OPT.value],
     )
     expected_verilog_out = os.path.relpath(
         step.output["verilog"],
-        step.data[StepEnum.TIMING_OPT.value],
+        step.data.steps[StepEnum.TIMING_OPT.value],
     )
     assert cmd_lines == [
         "-useOpenSTA",
@@ -269,7 +269,7 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
 
     for path in (
         step.output["dir"],
-        step.data["dir"],
+        step.data.dir,
         step.feature.dir,
         step.report.dir,
         step.log["dir"],
@@ -474,7 +474,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
                 "-f",
                 str(step.script["sizer_cmd"]),
             ],
-            str(step.data[StepEnum.TIMING_OPT.value]),
+            str(step.data.steps[StepEnum.TIMING_OPT.value]),
             subprocess.STDOUT,
             False,
         )

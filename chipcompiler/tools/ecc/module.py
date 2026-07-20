@@ -427,10 +427,12 @@ class ECCToolsModule:
     ########################################################################
     # CTS api
     ########################################################################
-    def run_cts(self, config: str, output: str) -> bool:
+    def run_cts(self,
+                config: str,
+                output : PathArg) -> bool:
         return self.ecc.run_cts(path_text(config), path_text(output))
 
-    def report_cts(self, output: str):
+    def report_cts(self, output : PathArg):
         self.ecc.cts_report(path_text(output))
 
     def feature_cts_timing(self) -> dict:
@@ -448,7 +450,9 @@ class ECCToolsModule:
     ########################################################################
     # DRC api
     ########################################################################
-    def init_drc(self, output_dir: str, therad_number: int = 128):
+    def init_drc(self,
+                 output_dir : PathArg,
+                 therad_number : int = 128):
         """
         init drc config
         """
@@ -939,9 +943,9 @@ class ECCToolsModule:
     def run_timing(
         self,
         config: str = "",
-        work_dir: str = "",
-        report_dir: str = "",
-        feature_dir: str = "",
+        work_dir: PathArg = "",
+        report_dir: PathArg = "",
+        feature_dir: PathArg = "",
         lib_paths: list[str] | None = None,
         sdc_path: str = "",
         spef_path: str = "",
@@ -1014,7 +1018,11 @@ class ECCToolsModule:
     def run_sta(self, output_dir: str):
         return None
 
-    def init_sta(self, output_dir: str, top_module: str, lib_paths: list[str], sdc_path: str):
+    def init_sta(self,
+                 output_dir : PathArg,
+                 top_module : str,
+                 lib_paths : list[str],
+                 sdc_path: str):
         return None
 
     def release_sta(self):
@@ -1089,7 +1097,7 @@ class ECCToolsModule:
         output_lib_path: str,
         analysis_mode: str = "max",
         config: str = "",
-        output_dir: str = "",
+        output_dir: PathArg = "",
         lib_paths: list[str] | None = None,
         sdc_path: str = "",
         spef_path: str = "",

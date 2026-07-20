@@ -35,7 +35,7 @@ def run_step(
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
 
-    output_dir = step.data.get(step.name, step.data["dir"])
+    output_dir = step.data.workdir_for(step.name) or ""
     os.makedirs(output_dir, exist_ok=True)
     log_path = step.log.file or ""
     os.makedirs(os.path.dirname(log_path), exist_ok=True)

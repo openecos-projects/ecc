@@ -106,7 +106,7 @@ def test_yosys_builder_constructs_path_objects_and_creates_dirs(tmp_path):
     yosys_builder.build_step_space(step)
 
     assert step.output["dir"].is_dir()
-    assert step.data["tmp"].is_dir()
+    assert step.data.tmp and step.data.tmp.is_dir()
     assert step.script["dir"].is_dir()
     assert step.analysis["dir"].is_dir()
 

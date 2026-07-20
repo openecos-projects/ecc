@@ -221,6 +221,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
         feature=StepFeature(dir=tmp_path / "Synthesis_yosys" / "feature"),
         report=StepReport(dir=tmp_path / "Synthesis_yosys" / "report"),
     )
+    assert step.data.dir is not None
     module = FakeSynthesisStaModule()
     monkeypatch.setattr(ecc_runner, "ECCToolsModule", lambda: module)
 
@@ -232,7 +233,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
             {
                 "flow_config": workspace.config["flow"],
                 "db_config": workspace.config["db"],
-                "output_dir": step.data["dir"],
+                "output_dir": step.data.dir,
                 "feature_dir": step.feature.dir,
             },
         ),
