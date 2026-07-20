@@ -35,6 +35,9 @@ class OutputPaths:
     verilog: Path | None = None
     json: Path | None = None
     image: Path | None = None
+    # Part of the cross-tool read contract (def/verilog/db): a Path for
+    # place-and-route steps, `""` for sizer, and None for synthesis.
+    db: Path | str | None = None
 
 
 @dataclass
@@ -46,8 +49,6 @@ class YosysOutput(OutputPaths):
 @dataclass
 class EccOutput(OutputPaths):
     gds: Path | None = None
-    # `db` is `""` for sizer, a Path elsewhere.
-    db: Path | str | None = None
     view_json: Path | None = None
     view_json_edits: Path | None = None
     lef: Path | None = None

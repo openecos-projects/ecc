@@ -53,3 +53,42 @@ def test_check_step_result_timing_opt_does_not_require_gds(tmp_path):
     )
     # gds intentionally absent; timing-opt result must still succeed.
     assert EngineFlow(Workspace()).check_step_result(step) is True
+
+
+def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path):
+    # create_step_workspaces copies the RCX step's spef list onto the following
+    # STA step. Drive it with a stubbed create_step returning prebuilt variants.
+    import chipcompiler.tools as tools_api
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+
+    spef_paths = [tmp_path / "gcd_c.spef", tmp_path / "gcd_r.spef"]
+    prebuilt = {
+        StepEnum.RCX.value: EccStep(
+            name=StepEnum.RCX.value, tool="ecc", output=EccOutput(spef=list(spef_paths))
+        ),
+        StepEnum.STA.value: EccStep(name=StepEnum.STA.value, tool="ecc"),
+    }
+
+    def fake_create_step(workspace, step, eda, **kwargs):
+        return prebuilt[step]
+
+    monkeypatch.setattr(tools_api, "create_step", fake_create_step)
+
+    flow = EngineFlow(workspace)
+    # load() leaves flow.data empty (no flow.path); set the steps for this test.
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.RCX.value, "tool": "ecc"},
+            {"name": StepEnum.STA.value, "tool": "ecc"},
+        ]
+    }
+    flow.create_step_workspaces()
+
+    sta_step = flow.get_workspace_step(StepEnum.STA.value)
+    assert isinstance(sta_step, EccStep)
+    assert sta_step.output.spef == spef_paths  # transferred from the RCX predecessor

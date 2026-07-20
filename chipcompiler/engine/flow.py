@@ -257,12 +257,7 @@ class EngineFlow:
                 # use the output def and verilog from last step.
                 input_def = pre_step.output.def_
                 input_verilog = pre_step.output.verilog
-                # db is a place-and-route (ecc) output leaf; "" for sizer.
-                input_db = (
-                    pre_step.output.db
-                    if isinstance(pre_step.output, EccOutput)
-                    else None
-                )
+                input_db = pre_step.output.db
 
             from chipcompiler.tools import create_step, run_step
             # create workspace step

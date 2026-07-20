@@ -21,6 +21,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     WorkspaceStepBase,
+    YosysOutput,
     YosysStep,
 )
 from chipcompiler.data.workspace import log_workspace_step, step_group_to_dict
@@ -110,35 +111,84 @@ def test_build_step_returns_correct_variant(tmp_path):
     assert isinstance(ecc_step, WorkspaceStep)
 
 
-def test_group_to_dict_projects_legacy_keys():
-    output = EccOutput(dir=Path("/d"), def_=Path("/x.def"), spef=[Path("/a.spef")])
+def test_group_to_dict_renames_def_and_drops_unset_inherited_fields():
+    # def_ -> "def"; a populated ecc output emits all its keys incl. base db/spef.
+    output = EccOutput(dir=Path("/d"), def_=Path("/x.def"), db=Path("/db"), spef=[Path("/a")])
     projected = step_group_to_dict(output)
-    # "def_" is projected as the legacy "def" key; every declared field appears.
     assert projected["def"] == Path("/x.def")
     assert "def_" not in projected
-    assert projected["dir"] == Path("/d")
-    assert projected["spef"] == [Path("/a.spef")]
+    assert projected["db"] == Path("/db")
+    assert projected["spef"] == [Path("/a")]
+
+    # A synthesis output never sets db (inherited from base) -> it is NOT emitted.
+    yosys_output = YosysOutput(dir=Path("/d"), verilog=Path("/v"))
+    projected = step_group_to_dict(yosys_output)
+    assert "db" not in projected
+    assert "gds" not in projected  # ecc-only, absent on the yosys shape
+    assert projected == {"dir": Path("/d"), "verilog": Path("/v")}
 
 
-def test_group_to_dict_flattens_data_steps_and_nested_sta():
+def test_group_to_dict_flattens_data_steps_and_projects_nested_sta():
     data = EccData(dir=Path("/d"), steps={"Timing optimization": Path("/d/to")})
     projected = step_group_to_dict(data)
     # per-step dirs are flattened to top-level keys; "steps" itself is dropped.
-    assert projected["Timing optimization"] == Path("/d/to")
-    assert projected["dir"] == Path("/d")
-    assert "steps" not in projected
+    assert projected == {"dir": Path("/d"), "Timing optimization": Path("/d/to")}
 
     report = EccReport(dir=Path("/r"), sta=StaReportPaths(timing=Path("/r/t.rpt")))
     projected = step_group_to_dict(report)
-    # nested StaReportPaths becomes a nested dict.
-    assert projected["sta"] == {
-        "timing": Path("/r/t.rpt"),
-        "hold": None,
-        "setup": None,
-        "cap": None,
-        "fanout": None,
-        "trans": None,
+    # nested StaReportPaths becomes a nested dict; its unset subfields are dropped.
+    assert projected == {"dir": Path("/r"), "sta": {"timing": Path("/r/t.rpt")}}
+
+
+def _shape_keys(step):
+    return {
+        group: sorted(step_group_to_dict(getattr(step, group)))
+        for group in ("input", "output", "data", "feature", "report",
+                      "log", "script", "analysis", "subflow", "checklist")
     }
+
+
+def test_log_projection_yosys_shape_has_no_foreign_keys(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    step = yosys_builder.build_step(workspace, "Synthesis", None, tmp_path / "in.v")
+    keys = _shape_keys(step)
+    assert keys["output"] == sorted(
+        ["dir", "def", "verilog", "fixed_verilog", "json", "report", "image"]
+    )
+    assert keys["data"] == sorted(["dir", "tmp"])
+    assert keys["feature"] == sorted(["dir", "generic_stat", "stat"])
+    assert keys["report"] == sorted(["dir", "stat", "check"])
+    assert keys["script"] == sorted(["dir", "main"])  # no sizer_env/sizer_cmd
+    assert keys["analysis"] == sorted(["dir", "metrics"])
+    # foreign ecc-only keys never appear on the synthesis shape
+    for foreign in ("db", "gds", "lef", "lib", "spef", "view_json"):
+        assert foreign not in keys["output"]
+
+
+def test_log_projection_ecc_shape_has_no_sizer_keys(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    step = ecc_builder.build_step(workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v")
+    keys = _shape_keys(step)
+    assert keys["output"] == sorted(
+        ["dir", "def", "verilog", "json", "image", "db", "gds",
+         "view_json", "view_json_edits", "lef", "lib", "spef"]
+    )
+    assert keys["script"] == sorted(["dir", "main"])  # a normal ECC step is not sizer
+    assert keys["report"] == sorted(["dir", "db", "step", "sta"])
+    assert keys["analysis"] == sorted(["dir", "metrics", "statis_csv"])
+
+
+def test_log_projection_sizer_shape_includes_sizer_script_keys(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    step = sizer_builder.build_step(
+        workspace, "Timing optimization", tmp_path / "i.def", tmp_path / "i.v"
+    )
+    keys = _shape_keys(step)
+    # sizer is the only shape that populates sizer_env/sizer_cmd.
+    assert keys["script"] == sorted(["dir", "main", "sizer_env", "sizer_cmd"])
+    assert step.output.db == ""
 
 
 class _CapturingLogger(Logger):

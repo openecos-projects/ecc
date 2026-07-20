@@ -1151,3 +1151,55 @@ def test_flow_run_step_unknown_step_returns_runtime_error(monkeypatch, tmp_path)
 
     assert exc_info.value.code == "command_failed"
     assert "step not found" in exc_info.value.message
+
+
+@pytest.mark.parametrize(
+    "db_value",
+    [None, "", "some/db/path"],
+)
+def test_build_workspace_step_for_info_forwards_db_from_any_predecessor(
+    tmp_path, db_value
+):
+    # Regression: a Yosys (synthesis) predecessor has output.db == None on the
+    # base OutputPaths contract, so reconstructing the next step must not crash.
+    from pathlib import Path
+
+    from chipcompiler.data import (
+        EccOutput,
+        EccStep,
+        OriginDesign,
+        Workspace,
+        YosysStep,
+    )
+    from chipcompiler.runtime.workspace_api import _build_workspace_step_for_info
+
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+
+    # Yosys predecessor: db is the base default (None) -> must reconstruct cleanly.
+    yosys_prev = YosysStep(name="Synthesis")
+    ecc_step = _build_workspace_step_for_info(
+        workspace, {"name": "Floorplan", "tool": "ecc"}, yosys_prev
+    )
+    assert isinstance(ecc_step, EccStep)
+
+    # ECC/sizer predecessor: db forwarded unchanged (None / "" / a real path).
+    ecc_prev = EccStep(
+        name="place",
+        output=EccOutput(
+            def_=tmp_path / "p.def",
+            verilog=tmp_path / "p.v",
+            db=Path(db_value) if db_value else db_value,
+        ),
+    )
+    next_step = _build_workspace_step_for_info(
+        workspace, {"name": "CTS", "tool": "ecc"}, ecc_prev
+    )
+    assert isinstance(next_step, EccStep)
+    # A real db path is forwarded into the next step's input.db; "" / None -> None.
+    if db_value:
+        assert next_step.input.db == Path(db_value)
+    else:
+        assert next_step.input.db is None

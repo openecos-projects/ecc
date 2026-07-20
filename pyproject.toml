@@ -101,7 +101,7 @@ lint.select = [
   "UP",  # pyupgrade
 ]
 extend-include = ["*.spec"]
-exclude = ["thirdpraty/**/**"]
+extend-exclude = ["chipcompiler/thirdparty"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
