@@ -108,7 +108,7 @@ class YosysSynthesisChecklist(YosysChecklist):
         except (OSError, EOFError):
             netlist_text = ""
 
-        input_verilog = self.workspace_step.input.get("verilog", "")
+        input_verilog = self.workspace_step.input.verilog or ""
         filelist = (
             self.workspace.design.input_filelist
             if self.workspace.design.input_filelist

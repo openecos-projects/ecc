@@ -98,7 +98,7 @@ def test_yosys_builder_constructs_path_objects_and_creates_dirs(tmp_path):
     expected_step_dir = tmp_path / f"{StepEnum.SYNTHESIS.value}_yosys"
     assert step.directory == expected_step_dir
     assert isinstance(step.directory, Path)
-    assert step.input["verilog"] == rtl_file
+    assert step.input.verilog == rtl_file
     assert step.output["dir"] == expected_step_dir / "output"
     assert step.output["fixed_verilog"] == expected_step_dir / "output" / "top_Synthesis_fixed.v.gz"
     assert step.script["main"] == expected_step_dir / "script" / "Synthesis_main.tcl"
@@ -221,7 +221,7 @@ def test_validation_errors_are_preserved(tmp_path, case, message):
     elif case == "invalid_frequency":
         workspace.parameters.data["Frequency max [MHz]"] = "fast"
     elif case == "missing_inputs":
-        step.input["verilog"] = str(tmp_path / "missing.v")
+        step.input.verilog = tmp_path / "missing.v"
 
     with pytest.raises(ValueError, match=message):
         yosys_builder.generate_global_var_tcl(workspace, step)

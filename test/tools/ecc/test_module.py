@@ -2415,8 +2415,8 @@ def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):
     expected_view_dir = expected_output_dir / f"gcd_{StepEnum.PLACEMENT.value}_view"
     assert step.directory == expected_step_dir
     assert isinstance(step.directory, Path)
-    assert step.input["def"] == input_def
-    assert step.input["verilog"] == input_verilog
+    assert step.input.def_ == input_def
+    assert step.input.verilog == input_verilog
     assert step.output["dir"] == expected_output_dir
     assert step.output["view_json"] == expected_view_dir
     assert step.output["view_json_edits"] == expected_view_dir / "edits" / "layout_edits.json"

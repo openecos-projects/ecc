@@ -270,11 +270,11 @@ class ECCToolsModule:
         """save ECC data"""
         return self.ecc.save_data(path=path_text(path))
 
-    def load_data(self, path: str):
+    def load_data(self, path: str | Path):
         """load ECC data"""
         return self.ecc.load_data(path=path_text(path))
 
-    def is_db_data_exists(self, db_path: str) -> bool:
+    def is_db_data_exists(self, db_path: str | Path) -> bool:
         if not db_path or not os.path.isdir(db_path):
             return False
 

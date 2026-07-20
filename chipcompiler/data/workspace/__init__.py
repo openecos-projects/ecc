@@ -726,8 +726,8 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
         workspace.config = build_workspace_config_paths(workspace)
 
     db = json_read(workspace.config["db"])
-    db["INPUT"]["def_path"] = path_text(step.input.get("def"))
-    db["INPUT"]["verilog_path"] = path_text(step.input.get("verilog"))
+    db["INPUT"]["def_path"] = path_text(step.input.def_)
+    db["INPUT"]["verilog_path"] = path_text(step.input.verilog)
     db["OUTPUT"]["output_dir_path"] = path_text(step.output.get("dir"))
     json_write(workspace.config["db"], db)
 
