@@ -38,7 +38,7 @@ def _workspace(tmp_path):
 
 
 def _subflow_states(step):
-    with open(step.subflow["path"], encoding="utf-8") as file:
+    with open(str(step.subflow.path), encoding="utf-8") as file:
         subflow = json.load(file)
     return {item["name"]: item["state"] for item in subflow["steps"]}
 
@@ -69,9 +69,9 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
 
-    with open(step.script["sizer_env"], encoding="utf-8") as file:
+    with open(str(step.script.sizer_env), encoding="utf-8") as file:
         env_text = file.read()
-    with open(step.script["sizer_cmd"], encoding="utf-8") as file:
+    with open(str(step.script.sizer_cmd), encoding="utf-8") as file:
         cmd_text = file.read()
 
     assert "-num_vt 1" in env_text
@@ -90,11 +90,11 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-prft_only" not in cmd_text
     assert "-outputPath ." in cmd_text
     expected_def_out = os.path.relpath(
-        step.output["def"],
+        str(step.output.def_),
         step.data.steps[StepEnum.TIMING_OPT.value],
     )
     expected_verilog_out = os.path.relpath(
-        step.output["verilog"],
+        str(step.output.verilog),
         step.data.steps[StepEnum.TIMING_OPT.value],
     )
     assert f"-def_out_path {expected_def_out}" in cmd_text
@@ -102,11 +102,11 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-min_route_layer M2" in cmd_text
     assert "-max_route_layer M7" in cmd_text
 
-    with open(step.subflow["path"], encoding="utf-8") as file:
+    with open(str(step.subflow.path), encoding="utf-8") as file:
         subflow = json.load(file)
     assert [item["name"] for item in subflow["steps"]] == ["run sizer"]
 
-    with open(step.checklist["path"], encoding="utf-8") as file:
+    with open(str(step.checklist.path), encoding="utf-8") as file:
         checklist = json.load(file)
     assert checklist["checklist"] == []
 
@@ -134,9 +134,9 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
 
-    with open(step.script["sizer_env"], encoding="utf-8") as file:
+    with open(str(step.script.sizer_env), encoding="utf-8") as file:
         env_lines = file.read().splitlines()
-    with open(step.script["sizer_cmd"], encoding="utf-8") as file:
+    with open(str(step.script.sizer_cmd), encoding="utf-8") as file:
         cmd_lines = [line for line in file.read().splitlines() if line]
 
     assert env_lines[0] == "-num_vt 1"
@@ -146,11 +146,11 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     assert f"-tclFile {runtime_root / 'src' / 'sizer_os.tcl'}" in env_lines
 
     expected_def_out = os.path.relpath(
-        step.output["def"],
+        str(step.output.def_),
         step.data.steps[StepEnum.TIMING_OPT.value],
     )
     expected_verilog_out = os.path.relpath(
-        step.output["verilog"],
+        str(step.output.verilog),
         step.data.steps[StepEnum.TIMING_OPT.value],
     )
     assert cmd_lines == [
@@ -235,7 +235,7 @@ def test_sizer_config_omits_empty_optional_paths(tmp_path, monkeypatch):
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
 
-    with open(step.script["sizer_cmd"], encoding="utf-8") as file:
+    with open(str(step.script.sizer_cmd), encoding="utf-8") as file:
         cmd_lines = file.read().splitlines()
 
     assert "-def " not in cmd_lines
@@ -255,28 +255,28 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
         input_verilog="input.v",
     )
 
-    assert step.output["db"] == ""
+    assert step.output.db == ""
     assert step.name == StepEnum.TIMING_OPT.value
     assert step.directory.name == "timing_optimization_sizer"
     assert not str(step.directory).endswith(f"{StepEnum.TIMING_OPT.value}_sizer")
     assert isinstance(step.directory, Path)
-    assert " " not in os.path.basename(step.output["def"])
-    assert " " not in os.path.basename(step.output["verilog"])
-    assert os.path.basename(step.output["def"]) == "gcd_timing_optimization.def.gz"
-    assert os.path.basename(step.output["verilog"]) == "gcd_timing_optimization.v.gz"
+    assert " " not in os.path.basename(str(step.output.def_))
+    assert " " not in os.path.basename(str(step.output.verilog))
+    assert os.path.basename(str(step.output.def_)) == "gcd_timing_optimization.def.gz"
+    assert os.path.basename(str(step.output.verilog)) == "gcd_timing_optimization.v.gz"
 
     sizer_builder.build_step_space(step)
 
     for path in (
-        step.output["dir"],
+        step.output.dir,
         step.data.dir,
         step.feature.dir,
         step.report.dir,
-        step.log["dir"],
-        step.script["dir"],
-        step.analysis["dir"],
+        step.log.dir,
+        step.script.dir,
+        step.analysis.dir,
     ):
-        assert os.path.isdir(path)
+        assert path and os.path.isdir(path)
         assert isinstance(path, Path)
         assert "Timing optimization_sizer" not in str(path)
 
@@ -315,10 +315,10 @@ def test_sizer_step_keeps_caller_output_paths_that_share_old_prefix(tmp_path):
         output_verilog=output_verilog,
     )
 
-    assert step.output["def"] == Path(output_def)
-    assert step.output["verilog"] == Path(output_verilog)
-    assert str(step.output["def"]) == output_def
-    assert str(step.output["verilog"]) == output_verilog
+    assert step.output.def_ == Path(output_def)
+    assert step.output.verilog == Path(output_verilog)
+    assert str(step.output.def_) == output_def
+    assert str(step.output.verilog) == output_verilog
 
 
 def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
@@ -412,15 +412,26 @@ def test_sizer_step_info_surfaces_include_step_local_config(tmp_path, monkeypatc
         "verilog": str(step.input.verilog),
         "db": step.input.db,
     }
+    output = step.output
     assert get_step_info(workspace, step, "output") == {
-        key: str(value) if isinstance(value, Path) else value
-        for key, value in step.output.items()
+        "dir": str(output.dir),
+        "def": str(output.def_),
+        "verilog": str(output.verilog),
+        "gds": str(output.gds),
+        "db": output.db,
+        "image": str(output.image),
+        "json": str(output.json),
+        "view_json": str(output.view_json),
+        "view_json_edits": str(output.view_json_edits),
+        "lef": str(output.lef),
+        "lib": str(output.lib),
+        "spef": [str(p) for p in output.spef],
     }
-    assert get_step_info(workspace, step, "subflow") == {"path": str(step.subflow["path"])}
-    assert get_step_info(workspace, step, "checklist") == {"path": str(step.checklist["path"])}
+    assert get_step_info(workspace, step, "subflow") == {"path": str(step.subflow.path)}
+    assert get_step_info(workspace, step, "checklist") == {"path": str(step.checklist.path)}
     assert get_step_info(workspace, step, "config") == {
-        "sizer_env": str(step.script["sizer_env"]),
-        "sizer_cmd": str(step.script["sizer_cmd"]),
+        "sizer_env": str(step.script.sizer_env),
+        "sizer_cmd": str(step.script.sizer_cmd),
     }
     assert get_step_info(workspace, step, "unknown") == {}
 
@@ -447,10 +458,10 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
 
     def fake_run(command, cwd, stdout, stderr, check):
         calls.append((command, cwd, stderr, check))
-        os.makedirs(os.path.dirname(step.output["def"]), exist_ok=True)
-        with open(step.output["def"], "w", encoding="utf-8") as file:
+        os.makedirs(os.path.dirname(str(step.output.def_)), exist_ok=True)
+        with open(str(step.output.def_), "w", encoding="utf-8") as file:
             file.write("def\n")
-        with open(step.output["verilog"], "w", encoding="utf-8") as file:
+        with open(str(step.output.verilog), "w", encoding="utf-8") as file:
             file.write("module gcd; endmodule\n")
         return SimpleNamespace(returncode=0)
 
@@ -470,9 +481,9 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
             [
                 "/fake/sizer",
                 "-env",
-                str(step.script["sizer_env"]),
+                str(step.script.sizer_env),
                 "-f",
-                str(step.script["sizer_cmd"]),
+                str(step.script.sizer_cmd),
             ],
             str(step.data.steps[StepEnum.TIMING_OPT.value]),
             subprocess.STDOUT,
@@ -502,7 +513,7 @@ def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path
     assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
 
     monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
-    os.remove(step.script["sizer_cmd"])
+    os.remove(step.script.sizer_cmd)
 
     assert sizer_runner.run_step(workspace, step) == StateEnum.Invalid
     assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
@@ -583,7 +594,7 @@ def test_public_sizer_run_marks_invalid_when_runtime_missing(tmp_path, monkeypat
 
     assert public_run_step(workspace, step) == StateEnum.Invalid
     assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
-    with open(step.script["sizer_env"], encoding="utf-8") as file:
+    with open(str(step.script.sizer_env), encoding="utf-8") as file:
         assert "-tclFile" not in file.read()
 
 
@@ -681,7 +692,9 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
                 ecc_module,
             )
         )
-        for path in step.output.values():
+        for path in (step.output.def_, step.output.verilog, step.output.gds):
+            if path is None:
+                continue
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8") as file:
                 file.write("\n")

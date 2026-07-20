@@ -3,6 +3,7 @@
 import glob
 import os
 import re
+from pathlib import Path
 
 from chipcompiler.data import (
     Workspace, 
@@ -185,15 +186,15 @@ class EccChecklist:
                                              info=info)
 
     def build_checklist(self) -> list:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         step = StepEnum(self.workspace_step.name)
         self.add_items(checklist=checklist,
                        step=step)
                 
-        self.workspace_step.checklist["checklist"] = checklist.data
+        self.workspace_step.checklist.checklist = checklist.data
         
     def save(self) -> bool:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         return checklist.save()
         
     def update_item(self, 
@@ -202,7 +203,7 @@ class EccChecklist:
                     item : str,
                     state : str | CheckState,
                     info : str = ""):
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         checklist.update(step=step, 
                          type=type, 
                          item=item, 
@@ -235,7 +236,7 @@ class EccChecklist:
         ).check()
         
     def check_file(self,
-                   path : str,
+                   path : str | Path,
                    text_tokens : list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
             return False
@@ -265,7 +266,7 @@ class EccFloorplanChecklist(EccChecklist):
         step = StepEnum.FLOORPLAN.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
         db = json_read(self.workspace_step.feature.db or "")
-        subflow = json_read(self.workspace_step.subflow.get("path", ""))
+        subflow = json_read(self.workspace_step.subflow.path or "")
 
         try:
             with open(self.workspace_step.log.file or "",
@@ -283,9 +284,9 @@ class EccFloorplanChecklist(EccChecklist):
             for item in subflow.get("steps", [])
         }
         output_success = all([
-            self.check_file(self.workspace_step.output.get("def", "")),
-            self.check_file(self.workspace_step.output.get("verilog", "")),
-            self.check_file(self.workspace_step.output.get("gds", "")),
+            self.check_file(self.workspace_step.output.def_ or ""),
+            self.check_file(self.workspace_step.output.verilog or ""),
+            self.check_file(self.workspace_step.output.gds or ""),
         ])
 
         die_area = self.to_float(
@@ -355,8 +356,8 @@ class EccFloorplanChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success or item in warning_items for _, item, success in checks)
@@ -370,7 +371,7 @@ class EccNetlistOptChecklist(EccChecklist):
         config = json_read(self.workspace.config.get(StepEnum.NETLIST_OPT.value, ""))
 
         try:
-            with open(self.workspace_step.output.get("verilog", ""),
+            with open(self.workspace_step.output.verilog or "",
                       "r", encoding="utf-8", errors="ignore") as file:
                 netlist_text = file.read()
         except OSError:
@@ -391,9 +392,9 @@ class EccNetlistOptChecklist(EccChecklist):
         total_nets = self.to_float(metrics.get("Total nets"), 0.0)
         db_nets = self.to_float(statis.get("num_nets"), 0.0)
         output_success = all([
-            self.check_file(self.workspace_step.output.get("def", "")),
-            self.check_file(self.workspace_step.output.get("verilog", "")),
-            self.check_file(self.workspace_step.output.get("gds", "")),
+            self.check_file(self.workspace_step.output.def_ or ""),
+            self.check_file(self.workspace_step.output.verilog or ""),
+            self.check_file(self.workspace_step.output.gds or ""),
         ])
 
         buffer_success = (
@@ -442,8 +443,8 @@ class EccNetlistOptChecklist(EccChecklist):
                 info="" if success else info,
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success or item in warning_items for _, item, success in checks)
@@ -505,8 +506,8 @@ class EccCtsChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -531,9 +532,9 @@ class EccTimingOptDrvChecklist(EccChecklist):
             buffer_cells = [buffer_cells]
 
         output_success = all([
-            self.check_file(self.workspace_step.output.get("def", "")),
-            self.check_file(self.workspace_step.output.get("verilog", "")),
-            self.check_file(self.workspace_step.output.get("gds", "")),
+            self.check_file(self.workspace_step.output.def_ or ""),
+            self.check_file(self.workspace_step.output.verilog or ""),
+            self.check_file(self.workspace_step.output.gds or ""),
         ])
         log_success = not any(
             token in log_text
@@ -565,8 +566,8 @@ class EccTimingOptDrvChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -584,9 +585,9 @@ class EccTimingOptHoldChecklist(EccChecklist):
             buffer_cells = [buffer_cells]
 
         output_success = all([
-            self.check_file(self.workspace_step.output.get("def", "")),
-            self.check_file(self.workspace_step.output.get("verilog", "")),
-            self.check_file(self.workspace_step.output.get("gds", "")),
+            self.check_file(self.workspace_step.output.def_ or ""),
+            self.check_file(self.workspace_step.output.verilog or ""),
+            self.check_file(self.workspace_step.output.gds or ""),
         ])
         min_wns = self.to_float(metrics.get("min_WNS"))
         min_tns = self.to_float(metrics.get("min_TNS"))
@@ -618,8 +619,8 @@ class EccTimingOptHoldChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -637,9 +638,9 @@ class EccTimingOptSetupChecklist(EccChecklist):
             buffer_cells = [buffer_cells]
 
         output_success = all([
-            self.check_file(self.workspace_step.output.get("def", "")),
-            self.check_file(self.workspace_step.output.get("verilog", "")),
-            self.check_file(self.workspace_step.output.get("gds", "")),
+            self.check_file(self.workspace_step.output.def_ or ""),
+            self.check_file(self.workspace_step.output.verilog or ""),
+            self.check_file(self.workspace_step.output.gds or ""),
         ])
         max_wns = self.to_float(metrics.get("max_WNS"))
         max_tns = self.to_float(metrics.get("max_TNS"))
@@ -671,8 +672,8 @@ class EccTimingOptSetupChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -707,9 +708,9 @@ class EccRoutingChecklist(EccChecklist):
             metrics.get("num_via", nets.get("num_via")), 0.0)
         timing_enabled = str(rt_config.get("-enable_timing", "0")) == "1"
         output_success = all([
-            self.check_file(self.workspace_step.output.get("def", "")),
-            self.check_file(self.workspace_step.output.get("verilog", "")),
-            self.check_file(self.workspace_step.output.get("gds", "")),
+            self.check_file(self.workspace_step.output.def_ or ""),
+            self.check_file(self.workspace_step.output.verilog or ""),
+            self.check_file(self.workspace_step.output.gds or ""),
         ])
 
         checks = [
@@ -742,8 +743,8 @@ class EccRoutingChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success or item in warning_items for _, item, success in checks)
@@ -755,9 +756,9 @@ class EccDrcChecklist(EccChecklist):
         metrics = json_read(self.workspace_step.analysis.metrics or "")
         feature = json_read(self.workspace_step.feature.step or "").get("drc", {})
         output_success = all([
-            self.check_file(self.workspace_step.output.get("def", "")),
-            self.check_file(self.workspace_step.output.get("verilog", "")),
-            self.check_file(self.workspace_step.output.get("gds", "")),
+            self.check_file(self.workspace_step.output.def_ or ""),
+            self.check_file(self.workspace_step.output.verilog or ""),
+            self.check_file(self.workspace_step.output.gds or ""),
         ])
 
         metric_drc_num = self.to_float(metrics.get("drc_num"))
@@ -796,8 +797,8 @@ class EccDrcChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success or item in warning_items for _, item, success in checks)
@@ -807,7 +808,7 @@ class EccFillerChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.FILLER.value
         db = json_read(self.workspace_step.feature.db or "")
-        subflow = json_read(self.workspace_step.subflow.get("path", ""))
+        subflow = json_read(self.workspace_step.subflow.path or "")
         config = json_read(self.workspace.config.get(StepEnum.PLACEMENT.value, ""))
 
         try:
@@ -826,9 +827,9 @@ class EccFillerChecklist(EccChecklist):
         second_iter_fillers = filler_config.get("second_iter", [])
         pdk_fillers = getattr(self.workspace.pdk, "fillers", []) or []
         output_success = all([
-            self.check_file(self.workspace_step.output.get("def", "")),
-            self.check_file(self.workspace_step.output.get("verilog", "")),
-            self.check_file(self.workspace_step.output.get("gds", "")),
+            self.check_file(self.workspace_step.output.def_ or ""),
+            self.check_file(self.workspace_step.output.verilog or ""),
+            self.check_file(self.workspace_step.output.gds or ""),
         ])
         statis = db.get("Design Statis", {})
         num_instances = self.to_float(statis.get("num_instances"), 0.0)
@@ -869,8 +870,8 @@ class EccFillerChecklist(EccChecklist):
             info="post-filler DRC is not run in current flow",
         )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -892,19 +893,19 @@ class EccHardenChecklist(EccChecklist):
             (
                 "Output",
                 "check abstract LEF",
-                self.check_file(self.workspace_step.output.get("lef", ""),
+                self.check_file(self.workspace_step.output.lef or "",
                                 lef_tokens),
             ),
             (
                 "Output",
                 "check timing model LIB",
-                self.check_file(self.workspace_step.output.get("lib", ""),
+                self.check_file(self.workspace_step.output.lib or "",
                                 lib_tokens),
             ),
             (
                 "Output",
                 "check harden GDS",
-                self.check_file(self.workspace_step.output.get("gds", "")),
+                self.check_file(self.workspace_step.output.gds or ""),
             ),
         ]
 
@@ -924,8 +925,8 @@ class EccHardenChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return deliverables_success
@@ -933,11 +934,10 @@ class EccHardenChecklist(EccChecklist):
 
 class EccRcxChecklist(EccChecklist):
     def collect_rcx_spef_paths(self) -> list:
-        spef_paths = self.workspace_step.output.get("spef", [])
-        if isinstance(spef_paths, str):
-            spef_paths = [spef_paths]
+        spef_value = self.workspace_step.output.spef or []
+        spef_paths: list = [spef_value] if isinstance(spef_value, str) else list(spef_value)
 
-        output_dir = self.workspace_step.output.get("dir", "")
+        output_dir = self.workspace_step.output.dir or ""
         if output_dir and os.path.isdir(output_dir):
             spef_paths.extend(glob.glob(os.path.join(output_dir, "*.spef")))
 
@@ -1054,8 +1054,8 @@ class EccRcxChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)
@@ -1078,7 +1078,7 @@ class EccStaChecklist(EccChecklist):
         if len(sta_data) == 0:
             return []
 
-        output_dir = self.workspace_step.output.get("dir", "")
+        output_dir = self.workspace_step.output.dir or ""
         liberty_by_corner = {
             liberty.get("corner"): liberty
             for liberty in sta_data.get("liberty", [])
@@ -1119,7 +1119,7 @@ class EccStaChecklist(EccChecklist):
         if qor_paths:
             return qor_paths
 
-        output_dir = self.workspace_step.output.get("dir", "")
+        output_dir = self.workspace_step.output.dir or ""
         if not output_dir or not os.path.isdir(output_dir):
             return []
         return sorted(glob.glob(
@@ -1248,8 +1248,8 @@ class EccStaChecklist(EccChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success or item in warning_items for _, item, success in checks)

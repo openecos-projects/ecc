@@ -99,16 +99,16 @@ def test_yosys_builder_constructs_path_objects_and_creates_dirs(tmp_path):
     assert step.directory == expected_step_dir
     assert isinstance(step.directory, Path)
     assert step.input.verilog == rtl_file
-    assert step.output["dir"] == expected_step_dir / "output"
-    assert step.output["fixed_verilog"] == expected_step_dir / "output" / "top_Synthesis_fixed.v.gz"
-    assert step.script["main"] == expected_step_dir / "script" / "Synthesis_main.tcl"
+    assert step.output.dir == expected_step_dir / "output"
+    assert step.output.fixed_verilog == expected_step_dir / "output" / "top_Synthesis_fixed.v.gz"
+    assert step.script.main == expected_step_dir / "script" / "Synthesis_main.tcl"
 
     yosys_builder.build_step_space(step)
 
-    assert step.output["dir"].is_dir()
+    assert step.output.dir and step.output.dir.is_dir()
     assert step.data.tmp and step.data.tmp.is_dir()
-    assert step.script["dir"].is_dir()
-    assert step.analysis["dir"].is_dir()
+    assert step.script.dir and step.script.dir.is_dir()
+    assert step.analysis.dir and step.analysis.dir.is_dir()
 
 
 def test_yosys_subflow_writes_path_payload_as_json_strings(tmp_path):
@@ -126,9 +126,9 @@ def test_yosys_subflow_writes_path_payload_as_json_strings(tmp_path):
 
     YosysSubFlow(workspace, step)
 
-    with open(step.subflow["path"], encoding="utf-8") as file:
+    with open(str(step.subflow.path), encoding="utf-8") as file:
         data = json.load(file)
-    assert data["path"] == str(step.subflow["path"])
+    assert data["path"] == str(step.subflow.path)
 
 
 def test_yosys_step_info_stringifies_path_payloads(tmp_path):
@@ -144,10 +144,10 @@ def test_yosys_step_info_stringifies_path_payloads(tmp_path):
         input_verilog=tmp_path / "top.v",
     )
 
-    assert get_step_info(workspace, step, "views")["image"] == str(step.output["image"])
-    assert get_step_info(workspace, step, "metrics") == {"metrics": str(step.analysis["metrics"])}
-    assert get_step_info(workspace, step, "subflow") == {"path": str(step.subflow["path"])}
-    assert get_step_info(workspace, step, "checklist") == {"path": str(step.checklist["path"])}
+    assert get_step_info(workspace, step, "views")["image"] == str(step.output.image)
+    assert get_step_info(workspace, step, "metrics") == {"metrics": str(step.analysis.metrics)}
+    assert get_step_info(workspace, step, "subflow") == {"path": str(step.subflow.path)}
+    assert get_step_info(workspace, step, "checklist") == {"path": str(step.checklist.path)}
     assert get_step_info(workspace, step, "config") == {"path": str(workspace.config["flow"])}
 
 

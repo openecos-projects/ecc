@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import StepEnum
+from chipcompiler.data import ChecklistState, OutputPaths, StepEnum
 from chipcompiler.tools.ecc.checklist import EccStaChecklist
 
 
@@ -70,15 +70,15 @@ def _sta_checker(
         parameters=SimpleNamespace(data={"Frequency max [MHz]": 100}),
     )
     workspace_step = SimpleNamespace(
-        checklist={"path": str(checklist_path)},
+        checklist=ChecklistState(path=checklist_path),
         name=StepEnum.STA.value,
-        output={"dir": str(output_dir)},
+        output=OutputPaths(dir=output_dir),
     )
     return EccStaChecklist(workspace, workspace_step)
 
 
 def _item_state(checker: EccStaChecklist, item: str) -> str:
-    data = json.loads(Path(checker.workspace_step.checklist["path"]).read_text())
+    data = json.loads(Path(str(checker.workspace_step.checklist.path)).read_text())
     return next(row["state"] for row in data["checklist"] if row["item"] == item)
 
 

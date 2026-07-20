@@ -45,15 +45,15 @@ class EccSubFlow:
     
     def init_sub_flow(self):
         from chipcompiler.utility import json_read
-        data = json_read(self.workspace_step.subflow.get("path", ""))
+        data = json_read(self.workspace_step.subflow.path or "")
         if len(data) > 0:
-            self.workspace_step.subflow["steps"] = data.get("steps", [])
+            self.workspace_step.subflow.steps = data.get("steps", [])
         else:
             self.build_sub_flow()
 
     def build_sub_flow(self) -> list:
-        if len(self.workspace_step.subflow.get("steps", [])) > 0:
-            return self.workspace_step.subflow["steps"]
+        if len(self.workspace_step.subflow.steps or []) > 0:
+            return self.workspace_step.subflow.steps
         
         def subflow_template(step_name : str):
             return {
@@ -142,19 +142,19 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_sta.value))
                 
-        self.workspace_step.subflow["steps"] = steps
+        self.workspace_step.subflow.steps = steps
         
         self.save()
     
     def save(self) -> bool:
         from chipcompiler.utility import json_write
 
-        data = dict(self.workspace_step.subflow)
-        if "path" in data:
-            data["path"] = str(data["path"])
-        
-        return json_write(file_path=self.workspace_step.subflow.get("path", ""), 
-                          data=data)
+        subflow = self.workspace_step.subflow
+        data = {
+            "path": str(subflow.path) if subflow.path else "",
+            "steps": subflow.steps,
+        }
+        return json_write(file_path=subflow.path or "", data=data)
     
     def get_runtime(self):
         # end time
@@ -202,7 +202,7 @@ class EccSubFlow:
         peak_memory = self.get_peak_memory() - self.start_memory
         peak_memory = 0 if peak_memory < 0 else round(peak_memory, 3)
         
-        for step_dict in self.workspace_step.subflow.get("steps", []):
+        for step_dict in (self.workspace_step.subflow.steps or []):
             if step_dict.get("name") == step_name:
                 step_dict["state"] = state
                 step_dict["runtime"] = runtime

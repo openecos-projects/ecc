@@ -10,13 +10,14 @@ class SizerChecklist:
         self.build_checklist()
 
     def build_checklist(self) -> list:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         checklist.save()
-        self.workspace_step.checklist["checklist"] = checklist.data.get("checklist", [])
-        return self.workspace_step.checklist["checklist"]
+        rows = checklist.data.get("checklist", [])
+        self.workspace_step.checklist.checklist = rows
+        return rows
 
     def save(self) -> bool:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         return checklist.save()
 
     def update_item(
@@ -26,7 +27,7 @@ class SizerChecklist:
         item: str,
         state: str | CheckState,
     ) -> None:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         checklist.update(step=step, type=type, item=item, state=state)
 
     def check(self) -> None:

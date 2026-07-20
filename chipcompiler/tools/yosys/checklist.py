@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os
+from pathlib import Path
 
 from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.utility import json_read
@@ -58,15 +59,15 @@ class YosysChecklist:
                           state=CheckState.Unstart.value)
 
     def build_checklist(self) -> list:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         step = StepEnum(self.workspace_step.name)
         self.add_items(checklist=checklist,
                        step=step)
                 
-        self.workspace_step.checklist["checklist"] = checklist.data
+        self.workspace_step.checklist.checklist = checklist.data
     
     def save(self) -> bool:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         return checklist.save()
         
     def update_item(self, 
@@ -75,7 +76,7 @@ class YosysChecklist:
                     item : str,
                     state : str | CheckState,
                     info : str = ""):
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
         checklist.update(step=step, 
                          type=type, 
                          item=item, 
@@ -116,7 +117,7 @@ class YosysChecklist:
 
 class YosysSynthesisChecklist(YosysChecklist):
     def check_file(self,
-                   path : str,
+                   path : str | Path,
                    text_tokens : list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
             return False
@@ -150,7 +151,7 @@ class YosysSynthesisChecklist(YosysChecklist):
             log_text = ""
 
         try:
-            netlist_text = read_text_maybe_gzip(self.workspace_step.output.get("verilog", ""))
+            netlist_text = read_text_maybe_gzip(self.workspace_step.output.verilog or "")
         except (OSError, EOFError):
             netlist_text = ""
 
@@ -206,7 +207,7 @@ class YosysSynthesisChecklist(YosysChecklist):
              and "-liberty" in stat.get("invocation", "")),
             ("Log", "check synthesis log", log_success),
             ("Netlist", "check mapped gate netlist",
-             self.check_file(self.workspace_step.output.get("verilog", ""))
+             self.check_file(self.workspace_step.output.verilog or "")
              and bool(top_module)
              and f"module {top_module}" in netlist_text),
             ("Metrics", "check synthesis cell statistics",
@@ -222,8 +223,8 @@ class YosysSynthesisChecklist(YosysChecklist):
                 info="" if success else f"{item} check failed",
             )
 
-        self.workspace_step.checklist["checklist"] = Checklist(
-            path=self.workspace_step.checklist.get("path", "")
+        self.workspace_step.checklist.checklist = Checklist(
+            path=self.workspace_step.checklist.path or ""
         ).data
 
         return all(success for _, _, success in checks)

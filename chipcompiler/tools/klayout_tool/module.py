@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
+from pathlib import Path
+
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
 from chipcompiler.utility.path import path_text
 from klayout import db
@@ -19,8 +21,8 @@ class KlayoutModule:
         """
         Save the layout image to the specified path.
         """        
-        gds_file = self.step.output.get("gds", None)
-        img_file = self.step.output.get("image", None)
+        gds_file = self.step.output.gds
+        img_file = self.step.output.image
         
         if gds_file is None or img_file is None or not os.path.exists(gds_file):
             return False
@@ -36,9 +38,9 @@ class KlayoutModule:
         return True 
         
     def save_snapshot_image(self,
-                            gds_file: str, 
-                            img_file: str, 
-                            weight: int = 1920, 
+                            gds_file: str | Path,
+                            img_file: str | Path,
+                            weight: int = 1920,
                             height: int = 1920):
         """
         Takes a screenshot of a GDS file and saves it as an image.

@@ -10,8 +10,8 @@ from .utility import get_sizer_command, is_eda_exist, is_sizer_runtime_exist
 
 
 def _has_required_outputs(step: WorkspaceStep) -> bool:
-    return os.path.exists(step.output.get("def", "")) and os.path.exists(
-        step.output.get("verilog", "")
+    return os.path.exists(step.output.def_ or "") and os.path.exists(
+        step.output.verilog or ""
     )
 
 
@@ -39,7 +39,7 @@ def run_step(
     os.makedirs(output_dir, exist_ok=True)
     log_path = step.log.file or ""
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    os.makedirs(os.path.dirname(step.output["def"]), exist_ok=True)
+    os.makedirs(os.path.dirname(step.output.def_ or ""), exist_ok=True)
 
     command = get_sizer_command() + ["-env", str(env_path), "-f", str(cmd_path)]
     with open(log_path, "w", encoding="utf-8") as log_file:

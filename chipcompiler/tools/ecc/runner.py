@@ -213,7 +213,7 @@ def run_sta_without_spef(workspace: Workspace,
     synthesis result when this function returns ``False``.
     """
     try:
-        netlist_path = step.output.get("verilog", "")
+        netlist_path = step.output.verilog or ""
         liberty_paths = workspace.pdk.libs
         sdc_path = workspace.pdk.sdc
         data_dir = step.data.dir or ""
@@ -290,15 +290,15 @@ def save_data(workspace: Workspace,
     if ecc_module is None:
         return False
     
-    ecc_module.def_save(def_path=step.output.get("def", ""))
-    ecc_module.verilog_save(output_verilog=step.output.get("verilog", ""))
-    ecc_module.gds_save(output_path=step.output.get("gds", ""))
-    ecc_module.save_data(path=step.output.get("db", ""))
-    # ecc_module.json_save(path=step.output.get("json", ""))
-    ecc_module.view_json_save(output_dir=step.output.get("view_json", ""),
+    ecc_module.def_save(def_path=step.output.def_ or "")
+    ecc_module.verilog_save(output_verilog=step.output.verilog or "")
+    ecc_module.gds_save(output_path=step.output.gds or "")
+    ecc_module.save_data(path=step.output.db or "")
+    # ecc_module.json_save(path=step.output.json or "")
+    ecc_module.view_json_save(output_dir=step.output.view_json or "",
                               json_format="compact",
                               compress=True)
-    ecc_module.view_json_apply_edits(edits_path=step.output.get("view_json_edits", ""),
+    ecc_module.view_json_apply_edits(edits_path=step.output.view_json_edits or "",
                                      compress=True)
     ecc_module.feature_sammry(json_path=step.feature.db or "")
     if feature_step:
@@ -949,9 +949,9 @@ def run_harden(workspace: Workspace,
             return False
         signoff_item = signoff_items[0]
 
-        ecc_module.write_abstract_lef(output_lef_path=step.output.get("lef", ""))
+        ecc_module.write_abstract_lef(output_lef_path=step.output.lef or "")
         ecc_module.write_timing_model(
-            output_lib_path=step.output.get("lib", ""),
+            output_lib_path=step.output.lib or "",
             config=workspace.config.get(StepEnum.STA.value, ""),
             output_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
             lib_paths=signoff_item["liberty_files"],
@@ -959,7 +959,7 @@ def run_harden(workspace: Workspace,
             spef_path=signoff_item["spef_file"],
             design_name=workspace.design.name,
         )
-        ecc_module.gds_save(output_path=step.output.get("gds", ""), is_harden=True)
+        ecc_module.gds_save(output_path=step.output.gds or "", is_harden=True)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
         
@@ -1073,7 +1073,7 @@ def run_sta(workspace: Workspace,
 
         report_corner_dir = f"{corner_name}_{temperature_token(temperature)}"
         report_dir = os.path.join(
-            step.output.get("dir", ""),
+            step.output.dir or "",
             safe_dir_name(report_corner_dir),
             safe_dir_name(rcx_corner_name),
         )

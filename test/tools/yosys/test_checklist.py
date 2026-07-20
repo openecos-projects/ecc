@@ -3,7 +3,14 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import AnalysisPaths, LogPaths, StepFeature, StepInput
+from chipcompiler.data import (
+    AnalysisPaths,
+    ChecklistState,
+    LogPaths,
+    OutputPaths,
+    StepFeature,
+    StepInput,
+)
 from chipcompiler.tools.yosys.checklist import YosysSynthesisChecklist
 
 
@@ -53,8 +60,8 @@ def test_synthesis_checklist_reads_gzip_mapped_netlist(tmp_path):
         analysis=AnalysisPaths(metrics=metrics),
         feature=StepFeature(stat=stat),
         log=LogPaths(file=log),
-        output={"verilog": str(netlist)},
-        checklist={"path": str(checklist_path)},
+        output=OutputPaths(verilog=netlist),
+        checklist=ChecklistState(path=checklist_path),
     )
 
     assert YosysSynthesisChecklist(workspace, step).check() is True

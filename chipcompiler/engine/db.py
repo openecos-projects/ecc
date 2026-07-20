@@ -60,5 +60,5 @@ class EngineDB:
         for example, 
         if step is "place", read instances data from step output def file and update to db egine.
         """
-        _ = step.output["def"]
+        _ = step.output.def_
         self.ecc_module.read_def()

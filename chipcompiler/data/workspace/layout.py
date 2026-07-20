@@ -225,7 +225,8 @@ class SubflowState(_MigrationMapping):
 @dataclass
 class ChecklistState(_MigrationMapping):
     path: Path | None = _UNSET
-    checklist: list = _UNSET
+    # Holds either the checklist rows (list) or a loaded checklist mapping.
+    checklist: list | dict = _UNSET
 
 
 # --- step hierarchy --------------------------------------------------------

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import subprocess
+from pathlib import Path
 
 from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.yosys.checklist import YosysChecklist
@@ -40,7 +41,7 @@ def _remove_parameter_overrides(text: str) -> str:
     return "".join(out)
 
 
-def _write_fixed_netlist(src_path: str, dst_path: str) -> bool:
+def _write_fixed_netlist(src_path: str | Path, dst_path: str | Path) -> bool:
     """Write an extra netlist with parameter override blocks removed."""
     if not src_path or not dst_path or not os.path.exists(src_path):
         return False
@@ -138,12 +139,12 @@ def run_step(workspace: Workspace,
                 stderr=subprocess.STDOUT,
             )
 
-        if os.path.exists(step.output["verilog"]):
+        if os.path.exists(step.output.verilog or ""):
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Success)
 
-            fixed_netlist = step.output.get("fixed_verilog", "")
+            fixed_netlist = step.output.fixed_verilog or ""
             if fixed_netlist:
-                _write_fixed_netlist(step.output["verilog"], fixed_netlist)
+                _write_fixed_netlist(step.output.verilog or "", fixed_netlist)
 
             _run_ecc_synthesis_sta(
                 workspace=workspace,
@@ -163,7 +164,7 @@ def run_step(workspace: Workspace,
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
             
             print(
-                f"Error: Output netlist not generated at {step.output['verilog']}. "
+                f"Error: Output netlist not generated at {step.output.verilog}. "
                 f"yosys exit code: {result.returncode}"
             )
             return False

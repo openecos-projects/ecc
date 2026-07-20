@@ -40,7 +40,7 @@ def get_step_info(workspace: Workspace,
 def build_views(workspace: Workspace, 
                 step: WorkspaceStep) -> dict:
     info = {
-        "image" : stringify_paths(step.output.get("image", "")),
+        "image" : stringify_paths(step.output.image or ""),
         "metrics" : stringify_paths(step.analysis.metrics or ""),
         "information" : {}
     }
@@ -50,7 +50,7 @@ def build_views(workspace: Workspace,
 def build_layout(workspace: Workspace, 
                  step: WorkspaceStep) -> dict:
     info = {
-        "image" : stringify_paths(step.output.get("image", "")),
+        "image" : stringify_paths(step.output.image or ""),
     }
     
     return info
@@ -66,7 +66,7 @@ def build_metrics(workspace: Workspace,
 def build_subflow(workspace: Workspace, 
                   step: WorkspaceStep) -> dict:       
     info = {
-        "path" : stringify_paths(step.subflow.get("path", ""))
+        "path" : stringify_paths(step.subflow.path or "")
     }
     
     return info
@@ -96,7 +96,7 @@ def build_maps(workspace: Workspace,
 def build_checklist(workspace: Workspace, 
                     step: WorkspaceStep) -> dict:          
     info = {
-        "path" : stringify_paths(step.checklist.get("path", ""))
+        "path" : stringify_paths(step.checklist.path or "")
     }
     
     return info
