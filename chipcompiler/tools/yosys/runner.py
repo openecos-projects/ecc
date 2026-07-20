@@ -102,7 +102,7 @@ def run_step(workspace: Workspace,
         print(error_msg)
         return False
 
-    input_verilog = step.input.get("verilog", "")
+    input_verilog = step.input.verilog or ""
     input_filelist = workspace.design.input_filelist if workspace.design.input_filelist else ""
 
     # Validate that at least one of input_verilog or filelist is valid

@@ -24,7 +24,7 @@ from chipcompiler.data import (
 from chipcompiler.utility import json_read
 
 
-def _abspath(path: Path | None) -> str:
+def _abspath(path: Path | str | None) -> str:
     """Convert path to absolute path, handling empty strings."""
     if not path:
         return ""
@@ -72,7 +72,7 @@ def generate_global_var_tcl(workspace: Workspace,
     if not isinstance(freq_mhz, (int, float)) or freq_mhz <= 0:
         raise ValueError(f"CLK_FREQ_MHZ must be positive number, got {freq_mhz}")
 
-    rtl_file = step.input.get("verilog", "")
+    rtl_file = step.input.verilog or ""
     filelist = (
         workspace.design.input_filelist
         if workspace.design.input_filelist

@@ -104,7 +104,7 @@ def create_db_engine(workspace: Workspace,
                              output_dir=step.data.get("dir"),
                              feature_dir=step.feature.get("dir"))
     
-        db_path = step.input.get("db", "")
+        db_path = step.input.db or ""
         if ecc_module.is_db_data_exists(db_path):
             try:
                 loaded = ecc_module.load_data(path=db_path)
@@ -127,10 +127,10 @@ def create_db_engine(workspace: Workspace,
         
     def load_design():
         def def_exist() -> str | None:
-            return input_path_exists(step.input.get("def", ""))
+            return input_path_exists(step.input.def_)
 
         def verilog_exist() -> str | None:
-            return input_path_exists(step.input.get("verilog", ""))
+            return input_path_exists(step.input.verilog)
 
         ecc_module = ECCToolsModule()
     
@@ -164,8 +164,8 @@ def create_db_engine(workspace: Workspace,
             return False
     
         return (
-            input_path_exists(step.input.get("def", "")) is not None
-            or input_path_exists(step.input.get("verilog", "")) is not None
+            input_path_exists(step.input.def_) is not None
+            or input_path_exists(step.input.verilog) is not None
         )
     
     if not is_eda_exist() or not is_enable_setup():

@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 from contextlib import contextmanager
+from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
@@ -16,8 +17,8 @@ class DreamplaceModule:
         workspace: Workspace,
         step: WorkspaceStep,
         ecc_module: ECCToolsModule,
-        input_def: str,
-        input_verilog: str,
+        input_def: str | Path | None,
+        input_verilog: str | Path | None,
         output_def: str,
         output_verilog: str,
     ):

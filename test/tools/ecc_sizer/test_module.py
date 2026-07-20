@@ -156,8 +156,8 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     assert cmd_lines == [
         "-useOpenSTA",
         "-top gcd",
-        f"-def {step.input['def']}",
-        f"-v {step.input['verilog']}",
+        f"-def {step.input.def_}",
+        f"-v {step.input.verilog}",
         f"-sdc {workspace.pdk.sdc}",
         f"-spef {workspace.pdk.spef}",
         "-outputPath .",
@@ -294,10 +294,10 @@ def test_sizer_step_keeps_caller_input_paths(tmp_path):
         input_verilog=input_verilog,
     )
 
-    assert step.input["def"] == Path(input_def)
-    assert step.input["verilog"] == Path(input_verilog)
-    assert str(step.input["def"]) == input_def
-    assert str(step.input["verilog"]) == input_verilog
+    assert step.input.def_ == Path(input_def)
+    assert step.input.verilog == Path(input_verilog)
+    assert str(step.input.def_) == input_def
+    assert str(step.input.verilog) == input_verilog
 
 
 def test_sizer_step_keeps_caller_output_paths_that_share_old_prefix(tmp_path):
@@ -408,8 +408,9 @@ def test_sizer_step_info_surfaces_include_step_local_config(tmp_path, monkeypatc
     sizer_builder.build_step_config(workspace, step)
 
     assert get_step_info(workspace, step, "input") == {
-        key: str(value) if isinstance(value, Path) else value
-        for key, value in step.input.items()
+        "def": str(step.input.def_),
+        "verilog": str(step.input.verilog),
+        "db": step.input.db,
     }
     assert get_step_info(workspace, step, "output") == {
         key: str(value) if isinstance(value, Path) else value
