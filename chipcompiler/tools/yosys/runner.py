@@ -3,7 +3,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
+from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, YosysStep
 from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
@@ -54,7 +54,7 @@ def _write_fixed_netlist(src_path: str | Path, dst_path: str | Path) -> bool:
 
 
 def _run_ecc_synthesis_sta(workspace: Workspace,
-                           step: WorkspaceStep,
+                           step: YosysStep,
                            ecc_module=None) -> bool:
     """Run optional ECC STA without making ECC a Yosys import dependency."""
     try:
@@ -73,7 +73,7 @@ def _run_ecc_synthesis_sta(workspace: Workspace,
 
 
 def run_step(workspace: Workspace,
-             step: WorkspaceStep,
+             step: YosysStep,
              ecc_module=None) -> bool:
     """
     Run the synthesis step using yosys.

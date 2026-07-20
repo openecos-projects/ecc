@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Final
 from ..parameter import (
@@ -17,7 +17,7 @@ from ..home import HomeData
 
 from ..pdk import get_pdk, PDK
 from ..step import StateEnum, StepEnum
-from .layout import WorkspaceStepBase
+from .layout import EccData, WorkspaceStepBase
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
 from chipcompiler.utility.path import path_is_within, path_text
@@ -61,6 +61,26 @@ class Workspace:
     # logger
     logger : Logger = field(default_factory=Logger) # logger for this workspace
     
+def step_group_to_dict(group: Any) -> dict:
+    """Project a typed path group back to its legacy-key dict for logging.
+
+    Renames ``def_`` to ``"def"``, flattens ``EccData.steps`` into the dynamic
+    per-step keys, recurses into nested groups (e.g. ``report.sta``), and emits
+    only the fields the concrete variant actually carries.
+    """
+    result: dict = {}
+    for f in fields(group):
+        if f.name == "steps" and isinstance(group, EccData):
+            result.update(group.steps)
+            continue
+        value = getattr(group, f.name)
+        if is_dataclass(value) and not isinstance(value, type):
+            value = step_group_to_dict(value)
+        key = "def" if f.name == "def_" else f.name
+        result[key] = value
+    return result
+
+
 def log_workspace_step(step : WorkspaceStep, logger : Logger):
     logger.log_section(f"step {step.name} info")
     logger.info(f"step name         : {step.name}")
@@ -68,16 +88,16 @@ def log_workspace_step(step : WorkspaceStep, logger : Logger):
     logger.info(f"step eda version  : {step.version}")
     logger.info(f"step subworkspace : {step.directory}")
 
-    logger.info("\ninput - \n%s", dict_to_str(step.input))
-    logger.info("\noutput - \n%s", dict_to_str(step.output))
-    logger.info("\ndata - \n%s", dict_to_str(step.data))
-    logger.info("\nfeature - \n%s", dict_to_str(step.feature))
-    logger.info("\nreport - \n%s", dict_to_str(step.report))
-    logger.info("\nlog - \n%s", dict_to_str(step.log))
-    logger.info("\nscript - \n%s", dict_to_str(step.script))
-    logger.info("\nanalysis - \n%s", dict_to_str(step.analysis))
-    logger.info("\nsubflow - \n%s", dict_to_str(step.subflow))
-    logger.info("\nchecklist - \n%s", dict_to_str(step.checklist))
+    logger.info("\ninput - \n%s", dict_to_str(step_group_to_dict(step.input)))
+    logger.info("\noutput - \n%s", dict_to_str(step_group_to_dict(step.output)))
+    logger.info("\ndata - \n%s", dict_to_str(step_group_to_dict(step.data)))
+    logger.info("\nfeature - \n%s", dict_to_str(step_group_to_dict(step.feature)))
+    logger.info("\nreport - \n%s", dict_to_str(step_group_to_dict(step.report)))
+    logger.info("\nlog - \n%s", dict_to_str(step_group_to_dict(step.log)))
+    logger.info("\nscript - \n%s", dict_to_str(step_group_to_dict(step.script)))
+    logger.info("\nanalysis - \n%s", dict_to_str(step_group_to_dict(step.analysis)))
+    logger.info("\nsubflow - \n%s", dict_to_str(step_group_to_dict(step.subflow)))
+    logger.info("\nchecklist - \n%s", dict_to_str(step_group_to_dict(step.checklist)))
     logger.log_separator()
 
 
@@ -731,10 +751,10 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     db["OUTPUT"]["output_dir_path"] = path_text(step.output.dir)
     json_write(workspace.config["db"], db)
 
-    if step.name == StepEnum.ROUTING.value:
+    if step.name == StepEnum.ROUTING.value and isinstance(step.data, EccData):
         router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
         router["RT"]["-temp_directory_path"] = path_text(
-            (step.data.steps or {}).get(StepEnum.ROUTING.value)
+            step.data.steps.get(StepEnum.ROUTING.value)
         )
         json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 

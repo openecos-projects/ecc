@@ -6,15 +6,14 @@ place-and-route ``data.steps`` mapping with its ``workdir_for`` /
 ``iter_directories`` helpers, and that field values are never coerced.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from chipcompiler.data import (
+    EccData,
+    EccOutput,
     EccStep,
     OriginDesign,
     OutputPaths,
-    StepData,
     Workspace,
     WorkspaceStep,
     WorkspaceStepBase,
@@ -40,7 +39,7 @@ def test_result_field_is_gone():
 
 
 def test_unset_group_fields_default_to_none():
-    output = OutputPaths(dir=Path("/d"), verilog=Path("/v.v"))
+    output = EccOutput(dir=Path("/d"), verilog=Path("/v.v"))
     assert output.dir == Path("/d")
     assert output.verilog == Path("/v.v")
     assert output.gds is None
@@ -60,7 +59,7 @@ def test_no_value_coercion_str_stays_str():
 
 
 def test_sizer_empty_db_stays_empty_string():
-    output = OutputPaths(db="")
+    output = EccOutput(db="")
     assert output.db == ""
 
 
@@ -69,7 +68,7 @@ def test_data_supports_dynamic_step_keyed_directories():
     # spaces) in an explicit `steps` mapping; workdir_for falls back to `dir`.
     step = EccStep(
         name="Timing optimization",
-        data=StepData(dir=Path("/data"), steps={"Timing optimization": Path("/data/to")}),
+        data=EccData(dir=Path("/data"), steps={"Timing optimization": Path("/data/to")}),
     )
     assert step.data.steps["Timing optimization"] == Path("/data/to")
     assert step.data.workdir_for("Timing optimization") == Path("/data/to")
@@ -81,7 +80,7 @@ def test_data_iter_directories_for_build_step_space():
     # ecc build_step_space iterates step.data.iter_directories() to mkdir each.
     step = EccStep(
         name="Floorplan",
-        data=StepData(dir=Path("/data"), steps={"place": Path("/data/pl")}),
+        data=EccData(dir=Path("/data"), steps={"place": Path("/data/pl")}),
     )
     assert sorted(str(v) for v in step.data.iter_directories()) == ["/data", "/data/pl"]
 

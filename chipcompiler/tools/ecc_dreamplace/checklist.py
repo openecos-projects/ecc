@@ -7,9 +7,9 @@ from pathlib import Path
 from chipcompiler.data import (
     Checklist,
     CheckState,
+    EccStep,
     StepEnum,
     Workspace,
-    WorkspaceStep,
 )
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
@@ -35,7 +35,7 @@ class DreamplaceChecklist:
     }
 
     def __init__(
-        self, workspace: Workspace, workspace_step: WorkspaceStep, init_checklist: bool = True
+        self, workspace: Workspace, workspace_step: EccStep, init_checklist: bool = True
     ):
         self.workspace = workspace
         self.workspace_step = workspace_step

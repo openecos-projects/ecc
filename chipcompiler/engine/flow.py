@@ -6,10 +6,9 @@ import logging
 import os
 import time
 import traceback
-from pathlib import Path
 from threading import Event, Thread
 
-from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow
+from chipcompiler.data import EccOutput, StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.signoff import (
     SignoffPackageCollector,
@@ -203,16 +202,18 @@ class EngineFlow:
         import os
         success = False
         output = workspace_step.output
+        # HARDEN/RCX/GDS results live on the place-and-route (ecc) output leaves.
+        ecc_output = output if isinstance(output, EccOutput) else None
         match workspace_step.name:
             case StepEnum.SYNTHESIS.value:
                 if os.path.exists(output.verilog or ""):
                     success = True
             case StepEnum.HARDEN.value:
-                if os.path.exists(output.lef or "") and \
-                    os.path.exists(output.lib or ""):
+                if ecc_output and os.path.exists(ecc_output.lef or "") and \
+                    os.path.exists(ecc_output.lib or ""):
                     success = True
             case StepEnum.RCX.value:
-                for spef in (output.spef or []):
+                for spef in (ecc_output.spef if ecc_output else []):
                     if not os.path.exists(spef):
                         break
                 success = True
@@ -226,9 +227,10 @@ class EngineFlow:
                     os.path.exists(output.verilog or ""):
                     success = True
             case default:
+                gds = ecc_output.gds if ecc_output else None
                 if os.path.exists(output.def_ or "") and \
                     os.path.exists(output.verilog or "") and \
-                        os.path.exists(output.gds or ""):
+                        os.path.exists(gds or ""):
                     success = True
         return success
 
@@ -256,9 +258,12 @@ class EngineFlow:
                 # use the output def and verilog from last step.
                 input_def = pre_step.output.def_
                 input_verilog = pre_step.output.verilog
-                # output.db is "" for sizer; keep only a real Path for the input.
-                db = pre_step.output.db
-                input_db = db if isinstance(db, Path) else None
+                # db is a place-and-route (ecc) output leaf; "" for sizer.
+                input_db = (
+                    pre_step.output.db
+                    if isinstance(pre_step.output, EccOutput)
+                    else None
+                )
 
             from chipcompiler.tools import create_step, run_step
             # create workspace step
@@ -273,7 +278,9 @@ class EngineFlow:
             if eda_step is not None:
                 if pre_step is not None \
                     and pre_step.name == StepEnum.RCX.value \
-                    and eda_step.name == StepEnum.STA.value:
+                    and eda_step.name == StepEnum.STA.value \
+                    and isinstance(eda_step.output, EccOutput) \
+                    and isinstance(pre_step.output, EccOutput):
                     eda_step.output.spef = pre_step.output.spef or []
                 self.workspace_steps.append(eda_step)
                 pre_step = eda_step

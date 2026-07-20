@@ -13,7 +13,9 @@ class StepMetricsBuilder:
         """
         Load step metrics from the step analysis metrics file.
         """
-        step_metrics = load_metrics(step.analysis.metrics or "")
+        if step.analysis.metrics is None:
+            raise ValueError(f"step {step.name!r} has no analysis metrics path")
+        step_metrics = load_metrics(step.analysis.metrics)
         return step_metrics
     
     def save(self, step: WorkspaceStep, step_metrics : StepMetrics) -> bool:

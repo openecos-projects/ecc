@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, YosysStep
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 from chipcompiler.utility import json_read
@@ -22,7 +22,7 @@ class YosysChecklist:
     }
 
     def __init__(
-        self, workspace: Workspace, workspace_step: WorkspaceStep, init_checklist: bool = True
+        self, workspace: Workspace, workspace_step: YosysStep, init_checklist: bool = True
     ):
         self.workspace = workspace
         self.workspace_step = workspace_step

@@ -3,7 +3,7 @@ import gzip
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import LogPaths, OutputPaths, ScriptPaths, StateEnum, StepInput
+from chipcompiler.data import LogPaths, ScriptPaths, StateEnum, StepInput, YosysOutput
 from chipcompiler.tools.yosys import runner
 
 
@@ -24,7 +24,7 @@ def _build_workspace_and_step(tmp_path: Path):
     )
     step = SimpleNamespace(
         input=StepInput(verilog=rtl_file),
-        output=OutputPaths(verilog=output_file),
+        output=YosysOutput(verilog=output_file),
         log=LogPaths(file=log_file),
         script=ScriptPaths(dir=script_dir),
         directory=tmp_path

@@ -10,15 +10,15 @@ import pytest
 from chipcompiler.data import (
     PDK,
     OriginDesign,
-    OutputPaths,
     Parameters,
-    StepData,
     StepEnum,
-    StepFeature,
     StepInput,
-    StepReport,
     Workspace,
-    WorkspaceStep,
+    YosysData,
+    YosysFeature,
+    YosysOutput,
+    YosysReport,
+    YosysStep,
 )
 from chipcompiler.tools.yosys import builder as yosys_builder
 from chipcompiler.tools.yosys.service import get_step_info
@@ -66,14 +66,14 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
         config={"db": str(db_config)},
     )
 
-    step = WorkspaceStep(
+    step = YosysStep(
         name="Synthesis",
         directory=str(tmp_path / "Synthesis_yosys"),
         input=StepInput(verilog=rtl_file),
-        output=OutputPaths(verilog=tmp_path / "Synthesis_yosys" / "output" / "top.v.gz"),
-        data=StepData(dir=tmp_path / "Synthesis_yosys" / "data"),
-        feature=StepFeature(stat=tmp_path / "Synthesis_yosys" / "feature" / "stat.json"),
-        report=StepReport(
+        output=YosysOutput(verilog=tmp_path / "Synthesis_yosys" / "output" / "top.v.gz"),
+        data=YosysData(dir=tmp_path / "Synthesis_yosys" / "data"),
+        feature=YosysFeature(stat=tmp_path / "Synthesis_yosys" / "feature" / "stat.json"),
+        report=YosysReport(
             stat=tmp_path / "Synthesis_yosys" / "report" / "stat.json",
             check=tmp_path / "Synthesis_yosys" / "report" / "check.rpt",
         ),

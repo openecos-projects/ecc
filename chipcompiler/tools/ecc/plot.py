@@ -4,7 +4,7 @@ import os
 
 import concurrent.futures
 from tqdm import tqdm
-from chipcompiler.data import WorkspaceStep, Workspace, Parameters, StepEnum
+from chipcompiler.data import EccStep, WorkspaceStep, Workspace, Parameters, StepEnum
 from chipcompiler.utility import (
     json_read, 
     plot_csv_map, 
@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class ECCToolsPlot:
-    def __init__(self, workspace: Workspace, step: WorkspaceStep):
+    def __init__(self, workspace: Workspace, step: EccStep):
         self.workspace = workspace
         self.step = step
     

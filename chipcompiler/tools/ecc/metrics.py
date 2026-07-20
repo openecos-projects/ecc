@@ -4,7 +4,7 @@ from csv import reader as csv_reader
 from math import ceil, isfinite
 from pathlib import Path
 
-from chipcompiler.data import StateEnum, StepEnum, StepMetrics, Workspace, WorkspaceStep
+from chipcompiler.data import EccStep, StateEnum, StepEnum, StepMetrics, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     read_sta_qor_summary,
@@ -3151,9 +3151,9 @@ def save_step_metrics(workspace: Workspace, step: WorkspaceStep, step_metrics: S
     return _remove_legacy_step_metric_artifacts(step)
 
 
-def build_step_metrics(
-    workspace: Workspace, step: WorkspaceStep, subflow: EccSubFlow = None
-) -> StepMetrics:
+def build_step_metrics(workspace: Workspace,
+                       step: EccStep,
+                       subflow: EccSubFlow = None) -> StepMetrics:
     """
     Build and return a StepMetrics instance for the given workspace step.
     """
@@ -3215,7 +3215,7 @@ def build_step_metrics(
     return metrics
 
 
-def build_metrics_timing(workspace: Workspace, step: WorkspaceStep) -> dict:
+def build_metrics_timing(workspace: Workspace, step: EccStep) -> dict:
     metrics = {}
 
     data = json_read(step.feature.get("timing", ""))
@@ -3240,7 +3240,7 @@ def build_metrics_timing(workspace: Workspace, step: WorkspaceStep) -> dict:
     return metrics
 
 
-def build_metrics_db(workspace: Workspace, step: WorkspaceStep) -> dict:
+def build_metrics_db(workspace: Workspace, step: EccStep) -> dict:
     # db summary matrics
     metrics = {}
 
@@ -3280,7 +3280,7 @@ def build_metrics_db(workspace: Workspace, step: WorkspaceStep) -> dict:
     return metrics
 
 
-def build_metrics_floorplan(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return floorplan metrics dictionary.
     """
@@ -3313,7 +3313,7 @@ def build_metrics_floorplan(workspace: Workspace, step: WorkspaceStep) -> StepMe
         return None
 
 
-def build_metrics_net_opt(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_net_opt(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return net operation metrics dictionary.
     """
@@ -3347,7 +3347,7 @@ def build_metrics_net_opt(workspace: Workspace, step: WorkspaceStep) -> StepMetr
         return None
 
 
-def build_metrics_filler(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return filler metrics dictionary.
     """
@@ -3380,7 +3380,7 @@ def build_metrics_filler(workspace: Workspace, step: WorkspaceStep) -> StepMetri
         return None
 
 
-def build_metrics_drc(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return DRC metrics dictionary.
     """
@@ -3414,7 +3414,7 @@ def build_metrics_drc(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
         return None
 
 
-def build_metrics_routing(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return routing metrics dictionary.
     """
@@ -3493,7 +3493,7 @@ def build_metrics_routing(workspace: Workspace, step: WorkspaceStep) -> StepMetr
         return None
 
 
-def build_metrics_rcx(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build RCX metrics from its bounded feature facts.
     """
@@ -3551,7 +3551,7 @@ def build_metrics_rcx(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
         return None
 
 
-def build_metrics_sta(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build STA multi-corner timing summary metrics.
     """
@@ -3694,7 +3694,7 @@ def build_metrics_sta(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
         return None
 
 
-def build_metrics_harden(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build final harden package completeness metrics.
     """
@@ -3739,7 +3739,7 @@ def build_metrics_harden(workspace: Workspace, step: WorkspaceStep) -> StepMetri
         return None
 
 
-def build_metrics_legalization(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return legalization metrics dictionary.
     """
@@ -3770,7 +3770,7 @@ def build_metrics_legalization(workspace: Workspace, step: WorkspaceStep) -> Ste
         return None
 
 
-def build_metrics_timing_opt_hold(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_timing_opt_hold(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return timing optimization (hold) metrics dictionary.
     """
@@ -3807,7 +3807,7 @@ def build_metrics_timing_opt_hold(workspace: Workspace, step: WorkspaceStep) -> 
         return None
 
 
-def build_metrics_timing_opt_drv(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_timing_opt_drv(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return timing optimization (driver) metrics dictionary.
     """
@@ -3844,7 +3844,7 @@ def build_metrics_timing_opt_drv(workspace: Workspace, step: WorkspaceStep) -> S
         return None
 
 
-def build_metrics_cts(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return CTS metrics dictionary.
     """
@@ -3914,7 +3914,7 @@ def build_metrics_cts(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
         return None
 
 
-def build_metrics_placement(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics:
     """
     Build and return placement metrics dictionary.
     """

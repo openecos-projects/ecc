@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 
-from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace, WorkspaceStep
 
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc import EccSubFlowEnum, EccSubFlow, ECCToolsModule
@@ -16,7 +16,7 @@ from .utility import is_eda_exist
 
 
 def run_analysis(workspace: Workspace,
-                 step: WorkspaceStep,
+                 step: EccStep,
                  subflow : EccSubFlow):
     ecc_runner.run_analysis(workspace=workspace,
                             step=step,
@@ -29,7 +29,7 @@ def run_analysis(workspace: Workspace,
 
 def run_step(
     workspace: Workspace,
-    step: WorkspaceStep,
+    step: EccStep,
     ecc_module: ECCToolsModule | None = None,
 ) -> bool:
     if not is_eda_exist():
@@ -51,7 +51,7 @@ def run_step(
 
     
 def run_placement(workspace: Workspace,
-                  step: WorkspaceStep,
+                  step: EccStep,
                   ecc_module : ECCToolsModule = None) -> bool:
     """
     run placement
@@ -94,7 +94,7 @@ def run_placement(workspace: Workspace,
 
 
 def run_legalization(workspace: Workspace,
-                     step: WorkspaceStep,
+                     step: EccStep,
                      ecc_module : ECCToolsModule = None) -> bool:
     """
     run placement legalization

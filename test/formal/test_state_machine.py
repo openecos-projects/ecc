@@ -25,9 +25,10 @@ from z3 import (
 )
 
 from chipcompiler.data import (
+    EccOutput,
+    EccStep,
     LogPaths,
     OriginDesign,
-    OutputPaths,
     StateEnum,
     Workspace,
     WorkspaceStep,
@@ -320,11 +321,11 @@ def test_run_steps_stops_on_failure(tmp_path: Path, fail_index: int) -> None:
         output_dir: str = os.path.join(step_dir, "output")
         os.makedirs(output_dir, exist_ok=True)
 
-        ws_step = WorkspaceStep(
+        ws_step = EccStep(
             name=f"step_{i}",
             tool="mock",
             directory=step_dir,
-            output=OutputPaths(
+            output=EccOutput(
                 verilog=Path(output_dir) / "design.v",
                 def_=Path(output_dir) / "design.def",
                 gds=Path(output_dir) / "design.gds",

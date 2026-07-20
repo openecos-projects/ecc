@@ -1,21 +1,18 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 from pathlib import Path
 
 from chipcompiler.data import (
-    AnalysisPaths,
     ChecklistState,
+    EccAnalysis,
+    EccData,
+    EccFeature,
+    EccOutput,
+    EccReport,
+    EccScript,
     EccStep,
     LogPaths,
-    OutputPaths,
-    Parameters,
-    ScriptPaths,
-    StateEnum,
-    StepData,
     StepEnum,
-    StepFeature,
     StepInput,
-    StepReport,
     SubflowState,
     Workspace,
     WorkspaceStep,
@@ -23,164 +20,121 @@ from chipcompiler.data import (
     update_step_config,
 )
 
+
 def build_step(workspace: Workspace,
                step_name: str,
                input_def : Path | None,
                input_verilog : Path | None,
-               input_db : Path | None = None,
+               input_db : Path | str | None = None,
                output_def : Path | None = None,
                output_verilog : Path | None = None,
                output_gds : Path | None = None,
                tool : str = "ecc",
-               step_directory: Path | None = None) -> WorkspaceStep:
+               step_directory: Path | None = None) -> EccStep:
     """
     Build the given step in the specified workspace.
     """
 
-    step = EccStep()
-    step.name = step_name
-    step.tool = tool
-    step.version = "0.1"
-
-    # build step directory
-    step.directory = (
+    directory = (
         Path(step_directory)
         if step_directory
-        else Path(workspace.directory) / f"{step.name}_{step.tool}"
+        else Path(workspace.directory) / f"{step_name}_{tool}"
     )
-    
-    # build input paths
-    step.input = StepInput(
-        def_=Path(input_def) if input_def else None,
-        verilog=Path(input_verilog) if input_verilog else None,
-        db=Path(input_db) if input_db else None,
-    )
-    
-    # build output paths
-    output_dir = step.directory / "output"
-    if output_def is None:
-        output_def = output_dir / f"{workspace.design.name}_{step.name}.def.gz"
-    else:
-        output_def = Path(output_def)
-    if output_verilog is None:
-        output_verilog = output_dir / f"{workspace.design.name}_{step.name}.v.gz"
-    else:
-        output_verilog = Path(output_verilog)
-    if output_gds is None:
-        output_gds = output_dir / f"{workspace.design.name}_{step.name}.gds"
-    else:
-        output_gds = Path(output_gds)
-    output_db = output_dir / f"{workspace.design.name}_{step.name}_db"
-    output_image = output_dir / f"{workspace.design.name}_{step.name}.png"
-    output_json = output_dir / f"{workspace.design.name}_{step.name}.json"
-    output_view = output_dir / f"{workspace.design.name}_{step.name}_view"
-    output_view_edits = output_view / "edits" / "layout_edits.json"
-    output_lef = output_dir / f"{workspace.design.name}_{step.name}.lef"
-    output_lib = output_dir / f"{workspace.design.name}_{step.name}.lib"
-    output_spef = []
-    step.output = OutputPaths(
-        dir=output_dir,
-        def_=output_def,
-        verilog=output_verilog,
-        gds=output_gds,
-        db=output_db,
-        image=output_image,
-        json=output_json,
-        view_json=output_view,
-        view_json_edits=output_view_edits,
-        lef=output_lef,
-        lib=output_lib,
-        spef=output_spef,
-    )
-    
-    # build data paths
-    data_dir = step.directory / "data"
-    step.data = StepData(
-        dir=data_dir,
-        steps={
-            f"{StepEnum.FLOORPLAN.value}": data_dir / "fp",
-            f"{StepEnum.PNP.value}": data_dir / "pnp",
-            f"{StepEnum.PLACEMENT.value}": data_dir / "pl",
-            f"{StepEnum.LEGALIZATION.value}": data_dir / "pl",
-            f"{StepEnum.FILLER.value}": data_dir / "pl",
-            f"{StepEnum.CTS.value}": data_dir / "cts",
-            f"{StepEnum.NETLIST_OPT.value}": data_dir / "no",
-            f"{StepEnum.TIMING_OPT.value}": data_dir / "to",
-            f"{StepEnum.TIMING_OPT_DRV.value}": data_dir / "to",
-            f"{StepEnum.TIMING_OPT_HOLD.value}": data_dir / "to",
-            f"{StepEnum.TIMING_OPT_SETUP.value}": data_dir / "to",
-            f"{StepEnum.ROUTING.value}": data_dir / "rt",
-            f"{StepEnum.STA.value}": data_dir / "sta",
-            f"{StepEnum.DRC.value}": data_dir / "drc",
-            f"{StepEnum.RCX.value}": data_dir / "rcx",
-        },
-    )
-    
-    # build feature paths
-    feature_dir = step.directory / "feature"
-    step.feature = StepFeature(
-        dir=feature_dir,
-        db=feature_dir / f"{step.name}.db.json",
-        step=feature_dir / f"{step.name}.step.json",
-        map=feature_dir / f"{step.name}.map.json",
-        sta={
-            "dir": feature_dir,
-            "qor_summary_root": feature_dir,
-            "timing_paths_root": feature_dir,
-        },
-    )
-
-    # build report paths
-    report_dir = step.directory / "report"
-    step.report = StepReport(
-        dir=report_dir,
-        db=report_dir / f"{step.name}.db.rpt",
-        step=report_dir / f"{step.name}.rpt",
-        sta={
-            "dir": report_dir,
-        },
-    )
-
-    # build log paths
-    log_dir = step.directory / "log"
-    step.log = LogPaths(
-        dir=log_dir,
-        file=log_dir / f"{step.name}.log",
-    )
-
-    # build script paths
-    script_dir = step.directory / "script"
-    step.script = ScriptPaths(
-        dir=script_dir,
-        main=script_dir / f"{step.name}_main.tcl",
-    )
-
-    # build analysis paths
-    analysis_dir = step.directory / "analysis"
+    design = workspace.design.name
+    output_dir = directory / "output"
+    data_dir = directory / "data"
+    sta_dir = data_dir / "sta"
+    feature_dir = directory / "feature"
+    report_dir = directory / "report"
+    analysis_dir = directory / "analysis"
     qor_metrics_path = analysis_dir / "qor_metrics.json"
-    step.analysis = AnalysisPaths(
-        dir=analysis_dir,
-        metrics=qor_metrics_path,
-        qor_metrics=qor_metrics_path,
-        qor_summary=analysis_dir / "qor_summary.json",
-        qor_hotspots=analysis_dir / "qor_hotspots.json",
-        sta_timing_issues=analysis_dir / "sta_timing_issues.json",
-        statis_csv=analysis_dir / f"{step.name}_statis.csv",
-    )
+    output_view = output_dir / f"{design}_{step_name}_view"
 
-    # build sub flow paths
-    step.subflow = SubflowState(
-        path=step.directory / "subflow.json",
-        steps=[],
+    return EccStep(
+        name=step_name,
+        tool=tool,
+        version="0.1",
+        directory=directory,
+        input=StepInput(
+            def_=Path(input_def) if input_def else None,
+            verilog=Path(input_verilog) if input_verilog else None,
+            db=Path(input_db) if input_db else None,
+        ),
+        output=EccOutput(
+            dir=output_dir,
+            def_=Path(output_def) if output_def else output_dir / f"{design}_{step_name}.def.gz",
+            verilog=(
+                Path(output_verilog)
+                if output_verilog
+                else output_dir / f"{design}_{step_name}.v.gz"
+            ),
+            gds=Path(output_gds) if output_gds else output_dir / f"{design}_{step_name}.gds",
+            db=output_dir / f"{design}_{step_name}_db",
+            image=output_dir / f"{design}_{step_name}.png",
+            json=output_dir / f"{design}_{step_name}.json",
+            view_json=output_view,
+            view_json_edits=output_view / "edits" / "layout_edits.json",
+            lef=output_dir / f"{design}_{step_name}.lef",
+            lib=output_dir / f"{design}_{step_name}.lib",
+            spef=[],
+        ),
+        data=EccData(
+            dir=data_dir,
+            steps={
+                StepEnum.FLOORPLAN.value: data_dir / "fp",
+                StepEnum.PNP.value: data_dir / "pnp",
+                StepEnum.PLACEMENT.value: data_dir / "pl",
+                StepEnum.LEGALIZATION.value: data_dir / "pl",
+                StepEnum.FILLER.value: data_dir / "pl",
+                StepEnum.CTS.value: data_dir / "cts",
+                StepEnum.NETLIST_OPT.value: data_dir / "no",
+                StepEnum.TIMING_OPT.value: data_dir / "to",
+                StepEnum.TIMING_OPT_DRV.value: data_dir / "to",
+                StepEnum.TIMING_OPT_HOLD.value: data_dir / "to",
+                StepEnum.TIMING_OPT_SETUP.value: data_dir / "to",
+                StepEnum.ROUTING.value: data_dir / "rt",
+                StepEnum.STA.value: sta_dir,
+                StepEnum.DRC.value: data_dir / "drc",
+                StepEnum.RCX.value: data_dir / "rcx",
+            },
+        ),
+        feature=EccFeature(
+            dir=feature_dir,
+            db=feature_dir / f"{step_name}.db.json",
+            step=feature_dir / f"{step_name}.step.json",
+            map=feature_dir / f"{step_name}.map.json",
+            sta={
+                "dir": feature_dir,
+                "qor_summary_root": feature_dir,
+                "timing_paths_root": feature_dir,
+            },
+        ),
+        report=EccReport(
+            dir=report_dir,
+            db=report_dir / f"{step_name}.db.rpt",
+            step=report_dir / f"{step_name}.rpt",
+            sta={"dir": report_dir},
+        ),
+        log=LogPaths(
+            dir=directory / "log",
+            file=directory / "log" / f"{step_name}.log",
+        ),
+        script=EccScript(
+            dir=directory / "script",
+            main=directory / "script" / f"{step_name}_main.tcl",
+        ),
+        analysis=EccAnalysis(
+            dir=analysis_dir,
+            metrics=qor_metrics_path,
+            qor_metrics=qor_metrics_path,
+            qor_summary=analysis_dir / "qor_summary.json",
+            qor_hotspots=analysis_dir / "qor_hotspots.json",
+            sta_timing_issues=analysis_dir / "sta_timing_issues.json",
+            statis_csv=analysis_dir / f"{step_name}_statis.csv",
+        ),
+        subflow=SubflowState(path=directory / "subflow.json", steps=[]),
+        checklist=ChecklistState(path=directory / "checklist.json", checklist=[]),
     )
-
-    # build checklist paths and data
-    step.checklist = ChecklistState(
-        path=step.directory / "checklist.json",
-        checklist=[],
-    )
-
-    return step
 
 def build_sub_flow(workspace : Workspace,
                    workspace_step : WorkspaceStep):
@@ -191,7 +145,7 @@ def build_sub_flow(workspace : Workspace,
     subflow.build_sub_flow()    
     
 def build_checklist(workspace : Workspace,
-                    workspace_step : WorkspaceStep):
+                    workspace_step : EccStep):
     from .checklist import EccChecklist
     checklist = EccChecklist(workspace=workspace,
                            workspace_step=workspace_step)
@@ -226,7 +180,7 @@ def build_step_space(step: WorkspaceStep) -> None:
         
 
 def build_step_config(workspace: Workspace,
-                      step: WorkspaceStep):
+                      step: EccStep):
     """
     Build the configuration files for the given step based on the parameters.
     """

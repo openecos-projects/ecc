@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from chipcompiler.data import Workspace, WorkspaceStep, build_workspace_config_paths
+from chipcompiler.data import EccStep, Workspace, WorkspaceStep, build_workspace_config_paths
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_parameter_overrides as _apply_parameter_overrides,
@@ -44,11 +44,11 @@ def build_step(
     step_name: str,
     input_def: Path | None,
     input_verilog: Path | None,
-    input_db: Path | None = None,
+    input_db: Path | str | None = None,
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
-) -> WorkspaceStep:
+) -> EccStep:
     step = ecc_builder.build_step(
         workspace=workspace,
         step_name=step_name,
@@ -68,7 +68,7 @@ def build_step_space(step: WorkspaceStep) -> None:
     ecc_builder.build_step_space(step)
 
 
-def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
+def build_step_config(workspace: Workspace, step: EccStep) -> None:
     # build ecc config
     ecc_builder.build_step_config(workspace, step)
 

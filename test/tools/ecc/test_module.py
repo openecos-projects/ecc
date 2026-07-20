@@ -2538,10 +2538,10 @@ def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
         "step report": str(step.report.db),
     }
     assert ecc_service.get_step_info(workspace, step, "sta") == {
-        "report_root": str(step.report["dir"]),
-        "feature_root": str(step.feature["dir"]),
-        "qor_summary_root": str(step.feature["dir"]),
-        "timing_paths_root": str(step.feature["dir"]),
+        "report_root": str(step.report.dir),
+        "feature_root": str(step.feature.dir),
+        "qor_summary_root": str(step.feature.dir),
+        "timing_paths_root": str(step.feature.dir),
     }
 
 
