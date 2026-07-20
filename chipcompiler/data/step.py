@@ -3,6 +3,7 @@
 
 from enum import Enum
 from dataclasses import dataclass, field
+from pathlib import Path
 
 class StepEnum(Enum):
     """RTL2GDS flow step names"""
@@ -60,7 +61,7 @@ class StepMetrics:
     """
     Dataclass for step metrics
     """
-    path : str = "" # metrics file path
+    path : str | Path = "" # metrics file path
     data : dict = field(default_factory=dict) # metrics data
     report : list = field(default_factory=list) # metrics report
 
@@ -73,7 +74,7 @@ class StepMetrics:
 # }
 ###########################################################################
 
-def load_metrics(path : str) -> StepMetrics:
+def load_metrics(path : str | Path) -> StepMetrics:
     from chipcompiler.utility import json_read
     metrics = StepMetrics() 
     metrics.path = path

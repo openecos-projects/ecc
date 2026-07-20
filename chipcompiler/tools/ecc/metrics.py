@@ -121,7 +121,7 @@ def build_metrics_floorplan(workspace: Workspace,
     Build and return floorplan metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
     
@@ -154,7 +154,7 @@ def build_metrics_net_opt(workspace: Workspace,
     Build and return net operation metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
     
@@ -186,7 +186,7 @@ def build_metrics_filler(workspace: Workspace,
     Build and return filler metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
     
@@ -220,7 +220,7 @@ def build_metrics_drc(workspace: Workspace,
     Build and return DRC metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
 
@@ -253,7 +253,7 @@ def build_metrics_routing(workspace: Workspace,
     Build and return routing metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
 
@@ -287,7 +287,7 @@ def build_metrics_legalization(workspace: Workspace,
     Build and return legalization metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
     
@@ -320,7 +320,7 @@ def build_metrics_timing_opt_hold(workspace: Workspace,
     Build and return timing optimization (hold) metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
 
@@ -358,7 +358,7 @@ def build_metrics_timing_opt_drv(workspace: Workspace,
     Build and return timing optimization (driver) metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
     
@@ -395,7 +395,7 @@ def build_metrics_cts(workspace: Workspace,
     Build and return CTS metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
     
@@ -432,7 +432,7 @@ def build_metrics_placement(workspace: Workspace,
     Build and return placement metrics dictionary.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis['metrics']    
+    step_metrics.path = step.analysis.metrics or ""    
     
     metrics = {}
     

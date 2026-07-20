@@ -288,10 +288,10 @@ def build_step_space(step: WorkspaceStep) -> None:
     Path(step.data.get("dir", step_directory / "data")).mkdir(parents=True, exist_ok=True)
     Path(step.data.get("tmp", step_directory / "data" / "tmp")).mkdir(parents=True, exist_ok=True)
     Path(step.report.get("dir", step_directory / "report")).mkdir(parents=True, exist_ok=True)
-    Path(step.log.get("dir", step_directory / "log")).mkdir(parents=True, exist_ok=True)
-    Path(step.script.get("dir", step_directory / "script")).mkdir(parents=True, exist_ok=True)
+    Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
+    Path(step.script.dir or step_directory / "script").mkdir(parents=True, exist_ok=True)
     Path(step.feature.get("dir", step_directory / "feature")).mkdir(parents=True, exist_ok=True)
-    Path(step.analysis.get("dir", step_directory / "analysis")).mkdir(parents=True, exist_ok=True)
+    Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
 
 
 def build_step_config(workspace: Workspace,
@@ -313,20 +313,21 @@ def build_step_config(workspace: Workspace,
 
     current_dir = Path(__file__).resolve().parent
     scripts_dir = current_dir / 'scripts'
+    script_dir = Path(step.script.dir) if step.script.dir else Path(step.directory or "")
 
     for file in ['yosys_synthesis.tcl', 'init_tech.tcl']:
         src = scripts_dir / file
         if src.exists():
-            _copy_writable(src, step.script['dir'] / file)
+            _copy_writable(src, script_dir / file)
 
     abc_script = scripts_dir / 'abc-opt.script'
     if abc_script.exists():
-        _copy_writable(abc_script, step.script['dir'] / 'abc-opt.script')
+        _copy_writable(abc_script, script_dir / 'abc-opt.script')
 
     configs_dir = current_dir / 'configs'
     aig_file = configs_dir / 'lazy_man_synth_library.aig'
     if aig_file.exists():
-        _copy_writable(aig_file, step.script['dir'] / 'lazy_man_synth_library.aig')
+        _copy_writable(aig_file, script_dir / 'lazy_man_synth_library.aig')
 
     try:
         tcl_content = generate_global_var_tcl(workspace, step)

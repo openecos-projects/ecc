@@ -263,12 +263,12 @@ class EccChecklist:
 class EccFloorplanChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.FLOORPLAN.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
         db = json_read(self.workspace_step.feature.get("db", ""))
         subflow = json_read(self.workspace_step.subflow.get("path", ""))
 
         try:
-            with open(self.workspace_step.log.get("file", ""),
+            with open(self.workspace_step.log.file or "",
                       "r", encoding="utf-8", errors="ignore") as file:
                 log_text = file.read()
         except OSError:
@@ -365,7 +365,7 @@ class EccFloorplanChecklist(EccChecklist):
 class EccNetlistOptChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.NETLIST_OPT.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
         db = json_read(self.workspace_step.feature.get("db", ""))
         config = json_read(self.workspace.config.get(StepEnum.NETLIST_OPT.value, ""))
 
@@ -452,7 +452,7 @@ class EccNetlistOptChecklist(EccChecklist):
 class EccCtsChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.CTS.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
         db = json_read(self.workspace_step.feature.get("db", ""))
         feature = json_read(self.workspace_step.feature.get("step", "")).get("CTS", {})
         config = json_read(self.workspace.config.get(StepEnum.CTS.value, ""))
@@ -519,7 +519,7 @@ class EccTimingOptDrvChecklist(EccChecklist):
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_DRV.value, ""))
 
         try:
-            with open(self.workspace_step.log.get("file", ""),
+            with open(self.workspace_step.log.file or "",
                       "r", encoding="utf-8", errors="ignore") as file:
                 log_text = file.read().lower()
         except OSError:
@@ -575,7 +575,7 @@ class EccTimingOptDrvChecklist(EccChecklist):
 class EccTimingOptHoldChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.TIMING_OPT_HOLD.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
         db = json_read(self.workspace_step.feature.get("db", ""))
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_HOLD.value, ""))
 
@@ -628,7 +628,7 @@ class EccTimingOptHoldChecklist(EccChecklist):
 class EccTimingOptSetupChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.TIMING_OPT_SETUP.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
         db = json_read(self.workspace_step.feature.get("db", ""))
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_SETUP.value, ""))
 
@@ -681,7 +681,7 @@ class EccTimingOptSetupChecklist(EccChecklist):
 class EccRoutingChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.ROUTING.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
         db = json_read(self.workspace_step.feature.get("db", ""))
         feature = json_read(self.workspace_step.feature.get("step", "")).get(
             StepEnum.ROUTING.value, {})
@@ -752,7 +752,7 @@ class EccRoutingChecklist(EccChecklist):
 class EccDrcChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.DRC.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
         feature = json_read(self.workspace_step.feature.get("step", "")).get("drc", {})
         output_success = all([
             self.check_file(self.workspace_step.output.get("def", "")),
@@ -811,7 +811,7 @@ class EccFillerChecklist(EccChecklist):
         config = json_read(self.workspace.config.get(StepEnum.PLACEMENT.value, ""))
 
         try:
-            with open(self.workspace_step.log.get("file", ""),
+            with open(self.workspace_step.log.file or "",
                       "r", encoding="utf-8", errors="ignore") as file:
                 log_text = file.read()
         except OSError:

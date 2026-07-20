@@ -100,8 +100,8 @@ def build_config(workspace: Workspace,
 def build_analysis(workspace: Workspace, 
                    step: WorkspaceStep) -> dict:          
     info = {
-        "metrics" : step.analysis.get('metrics', ""),
-        "statis" : step.analysis.get('statis_csv', ""),
+        "metrics" : step.analysis.metrics or "",
+        "statis" : step.analysis.statis_csv or "",
         "data summary" : step.feature.get('db', ""),
         "step feature" : step.feature.get('step', ""),
         "step report" : step.report.get('db', "")

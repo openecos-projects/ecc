@@ -44,8 +44,9 @@ def build_step(
         step_directory=step_directory,
     )
     step.output["db"] = ""
-    step.script["sizer_env"] = step.script["dir"] / f"{workspace.design.name}.env_file"
-    step.script["sizer_cmd"] = step.script["dir"] / f"{workspace.design.name}.cmd_file"
+    script_dir = step.script.dir or step_directory / "script"
+    step.script.sizer_env = script_dir / f"{workspace.design.name}.env_file"
+    step.script.sizer_cmd = script_dir / f"{workspace.design.name}.cmd_file"
     return step
 
 
@@ -161,8 +162,10 @@ def _cmd_text(workspace: Workspace, step: WorkspaceStep) -> str:
 
 def build_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     env_template = _sizer_env_template()
-    env_path = step.script["sizer_env"]
-    cmd_path = step.script["sizer_cmd"]
+    env_path = step.script.sizer_env
+    cmd_path = step.script.sizer_cmd
+    if env_path is None or cmd_path is None:
+        raise ValueError("sizer step is missing script env/cmd paths")
 
     _copy_or_seed_template(env_template, env_path, "-num_vt 1\n")
     Path(cmd_path).parent.mkdir(parents=True, exist_ok=True)

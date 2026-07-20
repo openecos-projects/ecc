@@ -61,6 +61,13 @@ class _MigrationMapping(MutableMapping[str, Any]):
                 assigned[_ATTR_ALIASES.get(f.name, f.name)] = None
         object.__setattr__(self, "_assigned_keys", assigned)
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        object.__setattr__(self, name, value)
+        # A field written after construction becomes a visible legacy key, so
+        # attribute writes and dict-style reads stay consistent during migration.
+        if not name.startswith("_") and "_assigned_keys" in self.__dict__:
+            self.__dict__["_assigned_keys"][_ATTR_ALIASES.get(name, name)] = None
+
     def _assigned(self) -> dict[str, None]:
         store = self.__dict__.get("_assigned_keys")
         if store is None:

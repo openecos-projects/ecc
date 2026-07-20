@@ -55,7 +55,7 @@ class ECCToolsPlot:
     
     def plot_step_metrics(self) -> bool:
         # generate report image and dscription
-        json_path = self.step.analysis.get('metrics', "")
+        json_path = self.step.analysis.metrics or ""
         image_path = str(json_path).replace(".json", ".png")
         metrics = json_read(json_path)
         return plot_metrics(metrics=metrics, output_path=image_path)
@@ -191,7 +191,7 @@ class ECCToolsPlot:
         
         # Save drc_statis to CSV file
         import csv
-        statis_csv = str(self.step.analysis.get("statis_csv", ""))
+        statis_csv = str(self.step.analysis.statis_csv or "")
         # Write to CSV file
         with open(statis_csv, 'w', newline='') as csvfile:
             # Define headers: first column is "Type", followed by layer names

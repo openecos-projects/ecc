@@ -141,11 +141,11 @@ class YosysSynthesisChecklist(YosysChecklist):
 
     def check(self) -> bool:
         step = StepEnum.SYNTHESIS.value
-        metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
+        metrics = json_read(self.workspace_step.analysis.metrics or "")
         stat = json_read(self.workspace_step.feature.get("stat", ""))
 
         try:
-            log_text = read_text_maybe_gzip(self.workspace_step.log.get("file", ""))
+            log_text = read_text_maybe_gzip(self.workspace_step.log.file or "")
         except (OSError, EOFError):
             log_text = ""
 

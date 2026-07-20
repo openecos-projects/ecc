@@ -41,7 +41,7 @@ def build_views(workspace: Workspace,
                 step: WorkspaceStep) -> dict:
     info = {
         "image" : stringify_paths(step.output.get("image", "")),
-        "metrics" : stringify_paths(step.analysis.get('metrics', '')),
+        "metrics" : stringify_paths(step.analysis.metrics or ""),
         "information" : {}
     }
     
@@ -58,7 +58,7 @@ def build_layout(workspace: Workspace,
 def build_metrics(workspace: Workspace, 
                   step: WorkspaceStep) -> dict:
     info = {
-        "metrics" : stringify_paths(step.analysis.get('metrics', ''))
+        "metrics" : stringify_paths(step.analysis.metrics or "")
     }
     
     return info
@@ -78,7 +78,7 @@ def build_config(workspace: Workspace, step: WorkspaceStep) -> dict:
 def build_analysis(workspace: Workspace, 
                    step: WorkspaceStep) -> dict:          
     info = {
-        "metrics" : stringify_paths(step.analysis.get("metrics", "")),
+        "metrics" : stringify_paths(step.analysis.metrics or ""),
         "data summary" : stringify_paths(step.feature.get("stat", "")),
         "step report" : stringify_paths(step.report.get("check", ""))
     }

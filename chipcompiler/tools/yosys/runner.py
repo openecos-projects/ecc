@@ -89,13 +89,14 @@ def run_step(workspace: Workspace,
         True if synthesis succeeded, False otherwise
     """
     sub_flow = YosysSubFlow(workspace=workspace, workspace_step=step)
+    log_path = step.log.file or ""
 
     yosys_cmd, yosys_env = get_yosys_runtime()
     if not yosys_cmd:
         sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
         error_msg = "Error: yosys is not available (bundled runtime or PATH)."
         try:
-            with open(step.log["file"], "w") as log_file:
+            with open(log_path, "w") as log_file:
                 log_file.write(error_msg + "\n")
         except Exception:
             pass
@@ -115,7 +116,7 @@ def run_step(workspace: Workspace,
         return False
 
     try:
-        cwd_dir = str(step.script.get("dir", step.directory))
+        cwd_dir = str(step.script.dir or step.directory)
 
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 
