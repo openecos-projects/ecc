@@ -11,6 +11,7 @@ from rosettakit.errors import ValidationError
 from chipcompiler.data import (
     PDK,
     OriginDesign,
+    OutputPaths,
     Parameters,
     StateEnum,
     StepEnum,
@@ -596,11 +597,11 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
     step = WorkspaceStep(
         name=StepEnum.TIMING_OPT.value,
         tool="sizer",
-        output={
-            "def": str(output_def),
-            "verilog": str(output_verilog),
-            "gds": str(tmp_path / "missing.gds"),
-        },
+        output=OutputPaths(
+            def_=output_def,
+            verilog=output_verilog,
+            gds=tmp_path / "missing.gds",
+        ),
     )
 
     assert EngineFlow(workspace=None).check_step_result(step) is True
@@ -631,19 +632,19 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     sizer_step = WorkspaceStep(
         name=StepEnum.TIMING_OPT.value,
         tool="sizer",
-        output={
-            "def": str(tmp_path / "sizer.def"),
-            "verilog": str(tmp_path / "sizer.v"),
-        },
+        output=OutputPaths(
+            def_=tmp_path / "sizer.def",
+            verilog=tmp_path / "sizer.v",
+        ),
     )
     post_sizer_step = WorkspaceStep(
         name=StepEnum.LEGALIZATION.value,
         tool="ecc",
-        output={
-            "def": str(tmp_path / "post.def"),
-            "verilog": str(tmp_path / "post.v"),
-            "gds": str(tmp_path / "post.gds"),
-        },
+        output=OutputPaths(
+            def_=tmp_path / "post.def",
+            verilog=tmp_path / "post.v",
+            gds=tmp_path / "post.gds",
+        ),
     )
     pre_sizer_db_closed = []
 

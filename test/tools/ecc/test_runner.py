@@ -1,6 +1,17 @@
 import json
 
-from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import (
+    PDK,
+    OriginDesign,
+    OutputPaths,
+    StepData,
+    StepEnum,
+    StepFeature,
+    StepInput,
+    StepReport,
+    Workspace,
+    WorkspaceStep,
+)
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.checklist import EccRcxChecklist
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -108,13 +119,13 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
     )
     step = WorkspaceStep(
         name="Floorplan",
-        input={
-            "def": design_def,
-            "verilog": tmp_path / "origin" / "gcd.v",
-            "db": None,
-        },
-        data={"dir": tmp_path / "floorplan_ecc" / "data"},
-        feature={"dir": tmp_path / "floorplan_ecc" / "feature"},
+        input=StepInput(
+            def_=design_def,
+            verilog=tmp_path / "origin" / "gcd.v",
+            db=None,
+        ),
+        data=StepData(dir=tmp_path / "floorplan_ecc" / "data"),
+        feature=StepFeature(dir=tmp_path / "floorplan_ecc" / "feature"),
     )
     FakeEccModule.instances = []
     monkeypatch.setattr(ecc_runner, "is_eda_exist", lambda: True)
@@ -205,10 +216,10 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
         logger=logger,
     )
     step = WorkspaceStep(
-        output={"verilog": netlist},
-        data={"dir": tmp_path / "Synthesis_yosys" / "data"},
-        feature={"dir": tmp_path / "Synthesis_yosys" / "feature"},
-        report={"dir": tmp_path / "Synthesis_yosys" / "report"},
+        output=OutputPaths(verilog=netlist),
+        data=StepData(dir=tmp_path / "Synthesis_yosys" / "data"),
+        feature=StepFeature(dir=tmp_path / "Synthesis_yosys" / "feature"),
+        report=StepReport(dir=tmp_path / "Synthesis_yosys" / "report"),
     )
     module = FakeSynthesisStaModule()
     monkeypatch.setattr(ecc_runner, "ECCToolsModule", lambda: module)
@@ -260,9 +271,9 @@ def test_run_sta_without_spef_warns_when_sdc_is_missing(tmp_path):
         logger=logger,
     )
     step = WorkspaceStep(
-        output={"verilog": netlist},
-        data={"dir": tmp_path / "Synthesis_yosys" / "data"},
-        report={"dir": tmp_path / "Synthesis_yosys" / "report"},
+        output=OutputPaths(verilog=netlist),
+        data=StepData(dir=tmp_path / "Synthesis_yosys" / "data"),
+        report=StepReport(dir=tmp_path / "Synthesis_yosys" / "report"),
     )
 
     assert ecc_runner.run_sta_without_spef(workspace, step) is False

@@ -7,7 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import (
+    PDK,
+    OriginDesign,
+    OutputPaths,
+    Parameters,
+    StepData,
+    StepEnum,
+    StepFeature,
+    StepInput,
+    StepReport,
+    Workspace,
+    WorkspaceStep,
+)
 from chipcompiler.tools.yosys import builder as yosys_builder
 from chipcompiler.tools.yosys.service import get_step_info
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
@@ -57,14 +69,14 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
     step = WorkspaceStep(
         name="Synthesis",
         directory=str(tmp_path / "Synthesis_yosys"),
-        input={"verilog": str(rtl_file)},
-        output={"verilog": str(tmp_path / "Synthesis_yosys" / "output" / "top.v.gz")},
-        data={"dir": str(tmp_path / "Synthesis_yosys" / "data")},
-        feature={"stat": str(tmp_path / "Synthesis_yosys" / "feature" / "stat.json")},
-        report={
-            "stat": str(tmp_path / "Synthesis_yosys" / "report" / "stat.json"),
-            "check": str(tmp_path / "Synthesis_yosys" / "report" / "check.rpt"),
-        },
+        input=StepInput(verilog=rtl_file),
+        output=OutputPaths(verilog=tmp_path / "Synthesis_yosys" / "output" / "top.v.gz"),
+        data=StepData(dir=tmp_path / "Synthesis_yosys" / "data"),
+        feature=StepFeature(stat=tmp_path / "Synthesis_yosys" / "feature" / "stat.json"),
+        report=StepReport(
+            stat=tmp_path / "Synthesis_yosys" / "report" / "stat.json",
+            check=tmp_path / "Synthesis_yosys" / "report" / "check.rpt",
+        ),
     )
     return workspace, step, rtl_file
 

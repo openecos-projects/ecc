@@ -14,7 +14,14 @@ from typing import Any
 import pytest
 from z3 import ArithRef, Int, Real, Solver, unsat
 
-from chipcompiler.data import OriginDesign, StepEnum, Workspace, WorkspaceStep, get_parameters
+from chipcompiler.data import (
+    OriginDesign,
+    StepData,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+    get_parameters,
+)
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
 from chipcompiler.utility import json_write
 
@@ -184,9 +191,11 @@ def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
         config={"dreamplace": config_path},
     )
     result_dir = tmp_path / "data" / "pl"
+    step_data = StepData(dir=tmp_path / "data")
+    step_data[StepEnum.PLACEMENT.value] = result_dir
     step = WorkspaceStep(
         name=StepEnum.PLACEMENT.value,
-        data={"dir": tmp_path / "data", StepEnum.PLACEMENT.value: result_dir},
+        data=step_data,
     )
     module = DreamplaceModule(
         workspace=workspace,

@@ -17,9 +17,14 @@ from ..home import HomeData
 
 from ..pdk import get_pdk, PDK
 from ..step import StateEnum, StepEnum
+from .layout import WorkspaceStepBase
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
 from chipcompiler.utility.path import path_is_within, path_text
+
+# The shared step type used as the annotation/constructor across the codebase.
+WorkspaceStep = WorkspaceStepBase
+
 
 @dataclass
 class OriginDesign:
@@ -56,41 +61,13 @@ class Workspace:
     # logger
     logger : Logger = field(default_factory=Logger) # logger for this workspace
     
-@dataclass
-class WorkspaceStep:
-    """
-    Dataclass for workspace step path information, describe all the info for this task step.
-    """
-    # step basic info
-    name : str = "" # step name
-    directory : Path | None = None # step working directory
-
-    # eda tool info
-    tool : str = "" # eda tool name
-    version : str = "" # eda tool version
-
-    # Paths for this step
-    input : dict = field(default_factory=dict) # input path about this step
-    output : dict = field(default_factory=dict) # output path about this step
-    data : dict = field(default_factory=dict) # data path about this step
-    feature : dict = field(default_factory=dict) # features path about this step
-    report : dict = field(default_factory=dict) # report path about this step
-    log : dict = field(default_factory=dict) # log path about this step
-    script : dict = field(default_factory=dict) # script path about this step
-    analysis : dict = field(default_factory=dict) # analysis path about this step
-    subflow : dict = field(default_factory=dict) # sub flow for this step
-    checklist : dict = field(default_factory=dict) # checklist for this step
-
-    # step result info
-    result : dict = field(default_factory=dict) # result info about this step
-    
 def log_workspace_step(step : WorkspaceStep, logger : Logger):
     logger.log_section(f"step {step.name} info")
     logger.info(f"step name         : {step.name}")
     logger.info(f"step eda          : {step.tool}")
     logger.info(f"step eda version  : {step.version}")
     logger.info(f"step subworkspace : {step.directory}")
-    
+
     logger.info("\ninput - \n%s", dict_to_str(step.input))
     logger.info("\noutput - \n%s", dict_to_str(step.output))
     logger.info("\ndata - \n%s", dict_to_str(step.data))

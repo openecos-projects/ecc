@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from collections.abc import Mapping
 from pathlib import Path
 
 
@@ -28,7 +29,7 @@ def path_is_within(path: Path, directory: Path) -> bool:
 def stringify_paths(value):
     if isinstance(value, Path):
         return str(value)
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {key: stringify_paths(item) for key, item in value.items()}
     if isinstance(value, list):
         return [stringify_paths(item) for item in value]

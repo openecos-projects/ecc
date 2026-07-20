@@ -3,11 +3,22 @@
 from pathlib import Path
 
 from chipcompiler.data import (
-    WorkspaceStep,
-    Workspace,
+    AnalysisPaths,
+    ChecklistState,
+    EccStep,
+    LogPaths,
+    OutputPaths,
     Parameters,
-    StepEnum,
+    ScriptPaths,
     StateEnum,
+    StepData,
+    StepEnum,
+    StepFeature,
+    StepInput,
+    StepReport,
+    SubflowState,
+    Workspace,
+    WorkspaceStep,
     build_workspace_config_paths,
     update_step_config,
 )
@@ -25,8 +36,8 @@ def build_step(workspace: Workspace,
     """
     Build the given step in the specified workspace.
     """
-    
-    step = WorkspaceStep()
+
+    step = EccStep()
     step.name = step_name
     step.tool = tool
     step.version = "0.1"
@@ -39,11 +50,11 @@ def build_step(workspace: Workspace,
     )
     
     # build input paths
-    step.input = {
-        "def": Path(input_def) if input_def else None,
-        "verilog": Path(input_verilog) if input_verilog else None,
-        "db": Path(input_db) if input_db else None
-    }  
+    step.input = StepInput(
+        def_=Path(input_def) if input_def else None,
+        verilog=Path(input_verilog) if input_verilog else None,
+        db=Path(input_db) if input_db else None,
+    )
     
     # build output paths
     output_dir = step.directory / "output"
@@ -67,25 +78,25 @@ def build_step(workspace: Workspace,
     output_lef = output_dir / f"{workspace.design.name}_{step.name}.lef"
     output_lib = output_dir / f"{workspace.design.name}_{step.name}.lib"
     output_spef = []
-    step.output = {
-        "dir": output_dir,
-        "def": output_def,
-        "verilog": output_verilog,
-        "gds": output_gds,
-        "db": output_db,
-        "image": output_image,
-        "json" : output_json,
-        "view_json" : output_view,
-        "view_json_edits" : output_view_edits,
-        "lef" : output_lef,
-        "lib" : output_lib,
-        "spef" : output_spef
-    }
+    step.output = OutputPaths(
+        dir=output_dir,
+        def_=output_def,
+        verilog=output_verilog,
+        gds=output_gds,
+        db=output_db,
+        image=output_image,
+        json=output_json,
+        view_json=output_view,
+        view_json_edits=output_view_edits,
+        lef=output_lef,
+        lib=output_lib,
+        spef=output_spef,
+    )
     
     # build data paths
     data_dir = step.directory / "data"
-    step.data = {
-        "dir": data_dir,
+    step.data = StepData(dir=data_dir)
+    step.data.update({
         f"{StepEnum.FLOORPLAN.value}": data_dir / "fp",
         f"{StepEnum.PNP.value}": data_dir / "pnp",
         f"{StepEnum.PLACEMENT.value}": data_dir / "pl",
@@ -100,73 +111,73 @@ def build_step(workspace: Workspace,
         f"{StepEnum.ROUTING.value}": data_dir / "rt",
         f"{StepEnum.STA.value}": data_dir / "sta",
         f"{StepEnum.DRC.value}": data_dir / "drc",
-        f"{StepEnum.RCX.value}": data_dir / "rcx"
-    }
+        f"{StepEnum.RCX.value}": data_dir / "rcx",
+    })
     
     # build feature paths
     feature_dir = step.directory / "feature"
-    step.feature = {
-        "dir": feature_dir,
-        "db": feature_dir / f"{step.name}.db.json",
-        "step": feature_dir / f"{step.name}.step.json",
-        "map": feature_dir / f"{step.name}.map.json",
-        "sta": {
+    step.feature = StepFeature(
+        dir=feature_dir,
+        db=feature_dir / f"{step.name}.db.json",
+        step=feature_dir / f"{step.name}.step.json",
+        map=feature_dir / f"{step.name}.map.json",
+        sta={
             "dir": feature_dir,
             "qor_summary_root": feature_dir,
             "timing_paths_root": feature_dir,
         },
-    }
-    
+    )
+
     # build report paths
     report_dir = step.directory / "report"
-    step.report = {
-        "dir": report_dir,
-        "db": report_dir / f"{step.name}.db.rpt",
-        "step": report_dir / f"{step.name}.rpt",
-        "sta": {
+    step.report = StepReport(
+        dir=report_dir,
+        db=report_dir / f"{step.name}.db.rpt",
+        step=report_dir / f"{step.name}.rpt",
+        sta={
             "dir": report_dir,
         },
-    }
-    
+    )
+
     # build log paths
     log_dir = step.directory / "log"
-    step.log = {
-        "dir": log_dir,
-        "file": log_dir / f"{step.name}.log"
-    }
-    
+    step.log = LogPaths(
+        dir=log_dir,
+        file=log_dir / f"{step.name}.log",
+    )
+
     # build script paths
     script_dir = step.directory / "script"
-    step.script = {
-        "dir": script_dir,
-        "main": script_dir / f"{step.name}_main.tcl"
-    }
-    
+    step.script = ScriptPaths(
+        dir=script_dir,
+        main=script_dir / f"{step.name}_main.tcl",
+    )
+
     # build analysis paths
     analysis_dir = step.directory / "analysis"
     qor_metrics_path = analysis_dir / "qor_metrics.json"
-    step.analysis = {
-        "dir": analysis_dir,
-        "metrics": qor_metrics_path,
-        "qor_metrics": qor_metrics_path,
-        "qor_summary": analysis_dir / "qor_summary.json",
-        "qor_hotspots": analysis_dir / "qor_hotspots.json",
-        "sta_timing_issues": analysis_dir / "sta_timing_issues.json",
-        "statis_csv": analysis_dir / f"{step.name}_statis.csv"
-    }    
-    
+    step.analysis = AnalysisPaths(
+        dir=analysis_dir,
+        metrics=qor_metrics_path,
+        qor_metrics=qor_metrics_path,
+        qor_summary=analysis_dir / "qor_summary.json",
+        qor_hotspots=analysis_dir / "qor_hotspots.json",
+        sta_timing_issues=analysis_dir / "sta_timing_issues.json",
+        statis_csv=analysis_dir / f"{step.name}_statis.csv",
+    )
+
     # build sub flow paths
-    step.subflow = {
-        "path": step.directory / "subflow.json",
-        "steps": []
-    }  
-    
+    step.subflow = SubflowState(
+        path=step.directory / "subflow.json",
+        steps=[],
+    )
+
     # build checklist paths and data
-    step.checklist = {
-        "path": step.directory / "checklist.json",
-        "checklist": []
-    }
-    
+    step.checklist = ChecklistState(
+        path=step.directory / "checklist.json",
+        checklist=[],
+    )
+
     return step
 
 def build_sub_flow(workspace : Workspace,
