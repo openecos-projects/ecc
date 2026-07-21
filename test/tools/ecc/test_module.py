@@ -682,6 +682,17 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
             "display_name": "DRC Count",
             "value": 3,
             "reason": "DRC violations are present.",
+            "evidence": {
+                "source": {
+                    "kind": "feature",
+                    "path": "feature/drc.step.json",
+                    "selector": "/drc/number",
+                },
+                "expected": {"operator": "==", "value": 0},
+                "diagnosis": (
+                    "Observed drc_count = 3; required condition is == 0."
+                ),
+            },
         }
     ]
     hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
@@ -863,7 +874,22 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
     drc_summary = json.loads(drc_step.analysis["qor_summary"].read_text(encoding="utf-8"))
     assert drc_summary["missing_metrics"] == [{
         "metric_id": "drc_count",
-        "reason": "The required feature metric is unavailable.",
+        "reason": (
+            "Required field /drc/number is absent or non-numeric in "
+            "feature/drc.step.json; metric drc_count was not produced."
+        ),
+        "evidence": {
+            "source": {
+                "kind": "feature",
+                "path": "feature/drc.step.json",
+                "selector": "/drc/number",
+            },
+            "diagnosis": (
+                "Required field /drc/number is absent or non-numeric in "
+                "feature/drc.step.json; metric drc_count was not produced."
+            ),
+            "availability": "source_field_missing",
+        },
     }]
 
     legal_step = build_step(
@@ -884,10 +910,7 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
     legal_summary = json.loads(
         legal_step.analysis["qor_summary"].read_text(encoding="utf-8")
     )
-    assert legal_summary["missing_metrics"] == [{
-        "metric_id": "legal_total_movement",
-        "reason": "The required feature metric is unavailable.",
-    }]
+    assert legal_summary["missing_metrics"] == []
 
 
 def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
@@ -1010,7 +1033,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
         "source": {
             "kind": "feature",
             "path": "feature/place.map.json",
-            "selector": "",
+            "selector": "/Congestion/overflow/total/union",
         },
         "description": "Placement EGR overflow is present.",
     }
@@ -1235,7 +1258,17 @@ def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
     assert summary["status"] == "incomplete"
     assert {
         "metric_id": "cts_buffer_count",
-        "reason": "The metric source is outside the current step feature directory.",
+        "reason": (
+            "Metric cts_buffer_count resolved outside the current step feature "
+            "directory and was rejected."
+        ),
+        "evidence": {
+            "diagnosis": (
+                "Metric cts_buffer_count resolved outside the current step feature "
+                "directory and was rejected."
+            ),
+            "availability": "invalid_source",
+        },
     } in summary["missing_metrics"]
 
 
@@ -1370,7 +1403,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
         "source": {
             "kind": "feature",
             "path": "feature/route.step.json",
-            "selector": "",
+            "selector": "/route/LA",
         },
         "description": "Route layer assignment overflow is present.",
     }
@@ -2097,24 +2130,26 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
     assert metrics.data["harden_gds_exists"] == 1
     assert metrics.data["harden_lef_exists"] == 1
     assert metrics.data["harden_lib_exists"] == 1
-    assert metrics.data["harden_preview_exists"] == 1
-    assert metrics.data["harden_lib_check_exists"] == 0
-    assert metrics.data["harden_artifact_missing_count"] == 1
+    assert "harden_preview_exists" not in metrics.data
+    assert "harden_lib_check_exists" not in metrics.data
+    assert metrics.data["harden_artifact_missing_count"] == 0
     records = {
         record["id"]: record
         for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
             "metrics"
         ]
     }
-    assert records["harden_artifact_missing_count"]["value"] == 1
+    assert records["harden_artifact_missing_count"]["value"] == 0
     assert records["harden_gds_exists"]["value"] == 1
+    assert "harden_preview_exists" not in records
+    assert "harden_lib_check_exists" not in records
     assert records["harden_artifact_missing_count"]["source"] == {
         "kind": "feature",
         "path": "feature/Harden.step.json",
         "selector": "/harden/artifact_missing_count",
     }
     harden_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
-    assert harden_feature["harden"]["artifact_missing_count"] == 1
+    assert harden_feature["harden"]["artifact_missing_count"] == 0
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     assert summary["status"] == "blocked"
     assert summary["final_signoff"]["missing_sources"] == [
@@ -2146,13 +2181,8 @@ def _write_harden_output_artifacts(step):
         ("gds", "gds"),
         ("lef", "lef"),
         ("lib", "lib"),
-        ("image", "png"),
     ):
         step.output[output_key].write_text(contents, encoding="utf-8")
-    Path(f"{step.output['lib']}.check_sources.tsv").write_text(
-        "source\n",
-        encoding="utf-8",
-    )
 
 
 def _green_sta_hard_gates():

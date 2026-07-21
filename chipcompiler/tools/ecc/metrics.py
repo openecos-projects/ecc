@@ -124,27 +124,6 @@ QOR_METRIC_MAP = {
         "dimension": "routability_physical",
         "polarity": "lower_is_better",
     },
-    "overflow": {
-        "name": "place_overflow",
-        "display_name": "Place Overflow",
-        "unit": "ratio",
-        "dimension": "routability_physical",
-        "polarity": "lower_is_better",
-    },
-    "overflow_number": {
-        "name": "place_overflow_count",
-        "display_name": "Place Overflow Count",
-        "unit": "count",
-        "dimension": "routability_physical",
-        "polarity": "lower_is_better",
-    },
-    "bin_number": {
-        "name": "place_bin_count",
-        "display_name": "Place Bin Count",
-        "unit": "count",
-        "dimension": "routability_physical",
-        "polarity": "trend_only",
-    },
     "GP HPWL": {
         "name": "place_hpwl",
         "display_name": "Place HPWL",
@@ -280,13 +259,6 @@ QOR_METRIC_MAP = {
         "dimension": "clock_robustness_dfm",
         "polarity": "lower_is_better",
         "confidence": "medium",
-    },
-    "total_movement": {
-        "name": "legal_total_movement",
-        "display_name": "Legal Total Movement",
-        "unit": "um",
-        "dimension": "routability_physical",
-        "polarity": "lower_is_better",
     },
     "wire_len": {
         "name": "route_wirelength",
@@ -505,20 +477,6 @@ QOR_METRIC_MAP = {
         "dimension": "clock_robustness_dfm",
         "polarity": "higher_is_better",
     },
-    "harden_lib_check_exists": {
-        "name": "harden_lib_check_exists",
-        "display_name": "Harden LIB Check Exists",
-        "unit": "boolean",
-        "dimension": "clock_robustness_dfm",
-        "polarity": "higher_is_better",
-    },
-    "harden_preview_exists": {
-        "name": "harden_preview_exists",
-        "display_name": "Harden Preview Exists",
-        "unit": "boolean",
-        "dimension": "clock_robustness_dfm",
-        "polarity": "higher_is_better",
-    },
     "harden_artifact_missing_count": {
         "name": "harden_artifact_missing_count",
         "display_name": "Harden Missing Artifact Count",
@@ -540,6 +498,22 @@ QOR_BLOCKING_METRIC_REASONS = {
     "sta_hold_violation_count": "STA hold violating paths are present.",
     "sta_missing_corner_count": "STA QoR summaries are missing for configured corners.",
     "harden_artifact_missing_count": "Harden output artifacts are missing.",
+}
+
+# Keep the condition next to the blocker definition so the emitted evidence
+# remains aligned with the predicate that marks a metric as blocking.
+QOR_BLOCKING_METRIC_EXPECTATIONS = {
+    "drc_count": ("==", 0),
+    "route_dr_total_violation_count": ("==", 0),
+    "route_la_total_overflow": ("==", 0),
+    "rcx_spef_parse_failure_count": ("==", 0),
+    "sta_setup_violation_count": ("==", 0),
+    "sta_hold_violation_count": ("==", 0),
+    "harden_artifact_missing_count": ("==", 0),
+    "sta_setup_wns": (">=", 0),
+    "sta_setup_tns": (">=", 0),
+    "sta_hold_wns": (">=", 0),
+    "sta_hold_tns": (">=", 0),
 }
 
 QOR_HOTSPOT_METRIC_HINTS = {
@@ -604,9 +578,6 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "fanout_max",
     ],
     StepEnum.PLACEMENT.value: [
-        "place_overflow",
-        "place_overflow_count",
-        "place_bin_count",
         "place_hpwl",
         "place_grwl",
         "place_flute_wirelength",
@@ -626,9 +597,6 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "cts_worst_optimized_skew_ns",
         "cts_worst_max_insertion_latency_ns",
         "cts_skew_target_unmet_count",
-    ],
-    StepEnum.LEGALIZATION.value: [
-        "legal_total_movement",
     ],
     StepEnum.ROUTING.value: [
         "route_wirelength",
@@ -670,8 +638,6 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "harden_gds_exists",
         "harden_lef_exists",
         "harden_lib_exists",
-        "harden_lib_check_exists",
-        "harden_preview_exists",
         "harden_artifact_missing_count",
     ],
 }
@@ -2080,6 +2046,23 @@ def _metric_feature_source(step: WorkspaceStep,
             "place_rudy_utilization_max",
             "place_lutrudy_utilization_max",
         } else step.feature.get("step")
+        selector = {
+            "place_hpwl": "/Wirelength/HPWL",
+            "place_grwl": "/Wirelength/GRWL",
+            "place_flute_wirelength": "/Wirelength/FLUTE",
+            "place_congestion_egr_overflow_total": (
+                "/Congestion/overflow/total/union"
+            ),
+            "place_congestion_egr_overflow_max": (
+                "/Congestion/overflow/max/union"
+            ),
+            "place_rudy_utilization_max": (
+                "/Congestion/utilization/rudy/max/union"
+            ),
+            "place_lutrudy_utilization_max": (
+                "/Congestion/utilization/lutrudy/max/union"
+            ),
+        }.get(metric_id, "")
     elif metric_id.startswith("cts_") or metric_id in {
         "clock_wirelength",
         "clock_path_max_buffer",
@@ -2089,6 +2072,11 @@ def _metric_feature_source(step: WorkspaceStep,
         selector = {
             "clock_path_max_buffer": "/CTS/clock_path_max_buffer",
             "clock_path_min_buffer": "/CTS/clock_path_min_buffer",
+            "cts_buffer_count": "/CTS/buffer_num",
+            "cts_buffer_area": "/CTS/buffer_area",
+            "clock_wirelength": "/CTS/total_clock_wirelength",
+            "cts_clock_wirelength_max": "/CTS/max_clock_wirelength",
+            "cts_clock_tree_max_level": "/CTS/max_level_of_clock_tree",
             "cts_worst_optimized_skew_ns": (
                 "/CTS/timing_quality/worst_optimized_skew_ns"
             ),
@@ -2099,12 +2087,23 @@ def _metric_feature_source(step: WorkspaceStep,
                 "/CTS/timing_quality/target_unmet_count"
             ),
         }.get(metric_id, "")
-    elif metric_id == "legal_total_movement":
-        feature_path = step.feature.get("step")
     elif metric_id in {"route_wirelength", "route_via_count"}:
         feature_path = step.feature.get("db")
+        selector = {
+            "route_wirelength": "/Nets/wire_len",
+            "route_via_count": "/Nets/num_via",
+        }.get(metric_id, "")
     elif metric_id.startswith("route_") or metric_id == "drc_count":
         feature_path = step.feature.get("step")
+        selector = {
+            "drc_count": "/drc/number",
+            "route_dr_total_violation_count": "/route/DR",
+            "route_dr_total_patch_count": "/route/DR",
+            "route_dr_total_wirelength": "/route/DR",
+            "route_dr_total_via_count": "/route/DR",
+            "route_la_total_overflow": "/route/LA",
+            "route_la_total_demand": "/route/LA",
+        }.get(metric_id, "")
     elif metric_id.startswith("rcx_") or metric_id.startswith("harden_"):
         feature_path = step.feature.get("step")
         selector = {
@@ -2128,8 +2127,6 @@ def _metric_feature_source(step: WorkspaceStep,
             "harden_gds_exists": "/harden/artifacts/harden_gds_exists",
             "harden_lef_exists": "/harden/artifacts/harden_lef_exists",
             "harden_lib_exists": "/harden/artifacts/harden_lib_exists",
-            "harden_lib_check_exists": "/harden/artifacts/harden_lib_check_exists",
-            "harden_preview_exists": "/harden/artifacts/harden_preview_exists",
             "harden_artifact_missing_count": "/harden/artifact_missing_count",
         }.get(metric_id, "")
     elif metric_id in _STA_FEATURE_SELECTORS:
@@ -2343,18 +2340,63 @@ def _is_blocking_qor_record(record: dict) -> bool:
     return False
 
 
+def _qor_evidence(source=None,
+                  operator: str | None = None,
+                  threshold=None,
+                  diagnosis: str | None = None,
+                  availability: str | None = None) -> dict:
+    evidence = {}
+    if _is_feature_source(source):
+        evidence["source"] = source
+    elif isinstance(source, dict):
+        evidence["source"] = source
+    if operator is not None:
+        evidence["expected"] = {"operator": operator, "value": threshold}
+    if diagnosis:
+        evidence["diagnosis"] = diagnosis
+    if availability:
+        evidence["availability"] = availability
+    return evidence
+
+
+def _qor_expectation_diagnosis(metric_name: str,
+                                value,
+                                operator: str,
+                                threshold) -> str:
+    return (
+        f"Observed {metric_name} = {value}; required condition is "
+        f"{operator} {threshold}."
+    )
+
+
 def _qor_blocking_issue(record: dict) -> dict | None:
     if not _is_blocking_qor_record(record):
         return None
 
     metric_name = record.get("id")
+    operator, threshold = QOR_BLOCKING_METRIC_EXPECTATIONS.get(
+        metric_name,
+        ("within the accepted range", None),
+    )
+    value = record.get("value")
     return {
         "metric_id": metric_name,
         "display_name": record.get("display_name", metric_name),
-        "value": record.get("value"),
+        "value": value,
         "reason": QOR_BLOCKING_METRIC_REASONS.get(
             metric_name,
             "QoR metric is outside the accepted range.",
+        ),
+        "evidence": _qor_evidence(
+            source=record.get("source"),
+            operator=operator,
+            threshold=threshold,
+            diagnosis=_qor_expectation_diagnosis(
+                metric_name,
+                value,
+                operator,
+                threshold,
+            ),
         ),
     }
 
@@ -2371,6 +2413,44 @@ def _qor_missing_metrics(step: WorkspaceStep, records: list[dict]) -> list[str]:
         for metric_name in expected_metrics
         if metric_name not in available_metrics
     ]
+
+
+def _qor_missing_metric_record(step: WorkspaceStep, metric_name: str) -> dict:
+    source = _metric_feature_source(step, metric_name)
+    if not _is_feature_source(source):
+        diagnosis = (
+            f"No current feature source is configured for required metric "
+            f"{metric_name}."
+        )
+        availability = "source_unconfigured"
+    else:
+        step_directory = step.directory
+        feature_file = (
+            Path(step_directory) / source["path"]
+            if step_directory is not None else None
+        )
+        selector = source["selector"] or "the metric extraction input"
+        if feature_file is None or not feature_file.is_file():
+            diagnosis = (
+                f"Required feature file {source['path']} is missing; cannot read "
+                f"{selector} for {metric_name}."
+            )
+            availability = "source_file_missing"
+        else:
+            diagnosis = (
+                f"Required field {selector} is absent or non-numeric in "
+                f"{source['path']}; metric {metric_name} was not produced."
+            )
+            availability = "source_field_missing"
+    return {
+        "metric_id": metric_name,
+        "reason": diagnosis,
+        "evidence": _qor_evidence(
+            source=source,
+            diagnosis=diagnosis,
+            availability=availability,
+        ),
+    }
 
 
 def _workspace_step_completed(workspace: Workspace, step_name: str) -> bool:
@@ -2442,10 +2522,21 @@ def _harden_qor_signoff(workspace: Workspace, records: list[dict]) -> dict:
     sources = []
     hard_gates = []
     blocking_issues = []
+    records_by_id = {
+        record.get("id"): record
+        for record in records
+        if isinstance(record.get("id"), str)
+    }
 
     for spec in HARDEN_SIGNOFF_SOURCE_SPECS:
         source = _harden_signoff_source(workspace, spec["step"])
         passed = _harden_source_passed(source, spec["required_hard_gates"])
+        diagnosis = _harden_source_reason(source, spec["label"])
+        analysis_source = {
+            "kind": "analysis",
+            "path": f"{spec['step']}_ecc/analysis/qor_summary.json",
+            "selector": "/status",
+        }
         sources.append({
             "id": spec["id"],
             "step": source["step"],
@@ -2460,13 +2551,25 @@ def _harden_qor_signoff(workspace: Workspace, records: list[dict]) -> dict:
             "metric": f"{spec['step']}_qor_summary",
             "threshold": "pass",
             "actual": source["status"],
+            "evidence": _qor_evidence(
+                source=analysis_source,
+                operator="==",
+                threshold="pass",
+                diagnosis=diagnosis,
+            ),
         })
         if not passed:
             blocking_issues.append({
                 "metric_id": spec["id"],
                 "display_name": spec["label"],
                 "value": source["status"],
-                "reason": _harden_source_reason(source, spec["label"]),
+                "reason": diagnosis,
+                "evidence": _qor_evidence(
+                    source=analysis_source,
+                    operator="==",
+                    threshold="pass",
+                    diagnosis=diagnosis,
+                ),
             })
 
     values = {
@@ -2483,13 +2586,36 @@ def _harden_qor_signoff(workspace: Workspace, records: list[dict]) -> dict:
         "metric": "harden_artifact_missing_count",
         "threshold": 0,
         "actual": artifact_missing_count,
+        "evidence": _qor_evidence(
+            source=records_by_id.get("harden_artifact_missing_count", {}).get("source"),
+            operator="==",
+            threshold=0,
+            diagnosis=_qor_expectation_diagnosis(
+                "harden_artifact_missing_count",
+                artifact_missing_count,
+                "==",
+                0,
+            ),
+        ),
     })
     if not artifacts_complete:
+        diagnosis = _qor_expectation_diagnosis(
+            "harden_artifact_missing_count",
+            artifact_missing_count,
+            "==",
+            0,
+        )
         blocking_issues.append({
             "metric_id": "final_package_complete",
             "display_name": "Final Package Complete",
             "value": artifact_missing_count,
             "reason": "Harden output artifacts are missing.",
+            "evidence": _qor_evidence(
+                source=records_by_id.get("harden_artifact_missing_count", {}).get("source"),
+                operator="==",
+                threshold=0,
+                diagnosis=diagnosis,
+            ),
         })
 
     return {
@@ -2509,26 +2635,33 @@ def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
         record.get("id"): _qor_number(record.get("value"))
         for record in records
     }
+    records_by_id = {
+        record.get("id"): record
+        for record in records
+        if isinstance(record.get("id"), str)
+    }
     gate_specs = (
-        ("sta_setup_wns_clean", "sta_setup_wns", 0.0, lambda value: value >= 0),
-        ("sta_setup_tns_clean", "sta_setup_tns", 0.0, lambda value: value >= 0),
+        ("sta_setup_wns_clean", "sta_setup_wns", ">=", 0.0, lambda value: value >= 0),
+        ("sta_setup_tns_clean", "sta_setup_tns", ">=", 0.0, lambda value: value >= 0),
         (
             "sta_setup_violation_free",
             "sta_setup_violation_count",
+            "==",
             0.0,
             lambda value: value == 0,
         ),
-        ("sta_hold_wns_clean", "sta_hold_wns", 0.0, lambda value: value >= 0),
-        ("sta_hold_tns_clean", "sta_hold_tns", 0.0, lambda value: value >= 0),
+        ("sta_hold_wns_clean", "sta_hold_wns", ">=", 0.0, lambda value: value >= 0),
+        ("sta_hold_tns_clean", "sta_hold_tns", ">=", 0.0, lambda value: value >= 0),
         (
             "sta_hold_violation_free",
             "sta_hold_violation_count",
+            "==",
             0.0,
             lambda value: value == 0,
         ),
     )
     hard_gates = []
-    for gate_id, metric, threshold, predicate in gate_specs:
+    for gate_id, metric, operator, threshold, predicate in gate_specs:
         actual = values.get(metric)
         hard_gates.append({
             "id": gate_id,
@@ -2536,6 +2669,17 @@ def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
             "metric": metric,
             "threshold": threshold,
             "actual": actual,
+            "evidence": _qor_evidence(
+                source=records_by_id.get(metric, {}).get("source"),
+                operator=operator,
+                threshold=threshold,
+                diagnosis=_qor_expectation_diagnosis(
+                    metric,
+                    actual,
+                    operator,
+                    threshold,
+                ),
+            ),
         })
 
     expected_count = values.get("sta_expected_corner_count")
@@ -2551,6 +2695,17 @@ def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
         "metric": "sta_corner_count",
         "threshold": expected_count,
         "actual": actual_count,
+        "evidence": _qor_evidence(
+            source=records_by_id.get("sta_corner_count", {}).get("source"),
+            operator="==",
+            threshold=expected_count,
+            diagnosis=_qor_expectation_diagnosis(
+                "sta_corner_count",
+                actual_count,
+                "==",
+                expected_count,
+            ),
+        ),
     })
     return hard_gates
 
@@ -2727,12 +2882,20 @@ def build_qor_summary_payload(workspace: Workspace,
         "blocking_issues": blocking_issues,
         "hard_gates": hard_gates,
         "missing_metrics": [
-            {
+            _qor_missing_metric_record(step, metric_id)
+            if metric_id not in invalid_metric_source_ids
+            else {
                 "metric_id": metric_id,
                 "reason": (
-                    "The metric source is outside the current step feature directory."
-                    if metric_id in invalid_metric_source_ids
-                    else "The required feature metric is unavailable."
+                    f"Metric {metric_id} resolved outside the current step feature "
+                    "directory and was rejected."
+                ),
+                "evidence": _qor_evidence(
+                    diagnosis=(
+                        f"Metric {metric_id} resolved outside the current step feature "
+                        "directory and was rejected."
+                    ),
+                    availability="invalid_source",
                 ),
             }
             for metric_id in missing_metrics
@@ -3516,25 +3679,13 @@ def build_metrics_harden(workspace: Workspace,
     metrics.update(build_metrics_db(workspace, step))
 
     output_dir = step.output.get("dir", "")
-    lib_check_path = (
-        Path(f"{step.output.get('lib')}.check_sources.tsv")
-        if step.output.get("lib", "")
-        else None
-    )
+    # Final delivery requires the implementation artifacts.  The LIB source
+    # audit TSV is no longer emitted by STA, and preview rendering is a UI aid
+    # generated after analysis, so neither belongs to package completeness.
     artifact_checks = {
         "harden_gds_exists": _artifact_exists(step.output.get("gds", ""), output_dir, "*.gds"),
         "harden_lef_exists": _artifact_exists(step.output.get("lef", ""), output_dir, "*.lef"),
         "harden_lib_exists": _artifact_exists(step.output.get("lib", ""), output_dir, "*.lib"),
-        "harden_lib_check_exists": _artifact_exists(
-            lib_check_path,
-            output_dir,
-            "*.lib.check_sources.tsv",
-        ),
-        "harden_preview_exists": _artifact_exists(
-            step.output.get("image", ""),
-            output_dir,
-            "*.png",
-        ),
     }
     metrics.update(artifact_checks)
     metrics["harden_artifact_missing_count"] = sum(
@@ -3575,17 +3726,10 @@ def build_metrics_legalization(workspace: Workspace,
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
     
-    # step matrics
+    # Current legalization feature output only carries run facts.  Movement
+    # totals are no longer emitted by the tool, so do not synthesize a stale
+    # V3 metric requirement from an absent legacy field.
     json_path = step.feature.get('step', "")
-    data = json_read(json_path)
-    if isinstance(data, dict):
-        legalization = data.get("legalization", {})
-        if isinstance(legalization, dict):
-            _add_number_metric(
-                metrics,
-                "total_movement",
-                legalization.get("total_movement"),
-            )
     
     step_metrics.data = metrics
     
@@ -3764,21 +3908,10 @@ def build_metrics_placement(workspace: Workspace,
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
     
-    # step matrics
+    # Placement congestion and wirelength are emitted through place.map.json.
+    # The old place.step.json overflow/bin fields are not part of the current
+    # DreamPlace feature contract.
     json_path = step.feature.get('step', "")
-    data = json_read(json_path)
-    if isinstance(data, dict):
-        place = data.get("place", {})
-        place = place if isinstance(place, dict) else {}
-        _add_number_metric(metrics, "overflow", place.get("overflow"))
-        _add_number_metric(metrics, "overflow_number", place.get("overflow_number"))
-        _add_number_metric(metrics, "bin_number", place.get("bin_number"))
-        gplace = place.get("gplace", {})
-        dplace = place.get("dplace", {})
-        if isinstance(gplace, dict):
-            _add_number_metric(metrics, "GP HPWL", gplace.get("HPWL"), scale=0.001)
-        if isinstance(dplace, dict):
-            _add_number_metric(metrics, "DP HPWL", dplace.get("STWL"), scale=0.001)
 
     map_data = json_read(step.feature.get('map', ""))
     if isinstance(map_data, dict):
