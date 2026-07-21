@@ -82,9 +82,7 @@ def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path, spef_paths):
 
     rcx_output = EccOutput(spef=spef_paths)
     prebuilt = {
-        StepEnum.RCX.value: EccStep(
-            name=StepEnum.RCX.value, tool="ecc", output=rcx_output
-        ),
+        StepEnum.RCX.value: EccStep(name=StepEnum.RCX.value, tool="ecc", output=rcx_output),
         StepEnum.STA.value: EccStep(name=StepEnum.STA.value, tool="ecc"),
     }
 

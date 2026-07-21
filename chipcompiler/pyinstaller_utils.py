@@ -24,9 +24,7 @@ EXCLUDED_HIDDENIMPORT_PREFIXES = (
     "torch.test",
 )
 
-REQUIRED_RUNTIME_BINARY_PREFIXES = (
-    "ecc_tools_bin/ecc_py",
-)
+REQUIRED_RUNTIME_BINARY_PREFIXES = ("ecc_tools_bin/ecc_py",)
 
 
 def collect_package_extension_binaries(search_locations, pattern, destination):
@@ -46,9 +44,7 @@ def collect_package_extension_binaries(search_locations, pattern, destination):
 def payload_path_matches(path, prefix):
     normalized = str(path).replace("\\", "/")
     return (
-        normalized == prefix
-        or normalized.startswith(f"{prefix}/")
-        or f"/{prefix}/" in normalized
+        normalized == prefix or normalized.startswith(f"{prefix}/") or f"/{prefix}/" in normalized
     )
 
 
@@ -56,16 +52,13 @@ def payload_is_excluded(item):
     destination = item[0] if isinstance(item, (tuple, list)) else item
     normalized_destination = str(destination).replace("\\", "/")
     if any(
-        normalized_destination.startswith(prefix)
-        for prefix in REQUIRED_RUNTIME_BINARY_PREFIXES
+        normalized_destination.startswith(prefix) for prefix in REQUIRED_RUNTIME_BINARY_PREFIXES
     ):
         return False
 
     paths = item[:2] if isinstance(item, (tuple, list)) else (item,)
     return any(
-        payload_path_matches(path, prefix)
-        for path in paths
-        for prefix in EXCLUDED_PAYLOAD_PREFIXES
+        payload_path_matches(path, prefix) for path in paths for prefix in EXCLUDED_PAYLOAD_PREFIXES
     )
 
 

@@ -50,7 +50,8 @@ def test_ics55_template_has_dreamplace_padding_defaults():
     assert parameters.data["Routability opt flag"] == 1
 
 
-#SG13G2 parameter tests
+# SG13G2 parameter tests
+
 
 def test_get_parameters_sg13g2_returns_template():
     parameters = get_parameters("sg13g2")

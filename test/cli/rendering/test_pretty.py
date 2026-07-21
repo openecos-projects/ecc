@@ -289,6 +289,7 @@ class TestJsonUnchanged:
         assert "records" in data
         assert data["records"][0]["run"] == "default"
 
+
 # ---------------------------------------------------------------------------
 # Regression: multi-record error rendering (Codex Round 1 finding)
 # ---------------------------------------------------------------------------

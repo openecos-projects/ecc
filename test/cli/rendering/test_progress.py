@@ -293,8 +293,7 @@ class TestIncrementalLogTail:
         assert tail.poll(now=10.0) == "StaDataPropagation.cc:710] data bwd propagation start"
 
         assert (
-            tail.poll(now=16.0)
-            == "running fixfanout, last log 6s ago: "
+            tail.poll(now=16.0) == "running fixfanout, last log 6s ago: "
             "StaDataPropagation.cc:710] data bwd propagation start"
         )
         assert tail.last_line == "StaDataPropagation.cc:710] data bwd propagation start"
@@ -648,10 +647,12 @@ def _make_step(name, tool, log_file=""):
 
 def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=None):
     if init_db_engine_fn is None:
+
         def init_db_engine_fn(self):
             return None
 
     if check_state_fn is None:
+
         def check_state_fn(self, name, tool, state):
             return False
 

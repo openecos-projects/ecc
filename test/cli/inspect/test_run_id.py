@@ -83,6 +83,7 @@ class TestRunIdResolution:
         out = capsys.readouterr().out
         assert "--run-id run_005" in out
 
+
 class TestRunIdDisclosure:
     def test_explicit_default_preserved_in_disclosure(
         self, tmp_path, capsys, create_cli_project, create_flow_json

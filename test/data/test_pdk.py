@@ -5,9 +5,7 @@ import pytest
 from chipcompiler.data.pdk import get_pdk
 
 
-def test_get_pdk_prefers_explicit_root_over_env(
-    tmp_path, monkeypatch, minimal_ics55_pdk_factory
-):
+def test_get_pdk_prefers_explicit_root_over_env(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
     explicit_root = minimal_ics55_pdk_factory(tmp_path / "explicit")
     env_root = minimal_ics55_pdk_factory(tmp_path / "env")
     monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
@@ -71,9 +69,7 @@ def test_get_pdk_sg13g2_prefers_explicit_root_over_env(
     assert all(path.is_relative_to(expected_root) for path in pdk.lefs + pdk.libs)
 
 
-def test_get_pdk_sg13g2_uses_namespaced_env(
-    tmp_path, monkeypatch, minimal_sg13g2_pdk_factory
-):
+def test_get_pdk_sg13g2_uses_namespaced_env(tmp_path, monkeypatch, minimal_sg13g2_pdk_factory):
     env_root = minimal_sg13g2_pdk_factory(tmp_path / "env")
     monkeypatch.setenv("CHIPCOMPILER_SG13G2_PDK_ROOT", str(env_root))
     monkeypatch.delenv("SG13G2_PDK_ROOT", raising=False)

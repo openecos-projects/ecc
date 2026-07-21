@@ -555,6 +555,7 @@ class TestDirectoryOnlyStepConfig:
             "runs/default/config/rt_default_config.json",
         ]
 
+
 class TestAbsoluteRunIdConfig:
     def test_absolute_run_id_preserves_run_dir_value(
         self,

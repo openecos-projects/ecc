@@ -19,6 +19,7 @@ STA_REPORT_FILENAMES = (
     "timing_min_reg2reg.rpt",
 )
 
+
 class EccChecklist:
     CHECKLIST_ITEMS = {
         StepEnum.FLOORPLAN: [
@@ -121,89 +122,56 @@ class EccChecklist:
         ],
     }
 
-    def __init__(self,
-                 workspace : Workspace,
-                 workspace_step: EccStep,
-                 *,
-                 init_checklist : bool = True):
+    def __init__(
+        self, workspace: Workspace, workspace_step: EccStep, *, init_checklist: bool = True
+    ):
         self.workspace = workspace
         self.workspace_step = workspace_step
-        
+
         if init_checklist:
             self.build_checklist()
 
-    def add_item(self,
-                 checklist : Checklist,
-                 step : str,
-                 type : str,
-                 item : str,
-                 state : str,
-                 info : str = ""):
-        checklist.add(step=step,
-                      type=type,
-                      item=item,
-                      state=state,
-                      info=info)
+    def add_item(
+        self, checklist: Checklist, step: str, type: str, item: str, state: str, info: str = ""
+    ):
+        checklist.add(step=step, type=type, item=item, state=state, info=info)
 
         # add to home page checklist
-        self.workspace.home.update_checklist(step=step,
-                                             type=type,
-                                             item=item,
-                                             state=state,
-                                             info=info)
+        self.workspace.home.update_checklist(
+            step=step, type=type, item=item, state=state, info=info
+        )
 
-    def add_items(self,
-                  checklist : Checklist,
-                  step : StepEnum):
+    def add_items(self, checklist: Checklist, step: StepEnum):
         for type, item in self.CHECKLIST_ITEMS.get(step, []):
-            self.add_item(checklist=checklist,
-                          step=step.value,
-                          type=type,
-                          item=item,
-                          state=CheckState.Unstart.value)
+            self.add_item(
+                checklist=checklist,
+                step=step.value,
+                type=type,
+                item=item,
+                state=CheckState.Unstart.value,
+            )
 
-    def set_item_state(self,
-                       step : str,
-                       type : str,
-                       item : str,
-                       state : CheckState,
-                       info : str = ""):
-        self.update_item(step=step,
-                         type=type,
-                         item=item,
-                         state=state,
-                         info=info)
-        self.workspace.home.update_checklist(step=step,
-                                             type=type,
-                                             item=item,
-                                             state=state.value,
-                                             info=info)
+    def set_item_state(self, step: str, type: str, item: str, state: CheckState, info: str = ""):
+        self.update_item(step=step, type=type, item=item, state=state, info=info)
+        self.workspace.home.update_checklist(
+            step=step, type=type, item=item, state=state.value, info=info
+        )
 
     def build_checklist(self) -> list:
         checklist = Checklist(path=self.workspace_step.checklist.path or "")
         step = StepEnum(self.workspace_step.name)
-        self.add_items(checklist=checklist,
-                       step=step)
-                
+        self.add_items(checklist=checklist, step=step)
+
         self.workspace_step.checklist.checklist = checklist.data
-        
+
     def save(self) -> bool:
         checklist = Checklist(path=self.workspace_step.checklist.path or "")
         return checklist.save()
-        
-    def update_item(self, 
-                    step : str, 
-                    type : str,
-                    item : str,
-                    state : str | CheckState,
-                    info : str = ""):
+
+    def update_item(self, step: str, type: str, item: str, state: str | CheckState, info: str = ""):
         checklist = Checklist(path=self.workspace_step.checklist.path or "")
-        checklist.update(step=step, 
-                         type=type, 
-                         item=item, 
-                         state=state,
-                         info=info)
-        
+        checklist.update(step=step, type=type, item=item, state=state, info=info)
+
     def check(self) -> bool:
         step = StepEnum(self.workspace_step.name)
         checker_class = {
@@ -228,10 +196,8 @@ class EccChecklist:
             self.workspace_step,
             init_checklist=False,
         ).check()
-        
-    def check_file(self,
-                   path : str | Path,
-                   text_tokens : list | None = None) -> bool:
+
+    def check_file(self, path: str | Path, text_tokens: list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
             return False
 
@@ -246,9 +212,7 @@ class EccChecklist:
 
         return all(token in content for token in text_tokens)
 
-    def to_float(self,
-                 value,
-                 default : float | None = None) -> float | None:
+    def to_float(self, value, default: float | None = None) -> float | None:
         try:
             return float(value)
         except (TypeError, ValueError):
@@ -263,8 +227,9 @@ class EccFloorplanChecklist(EccChecklist):
         subflow = json_read(self.workspace_step.subflow.path or "")
 
         try:
-            with open(self.workspace_step.log.file or "",
-                      encoding="utf-8", errors="ignore") as file:
+            with open(
+                self.workspace_step.log.file or "", encoding="utf-8", errors="ignore"
+            ) as file:
                 log_text = file.read()
         except OSError:
             log_text = ""
@@ -273,29 +238,27 @@ class EccFloorplanChecklist(EccChecklist):
         statis = db.get("Design Statis", {})
         layers = db.get("Layers", {})
         nets = db.get("Nets", {})
-        subflow_state = {
-            item.get("name"): item.get("state")
-            for item in subflow.get("steps", [])
-        }
-        output_success = all([
-            self.check_file(self.workspace_step.output.def_ or ""),
-            self.check_file(self.workspace_step.output.verilog or ""),
-            self.check_file(self.workspace_step.output.gds or ""),
-        ])
+        subflow_state = {item.get("name"): item.get("state") for item in subflow.get("steps", [])}
+        output_success = all(
+            [
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
+            ]
+        )
 
-        die_area = self.to_float(
-            metrics.get("Die area [μm^2]", layout.get("die_area")), 0.0)
+        die_area = self.to_float(metrics.get("Die area [μm^2]", layout.get("die_area")), 0.0)
         die_width = self.to_float(
-            metrics.get("Die width [um]", layout.get("die_bounding_width")), 0.0)
+            metrics.get("Die width [um]", layout.get("die_bounding_width")), 0.0
+        )
         die_height = self.to_float(
-            metrics.get("Die height [um]", layout.get("die_bounding_height")), 0.0)
+            metrics.get("Die height [um]", layout.get("die_bounding_height")), 0.0
+        )
         core_area = self.to_float(layout.get("core_area"), 0.0)
         core_width = self.to_float(layout.get("core_bounding_width"), 0.0)
         core_height = self.to_float(layout.get("core_bounding_height"), 0.0)
-        core_util = self.to_float(
-            metrics.get("Core util", layout.get("core_usage")), 0.0)
-        num_iopins = self.to_float(
-            metrics.get("Total io pins", statis.get("num_iopins")), 0.0)
+        core_util = self.to_float(metrics.get("Core util", layout.get("core_usage")), 0.0)
+        num_iopins = self.to_float(metrics.get("Total io pins", statis.get("num_iopins")), 0.0)
         num_pdn = self.to_float(statis.get("num_pdn"), 0.0)
         num_clock = self.to_float(nets.get("num_clock"), 0.0)
         num_routing_layers = self.to_float(
@@ -304,36 +267,56 @@ class EccFloorplanChecklist(EccChecklist):
         )
 
         checks = [
-            ("Area", "check DIE area",
-             die_area > 0 and die_width > 0 and die_height > 0),
-            ("Area", "check core area",
-             core_area > 0 and core_width > 0 and core_height > 0),
-            ("Area", "check core utilization",
-             core_util is not None and 0 < core_util <= 1),
-            ("Rows/Tracks", "check placement rows and sites",
-             subflow_state.get("init floorplan") == "Success"
-             and "Write ROWS success" in log_text
-             and output_success),
-            ("Rows/Tracks", "check routing tracks",
-             subflow_state.get("create tracks") == "Success"
-             and num_routing_layers > 0
-             and "Write Track Grid success" in log_text),
-            ("Pins/Macros", "check IO pin placement",
-             subflow_state.get("place io pins") == "Success"
-             and num_iopins > 0
-             and "Write PINS success" in log_text),
-            ("Pins/Macros", "check macro placement",
-             "Macros" in db and "Macros Statis" in db and output_success),
-            ("PDN", "check tap and endcap insertion",
-             subflow_state.get("tap cell") == "Success"
-             and "Write COMPONENTS success" in log_text),
-            ("PDN", "check PDN IO and global connect",
-             subflow_state.get("PDN") == "Success" and num_pdn >= 2),
-            ("PDN", "check PDN grid and stripes",
-             subflow_state.get("PDN") == "Success"
-             and "Write SPECIALNETS success" in log_text),
-            ("Clock", "check clock net type",
-             subflow_state.get("set clock net") == "Success" and num_clock > 0),
+            ("Area", "check DIE area", die_area > 0 and die_width > 0 and die_height > 0),
+            ("Area", "check core area", core_area > 0 and core_width > 0 and core_height > 0),
+            ("Area", "check core utilization", core_util is not None and 0 < core_util <= 1),
+            (
+                "Rows/Tracks",
+                "check placement rows and sites",
+                subflow_state.get("init floorplan") == "Success"
+                and "Write ROWS success" in log_text
+                and output_success,
+            ),
+            (
+                "Rows/Tracks",
+                "check routing tracks",
+                subflow_state.get("create tracks") == "Success"
+                and num_routing_layers > 0
+                and "Write Track Grid success" in log_text,
+            ),
+            (
+                "Pins/Macros",
+                "check IO pin placement",
+                subflow_state.get("place io pins") == "Success"
+                and num_iopins > 0
+                and "Write PINS success" in log_text,
+            ),
+            (
+                "Pins/Macros",
+                "check macro placement",
+                "Macros" in db and "Macros Statis" in db and output_success,
+            ),
+            (
+                "PDN",
+                "check tap and endcap insertion",
+                subflow_state.get("tap cell") == "Success"
+                and "Write COMPONENTS success" in log_text,
+            ),
+            (
+                "PDN",
+                "check PDN IO and global connect",
+                subflow_state.get("PDN") == "Success" and num_pdn >= 2,
+            ),
+            (
+                "PDN",
+                "check PDN grid and stripes",
+                subflow_state.get("PDN") == "Success" and "Write SPECIALNETS success" in log_text,
+            ),
+            (
+                "Clock",
+                "check clock net type",
+                subflow_state.get("set clock net") == "Success" and num_clock > 0,
+            ),
         ]
 
         warning_items = {"check macro placement"}
@@ -365,8 +348,9 @@ class EccNetlistOptChecklist(EccChecklist):
         config = json_read(self.workspace.config.get(StepEnum.NETLIST_OPT.value, ""))
 
         try:
-            with open(self.workspace_step.output.verilog or "",
-                      encoding="utf-8", errors="ignore") as file:
+            with open(
+                self.workspace_step.output.verilog or "", encoding="utf-8", errors="ignore"
+            ) as file:
                 netlist_text = file.read()
         except OSError:
             netlist_text = ""
@@ -377,26 +361,26 @@ class EccNetlistOptChecklist(EccChecklist):
         tie_high = getattr(self.workspace.pdk, "tie_high_cell", "")
         tie_low = getattr(self.workspace.pdk, "tie_low_cell", "")
         max_fanout_limit = self.to_float(
-            config.get("max_fanout",
-                       metrics.get("Max fanout",
-                                   self.workspace.parameters.data.get("Max fanout"))),
+            config.get(
+                "max_fanout",
+                metrics.get("Max fanout", self.workspace.parameters.data.get("Max fanout")),
+            ),
             0.0,
         )
         actual_max_fanout = self.to_float(pins.get("max_fanout"))
         total_nets = self.to_float(metrics.get("Total nets"), 0.0)
         db_nets = self.to_float(statis.get("num_nets"), 0.0)
-        output_success = all([
-            self.check_file(self.workspace_step.output.def_ or ""),
-            self.check_file(self.workspace_step.output.verilog or ""),
-            self.check_file(self.workspace_step.output.gds or ""),
-        ])
+        output_success = all(
+            [
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
+            ]
+        )
 
-        buffer_success = (
-            len(buffer_cells) > 0
-            and (
-                any(buffer in netlist_text for buffer in buffer_cells)
-                or config.get("insert_buffer") in buffer_cells
-            )
+        buffer_success = len(buffer_cells) > 0 and (
+            any(buffer in netlist_text for buffer in buffer_cells)
+            or config.get("insert_buffer") in buffer_cells
         )
         tie_success = bool(tie_high and tie_low)
         if tie_high in netlist_text or tie_low in netlist_text:
@@ -404,15 +388,23 @@ class EccNetlistOptChecklist(EccChecklist):
 
         checks = [
             ("Fanout", "check max fanout constraint", max_fanout_limit > 0),
-            ("Fanout", "check high fanout nets",
-             actual_max_fanout is not None
-             and max_fanout_limit > 0
-             and actual_max_fanout <= max_fanout_limit),
+            (
+                "Fanout",
+                "check high fanout nets",
+                actual_max_fanout is not None
+                and max_fanout_limit > 0
+                and actual_max_fanout <= max_fanout_limit,
+            ),
             ("Buffer", "check inserted buffer type", buffer_success),
             ("Tie", "check tie cell usage", tie_success),
-            ("Netlist", "check netlist and DEF consistency",
-             output_success and total_nets > 0 and db_nets > 0
-             and int(total_nets) == int(db_nets)),
+            (
+                "Netlist",
+                "check netlist and DEF consistency",
+                output_success
+                and total_nets > 0
+                and db_nets > 0
+                and int(total_nets) == int(db_nets),
+            ),
         ]
 
         warning_items = {"check high fanout nets", "check tie cell usage"}
@@ -423,10 +415,7 @@ class EccNetlistOptChecklist(EccChecklist):
                 state = CheckState.Warning if warning else CheckState.Failed
             info = f"{item} check failed"
             if item == "check high fanout nets":
-                info = (
-                    f"max fanout {actual_max_fanout} exceeds "
-                    f"limit {max_fanout_limit}"
-                )
+                info = f"max fanout {actual_max_fanout} exceeds limit {max_fanout_limit}"
             elif item == "check tie cell usage":
                 info = "tie high/low cell definition or inserted tie cell is missing"
             self.set_item_state(
@@ -461,34 +450,31 @@ class EccCtsChecklist(EccChecklist):
 
         num_clock = self.to_float(nets.get("num_clock"), 0.0)
         clock_sink_num = self.to_float(clock_instances.get("num"), 0.0)
-        buffer_num = self.to_float(
-            metrics.get("buffer_num", feature.get("buffer_num")), 0.0)
+        buffer_num = self.to_float(metrics.get("buffer_num", feature.get("buffer_num")), 0.0)
         clock_path_max = self.to_float(
-            metrics.get("clock_path_max_buffer",
-                        feature.get("clock_path_max_buffer")), 0.0)
+            metrics.get("clock_path_max_buffer", feature.get("clock_path_max_buffer")), 0.0
+        )
         clock_path_min = self.to_float(
-            metrics.get("clock_path_min_buffer",
-                        feature.get("clock_path_min_buffer")), 0.0)
+            metrics.get("clock_path_min_buffer", feature.get("clock_path_min_buffer")), 0.0
+        )
         clock_wirelength = self.to_float(
-            metrics.get("total_clock_wirelength",
-                        feature.get("total_clock_wirelength")), 0.0)
+            metrics.get("total_clock_wirelength", feature.get("total_clock_wirelength")), 0.0
+        )
         skew_bound = self.to_float(config.get("skew_bound"), 0.0)
-        max_transition = self.to_float(
-            config.get("max_buf_tran", config.get("max_sink_tran")), 0.0)
+        max_transition = self.to_float(config.get("max_buf_tran", config.get("max_sink_tran")), 0.0)
         max_cap = self.to_float(config.get("max_cap"), 0.0)
 
         checks = [
             ("Clock", "check clock net", num_clock > 0),
-            ("Buffer", "check CTS buffers",
-             len(buffer_cells) > 0 and buffer_num > 0),
-            ("Timing", "check clock skew",
-             skew_bound > 0 and clock_path_max >= clock_path_min > 0),
-            ("Timing", "check clock transition",
-             max_transition > 0 and buffer_num >= 0),
-            ("Timing", "check clock capacitance",
-             max_cap > 0 and clock_wirelength > 0),
-            ("Tree", "check clock sink coverage",
-             clock_sink_num > 0 and clock_path_max > 0 and clock_path_min > 0),
+            ("Buffer", "check CTS buffers", len(buffer_cells) > 0 and buffer_num > 0),
+            ("Timing", "check clock skew", skew_bound > 0 and clock_path_max >= clock_path_min > 0),
+            ("Timing", "check clock transition", max_transition > 0 and buffer_num >= 0),
+            ("Timing", "check clock capacitance", max_cap > 0 and clock_wirelength > 0),
+            (
+                "Tree",
+                "check clock sink coverage",
+                clock_sink_num > 0 and clock_path_max > 0 and clock_path_min > 0,
+            ),
         ]
 
         for type, item, success in checks:
@@ -514,8 +500,9 @@ class EccTimingOptDrvChecklist(EccChecklist):
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_DRV.value, ""))
 
         try:
-            with open(self.workspace_step.log.file or "",
-                      encoding="utf-8", errors="ignore") as file:
+            with open(
+                self.workspace_step.log.file or "", encoding="utf-8", errors="ignore"
+            ) as file:
                 log_text = file.read().lower()
         except OSError:
             log_text = ""
@@ -525,30 +512,37 @@ class EccTimingOptDrvChecklist(EccChecklist):
         if isinstance(buffer_cells, str):
             buffer_cells = [buffer_cells]
 
-        output_success = all([
-            self.check_file(self.workspace_step.output.def_ or ""),
-            self.check_file(self.workspace_step.output.verilog or ""),
-            self.check_file(self.workspace_step.output.gds or ""),
-        ])
-        log_success = not any(
-            token in log_text
-            for token in ["error:", "fatal", "traceback", "exception", "failed"]
+        output_success = all(
+            [
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
+            ]
         )
-        max_allowed_fanout = self.to_float(
-            config.get("max_allowed_buffering_fanout"), 0.0)
+        log_success = not any(
+            token in log_text for token in ["error:", "fatal", "traceback", "exception", "failed"]
+        )
+        max_allowed_fanout = self.to_float(config.get("max_allowed_buffering_fanout"), 0.0)
         actual_max_fanout = self.to_float(pins.get("max_fanout"))
 
         checks = [
-            ("Timing", "check max transition",
-             bool(config.get("optimize_drv")) and output_success and log_success),
-            ("Timing", "check max capacitance",
-             bool(config.get("optimize_drv")) and output_success and log_success),
-            ("Timing", "check max fanout",
-             max_allowed_fanout > 0
-             and (actual_max_fanout is None
-                  or actual_max_fanout <= max_allowed_fanout)),
-            ("Buffer", "check DRV inserted buffers",
-             len(buffer_cells) > 0 and output_success),
+            (
+                "Timing",
+                "check max transition",
+                bool(config.get("optimize_drv")) and output_success and log_success,
+            ),
+            (
+                "Timing",
+                "check max capacitance",
+                bool(config.get("optimize_drv")) and output_success and log_success,
+            ),
+            (
+                "Timing",
+                "check max fanout",
+                max_allowed_fanout > 0
+                and (actual_max_fanout is None or actual_max_fanout <= max_allowed_fanout),
+            ),
+            ("Buffer", "check DRV inserted buffers", len(buffer_cells) > 0 and output_success),
         ]
 
         for type, item, success in checks:
@@ -578,19 +572,20 @@ class EccTimingOptHoldChecklist(EccChecklist):
         if isinstance(buffer_cells, str):
             buffer_cells = [buffer_cells]
 
-        output_success = all([
-            self.check_file(self.workspace_step.output.def_ or ""),
-            self.check_file(self.workspace_step.output.verilog or ""),
-            self.check_file(self.workspace_step.output.gds or ""),
-        ])
+        output_success = all(
+            [
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
+            ]
+        )
         min_wns = self.to_float(metrics.get("min_WNS"))
         min_tns = self.to_float(metrics.get("min_TNS"))
         if min_wns is None and min_tns is None:
             timing_success = output_success and bool(config.get("optimize_hold"))
         else:
             timing_success = (
-                min_wns is not None and min_tns is not None
-                and min_wns >= 0 and min_tns >= 0
+                min_wns is not None and min_tns is not None and min_wns >= 0 and min_tns >= 0
             )
         statis = db.get("Design Statis", {})
         num_instances = self.to_float(statis.get("num_instances"), 0.0)
@@ -598,10 +593,12 @@ class EccTimingOptHoldChecklist(EccChecklist):
 
         checks = [
             ("Timing", "check hold WNS/TNS", timing_success),
-            ("Buffer", "check hold inserted buffers",
-             len(buffer_cells) > 0 and output_success),
-            ("Netlist", "check hold ECO consistency",
-             output_success and num_instances > 0 and num_nets > 0),
+            ("Buffer", "check hold inserted buffers", len(buffer_cells) > 0 and output_success),
+            (
+                "Netlist",
+                "check hold ECO consistency",
+                output_success and num_instances > 0 and num_nets > 0,
+            ),
         ]
 
         for type, item, success in checks:
@@ -631,19 +628,20 @@ class EccTimingOptSetupChecklist(EccChecklist):
         if isinstance(buffer_cells, str):
             buffer_cells = [buffer_cells]
 
-        output_success = all([
-            self.check_file(self.workspace_step.output.def_ or ""),
-            self.check_file(self.workspace_step.output.verilog or ""),
-            self.check_file(self.workspace_step.output.gds or ""),
-        ])
+        output_success = all(
+            [
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
+            ]
+        )
         max_wns = self.to_float(metrics.get("max_WNS"))
         max_tns = self.to_float(metrics.get("max_TNS"))
         if max_wns is None and max_tns is None:
             timing_success = output_success and bool(config.get("optimize_setup"))
         else:
             timing_success = (
-                max_wns is not None and max_tns is not None
-                and max_wns >= 0 and max_tns >= 0
+                max_wns is not None and max_tns is not None and max_wns >= 0 and max_tns >= 0
             )
         statis = db.get("Design Statis", {})
         num_instances = self.to_float(statis.get("num_instances"), 0.0)
@@ -651,10 +649,12 @@ class EccTimingOptSetupChecklist(EccChecklist):
 
         checks = [
             ("Timing", "check setup WNS/TNS", timing_success),
-            ("Buffer", "check setup inserted buffers",
-             len(buffer_cells) > 0 and output_success),
-            ("Netlist", "check setup ECO consistency",
-             output_success and num_instances > 0 and num_nets > 0),
+            ("Buffer", "check setup inserted buffers", len(buffer_cells) > 0 and output_success),
+            (
+                "Netlist",
+                "check setup ECO consistency",
+                output_success and num_instances > 0 and num_nets > 0,
+            ),
         ]
 
         for type, item, success in checks:
@@ -678,49 +678,51 @@ class EccRoutingChecklist(EccChecklist):
         step = StepEnum.ROUTING.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
         db = json_read(self.workspace_step.feature.db or "")
-        feature = json_read(self.workspace_step.feature.step or "").get(
-            StepEnum.ROUTING.value, {})
+        feature = json_read(self.workspace_step.feature.step or "").get(StepEnum.ROUTING.value, {})
         config = json_read(self.workspace.config.get(StepEnum.ROUTING.value, ""))
 
         layers = db.get("Layers", {})
         nets = db.get("Nets", {})
         rt_config = config.get("RT", {})
         routing_layer_names = [
-            layer.get("layer_name")
-            for layer in layers.get("routing_layers", [])
+            layer.get("layer_name") for layer in layers.get("routing_layers", [])
         ]
         bottom_layer = rt_config.get("-bottom_routing_layer")
         top_layer = rt_config.get("-top_routing_layer")
         dr_iterations = feature.get("DR", [])
         final_dr = dr_iterations[-1] if dr_iterations else {}
-        final_violation_num = self.to_float(
-            final_dr.get("total_violation_num"), 0.0)
+        final_violation_num = self.to_float(final_dr.get("total_violation_num"), 0.0)
         total_nets = self.to_float(nets.get("num_total"), 0.0)
-        wire_len = self.to_float(
-            metrics.get("wire_len", nets.get("wire_len")), 0.0)
-        via_num = self.to_float(
-            metrics.get("num_via", nets.get("num_via")), 0.0)
+        wire_len = self.to_float(metrics.get("wire_len", nets.get("wire_len")), 0.0)
+        via_num = self.to_float(metrics.get("num_via", nets.get("num_via")), 0.0)
         timing_enabled = str(rt_config.get("-enable_timing", "0")) == "1"
-        output_success = all([
-            self.check_file(self.workspace_step.output.def_ or ""),
-            self.check_file(self.workspace_step.output.verilog or ""),
-            self.check_file(self.workspace_step.output.gds or ""),
-        ])
+        output_success = all(
+            [
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
+            ]
+        )
 
         checks = [
-            ("Layer", "check routing layer range",
-             bottom_layer in routing_layer_names
-             and top_layer in routing_layer_names),
-            ("Route", "check unrouted nets",
-             output_success and total_nets > 0 and len(dr_iterations) > 0),
-            ("Route", "check shorts and opens",
-             final_violation_num == 0),
+            (
+                "Layer",
+                "check routing layer range",
+                bottom_layer in routing_layer_names and top_layer in routing_layer_names,
+            ),
+            (
+                "Route",
+                "check unrouted nets",
+                output_success and total_nets > 0 and len(dr_iterations) > 0,
+            ),
+            ("Route", "check shorts and opens", final_violation_num == 0),
             ("Route", "check via count", via_num > 0),
             ("Route", "check wire length", wire_len > 0),
-            ("Timing", "check post-route timing",
-             (not timing_enabled)
-             or "Frequency [MHz]" in metrics
-             or "max_WNS" in metrics),
+            (
+                "Timing",
+                "check post-route timing",
+                (not timing_enabled) or "Frequency [MHz]" in metrics or "max_WNS" in metrics,
+            ),
         ]
 
         warning_items = {"check post-route timing"}
@@ -749,11 +751,13 @@ class EccDrcChecklist(EccChecklist):
         step = StepEnum.DRC.value
         metrics = json_read(self.workspace_step.analysis.metrics or "")
         feature = json_read(self.workspace_step.feature.step or "").get("drc", {})
-        output_success = all([
-            self.check_file(self.workspace_step.output.def_ or ""),
-            self.check_file(self.workspace_step.output.verilog or ""),
-            self.check_file(self.workspace_step.output.gds or ""),
-        ])
+        output_success = all(
+            [
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
+            ]
+        )
 
         metric_drc_num = self.to_float(metrics.get("drc_num"))
         feature_drc_num = self.to_float(feature.get("number"))
@@ -767,11 +771,13 @@ class EccDrcChecklist(EccChecklist):
 
         checks = [
             ("DRC", "check DRC violation count", drc_clean),
-            ("DRC", "check DRC violation distribution",
-             drc_clean or isinstance(distribution, dict)),
+            (
+                "DRC",
+                "check DRC violation distribution",
+                drc_clean or isinstance(distribution, dict),
+            ),
             ("DRC", "check DRC waiver list", drc_clean),
-            ("Signoff", "check final DRC requirement",
-             output_success and drc_clean),
+            ("Signoff", "check final DRC requirement", output_success and drc_clean),
         ]
 
         warning_items = {
@@ -806,44 +812,50 @@ class EccFillerChecklist(EccChecklist):
         config = json_read(self.workspace.config.get(StepEnum.PLACEMENT.value, ""))
 
         try:
-            with open(self.workspace_step.log.file or "",
-                      encoding="utf-8", errors="ignore") as file:
+            with open(
+                self.workspace_step.log.file or "", encoding="utf-8", errors="ignore"
+            ) as file:
                 log_text = file.read()
         except OSError:
             log_text = ""
 
-        subflow_state = {
-            item.get("name"): item.get("state")
-            for item in subflow.get("steps", [])
-        }
+        subflow_state = {item.get("name"): item.get("state") for item in subflow.get("steps", [])}
         filler_config = config.get("PL", {}).get("Filler", {})
         first_iter_fillers = filler_config.get("first_iter", [])
         second_iter_fillers = filler_config.get("second_iter", [])
         pdk_fillers = getattr(self.workspace.pdk, "fillers", []) or []
-        output_success = all([
-            self.check_file(self.workspace_step.output.def_ or ""),
-            self.check_file(self.workspace_step.output.verilog or ""),
-            self.check_file(self.workspace_step.output.gds or ""),
-        ])
+        output_success = all(
+            [
+                self.check_file(self.workspace_step.output.def_ or ""),
+                self.check_file(self.workspace_step.output.verilog or ""),
+                self.check_file(self.workspace_step.output.gds or ""),
+            ]
+        )
         statis = db.get("Design Statis", {})
         num_instances = self.to_float(statis.get("num_instances"), 0.0)
         log_lower = log_text.lower()
         log_success = not any(
-            token in log_lower
-            for token in ["error:", "fatal", "traceback", "exception", "failed"]
+            token in log_lower for token in ["error:", "fatal", "traceback", "exception", "failed"]
         )
 
         checks = [
-            ("Filler", "check filler cell list",
-             len(pdk_fillers) > 0
-             or len(first_iter_fillers) > 0
-             or len(second_iter_fillers) > 0),
-            ("Filler", "check filler coverage",
-             subflow_state.get("run filler") == "Success"
-             and output_success
-             and "insertFiller" in log_text),
-            ("Legality", "check filler overlap",
-             output_success and num_instances > 0 and log_success),
+            (
+                "Filler",
+                "check filler cell list",
+                len(pdk_fillers) > 0 or len(first_iter_fillers) > 0 or len(second_iter_fillers) > 0,
+            ),
+            (
+                "Filler",
+                "check filler coverage",
+                subflow_state.get("run filler") == "Success"
+                and output_success
+                and "insertFiller" in log_text,
+            ),
+            (
+                "Legality",
+                "check filler overlap",
+                output_success and num_instances > 0 and log_success,
+            ),
         ]
 
         for type, item, success in checks:
@@ -874,8 +886,7 @@ class EccFillerChecklist(EccChecklist):
 class EccHardenChecklist(EccChecklist):
     def check(self) -> bool:
         step = StepEnum.HARDEN.value
-        design_name = self.workspace.design.top_module \
-            or self.workspace.design.name
+        design_name = self.workspace.design.top_module or self.workspace.design.name
 
         lef_tokens = ["MACRO", "END LIBRARY"]
         lib_tokens = ["library", "cell"]
@@ -887,14 +898,12 @@ class EccHardenChecklist(EccChecklist):
             (
                 "Output",
                 "check abstract LEF",
-                self.check_file(self.workspace_step.output.lef or "",
-                                lef_tokens),
+                self.check_file(self.workspace_step.output.lef or "", lef_tokens),
             ),
             (
                 "Output",
                 "check timing model LIB",
-                self.check_file(self.workspace_step.output.lib or "",
-                                lib_tokens),
+                self.check_file(self.workspace_step.output.lib or "", lib_tokens),
             ),
             (
                 "Output",
@@ -904,11 +913,13 @@ class EccHardenChecklist(EccChecklist):
         ]
 
         deliverables_success = all(success for _, _, success in checks)
-        checks.append((
-            "Output",
-            "check hard macro deliverables",
-            deliverables_success,
-        ))
+        checks.append(
+            (
+                "Output",
+                "check hard macro deliverables",
+                deliverables_success,
+            )
+        )
 
         for type, item, success in checks:
             self.set_item_state(
@@ -939,11 +950,7 @@ class EccRcxChecklist(EccChecklist):
         if output_dir and os.path.isdir(output_dir):
             spef_paths.extend(glob.glob(os.path.join(output_dir, "*.spef")))
 
-        return sorted({
-            path
-            for path in spef_paths
-            if path
-        })
+        return sorted({path for path in spef_paths if path})
 
     def expected_rcx_spef_paths(self) -> list:
         rcx_config = self.workspace.config.get(StepEnum.RCX.value, "")
@@ -957,25 +964,21 @@ class EccRcxChecklist(EccChecklist):
 
             for spef_item in spef_files:
                 if isinstance(spef_item, dict):
-                    expected_paths.extend([
-                        path for path in spef_item.values() if path
-                    ])
+                    expected_paths.extend([path for path in spef_item.values() if path])
                 elif spef_item:
                     expected_paths.append(spef_item)
 
         return sorted(set(expected_paths))
 
-    def spef_corner_name(self,
-                         spef_path : str) -> str:
-        design_name = self.workspace.design.top_module \
-            or self.workspace.design.name
+    def spef_corner_name(self, spef_path: str) -> str:
+        design_name = self.workspace.design.top_module or self.workspace.design.name
         name = os.path.basename(spef_path)
         if name.endswith(".spef"):
             name = name[:-5]
 
         prefix = f"{design_name}_" if design_name else ""
         if prefix and name.startswith(prefix):
-            name = name[len(prefix):]
+            name = name[len(prefix) :]
 
         if "_" in name:
             name = name.rsplit("_", 1)[0]
@@ -993,13 +996,11 @@ class EccRcxChecklist(EccChecklist):
 
         return corners
 
-    def check_spef_file(self,
-                        spef_path : str) -> bool:
-        design_name = self.workspace.design.top_module \
-            or self.workspace.design.name
+    def check_spef_file(self, spef_path: str) -> bool:
+        design_name = self.workspace.design.top_module or self.workspace.design.name
         tokens = ["*SPEF", "*DESIGN", "*NAME_MAP"]
         if design_name:
-            tokens.append(f"*DESIGN \"{design_name}\"")
+            tokens.append(f'*DESIGN "{design_name}"')
 
         return self.check_file(spef_path, tokens)
 
@@ -1008,27 +1009,21 @@ class EccRcxChecklist(EccChecklist):
         spef_paths = self.collect_rcx_spef_paths()
         expected_spef_paths = self.expected_rcx_spef_paths()
         required_rcx_corners = self.sta_required_rcx_corners()
-        extracted_corners = {
-            self.spef_corner_name(path)
-            for path in spef_paths
-        }
+        extracted_corners = {self.spef_corner_name(path) for path in spef_paths}
 
         if expected_spef_paths:
             spef_files_success = all(
-                os.path.isfile(path) and os.path.getsize(path) > 0
-                for path in expected_spef_paths
+                os.path.isfile(path) and os.path.getsize(path) > 0 for path in expected_spef_paths
             )
             corners_success = spef_files_success
         else:
             spef_files_success = len(spef_paths) > 0 and all(
-                os.path.isfile(path) and os.path.getsize(path) > 0
-                for path in spef_paths
+                os.path.isfile(path) and os.path.getsize(path) > 0 for path in spef_paths
             )
             corners_success = len(extracted_corners) > 0
 
         spef_net_names_success = len(spef_paths) > 0 and all(
-            self.check_spef_file(path)
-            for path in spef_paths
+            self.check_spef_file(path) for path in spef_paths
         )
 
         if required_rcx_corners:
@@ -1060,8 +1055,7 @@ class EccRcxChecklist(EccChecklist):
 
 
 class EccStaChecklist(EccChecklist):
-    def temperature_token(self,
-                          temperature) -> str:
+    def temperature_token(self, temperature) -> str:
         try:
             numeric = float(temperature)
             if numeric.is_integer():
@@ -1078,8 +1072,7 @@ class EccStaChecklist(EccChecklist):
 
         output_dir = self.workspace_step.output.dir or ""
         liberty_by_corner = {
-            liberty.get("corner"): liberty
-            for liberty in sta_data.get("liberty", [])
+            liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])
         }
         expected_paths = []
 
@@ -1109,21 +1102,19 @@ class EccStaChecklist(EccChecklist):
         return expected_paths
 
     def collect_sta_qor_paths(self, expected_paths: list[str]) -> list[str]:
-        qor_paths = [
-            path
-            for path in expected_paths
-            if os.path.basename(path) == "qor_summary.rpt"
-        ]
+        qor_paths = [path for path in expected_paths if os.path.basename(path) == "qor_summary.rpt"]
         if qor_paths:
             return qor_paths
 
         output_dir = self.workspace_step.output.dir or ""
         if not output_dir or not os.path.isdir(output_dir):
             return []
-        return sorted(glob.glob(
-            os.path.join(output_dir, "**", "qor_summary.rpt"),
-            recursive=True,
-        ))
+        return sorted(
+            glob.glob(
+                os.path.join(output_dir, "**", "qor_summary.rpt"),
+                recursive=True,
+            )
+        )
 
     def parse_qor_summary(self, path: str) -> dict | None:
         try:
@@ -1156,9 +1147,7 @@ class EccStaChecklist(EccChecklist):
 
         if path_group_summaries:
             return {
-                "frequency_mhz": min(
-                    summary["frequency_mhz"] for summary in path_group_summaries
-                ),
+                "frequency_mhz": min(summary["frequency_mhz"] for summary in path_group_summaries),
                 "hold_tns": min(summary["hold_tns"] for summary in path_group_summaries),
                 "hold_wns": min(summary["hold_wns"] for summary in path_group_summaries),
                 "max_tns": min(summary["max_tns"] for summary in path_group_summaries),
@@ -1167,9 +1156,7 @@ class EccStaChecklist(EccChecklist):
         return None
 
     def frequency_mhz(self, value: str) -> float | None:
-        match = re.fullmatch(
-            r"([+-]?(?:\d+(?:\.\d*)?|\.\d+))(GHz|MHz|kHz|Hz)", value
-        )
+        match = re.fullmatch(r"([+-]?(?:\d+(?:\.\d*)?|\.\d+))(GHz|MHz|kHz|Hz)", value)
         if match is None:
             return None
         frequency = float(match.group(1))
@@ -1178,9 +1165,7 @@ class EccStaChecklist(EccChecklist):
 
     def load_sta_qor_summaries(self, qor_paths: list[str]) -> list[dict]:
         return [
-            summary
-            for path in qor_paths
-            if (summary := self.parse_qor_summary(path)) is not None
+            summary for path in qor_paths if (summary := self.parse_qor_summary(path)) is not None
         ]
 
     def check(self) -> bool:
@@ -1195,23 +1180,19 @@ class EccStaChecklist(EccChecklist):
 
         if expected_paths:
             signoff_success = all(
-                os.path.isfile(path) and os.path.getsize(path) > 0
-                for path in expected_paths
+                os.path.isfile(path) and os.path.getsize(path) > 0 for path in expected_paths
             )
         else:
             signoff_success = len(qor_paths) > 0 and all(
-                os.path.isfile(path) and os.path.getsize(path) > 0
-                for path in qor_paths
+                os.path.isfile(path) and os.path.getsize(path) > 0 for path in qor_paths
             )
 
         summaries_complete = len(summaries) == len(qor_paths) and len(qor_paths) > 0
         setup_success = summaries_complete and all(
-            summary["max_tns"] >= 0 and summary["max_wns"] >= 0
-            for summary in summaries
+            summary["max_tns"] >= 0 and summary["max_wns"] >= 0 for summary in summaries
         )
         hold_success = summaries_complete and all(
-            summary["hold_tns"] >= 0 and summary["hold_wns"] >= 0
-            for summary in summaries
+            summary["hold_tns"] >= 0 and summary["hold_wns"] >= 0 for summary in summaries
         )
         frequency_success = (
             summaries_complete

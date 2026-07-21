@@ -106,8 +106,7 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
     assert ("read_def", str(design_def)) in module.calls
 
 
-def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report(
-        tmp_path, monkeypatch):
+def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report(tmp_path, monkeypatch):
     netlist = tmp_path / "output" / "gcd.v"
     techlef = tmp_path / "pdk" / "tech.lef"
     lef = tmp_path / "pdk" / "std.lef"
@@ -199,10 +198,14 @@ def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
     config_dir.mkdir()
     sta_config = config_dir / "sta.json"
     rcx_config = config_dir / "rcx.json"
-    sta_config.write_text(json.dumps({
-        "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
-        "signoff": [{"MAX": ["Cworst"]}],
-    }))
+    sta_config.write_text(
+        json.dumps(
+            {
+                "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
+                "signoff": [{"MAX": ["Cworst"]}],
+            }
+        )
+    )
     rcx_config.write_text(json.dumps({"output": str(tmp_path / "RCX_ecc" / "output")}))
     workspace = Workspace(
         directory=tmp_path,
@@ -212,9 +215,7 @@ def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
 
     items = ecc_runner.collect_sta_signoff_items(workspace)
 
-    assert items[0]["spef_file"] == str(
-        tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef"
-    )
+    assert items[0]["spef_file"] == str(tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef")
 
 
 def test_rcx_checklist_strips_top_module_from_spef_corner(tmp_path):

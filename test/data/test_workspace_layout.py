@@ -98,15 +98,11 @@ def test_build_step_returns_correct_variant(tmp_path):
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
 
-    yosys_step = yosys_builder.build_step(
-        workspace, "Synthesis", None, tmp_path / "in.v"
-    )
+    yosys_step = yosys_builder.build_step(workspace, "Synthesis", None, tmp_path / "in.v")
     assert isinstance(yosys_step, YosysStep)
     assert isinstance(yosys_step, WorkspaceStep)
 
-    ecc_step = ecc_builder.build_step(
-        workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v"
-    )
+    ecc_step = ecc_builder.build_step(workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v")
     assert isinstance(ecc_step, EccStep)
     assert isinstance(ecc_step, WorkspaceStep)
 
@@ -143,8 +139,18 @@ def test_group_to_dict_flattens_data_steps_and_projects_nested_sta():
 def _shape_keys(step):
     return {
         group: sorted(step_group_to_dict(getattr(step, group)))
-        for group in ("input", "output", "data", "feature", "report",
-                      "log", "script", "analysis", "subflow", "checklist")
+        for group in (
+            "input",
+            "output",
+            "data",
+            "feature",
+            "report",
+            "log",
+            "script",
+            "analysis",
+            "subflow",
+            "checklist",
+        )
     }
 
 
@@ -170,8 +176,20 @@ def test_log_projection_ecc_shape_has_no_sizer_keys(tmp_path):
     step = ecc_builder.build_step(workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v")
     keys = _shape_keys(step)
     assert keys["output"] == sorted(
-        ["dir", "def", "verilog", "json", "image", "db", "gds",
-         "view_json", "view_json_edits", "lef", "lib", "spef"]
+        [
+            "dir",
+            "def",
+            "verilog",
+            "json",
+            "image",
+            "db",
+            "gds",
+            "view_json",
+            "view_json_edits",
+            "lef",
+            "lib",
+            "spef",
+        ]
     )
     assert keys["script"] == sorted(["dir", "main"])  # a normal ECC step is not sizer
     assert keys["report"] == sorted(["dir", "db", "step", "sta"])
@@ -208,9 +226,7 @@ def test_log_workspace_step_renders_legacy_tables(tmp_path):
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
-    step = ecc_builder.build_step(
-        workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v"
-    )
+    step = ecc_builder.build_step(workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v")
     logger = _CapturingLogger()
     log_workspace_step(step, logger)
     rendered = "\n".join(logger.messages)

@@ -235,9 +235,7 @@ def test_liberty_args_keep_paths_with_spaces_as_single_arguments(tmp_path):
         pytest.skip("tclsh is not available")
 
     workspace, step, _ = _build_workspace_and_step(tmp_path)
-    init_tech = (
-        Path(yosys_builder.__file__).resolve().parent / "scripts" / "init_tech.tcl"
-    )
+    init_tech = Path(yosys_builder.__file__).resolve().parent / "scripts" / "init_tech.tcl"
 
     text = yosys_builder.generate_global_var_tcl(workspace, step)
     result = subprocess.run(
@@ -246,8 +244,8 @@ def test_liberty_args_keep_paths_with_spaces_as_single_arguments(tmp_path):
             text
             + "\nproc yosys args {}\n"
             + f"source {{{init_tech}}}\n"
-            + "foreach arg $liberty_args {puts \"LIB:$arg\"}\n"
-            + "foreach arg $tech_cells_args {puts \"STD:$arg\"}\n"
+            + 'foreach arg $liberty_args {puts "LIB:$arg"}\n'
+            + 'foreach arg $tech_cells_args {puts "STD:$arg"}\n'
         ),
         text=True,
         capture_output=True,

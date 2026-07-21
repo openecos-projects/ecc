@@ -17,17 +17,13 @@ def _build_workspace_and_step(tmp_path: Path):
     output_file = tmp_path / "output.v"
     log_file = tmp_path / "yosys.log"
 
-    workspace = SimpleNamespace(
-        design=SimpleNamespace(
-            input_filelist=""
-        )
-    )
+    workspace = SimpleNamespace(design=SimpleNamespace(input_filelist=""))
     step = SimpleNamespace(
         input=StepInput(verilog=rtl_file),
         output=YosysOutput(verilog=output_file),
         log=LogPaths(file=log_file),
         script=ScriptPaths(dir=script_dir),
-        directory=tmp_path
+        directory=tmp_path,
     )
     return workspace, step, output_file, log_file
 
@@ -54,19 +50,23 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
             return None
 
     def fake_check_slang_plugin(yosys_cmd, cwd_dir, yosys_env, log_file):
-        check_calls.append({
-            "yosys_cmd": list(yosys_cmd),
-            "cwd": cwd_dir,
-            "env": yosys_env,
-        })
+        check_calls.append(
+            {
+                "yosys_cmd": list(yosys_cmd),
+                "cwd": cwd_dir,
+                "env": yosys_env,
+            }
+        )
         return True
 
     def fake_run(cmd, cwd, env, stdout, stderr):
-        run_calls.append({
-            "cmd": list(cmd),
-            "cwd": cwd,
-            "env": env,
-        })
+        run_calls.append(
+            {
+                "cmd": list(cmd),
+                "cwd": cwd,
+                "env": env,
+            }
+        )
         if cmd == ["yosys", "yosys_synthesis.tcl"]:
             output_file.write_text("module top(); endmodule\n")
             return SimpleNamespace(returncode=0)

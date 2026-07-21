@@ -4,7 +4,7 @@ import os
 from contextlib import suppress
 
 
-def chmod_folder(folder:str, mode:int = 0o777):
+def chmod_folder(folder: str, mode: int = 0o777):
     def _try_chmod(path):
         with suppress(Exception):
             os.chmod(path, mode)
@@ -17,7 +17,8 @@ def chmod_folder(folder:str, mode:int = 0o777):
             full_path = os.path.join(root, dir)
             _try_chmod(full_path)
 
-def find_files(directory : str, key : str):
+
+def find_files(directory: str, key: str):
     result_files = []
     for root, _dirs, files in os.walk(directory):
         for file in files:

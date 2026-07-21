@@ -4,6 +4,7 @@ UNKNOWN_VERSION = "unknown"
 RUNTIME_LABEL = "ECC CLI"
 VERSION_SCHEMA = 1
 
+
 def distribution_version(distribution: str, fallback: str | None = None) -> str:
     try:
         return metadata.version(distribution)

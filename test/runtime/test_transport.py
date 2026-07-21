@@ -19,10 +19,7 @@ def test_encodes_and_decodes_one_content_length_frame():
 
 
 def test_decodes_multiple_frames_from_one_buffer():
-    frame = (
-        encode_content_length_frame(b'{"id":1}')
-        + encode_content_length_frame(b'{"id":2}')
-    )
+    frame = encode_content_length_frame(b'{"id":1}') + encode_content_length_frame(b'{"id":2}')
 
     decoder = ContentLengthDecoder()
 
@@ -79,6 +76,5 @@ def test_workspace_rpc_docs_cover_opt_in_persistent_db_surface():
         assert "db.release" in text
     assert "default sidecar does not advertise or persist native DB handles" in cli_design
     assert (
-        "Opening or creating a workspace does not initialize persistent native DB state"
-        in source
+        "Opening or creating a workspace does not initialize persistent native DB state" in source
     )

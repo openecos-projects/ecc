@@ -5,19 +5,20 @@ from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 
 
 class YosysSubFlow:
-    def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):
+    def __init__(self, workspace: Workspace, workspace_step: WorkspaceStep):
         self.workspace = workspace
         self.workspace_step = workspace_step
-        
+
         self.init_sub_flow()
-        
+
         # set start time
         self.start_time = time.time()
         # set start memory
         self.start_memory = self.get_peak_memory()
-    
+
     def init_sub_flow(self):
         from chipcompiler.utility import json_read
+
         data = json_read(self.workspace_step.subflow.path or "")
         if len(data) > 0:
             self.workspace_step.subflow.steps = data.get("steps", [])
@@ -25,24 +26,24 @@ class YosysSubFlow:
             self.build_sub_flow()
 
     def build_sub_flow(self) -> list:
-        def subflow_template(step_name : str):
+        def subflow_template(step_name: str):
             return {
-                "name" : step_name, # step name
-                "state" : StateEnum.Unstart.value, # step state
-                "runtime" : "", # step run time
-                "peak memory (mb)" : 0, # step peak memory
-                "info" : {} # step additional infomation
-               }
-            
+                "name": step_name,  # step name
+                "state": StateEnum.Unstart.value,  # step state
+                "runtime": "",  # step run time
+                "peak memory (mb)": 0,  # step peak memory
+                "info": {},  # step additional infomation
+            }
+
         steps = []
-        
+
         steps.append(subflow_template("run yosys"))
         steps.append(subflow_template("analysis"))
-                
+
         self.workspace_step.subflow.steps = steps
-        
+
         self.save()
-    
+
     def save(self) -> bool:
         from chipcompiler.utility import json_write
 
@@ -52,26 +53,28 @@ class YosysSubFlow:
             "steps": subflow.steps,
         }
         return json_write(file_path=subflow.path or "", data=data)
-    
+
     def get_runtime(self):
         # end time
         end_time = time.time()
         elapsed_time = end_time - self.start_time
-        runtime = (f"{int(elapsed_time // 3600)}:"
-                   f"{int((elapsed_time % 3600) // 60)}:{int(elapsed_time % 60)}")
-        
+        runtime = (
+            f"{int(elapsed_time // 3600)}:"
+            f"{int((elapsed_time % 3600) // 60)}:{int(elapsed_time % 60)}"
+        )
+
         # set start time
         self.start_time = end_time
-        
+
         return runtime
-    
+
     def get_peak_memory(self):
         import os
-        
+
         # Get current process ID
         pid = os.getpid()
         peak_memory = 0
-        
+
         try:
             # Read memory usage from /proc/{pid}/status
             with open(f"/proc/{pid}/status") as f:
@@ -85,34 +88,33 @@ class YosysSubFlow:
         except Exception:
             # Ignore errors, return 0 if failed
             pass
-        
+
         return peak_memory
-    
-    def update_step(self,
-                    step_name : str,
-                    state : str | StateEnum,
-                    info : dict | None = None):
+
+    def update_step(self, step_name: str, state: str | StateEnum, info: dict | None = None):
         if info is None:
             info = {}
         state = state.value if isinstance(state, StateEnum) else state
-        
+
         runtime = self.get_runtime()
         peak_memory = self.get_peak_memory() - self.start_memory
         peak_memory = 0 if peak_memory < 0 else round(peak_memory, 3)
-        
-        for step_dict in (self.workspace_step.subflow.steps or []):
+
+        for step_dict in self.workspace_step.subflow.steps or []:
             if step_dict.get("name") == step_name:
                 step_dict["state"] = state
                 step_dict["runtime"] = runtime
                 step_dict["peak memory (mb)"] = peak_memory
                 step_dict["info"] = info
-                
+
                 self.save()
-                
+
                 # update home page monitor
-                self.workspace.home.update_monitor(step = self.workspace_step.name,
-                                                   sub_step = step_name,
-                                                   memory = str(peak_memory),
-                                                   runtime = runtime)
-                
+                self.workspace.home.update_monitor(
+                    step=self.workspace_step.name,
+                    sub_step=step_name,
+                    memory=str(peak_memory),
+                    runtime=runtime,
+                )
+
                 break

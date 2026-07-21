@@ -10,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 from typing import TextIO
 
 
-#TODO: Move some functions to Logger Module
+# TODO: Move some functions to Logger Module
 def build_timestamped_log_file(log_file: str, pid: int | None = None) -> str:
     """
     Build a timestamped log file path from a base path.
@@ -26,9 +26,7 @@ def build_timestamped_log_file(log_file: str, pid: int | None = None) -> str:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     pid_value = os.getpid() if pid is None else pid
 
-    file_name = (
-        f"{stem}-{timestamp}-{pid_value}{ext}" if ext else f"{stem}-{timestamp}-{pid_value}"
-    )
+    file_name = f"{stem}-{timestamp}-{pid_value}{ext}" if ext else f"{stem}-{timestamp}-{pid_value}"
 
     return os.path.join(base_dir, file_name)
 
@@ -111,10 +109,13 @@ class Logger:
             console_handler.setFormatter(formatter)
             console_handler.setLevel(logging.WARNING if console_level is None else console_level)
             self.logger.addHandler(console_handler)
-            
+
             if log_file or log_dir:
-                file = (log_file if log_file
-                        else f"{log_dir}/{name}.{time.strftime('%Y-%m-%d_%H-%M-%S')}")
+                file = (
+                    log_file
+                    if log_file
+                    else f"{log_dir}/{name}.{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+                )
                 file_handler = RotatingFileHandler(
                     file, maxBytes=max_bytes, backupCount=backup_count
                 )
@@ -136,18 +137,18 @@ class Logger:
 
     def critical(self, msg: str, *args, **kwargs):
         self.logger.critical(msg, *args, **kwargs)
-        
-    def log_separator(self, max_len = 60):
-        self.logger.info('#' * max_len)
-        
-    def log_section(self, section : str, max_len = 60):
+
+    def log_separator(self, max_len=60):
+        self.logger.info("#" * max_len)
+
+    def log_section(self, section: str, max_len=60):
         if len(section) >= max_len:
             section = section[:max_len]
         self.logger.info("")
-        self.logger.info('#' * max_len)
+        self.logger.info("#" * max_len)
         padding = (max_len - len(section)) // 2
-        self.logger.info(' ' * padding + section + ' ' * padding)
-        self.logger.info('#' * max_len)
+        self.logger.info(" " * padding + section + " " * padding)
+        self.logger.info("#" * max_len)
         self.logger.info("")
 
 
@@ -183,7 +184,7 @@ def create_logger(
             console_level=console_level,
             file_level=file_level,
             fmt=fmt,
-        ) 
+        )
     else:
         return Logger(
             name=name,

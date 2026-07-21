@@ -168,9 +168,9 @@ def test_workspace_config_generation_nested_dreamplace_overrides_win_over_flat_k
     init_workspace_config(workspace)
 
     dreamplace_config = json_read(workspace.config["dreamplace"])
-    assert dreamplace_config["routability_opt_flag"] == overrides["DreamPlace"][
-        "routability_opt_flag"
-    ]
+    assert (
+        dreamplace_config["routability_opt_flag"] == overrides["DreamPlace"]["routability_opt_flag"]
+    )
 
 
 def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(

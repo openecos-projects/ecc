@@ -22,16 +22,18 @@ from chipcompiler.data import (
 )
 
 
-def build_step(workspace: Workspace,
-               step_name: str,
-               input_def : Path | None,
-               input_verilog : Path | None,
-               input_db : Path | str | None = None,
-               output_def : Path | None = None,
-               output_verilog : Path | None = None,
-               output_gds : Path | None = None,
-               tool : str = "ecc",
-               step_directory: Path | None = None) -> EccStep:
+def build_step(
+    workspace: Workspace,
+    step_name: str,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | str | None = None,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+    output_gds: Path | None = None,
+    tool: str = "ecc",
+    step_directory: Path | None = None,
+) -> EccStep:
     """
     Build the given step in the specified workspace.
     """
@@ -135,28 +137,29 @@ def build_step(workspace: Workspace,
         checklist=ChecklistState(path=directory / "checklist.json", checklist=[]),
     )
 
-def build_sub_flow(workspace : Workspace,
-                   workspace_step : WorkspaceStep):
+
+def build_sub_flow(workspace: Workspace, workspace_step: WorkspaceStep):
     from .subflow import EccSubFlow
-    subflow = EccSubFlow(workspace=workspace,
-                         workspace_step=workspace_step)
-    
-    subflow.build_sub_flow()    
-    
-def build_checklist(workspace : Workspace,
-                    workspace_step : EccStep):
+
+    subflow = EccSubFlow(workspace=workspace, workspace_step=workspace_step)
+
+    subflow.build_sub_flow()
+
+
+def build_checklist(workspace: Workspace, workspace_step: EccStep):
     from .checklist import EccChecklist
-    checklist = EccChecklist(workspace=workspace,
-                           workspace_step=workspace_step)
-    
-    checklist.build_checklist() 
+
+    checklist = EccChecklist(workspace=workspace, workspace_step=workspace_step)
+
+    checklist.build_checklist()
+
 
 def build_step_space(step: WorkspaceStep) -> None:
     """
     Create the workspace directories for the given step.
     """
     step_directory = Path(step.directory)
-    
+
     step_directory.mkdir(parents=True, exist_ok=True)
     Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
     Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
@@ -165,43 +168,42 @@ def build_step_space(step: WorkspaceStep) -> None:
     Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
     Path(step.script.dir or step_directory / "script").mkdir(parents=True, exist_ok=True)
     Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
-    
+
     # build data directory
     for directory in step.data.iter_directories():
         Path(directory).mkdir(parents=True, exist_ok=True)
-        
+
     # create pl sub dir
     (step_directory / "data" / "pl" / "density").mkdir(parents=True, exist_ok=True)
     (step_directory / "data" / "pl" / "gui").mkdir(parents=True, exist_ok=True)
     (step_directory / "data" / "pl" / "log").mkdir(parents=True, exist_ok=True)
     (step_directory / "data" / "pl" / "plot").mkdir(parents=True, exist_ok=True)
     (step_directory / "data" / "pl" / "report").mkdir(parents=True, exist_ok=True)
-        
 
-def build_step_config(workspace: Workspace,
-                      step: EccStep):
+
+def build_step_config(workspace: Workspace, step: EccStep):
     """
     Build the configuration files for the given step based on the parameters.
     """
     # build subflow json
-    build_sub_flow(workspace=workspace,
-                   workspace_step=step)
-    
-    build_checklist(workspace=workspace,
-                    workspace_step=step)
+    build_sub_flow(workspace=workspace, workspace_step=step)
+
+    build_checklist(workspace=workspace, workspace_step=step)
 
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
     # reload parameters
     from chipcompiler.data import load_parameter
+
     parameter = load_parameter(workspace.parameters.path)
     workspace.parameters = parameter
-    
+
     update_step_config(workspace=workspace, step=step)
 
     if step.name == StepEnum.RCX.value:
         from chipcompiler.utility import json_read
+
         rcx_config = json_read(workspace.config[f"{StepEnum.RCX.value}"])
         step.output.spef = [
             spef_path
@@ -211,10 +213,6 @@ def build_step_config(workspace: Workspace,
                 if isinstance(corner.get("spef_file", []), list)
                 else [corner.get("spef_file", "")]
             )
-            for spef_path in (
-                spef_item.values()
-                if isinstance(spef_item, dict)
-                else [spef_item]
-            )
+            for spef_path in (spef_item.values() if isinstance(spef_item, dict) else [spef_item])
             if spef_path
         ]

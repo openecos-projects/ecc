@@ -19,87 +19,54 @@ class YosysChecklist:
         ],
     }
 
-    def __init__(self,
-                 workspace : Workspace,
-                 workspace_step: YosysStep,
-                 *,
-                 init_checklist : bool = True):
+    def __init__(
+        self, workspace: Workspace, workspace_step: YosysStep, *, init_checklist: bool = True
+    ):
         self.workspace = workspace
         self.workspace_step = workspace_step
-        
+
         if init_checklist:
             self.build_checklist()
 
-    def add_item(self,
-                 checklist : Checklist,
-                 step : str,
-                 type : str,
-                 item : str,
-                 state : str,
-                 info : str = ""):
-        checklist.add(step=step,
-                      type=type,
-                      item=item,
-                      state=state,
-                      info=info)
+    def add_item(
+        self, checklist: Checklist, step: str, type: str, item: str, state: str, info: str = ""
+    ):
+        checklist.add(step=step, type=type, item=item, state=state, info=info)
 
-        self.workspace.home.update_checklist(step=step,
-                                             type=type,
-                                             item=item,
-                                             state=state,
-                                             info=info)
+        self.workspace.home.update_checklist(
+            step=step, type=type, item=item, state=state, info=info
+        )
 
-    def add_items(self,
-                  checklist : Checklist,
-                  step : StepEnum):
+    def add_items(self, checklist: Checklist, step: StepEnum):
         for type, item in self.CHECKLIST_ITEMS.get(step, []):
-            self.add_item(checklist=checklist,
-                          step=step.value,
-                          type=type,
-                          item=item,
-                          state=CheckState.Unstart.value)
+            self.add_item(
+                checklist=checklist,
+                step=step.value,
+                type=type,
+                item=item,
+                state=CheckState.Unstart.value,
+            )
 
     def build_checklist(self) -> list:
         checklist = Checklist(path=self.workspace_step.checklist.path or "")
         step = StepEnum(self.workspace_step.name)
-        self.add_items(checklist=checklist,
-                       step=step)
-                
+        self.add_items(checklist=checklist, step=step)
+
         self.workspace_step.checklist.checklist = checklist.data
-    
+
     def save(self) -> bool:
         checklist = Checklist(path=self.workspace_step.checklist.path or "")
         return checklist.save()
-        
-    def update_item(self, 
-                    step : str, 
-                    type : str,
-                    item : str,
-                    state : str | CheckState,
-                    info : str = ""):
-        checklist = Checklist(path=self.workspace_step.checklist.path or "")
-        checklist.update(step=step, 
-                         type=type, 
-                         item=item, 
-                         state=state,
-                         info=info)
 
-    def set_item_state(self,
-                       step : str,
-                       type : str,
-                       item : str,
-                       state : CheckState,
-                       info : str = ""):
-        self.update_item(step=step,
-                         type=type,
-                         item=item,
-                         state=state,
-                         info=info)
-        self.workspace.home.update_checklist(step=step,
-                                             type=type,
-                                             item=item,
-                                             state=state.value,
-                                             info=info)
+    def update_item(self, step: str, type: str, item: str, state: str | CheckState, info: str = ""):
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
+        checklist.update(step=step, type=type, item=item, state=state, info=info)
+
+    def set_item_state(self, step: str, type: str, item: str, state: CheckState, info: str = ""):
+        self.update_item(step=step, type=type, item=item, state=state, info=info)
+        self.workspace.home.update_checklist(
+            step=step, type=type, item=item, state=state.value, info=info
+        )
 
     def check(self):
         step = StepEnum(self.workspace_step.name)
@@ -117,9 +84,7 @@ class YosysChecklist:
 
 
 class YosysSynthesisChecklist(YosysChecklist):
-    def check_file(self,
-                   path : str | Path,
-                   text_tokens : list | None = None) -> bool:
+    def check_file(self, path: str | Path, text_tokens: list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
             return False
 
@@ -133,9 +98,7 @@ class YosysSynthesisChecklist(YosysChecklist):
 
         return all(token in content for token in text_tokens)
 
-    def to_float(self,
-                 value,
-                 default : float | None = None) -> float | None:
+    def to_float(self, value, default: float | None = None) -> float | None:
         try:
             return float(value)
         except (TypeError, ValueError):
@@ -162,21 +125,14 @@ class YosysSynthesisChecklist(YosysChecklist):
             if self.workspace.design.input_filelist
             else self.workspace.parameters.data.get("File list", "")
         )
-        top_module = self.workspace.design.top_module \
-            or self.workspace.design.name
-        frequency = self.to_float(
-            self.workspace.parameters.data.get("Frequency max [MHz]"), 0.0)
+        top_module = self.workspace.design.top_module or self.workspace.design.name
+        frequency = self.to_float(self.workspace.parameters.data.get("Frequency max [MHz]"), 0.0)
         libs = getattr(self.workspace.pdk, "libs", []) or []
         modules = stat.get("modules", {})
-        module_keys = {
-            key.lstrip("\\")
-            for key in modules
-        }
+        module_keys = {key.lstrip("\\") for key in modules}
         design_stat = stat.get("design", {})
-        cell_number = self.to_float(
-            metrics.get("Cell number", design_stat.get("num_cells")), 0.0)
-        cell_area = self.to_float(
-            metrics.get("Cell area", design_stat.get("area")), 0.0)
+        cell_number = self.to_float(metrics.get("Cell number", design_stat.get("num_cells")), 0.0)
+        cell_area = self.to_float(metrics.get("Cell area", design_stat.get("area")), 0.0)
         log_lower = log_text.lower()
         log_success = (
             len(log_text) > 0
@@ -195,24 +151,33 @@ class YosysSynthesisChecklist(YosysChecklist):
         )
 
         checks = [
-            ("Input", "check RTL or filelist input",
-             (input_verilog and os.path.isfile(input_verilog))
-             or (filelist and os.path.isfile(filelist))),
-            ("Constraint", "check top module and frequency",
-             bool(top_module)
-             and top_module in module_keys
-             and frequency > 0),
-            ("Library", "check synthesis liberty input",
-             len(libs) > 0
-             and all(os.path.isfile(path) for path in libs)
-             and "-liberty" in stat.get("invocation", "")),
+            (
+                "Input",
+                "check RTL or filelist input",
+                (input_verilog and os.path.isfile(input_verilog))
+                or (filelist and os.path.isfile(filelist)),
+            ),
+            (
+                "Constraint",
+                "check top module and frequency",
+                bool(top_module) and top_module in module_keys and frequency > 0,
+            ),
+            (
+                "Library",
+                "check synthesis liberty input",
+                len(libs) > 0
+                and all(os.path.isfile(path) for path in libs)
+                and "-liberty" in stat.get("invocation", ""),
+            ),
             ("Log", "check synthesis log", log_success),
-            ("Netlist", "check mapped gate netlist",
-             self.check_file(self.workspace_step.output.verilog or "")
-             and bool(top_module)
-             and f"module {top_module}" in netlist_text),
-            ("Metrics", "check synthesis cell statistics",
-             cell_number > 0 and cell_area > 0),
+            (
+                "Netlist",
+                "check mapped gate netlist",
+                self.check_file(self.workspace_step.output.verilog or "")
+                and bool(top_module)
+                and f"module {top_module}" in netlist_text,
+            ),
+            ("Metrics", "check synthesis cell statistics", cell_number > 0 and cell_area > 0),
         ]
 
         for type, item, success in checks:

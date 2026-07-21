@@ -24,6 +24,8 @@ class Renderer(Protocol):
         *,
         color: bool,
     ) -> None: ...
+
+
 RendererKey = tuple[str, OutputMode]
 ParamTextRenderer = Callable[[tuple[dict, ...]], None]
 

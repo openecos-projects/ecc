@@ -32,57 +32,41 @@ class DreamplaceChecklist:
         ],
     }
 
-    def __init__(self,
-                 workspace : Workspace,
-                 workspace_step: EccStep,
-                 *,
-                 init_checklist : bool = True):
+    def __init__(
+        self, workspace: Workspace, workspace_step: EccStep, *, init_checklist: bool = True
+    ):
         self.workspace = workspace
         self.workspace_step = workspace_step
 
         if init_checklist:
             self.build_checklist()
 
-    def add_item(self,
-                 checklist : Checklist,
-                 step : str,
-                 type : str,
-                 item : str,
-                 state : str,
-                 info : str = ""):
-        checklist.add(step=step,
-                      type=type,
-                      item=item,
-                      state=state,
-                      info=info)
-        self.workspace.home.update_checklist(step=step,
-                                             type=type,
-                                             item=item,
-                                             state=state,
-                                             info=info)
+    def add_item(
+        self, checklist: Checklist, step: str, type: str, item: str, state: str, info: str = ""
+    ):
+        checklist.add(step=step, type=type, item=item, state=state, info=info)
+        self.workspace.home.update_checklist(
+            step=step, type=type, item=item, state=state, info=info
+        )
 
-    def add_items(self,
-                  checklist : Checklist,
-                  step : StepEnum):
+    def add_items(self, checklist: Checklist, step: StepEnum):
         for type, item in self.CHECKLIST_ITEMS.get(step, []):
-            self.add_item(checklist=checklist,
-                          step=step.value,
-                          type=type,
-                          item=item,
-                          state=CheckState.Unstart.value)
+            self.add_item(
+                checklist=checklist,
+                step=step.value,
+                type=type,
+                item=item,
+                state=CheckState.Unstart.value,
+            )
 
     def build_checklist(self) -> list:
         checklist = Checklist(path=self.workspace_step.checklist.path or "")
         step = StepEnum(self.workspace_step.name)
-        self.remove_stale_items(checklist=checklist,
-                                step=step)
-        self.add_items(checklist=checklist,
-                       step=step)
+        self.remove_stale_items(checklist=checklist, step=step)
+        self.add_items(checklist=checklist, step=step)
         self.workspace_step.checklist.checklist = checklist.data
 
-    def remove_stale_items(self,
-                           checklist : Checklist,
-                           step : StepEnum):
+    def remove_stale_items(self, checklist: Checklist, step: StepEnum):
         valid_items = set(self.CHECKLIST_ITEMS.get(step, []))
         checklist.data["checklist"] = [
             check_item
@@ -96,35 +80,15 @@ class DreamplaceChecklist:
         checklist = Checklist(path=self.workspace_step.checklist.path or "")
         return checklist.save()
 
-    def update_item(self,
-                    step : str,
-                    type : str,
-                    item : str,
-                    state : str | CheckState,
-                    info : str = ""):
+    def update_item(self, step: str, type: str, item: str, state: str | CheckState, info: str = ""):
         checklist = Checklist(path=self.workspace_step.checklist.path or "")
-        checklist.update(step=step,
-                         type=type,
-                         item=item,
-                         state=state,
-                         info=info)
+        checklist.update(step=step, type=type, item=item, state=state, info=info)
 
-    def set_item_state(self,
-                       step : str,
-                       type : str,
-                       item : str,
-                       state : CheckState,
-                       info : str = ""):
-        self.update_item(step=step,
-                         type=type,
-                         item=item,
-                         state=state,
-                         info=info)
-        self.workspace.home.update_checklist(step=step,
-                                             type=type,
-                                             item=item,
-                                             state=state.value,
-                                             info=info)
+    def set_item_state(self, step: str, type: str, item: str, state: CheckState, info: str = ""):
+        self.update_item(step=step, type=type, item=item, state=state, info=info)
+        self.workspace.home.update_checklist(
+            step=step, type=type, item=item, state=state.value, info=info
+        )
 
     def check(self) -> bool:
         step = StepEnum(self.workspace_step.name)
@@ -141,9 +105,7 @@ class DreamplaceChecklist:
             init_checklist=False,
         ).check()
 
-    def check_file(self,
-                   path : str | Path,
-                   text_tokens : list | None = None) -> bool:
+    def check_file(self, path: str | Path, text_tokens: list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
             return False
 
@@ -158,8 +120,7 @@ class DreamplaceChecklist:
 
         return all(token in content for token in text_tokens)
 
-    def read_text(self,
-                  path : str | Path) -> str:
+    def read_text(self, path: str | Path) -> str:
         if not path or not os.path.isfile(path):
             return ""
 
@@ -169,9 +130,7 @@ class DreamplaceChecklist:
         except OSError:
             return ""
 
-    def to_float(self,
-                 value,
-                 default : float | None = None) -> float | None:
+    def to_float(self, value, default: float | None = None) -> float | None:
         try:
             return float(value)
         except (TypeError, ValueError):
@@ -180,8 +139,7 @@ class DreamplaceChecklist:
     def step_file_success(self) -> bool:
         output = self.workspace_step.output
         return all(
-            self.check_file(path or "")
-            for path in (output.def_, output.verilog, output.gds)
+            self.check_file(path or "") for path in (output.def_, output.verilog, output.gds)
         )
 
     def metrics(self) -> dict:
@@ -199,8 +157,7 @@ class DreamplaceChecklist:
     def log_text(self) -> str:
         return self.read_text(self.workspace_step.log.file or "")
 
-    def update_checks(self,
-                      checks : list) -> bool:
+    def update_checks(self, checks: list) -> bool:
         step = self.workspace_step.name
         results = []
         for check in checks:
@@ -260,8 +217,7 @@ class DreamplaceChecklist:
             return None
 
         return sum(
-            1 for inst in instances
-            if inst.get("status", "") not in ("PLACED", "FIXED", "COVER")
+            1 for inst in instances if inst.get("status", "") not in ("PLACED", "FIXED", "COVER")
         )
 
     def has_plot_files(self) -> bool:
@@ -273,8 +229,7 @@ class DreamplaceChecklist:
             "*.png",
         )
         return any(
-            os.path.isfile(path) and os.path.getsize(path) > 0
-            for path in glob.glob(pattern)
+            os.path.isfile(path) and os.path.getsize(path) > 0 for path in glob.glob(pattern)
         )
 
 
@@ -311,12 +266,7 @@ class DreamplacePlacementChecklist(DreamplaceChecklist):
         hpwl = self.to_float(map_data.get("Wirelength", {}).get("HPWL"))
         final_hpwl = self.to_float(self.final_ppa().get("hpwl"))
 
-        return (
-            hpwl is not None
-            and hpwl > 0
-            and final_hpwl is not None
-            and final_hpwl > 0
-        )
+        return hpwl is not None and hpwl > 0 and final_hpwl is not None and final_hpwl > 0
 
     def cell_overlap_success(self) -> bool:
         text = self.log_text()
@@ -348,16 +298,38 @@ class DreamplacePlacementChecklist(DreamplaceChecklist):
 
     def check(self) -> bool:
         checks = [
-            ("Density", "check target density", self.target_density_success(),
-             "DreamPlace target_density/stop_overflow/core util data is missing or invalid"),
-            ("Density", "check placement overflow", self.overflow_success(),
-             "final overflow is missing or exceeds stop_overflow"),
-            ("Wirelength", "check HPWL", self.hpwl_success(),
-             "HPWL metric or final PPA hpwl is missing", True),
-            ("Legality", "check cell overlap", self.cell_overlap_success(),
-             "legalization did not complete cleanly or unplaced cells remain"),
-            ("Congestion", "check placement congestion", self.congestion_success(),
-             "congestion metrics or placement plot files are missing", True),
+            (
+                "Density",
+                "check target density",
+                self.target_density_success(),
+                "DreamPlace target_density/stop_overflow/core util data is missing or invalid",
+            ),
+            (
+                "Density",
+                "check placement overflow",
+                self.overflow_success(),
+                "final overflow is missing or exceeds stop_overflow",
+            ),
+            (
+                "Wirelength",
+                "check HPWL",
+                self.hpwl_success(),
+                "HPWL metric or final PPA hpwl is missing",
+                True,
+            ),
+            (
+                "Legality",
+                "check cell overlap",
+                self.cell_overlap_success(),
+                "legalization did not complete cleanly or unplaced cells remain",
+            ),
+            (
+                "Congestion",
+                "check placement congestion",
+                self.congestion_success(),
+                "congestion metrics or placement plot files are missing",
+                True,
+            ),
         ]
 
         return self.update_checks(checks)
@@ -404,10 +376,7 @@ class DreamplaceLegalizationChecklist(DreamplaceChecklist):
         return (
             hpwl is not None
             and hpwl > 0
-            and (
-                "average displace" in text
-                or "placement takes" in text
-            )
+            and ("average displace" in text or "placement takes" in text)
         )
 
     def fixed_success(self) -> bool:
@@ -420,16 +389,37 @@ class DreamplaceLegalizationChecklist(DreamplaceChecklist):
 
     def check(self) -> bool:
         checks = [
-            ("Legality", "check cell overlap", self.cell_overlap_success(),
-             "legality check did not complete cleanly or unplaced cells remain"),
-            ("Legality", "check off-row placement", self.log_legalization_success(),
-             "legalization log does not report zero unplaced cells"),
-            ("Legality", "check site alignment", self.site_alignment_success(),
-             "site alignment proxy metrics are missing or invalid"),
-            ("Movement", "check legalization movement", self.movement_success(),
-             "legalization movement/HPWL metrics are missing", True),
-            ("Fixed", "check fixed instances", self.fixed_success(),
-             "fixed instance writeback or macro legalization log marker is missing"),
+            (
+                "Legality",
+                "check cell overlap",
+                self.cell_overlap_success(),
+                "legality check did not complete cleanly or unplaced cells remain",
+            ),
+            (
+                "Legality",
+                "check off-row placement",
+                self.log_legalization_success(),
+                "legalization log does not report zero unplaced cells",
+            ),
+            (
+                "Legality",
+                "check site alignment",
+                self.site_alignment_success(),
+                "site alignment proxy metrics are missing or invalid",
+            ),
+            (
+                "Movement",
+                "check legalization movement",
+                self.movement_success(),
+                "legalization movement/HPWL metrics are missing",
+                True,
+            ),
+            (
+                "Fixed",
+                "check fixed instances",
+                self.fixed_success(),
+                "fixed instance writeback or macro legalization log marker is missing",
+            ),
         ]
 
         return self.update_checks(checks)

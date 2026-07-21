@@ -71,12 +71,14 @@ def test_check_slang_plugin_executes_expected_command(tmp_path, monkeypatch):
     calls = []
 
     def fake_run(cmd, cwd, env, stdout, stderr, timeout):
-        calls.append({
-            "cmd": list(cmd),
-            "cwd": cwd,
-            "env": env,
-            "timeout": timeout,
-        })
+        calls.append(
+            {
+                "cmd": list(cmd),
+                "cwd": cwd,
+                "env": env,
+                "timeout": timeout,
+            }
+        )
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(utility.subprocess, "run", fake_run)
@@ -85,7 +87,7 @@ def test_check_slang_plugin_executes_expected_command(tmp_path, monkeypatch):
             yosys_cmd=["yosys"],
             cwd_dir="/tmp/test",
             yosys_env={"PATH": "/tmp/bin"},
-            log_file=log_file
+            log_file=log_file,
         )
 
     assert ok is True
@@ -108,7 +110,7 @@ def test_check_slang_plugin_writes_error_on_failure(tmp_path, monkeypatch):
             yosys_cmd=["yosys"],
             cwd_dir="/tmp/test",
             yosys_env={"PATH": "/tmp/bin"},
-            log_file=log_file
+            log_file=log_file,
         )
 
     assert ok is False

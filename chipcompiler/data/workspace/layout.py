@@ -19,6 +19,7 @@ from pathlib import Path
 
 # --- input -----------------------------------------------------------------
 
+
 @dataclass
 class StepInput:
     verilog: Path | None = None
@@ -27,6 +28,7 @@ class StepInput:
 
 
 # --- output ----------------------------------------------------------------
+
 
 @dataclass
 class OutputPaths:
@@ -57,6 +59,7 @@ class EccOutput(OutputPaths):
 
 
 # --- data ------------------------------------------------------------------
+
 
 @dataclass
 class StepData:
@@ -98,6 +101,7 @@ class EccData(StepData):
 
 # --- feature ---------------------------------------------------------------
 
+
 @dataclass
 class StepFeature:
     dir: Path | None = None
@@ -118,6 +122,7 @@ class EccFeature(StepFeature):
 
 
 # --- report ----------------------------------------------------------------
+
 
 @dataclass
 class StaReportPaths:
@@ -148,6 +153,7 @@ class EccReport(StepReport):
 
 
 # --- log / script / analysis ----------------------------------------------
+
 
 @dataclass
 class LogPaths:
@@ -181,6 +187,7 @@ class EccAnalysis(AnalysisPaths):
 
 # --- subflow / checklist ---------------------------------------------------
 
+
 @dataclass
 class SubflowState:
     path: Path | None = None
@@ -195,6 +202,7 @@ class ChecklistState:
 
 
 # --- step hierarchy --------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class WorkspaceStepBase:

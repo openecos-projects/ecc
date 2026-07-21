@@ -118,11 +118,7 @@ class DummyFlow:
         name = workspace_step if isinstance(workspace_step, str) else workspace_step.name
         self.run_calls.append((name, rerun))
         self.call_order.append(("run_step", name, rerun))
-        state = (
-            DummyFlow.next_run_states.pop(0)
-            if DummyFlow.next_run_states
-            else StateEnum.Success
-        )
+        state = DummyFlow.next_run_states.pop(0) if DummyFlow.next_run_states else StateEnum.Success
         if state == StateEnum.Success:
             self.completed_steps.add(name)
             workspace_step_object = self.get_workspace_step(name)
@@ -177,9 +173,9 @@ def _install_runtime_mocks(monkeypatch, tmp_path, *, create_workspace_files=True
         capture["create_kwargs"] = kwargs
         input_filelist = kwargs.get("input_filelist")
         if input_filelist and Path(input_filelist).exists():
-            capture["input_filelist_lines"] = Path(input_filelist).read_text(
-                encoding="utf-8"
-            ).splitlines()
+            capture["input_filelist_lines"] = (
+                Path(input_filelist).read_text(encoding="utf-8").splitlines()
+            )
         workspace_dir = Path(kwargs["directory"])
         if workspace_dir.is_dir():
             capture["workspace_entries_when_create_called"] = sorted(
@@ -653,9 +649,7 @@ def test_db_ensure_initializes_requested_step_and_stores_session_db(monkeypatch,
     api = WorkspaceRuntimeApi(persistent_db_enabled=True)
     workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
 
-    result = api.db_ensure(
-        DbEnsureRequest(workspace_id=workspace_id, step="Floorplan")
-    )
+    result = api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
 
     flow = DummyFlow.instances[-1]
     session = api.sessions.get_session(workspace_id)
@@ -730,9 +724,7 @@ def test_db_ensure_does_not_store_uninitialized_db(monkeypatch, tmp_path):
     api = WorkspaceRuntimeApi(persistent_db_enabled=True)
     workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
 
-    result = api.db_ensure(
-        DbEnsureRequest(workspace_id=workspace_id, step="Floorplan")
-    )
+    result = api.db_ensure(DbEnsureRequest(workspace_id=workspace_id, step="Floorplan"))
 
     assert result == {
         "workspaceId": workspace_id,
@@ -1157,9 +1149,7 @@ def test_flow_run_step_unknown_step_returns_runtime_error(monkeypatch, tmp_path)
     "db_value",
     [None, "", "some/db/path"],
 )
-def test_build_workspace_step_for_info_forwards_db_from_any_predecessor(
-    tmp_path, db_value
-):
+def test_build_workspace_step_for_info_forwards_db_from_any_predecessor(tmp_path, db_value):
     # Regression: a Yosys (synthesis) predecessor has output.db == None on the
     # base OutputPaths contract, so reconstructing the next step must not crash.
     from pathlib import Path
@@ -1194,9 +1184,7 @@ def test_build_workspace_step_for_info_forwards_db_from_any_predecessor(
             db=Path(db_value) if db_value else db_value,
         ),
     )
-    next_step = _build_workspace_step_for_info(
-        workspace, {"name": "CTS", "tool": "ecc"}, ecc_prev
-    )
+    next_step = _build_workspace_step_for_info(workspace, {"name": "CTS", "tool": "ecc"}, ecc_prev)
     assert isinstance(next_step, EccStep)
     # A real db path is forwarded into the next step's input.db; "" / None -> None.
     if db_value:

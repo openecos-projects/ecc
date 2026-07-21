@@ -125,6 +125,7 @@ EXCLUDES = [
     "pkg_resources",
 ]
 
+
 def collect_required_metadata():
     metadata = []
     for dist_name in REQUIRED_DISTRIBUTION_METADATA:
