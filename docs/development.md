@@ -91,6 +91,19 @@ uv run black chipcompiler/ test/
 uv run isort chipcompiler/ test/
 ```
 
+## Git Hooks
+
+Install the pre-commit hooks once per clone to run ruff lint/format checks
+(and the commit-message check) automatically before each commit:
+
+```bash
+uv run prek install
+```
+
+This registers both the `pre-commit` stage (ruff lint + ruff format) and the
+`commit-msg` stage (conventional commit message check) from
+`.pre-commit-config.yaml`.
+
 ## Testing
 
 ```bash
