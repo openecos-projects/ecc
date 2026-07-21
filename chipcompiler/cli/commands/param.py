@@ -37,13 +37,14 @@ def _finish_param(
 
 @param_app.command("list", help="List parameter overrides")
 def list_cmd(
+    *,
     project: ProjectOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = ParamListInput(
-        output=output_options(json_output, jsonl, plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
     )
     _finish_param("list", command_input, param_list_handler)
@@ -51,6 +52,7 @@ def list_cmd(
 
 @param_app.command("show", help="Show one parameter value")
 def show_cmd(
+    *,
     key: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
     json_output: JsonOption = False,
@@ -58,7 +60,7 @@ def show_cmd(
     plain: PlainOption = False,
 ) -> None:
     command_input = ParamShowInput(
-        output=output_options(json_output, jsonl, plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
         key=key,
     )
@@ -67,6 +69,7 @@ def show_cmd(
 
 @param_app.command("set", help="Set a parameter override")
 def set_cmd(
+    *,
     key: Annotated[str, typer.Argument()],
     value: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
@@ -75,7 +78,7 @@ def set_cmd(
     plain: PlainOption = False,
 ) -> None:
     command_input = ParamSetInput(
-        output=output_options(json_output, jsonl, plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
         key=key,
         value=value,
@@ -85,6 +88,7 @@ def set_cmd(
 
 @param_app.command("unset", help="Remove a parameter override")
 def unset_cmd(
+    *,
     key: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
     json_output: JsonOption = False,
@@ -92,7 +96,7 @@ def unset_cmd(
     plain: PlainOption = False,
 ) -> None:
     command_input = ParamUnsetInput(
-        output=output_options(json_output, jsonl, plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
         key=key,
     )
@@ -101,13 +105,14 @@ def unset_cmd(
 
 @param_app.command("diff", help="Compare parameter overrides with defaults")
 def diff_cmd(
+    *,
     project: ProjectOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = ParamDiffInput(
-        output=output_options(json_output, jsonl, plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
     )
     _finish_param("diff", command_input, param_diff_handler)

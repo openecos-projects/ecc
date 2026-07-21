@@ -96,6 +96,7 @@ lint.select = [
   "B",   # flake8-bugbear
   "E",   # pycodestyle
   "F",   # Pyflakes
+  "FBT", # flake8-boolean-trap
   "I",   # isort
   "SIM", # flake8-simplify
   "UP",  # pyupgrade

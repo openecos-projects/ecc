@@ -33,7 +33,7 @@ class DreamplaceModule:
         self.param_path = workspace.config["dreamplace"]
         self.result_dir = str(step.data.workdir_for(step.name))
 
-    def _build_params(self, params_cls, legalize_only: bool):
+    def _build_params(self, params_cls, *, legalize_only: bool):
         with open(self.param_path, encoding="utf-8") as f_reader:
             config = json.load(f_reader)
 
@@ -60,17 +60,17 @@ class DreamplaceModule:
 
         return params
 
-    def _log_path(self, legalize_only: bool) -> str:
+    def _log_path(self, *, legalize_only: bool) -> str:
         log_name = "dreamplace_legalization.log" if legalize_only else "dreamplace_placement.log"
         return os.path.join(self.result_dir, log_name)
 
     @contextmanager
-    def _configure_root_logging(self, legalize_only: bool):
+    def _configure_root_logging(self, *, legalize_only: bool):
         root_logger = logging.getLogger()
         original_handlers = root_logger.handlers[:]
         original_level = root_logger.level
 
-        log_file = self.step.log.file or self._log_path(legalize_only)
+        log_file = self.step.log.file or self._log_path(legalize_only=legalize_only)
         os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
 
         formatter = logging.Formatter("[%(levelname)-7s] %(message)s")
@@ -95,11 +95,11 @@ class DreamplaceModule:
                 if handler not in root_logger.handlers:
                     root_logger.addHandler(handler)
 
-    def _run(self, legalize_only: bool) -> bool:
+    def _run(self, *, legalize_only: bool) -> bool:
         from dreamplace.Params import Params
         from dreamplace.Placer import PlacementEngine
 
-        with self._configure_root_logging(legalize_only):
+        with self._configure_root_logging(legalize_only=legalize_only):
             params = self._build_params(Params, legalize_only=legalize_only)
 
             engine = PlacementEngine(params)

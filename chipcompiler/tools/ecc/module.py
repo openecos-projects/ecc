@@ -210,7 +210,7 @@ class ECCToolsModule:
         """save def file"""
         self.ecc.def_save(def_name=path_text(def_path))
 
-    def gds_save(self, output_path: PathArg, is_harden: bool = False):
+    def gds_save(self, output_path: PathArg, *, is_harden: bool = False):
         """save gds file"""
         self.ecc.gds_save(path_text(output_path), is_harden)
 
@@ -236,7 +236,8 @@ class ECCToolsModule:
     def view_json_save(
         self,
         output_dir: PathArg,
-        json_format: str = "pretty", 
+        json_format: str = "pretty",
+        *,
         compress: bool = False,
     ):
         """
@@ -256,7 +257,7 @@ class ECCToolsModule:
             compress=compress,
         )
 
-    def view_json_apply_edits(self, edits_path: PathArg, compress: bool = False):
+    def view_json_apply_edits(self, edits_path: PathArg, *, compress: bool = False):
         """
         Apply edits generated for a view JSON package.
 
@@ -374,6 +375,7 @@ class ECCToolsModule:
         self,
         path: str = "",
         net: str = "",
+        *,
         summary: bool = True,
     ):
         return self.ecc.report_route(path=path_text(path), net=net, summary=summary)
@@ -597,7 +599,7 @@ class ECCToolsModule:
             distance=distance,
         )
 
-    def add_routing_blockage(self, layer: str, box: str, exceptpgnet: bool):
+    def add_routing_blockage(self, layer: str, box: str, *, exceptpgnet: bool):
         return self.ecc.add_routing_blockage(
             layer=layer,
             box=box,
@@ -608,8 +610,8 @@ class ECCToolsModule:
         self,
         layer: str,
         distance: str,
-        exceptpgnet: bool = False,
         *,
+        exceptpgnet: bool = False,
         inst_name: str,
     ):
         return self.ecc.add_routing_halo(
@@ -640,10 +642,11 @@ class ECCToolsModule:
     ########################################################################
     # pdn api
     ########################################################################
-    def add_pdn_io(self, 
-                   net_name: str, 
-                   direction: str, 
-                   is_power: bool, 
+    def add_pdn_io(self,
+                   net_name: str,
+                   direction: str,
+                   *,
+                   is_power: bool,
                    pin_name: str = None):
         if pin_name is None:
             pin_name = net_name
@@ -652,9 +655,10 @@ class ECCToolsModule:
                                     direction=direction, 
                                     is_power=is_power)
 
-    def global_net_connect(self, 
-                           net_name: str, 
-                           instance_pin_name: str, 
+    def global_net_connect(self,
+                           net_name: str,
+                           instance_pin_name: str,
+                           *,
                            is_power: bool):
         return self.ecc.global_net_connect(net_name=net_name, 
                                             instance_pin_name=instance_pin_name, 
@@ -1147,6 +1151,7 @@ class ECCToolsModule:
                       digits: int = 3,
                       delay_type: str = "max_min",
                       exclude_cell_names: list[str] | None = None,
+                      *,
                       derate: bool = False,
                       is_clock_cap: bool = False,
                       is_not_bak_rpt: bool = True,
@@ -1197,12 +1202,13 @@ class ECCToolsModule:
     def layout_graph(self, path: str):
         return self.ecc.layout_graph(path=path_text(path))
 
-    def generate_vectors(self, 
+    def generate_vectors(self,
                          vectors_dir : str,
-                         patch_row_step: int = 9, 
-                         patch_col_step: int = 9, 
-                         batch_mode: bool = True, 
-                         is_placement_mode: bool = False, 
+                         patch_row_step: int = 9,
+                         patch_col_step: int = 9,
+                         *,
+                         batch_mode: bool = True,
+                         is_placement_mode: bool = False,
                          sta_mode: int = 0):
         """
         generate vectorized data from design

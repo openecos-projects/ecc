@@ -81,7 +81,7 @@ def dict_to_str(d, indent=0):
     - Lists of dictionaries become row tables with an index column.
     """
     def _render_dict_block(mapping: dict, lines: list[str], base_indent: int, depth: int,
-                           title: str | None, is_root: bool = False) -> None:
+                           title: str | None, *, is_root: bool = False) -> None:
         current_indent = base_indent + depth
     
         if title is not None:

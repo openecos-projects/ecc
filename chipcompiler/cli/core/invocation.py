@@ -19,7 +19,7 @@ CommandInputT = TypeVar("CommandInputT", bound=CommandInput)
 CommandHandler = Callable[[CommandInputT, CommandContext], CommandResult]
 
 
-def output_mode(json_output: bool, jsonl: bool, plain: bool) -> OutputMode:
+def output_mode(*, json_output: bool, jsonl: bool, plain: bool) -> OutputMode:
     if jsonl:
         return OutputMode.JSONL
     if json_output:
@@ -37,9 +37,9 @@ def build_context(command_input: CommandInput) -> CommandContext:
     run_dir, run_id = resolve_run_dir(project_dir, run_id)
 
     mode = output_mode(
-        command_input.output.json,
-        command_input.output.jsonl,
-        command_input.output.plain,
+        json_output=command_input.output.json,
+        jsonl=command_input.output.jsonl,
+        plain=command_input.output.plain,
     )
 
     return CommandContext(
@@ -70,6 +70,6 @@ def execute_command(
 
     from chipcompiler.cli.rendering.renderers import render_command_result
 
-    render_command_result(command, selected_render_key, result, ctx, command_input, color)
+    render_command_result(command, selected_render_key, result, ctx, command_input, color=color)
 
     raise typer.Exit(code=result.exit_code)

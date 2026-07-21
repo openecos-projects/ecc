@@ -51,7 +51,7 @@ def _plain_value(value) -> str:
 
 
 def render_result(
-    result: CommandResult, mode: OutputMode, file=None, command=None, color=True
+    result: CommandResult, mode: OutputMode, file=None, command=None, *, color=True
 ) -> None:
     if mode == OutputMode.JSON:
         render_json(result, file=file)
@@ -65,7 +65,7 @@ def render_result(
         render_text(result.records, file=file)
 
 
-def _render_pretty(result: CommandResult, file=None, command=None, color=True) -> None:
+def _render_pretty(result: CommandResult, file=None, command=None, *, color=True) -> None:
     from chipcompiler.cli.rendering.pretty import (
         get_pretty_renderer,
         render_error,

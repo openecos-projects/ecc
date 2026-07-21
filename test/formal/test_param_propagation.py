@@ -237,7 +237,7 @@ PROPAGATION_MAP: list[tuple[str, str, bool]] = [
     PROPAGATION_MAP,
     ids=[t[1] for t in PROPAGATION_MAP],
 )
-def test_propagation_z3(param_key: str, config_field: str, reads_param: bool) -> None:
+def test_propagation_z3(param_key: str, config_field: str, *, reads_param: bool) -> None:
     """z3: for each parameter -> config mapping, prove that the parameter
     value reaches the config field.
 

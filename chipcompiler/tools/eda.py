@@ -5,7 +5,7 @@ from pathlib import Path
 from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
 
 
-def load_eda_module(eda_tool: str, check_dependency: bool = True):
+def load_eda_module(eda_tool: str, *, check_dependency: bool = True):
     """
     Load and return the EDA tool module based on the given eda tool name.
     """
@@ -59,6 +59,7 @@ def create_step(workspace : Workspace,
                output_def : Path | None = None,
                output_verilog : Path | None = None,
                output_gds : Path | None = None,
+               *,
                initialize_config : bool = False) -> WorkspaceStep:
     """
     Create and return an EDA tool instance based on the given step and eda tool name.

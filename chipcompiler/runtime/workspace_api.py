@@ -261,7 +261,7 @@ class WorkspaceRuntimeApi:
                 )
                 if not step_already_succeeded:
                     _init_db_engine_for_workspace_step(engine_flow, workspace_step)
-                state = engine_flow.run_step(workspace_step, request.rerun)
+                state = engine_flow.run_step(workspace_step, rerun=request.rerun)
             finally:
                 if should_capture:
                     self._capture_flow_db(
@@ -417,7 +417,7 @@ class WorkspaceRuntimeApi:
         data_api.prepare_workspace_for_rerun(workspace, engine_flow)
 
 
-def build_flow_for_workspace(workspace, create_step_workspaces: bool = True):
+def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     import chipcompiler.engine as engine_api
     import chipcompiler.rtl2gds as rtl2gds_api
 

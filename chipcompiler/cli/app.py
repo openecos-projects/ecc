@@ -18,7 +18,7 @@ app = typer.Typer(
 )
 
 
-def version_callback(value: bool) -> None:
+def version_callback(value: bool) -> None:  # noqa: FBT001 -- typer invokes Option callbacks positionally
     if value:
         click.echo(root_version_line())
         raise typer.Exit()
@@ -41,6 +41,7 @@ def root_callback(
 
 @app.command("version", help="Show ECC runtime and component versions")
 def version_cmd(
+    *,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     payload = version_payload()

@@ -98,7 +98,7 @@ def plot_csv_table(input_path: str, output_path: str=None) -> bool:
         table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
         
         # Set table style
-        table.auto_set_font_size(False)
+        table.auto_set_font_size(value=False)
         table.set_fontsize(10)
         table.scale(1.1, 1.5)
         
@@ -113,6 +113,7 @@ def plot_csv_table(input_path: str, output_path: str=None) -> bool:
     
 def plot_csv_bar_chart(input_path: str, output_path: str=None, title: str = "Bar Chart",
                        xlabel: str = "Category", ylabel: str = "Value",
+                       *,
                        integer_yaxis: bool = False) -> bool:
     """
     Plot bar chart from CSV data and save to output path.
@@ -217,7 +218,7 @@ def plot_metrics(metrics: dict, output_path: str=None, col=4) -> bool:
         table = ax.table(cellText=table_data, cellLoc='left', loc='center')
         
         # Set table style
-        table.auto_set_font_size(False)
+        table.auto_set_font_size(value=False)
         table.set_fontsize(8)
         table.scale(2, 1)  # Scale table for better readability
         
@@ -242,6 +243,7 @@ def plot_metrics(metrics: dict, output_path: str=None, col=4) -> bool:
 
 def plot_bar_chart(data: dict, output_path: str, title: str = "Bar Chart",
                    xlabel: str = "Category", ylabel: str = "Value",
+                   *,
                    integer_yaxis: bool = False) -> bool:
     """
     Plot bar chart from data and save to output path.

@@ -279,6 +279,7 @@ def run_sta_without_spef(workspace: Workspace,
 def save_data(workspace: Workspace,
               step: EccStep,
               ecc_module : ECCToolsModule,
+              *,
               feature_step : bool = True,
               report_timing : bool = False) -> bool:
     """

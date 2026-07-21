@@ -28,7 +28,7 @@ def supports_color(stream, mode, env=None):
 
 
 def style(text, code, enabled):
-    return _style(text, code, enabled)
+    return _style(text, code, enabled=enabled)
 
 
 def should_enable_run_progress(ctx, stderr):
@@ -72,7 +72,7 @@ def truncate_to_width(text, width):
 _KIND_LABEL_COMPACT = {k: v.upper() for k, v in _KIND_LABEL.items()}
 
 
-def format_error_context(log_path, context_lines, log_cmd, color=True):
+def format_error_context(log_path, context_lines, log_cmd, *, color=True):
     """Format a failure context block for interactive progress output.
 
     Args:
@@ -297,7 +297,7 @@ def _preserve_cli_stdio():
 
 
 class RunProgressRenderer:
-    def __init__(self, stream, width_fn=None, color=False):
+    def __init__(self, stream, width_fn=None, *, color=False):
         self._stream = stream
         self._width_fn = width_fn or terminal_width
         self._color = color
@@ -377,6 +377,7 @@ def _start_log_monitor(
     renderer,
     log_path,
     step_name,
+    *,
     isolated=False,
     interval=_LOG_POLL_INTERVAL,
     stale_after=_LOG_STALE_AFTER,

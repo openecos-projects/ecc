@@ -124,6 +124,7 @@ class EccChecklist:
     def __init__(self,
                  workspace : Workspace,
                  workspace_step: EccStep,
+                 *,
                  init_checklist : bool = True):
         self.workspace = workspace
         self.workspace_step = workspace_step

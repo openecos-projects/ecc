@@ -138,7 +138,7 @@ class HomeData:
             finally:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
-    def _update(self, mutator: Callable[[dict], bool | None], force: bool = False) -> None:
+    def _update(self, mutator: Callable[[dict], bool | None], *, force: bool = False) -> None:
         with self._locked():
             path = self._path_required()
             data, repaired = _read_normalized_home_data(path)

@@ -315,7 +315,7 @@ class EngineFlow:
                 if callable(close):
                     close()
     
-    def run_steps(self, rerun=False) -> bool:
+    def run_steps(self, *, rerun=False) -> bool:
         """
         run all flow steps
         """
@@ -324,7 +324,7 @@ class EngineFlow:
             self.workspace.logger.log_section(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}")
             self.init_db_engine()
-            state = self.run_step(workspace_step, rerun)
+            state = self.run_step(workspace_step, rerun=rerun)
             
             log_flow(workspace=self.workspace)
             self.workspace.logger.log_section(
@@ -348,6 +348,7 @@ class EngineFlow:
             
     def run_step(self,
                  workspace_step : WorkspaceStep | str,
+                 *,
                  rerun : bool = False) -> StateEnum:
         """
         run single step

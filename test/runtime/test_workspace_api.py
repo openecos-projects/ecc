@@ -91,12 +91,12 @@ class DummyFlow:
     def create_step_workspaces(self):
         self.created = True
 
-    def run_steps(self, rerun=False):
+    def run_steps(self, *, rerun=False):
         self.run_steps_calls.append(rerun)
         success = True
         for workspace_step in self.workspace_steps:
             self.init_db_engine()
-            state = self.run_step(workspace_step, rerun)
+            state = self.run_step(workspace_step, rerun=rerun)
             if state != StateEnum.Success:
                 success = False
                 break
@@ -114,7 +114,7 @@ class DummyFlow:
                 break
         return self.engine_db.create_db_engine(workspace_step)
 
-    def run_step(self, workspace_step, rerun=False):
+    def run_step(self, workspace_step, *, rerun=False):
         name = workspace_step if isinstance(workspace_step, str) else workspace_step.name
         self.run_calls.append((name, rerun))
         self.call_order.append(("run_step", name, rerun))
@@ -966,7 +966,7 @@ def test_flow_run_sizer_boundary_exception_captures_post_sizer_db(
         {"name": "Legalization", "tool": "ecc"},
     )
 
-    def run_steps_raises_after_post_sizer_db(self, rerun=False):
+    def run_steps_raises_after_post_sizer_db(self, *, rerun=False):
         del rerun
         self.engine_db.close()
         self.engine_db = DummyEngineDB(self)
@@ -1072,7 +1072,7 @@ def test_flow_run_step_sizer_exception_clears_closed_session_db(
         {"name": "Timing optimization", "tool": "sizer"},
     )
 
-    def run_step_raises_after_sizer_boundary(self, workspace_step, rerun=False):
+    def run_step_raises_after_sizer_boundary(self, workspace_step, *, rerun=False):
         del workspace_step, rerun
         self.engine_db.close()
         self.engine_db = None
