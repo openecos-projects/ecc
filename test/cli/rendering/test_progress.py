@@ -11,7 +11,6 @@ import pytest
 import chipcompiler.cli.rendering.progress as progress
 from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.cli.inspection.log_view import LineKind, LogLine
-from chipcompiler.data import LogPaths
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.progress import (
     RunProgressRenderer,
@@ -24,7 +23,7 @@ from chipcompiler.cli.rendering.progress import (
     supports_color,
     truncate_to_width,
 )
-from chipcompiler.data import StateEnum
+from chipcompiler.data import LogPaths, StateEnum
 from chipcompiler.utility.log import redirect_stdio_to_file
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")

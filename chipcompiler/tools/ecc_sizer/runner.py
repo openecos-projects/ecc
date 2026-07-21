@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-from chipcompiler.data import EccStep, StateEnum, Workspace, WorkspaceStep
+from chipcompiler.data import EccStep, StateEnum, Workspace
 
 from .subflow import SizerSubFlow, SizerSubFlowEnum
 from .utility import get_sizer_command, is_eda_exist, is_sizer_runtime_exist

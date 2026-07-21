@@ -3,15 +3,12 @@
 
 from __future__ import annotations
 
-import os
-
-from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace, WorkspaceStep
-
+from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
+from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
-from chipcompiler.tools.ecc import EccSubFlowEnum, EccSubFlow, ECCToolsModule
 
-from .module import DreamplaceModule
 from .checklist import DreamplaceChecklist
+from .module import DreamplaceModule
 from .utility import is_eda_exist
 
 

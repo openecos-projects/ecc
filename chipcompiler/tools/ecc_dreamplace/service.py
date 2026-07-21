@@ -1,16 +1,9 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-import os
-from chipcompiler.data import (
-    EccStep,
-    Workspace,
-    WorkspaceStep,
-    StepEnum
-)
-
+from chipcompiler.data import EccStep, Workspace
 from chipcompiler.utility import dict_to_str
 
-    
+
 def get_step_info(workspace: Workspace, 
                   step: EccStep,
                   id : str) -> dict:

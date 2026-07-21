@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, YosysStep
-from chipcompiler.tools.yosys.metrics import build_step_metrics
+from chipcompiler.data import Workspace, YosysStep
 from chipcompiler.utility import dict_to_str
 from chipcompiler.utility.path import stringify_paths
 

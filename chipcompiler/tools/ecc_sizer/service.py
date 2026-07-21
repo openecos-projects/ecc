@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from chipcompiler.data import EccStep, Workspace, WorkspaceStep
+from chipcompiler.data import EccStep, Workspace
 from chipcompiler.utility import dict_to_str
 from chipcompiler.utility.path import stringify_paths
 

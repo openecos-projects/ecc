@@ -11,7 +11,6 @@ from chipcompiler.data import (
     StepEnum,
     StepInput,
     Workspace,
-    WorkspaceStep,
 )
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.checklist import EccRcxChecklist
