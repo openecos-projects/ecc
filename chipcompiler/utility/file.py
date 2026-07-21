@@ -5,9 +5,9 @@ from contextlib import suppress
 
 
 def chmod_folder(folder:str, mode:int = 0o777):
-    def _try_chmod(self, path):
+    def _try_chmod(path):
         with suppress(Exception):
-            os.chmod(path, 0o777)
+            os.chmod(path, mode)
 
     for root, dirs, files in os.walk(folder):
         _try_chmod(root)
