@@ -77,8 +77,8 @@ jobs:
           yosys -V
           yosys -p "plugin -i slang"
 
-      # - name: Ruff format check
-      #   run: uv run ruff format --check chipcompiler test
+      - name: Ruff format check
+        run: uv run ruff format --check chipcompiler test
 
       - name: Ruff lint
         run: uv run ruff check chipcompiler test
