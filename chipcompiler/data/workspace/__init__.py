@@ -460,25 +460,20 @@ def _coerce_legacy_dreamplace_routability_flag(workspace: Workspace, dreamplace:
 def _ensure_writable(path: str):
     import os
     import stat
+    from contextlib import suppress
 
-    try:
+    with suppress(OSError):
         os.chmod(path, os.stat(path).st_mode | stat.S_IWUSR | stat.S_IXUSR)
-    except OSError:
-        pass
 
     for root, dirs, files in os.walk(path):
         for name in dirs:
             target = os.path.join(root, name)
-            try:
+            with suppress(OSError):
                 os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR | stat.S_IXUSR)
-            except OSError:
-                pass
         for name in files:
             target = os.path.join(root, name)
-            try:
+            with suppress(OSError):
                 os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)
-            except OSError:
-                pass
 
 
 def _copy_missing_files(src_dir: str, dst_dir: str):
@@ -875,7 +870,7 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
                 logger.warning(f"Include path is not a directory: {abs_incdir}")
             continue
 
-        for root, dirs, files in os.walk(abs_incdir):
+        for root, _dirs, files in os.walk(abs_incdir):
             for filename in files:
                 src_file = os.path.join(root, filename)
                 rel_from_filelist = os.path.relpath(src_file, filelist_dir)

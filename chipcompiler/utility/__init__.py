@@ -41,5 +41,6 @@ __all__ = [
     'validate_filelist',
     'get_filelist_info',
     'csv_write',
-    'parse_incdir_directives'
+    'parse_incdir_directives',
+    'find_files'
 ]

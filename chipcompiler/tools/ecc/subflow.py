@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import time
 from enum import Enum
 
 from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep
@@ -27,8 +28,6 @@ class EccSubFlowEnum(Enum):
     run_harden = "run harden"
     run_rcx = "run rcx"
     run_sta = "run sta"
-
-import time
 
 
 class EccSubFlow:
@@ -192,10 +191,12 @@ class EccSubFlow:
         
         return peak_memory
     
-    def update_step(self, 
+    def update_step(self,
                     step_name : str,
                     state : str | StateEnum,
-                    info : dict = {}):
+                    info : dict | None = None):
+        if info is None:
+            info = {}
         state = state.value if isinstance(state, StateEnum) else state
         
         runtime = self.get_runtime()

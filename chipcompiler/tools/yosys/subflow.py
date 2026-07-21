@@ -88,10 +88,12 @@ class YosysSubFlow:
         
         return peak_memory
     
-    def update_step(self, 
+    def update_step(self,
                     step_name : str,
                     state : str | StateEnum,
-                    info : dict = {}):
+                    info : dict | None = None):
+        if info is None:
+            info = {}
         state = state.value if isinstance(state, StateEnum) else state
         
         runtime = self.get_runtime()

@@ -21,5 +21,6 @@ __all__ = [
     'build_step_metrics',
     'get_step_info',
     'EccSubFlow',
-    'EccSubFlowEnum'
+    'EccSubFlowEnum',
+    'EccChecklist'
 ]

@@ -70,8 +70,8 @@ class EngineFlow:
         self.save()
     
     def has_init(self):
-        return (True if self.workspace is not None
-                and len(self.workspace.flow.data.get("steps", [])) > 0 else False)
+        return (self.workspace is not None
+                and len(self.workspace.flow.data.get("steps", [])) > 0)
     
     def init_flow_step(self,
                   step : StepEnum | str,
@@ -108,10 +108,7 @@ class EngineFlow:
             self.workspace.flow.data = {}
             return False
         self.workspace.flow.data = json_read(self.workspace.flow.path)
-        if len(self.workspace.flow.data.get("steps", [])) <= 0:
-            return False
-
-        return True
+        return len(self.workspace.flow.data.get("steps", [])) > 0
         
     def save(self) -> bool:
         """
@@ -147,11 +144,7 @@ class EngineFlow:
         """
         step = self.get_step(name, tool)
         state_value = state.value if isinstance(state, StateEnum) else state
-        if step is not None \
-            and step.get("state") == state_value:
-            return True
-            
-        return False
+        return step is not None and step.get("state") == state_value
         
     def set_state(self, 
                  name : str,
@@ -225,7 +218,7 @@ class EngineFlow:
                 if os.path.exists(output.def_ or "") and \
                     os.path.exists(output.verilog or ""):
                     success = True
-            case default:
+            case _:
                 gds = ecc_output.gds if ecc_output else None
                 if os.path.exists(output.def_ or "") and \
                     os.path.exists(output.verilog or "") and \

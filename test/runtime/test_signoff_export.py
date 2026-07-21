@@ -232,10 +232,9 @@ def test_workspace_inspect_signoff_waits_for_session_mutation_lock(monkeypatch, 
 
     monkeypatch.setattr(signoff_export, "inspect_signoff_package", fake_inspect)
     api = WorkspaceRuntimeApi(sessions=sessions)
-    request_class = getattr(
-        __import__("chipcompiler.runtime.requests", fromlist=["WorkspaceInspectSignoffRequest"]),
-        "WorkspaceInspectSignoffRequest",
-    )
+    request_class = __import__(
+        "chipcompiler.runtime.requests", fromlist=["WorkspaceInspectSignoffRequest"]
+    ).WorkspaceInspectSignoffRequest
 
     def run_inspection():
         try:

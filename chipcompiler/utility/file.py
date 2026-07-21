@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 
 import os
+from contextlib import suppress
 
 
 def chmod_folder(folder:str, mode:int = 0o777):
     def _try_chmod(self, path):
-        try:
+        with suppress(Exception):
             os.chmod(path, 0o777)
-        except Exception:
-            pass
 
     for root, dirs, files in os.walk(folder):
         _try_chmod(root)
@@ -20,7 +19,7 @@ def chmod_folder(folder:str, mode:int = 0o777):
 
 def find_files(directory : str, key : str):
     result_files = []
-    for root, dirs, files in os.walk(directory):
+    for root, _dirs, files in os.walk(directory):
         for file in files:
             if file.endswith(f"{key}"):
                 result_files.append(os.path.join(root, file))

@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+from contextlib import suppress
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import TextIO
@@ -25,10 +26,9 @@ def build_timestamped_log_file(log_file: str, pid: int | None = None) -> str:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     pid_value = os.getpid() if pid is None else pid
 
-    if ext:
-        file_name = f"{stem}-{timestamp}-{pid_value}{ext}"
-    else:
-        file_name = f"{stem}-{timestamp}-{pid_value}"
+    file_name = (
+        f"{stem}-{timestamp}-{pid_value}{ext}" if ext else f"{stem}-{timestamp}-{pid_value}"
+    )
 
     return os.path.join(base_dir, file_name)
 
@@ -60,13 +60,12 @@ def rotate_log_on_start(log_file: str, max_bytes: int, backup_count: int) -> Non
 
 def redirect_stdio_to_file(log_file: str) -> TextIO:
     """Redirect process stdout/stderr to log_file at file-descriptor level."""
-    log_stream = open(log_file, "a", encoding="utf-8", buffering=1)
+    # The stream intentionally stays open: its fd is dup2'd onto stdout/stderr below.
+    log_stream = open(log_file, "a", encoding="utf-8", buffering=1)  # noqa: SIM115
 
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with suppress(Exception):
             stream.flush()
-        except Exception:
-            pass
 
     os.dup2(log_stream.fileno(), 1)
     os.dup2(log_stream.fileno(), 2)

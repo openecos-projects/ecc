@@ -48,7 +48,7 @@ class ECCToolsPlot:
                          & self.plot_layer_via_distribution()
                          & self.plot_layer_wire_distribution())
                 
-            case default:
+            case _:
                 self.workspace.logger.warning(f"Step {self.step.name} not supported for plotting.")
         
         return state
@@ -105,7 +105,7 @@ class ECCToolsPlot:
             return False
         
         csv_list = []
-        for root, dirs, files in os.walk(data_dir):
+        for root, _dirs, files in os.walk(data_dir):
             for file in files:
                 if file.endswith(".csv"):
                     csv_path = os.path.join(root, file)
@@ -136,7 +136,7 @@ class ECCToolsPlot:
         # Use ThreadPoolExecutor for multi-threading with progress bar (limit to 10 threads)
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             # Create a progress bar
-            results = list(tqdm(
+            list(tqdm(
                 executor.map(plot_csv_map, valid_paths),
                 total=len(valid_paths),
                 desc="Plotting array maps",

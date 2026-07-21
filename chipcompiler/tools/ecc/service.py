@@ -144,7 +144,6 @@ def build_maps_congestion(workspace: Workspace,
     if len(json_data) > 0:
         json_cong = json_data.get("Congestion", {})
         json_map = json_cong.get("map", {})
-        json_overflow = json_cong.get("overflow", {})
         json_util = json_cong.get("utilization", {})
         
         # egr maps
