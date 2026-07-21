@@ -1,8 +1,9 @@
 import os
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import EccOutput, EccStep, StateEnum, StepEnum
+from chipcompiler.data import EccOutput, EccStep, StateEnum, StepEnum, Workspace
 
 from ._sizer_helpers import _sizer_runtime, _subflow_states, _workspace
 
@@ -19,8 +20,8 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     step = sizer_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
@@ -70,8 +71,8 @@ def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path
     step = sizer_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
@@ -101,8 +102,8 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
     step = sizer_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
@@ -132,8 +133,8 @@ def test_public_sizer_run_marks_invalid_when_tool_missing(tmp_path, monkeypatch)
     step = sizer_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
 
@@ -157,8 +158,8 @@ def test_public_sizer_run_marks_invalid_when_runtime_missing(tmp_path, monkeypat
     step = sizer_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
 
@@ -186,7 +187,8 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
         ),
     )
 
-    assert EngineFlow(workspace=None).check_step_result(step) is True
+    assert EngineFlow(Workspace()).check_step_result(step) is True
+
 
 def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monkeypatch):
     import chipcompiler.tools as tools_api
@@ -194,7 +196,7 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     from chipcompiler.engine.flow import EngineFlow
 
     workspace = _workspace(tmp_path)
-    workspace.flow.path = str(tmp_path / "flow.json")
+    workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
         "steps": [
             {
@@ -238,19 +240,23 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
         def close(self):
             pre_sizer_db_closed.append(True)
 
-    engine_flow = EngineFlow(workspace=None)
-    engine_flow.workspace = workspace
+    engine_flow = EngineFlow(workspace)
     engine_flow.workspace_steps = [sizer_step, post_sizer_step]
-    engine_flow.engine_db = CloseableDb()
+    monkeypatch.setattr(engine_flow, "engine_db", CloseableDb())
 
     init_seen = []
     run_seen = []
 
     def fake_init_db_engine():
-        init_seen.append(None if engine_flow.engine_db is None else engine_flow.engine_db.engine)
-        if engine_flow.engine_db is None:
+        current_db = engine_flow.engine_db
+        init_seen.append(None if current_db is None else current_db.engine)
+        if current_db is None:
             assert pre_sizer_db_closed == [True]
-            engine_flow.engine_db = SimpleNamespace(engine="post-sizer-db", has_init=lambda: True)
+            monkeypatch.setattr(
+                engine_flow,
+                "engine_db",
+                SimpleNamespace(engine="post-sizer-db", has_init=lambda: True),
+            )
         return True
 
     def fake_tool_run(workspace, step, ecc_module):
@@ -278,6 +284,3 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     assert init_seen == ["pre-sizer-db", None]
     assert pre_sizer_db_closed == [True]
     assert run_seen == [("sizer", "pre-sizer-db"), ("ecc", "post-sizer-db")]
-
-
-

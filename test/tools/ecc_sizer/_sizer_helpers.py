@@ -8,20 +8,21 @@ builder/config tests (`test_module.py`) and the runner/flow tests
 """
 
 import json
+from pathlib import Path
 
 from chipcompiler.data import PDK, OriginDesign, Parameters, Workspace
 
 
 def _workspace(tmp_path):
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(
-            tech="tech.lef",
+            tech=Path("tech.lef"),
             lefs=["std.lef"],
             libs=["slow.lib"],
-            sdc="clock.sdc",
-            spef="route.spef",
+            sdc=Path("clock.sdc"),
+            spef=Path("route.spef"),
         ),
         parameters=Parameters(data={"Bottom layer": "M2", "Top layer": "M7"}),
     )
