@@ -2,9 +2,16 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import ChecklistState, OutputPaths, StepEnum
-from chipcompiler.tools.ecc.checklist import EccStaChecklist
-
+from chipcompiler.data import (
+    ChecklistState,
+    EccOutput,
+    EccStep,
+    OriginDesign,
+    OutputPaths,
+    StepEnum,
+    Workspace,
+)
+from chipcompiler.tools.ecc.checklist import EccRcxChecklist, EccStaChecklist
 
 STA_REPORT_NAMES = (
     "qor_summary.rpt",
@@ -106,3 +113,25 @@ def test_sta_checklist_uses_qor_summary_row_for_timing_status(tmp_path):
     assert _item_state(checker, "check setup timing") == "Failed"
     assert _item_state(checker, "check hold timing") == "Failed"
     assert _item_state(checker, "check frequency requirement") == "Failed"
+
+
+def test_collect_rcx_spef_paths_appends_discovered_spefs_to_live_output_list(tmp_path):
+    # Legacy contract: output.get("spef", []) returned the builder's own list, so
+    # extend(glob(...)) added discovered output-dir SPEFs to step.output.spef in place.
+    # The typed reader must preserve that live-list mutation, not copy.
+    output_dir = tmp_path / "rcx_ecc" / "output"
+    _write(output_dir / "discovered.spef", "* spef\n")
+
+    workspace = Workspace(design=OriginDesign(name="gcd", top_module="gcd"))
+    workspace_step = EccStep(
+        name=StepEnum.RCX.value,
+        output=EccOutput(spef=[], dir=output_dir),
+    )
+    # init_checklist=False: exercise only the SPEF reader, not checklist building.
+    checker = EccRcxChecklist(workspace, workspace_step, init_checklist=False)
+
+    returned = checker.collect_rcx_spef_paths()
+
+    assert returned == [str(output_dir / "discovered.spef")]
+    # the discovered SPEF is reflected on the step's live output list (main parity)
+    assert workspace_step.output.spef == [str(output_dir / "discovered.spef")]

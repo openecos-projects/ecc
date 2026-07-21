@@ -928,8 +928,12 @@ class EccHardenChecklist(EccChecklist):
 
 class EccRcxChecklist(EccChecklist):
     def collect_rcx_spef_paths(self) -> list:
-        spef_value = self.workspace_step.output.spef or []
-        spef_paths: list = [spef_value] if isinstance(spef_value, str) else list(spef_value)
+        spef_value = self.workspace_step.output.spef
+        # Preserve the legacy live-list contract: for the list case, extend the
+        # step's own list in place (a later reader of step.output.spef sees the
+        # discovered output-dir SPEFs); only the legacy string case is wrapped
+        # into a fresh local list.
+        spef_paths: list = [spef_value] if isinstance(spef_value, str) else spef_value
 
         output_dir = self.workspace_step.output.dir or ""
         if output_dir and os.path.isdir(output_dir):
