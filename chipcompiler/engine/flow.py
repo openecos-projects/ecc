@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 import logging
 import os
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 def get_process_rss_mb(pid : int) -> float:
     peak_memory = 0
     try:
-        with open(f"/proc/{pid}/status", 'r') as f:
+        with open(f"/proc/{pid}/status") as f:
             for line in f:
                 if line.startswith("VmRSS:"):
                     rss_kb = int(line.split()[1])

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.tools.klayout_tool.utility import is_eda_exist

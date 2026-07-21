@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import os
 
 from chipcompiler.data import EccStep, StepEnum, Workspace

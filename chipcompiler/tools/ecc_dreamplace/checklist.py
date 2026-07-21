@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import ast
 import glob
 import os
@@ -151,7 +150,7 @@ class DreamplaceChecklist:
             return True
 
         try:
-            with open(path, "r", encoding="utf-8", errors="ignore") as file:
+            with open(path, encoding="utf-8", errors="ignore") as file:
                 content = file.read()
         except OSError:
             return False
@@ -164,7 +163,7 @@ class DreamplaceChecklist:
             return ""
 
         try:
-            with open(path, "r", encoding="utf-8", errors="ignore") as file:
+            with open(path, encoding="utf-8", errors="ignore") as file:
                 return file.read()
         except OSError:
             return ""

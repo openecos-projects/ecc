@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import time
 from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
 
@@ -56,9 +55,7 @@ class YosysSubFlow:
         # end time
         end_time = time.time()
         elapsed_time = end_time - self.start_time
-        runtime = "{}:{}:{}".format(int(elapsed_time // 3600), 
-                                    int((elapsed_time % 3600) // 60), 
-                                    int(elapsed_time % 60))
+        runtime = f"{int(elapsed_time // 3600)}:{int((elapsed_time % 3600) // 60)}:{int(elapsed_time % 60)}"
         
         # set start time
         self.start_time = end_time
@@ -74,7 +71,7 @@ class YosysSubFlow:
         
         try:
             # Read memory usage from /proc/{pid}/status
-            with open(f"/proc/{pid}/status", 'r') as f:
+            with open(f"/proc/{pid}/status") as f:
                 for line in f:
                     if line.startswith("VmRSS:"):
                         # VmRSS is in kB

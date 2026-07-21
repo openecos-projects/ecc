@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 from copy import deepcopy
 from dataclasses import dataclass, field

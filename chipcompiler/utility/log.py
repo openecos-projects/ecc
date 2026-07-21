@@ -1,12 +1,11 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 import os
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
 from datetime import datetime
-from typing import Optional, TextIO
+from typing import TextIO
 import time
 
 
@@ -93,13 +92,13 @@ class Logger:
     def __init__(
         self,
         name: str = "ecc",
-        log_file: Optional[str] = None,
-        log_dir: Optional[str] = None,
+        log_file: str | None = None,
+        log_dir: str | None = None,
         max_bytes: int = 10 * 1024 * 1024,  # 10MB
         backup_count: int = 5,
         level: int = logging.INFO,
-        console_level: Optional[int] = None,
-        file_level: Optional[int] = None,
+        console_level: int | None = None,
+        file_level: int | None = None,
         fmt: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     ):
         self.logger = logging.getLogger(name)
@@ -154,13 +153,13 @@ class Logger:
 
 def create_logger(
     name: str = "ecc",
-    log_file: Optional[str] = None,
-    log_dir: Optional[str] = None,
+    log_file: str | None = None,
+    log_dir: str | None = None,
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
     level: int = logging.INFO,
-    console_level: Optional[int] = None,
-    file_level: Optional[int] = None,
+    console_level: int | None = None,
+    file_level: int | None = None,
     fmt: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 ) -> Logger:
     if log_file is not None and os.path.exists(log_file):

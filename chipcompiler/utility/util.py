@@ -6,7 +6,7 @@ def track_process_memory(pid):
     try:
         # check memory usage every 0.1 second
         while os.path.exists(f"/proc/{pid}/status"):
-            with open(f"/proc/{pid}/status", 'r') as f:
+            with open(f"/proc/{pid}/status") as f:
                 for line in f:
                     if line.startswith("VmRSS:"):
                         # VmRSS is in kB

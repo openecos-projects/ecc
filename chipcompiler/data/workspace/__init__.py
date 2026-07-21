@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields, is_dataclass

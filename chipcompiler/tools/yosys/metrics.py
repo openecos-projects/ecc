@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 from chipcompiler.data import StepMetrics, Workspace, YosysStep, save_metrics
 from chipcompiler.utility import dict_to_str, json_read
 

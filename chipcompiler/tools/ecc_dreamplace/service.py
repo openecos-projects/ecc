@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 from chipcompiler.data import EccStep, Workspace
 from chipcompiler.utility import dict_to_str
 

@@ -1,16 +1,14 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-import sys
 import os
 from pathlib import Path
-       
-from chipcompiler.data import EccStep, WorkspaceStep, Workspace, StateEnum, StepEnum
-from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.tools.ecc.utility import is_eda_exist
-from chipcompiler.tools.ecc.plot import ECCToolsPlot
-from chipcompiler.tools.ecc.metrics import build_step_metrics
-from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
+
+from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.checklist import EccChecklist
+from chipcompiler.tools.ecc.metrics import build_step_metrics
+from chipcompiler.tools.ecc.module import ECCToolsModule
+from chipcompiler.tools.ecc.plot import ECCToolsPlot
+from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
+from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.utility import json_read
 
 
@@ -174,7 +172,7 @@ def create_db_engine(workspace: Workspace,
         ecc_module = load_data()
         if ecc_module is None:
             ecc_module = load_design()
-    except Exception as e:
+    except Exception:
         ecc_module = load_design()
         
     return ecc_module
@@ -319,7 +317,7 @@ def save_data(workspace: Workspace,
     # update parameters
     db_json = json_read(step.feature.db or "")
     if len(db_json) > 0: 
-        from chipcompiler.data.parameter import update_parameters, save_parameter
+        from chipcompiler.data.parameter import save_parameter, update_parameters
         die_bounding_width = db_json.get("Design Layout", {}).get("die_bounding_width", 0)
         die_bounding_height = db_json.get("Design Layout", {}).get("die_bounding_height", 0)
         die_area = db_json.get("Design Layout", {}).get("die_area", 0)
@@ -343,11 +341,9 @@ def save_data(workspace: Workspace,
             "Core": {
                 "Size": [core_bounding_width, core_bounding_height],
                 "Area": core_area,
-                "Bounding box": "({} , {}) ({} , {})".format(
-                    margin[0], 
-                    margin[1], 
-                    core_bounding_width + margin[0], 
-                    core_bounding_height + margin[1]
+                "Bounding box": (
+                    f"({margin[0]} , {margin[1]}) "
+                    f"({core_bounding_width + margin[0]} , {core_bounding_height + margin[1]})"
                 ),
                 "Utilitization": core_usage,
                 "Aspect ratio": aspect_ratio
