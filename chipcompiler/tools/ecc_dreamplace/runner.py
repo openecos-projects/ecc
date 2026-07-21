@@ -49,7 +49,7 @@ def run_step(
     
 def run_placement(workspace: Workspace,
                   step: EccStep,
-                  ecc_module : ECCToolsModule = None) -> bool:
+                  ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run placement
     """
@@ -92,7 +92,7 @@ def run_placement(workspace: Workspace,
 
 def run_legalization(workspace: Workspace,
                      step: EccStep,
-                     ecc_module : ECCToolsModule = None) -> bool:
+                     ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run placement legalization
     """

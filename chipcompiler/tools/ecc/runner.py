@@ -181,7 +181,7 @@ def create_db_engine(workspace: Workspace,
         
 def get_eda_instance(workspace: Workspace,
                      step: EccStep,
-                     ecc_module: ECCToolsModule=None) -> ECCToolsModule:
+                     ecc_module: ECCToolsModule | None = None) -> ECCToolsModule | None:
     """
     ecc_module is ecc module from db engine, 
     eda instacnce may initialize data from this module if ecc_module has been set
@@ -443,7 +443,7 @@ def run_analysis(workspace: Workspace,
 
 def run_net_opt(workspace: Workspace,
                 step: EccStep,
-                ecc_module : ECCToolsModule = None) -> bool:
+                ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run net optimization
     """
@@ -478,7 +478,7 @@ def run_net_opt(workspace: Workspace,
     
 def run_placement(workspace: Workspace,
                   step: EccStep,
-                  ecc_module : ECCToolsModule = None) -> bool:
+                  ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run placement
     """
@@ -509,7 +509,7 @@ def run_placement(workspace: Workspace,
 
 def run_cts(workspace: Workspace,
             step: EccStep,
-            ecc_module : ECCToolsModule = None) -> bool:
+            ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run CTS
     """
@@ -544,7 +544,7 @@ def run_cts(workspace: Workspace,
 
 def run_timing_opt_drv(workspace: Workspace,
                        step: EccStep,
-                       ecc_module : ECCToolsModule = None) -> bool:
+                       ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run timing optization drv
     """
@@ -578,7 +578,7 @@ def run_timing_opt_drv(workspace: Workspace,
 
 def run_timing_opt_hold(workspace: Workspace,
                         step: EccStep,
-                        ecc_module : ECCToolsModule = None) -> bool:
+                        ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run timing optization hold 
     """
@@ -608,7 +608,7 @@ def run_timing_opt_hold(workspace: Workspace,
 
 def run_routing(workspace: Workspace,
                 step: EccStep,
-                ecc_module : ECCToolsModule = None) -> bool:
+                ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run routing
     """
@@ -647,7 +647,7 @@ def run_routing(workspace: Workspace,
 
 def run_drc(workspace: Workspace,
             step: EccStep,
-            ecc_module : ECCToolsModule = None) -> bool:
+            ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run chip drc
     """
@@ -686,7 +686,7 @@ def run_drc(workspace: Workspace,
 
 def run_legalization(workspace: Workspace,
                      step: EccStep,
-                     ecc_module : ECCToolsModule = None) -> bool:
+                     ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run placement legalization
     """
@@ -717,7 +717,7 @@ def run_legalization(workspace: Workspace,
 
 def run_filler(workspace: Workspace,
                step: EccStep,
-               ecc_module : ECCToolsModule = None) -> bool:
+               ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run placement filler
     """
@@ -748,7 +748,7 @@ def run_filler(workspace: Workspace,
 
 def run_floorplan(workspace: Workspace,
                   step: EccStep,
-                  ecc_module : ECCToolsModule = None) -> bool:
+                  ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run floorplan
     """
@@ -927,7 +927,7 @@ def run_floorplan(workspace: Workspace,
 
 def run_harden(workspace: Workspace,
                step: EccStep,
-               ecc_module : ECCToolsModule = None) -> bool:
+               ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run harden, save design as Lef Macro and extract lib
     """
@@ -970,7 +970,7 @@ def run_harden(workspace: Workspace,
 
 def run_rcx(workspace: Workspace,
             step: EccStep,
-            ecc_module : ECCToolsModule = None) -> bool:
+            ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run rcx
     """
@@ -1005,7 +1005,7 @@ def run_rcx(workspace: Workspace,
 
 def run_sta(workspace: Workspace,
             step: EccStep,
-            ecc_module : ECCToolsModule = None) -> bool:
+            ecc_module : ECCToolsModule | None = None) -> bool:
     """
     run sta
     """
