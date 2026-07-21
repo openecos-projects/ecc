@@ -114,7 +114,8 @@ class Logger:
             self.logger.addHandler(console_handler)
             
             if log_file or log_dir:
-                file = log_file if log_file else f"{log_dir}/{name}.{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+                file = (log_file if log_file
+                        else f"{log_dir}/{name}.{time.strftime('%Y-%m-%d_%H-%M-%S')}")
                 file_handler = RotatingFileHandler(
                     file, maxBytes=max_bytes, backupCount=backup_count
                 )

@@ -262,7 +262,8 @@ class EccFloorplanChecklist(EccChecklist):
         subflow = json_read(self.workspace_step.subflow.path or "")
 
         try:
-            with open(self.workspace_step.log.file or "", encoding="utf-8", errors="ignore") as file:
+            with open(self.workspace_step.log.file or "",
+                      encoding="utf-8", errors="ignore") as file:
                 log_text = file.read()
         except OSError:
             log_text = ""
@@ -363,7 +364,8 @@ class EccNetlistOptChecklist(EccChecklist):
         config = json_read(self.workspace.config.get(StepEnum.NETLIST_OPT.value, ""))
 
         try:
-            with open(self.workspace_step.output.verilog or "", encoding="utf-8", errors="ignore") as file:
+            with open(self.workspace_step.output.verilog or "",
+                      encoding="utf-8", errors="ignore") as file:
                 netlist_text = file.read()
         except OSError:
             netlist_text = ""
@@ -511,7 +513,8 @@ class EccTimingOptDrvChecklist(EccChecklist):
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_DRV.value, ""))
 
         try:
-            with open(self.workspace_step.log.file or "", encoding="utf-8", errors="ignore") as file:
+            with open(self.workspace_step.log.file or "",
+                      encoding="utf-8", errors="ignore") as file:
                 log_text = file.read().lower()
         except OSError:
             log_text = ""
@@ -802,7 +805,8 @@ class EccFillerChecklist(EccChecklist):
         config = json_read(self.workspace.config.get(StepEnum.PLACEMENT.value, ""))
 
         try:
-            with open(self.workspace_step.log.file or "", encoding="utf-8", errors="ignore") as file:
+            with open(self.workspace_step.log.file or "",
+                      encoding="utf-8", errors="ignore") as file:
                 log_text = file.read()
         except OSError:
             log_text = ""

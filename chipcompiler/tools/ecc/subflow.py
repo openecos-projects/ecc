@@ -159,7 +159,8 @@ class EccSubFlow:
         # end time
         end_time = time.time()
         elapsed_time = end_time - self.start_time
-        runtime = f"{int(elapsed_time // 3600)}:{int((elapsed_time % 3600) // 60)}:{int(elapsed_time % 60)}"
+        runtime = (f"{int(elapsed_time // 3600)}:"
+                   f"{int((elapsed_time % 3600) // 60)}:{int(elapsed_time % 60)}")
         
         # reset start time
         self.start_time = end_time

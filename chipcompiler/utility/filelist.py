@@ -86,7 +86,8 @@ def _parse_line(line: str, line_num: int) -> str | None:
     if line.startswith('-'):
         option = line.split()[0]
         if option in UNSUPPORTED_OPTIONS:
-            descriptions = '\n'.join(f"  {opt}: {desc}" for opt, desc in UNSUPPORTED_OPTIONS.items())
+            descriptions = '\n'.join(
+                f"  {opt}: {desc}" for opt, desc in UNSUPPORTED_OPTIONS.items())
             raise ValueError(
                 f"Unsupported filelist option at line {line_num}: '{option}'\n"
                 f"The parser does not support:\n"

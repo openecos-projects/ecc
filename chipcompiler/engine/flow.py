@@ -70,7 +70,8 @@ class EngineFlow:
         self.save()
     
     def has_init(self):
-        return True if self.workspace is not None and len(self.workspace.flow.data.get("steps", [])) > 0 else False
+        return (True if self.workspace is not None
+                and len(self.workspace.flow.data.get("steps", [])) > 0 else False)
     
     def init_flow_step(self,
                   step : StepEnum | str,
@@ -285,7 +286,8 @@ class EngineFlow:
         if len(self.workspace_steps) <= 0:
             return False
         
-        # check ecc is initialized by last step, if exist and success, use it to init db engine directly.
+        # check ecc is initialized by last step, if exist and success,
+        # use it to init db engine directly.
         if self.engine_db is None:
             self.engine_db = EngineDB(workspace=self.workspace)
         else:
@@ -319,12 +321,14 @@ class EngineFlow:
         """
         
         for workspace_step in self.workspace_steps: 
-            self.workspace.logger.log_section(f"{workspace_step.tool} - begin step - {workspace_step.name}")
+            self.workspace.logger.log_section(
+                f"{workspace_step.tool} - begin step - {workspace_step.name}")
             self.init_db_engine()
             state = self.run_step(workspace_step, rerun)
             
             log_flow(workspace=self.workspace)
-            self.workspace.logger.log_section(f"{workspace_step.tool} - end step - {workspace_step.name}")
+            self.workspace.logger.log_section(
+                f"{workspace_step.tool} - end step - {workspace_step.name}")
             
             match(state):
                 case StateEnum.Success:
@@ -391,7 +395,8 @@ class EngineFlow:
         memory_monitor.start()
         try:
             from chipcompiler.tools import run_step as run_tool_step
-            result = run_tool_step(workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine)
+            result = run_tool_step(workspace=self.workspace, step=workspace_step,
+                                   ecc_module=self.engine_db.engine)
             self.workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
         except Exception:
             self.workspace.logger.error(f"[STEP] {step_tag} failed with exception")

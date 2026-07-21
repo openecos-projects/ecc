@@ -11,7 +11,8 @@ def build_step_metrics(workspace: Workspace,
     Build and return a StepMetrics instance for the given workspace step.
     """
     # update sub flow metrics state
-    sub_flow = subflow if subflow is not None else EccSubFlow(workspace=workspace, workspace_step=step)
+    sub_flow = (subflow if subflow is not None
+                else EccSubFlow(workspace=workspace, workspace_step=step))
     
     # step matrics
     metrics = None
@@ -93,9 +94,12 @@ def build_metrics_db(workspace: Workspace,
     
     data = json_read(step.feature.db or "")
     if len(data) > 0:
-        metrics["Die area [μm^2]"] = f"{round(data.get('Design Layout', {}).get('die_area', 0.0), 3)}"
-        metrics["Die width [um]"] = f"{data.get('Design Layout', {}).get('die_bounding_width', 0.0)}"
-        metrics["Die height [um]"] = f"{data.get('Design Layout', {}).get('die_bounding_height', 0.0)}"
+        metrics["Die area [μm^2]"] = (
+            f"{round(data.get('Design Layout', {}).get('die_area', 0.0), 3)}")
+        metrics["Die width [um]"] = (
+            f"{data.get('Design Layout', {}).get('die_bounding_width', 0.0)}")
+        metrics["Die height [um]"] = (
+            f"{data.get('Design Layout', {}).get('die_bounding_height', 0.0)}")
         metrics["Die util"] = f"{round(data.get('Design Layout', {}).get('die_usage', 0.0), 2)}"
         metrics["Core util"] = f"{round(data.get('Design Layout', {}).get('core_usage', 0.0), 2)}"
         metrics["Total io pins"] = data.get('Design Statis', {}).get('num_iopins', 0)

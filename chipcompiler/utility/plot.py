@@ -111,7 +111,9 @@ def plot_csv_table(input_path: str, output_path: str=None) -> bool:
         plt.close('all')
         return False
     
-def plot_csv_bar_chart(input_path: str, output_path: str=None, title: str = "Bar Chart", xlabel: str = "Category", ylabel: str = "Value", integer_yaxis: bool = False) -> bool:
+def plot_csv_bar_chart(input_path: str, output_path: str=None, title: str = "Bar Chart",
+                       xlabel: str = "Category", ylabel: str = "Value",
+                       integer_yaxis: bool = False) -> bool:
     """
     Plot bar chart from CSV data and save to output path.
     
@@ -238,7 +240,9 @@ def plot_metrics(metrics: dict, output_path: str=None, col=4) -> bool:
         plt.close('all')
         return False
 
-def plot_bar_chart(data: dict, output_path: str, title: str = "Bar Chart", xlabel: str = "Category", ylabel: str = "Value", integer_yaxis: bool = False) -> bool:
+def plot_bar_chart(data: dict, output_path: str, title: str = "Bar Chart",
+                   xlabel: str = "Category", ylabel: str = "Value",
+                   integer_yaxis: bool = False) -> bool:
     """
     Plot bar chart from data and save to output path.
     

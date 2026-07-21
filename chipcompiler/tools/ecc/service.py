@@ -173,16 +173,20 @@ def build_maps_congestion(workspace: Workspace,
         info["lutrudy-horizontal" ] = {
             "path" : csv2png(json_map.get("lutrudy", {}).get("horizontal", "")),
             "info" : [
-                f"max utilization : {json_util.get('lutrudy', {}).get('max', {}).get('horizontal', 0)}",
-                f"top average : {json_util.get('lutrudy', {}).get('top_average', {}).get('horizontal', 0)}"
+                f"max utilization : "
+                f"{json_util.get('lutrudy', {}).get('max', {}).get('horizontal', 0)}",
+                f"top average : "
+                f"{json_util.get('lutrudy', {}).get('top_average', {}).get('horizontal', 0)}"
             ]
         }
         
         info["lutrudy-vertical" ] = {
             "path" : csv2png(json_map.get("lutrudy", {}).get("vertical", "")),
             "info" : [
-                f"max utilization : {json_util.get('lutrudy', {}).get('max', {}).get('vertical', 0)}",
-                f"top average : {json_util.get('lutrudy', {}).get('top_average', {}).get('vertical', 0)}"
+                f"max utilization : "
+                f"{json_util.get('lutrudy', {}).get('max', {}).get('vertical', 0)}",
+                f"top average : "
+                f"{json_util.get('lutrudy', {}).get('top_average', {}).get('vertical', 0)}"
             ]
         }
         
@@ -190,7 +194,8 @@ def build_maps_congestion(workspace: Workspace,
             "path" : csv2png(json_map.get("lutrudy", {}).get("union", "")),
             "info" : [
                 f"max utilization : {json_util.get('lutrudy', {}).get('max', {}).get('union', 0)}",
-                f"top average : {json_util.get('lutrudy', {}).get('top_average', {}).get('union', 0)}"
+                f"top average : "
+                f"{json_util.get('lutrudy', {}).get('top_average', {}).get('union', 0)}"
             ]
         }
         
@@ -198,8 +203,10 @@ def build_maps_congestion(workspace: Workspace,
         info["rudy-horizontal" ] = {
             "path" : csv2png(json_map.get("rudy", {}).get("horizontal", "")),
             "info" : [
-                f"max utilization : {json_util.get('rudy', {}).get('max', {}).get('horizontal', 0)}",
-                f"top average : {json_util.get('rudy', {}).get('top_average', {}).get('horizontal', 0)}"
+                f"max utilization : "
+                f"{json_util.get('rudy', {}).get('max', {}).get('horizontal', 0)}",
+                f"top average : "
+                f"{json_util.get('rudy', {}).get('top_average', {}).get('horizontal', 0)}"
             ]
         }
         
@@ -207,7 +214,8 @@ def build_maps_congestion(workspace: Workspace,
             "path" : csv2png(json_map.get("rudy", {}).get("vertical", "")),
             "info" : [
                 f"max utilization : {json_util.get('rudy', {}).get('max', {}).get('vertical', 0)}",
-                f"top average : {json_util.get('rudy', {}).get('top_average', {}).get('vertical', 0)}"
+                f"top average : "
+                f"{json_util.get('rudy', {}).get('top_average', {}).get('vertical', 0)}"
             ]
         }
         

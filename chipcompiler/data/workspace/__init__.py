@@ -714,10 +714,12 @@ def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
             resolved_step_directory == workspace_root
             or not path_is_within(resolved_step_directory, workspace_root)
         ):
-            raise ValueError(f"refusing to delete step directory outside workspace: {step_directory}")
+            raise ValueError(
+                f"refusing to delete step directory outside workspace: {step_directory}")
         step_directories.append(resolved_step_directory)
 
-    for step_directory in sorted(set(step_directories), key=lambda path: len(str(path)), reverse=True):
+    for step_directory in sorted(set(step_directories), key=lambda path: len(str(path)),
+                                 reverse=True):
         if not step_directory.exists():
             continue
         if step_directory.is_symlink() or step_directory.is_file():
@@ -1238,7 +1240,8 @@ def create_default_sdc(workspace : Workspace):
     sdc_content.append("\n")
     sdc_content.append("set clk_name {} \n".format(workspace.parameters.data.get("Clock", "")))
     sdc_content.append("set clk_port_name {}\n".format(workspace.parameters.data.get("Clock", "")))
-    sdc_content.append("set clk_freq_mhz {}\n".format(workspace.parameters.data.get("Frequency max [MHz]", 100)))
+    sdc_content.append(
+        "set clk_freq_mhz {}\n".format(workspace.parameters.data.get("Frequency max [MHz]", 100)))
     sdc_content.append("set clk_period [expr 1000.0 / $clk_freq_mhz]\n")
     sdc_content.append("set clk_io_pct 0.2\n")
     sdc_content.append("set clk_port [get_ports $clk_port_name]\n")

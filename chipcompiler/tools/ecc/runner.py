@@ -461,7 +461,8 @@ def run_net_opt(workspace: Workspace,
         
         ecc_module.run_net_opt(config=workspace.config.get(f"{StepEnum.NETLIST_OPT.value}"))
         
-        sub_flow.update_step(step_name=EccSubFlowEnum.run_net_optimization.value, state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_net_optimization.value,
+                             state=StateEnum.Success)
         
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
             
@@ -494,7 +495,8 @@ def run_placement(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module,
+                           report_timing=False)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -559,9 +561,11 @@ def run_timing_opt_drv(workspace: Workspace,
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        ecc_module.run_timing_opt_drv(config=workspace.config.get(f"{StepEnum.TIMING_OPT_DRV.value}", ""))
+        ecc_module.run_timing_opt_drv(
+            config=workspace.config.get(f"{StepEnum.TIMING_OPT_DRV.value}", ""))
         
-        sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_drv.value, state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_drv.value,
+                             state=StateEnum.Success)
         
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
     
@@ -589,9 +593,11 @@ def run_timing_opt_hold(workspace: Workspace,
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        ecc_module.run_timing_opt_hold(config=workspace.config.get(f"{StepEnum.TIMING_OPT_HOLD.value}", ""))
+        ecc_module.run_timing_opt_hold(
+            config=workspace.config.get(f"{StepEnum.TIMING_OPT_HOLD.value}", ""))
         
-        sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_hold.value, state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_timing_opt_hold.value,
+                             state=StateEnum.Success)
         
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
@@ -620,7 +626,8 @@ def run_routing(workspace: Workspace,
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
         
-        if ecc_module.is_rt_timing_enable(config=workspace.config.get(f"{StepEnum.ROUTING.value}", "")):
+        if ecc_module.is_rt_timing_enable(
+                config=workspace.config.get(f"{StepEnum.ROUTING.value}", "")):
             ecc_module.release_sta()
             ecc_module.init_sta(output_dir=(step.data.steps or {}).get(StepEnum.ROUTING.value, ""),
                               top_module=workspace.design.top_module,
@@ -631,7 +638,8 @@ def run_routing(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_routing.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module,
+                           report_timing=False)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -666,7 +674,8 @@ def run_drc(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module,
+                           report_timing=False)
         
         ecc_module.save_drc(feature_path=step.feature.step or "")
    
@@ -700,9 +709,11 @@ def run_legalization(workspace: Workspace,
         
         ecc_module.run_legalize(config=workspace.config.get(f"{StepEnum.LEGALIZATION.value}", ""))
         
-        sub_flow.update_step(step_name=EccSubFlowEnum.run_legalization.value, state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_legalization.value,
+                             state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module,
+                           report_timing=False)
    
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -733,7 +744,8 @@ def run_filler(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module,
+                           report_timing=False)
       
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -785,9 +797,11 @@ def run_floorplan(workspace: Workspace,
             str_die = f"0, 0, {die_area[0]}, {die_area[1]}"
             
             if len(core_area) == 2:
-                str_core = f"{margin[0]}, {margin[1]}, {core_area[0]+margin[0]}, {core_area[1]+margin[1]}"
+                str_core = (f"{margin[0]}, {margin[1]}, "
+                            f"{core_area[0]+margin[0]}, {core_area[1]+margin[1]}")
             else:
-                str_core = f"{margin[0]}, {margin[1]}, {die_area[0]-margin[0]}, {die_area[1]-margin[1]}"
+                str_core = (f"{margin[0]}, {margin[1]}, "
+                            f"{die_area[0]-margin[0]}, {die_area[1]-margin[1]}")
                 
             ecc_module.init_floorplan_by_area(die_area=str_die,
                                             core_area=str_core,
@@ -912,7 +926,8 @@ def run_floorplan(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value,
                              state=StateEnum.Success)
         
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False, report_timing=False)
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module,
+                           feature_step=False, report_timing=False)
             
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -988,7 +1003,8 @@ def run_rcx(workspace: Workspace,
         ecc_module.report_rcx()
         sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
         
-        save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False, report_timing=False)
+        save_data(workspace=workspace, step=step, ecc_module=ecc_module,
+                  feature_step=False, report_timing=False)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 

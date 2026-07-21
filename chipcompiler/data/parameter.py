@@ -90,8 +90,10 @@ SG13G2_PARAMETERS_TEMPLATE = {
             "offset": 0
         },
         "Stripe": [
-            {"layer": "Metal4", "power net": "VDD", "ground net": "VSS", "width": 1.6, "pitch": 20, "offset": 1},
-            {"layer": "Metal5", "power net": "VDD", "ground net": "VSS", "width": 1.6, "pitch": 20, "offset": 1}
+            {"layer": "Metal4", "power net": "VDD", "ground net": "VSS",
+             "width": 1.6, "pitch": 20, "offset": 1},
+            {"layer": "Metal5", "power net": "VDD", "ground net": "VSS",
+             "width": 1.6, "pitch": 20, "offset": 1}
         ],
         "Connect layers": [
             {"layers": ["Metal1", "Metal5"]},
@@ -147,7 +149,8 @@ def get_parameters(pdk_name: str = "", path: Path | None = None) -> Parameters:
 
     return parameters
 
-def get_design_parameters(pdk_name : str, design : str = "", path : Path | None = None) -> Parameters:
+def get_design_parameters(pdk_name : str, design : str = "",
+                          path : Path | None = None) -> Parameters:
     """
     Return parameters resolved by PDK and optional design name.
     """

@@ -79,7 +79,8 @@ def run_placement(workspace: Workspace,
         
         sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
         
-        reslut = ecc_runner.save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False)
+        reslut = ecc_runner.save_data(workspace=workspace, step=step, ecc_module=ecc_module,
+                                      feature_step=False)
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -119,9 +120,11 @@ def run_legalization(workspace: Workspace,
         )
         reslut = dreamplace_module.run_legalization()
         
-        sub_flow.update_step(step_name=EccSubFlowEnum.run_legalization.value, state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_legalization.value,
+                             state=StateEnum.Success)
         
-        reslut = ecc_runner.save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False)
+        reslut = ecc_runner.save_data(workspace=workspace, step=step, ecc_module=ecc_module,
+                                      feature_step=False)
    
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 

@@ -36,11 +36,17 @@ class ECCToolsPlot:
             case StepEnum.LEGALIZATION.value:
                 state = state & self.default_plot()
             case StepEnum.ROUTING.value:
-                state = state & self.default_plot() & self.plot_routing_heatmap() & self.plot_layer_via_distribution() & self.plot_layer_wire_distribution()
+                state = (state & self.default_plot() & self.plot_routing_heatmap()
+                         & self.plot_layer_via_distribution()
+                         & self.plot_layer_wire_distribution())
             case StepEnum.DRC.value:
-                state = state & self.default_plot() & self.plot_drc_statis() & self.plot_layer_via_distribution() & self.plot_layer_wire_distribution()
+                state = (state & self.default_plot() & self.plot_drc_statis()
+                         & self.plot_layer_via_distribution()
+                         & self.plot_layer_wire_distribution())
             case StepEnum.FILLER.value:
-                state = state & self.default_plot() & self.plot_layer_via_distribution() & self.plot_layer_wire_distribution()
+                state = (state & self.default_plot()
+                         & self.plot_layer_via_distribution()
+                         & self.plot_layer_wire_distribution())
                 
             case default:
                 self.workspace.logger.warning(f"Step {self.step.name} not supported for plotting.")
@@ -48,7 +54,8 @@ class ECCToolsPlot:
         return state
     
     def default_plot(self) -> bool:
-        return self.plot_step_metrics() & self.plot_instance_distribution() & self.plot_pin_distribution()
+        return (self.plot_step_metrics() & self.plot_instance_distribution()
+                & self.plot_pin_distribution())
     
     def plot_step_metrics(self) -> bool:
         # generate report image and dscription
@@ -119,7 +126,8 @@ class ECCToolsPlot:
             return
         
         # Filter out invalid paths
-        valid_paths = [path for path in input_paths if path and os.path.exists(path) and path.lower().endswith(".csv")]
+        valid_paths = [path for path in input_paths
+                       if path and os.path.exists(path) and path.lower().endswith(".csv")]
         
         if not valid_paths:
             self.workspace.logger.warning("No valid CSV files found for plotting.")
@@ -180,8 +188,10 @@ class ECCToolsPlot:
                 drc_statis[drc_type] = copy.deepcopy(layer_dict)
                 
                 for layer, layer_data in drc_data.get("layers", {}).items():
-                    drc_statis[drc_type][layer] = drc_statis[drc_type][layer] + layer_data.get("number", 0)
-                    drc_total_dict[layer] = drc_total_dict.get(layer, 0) + + layer_data.get("number", 0)
+                    drc_statis[drc_type][layer] = (drc_statis[drc_type][layer]
+                                                   + layer_data.get("number", 0))
+                    drc_total_dict[layer] = (drc_total_dict.get(layer, 0)
+                                             + + layer_data.get("number", 0))
         
         drc_total_dict["total"] = drc_json.get("drc", {}).get("number", 0)
         drc_statis["total"] = drc_total_dict
@@ -209,7 +219,10 @@ class ECCToolsPlot:
         # Plot the CSV table
         # plot_csv_table(input_path=statis_csv)
         output_path=str(statis_csv).replace(".csv", ".png")
-        plot_csv_bar_chart(input_path=statis_csv, output_path=output_path, title="DRC Violation Distribution by Layer", xlabel="DRC Type", ylabel="Violation Count", integer_yaxis=True)
+        plot_csv_bar_chart(input_path=statis_csv, output_path=output_path,
+                           title="DRC Violation Distribution by Layer",
+                           xlabel="DRC Type", ylabel="Violation Count",
+                           integer_yaxis=True)
 
         self.workspace.home.set_metrics_drc_dist(image_path=output_path)
         
@@ -254,7 +267,8 @@ class ECCToolsPlot:
             
             if success:
                 # update home page metrics
-                if hasattr(self.workspace, 'home') and hasattr(self.workspace.home, 'set_metrics_inst_dist'):
+                if (hasattr(self.workspace, 'home')
+                        and hasattr(self.workspace.home, 'set_metrics_inst_dist')):
                     self.workspace.home.set_metrics_inst_dist(image_path=image_path)
             else:
                 self.workspace.logger.warning("Failed to generate instance distribution plot")
@@ -351,7 +365,8 @@ class ECCToolsPlot:
             
             if success:
                 # update home page metrics
-                if hasattr(self.workspace, 'home') and hasattr(self.workspace.home, 'set_metrics_layer_via_dist'):
+                if (hasattr(self.workspace, 'home')
+                        and hasattr(self.workspace.home, 'set_metrics_layer_via_dist')):
                     self.workspace.home.set_metrics_layer_via_dist(image_path=image_path)
             else:
                 self.workspace.logger.warning("Failed to generate layer via distribution plot")
@@ -400,7 +415,8 @@ class ECCToolsPlot:
             
             if success:
                 # update home page metrics
-                if hasattr(self.workspace, 'home') and hasattr(self.workspace.home, 'set_metrics_layer_wire_dist'):
+                if (hasattr(self.workspace, 'home')
+                        and hasattr(self.workspace.home, 'set_metrics_layer_wire_dist')):
                     self.workspace.home.set_metrics_layer_wire_dist(image_path=image_path)
             else:
                 self.workspace.logger.warning("Failed to generate layer wire distribution plot")

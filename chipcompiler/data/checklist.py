@@ -77,7 +77,8 @@ class Checklist:
             info : str = ""):
         # check if exist
         for check_item in self.data.get("checklist", []):
-            if check_item["step"] == step and check_item["type"] == type and check_item["item"] == item:
+            if (check_item["step"] == step and check_item["type"] == type
+                    and check_item["item"] == item):
                 return
         
         # add to checklist    
@@ -100,7 +101,8 @@ class Checklist:
                info : str = ""):
         # check if exist
         for check_item in self.data.get("checklist", []):
-            if check_item["step"] == step and check_item["type"] == type and check_item["item"] == item:
+            if (check_item["step"] == step and check_item["type"] == type
+                    and check_item["item"] == item):
                 check_item["state"] = self.state_value(state)
                 check_item["info"] = self.check_info(state=state, item=item, info=info)
                 self.save()
