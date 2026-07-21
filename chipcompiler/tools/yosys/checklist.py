@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, WorkspaceStep, YosysStep
+from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, YosysStep
 from chipcompiler.utility import json_read
 from chipcompiler.utility.gzip import read_text_maybe_gzip
 

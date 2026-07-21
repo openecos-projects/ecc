@@ -66,7 +66,9 @@ def build_step(workspace: Workspace,
             dir=output_dir,
             def_=Path(output_def) if output_def else output_dir / f"{design}_{step_name}.def.gz",
             verilog=(
-                Path(output_verilog) if output_verilog else output_dir / f"{design}_{step_name}.v.gz"
+                Path(output_verilog)
+                if output_verilog
+                else output_dir / f"{design}_{step_name}.v.gz"
             ),
             gds=Path(output_gds) if output_gds else output_dir / f"{design}_{step_name}.gds",
             db=output_dir / f"{design}_{step_name}_db",

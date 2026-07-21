@@ -2,11 +2,9 @@
 # -*- encoding: utf-8 -*-
 from chipcompiler.data import (
     EccStep,
-    Workspace,
-    WorkspaceStep,
     StepMetrics,
+    Workspace,
 )
-
 from chipcompiler.tools.ecc.subflow import EccSubFlow
 
 

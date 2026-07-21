@@ -2,18 +2,12 @@
 # -*- encoding: utf-8 -*-
 import os
 
-from chipcompiler.data import (
-    EccStep,
-    Workspace,
-    WorkspaceStep,
-    StepEnum
-)
-
+from chipcompiler.data import EccStep, StepEnum, Workspace
 from chipcompiler.tools.ecc.metrics import build_step_metrics
-
-from chipcompiler.utility import json_read, dict_to_str
+from chipcompiler.utility import dict_to_str, json_read
 from chipcompiler.utility.path import stringify_paths
-    
+
+
 def get_step_info(workspace: Workspace, 
                   step: EccStep,
                   id : str) -> dict:

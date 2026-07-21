@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-from chipcompiler.data import Workspace, WorkspaceStep, YosysStep, StepMetrics, save_metrics
-from chipcompiler.utility import json_read, dict_to_str
+from chipcompiler.data import StepMetrics, Workspace, YosysStep, save_metrics
+from chipcompiler.utility import dict_to_str, json_read
 
 
 def build_step_metrics(workspace: Workspace,

@@ -3,7 +3,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, YosysStep
+from chipcompiler.data import StateEnum, Workspace, YosysStep
 from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow

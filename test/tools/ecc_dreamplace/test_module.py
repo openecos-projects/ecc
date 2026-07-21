@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
 from chipcompiler.tools.ecc_dreamplace.service import get_step_info
 from chipcompiler.utility import json_write

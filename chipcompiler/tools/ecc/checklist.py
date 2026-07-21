@@ -5,14 +5,7 @@ import os
 import re
 from pathlib import Path
 
-from chipcompiler.data import (
-    EccStep,
-    Workspace,
-    WorkspaceStep,
-    Checklist,
-    StepEnum,
-    CheckState
-)
+from chipcompiler.data import Checklist, CheckState, EccStep, StepEnum, Workspace
 from chipcompiler.utility import json_read
 
 STA_REPORT_FILENAMES = (

@@ -401,6 +401,7 @@ def test_ecc_plot_step_metrics_accepts_path_metrics(tmp_path, monkeypatch):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.analysis.metrics is not None
     step.analysis.metrics.write_text("{}", encoding="utf-8")
     calls = []
     monkeypatch.setattr(

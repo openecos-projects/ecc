@@ -14,7 +14,6 @@ from chipcompiler.data import (
     StepInput,
     SubflowState,
     Workspace,
-    WorkspaceStep,
     YosysData,
     YosysFeature,
     YosysOutput,
@@ -210,7 +209,9 @@ def build_step(workspace: Workspace,
             dir=output_dir,
             def_=Path(output_def) if output_def else output_dir / f"{design}_{step_name}.def.gz",
             verilog=(
-                Path(output_verilog) if output_verilog else output_dir / f"{design}_{step_name}.v.gz"
+                Path(output_verilog)
+                if output_verilog
+                else output_dir / f"{design}_{step_name}.v.gz"
             ),
             fixed_verilog=output_dir / f"{design}_{step_name}_fixed.v.gz",
             json=output_dir / f"{design}_{step_name}.json",

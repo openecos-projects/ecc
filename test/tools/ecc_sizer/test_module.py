@@ -514,6 +514,7 @@ def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path
     assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
 
     monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
+    assert step.script.sizer_cmd is not None
     os.remove(step.script.sizer_cmd)
 
     assert sizer_runner.run_step(workspace, step) == StateEnum.Invalid

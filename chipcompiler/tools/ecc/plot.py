@@ -1,20 +1,18 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import concurrent.futures
 import os
 
-import concurrent.futures
 from tqdm import tqdm
-from chipcompiler.data import EccStep, WorkspaceStep, Workspace, Parameters, StepEnum
+
+from chipcompiler.data import EccStep, StepEnum, Workspace
 from chipcompiler.utility import (
-    json_read, 
-    plot_csv_map, 
-    plot_csv_table, 
+    json_read,
     plot_csv_bar_chart,
-    plot_metrics
+    plot_csv_map,
+    plot_metrics,
 )
 
-import matplotlib.pyplot as plt
-import numpy as np
 
 class ECCToolsPlot:
     def __init__(self, workspace: Workspace, step: EccStep):

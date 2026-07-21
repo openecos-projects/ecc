@@ -29,7 +29,7 @@ class SizerSubFlow:
             self.build_sub_flow()
 
     def build_sub_flow(self) -> list[dict]:
-        if len((self.workspace_step.subflow.steps or [])) > 0:
+        if len(self.workspace_step.subflow.steps or []) > 0:
             return self.workspace_step.subflow.steps
 
         steps = [

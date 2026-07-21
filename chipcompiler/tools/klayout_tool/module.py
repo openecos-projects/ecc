@@ -3,10 +3,11 @@
 import os
 from pathlib import Path
 
-from chipcompiler.data import EccOutput, WorkspaceStep, Workspace, StateEnum, StepEnum
-from chipcompiler.utility.path import path_text
-from klayout import db
 from klayout import lay
+
+from chipcompiler.data import EccOutput, Workspace, WorkspaceStep
+from chipcompiler.utility.path import path_text
+
 
 class KlayoutModule:
     def __init__(self, workspace : Workspace, step : WorkspaceStep):

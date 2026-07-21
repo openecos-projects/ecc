@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rosettakit import cmdfile
 
-from chipcompiler.data import EccStep, Workspace, WorkspaceStep
+from chipcompiler.data import EccStep, Workspace
 from chipcompiler.tools.ecc import builder as ecc_builder
 
 from .utility import find_sizer_root
