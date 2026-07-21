@@ -6,12 +6,11 @@ import os
 from pathlib import Path
 
 from chipcompiler.data import (
-    EccStep,
-    Workspace,
-    WorkspaceStep,
-    Checklist,
-    StepEnum,
     CheckState,
+    Checklist,
+    EccStep,
+    StepEnum,
+    Workspace,
 )
 from chipcompiler.utility import json_read
 
