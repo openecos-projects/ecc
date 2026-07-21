@@ -276,7 +276,7 @@ class EngineFlow:
                     and eda_step.name == StepEnum.STA.value \
                     and isinstance(eda_step.output, EccOutput) \
                     and isinstance(pre_step.output, EccOutput):
-                    eda_step.output.spef = pre_step.output.spef or []
+                    eda_step.output.spef = pre_step.output.spef
                 self.workspace_steps.append(eda_step)
                 pre_step = eda_step
             else:

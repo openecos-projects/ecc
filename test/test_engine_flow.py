@@ -2,6 +2,8 @@ import json
 from hashlib import sha256
 from types import SimpleNamespace
 
+import pytest
+
 from chipcompiler import tools
 from chipcompiler.data import (
     EccFeature,
@@ -120,21 +122,33 @@ def test_check_step_result_timing_opt_does_not_require_gds(tmp_path):
     assert EngineFlow(Workspace()).check_step_result(step) is True
 
 
-def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    "spef_paths",
+    [
+        pytest.param([], id="empty"),
+        pytest.param(None, id="nonempty"),  # replaced with tmp_path-based list below
+    ],
+)
+def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path, spef_paths):
     # create_step_workspaces copies the RCX step's spef list onto the following
-    # STA step. Drive it with a stubbed create_step returning prebuilt variants.
+    # STA step. The legacy `get("spef", [])` forwarded the predecessor's own list
+    # object even when empty, so the handoff must preserve object identity (not
+    # substitute a fresh list) for both the empty and nonempty cases.
     import chipcompiler.tools as tools_api
     from chipcompiler.data import OriginDesign
+
+    if spef_paths is None:
+        spef_paths = [tmp_path / "gcd_c.spef", tmp_path / "gcd_r.spef"]
 
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
 
-    spef_paths = [tmp_path / "gcd_c.spef", tmp_path / "gcd_r.spef"]
+    rcx_output = EccOutput(spef=spef_paths)
     prebuilt = {
         StepEnum.RCX.value: EccStep(
-            name=StepEnum.RCX.value, tool="ecc", output=EccOutput(spef=list(spef_paths))
+            name=StepEnum.RCX.value, tool="ecc", output=rcx_output
         ),
         StepEnum.STA.value: EccStep(name=StepEnum.STA.value, tool="ecc"),
     }
@@ -156,4 +170,5 @@ def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path):
 
     sta_step = flow.get_workspace_step(StepEnum.STA.value)
     assert isinstance(sta_step, EccStep)
-    assert sta_step.output.spef == spef_paths  # transferred from the RCX predecessor
+    assert sta_step.output.spef == spef_paths  # content transferred from RCX
+    assert sta_step.output.spef is rcx_output.spef  # same object, per legacy contract
