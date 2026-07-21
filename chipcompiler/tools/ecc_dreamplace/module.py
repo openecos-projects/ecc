@@ -9,6 +9,7 @@ from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
+from chipcompiler.utility.path import optional_path, path_text
 
 
 class DreamplaceModule:
@@ -17,18 +18,18 @@ class DreamplaceModule:
         workspace: Workspace,
         step: WorkspaceStep,
         ecc_module: ECCToolsModule,
-        input_def: str | Path | None,
-        input_verilog: str | Path | None,
-        output_def: str | Path | None,
-        output_verilog: str | Path | None,
+        input_def: Path | None,
+        input_verilog: Path | None,
+        output_def: Path | None,
+        output_verilog: Path | None,
     ):
         self.workspace = workspace
         self.step = step
         self.ecc_module = ecc_module
-        self.input_def = str(input_def or "")
-        self.input_verilog = str(input_verilog or "")
-        self.output_def = str(output_def or "")
-        self.output_verilog = str(output_verilog or "")
+        self.input_def = optional_path(input_def)
+        self.input_verilog = optional_path(input_verilog)
+        self.output_def = optional_path(output_def)
+        self.output_verilog = optional_path(output_verilog)
         self.param_path = workspace.config["dreamplace"]
         self.result_dir = str(step.data.workdir_for(step.name))
 
@@ -38,8 +39,11 @@ class DreamplaceModule:
 
         params = params_cls()
         params.fromJson(config)
-        params.def_input = self.input_def
-        params.verilog_input = self.input_verilog
+        # DREAMPlace's Params.def_input/verilog_input feed a std::string C++
+        # option (place_io) and are json.dump-ed by Params.dump, so normalize to
+        # str at this native boundary (path_text: None -> "").
+        params.def_input = path_text(self.input_def)
+        params.verilog_input = path_text(self.input_verilog)
         params.result_dir = self.result_dir
         params.base_design_name = self.workspace.design.name
         params.with_sta = False
