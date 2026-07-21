@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-from dataclasses import dataclass, field
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from chipcompiler.utility.path import optional_path, path_list

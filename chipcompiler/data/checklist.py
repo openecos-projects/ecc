@@ -4,6 +4,7 @@ from pathlib import Path
 
 from chipcompiler.utility import json_read, json_write
 
+
 class CheckState(Enum):
     """checklist state"""
     Unstart = "Unstart" # checked unstart

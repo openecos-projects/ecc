@@ -8,7 +8,6 @@ from pathlib import Path
 from chipcompiler.engine import EngineFlow, SignoffPackageOptions
 from chipcompiler.runtime.workspace_api import RuntimeApiError
 
-
 _REVIEW_GROUPS = (
     ("initial", "Initial"),
     ("config", "Config"),

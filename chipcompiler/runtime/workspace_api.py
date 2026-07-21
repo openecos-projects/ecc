@@ -15,8 +15,8 @@ from chipcompiler.runtime.requests import (
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
     WorkspaceIdRequest,
-    WorkspaceInspectSignoffRequest,
     WorkspaceInfoRequest,
+    WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
     WorkspaceSyncConfigRequest,
 )

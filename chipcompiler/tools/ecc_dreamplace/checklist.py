@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 
 from chipcompiler.data import (
-    CheckState,
     Checklist,
+    CheckState,
     EccStep,
     StepEnum,
     Workspace,

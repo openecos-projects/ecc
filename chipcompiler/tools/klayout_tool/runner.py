@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 from chipcompiler.data import Workspace, WorkspaceStep
-from chipcompiler.tools.klayout_tool.utility import is_eda_exist
 from chipcompiler.tools.klayout_tool.module import KlayoutModule
+from chipcompiler.tools.klayout_tool.utility import is_eda_exist
+
 
 def run_step():
     pass

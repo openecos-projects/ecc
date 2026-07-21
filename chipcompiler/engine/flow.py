@@ -259,7 +259,7 @@ class EngineFlow:
                 input_verilog = pre_step.output.verilog
                 input_db = pre_step.output.db
 
-            from chipcompiler.tools import create_step, run_step
+            from chipcompiler.tools import create_step
             # create workspace step
             eda_step = create_step(workspace=self.workspace,
                                    step=step["name"],

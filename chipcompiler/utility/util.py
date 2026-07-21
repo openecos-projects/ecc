@@ -1,6 +1,7 @@
 import os
 import time
 
+
 def track_process_memory(pid):
     peak_rss_kb = 0
     try:
@@ -14,7 +15,7 @@ def track_process_memory(pid):
                         peak_rss_kb = max(peak_rss_kb, rss_kb)
                         break
             time.sleep(0.1)
-    except Exception as e:
+    except Exception:
         # ignore errors
         pass
     return peak_rss_kb

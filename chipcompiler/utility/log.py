@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-import os
 import logging
-from logging.handlers import RotatingFileHandler
+import os
 import sys
-from datetime import datetime
-from typing import TextIO
 import time
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
+from typing import TextIO
 
 
 #TODO: Move some functions to Logger Module

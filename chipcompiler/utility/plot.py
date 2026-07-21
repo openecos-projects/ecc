@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 import os
+
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use('Agg')  # Use non-interactive backend for multi-threading
 import matplotlib.pyplot as plt
 
@@ -64,7 +66,7 @@ def plot_csv_map(input_path : str, output_path : str=None) -> bool:
         plt.close(fig)
         
         return True
-    except Exception as e:
+    except Exception:
         plt.close('all')
         return False
     
@@ -107,7 +109,7 @@ def plot_csv_table(input_path: str, output_path: str=None) -> bool:
         plt.close(fig)
         
         return True
-    except Exception as e:
+    except Exception:
         plt.close('all')
         return False
     
@@ -165,7 +167,7 @@ def plot_csv_bar_chart(input_path: str, output_path: str=None, title: str = "Bar
         plt.close(fig)
         
         return True
-    except Exception as e:
+    except Exception:
         plt.close('all')
         return False
     

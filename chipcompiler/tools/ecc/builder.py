@@ -11,9 +11,7 @@ from chipcompiler.data import (
     EccScript,
     EccStep,
     LogPaths,
-    Parameters,
     StaReportPaths,
-    StateEnum,
     StepEnum,
     StepInput,
     SubflowState,
@@ -22,6 +20,7 @@ from chipcompiler.data import (
     build_workspace_config_paths,
     update_step_config,
 )
+
 
 def build_step(workspace: Workspace,
                step_name: str,

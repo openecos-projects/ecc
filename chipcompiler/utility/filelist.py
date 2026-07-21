@@ -24,7 +24,6 @@ Example filelist content:
 
 import os
 
-
 UNSUPPORTED_OPTIONS = {
     '-f': 'Recursive filelist files',
     '-v': 'Library files',

@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 
-from chipcompiler.data import (
-    StepEnum,
-    StateEnum
-)
+from chipcompiler.data import StateEnum, StepEnum
+
 
 def build_rtl2gds_flow() -> list:
     steps = []

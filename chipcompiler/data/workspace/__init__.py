@@ -4,22 +4,22 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Final
-from ..parameter import (
-    Parameters,
-    get_parameters, 
-    save_parameter, 
-    load_parameter,
-    update_parameters
-)
+
+from chipcompiler.utility import Logger, create_logger, dict_to_str
+from chipcompiler.utility.filelist import parse_filelist, parse_incdir_directives, resolve_path
+from chipcompiler.utility.path import path_is_within, path_text
 
 from ..home import HomeData
-
-from ..pdk import get_pdk, PDK
+from ..parameter import (
+    Parameters,
+    get_parameters,
+    load_parameter,
+    save_parameter,
+    update_parameters,
+)
+from ..pdk import PDK, get_pdk
 from ..step import StateEnum, StepEnum
 from .layout import EccData, WorkspaceStepBase
-from chipcompiler.utility import Logger, create_logger, dict_to_str
-from chipcompiler.utility.filelist import parse_filelist, resolve_path, parse_incdir_directives
-from chipcompiler.utility.path import path_is_within, path_text
 
 # The shared step type used as the annotation/constructor across the codebase.
 WorkspaceStep = WorkspaceStepBase
@@ -987,7 +987,7 @@ def create_workspace(directory : str | Path,
 
     try:
         workspace_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as error:
+    except OSError:
         return None
     
     # create workspace instance

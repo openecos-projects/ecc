@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import time
-from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
+
+from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
+
 
 class YosysSubFlow:
     def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):
@@ -80,7 +82,7 @@ class YosysSubFlow:
                         # Convert to MB
                         peak_memory = rss_kb / 1024
                         break
-        except Exception as e:
+        except Exception:
             # Ignore errors, return 0 if failed
             pass
         

@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-from chipcompiler.data import Workspace, WorkspaceStep, StateEnum, StepEnum
-
 from enum import Enum
+
+from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep
+
 
 class EccSubFlowEnum(Enum):
     load_data = "load data"
@@ -28,6 +29,7 @@ class EccSubFlowEnum(Enum):
     run_sta = "run sta"
 
 import time
+
 
 class EccSubFlow:
     def __init__(self, workspace : Workspace, workspace_step: WorkspaceStep):
@@ -184,7 +186,7 @@ class EccSubFlow:
                         # Convert to MB
                         peak_memory = rss_kb / 1024
                         break
-        except Exception as e:
+        except Exception:
             # Ignore errors, return 0 if failed
             pass
         

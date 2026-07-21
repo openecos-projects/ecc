@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
-from enum import Enum
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+
 
 class StepEnum(Enum):
     """RTL2GDS flow step names"""

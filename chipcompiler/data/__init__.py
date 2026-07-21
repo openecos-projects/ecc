@@ -1,3 +1,5 @@
+from .checklist import Checklist, CheckState
+from .home import HomeData
 from .parameter import (
     Parameters,
     get_design_parameters,
@@ -7,6 +9,28 @@ from .parameter import (
 )
 from .pdk import PDK, get_pdk
 from .step import StateEnum, StepEnum, StepMetrics, load_metrics, save_metrics
+from .workspace import (
+    OriginDesign,
+    Workspace,
+    WorkspaceStep,
+    build_workspace_config_paths,
+    create_default_sdc,
+    create_workspace,
+    init_workspace_config,
+    load_workspace,
+    log_flow,
+    log_parameters,
+    log_workspace,
+    log_workspace_step,
+    prepare_workspace_for_rerun,
+    refresh_workspace_config,
+    step_config_keys,
+    step_config_paths,
+    sync_workspace_config_to_parameters,
+    update_step_config,
+    workspace_config_path,
+    workspace_config_paths,
+)
 from .workspace.layout import (
     AnalysisPaths,
     ChecklistState,
@@ -33,35 +57,6 @@ from .workspace.layout import (
     YosysReport,
     YosysStep,
 )
-from .workspace import (
-    OriginDesign,
-    Workspace,
-    WorkspaceStep,
-    build_workspace_config_paths,
-    create_default_sdc,
-    create_workspace,
-    init_workspace_config,
-    load_workspace,
-    log_workspace,
-    log_parameters,
-    prepare_workspace_for_rerun,
-    refresh_workspace_config,
-    sync_workspace_config_to_parameters,
-    log_flow,
-    log_workspace_step,
-    step_config_keys,
-    step_config_paths,
-    update_step_config,
-    workspace_config_path,
-    workspace_config_paths,
-)
-
-from .checklist import (
-    Checklist,
-    CheckState
-)
-
-from .home import HomeData
 
 __all__ = [
     'create_workspace',
