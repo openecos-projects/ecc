@@ -1,20 +1,10 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import re
 from csv import reader as csv_reader
 from math import ceil, isfinite
 from pathlib import Path
 
-from chipcompiler.data import (
-    Workspace, 
-    WorkspaceStep, 
-    StepMetrics, 
-    StepEnum,
-    StateEnum
-)
-from chipcompiler.utility import json_read, json_write, dict_to_str
-
-from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
+from chipcompiler.data import StateEnum, StepEnum, StepMetrics, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     read_sta_qor_summary,
@@ -23,7 +13,8 @@ from chipcompiler.tools.ecc.sta_qor import (
     sta_timing_paths_paths,
     temperature_token,
 )
-
+from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
+from chipcompiler.utility import dict_to_str, json_read, json_write
 
 QOR_METRIC_MAP = {
     "Cell area": {
@@ -515,6 +506,8 @@ QOR_BLOCKING_METRIC_EXPECTATIONS = {
     "sta_hold_wns": (">=", 0),
     "sta_hold_tns": (">=", 0),
 }
+
+QOR_ANALYSIS_REVISION = "current-feature-v1"
 
 QOR_HOTSPOT_METRIC_HINTS = {
     "place_congestion_egr_overflow_total": {
@@ -1783,7 +1776,11 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
         step_role = "primary" if metric_id.startswith("place_") else "secondary"
     elif step.name == StepEnum.CTS.value:
         scope = "cts"
-        step_role = "primary" if metric_id.startswith("cts_") or metric_id == "clock_wirelength" else "secondary"
+        step_role = (
+            "primary"
+            if metric_id.startswith("cts_") or metric_id == "clock_wirelength"
+            else "secondary"
+        )
     elif step.name == StepEnum.LEGALIZATION.value:
         scope = "legalization"
         step_role = "primary"
@@ -2290,6 +2287,7 @@ def build_qor_metrics_payload(workspace: Workspace,
 
     payload = {
         "schema_version": 3,
+        "analysis_revision": QOR_ANALYSIS_REVISION,
         "tool": step.tool,
         "step": step.name,
         "design": workspace.design.name,
@@ -2346,9 +2344,7 @@ def _qor_evidence(source=None,
                   diagnosis: str | None = None,
                   availability: str | None = None) -> dict:
     evidence = {}
-    if _is_feature_source(source):
-        evidence["source"] = source
-    elif isinstance(source, dict):
+    if _is_feature_source(source) or isinstance(source, dict):
         evidence["source"] = source
     if operator is not None:
         evidence["expected"] = {"operator": operator, "value": threshold}
@@ -2873,6 +2869,7 @@ def build_qor_summary_payload(workspace: Workspace,
 
     summary = {
         "schema_version": 3,
+        "analysis_revision": QOR_ANALYSIS_REVISION,
         "tool": step.tool,
         "step": step.name,
         "design": workspace.design.name,
@@ -3026,6 +3023,7 @@ def build_qor_hotspots_payload(workspace: Workspace,
 
     return {
         "schema_version": 3,
+        "analysis_revision": QOR_ANALYSIS_REVISION,
         "tool": step.tool,
         "step": step.name,
         "design": workspace.design.name,
@@ -3119,7 +3117,11 @@ def build_step_metrics(workspace: Workspace,
     Build and return a StepMetrics instance for the given workspace step.
     """
     # update sub flow metrics state
-    sub_flow = subflow if subflow is not None else EccSubFlow(workspace=workspace, workspace_step=step)
+    sub_flow = (
+        subflow
+        if subflow is not None
+        else EccSubFlow(workspace=workspace, workspace_step=step)
+    )
     
     # step matrics
     metrics = None

@@ -6,7 +6,10 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.runtime import signoff_export
-from chipcompiler.runtime.requests import WorkspaceExportSignoffRequest
+from chipcompiler.runtime.requests import (
+    WorkspaceExportSignoffRequest,
+    WorkspaceInspectSignoffRequest,
+)
 from chipcompiler.runtime.sessions import WorkspaceSessionRegistry
 from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
 
@@ -218,6 +221,66 @@ def test_inspect_signoff_package_returns_grouped_review_with_actionable_details(
     )
 
 
+def test_inspect_signoff_package_groups_current_qor_analysis_risks(monkeypatch):
+    class FakeFlow:
+        def __init__(self, workspace):
+            assert workspace == "workspace"
+
+        def collect_signoff_package(self, options):
+            assert options.archive is False
+            assert options.materialize is False
+            return SimpleNamespace(
+                copied=[],
+                missing_required=["analysis/Harden/qor_summary.json"],
+                missing_optional=["analysis/place/qor_summary.json"],
+                warnings=["current QoR analysis requires attention"],
+                issues=[
+                    SimpleNamespace(
+                        kind="analysis",
+                        label="final_package_complete",
+                        location="Harden_ecc/analysis/qor_summary.json",
+                        reason="harden_artifact_missing_count actual=1 does not satisfy 0",
+                        required=True,
+                        destination="analysis/Harden/qor_summary.json",
+                    ),
+                    SimpleNamespace(
+                        kind="freshness",
+                        label="place_overflow",
+                        location="place_dreamplace/analysis/qor_summary.json",
+                        reason="The required current QoR metric is unavailable.",
+                        required=False,
+                        destination="analysis/place/qor_summary.json",
+                    ),
+                ],
+            )
+
+    monkeypatch.setattr(signoff_export, "EngineFlow", FakeFlow)
+
+    review = signoff_export.inspect_signoff_package("workspace")
+
+    assert review["status"] == "blocked"
+    harden = next(group for group in review["groups"] if group["id"] == "harden")
+    assert harden["status"] == "blocked"
+    assert harden["available"] == 0
+    assert harden["expected"] == 0
+    assert harden["summary"] == "Current QoR analysis blocks signoff"
+    blocked = next(risk for risk in review["risks"] if risk["severity"] == "blocked")
+    assert blocked["details"] == [
+        {
+            "kind": "analysis",
+            "label": "final_package_complete",
+            "location": "Harden_ecc/analysis/qor_summary.json",
+            "reason": "harden_artifact_missing_count actual=1 does not satisfy 0",
+        }
+    ]
+    report_warning = next(
+        risk
+        for risk in review["risks"]
+        if risk["title"] == "Reports QoR analysis requires attention"
+    )
+    assert report_warning["details"][0]["kind"] == "freshness"
+
+
 def test_workspace_inspect_signoff_waits_for_session_mutation_lock(monkeypatch, tmp_path):
     workspace = SimpleNamespace(directory=tmp_path / "workspace")
     sessions = WorkspaceSessionRegistry()
@@ -232,14 +295,9 @@ def test_workspace_inspect_signoff_waits_for_session_mutation_lock(monkeypatch, 
 
     monkeypatch.setattr(signoff_export, "inspect_signoff_package", fake_inspect)
     api = WorkspaceRuntimeApi(sessions=sessions)
-    request_class = getattr(
-        __import__("chipcompiler.runtime.requests", fromlist=["WorkspaceInspectSignoffRequest"]),
-        "WorkspaceInspectSignoffRequest",
-    )
-
     def run_inspection():
         try:
-            results.put(api.inspect_signoff(request_class(workspace_id=session.workspace_id)))
+            results.put(api.inspect_signoff(WorkspaceInspectSignoffRequest(workspace_id=session.workspace_id)))
         except BaseException as error:  # pragma: no cover - re-raised below
             results.put(error)
 

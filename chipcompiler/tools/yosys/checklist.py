@@ -50,6 +50,10 @@ class YosysChecklist:
     def build_checklist(self) -> list:
         checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
         step = StepEnum(self.workspace_step.name)
+        checklist.replace_step(step.value)
+        replace_home_step = getattr(self.workspace.home, "replace_checklist_step", None)
+        if callable(replace_home_step):
+            replace_home_step(step.value)
         self.add_items(checklist=checklist, step=step)
 
         self.workspace_step.checklist["checklist"] = checklist.data

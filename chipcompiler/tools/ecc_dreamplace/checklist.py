@@ -63,19 +63,12 @@ class DreamplaceChecklist:
     def build_checklist(self) -> list:
         checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
         step = StepEnum(self.workspace_step.name)
-        self.remove_stale_items(checklist=checklist, step=step)
+        checklist.replace_step(step.value)
+        replace_home_step = getattr(self.workspace.home, "replace_checklist_step", None)
+        if callable(replace_home_step):
+            replace_home_step(step.value)
         self.add_items(checklist=checklist, step=step)
         self.workspace_step.checklist["checklist"] = checklist.data
-
-    def remove_stale_items(self, checklist: Checklist, step: StepEnum):
-        valid_items = set(self.CHECKLIST_ITEMS.get(step, []))
-        checklist.data["checklist"] = [
-            check_item
-            for check_item in checklist.data.get("checklist", [])
-            if check_item.get("step", "") != step.value
-            or (check_item.get("type", ""), check_item.get("item", "")) in valid_items
-        ]
-        checklist.save()
 
     def save(self) -> bool:
         checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
