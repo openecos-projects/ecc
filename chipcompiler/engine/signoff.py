@@ -8,17 +8,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from chipcompiler.data import StateEnum, StepEnum, Workspace
-
-STA_REPORT_FILENAMES = (
-    "qor_summary.rpt",
-    "timing_max_in2out.rpt",
-    "timing_max_in2reg.rpt",
-    "timing_max_reg2out.rpt",
-    "timing_max_reg2reg.rpt",
-    "timing_min_in2out.rpt",
-    "timing_min_in2reg.rpt",
-    "timing_min_reg2out.rpt",
-    "timing_min_reg2reg.rpt",
+from chipcompiler.tools.ecc.sta_qor import (
+    STA_QOR_SUMMARY_FILENAME,
+    STA_REPORT_FILENAMES,
+    STA_TIMING_PATHS_FILENAME,
+    sta_artifact_directory,
 )
 
 
@@ -281,17 +275,22 @@ class SignoffPackageCollector:
             expected_spefs.add(
                 f"{top_module}_{item['rcx_corner']}_{self._temperature_token(item['temperature'])}C.spef"
             )
-            report_dir = (
-                workspace_dir
-                / "sta_ecc"
-                / "output"
-                / f"{item['lib_corner']}_{self._temperature_token(item['temperature'])}"
-                / item["rcx_corner"]
+            report_dir = sta_artifact_directory(
+                workspace_dir / "sta_ecc" / "report",
+                item["lib_corner"],
+                item["temperature"],
+                item["rcx_corner"],
+            )
+            feature_dir = sta_artifact_directory(
+                workspace_dir / "sta_ecc" / "feature",
+                item["lib_corner"],
+                item["temperature"],
+                item["rcx_corner"],
             )
             report_dest = (
                 f"final/timing/sta/{item['lib_corner']}_"
                 f"{self._temperature_token(item['temperature'])}/"
-                f"{item['rcx_corner']}"
+                f"{item['rcx_corner']}/report"
             )
             for report_name in STA_REPORT_FILENAMES:
                 add_file(
@@ -309,6 +308,21 @@ class SignoffPackageCollector:
                     destination=f"{report_dest}/{report_path.name}",
                 )
             item["report"] = f"{report_dest}/qor_summary.rpt"
+            feature_dest = report_dest.removesuffix("/report") + "/feature"
+            add_file(
+                role="final.sta_qor_summary",
+                source=feature_dir / STA_QOR_SUMMARY_FILENAME,
+                destination=f"{feature_dest}/{STA_QOR_SUMMARY_FILENAME}",
+                required=True,
+            )
+            add_file(
+                role="final.sta_timing_paths",
+                source=feature_dir / STA_TIMING_PATHS_FILENAME,
+                destination=f"{feature_dest}/{STA_TIMING_PATHS_FILENAME}",
+                required=True,
+            )
+            item["qor_summary"] = f"{feature_dest}/{STA_QOR_SUMMARY_FILENAME}"
+            item["timing_paths"] = f"{feature_dest}/{STA_TIMING_PATHS_FILENAME}"
 
         rcx_output_dir = workspace_dir / "RCX_ecc" / "output"
         spef_paths = sorted(rcx_output_dir.glob("*.spef")) if rcx_output_dir.is_dir() else []
@@ -387,9 +401,7 @@ class SignoffPackageCollector:
             )
         issues.extend(self._checklist_issues(checklist_data))
 
-        qor_metrics = self._read_json(
-            workspace_dir / "drc_ecc" / "analysis" / "qor_metrics.json"
-        )
+        qor_metrics = self._read_json(workspace_dir / "drc_ecc" / "analysis" / "qor_metrics.json")
         ok = len(missing_required) == 0
         flow_success = all(state == StateEnum.Success.value for state in required_steps.values())
         summary = {
@@ -576,9 +588,8 @@ class SignoffPackageCollector:
         materialize: bool,
     ) -> None:
         patterns = [
-            "*_ecc/feature/*",
+            "*_ecc/feature/**/*",
             "*_ecc/subflow.json",
-            "sta_ecc/output/**/wire_paths/*",
         ]
         for pattern in patterns:
             for path_text in sorted(glob.glob(str(workspace_dir / pattern), recursive=True)):

@@ -77,9 +77,17 @@ def _make_signoff_workspace(
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.png")
     _write(workspace_dir / "RCX_ecc" / "output" / f"{top_module}_RCworst_125C.spef")
 
-    sta_dir = workspace_dir / "sta_ecc" / "output" / "MAX_125" / "RCworst"
+    sta_dir = workspace_dir / "sta_ecc" / "report" / "MAX_125" / "RCworst"
     for report_name in STA_REPORT_NAMES:
         _write(sta_dir / report_name, f"{report_name}\n")
+    _write_json(
+        workspace_dir / "sta_ecc" / "feature" / "MAX_125" / "RCworst" / "qor_summary.json",
+        {"path_groups": [], "summary": {"setup": {}, "hold": {}}},
+    )
+    _write_json(
+        workspace_dir / "sta_ecc" / "feature" / "MAX_125" / "RCworst" / "timing_paths.json",
+        {"schema_version": 1, "corner": "MAX_125/RCworst", "path_limit": 20, "paths": []},
+    )
 
     _write_json(
         workspace_dir / "route_ecc" / "analysis" / "qor_metrics.json",
@@ -145,8 +153,15 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     summary = json.loads((package_dir / "summary.json").read_text())
     assert summary["final"]["verilog"] == "final/design/gcd.v.gz"
     assert summary["qor_metrics"]["schema_version"] == 3
-    assert summary["sta_matrix"][0]["report"] == (
-        "final/timing/sta/MAX_125/RCworst/qor_summary.rpt"
+    assert (
+        summary["sta_matrix"][0]["report"]
+        == "final/timing/sta/MAX_125/RCworst/report/qor_summary.rpt"
+    )
+    assert summary["sta_matrix"][0]["qor_summary"] == (
+        "final/timing/sta/MAX_125/RCworst/feature/qor_summary.json"
+    )
+    assert summary["sta_matrix"][0]["timing_paths"] == (
+        "final/timing/sta/MAX_125/RCworst/feature/timing_paths.json"
     )
 
     manifest = json.loads((package_dir / "manifest.json").read_text())
@@ -154,7 +169,11 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     assert "final/design/gcd.def.gz" in destinations
     assert "final/reports/route/analysis/qor_metrics.json" in destinations
     assert {
-        f"final/timing/sta/MAX_125/RCworst/{report_name}" for report_name in STA_REPORT_NAMES
+        f"final/timing/sta/MAX_125/RCworst/report/{report_name}" for report_name in STA_REPORT_NAMES
+    }.issubset(destinations)
+    assert {
+        "final/timing/sta/MAX_125/RCworst/feature/qor_summary.json",
+        "final/timing/sta/MAX_125/RCworst/feature/timing_paths.json",
     }.issubset(destinations)
     assert all(".tsv" not in destination for destination in destinations)
 
@@ -174,30 +193,63 @@ def test_collect_signoff_package_uses_top_module_for_rcx_spef(tmp_path):
 
 def test_collect_signoff_package_requires_qor_summary_for_each_sta_corner(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    (workspace_dir / "sta_ecc" / "output" / "MAX_125" / "RCworst" / "qor_summary.rpt").unlink()
+    (workspace_dir / "sta_ecc" / "report" / "MAX_125" / "RCworst" / "qor_summary.rpt").unlink()
     engine_flow = _make_engine_flow(workspace_dir)
 
     result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=False))
 
     assert result.ok is False
-    assert "final/timing/sta/MAX_125/RCworst/qor_summary.rpt" in result.missing_required
+    assert "final/timing/sta/MAX_125/RCworst/report/qor_summary.rpt" in result.missing_required
 
 
 def test_collect_signoff_package_requires_each_sta_path_report(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     report_name = "timing_min_in2out.rpt"
-    (workspace_dir / "sta_ecc" / "output" / "MAX_125" / "RCworst" / report_name).unlink()
+    (workspace_dir / "sta_ecc" / "report" / "MAX_125" / "RCworst" / report_name).unlink()
 
     result = _make_engine_flow(workspace_dir).collect_signoff_package(
         SignoffPackageOptions(archive=False, materialize=False)
     )
 
     assert result.ok is False
-    assert f"final/timing/sta/MAX_125/RCworst/{report_name}" in result.missing_required
+    assert f"final/timing/sta/MAX_125/RCworst/report/{report_name}" in result.missing_required
     assert any(
-        issue.location == f"sta_ecc/output/MAX_125/RCworst/{report_name}" and issue.required
+        issue.location == f"sta_ecc/report/MAX_125/RCworst/{report_name}" and issue.required
         for issue in result.issues
     )
+
+
+def test_collect_signoff_package_requires_each_sta_structured_artifact(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    timing_paths = (
+        workspace_dir / "sta_ecc" / "feature" / "MAX_125" / "RCworst" / "timing_paths.json"
+    )
+    timing_paths.unlink()
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert "final/timing/sta/MAX_125/RCworst/feature/timing_paths.json" in result.missing_required
+    assert any(
+        issue.location == "sta_ecc/feature/MAX_125/RCworst/timing_paths.json" and issue.required
+        for issue in result.issues
+    )
+
+
+def test_collect_signoff_package_rejects_obsolete_sta_output_directory(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    report_root = workspace_dir / "sta_ecc" / "report"
+    output_root = workspace_dir / "sta_ecc" / "output"
+    report_root.rename(output_root)
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert "final/timing/sta/MAX_125/RCworst/report/qor_summary.rpt" in result.missing_required
 
 
 def test_collect_signoff_package_ignores_harden_tsv_resource(tmp_path):

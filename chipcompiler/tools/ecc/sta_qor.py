@@ -5,7 +5,6 @@ from pathlib import Path
 from chipcompiler.data import StepEnum, Workspace
 from chipcompiler.utility import json_read
 
-
 STA_TEXT_REPORT_FILENAMES = (
     "qor_summary.rpt",
     "timing_max_in2out.rpt",
@@ -152,13 +151,8 @@ def _artifact_paths(workspace: Workspace, root, filename: str) -> list[tuple[str
     return paths
 
 
-def sta_qor_summary_paths(workspace: Workspace,
-                           feature_root,
-                           legacy_output_root=None) -> list[tuple[str, Path]]:
-    feature_paths = _artifact_paths(workspace, feature_root, STA_QOR_SUMMARY_FILENAME)
-    if legacy_output_root is None or any(path.is_file() for _, path in feature_paths):
-        return feature_paths
-    return _artifact_paths(workspace, legacy_output_root, STA_QOR_SUMMARY_FILENAME)
+def sta_qor_summary_paths(workspace: Workspace, feature_root) -> list[tuple[str, Path]]:
+    return _artifact_paths(workspace, feature_root, STA_QOR_SUMMARY_FILENAME)
 
 
 def sta_timing_paths_paths(workspace: Workspace,

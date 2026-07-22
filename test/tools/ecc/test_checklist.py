@@ -6,7 +6,6 @@ from chipcompiler.data import StepEnum
 from chipcompiler.tools.ecc.checklist import EccStaChecklist
 from chipcompiler.tools.ecc.sta_qor import sta_qor_summary_paths
 
-
 STA_REPORT_NAMES = (
     "qor_summary.rpt",
     "timing_max_in2out.rpt",
@@ -223,20 +222,17 @@ def test_sta_checklist_rejects_malformed_timing_paths_json(tmp_path):
     assert _item_state(checker, "check STA timing path data") == "Failed"
 
 
-def test_sta_summary_legacy_fallback_is_explicit_and_never_masks_feature_data(tmp_path):
+def test_sta_summary_paths_do_not_fallback_to_obsolete_output(tmp_path):
     workspace = SimpleNamespace(config={StepEnum.STA.value: ""})
     feature_root = tmp_path / "feature"
-    legacy_root = tmp_path / "output"
-    legacy_path = legacy_root / "MAX_125" / "RCworst" / "qor_summary.json"
-    _write(legacy_path, json.dumps(qor_summary()))
+    output_path = tmp_path / "output" / "MAX_125" / "RCworst" / "qor_summary.json"
+    _write(output_path, json.dumps(qor_summary()))
 
-    assert sta_qor_summary_paths(workspace, feature_root, legacy_root) == [
-        ("MAX_125/RCworst", legacy_path),
-    ]
+    assert sta_qor_summary_paths(workspace, feature_root) == []
 
     feature_path = feature_root / "MAX_125" / "RCworst" / "qor_summary.json"
     _write(feature_path, json.dumps(qor_summary()))
 
-    assert sta_qor_summary_paths(workspace, feature_root, legacy_root) == [
+    assert sta_qor_summary_paths(workspace, feature_root) == [
         ("MAX_125/RCworst", feature_path),
     ]
