@@ -780,6 +780,58 @@ def test_iccd_full_v1_extractor_publishes_drc_attribution_inputs(tmp_path: Path)
     assert inputs["profiles"]["D2"]["availability"] == "missing"
 
 
+def test_iccd_full_v1_r3_rejects_negative_native_demand_capacity(tmp_path: Path):
+    ws = _make_workspace(tmp_path)
+    early_router = ws / "place_dreamplace" / "data" / "rt" / "rt_temp_directory" / "early_router"
+    for layer in ("MET2", "MET3"):
+        _write_csv(early_router / f"net_map_{layer}.csv", [[0, 0], [0, 0]])
+        _write_csv(early_router / f"supply_map_{layer}.csv", [[1, 1], [1, 1]])
+    for path in (ws / "place_dreamplace" / "feature" / "egr_congestion_map").glob("*.csv"):
+        path.unlink()
+    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob(
+        "*pin_density.csv"
+    ):
+        path.unlink()
+
+    result = FoundationExtractor(ws, profile="iccd_full_v1").extract()
+    inputs = json.loads(
+        (result.foundation_dir / "views" / "agent" / "attribution_inputs.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert inputs["profiles"]["R3"] == {
+        "availability": "missing",
+        "rule_version": "congestion_or_pin_access.v1",
+        "seed_ids": [],
+    }
+
+
+def test_iccd_full_v1_r3_prefers_direct_nonnegative_egr_overflow_map(tmp_path: Path):
+    ws = _make_workspace(tmp_path)
+    map_dir = ws / "place_dreamplace" / "feature" / "egr_congestion_map"
+    for path in map_dir.glob("*.csv"):
+        path.unlink()
+    _write_csv(map_dir / "place_egr_union_overflow.csv", [[0.0, 0.0], [0.0, 9.0]])
+    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob(
+        "*pin_density.csv"
+    ):
+        path.unlink()
+
+    result = FoundationExtractor(ws, profile="iccd_full_v1").extract()
+    inputs = json.loads(
+        (result.foundation_dir / "views" / "agent" / "attribution_inputs.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert inputs["profiles"]["R3"] == {
+        "availability": "available",
+        "rule_version": "congestion_or_pin_access.v1",
+        "seed_ids": ["3"],
+    }
+
+
 def test_instance_row_refs_require_explicit_def_row_lattice_alignment():
     placement_rows = [
         {

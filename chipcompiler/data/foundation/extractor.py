@@ -660,7 +660,9 @@ class FoundationExtractor:
                 if not matrix:
                     continue
                 category, key = self._classify_map(csv_path)
-                if category == "ignored":
+                if category == "ignored" or (
+                    category == "congestion" and stage.name not in {"place", "CTS"}
+                ):
                     continue
                 exact_gcell_map = "gcell_patch_map" in csv_path.parts
                 if exact_gcell_map:
@@ -689,6 +691,9 @@ class FoundationExtractor:
         for stage in stages:
             if stage.name not in {"place", "CTS"}:
                 continue
+            existing = raw_maps.get(stage.name, {}).get("congestion", {})
+            if existing.get("union"):
+                continue
             maps, source_paths = _egr_demand_capacity_maps_from_stage(stage.directory)
             if not maps:
                 continue
@@ -711,7 +716,7 @@ class FoundationExtractor:
                 direction = candidate
                 break
         if "egr" in name and "overflow" in name:
-            return "ignored", name
+            return "congestion", direction
         if "rudy" in name:
             if "lut" in name:
                 return "ignored", name
@@ -4069,10 +4074,10 @@ class FoundationExtractor:
             values = [
                 value
                 for value in (congestion, pin_density)
-                if value is not None and math.isfinite(value)
+                if value is not None and math.isfinite(value) and value > 0
             ]
             if values:
-                candidates.append((max(abs(value) for value in values), str(patch_id)))
+                candidates.append((max(values), str(patch_id)))
         return [
             patch_id
             for _score, patch_id in sorted(candidates, key=lambda item: (-item[0], item[1]))[
