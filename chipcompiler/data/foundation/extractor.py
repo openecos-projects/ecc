@@ -4,6 +4,7 @@ import gzip
 import hashlib
 import json
 import logging
+import math
 import re
 import shutil
 import time
@@ -4039,6 +4040,7 @@ class FoundationExtractor:
         drc_wire_available = drc_available and wire_available
         seed_ids = _attribution_seed_ids(rows)
         short_seed_ids = _attribution_seed_ids(rows, native_type="short")
+        r3_seed_ids = self._r3_seed_ids()
         return {
             "schema_version": "foundation_data/ecc/attribution_inputs.v1",
             "design_id": manifest.get("design_id"),
@@ -4050,8 +4052,33 @@ class FoundationExtractor:
                 c1_available=clock_refs_available,
                 seed_ids=seed_ids,
                 short_seed_ids=short_seed_ids,
+                r3_seed_ids=r3_seed_ids,
             ),
         }
+
+    def _r3_seed_ids(self) -> list[str]:
+        candidates: list[tuple[float, str]] = []
+        for record in self._records_for_stage("patches", "place"):
+            patch_id = _patch_id_from_record(record)
+            if patch_id is None:
+                continue
+            estimators = record.get("pre_route_estimators") or {}
+            density = record.get("local_density") or {}
+            congestion = _to_float(estimators.get("egr_overflow_union"))
+            pin_density = _to_float(density.get("pin_density"))
+            values = [
+                value
+                for value in (congestion, pin_density)
+                if value is not None and math.isfinite(value)
+            ]
+            if values:
+                candidates.append((max(abs(value) for value in values), str(patch_id)))
+        return [
+            patch_id
+            for _score, patch_id in sorted(candidates, key=lambda item: (-item[0], item[1]))[
+                :_ATTRIBUTION_SEED_ID_LIMIT
+            ]
+        ]
 
     def _record_raw_ref(self, stage: StageInfo, path: Path, artifact_type: str, metadata: dict[str, Any]) -> None:
         try:
@@ -6271,6 +6298,7 @@ def _attribution_profile_inputs(
     c1_available: bool,
     seed_ids: list[str],
     short_seed_ids: list[str],
+    r3_seed_ids: list[str],
 ) -> dict[str, dict[str, Any]]:
     availability = "available" if drc_wire_available else "missing"
     d2_status = "available" if d2_available else "missing"
@@ -6278,7 +6306,9 @@ def _attribution_profile_inputs(
     return {
         "C1": _attribution_profile_input(c1_status, "C1", []),
         "R1": _attribution_profile_input(availability, "R1", seed_ids),
-        "R3": _attribution_profile_input("missing", "R3", []),
+        "R3": _attribution_profile_input(
+            "available" if r3_seed_ids else "missing", "R3", r3_seed_ids
+        ),
         "D1": _attribution_profile_input(availability, "D1", short_seed_ids),
         "D2": _attribution_profile_input(d2_status, "D2", seed_ids if d2_available else []),
     }

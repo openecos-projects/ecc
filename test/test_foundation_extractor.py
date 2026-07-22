@@ -772,7 +772,11 @@ def test_iccd_full_v1_extractor_publishes_drc_attribution_inputs(tmp_path: Path)
         for profile in inputs["profiles"].values()
     )
     assert inputs["profiles"]["C1"]["availability"] == "missing"
-    assert inputs["profiles"]["R3"]["availability"] == "missing"
+    assert inputs["profiles"]["R3"] == {
+        "availability": "available",
+        "rule_version": "congestion_or_pin_access.v1",
+        "seed_ids": ["3", "2", "1", "0"],
+    }
     assert inputs["profiles"]["D2"]["availability"] == "missing"
 
 
