@@ -1,6 +1,7 @@
 import os
 
 from chipcompiler.cli.core.output import disclosure_cmd
+from chipcompiler.data.workspace.paths import WorkspaceDir, WorkspaceFile
 
 
 def build_project_config_items(
@@ -136,7 +137,7 @@ def build_project_config_items(
 def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
     import json
 
-    provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
+    provenance_path = os.path.join(run_dir, WorkspaceDir.HOME, WorkspaceFile.CLI_PARAM_OVERRIDES)
     if not os.path.isfile(provenance_path):
         return {}, None
     try:

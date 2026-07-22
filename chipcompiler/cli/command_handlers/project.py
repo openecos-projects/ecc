@@ -6,6 +6,7 @@ from chipcompiler.cli.core.inputs import CheckInput, InitInput, RunInput
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.data.workspace.paths import WorkspaceDir, WorkspaceFile
 
 
 def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
@@ -204,7 +205,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     # chipcompiler.engine.project_run.prepare_and_run. Keep CLI ownership limited
     # to input parsing, progress renderer selection, and CommandResult mapping.
     run_dir = os.path.join(project_dir, "runs", "default")
-    flow_json = os.path.join(run_dir, "home", "flow.json")
+    flow_json = os.path.join(run_dir, WorkspaceDir.HOME, WorkspaceFile.FLOW)
 
     if os.path.exists(flow_json) and not command_input.overwrite:
         return CommandResult.err(
@@ -289,7 +290,9 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     if cli_overrides:
         import json
 
-        provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
+        provenance_path = os.path.join(
+            run_dir, WorkspaceDir.HOME, WorkspaceFile.CLI_PARAM_OVERRIDES
+        )
         os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
         with open(provenance_path, "w") as _f:
             json.dump(cli_overrides, _f)

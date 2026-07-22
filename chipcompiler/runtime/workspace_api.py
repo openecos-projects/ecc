@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
 
+from chipcompiler.data.workspace.paths import WorkspaceDir, WorkspaceFile
 from chipcompiler.runtime.requests import (
     DbEnsureRequest,
     DbReleaseRequest,
@@ -134,7 +135,7 @@ class WorkspaceRuntimeApi:
     def sync_config(self, request: WorkspaceSyncConfigRequest) -> dict:
         def sync(session: WorkspaceSession) -> dict:
             config_path = Path(request.config_path).resolve()
-            config_dir = session.directory / "config"
+            config_dir = session.directory / WorkspaceDir.CONFIG
             if not path_is_within(config_path, config_dir):
                 raise RuntimeApiError(
                     "invalid_request",
@@ -500,10 +501,10 @@ def _materialize_inline_pdk_json(pdk_json: Any) -> tuple[Any, Path | None]:
 def _looks_like_old_workspace(directory: str) -> bool:
     if not os.path.isdir(directory):
         return False
-    home = os.path.join(directory, "home")
+    home = os.path.join(directory, WorkspaceDir.HOME)
     return all(
         os.path.isfile(os.path.join(home, filename))
-        for filename in ("parameters.json", "home.json")
+        for filename in (WorkspaceFile.PARAMETERS, WorkspaceFile.HOME)
     )
 
 

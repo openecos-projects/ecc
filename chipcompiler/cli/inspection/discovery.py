@@ -5,6 +5,7 @@ from chipcompiler.cli.core.output import (
     normalize_state,
     normalize_step_name,
 )
+from chipcompiler.data.workspace.paths import WorkspaceDir, WorkspaceFile
 
 
 def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
@@ -27,7 +28,7 @@ CORRUPT_FLOW_JSON = "CORRUPT"
 
 
 def read_flow_json(run_dir: str) -> dict | str | None:
-    path = os.path.join(run_dir, "home", "flow.json")
+    path = os.path.join(run_dir, WorkspaceDir.HOME, WorkspaceFile.FLOW)
     if not os.path.isfile(path):
         return None
     try:
@@ -110,7 +111,7 @@ def _list_files(directory: str) -> list[str]:
 
 def discover_logs(run_dir: str, step_token: str | None = None) -> list[str]:
     if step_token is None:
-        return _list_files(os.path.join(run_dir, "log"))
+        return _list_files(os.path.join(run_dir, WorkspaceDir.LOG))
 
     step_dirs = discover_step_dirs(run_dir)
     if step_token not in step_dirs:

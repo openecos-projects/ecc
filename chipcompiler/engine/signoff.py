@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from chipcompiler.data import StateEnum, StepEnum, Workspace
+from chipcompiler.data.workspace.paths import WorkspaceDir, WorkspaceFile
 
 STA_REPORT_FILENAMES = (
     "qor_summary.rpt",
@@ -71,7 +72,7 @@ class SignoffPackageCollector:
         if not workspace_dir.exists():
             raise FileNotFoundError(f"workspace does not exist: {workspace_dir}")
 
-        parameters = self._read_json(workspace_dir / "home" / "parameters.json")
+        parameters = self._read_json(workspace_dir / WorkspaceDir.HOME / WorkspaceFile.PARAMETERS)
         design = (
             self.workspace.design.name
             or parameters.get("Design", "")
@@ -112,8 +113,8 @@ class SignoffPackageCollector:
                 materialize=options.materialize,
             )
 
-        flow_path = workspace_dir / "home" / "flow.json"
-        checklist_path = workspace_dir / "home" / "checklist.json"
+        flow_path = workspace_dir / WorkspaceDir.HOME / WorkspaceFile.FLOW
+        checklist_path = workspace_dir / WorkspaceDir.HOME / WorkspaceFile.CHECKLIST
         flow_data = self.workspace.flow.data or self._read_json(flow_path)
         checklist_data = self._read_json(checklist_path)
 
@@ -132,7 +133,7 @@ class SignoffPackageCollector:
                     )
                 )
 
-        config_dir = workspace_dir / "config"
+        config_dir = workspace_dir / WorkspaceDir.CONFIG
         required_configs = {
             "db_default_config.json",
             "flow_config.json",
@@ -176,7 +177,7 @@ class SignoffPackageCollector:
 
         db_config = self._read_json(config_dir / "db_default_config.json")
         origin_verilog, origin_verilog_reason = self._find_one(
-            workspace_dir / "origin",
+            workspace_dir / WorkspaceDir.ORIGIN,
             preferred_name=f"{design}.v",
             pattern="*.v",
         )
@@ -198,7 +199,7 @@ class SignoffPackageCollector:
         )
         if origin_sdc is None:
             origin_sdc, origin_sdc_reason = self._find_one(
-                workspace_dir / "origin",
+                workspace_dir / WorkspaceDir.ORIGIN,
                 preferred_name=f"{design}.sdc",
                 pattern="*.sdc",
             )
@@ -245,7 +246,7 @@ class SignoffPackageCollector:
             add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
         add_file(
             "initial.parameters",
-            workspace_dir / "home" / "parameters.json",
+            workspace_dir / WorkspaceDir.HOME / WorkspaceFile.PARAMETERS,
             "initial/parameters.json",
             required=True,
         )

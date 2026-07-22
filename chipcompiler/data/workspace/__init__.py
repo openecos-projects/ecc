@@ -20,6 +20,7 @@ from ..parameter import (
 from ..pdk import PDK, get_pdk
 from ..step import StateEnum, StepEnum
 from .layout import EccData, WorkspaceStepBase
+from .paths import WorkspaceDir, WorkspaceFile
 
 # The shared step type used as the annotation/constructor across the codebase.
 WorkspaceStep = WorkspaceStepBase
@@ -167,7 +168,7 @@ def _workspace_step_enum(step: str | StepEnum) -> StepEnum | None:
 
 
 def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
-    config_dir = Path(workspace_dir) / "config"
+    config_dir = Path(workspace_dir) / WorkspaceDir.CONFIG
     return {
         "dir": config_dir,
         **{
@@ -663,7 +664,7 @@ def _reset_workspace_checklist(workspace: Workspace) -> None:
     if checklist_path_text:
         checklist_path = Path(checklist_path_text)
     else:
-        checklist_path = Path(workspace.directory) / "home" / "checklist.json"
+        checklist_path = Path(workspace.directory) / WorkspaceDir.HOME / WorkspaceFile.CHECKLIST
     json_write(
         checklist_path,
         {
@@ -732,7 +733,7 @@ def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
 
     workspace.home.reset()
     workspace.home.set_flow(workspace.flow.path)
-    workspace.home.set_checklist(workspace_root / "home" / "checklist.json")
+    workspace.home.set_checklist(workspace_root / WorkspaceDir.HOME / WorkspaceFile.CHECKLIST)
     workspace.home.set_parameters(workspace.parameters.path)
     _reset_workspace_checklist(workspace)
     _reset_workspace_runtime_parameters(workspace)
@@ -819,7 +820,7 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
     import os
     import shutil
 
-    origin_dir = os.path.join(workspace_dir, "origin")
+    origin_dir = os.path.join(workspace_dir, WorkspaceDir.ORIGIN)
     os.makedirs(origin_dir, exist_ok=True)
 
     filelist_dir = os.path.dirname(os.path.abspath(input_filelist))
@@ -981,9 +982,9 @@ def create_workspace(
     import shutil
 
     workspace_dir = Path(directory).expanduser().resolve()
-    origin_dir = workspace_dir / "origin"
-    home_dir = workspace_dir / "home"
-    log_dir = workspace_dir / "log"
+    origin_dir = workspace_dir / WorkspaceDir.ORIGIN
+    home_dir = workspace_dir / WorkspaceDir.HOME
+    log_dir = workspace_dir / WorkspaceDir.LOG
     if _workspace_directory_has_existing_data(workspace_dir):
         return None
 
@@ -1086,11 +1087,11 @@ def create_workspace(
 
     # set home data
     home_dir.mkdir(parents=True, exist_ok=True)
-    workspace.flow.path = home_dir / "flow.json"
-    workspace.parameters.path = home_dir / "parameters.json"
-    workspace.home.init(path=home_dir / "home.json")
+    workspace.flow.path = home_dir / WorkspaceFile.FLOW
+    workspace.parameters.path = home_dir / WorkspaceFile.PARAMETERS
+    workspace.home.init(path=home_dir / WorkspaceFile.HOME)
     workspace.home.set_flow(workspace.flow.path)
-    workspace.home.set_checklist(home_dir / "checklist.json")
+    workspace.home.set_checklist(home_dir / WorkspaceFile.CHECKLIST)
     workspace.home.set_parameters(workspace.parameters.path)
     dynamic_flow_data = build_dynamic_flow_data(flow_config)
     if dynamic_flow_data:
@@ -1102,7 +1103,7 @@ def create_workspace(
     if workspace.pdk.root:
         workspace.parameters.data["PDK Root"] = str(workspace.pdk.root)
     if pdk_json:
-        pdk_config_path = home_dir / "pdk.json"
+        pdk_config_path = home_dir / WorkspaceFile.PDK
         shutil.copy(pdk_json, pdk_config_path)
         workspace.parameters.data["PDK Config"] = str(pdk_config_path)
 
@@ -1117,8 +1118,8 @@ def create_workspace(
 
 def load_workspace(directory: str | Path) -> Workspace:
     workspace_dir = Path(directory).expanduser().resolve()
-    origin_dir = workspace_dir / "origin"
-    home_dir = workspace_dir / "home"
+    origin_dir = workspace_dir / WorkspaceDir.ORIGIN
+    home_dir = workspace_dir / WorkspaceDir.HOME
     if not workspace_dir.exists():
         return None
 
@@ -1127,7 +1128,7 @@ def load_workspace(directory: str | Path) -> Workspace:
     workspace.directory = workspace_dir
     workspace.config = build_workspace_config_paths(workspace)
 
-    parameters = load_parameter(home_dir / "parameters.json")
+    parameters = load_parameter(home_dir / WorkspaceFile.PARAMETERS)
     if len(parameters.data) <= 0:
         return None
 
@@ -1174,21 +1175,23 @@ def load_workspace(directory: str | Path) -> Workspace:
     if len(verilog_gz_path) > 0:
         workspace.design.origin_verilog = verilog_gz_path[0]
 
-    filelist_path = origin_dir / "filelist"
+    filelist_path = origin_dir / WorkspaceFile.FILELIST
     if filelist_path.exists():
         workspace.design.input_filelist = filelist_path
 
     # set home data
     home_dir.mkdir(parents=True, exist_ok=True)
     workspace.config["dir"].mkdir(parents=True, exist_ok=True)
-    workspace.flow.path = home_dir / "flow.json"
-    workspace.home.init(path=home_dir / "home.json")
+    workspace.flow.path = home_dir / WorkspaceFile.FLOW
+    workspace.home.init(path=home_dir / WorkspaceFile.HOME)
     workspace.home.set_flow(workspace.flow.path)
-    workspace.home.set_checklist(home_dir / "checklist.json")
+    workspace.home.set_checklist(home_dir / WorkspaceFile.CHECKLIST)
     workspace.home.set_parameters(workspace.parameters.path)
 
     # create logger first (needed for copy operations)
-    workspace.logger = create_logger(name=parameters.data["Design"], log_dir=workspace_dir / "log")
+    workspace.logger = create_logger(
+        name=parameters.data["Design"], log_dir=workspace_dir / WorkspaceDir.LOG
+    )
 
     log_workspace(workspace)
     log_parameters(workspace)
