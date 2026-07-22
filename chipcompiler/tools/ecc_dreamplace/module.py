@@ -9,7 +9,7 @@ from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.utility.path import optional_path, path_text
+from chipcompiler.utility.path import optional_path
 
 
 class DreamplaceModule:
@@ -39,11 +39,10 @@ class DreamplaceModule:
 
         params = params_cls()
         params.fromJson(config)
-        # DREAMPlace's Params.def_input/verilog_input feed a std::string C++
-        # option (place_io) and are json.dump-ed by Params.dump, so normalize to
-        # str at this native boundary (path_text: None -> "").
-        params.def_input = path_text(self.input_def)
-        params.verilog_input = path_text(self.input_verilog)
+        # def_input/verilog_input are passed through as Path | None; the
+        # normalization to str is owned by dreamplace Params itself.
+        params.def_input = self.input_def
+        params.verilog_input = self.input_verilog
         params.result_dir = self.result_dir
         params.base_design_name = self.workspace.design.name
         params.with_sta = False

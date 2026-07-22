@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from dreamplace.Params import Params
+
 from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
 from chipcompiler.tools.ecc_dreamplace.service import get_step_info
@@ -53,13 +55,13 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
     assert params.timing_opt_flag == 0
     assert params.timing_eval_flag == 0
     assert params.differentiable_timing_obj == 0
-    assert params.def_input == str(tmp_path / "input.def")
-    assert params.verilog_input == str(tmp_path / "input.v")
+    assert params.def_input == tmp_path / "input.def"
+    assert params.verilog_input == tmp_path / "input.v"
     assert params.result_dir == str(result_dir)
     assert params.base_design_name == "gcd"
 
 
-def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
+def test_build_params_passes_none_for_missing_inputs(tmp_path):
     config_path = tmp_path / "dreamplace.json"
     json_write(config_path, {})
     workspace = Workspace(
@@ -85,8 +87,39 @@ def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
 
     params = module._build_params(FakeParams, legalize_only=False)
 
-    assert params.def_input == ""
-    assert params.verilog_input == ""
+    assert params.def_input is None
+    assert params.verilog_input is None
+
+
+def test_build_params_with_real_params_stores_str(tmp_path):
+    config_path = tmp_path / "dreamplace.json"
+    json_write(config_path, {})
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    result_dir = tmp_path / "data" / "pl"
+    step_data = EccData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir})
+    step = EccStep(
+        name=StepEnum.PLACEMENT.value,
+        data=step_data,
+    )
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=None,
+        input_def=tmp_path / "input.def",
+        input_verilog=None,
+        output_def=tmp_path / "output.def",
+        output_verilog=tmp_path / "output.v",
+    )
+
+    params = module._build_params(Params, legalize_only=False)
+
+    assert params.__dict__["def_input"] == str(tmp_path / "input.def")
+    assert type(params.__dict__["def_input"]) is str
+    assert params.__dict__["verilog_input"] is None
 
 
 def test_dreamplace_step_info_stringifies_path_config(tmp_path):
