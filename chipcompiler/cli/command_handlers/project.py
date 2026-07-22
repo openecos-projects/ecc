@@ -6,7 +6,6 @@ from chipcompiler.cli.core.inputs import CheckInput, InitInput, RunInput
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.data.workspace.paths import WorkspaceDir, WorkspaceFile
 
 
 def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
@@ -150,6 +149,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         validate_project_config,
     )
     from chipcompiler.data import create_workspace
+    from chipcompiler.data.workspace.paths import WorkspaceDir, WorkspaceFile
     from chipcompiler.engine import EngineFlow
     from chipcompiler.rtl2gds import build_rtl2gds_flow
 

@@ -12,7 +12,6 @@ from chipcompiler.cli.core.output import (
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.data.workspace.layout import StepDir
 
 
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
@@ -86,6 +85,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
         listing_step_order,
     )
     from chipcompiler.cli.inspection.log_view import build_log_records
+    from chipcompiler.data.workspace.layout import StepDir
 
     step_token = command_input.step
     project = ctx.project
