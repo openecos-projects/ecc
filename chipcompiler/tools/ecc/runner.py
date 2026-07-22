@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 import sys
 import os
+import shutil
 from pathlib import Path
        
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
@@ -30,6 +31,57 @@ def temperature_token(temperature) -> str:
     except (TypeError, ValueError):
         pass
     return str(temperature).replace("-", "m").replace(".", "p")
+
+
+def copy_rcx_spef_outputs(workspace: Workspace, step: WorkspaceStep):
+    output_dir_text = os.fspath(step.output.get("dir", "") or "")
+    if not output_dir_text:
+        return
+
+    output_dir = Path(output_dir_text)
+    if output_dir_text.startswith("/"):
+        relative_output_dir = output_dir_text[1:]
+        if relative_output_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
+            output_dir = Path(workspace.directory) / relative_output_dir
+
+    spef_writer_dir = output_dir / "spef_writer"
+    if not spef_writer_dir.is_dir():
+        return
+
+    spef_outputs = step.output.get("spef", [])
+    if isinstance(spef_outputs, (str, os.PathLike)):
+        spef_outputs = [spef_outputs]
+
+    expected_paths = []
+    for spef_output in spef_outputs:
+        if not spef_output:
+            continue
+
+        spef_path = Path(spef_output)
+        spef_text = os.fspath(spef_output)
+        if spef_text.startswith("/"):
+            relative_spef = spef_text[1:]
+            if relative_spef.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
+                spef_path = Path(workspace.directory) / relative_spef
+
+        expected_paths.append(spef_path)
+
+    if not expected_paths:
+        expected_paths = [
+            output_dir / spef_path.name
+            for spef_path in spef_writer_dir.glob("*.spef")
+        ]
+
+    for expected_path in expected_paths:
+        source_path = spef_writer_dir / expected_path.name
+        if not source_path.is_file():
+            continue
+
+        expected_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, expected_path)
+        workspace.logger.info("Copied RCX SPEF %s to %s",
+                              source_path,
+                              expected_path)
 
 
 def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
@@ -62,16 +114,16 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
             liberty_files = liberty.get("path", [])
 
             for rcx_corner_name in rcx_corner_names:
+                spef_name = (
+                    f"{spef_design_name}_{rcx_corner_name}_"
+                    f"{temperature_token(temperature)}C.spef"
+                )
                 items.append({
                     "corner": corner_name,
                     "temperature": temperature,
                     "rcx_corner": rcx_corner_name,
                     "liberty_files": liberty_files,
-                    "spef_file": os.path.join(
-                        rcx_output_dir,
-                        f"{spef_design_name}_{rcx_corner_name}_"
-                        f"{temperature_token(temperature)}C.spef",
-                    ),
+                    "spef_file": os.path.join(rcx_output_dir, spef_name),
                 })
 
     return items
@@ -989,7 +1041,8 @@ def run_rcx(workspace: Workspace,
         ecc_module.init_rcx(config=workspace.config.get(StepEnum.RCX.value, ""),
                             pdk=workspace.pdk.name)
         ecc_module.run_rcx()
-        ecc_module.report_rcx()
+        ecc_module.destroy_rcx()
+        copy_rcx_spef_outputs(workspace, step)
         sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
         
         save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False, report_timing=False)

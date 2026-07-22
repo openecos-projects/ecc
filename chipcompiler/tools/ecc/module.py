@@ -949,8 +949,11 @@ class ECCToolsModule:
     def run_rcx(self):
         return self.ecc.run_rcx()
 
-    def report_rcx(self):
-        return self.ecc.report_rcx()
+    def destroy_rcx(self):
+        destroy_rcx = getattr(self.ecc, "destroy_rcx", None)
+        if destroy_rcx is None:
+            return None
+        return destroy_rcx()
     
     
     ########################################################################
