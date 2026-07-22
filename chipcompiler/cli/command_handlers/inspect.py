@@ -12,6 +12,7 @@ from chipcompiler.cli.core.output import (
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.data.workspace.layout import StepDir
 
 
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
@@ -153,7 +154,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
                     "step": step_token,
                     "log_status": "missing",
                     "source": os.path.relpath(
-                        os.path.join(step_dirs[step_token], "log"),
+                        os.path.join(step_dirs[step_token], StepDir.LOG),
                         ctx.run_dir,
                     ),
                     "inspect_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),

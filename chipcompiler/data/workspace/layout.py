@@ -15,7 +15,30 @@ attribute ``def_``.
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
+
+# --- path names ------------------------------------------------------------
+
+
+class StepDir(StrEnum):
+    """Per-step subdirectory names (the step-root layout contract)."""
+
+    OUTPUT = "output"
+    DATA = "data"
+    FEATURE = "feature"
+    REPORT = "report"
+    LOG = "log"
+    SCRIPT = "script"
+    ANALYSIS = "analysis"
+
+
+class StepFile(StrEnum):
+    """Per-step state files."""
+
+    SUBFLOW = "subflow.json"
+    CHECKLIST = "checklist.json"
+
 
 # --- input -----------------------------------------------------------------
 

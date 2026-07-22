@@ -20,6 +20,7 @@ from chipcompiler.data import (
     YosysReport,
     YosysStep,
 )
+from chipcompiler.data.workspace.layout import StepDir, StepFile
 from chipcompiler.utility import json_read
 
 
@@ -197,8 +198,8 @@ def build_step(
     """
     design = workspace.design.name
     directory = Path(workspace.directory) / f"{step_name}_yosys"
-    output_dir = directory / "output"
-    data_dir = directory / "data"
+    output_dir = directory / StepDir.OUTPUT
+    data_dir = directory / StepDir.DATA
 
     return YosysStep(
         name=step_name,
@@ -221,29 +222,29 @@ def build_step(
         ),
         data=YosysData(dir=data_dir, tmp=data_dir / "tmp"),
         feature=YosysFeature(
-            dir=directory / "feature",
-            generic_stat=directory / "feature" / f"{step_name}_generic_stat.json",
-            stat=directory / "feature" / f"{step_name}_stat.json",
+            dir=directory / StepDir.FEATURE,
+            generic_stat=directory / StepDir.FEATURE / f"{step_name}_generic_stat.json",
+            stat=directory / StepDir.FEATURE / f"{step_name}_stat.json",
         ),
         report=YosysReport(
-            dir=directory / "report",
-            stat=directory / "report" / f"{step_name}_stat.json",
-            check=directory / "report" / f"{step_name}_check.rpt",
+            dir=directory / StepDir.REPORT,
+            stat=directory / StepDir.REPORT / f"{step_name}_stat.json",
+            check=directory / StepDir.REPORT / f"{step_name}_check.rpt",
         ),
         log=LogPaths(
-            dir=directory / "log",
-            file=directory / "log" / f"{step_name}.log",
+            dir=directory / StepDir.LOG,
+            file=directory / StepDir.LOG / f"{step_name}.log",
         ),
         script=ScriptPaths(
-            dir=directory / "script",
-            main=directory / "script" / f"{step_name}_main.tcl",
+            dir=directory / StepDir.SCRIPT,
+            main=directory / StepDir.SCRIPT / f"{step_name}_main.tcl",
         ),
         analysis=AnalysisPaths(
-            dir=directory / "analysis",
-            metrics=directory / "analysis" / f"{step_name}_metrics.json",
+            dir=directory / StepDir.ANALYSIS,
+            metrics=directory / StepDir.ANALYSIS / f"{step_name}_metrics.json",
         ),
-        subflow=SubflowState(path=directory / "subflow.json", steps=[]),
-        checklist=ChecklistState(path=directory / "checklist.json", checklist=[]),
+        subflow=SubflowState(path=directory / StepFile.SUBFLOW, steps=[]),
+        checklist=ChecklistState(path=directory / StepFile.CHECKLIST, checklist=[]),
     )
 
 
@@ -253,14 +254,14 @@ def build_step_space(step: YosysStep) -> None:
     """
     step_directory = Path(step.directory)
     step_directory.mkdir(parents=True, exist_ok=True)
-    Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
-    Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
-    Path(step.data.tmp or step_directory / "data" / "tmp").mkdir(parents=True, exist_ok=True)
-    Path(step.report.dir or step_directory / "report").mkdir(parents=True, exist_ok=True)
-    Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
-    Path(step.script.dir or step_directory / "script").mkdir(parents=True, exist_ok=True)
-    Path(step.feature.dir or step_directory / "feature").mkdir(parents=True, exist_ok=True)
-    Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
+    Path(step.output.dir or step_directory / StepDir.OUTPUT).mkdir(parents=True, exist_ok=True)
+    Path(step.data.dir or step_directory / StepDir.DATA).mkdir(parents=True, exist_ok=True)
+    Path(step.data.tmp or step_directory / StepDir.DATA / "tmp").mkdir(parents=True, exist_ok=True)
+    Path(step.report.dir or step_directory / StepDir.REPORT).mkdir(parents=True, exist_ok=True)
+    Path(step.log.dir or step_directory / StepDir.LOG).mkdir(parents=True, exist_ok=True)
+    Path(step.script.dir or step_directory / StepDir.SCRIPT).mkdir(parents=True, exist_ok=True)
+    Path(step.feature.dir or step_directory / StepDir.FEATURE).mkdir(parents=True, exist_ok=True)
+    Path(step.analysis.dir or step_directory / StepDir.ANALYSIS).mkdir(parents=True, exist_ok=True)
 
 
 def build_step_config(workspace: Workspace, step: YosysStep):
@@ -299,7 +300,7 @@ def build_step_config(workspace: Workspace, step: YosysStep):
 
     try:
         tcl_content = generate_global_var_tcl(workspace, step)
-        data_dir = step.data.dir or Path(step.directory or "") / "data"
+        data_dir = step.data.dir or Path(step.directory or "") / StepDir.DATA
         global_var_path = data_dir / "global_var.tcl"
         with global_var_path.open("w") as f:
             f.write(tcl_content)

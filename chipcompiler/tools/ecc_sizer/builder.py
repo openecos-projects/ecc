@@ -7,6 +7,7 @@ from pathlib import Path
 from rosettakit import cmdfile
 
 from chipcompiler.data import EccStep, Workspace
+from chipcompiler.data.workspace.layout import StepDir
 from chipcompiler.tools.ecc import builder as ecc_builder
 
 from .utility import find_sizer_root
@@ -25,10 +26,12 @@ def build_step(
     safe_step_name = "_".join(step_name.split()).lower()
     step_directory = Path(workspace.directory) / f"{safe_step_name}_sizer"
     if output_def is None:
-        output_def = step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.def.gz"
+        output_def = (
+            step_directory / StepDir.OUTPUT / f"{workspace.design.name}_{safe_step_name}.def.gz"
+        )
     if output_verilog is None:
         output_verilog = (
-            step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.v.gz"
+            step_directory / StepDir.OUTPUT / f"{workspace.design.name}_{safe_step_name}.v.gz"
         )
 
     step = ecc_builder.build_step(
@@ -44,7 +47,7 @@ def build_step(
         step_directory=step_directory,
     )
     step.output.db = ""
-    script_dir = step.script.dir or step_directory / "script"
+    script_dir = step.script.dir or step_directory / StepDir.SCRIPT
     step.script.sizer_env = script_dir / f"{workspace.design.name}.env_file"
     step.script.sizer_cmd = script_dir / f"{workspace.design.name}.cmd_file"
     return step

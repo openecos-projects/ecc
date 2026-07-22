@@ -2,6 +2,7 @@
 import os
 
 from chipcompiler.data import EccStep, StepEnum, Workspace
+from chipcompiler.data.workspace.layout import StepDir
 from chipcompiler.tools.ecc.metrics import build_step_metrics
 from chipcompiler.utility import dict_to_str, json_read
 from chipcompiler.utility.path import stringify_paths
@@ -268,7 +269,7 @@ def build_checklist(workspace: Workspace, step: EccStep) -> dict:
 def build_sta(workspace: Workspace, step: EccStep) -> dict:
     top_module = workspace.design.top_module
     sta_data_dir = step.data.steps.get(StepEnum.STA.value) or os.path.join(
-        str(step.directory), "data", "sta"
+        str(step.directory), StepDir.DATA, "sta"
     )
 
     sta = step.report.sta

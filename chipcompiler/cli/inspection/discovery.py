@@ -5,6 +5,7 @@ from chipcompiler.cli.core.output import (
     normalize_state,
     normalize_step_name,
 )
+from chipcompiler.data.workspace.layout import StepDir
 from chipcompiler.data.workspace.paths import WorkspaceDir, WorkspaceFile
 
 
@@ -117,7 +118,7 @@ def discover_logs(run_dir: str, step_token: str | None = None) -> list[str]:
     if step_token not in step_dirs:
         return []
 
-    return _list_files(os.path.join(step_dirs[step_token], "log"))
+    return _list_files(os.path.join(step_dirs[step_token], StepDir.LOG))
 
 
 def read_log_file(path: str) -> list[str]:

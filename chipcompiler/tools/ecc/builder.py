@@ -20,6 +20,7 @@ from chipcompiler.data import (
     build_workspace_config_paths,
     update_step_config,
 )
+from chipcompiler.data.workspace.layout import StepDir, StepFile
 
 
 def build_step(
@@ -45,11 +46,11 @@ def build_step(
     )
     design = workspace.design.name
     top_module = workspace.design.top_module
-    output_dir = directory / "output"
-    data_dir = directory / "data"
+    output_dir = directory / StepDir.OUTPUT
+    data_dir = directory / StepDir.DATA
     sta_dir = data_dir / "sta"
-    feature_dir = directory / "feature"
-    report_dir = directory / "report"
+    feature_dir = directory / StepDir.FEATURE
+    report_dir = directory / StepDir.REPORT
     output_view = output_dir / f"{design}_{step_name}_view"
 
     return EccStep(
@@ -121,20 +122,20 @@ def build_step(
             ),
         ),
         log=LogPaths(
-            dir=directory / "log",
-            file=directory / "log" / f"{step_name}.log",
+            dir=directory / StepDir.LOG,
+            file=directory / StepDir.LOG / f"{step_name}.log",
         ),
         script=EccScript(
-            dir=directory / "script",
-            main=directory / "script" / f"{step_name}_main.tcl",
+            dir=directory / StepDir.SCRIPT,
+            main=directory / StepDir.SCRIPT / f"{step_name}_main.tcl",
         ),
         analysis=EccAnalysis(
-            dir=directory / "analysis",
-            metrics=directory / "analysis" / f"{step_name}_metrics.json",
-            statis_csv=directory / "analysis" / f"{step_name}_statis.csv",
+            dir=directory / StepDir.ANALYSIS,
+            metrics=directory / StepDir.ANALYSIS / f"{step_name}_metrics.json",
+            statis_csv=directory / StepDir.ANALYSIS / f"{step_name}_statis.csv",
         ),
-        subflow=SubflowState(path=directory / "subflow.json", steps=[]),
-        checklist=ChecklistState(path=directory / "checklist.json", checklist=[]),
+        subflow=SubflowState(path=directory / StepFile.SUBFLOW, steps=[]),
+        checklist=ChecklistState(path=directory / StepFile.CHECKLIST, checklist=[]),
     )
 
 
@@ -161,24 +162,24 @@ def build_step_space(step: WorkspaceStep) -> None:
     step_directory = Path(step.directory)
 
     step_directory.mkdir(parents=True, exist_ok=True)
-    Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
-    Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
-    Path(step.feature.dir or step_directory / "feature").mkdir(parents=True, exist_ok=True)
-    Path(step.report.dir or step_directory / "report").mkdir(parents=True, exist_ok=True)
-    Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
-    Path(step.script.dir or step_directory / "script").mkdir(parents=True, exist_ok=True)
-    Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
+    Path(step.output.dir or step_directory / StepDir.OUTPUT).mkdir(parents=True, exist_ok=True)
+    Path(step.data.dir or step_directory / StepDir.DATA).mkdir(parents=True, exist_ok=True)
+    Path(step.feature.dir or step_directory / StepDir.FEATURE).mkdir(parents=True, exist_ok=True)
+    Path(step.report.dir or step_directory / StepDir.REPORT).mkdir(parents=True, exist_ok=True)
+    Path(step.log.dir or step_directory / StepDir.LOG).mkdir(parents=True, exist_ok=True)
+    Path(step.script.dir or step_directory / StepDir.SCRIPT).mkdir(parents=True, exist_ok=True)
+    Path(step.analysis.dir or step_directory / StepDir.ANALYSIS).mkdir(parents=True, exist_ok=True)
 
     # build data directory
     for directory in step.data.iter_directories():
         Path(directory).mkdir(parents=True, exist_ok=True)
 
     # create pl sub dir
-    (step_directory / "data" / "pl" / "density").mkdir(parents=True, exist_ok=True)
-    (step_directory / "data" / "pl" / "gui").mkdir(parents=True, exist_ok=True)
-    (step_directory / "data" / "pl" / "log").mkdir(parents=True, exist_ok=True)
-    (step_directory / "data" / "pl" / "plot").mkdir(parents=True, exist_ok=True)
-    (step_directory / "data" / "pl" / "report").mkdir(parents=True, exist_ok=True)
+    (step_directory / StepDir.DATA / "pl" / "density").mkdir(parents=True, exist_ok=True)
+    (step_directory / StepDir.DATA / "pl" / "gui").mkdir(parents=True, exist_ok=True)
+    (step_directory / StepDir.DATA / "pl" / "log").mkdir(parents=True, exist_ok=True)
+    (step_directory / StepDir.DATA / "pl" / "plot").mkdir(parents=True, exist_ok=True)
+    (step_directory / StepDir.DATA / "pl" / "report").mkdir(parents=True, exist_ok=True)
 
 
 def build_step_config(workspace: Workspace, step: EccStep):
