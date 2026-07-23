@@ -3,6 +3,7 @@ import os
 
 from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
+from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 from chipcompiler.utility import json_read
 from chipcompiler.utility.gzip import read_text_maybe_gzip
 
@@ -48,15 +49,8 @@ class YosysChecklist:
             )
 
     def build_checklist(self) -> list:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
-        step = StepEnum(self.workspace_step.name)
-        checklist.replace_step(step.value)
-        replace_home_step = getattr(self.workspace.home, "replace_checklist_step", None)
-        if callable(replace_home_step):
-            replace_home_step(step.value)
-        self.add_items(checklist=checklist, step=step)
-
-        self.workspace_step.checklist["checklist"] = checklist.data
+        refresh_step_checklist(self.workspace, self.workspace_step)
+        return self.workspace_step.checklist["checklist"]
 
     def save(self) -> bool:
         checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
@@ -73,18 +67,7 @@ class YosysChecklist:
         )
 
     def check(self):
-        step = StepEnum(self.workspace_step.name)
-        checker_class = {
-            StepEnum.SYNTHESIS: YosysSynthesisChecklist,
-        }.get(step)
-        if checker_class is None:
-            return True
-
-        return checker_class(
-            self.workspace,
-            self.workspace_step,
-            init_checklist=False,
-        ).check()
+        return refresh_step_checklist(self.workspace, self.workspace_step)
 
 
 class YosysSynthesisChecklist(YosysChecklist):
@@ -109,6 +92,8 @@ class YosysSynthesisChecklist(YosysChecklist):
             return default
 
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.SYNTHESIS.value
         qor_metrics = QorMetrics(self.workspace_step.analysis.get("metrics", ""))
         stat = json_read(self.workspace_step.feature.get("stat", ""))

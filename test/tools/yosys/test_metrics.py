@@ -106,5 +106,8 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
     }
 
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert summary["status"] == "pass"
+    assert summary["schema_version"] == 4
+    assert summary["analysis_status"] == "valid"
+    assert summary["quality_status"] == "pass"
+    assert summary["gates"] == []
     assert summary["missing_metrics"] == []

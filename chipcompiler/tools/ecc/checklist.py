@@ -4,6 +4,7 @@ import os
 
 from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
+from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 from chipcompiler.tools.ecc.sta_qor import (
     read_sta_qor_summary,
     read_sta_timing_paths,
@@ -153,15 +154,8 @@ class EccChecklist:
         )
 
     def build_checklist(self) -> list:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
-        step = StepEnum(self.workspace_step.name)
-        checklist.replace_step(step.value)
-        replace_home_step = getattr(self.workspace.home, "replace_checklist_step", None)
-        if callable(replace_home_step):
-            replace_home_step(step.value)
-        self.add_items(checklist=checklist, step=step)
-
-        self.workspace_step.checklist["checklist"] = checklist.data
+        refresh_step_checklist(self.workspace, self.workspace_step)
+        return self.workspace_step.checklist["checklist"]
 
     def save(self) -> bool:
         checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
@@ -172,29 +166,7 @@ class EccChecklist:
         checklist.update(step=step, type=type, item=item, state=state, info=info)
 
     def check(self) -> bool:
-        step = StepEnum(self.workspace_step.name)
-        checker_class = {
-            StepEnum.FLOORPLAN: EccFloorplanChecklist,
-            StepEnum.NETLIST_OPT: EccNetlistOptChecklist,
-            StepEnum.CTS: EccCtsChecklist,
-            StepEnum.TIMING_OPT_DRV: EccTimingOptDrvChecklist,
-            StepEnum.TIMING_OPT_HOLD: EccTimingOptHoldChecklist,
-            StepEnum.TIMING_OPT_SETUP: EccTimingOptSetupChecklist,
-            StepEnum.ROUTING: EccRoutingChecklist,
-            StepEnum.DRC: EccDrcChecklist,
-            StepEnum.FILLER: EccFillerChecklist,
-            StepEnum.HARDEN: EccHardenChecklist,
-            StepEnum.RCX: EccRcxChecklist,
-            StepEnum.STA: EccStaChecklist,
-        }.get(step)
-        if checker_class is None:
-            return True
-
-        return checker_class(
-            self.workspace,
-            self.workspace_step,
-            init_checklist=False,
-        ).check()
+        return refresh_step_checklist(self.workspace, self.workspace_step)
 
     def check_file(self, path: str, text_tokens: list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
@@ -244,6 +216,8 @@ class EccChecklist:
 
 class EccFloorplanChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.FLOORPLAN.value
         metrics = self.qor_metrics()
         db = json_read(self.workspace_step.feature.get("db", ""))
@@ -384,6 +358,8 @@ class EccFloorplanChecklist(EccChecklist):
 
 class EccNetlistOptChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.NETLIST_OPT.value
         metrics = self.qor_metrics()
         db = json_read(self.workspace_step.feature.get("db", ""))
@@ -476,6 +452,8 @@ class EccNetlistOptChecklist(EccChecklist):
 
 class EccCtsChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.CTS.value
         metrics = self.qor_metrics()
         db = json_read(self.workspace_step.feature.get("db", ""))
@@ -570,6 +548,8 @@ class EccCtsChecklist(EccChecklist):
 
 class EccTimingOptDrvChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.TIMING_OPT_DRV.value
         db = json_read(self.workspace_step.feature.get("db", ""))
         config = json_read(self.workspace.config.get(StepEnum.TIMING_OPT_DRV.value, ""))
@@ -640,6 +620,8 @@ class EccTimingOptDrvChecklist(EccChecklist):
 
 class EccTimingOptHoldChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.TIMING_OPT_HOLD.value
         metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
         db = json_read(self.workspace_step.feature.get("db", ""))
@@ -696,6 +678,8 @@ class EccTimingOptHoldChecklist(EccChecklist):
 
 class EccTimingOptSetupChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.TIMING_OPT_SETUP.value
         metrics = json_read(self.workspace_step.analysis.get("metrics", ""))
         db = json_read(self.workspace_step.feature.get("db", ""))
@@ -752,6 +736,8 @@ class EccTimingOptSetupChecklist(EccChecklist):
 
 class EccRoutingChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.ROUTING.value
         metrics = self.qor_metrics()
         db = json_read(self.workspace_step.feature.get("db", ""))
@@ -830,6 +816,8 @@ class EccRoutingChecklist(EccChecklist):
 
 class EccDrcChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.DRC.value
         metrics = self.qor_metrics()
         feature = json_read(self.workspace_step.feature.get("step", "")).get("drc", {})
@@ -892,6 +880,8 @@ class EccDrcChecklist(EccChecklist):
 
 class EccFillerChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.FILLER.value
         db = json_read(self.workspace_step.feature.get("db", ""))
         subflow = json_read(self.workspace_step.subflow.get("path", ""))
@@ -973,6 +963,8 @@ class EccFillerChecklist(EccChecklist):
 
 class EccHardenChecklist(EccChecklist):
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.HARDEN.value
         metrics = self.qor_metrics()
         design_name = self.workspace.design.top_module or self.workspace.design.name
@@ -1071,6 +1063,8 @@ class EccRcxChecklist(EccChecklist):
         return self.check_file(spef_path, tokens)
 
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.RCX.value
         spef_paths = self.collect_rcx_spef_paths()
         required_rcx_corners = self.sta_required_rcx_corners()
@@ -1185,6 +1179,8 @@ class EccStaChecklist(EccChecklist):
         ]
 
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         step = StepEnum.STA.value
         artifact_paths = sta_report_artifact_paths(
             workspace=self.workspace,

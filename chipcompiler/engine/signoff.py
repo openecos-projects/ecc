@@ -378,12 +378,6 @@ class SignoffPackageCollector:
             )
 
         add_file("status.flow", flow_path, "final/reports/flow.json", required=True)
-        add_file(
-            "status.checklist",
-            checklist_path,
-            "final/reports/checklist.json",
-            required=True,
-        )
 
         for step_name, step_dir in self._step_dirs().items():
             for kind in ("analysis", "report"):
@@ -409,30 +403,40 @@ class SignoffPackageCollector:
                 materialize=options.materialize,
             )
 
-        checklist_counts = self._checklist_counts(checklist_data)
-        if checklist_counts.get("warning", 0) or checklist_counts.get("failed", 0):
-            warnings.append(
-                "home checklist contains failed or warning items; see final/reports/checklist.json"
-            )
-        issues.extend(self._checklist_issues(checklist_data))
+        # Resource collection finds package evidence, but the refreshed home
+        # checklist is the single authority for signoff readiness and export.
+        from chipcompiler.tools.ecc.signoff_checklist import rebuild_home_checklist
 
         analysis_issues = refresh_issues
-        if options.refresh_analysis:
-            analysis_issues = [
-                *refresh_issues,
-                *self._qor_summary_issues(workspace_dir=workspace_dir, flow_data=flow_data),
-            ]
-        for issue in analysis_issues:
-            issues.append(issue)
-            if issue.required:
-                missing_required.append(issue.destination)
-            else:
-                missing_optional.append(issue.destination)
-        if analysis_issues:
-            warnings.append("current QoR analysis requires attention; see Signoff Review details")
+        checklist_data = rebuild_home_checklist(
+            self.workspace,
+            resource_issues=[*issues, *analysis_issues],
+        )
+        add_file(
+            "status.checklist",
+            checklist_path,
+            "final/reports/checklist.json",
+            required=True,
+        )
+        checklist_counts = checklist_data.get("summary", {})
+        checklist_items = checklist_data.get("checklist", [])
+        blocked_items = [
+            item
+            for item in checklist_items
+            if isinstance(item, dict) and item.get("blocked") is True
+        ]
+        attention_items = [
+            item
+            for item in checklist_items
+            if isinstance(item, dict) and item.get("state") == "warning"
+        ]
+        missing_required = [str(item.get("id")) for item in blocked_items]
+        missing_optional = [str(item.get("id")) for item in attention_items]
+        if blocked_items or attention_items:
+            warnings.append("home checklist requires attention; see final/reports/checklist.json")
 
         qor_metrics = self._read_json(workspace_dir / "drc_ecc" / "analysis" / "qor_metrics.json")
-        ok = len(missing_required) == 0
+        ok = len(blocked_items) == 0
         flow_success = all(state == StateEnum.Success.value for state in required_steps.values())
         summary = {
             "schema_version": 1,

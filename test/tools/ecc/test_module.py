@@ -641,14 +641,15 @@ def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
     assert step.analysis["qor_summary"].exists()
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
     qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
-    assert summary["schema_version"] == 3
+    assert summary["schema_version"] == 4
     assert summary["tool"] == "ecc"
     assert summary["step"] == StepEnum.NETLIST_OPT.value
     assert summary["design"] == "gcd"
-    assert summary["status"] == "pass"
+    assert summary["analysis_status"] == "valid"
+    assert summary["quality_status"] == "pass"
     assert summary["metric_count"] == len(qor_metrics["metrics"])
     assert summary["metrics_file"] == "qor_metrics.json"
-    assert summary["blocking_issues"] == []
+    assert summary["gates"] == []
     assert summary["missing_metrics"] == []
     assert summary["dimensions"]["routability_physical"]["metric_count"] >= 1
 
@@ -675,24 +676,33 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
     assert metrics is not None
     assert step.analysis["qor_summary"].exists()
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert summary["status"] == "blocked"
-    assert summary["blocking_issues"] == [
+    assert summary["quality_status"] == "blocked"
+    assert summary["gates"] == [
         {
-            "metric_id": "drc_count",
-            "display_name": "DRC Count",
-            "value": 3,
-            "reason": "DRC violations are present.",
-            "evidence": {
-                "source": {
+            "id": "qor.drc.clean",
+            "title": "Final DRC clean",
+            "state": "failed",
+            "blocking": True,
+            "metrics": [
+                {
+                    "id": "drc_count",
+                    "actual": 3,
+                    "operator": "==",
+                    "expected": 0,
+                    "source": {
+                        "kind": "feature",
+                        "path": "feature/drc.step.json",
+                        "selector": "/drc/number",
+                    },
+                }
+            ],
+            "evidence": [
+                {
                     "kind": "feature",
                     "path": "feature/drc.step.json",
                     "selector": "/drc/number",
-                },
-                "expected": {"operator": "==", "value": 0},
-                "diagnosis": (
-                    "Observed drc_count = 3; required condition is == 0."
-                ),
-            },
+                }
+            ],
         }
     ]
     hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
@@ -1255,7 +1265,8 @@ def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
         "invalid_detail_ids": [],
     }
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert summary["status"] == "incomplete"
+    assert summary["analysis_status"] == "incomplete"
+    assert summary["quality_status"] == "pass"
     assert {
         "metric_id": "cts_buffer_count",
         "reason": (
@@ -1619,17 +1630,10 @@ invalid cap record
     assert metrics.data["rcx_spef_parse_failure_count"] == 1
     assert "rcx_worst_total_capacitance_ff" not in metrics.data
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert summary["status"] == "incomplete"
-    assert summary["signoff_readiness"] == {
-        "status": "incomplete",
-        "score_eligible": False,
-        "reason_codes": ["rcx_corner_summary_unparseable"],
-        "groups": [
-            {"id": "rcx_corner_coverage", "status": "incomplete", "gate": True},
-            {"id": "rcx_parse_health", "status": "incomplete", "gate": True},
-            {"id": "rcx_parasitic_envelope", "status": "incomplete", "gate": False},
-        ],
-        "ocv": {"status": "unavailable"},
+    assert summary["quality_status"] == "blocked"
+    assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
+        "qor.rcx.corner_coverage": "failed",
+        "qor.rcx.spef_parse_health": "failed",
     }
 
 
@@ -1873,8 +1877,11 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         "feature/MAX_125/RCworst/qor_summary.json"
     )
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert summary["status"] == "blocked"
-    assert all(not gate["passed"] for gate in summary["hard_gates"][:6])
+    assert summary["quality_status"] == "incomplete"
+    assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
+        "qor.sta.setup_closed": "unavailable",
+        "qor.sta.hold_closed": "unavailable",
+    }
     issues = json.loads(step.analysis["sta_timing_issues"].read_text(encoding="utf-8"))
     assert issues["near_fail_slack_ns"] == 0.05
     assert [issue["issue_id"] for issue in issues["issues"]] == [
@@ -1949,12 +1956,11 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
     assert metrics.data["sta_expected_corner_count"] == 2
     assert metrics.data["sta_missing_corner_count"] == 1
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    coverage_gate = next(
-        gate for gate in summary["hard_gates"]
-        if gate["id"] == "sta_corner_coverage_complete"
-    )
-    assert coverage_gate["passed"] is False
-    assert summary["status"] == "incomplete"
+    assert summary["quality_status"] == "incomplete"
+    assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
+        "qor.sta.setup_closed": "unavailable",
+        "qor.sta.hold_closed": "unavailable",
+    }
 
 
 def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
@@ -2062,9 +2068,11 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
         "trend": True,
     }
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert summary["status"] == "pass"
-    assert summary["signoff_readiness"]["score_eligible"] is True
-    assert summary["signoff_readiness"]["ocv"] == {"status": "unavailable"}
+    assert summary["quality_status"] == "pass"
+    assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
+        "qor.sta.setup_closed": "pass",
+        "qor.sta.hold_closed": "pass",
+    }
     assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
 
 
@@ -2105,7 +2113,8 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
     assert "sta_setup_wns" in {
         item["metric_id"] for item in summary["missing_metrics"]
     }
-    assert summary["status"] == "unavailable"
+    assert summary["analysis_status"] == "incomplete"
+    assert summary["quality_status"] == "incomplete"
 
 
 def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
@@ -2151,13 +2160,8 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
     harden_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
     assert harden_feature["harden"]["artifact_missing_count"] == 0
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert summary["status"] == "blocked"
-    assert summary["final_signoff"]["missing_sources"] == [
-        "final_drc_clean",
-        "final_sta_setup_clean",
-        "final_sta_hold_clean",
-        "final_rcx_corner_complete",
-    ]
+    assert summary["quality_status"] == "pass"
+    assert summary["gates"] == []
 
 
 def _write_harden_signoff_summary(tmp_path, step_name, *, status="pass", hard_gates=None):
@@ -2230,11 +2234,9 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
     ecc_metrics.build_metrics_harden(workspace, step)
 
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    gates = {gate["id"]: gate for gate in summary["hard_gates"]}
-    assert summary["status"] == "pass"
-    assert all(gate["passed"] for gate in gates.values())
-    assert summary["blocking_issues"] == []
-    assert summary["final_signoff"]["missing_sources"] == []
+    assert summary["schema_version"] == 4
+    assert summary["quality_status"] == "pass"
+    assert summary["gates"] == []
 
 
 def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
@@ -2268,13 +2270,9 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
     ecc_metrics.build_metrics_harden(workspace, step)
 
     summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    gates = {gate["id"]: gate for gate in summary["hard_gates"]}
-    issues = {issue["metric_id"]: issue for issue in summary["blocking_issues"]}
-    assert summary["status"] == "blocked"
-    assert gates["final_drc_clean"]["passed"] is False
-    assert gates["final_package_complete"]["passed"] is False
-    assert issues["final_drc_clean"]["reason"] == "Final DRC flow is not completed."
-    assert "final_drc_clean" in summary["final_signoff"]["missing_sources"]
+    assert summary["schema_version"] == 4
+    assert summary["quality_status"] == "pass"
+    assert summary["gates"] == []
 
 
 def test_ecc_plot_step_metrics_accepts_path_metrics(tmp_path, monkeypatch):

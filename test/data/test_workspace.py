@@ -333,9 +333,14 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
         "analysis",
     ]
     assert all(step["state"] == "Unstart" for step in step_subflow["steps"])
-    assert len(step_checklist["checklist"]) > 0
-    assert len(home_checklist["checklist"]) == len(step_checklist["checklist"])
-    assert {item["state"] for item in home_checklist["checklist"]} == {"Unstart"}
+    assert step_checklist["schema_version"] == 3
+    assert step_checklist["kind"] == "signoff_checklist"
+    assert step_checklist["checklist"] == []
+    assert home_checklist["schema_version"] == 3
+    assert home_checklist["kind"] == "signoff_checklist"
+    flow_items = {item["id"]: item for item in home_checklist["checklist"]}
+    assert flow_items["flow.route.completed"]["state"] == "failed"
+    assert home_checklist["status"] == "blocked"
 
 
 def test_load_workspace_restores_path_fields_from_existing_json(

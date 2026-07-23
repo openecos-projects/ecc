@@ -12,6 +12,7 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
+from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 from chipcompiler.utility import json_read
 
 
@@ -61,14 +62,8 @@ class DreamplaceChecklist:
             )
 
     def build_checklist(self) -> list:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
-        step = StepEnum(self.workspace_step.name)
-        checklist.replace_step(step.value)
-        replace_home_step = getattr(self.workspace.home, "replace_checklist_step", None)
-        if callable(replace_home_step):
-            replace_home_step(step.value)
-        self.add_items(checklist=checklist, step=step)
-        self.workspace_step.checklist["checklist"] = checklist.data
+        refresh_step_checklist(self.workspace, self.workspace_step)
+        return self.workspace_step.checklist["checklist"]
 
     def save(self) -> bool:
         checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
@@ -85,19 +80,7 @@ class DreamplaceChecklist:
         )
 
     def check(self) -> bool:
-        step = StepEnum(self.workspace_step.name)
-        checker_class = {
-            StepEnum.PLACEMENT: DreamplacePlacementChecklist,
-            StepEnum.LEGALIZATION: DreamplaceLegalizationChecklist,
-        }.get(step)
-        if checker_class is None:
-            return True
-
-        return checker_class(
-            self.workspace,
-            self.workspace_step,
-            init_checklist=False,
-        ).check()
+        return refresh_step_checklist(self.workspace, self.workspace_step)
 
     def check_file(self, path: str, text_tokens: list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
@@ -239,6 +222,8 @@ class DreamplacePlacementChecklist(DreamplaceChecklist):
         )
 
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         metrics = self.qor_metrics()
         core_util, core_util_error = metrics.number("core_utilization")
         overflow_max, overflow_max_error = metrics.number("place_congestion_egr_overflow_max")
@@ -376,6 +361,8 @@ class DreamplaceLegalizationChecklist(DreamplaceChecklist):
         )
 
     def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)
+
         checks = [
             (
                 "Legality",
