@@ -29,6 +29,14 @@
         hash = "sha256-hyDKWsQnfPVuxxBNxjdGR6AsGa/1NkdflBmwiK3Eqz0=";
       };
 
+      # Pinned nixpkgs ships uv-build 0.8.14, which falls outside the
+      # dependabot-managed version window in RosettaKit's pyproject.toml.
+      # rosettakit is pure Python, so any uv-build works.
+      postPatch = ''
+        substituteInPlace pyproject.toml \
+          --replace-fail 'uv-build>=0.10.0,<0.11.24' 'uv-build'
+      '';
+
       build-system = with python3Packages; [ uv-build ];
 
       pythonImportsCheck = [ "rosettakit" ];
