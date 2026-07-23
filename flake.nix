@@ -42,9 +42,54 @@
       pythonImportsCheck = [ "rosettakit" ];
     };
 
+    # Not in the pinned nixpkgs; required by chipcompiler's runtime server.
+    # Use the wheel: the sdist's bundled versioneer is incompatible with
+    # Python 3.13 (configparser.SafeConfigParser was removed).
+    oslash = {
+      fetchPypi,
+      python3Packages,
+    }: python3Packages.buildPythonPackage rec {
+      pname = "OSlash";
+      version = "0.6.3";
+      format = "wheel";
+
+      src = fetchPypi {
+        inherit pname version format;
+        dist = "py3";
+        python = "py3";
+        hash = "sha256-ibl4RDt9s6wmZhBr3DaArdPIhqbY/N0C/QYq+G0pSU8=";
+      };
+
+      dependencies = [ python3Packages.typing-extensions ];
+
+      pythonImportsCheck = [ "oslash" ];
+    };
+
+    jsonrpcserver = {
+      fetchPypi,
+      oslash,
+      python3Packages,
+    }: python3Packages.buildPythonPackage rec {
+      pname = "jsonrpcserver";
+      version = "5.0.9";
+      pyproject = true;
+
+      src = fetchPypi {
+        inherit pname version;
+        hash = "sha256-px+yz6GFQcgJNfYJh/knVdlNdBQSSMdDiEe5bu5cRII=";
+      };
+
+      build-system = with python3Packages; [ setuptools ];
+
+      dependencies = [ python3Packages.jsonschema oslash ];
+
+      pythonImportsCheck = [ "jsonrpcserver" ];
+    };
+
     chipcompiler = {
       ecc-dreamplace,
       ecc-tools,
+      jsonrpcserver,
       rosettakit,
       yosysWithSlang,
       lib,
@@ -70,6 +115,7 @@
         ecc-dreamplace
         ecc-tools
         fastapi
+        jsonrpcserver
         klayout
         matplotlib
         numpy
@@ -107,6 +153,7 @@
       packages.default = pkgs.callPackage chipcompiler {
         ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
         ecc-tools = ecc-tools.packages.${system}.default;
+        jsonrpcserver = pkgs.callPackage jsonrpcserver { oslash = pkgs.callPackage oslash {}; };
         rosettakit = pkgs.callPackage rosettakit {};
         yosysWithSlang = infra.packages.${system}.yosysWithSlang;
       };
