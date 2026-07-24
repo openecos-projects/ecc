@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
+from collections.abc import Callable
 
 from chipcompiler.data import (
     StepEnum,
@@ -21,6 +21,15 @@ def build_rtl2gds_flow() -> list:
     
     return steps
 
+
+def build_syn_sta_flow() -> list:
+    steps = []
+
+    steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+
+    return steps
+
+
 def build_harden_flow() -> list:
     steps = build_rcx_flow()
 
@@ -35,3 +44,15 @@ def build_rcx_flow() -> list:
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
     
     return steps
+
+
+def get_flow_builders() -> dict[str, Callable[[], list]]:
+    """Discover flow presets from the build_*_flow defs in this module."""
+    builders = {}
+    for name, fn in globals().items():
+        if not (callable(fn) and name.startswith("build_") and name.endswith("_flow")):
+            continue
+        preset = name[len("build_") : -len("_flow")]
+        if preset:
+            builders[preset] = fn
+    return builders

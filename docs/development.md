@@ -262,7 +262,7 @@ name = "ics55"
 root = "/path/to/ics55"
 
 [flow]
-preset = "rtl2gds"
+preset = "rtl2gds" # rtl2gds | rcx | harden | syn_sta
 run = "default"
 ```
 

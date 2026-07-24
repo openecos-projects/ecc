@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from chipcompiler.data import Checklist, CheckState, Workspace, WorkspaceStep
+from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 
 
 class SizerChecklist:
@@ -10,9 +11,7 @@ class SizerChecklist:
         self.build_checklist()
 
     def build_checklist(self) -> list:
-        checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
-        checklist.save()
-        self.workspace_step.checklist["checklist"] = checklist.data.get("checklist", [])
+        refresh_step_checklist(self.workspace, self.workspace_step)
         return self.workspace_step.checklist["checklist"]
 
     def save(self) -> bool:
@@ -29,5 +28,5 @@ class SizerChecklist:
         checklist = Checklist(path=self.workspace_step.checklist.get("path", ""))
         checklist.update(step=step, type=type, item=item, state=state)
 
-    def check(self) -> None:
-        pass
+    def check(self) -> bool:
+        return refresh_step_checklist(self.workspace, self.workspace_step)

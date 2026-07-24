@@ -7,7 +7,7 @@ from pathlib import Path
 
 from chipcompiler.engine import EngineFlow, SignoffPackageOptions
 from chipcompiler.runtime.workspace_api import RuntimeApiError
-
+from chipcompiler.utility import json_read
 
 _REVIEW_GROUPS = (
     ("initial", "Initial"),
@@ -21,102 +21,87 @@ _REVIEW_GROUPS = (
 
 
 def inspect_signoff_package(workspace) -> dict:
-    result = EngineFlow(workspace).collect_signoff_package(
-        SignoffPackageOptions(archive=False, materialize=False)
+    """Refresh current outputs, then render the home checklist contract only."""
+    EngineFlow(workspace).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False, refresh_analysis=True)
     )
+    checklist_path = Path(workspace.directory) / "home" / "checklist.json"
+    checklist_data = json_read(checklist_path)
+    if (
+        checklist_data.get("schema_version") != 3
+        or checklist_data.get("kind") != "signoff_checklist"
+    ):
+        return _unavailable_review()
+
     groups = {
         group_id: {
             "id": group_id,
             "label": label,
             "available": 0,
-            "missing_required": 0,
-            "missing_optional": 0,
-            "warning": False,
+            "expected": 0,
             "blocked_details": [],
-            "warning_details": [],
+            "attention_details": [],
         }
         for group_id, label in _REVIEW_GROUPS
     }
-    flow_details = []
-    checklist_details = []
-
-    for copied in result.copied:
-        destination = copied.get("destination", "")
-        groups[_review_group_id(destination)]["available"] += 1
-    for missing in result.missing_required:
-        if missing.startswith("flow step "):
+    for item in checklist_data.get("checklist", []):
+        if not isinstance(item, dict):
             continue
-        groups[_review_group_id(missing)]["missing_required"] += 1
-    for missing in result.missing_optional:
-        groups[_review_group_id(missing)]["missing_optional"] += 1
-    for issue in getattr(result, "issues", []):
-        detail = _review_detail(issue)
-        if issue.kind == "flow":
-            flow_details.append(detail)
-        elif issue.kind == "checklist":
-            checklist_details.append(detail)
-        elif issue.kind == "resource":
-            detail_key = "blocked_details" if issue.required else "warning_details"
-            groups[_review_group_id(issue.destination)][detail_key].append(detail)
-    if result.warnings:
-        groups["reports"]["warning"] = True
+        group = groups[_review_group_for_item(item)]
+        group["expected"] += 1
+        if item.get("state") == "pass":
+            group["available"] += 1
+        elif item.get("blocked") is True:
+            group["blocked_details"].append(_review_detail(item))
+        else:
+            group["attention_details"].append(_review_detail(item))
 
     review_groups = []
     risks = []
-    if flow_details:
-        risks.append(
-            {
-                "severity": "blocked",
-                "title": "Flow requirements not complete",
-                "summary": _flow_summary(len(flow_details)),
-                "details": flow_details,
-            }
-        )
     for group_id, _label in _REVIEW_GROUPS:
         group = groups[group_id]
-        required_missing = group.pop("missing_required")
-        optional_missing = group.pop("missing_optional")
-        checklist_warning = group.pop("warning")
-        blocked_details = group.pop("blocked_details")
-        warning_details = group.pop("warning_details")
+        blocked_details = group["blocked_details"]
+        attention_details = group["attention_details"]
         available = group["available"]
-        expected = available + required_missing + optional_missing
-
-        if required_missing:
+        expected = group["expected"]
+        if blocked_details:
             status = "blocked"
-            summary = _missing_summary(required_missing, "required")
+            summary = f"{len(blocked_details)} blocking checklist requirements"
             risks.append(
                 {
                     "severity": "blocked",
-                    "title": f"{group['label']} resources missing",
+                    "title": f"{group['label']} signoff requirements block export",
                     "summary": summary,
                     "details": blocked_details,
                 }
             )
-        elif optional_missing or checklist_warning:
-            status = "attention"
-            summary = (
-                _missing_summary(optional_missing, "optional")
-                if optional_missing
-                else "Checklist requires attention"
-            )
-            if optional_missing:
+            if attention_details:
                 risks.append(
                     {
                         "severity": "warning",
-                        "title": f"{group['label']} optional resources missing",
-                        "summary": summary,
-                        "details": warning_details,
+                        "title": f"{group['label']} signoff attention",
+                        "summary": (
+                            f"{len(attention_details)} attention-only checklist requirements"
+                        ),
+                        "details": attention_details,
                     }
                 )
+        elif attention_details:
+            status = "attention"
+            summary = f"{len(attention_details)} attention-only checklist requirements"
+            risks.append(
+                {
+                    "severity": "warning",
+                    "title": f"{group['label']} signoff attention",
+                    "summary": summary,
+                    "details": attention_details,
+                }
+            )
         else:
             status = "ready"
             summary = (
-                f"{available} of {expected} resources ready"
-                if expected
-                else "No resources expected"
+                f"{available} of {expected} requirements ready" if expected else "No requirements"
             )
-
         review_groups.append(
             {
                 "id": group_id,
@@ -128,58 +113,86 @@ def inspect_signoff_package(workspace) -> dict:
             }
         )
 
-    if result.warnings:
-        risks.append(
-            {
-                "severity": "warning",
-                "title": "Checklist attention",
-                "summary": "The workspace checklist contains failed or warning items",
-                "details": checklist_details,
-            }
-        )
-
     risks.sort(key=lambda risk: risk["severity"] != "blocked")
-
+    status = checklist_data.get("status")
     return {
-        "status": "blocked" if result.missing_required else "attention" if risks else "ready",
+        "status": status if status in {"ready", "attention", "blocked"} else "blocked",
         "groups": review_groups,
         "risks": risks,
     }
 
 
-def _review_detail(issue) -> dict:
+def _unavailable_review() -> dict:
+    detail = {
+        "kind": "freshness",
+        "label": "Signoff checklist",
+        "location": "home/checklist.json",
+        "reason": "The current signoff checklist could not be generated.",
+        "owner": "checklist",
+        "policy": "block",
+        "state": "unavailable",
+        "evidence": [],
+    }
     return {
-        "kind": issue.kind,
-        "label": issue.label,
-        "location": issue.location,
-        "reason": issue.reason,
+        "status": "blocked",
+        "groups": [
+            {
+                "id": group_id,
+                "label": label,
+                "status": "blocked" if group_id == "reports" else "ready",
+                "available": 0,
+                "expected": 0,
+                "summary": "Checklist unavailable" if group_id == "reports" else "No requirements",
+            }
+            for group_id, label in _REVIEW_GROUPS
+        ],
+        "risks": [
+            {
+                "severity": "blocked",
+                "title": "Signoff checklist unavailable",
+                "summary": "Re-run signoff inspection after current-output analysis completes.",
+                "details": [detail],
+            }
+        ],
     }
 
 
-def _review_group_id(resource: str) -> str:
-    if resource.startswith("initial/") or resource.startswith("origin "):
-        return "initial"
-    if resource.startswith("config/") or resource == "config directory":
+def _review_detail(item: dict) -> dict:
+    source = item.get("source", {})
+    source = source if isinstance(source, dict) else {}
+    evidence = item.get("evidence", [])
+    return {
+        "kind": item.get("category", "checklist"),
+        "label": item.get("title", "Checklist item"),
+        "location": source.get("path", "home/checklist.json"),
+        "reason": item.get("summary", ""),
+        "owner": item.get("owner", "checklist"),
+        "policy": item.get("policy", "warn"),
+        "state": item.get("state", "unavailable"),
+        "evidence": evidence if isinstance(evidence, list) else [],
+    }
+
+
+def _review_group_for_item(item: dict) -> str:
+    step = str(item.get("step", ""))
+    category = str(item.get("category", ""))
+    source = item.get("source", {})
+    path = source.get("path", "") if isinstance(source, dict) else ""
+    if category == "configuration" or path.startswith("config/"):
         return "config"
-    if resource.startswith("harden/"):
+    if category == "provenance" or path.startswith(("origin/", "initial/")):
+        return "initial"
+    if step == "Harden" or path.startswith(("Harden_ecc/", "harden/")):
         return "harden"
-    if resource.startswith("final/design/"):
-        return "final_design"
-    if resource.startswith("final/timing/sta/"):
+    if step == "sta" or path.startswith(("sta_ecc/", "final/timing/sta/")):
         return "sta"
-    if resource.startswith("final/timing/spef/") or resource == "RCX SPEF files":
+    if step == "RCX" or path.startswith(("RCX_ecc/", "final/timing/spef/")):
         return "spef"
+    if step in {"Route", "drc", "filler"} or path.startswith(
+        ("route_ecc/", "drc_ecc/", "filler_ecc/", "final/design/")
+    ):
+        return "final_design"
     return "reports"
-
-
-def _missing_summary(count: int, kind: str) -> str:
-    suffix = "resource" if count == 1 else "resources"
-    return f"{count} {kind} {suffix} missing"
-
-
-def _flow_summary(count: int) -> str:
-    suffix = "step is" if count == 1 else "steps are"
-    return f"{count} required flow {suffix} not successful"
 
 
 def export_signoff_package_archive(workspace, output_path: str) -> str:
@@ -188,7 +201,11 @@ def export_signoff_package_archive(workspace, output_path: str) -> str:
 
     with tempfile.TemporaryDirectory(prefix="ecc-signoff-") as temporary_root:
         result = EngineFlow(workspace).collect_signoff_package(
-            SignoffPackageOptions(output_dir=temporary_root, archive=True)
+            SignoffPackageOptions(
+                output_dir=temporary_root,
+                archive=True,
+                refresh_analysis=True,
+            )
         )
         if not result.ok:
             missing = ", ".join(result.missing_required) or "unknown required resources"
@@ -206,7 +223,7 @@ def export_signoff_package_archive(workspace, output_path: str) -> str:
         if not archive.is_file():
             raise RuntimeApiError(
                 "command_failed",
-                f"signoff package archive does not exist: {archive}",
+                "signoff package archive does not exist",
             )
 
         destination.parent.mkdir(parents=True, exist_ok=True)

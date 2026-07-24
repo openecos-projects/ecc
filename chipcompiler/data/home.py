@@ -271,3 +271,8 @@ class HomeData:
                          info : str = ""):
         checklist = Checklist(path=Path(self.data.get("checklist", "")))
         checklist.update(step=step, type=type, item=item, state=state, info=info)
+
+    def replace_checklist_step(self, step: str) -> None:
+        """Drop all persisted results for a step before a current-output recheck."""
+        checklist = Checklist(path=Path(self.data.get("checklist", "")))
+        checklist.replace_step(step)

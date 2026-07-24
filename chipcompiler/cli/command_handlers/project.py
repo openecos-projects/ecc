@@ -56,6 +56,7 @@ name = "ics55"
 root = ""
 
 [flow]
+# preset: rtl2gds | rcx | harden | syn_sta
 preset = "rtl2gds"
 run = "default"
 """
@@ -140,6 +141,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
+    from chipcompiler import rtl2gds as rtl2gds_api
     from chipcompiler.cli.project.config import (
         find_config_path,
         load_project_config,
@@ -150,7 +152,6 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     )
     from chipcompiler.data import create_workspace
     from chipcompiler.engine import EngineFlow
-    from chipcompiler.rtl2gds import build_rtl2gds_flow
 
     project = ctx.project
     project_dir = ctx.project_dir
@@ -296,8 +297,9 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
     try:
         engine_flow = EngineFlow(workspace=workspace)
+        flow_builders = rtl2gds_api.get_flow_builders()
         if not engine_flow.has_init():
-            for step, tool, state in build_rtl2gds_flow():
+            for step, tool, state in flow_builders[cfg.flow_preset]():
                 engine_flow.add_step(step=step, tool=tool, state=state)
 
         engine_flow.create_step_workspaces()

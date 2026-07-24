@@ -3,7 +3,6 @@ import tomllib
 from dataclasses import dataclass, field
 
 SUPPORTED_PDK_NAMES = {"ics55"}
-SUPPORTED_FLOW_PRESETS = {"rtl2gds"}
 SUPPORTED_FLOW_RUNS = {"default"}
 FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
 RTL_SUFFIXES = {".v", ".sv", ".svh", ".vh"}
@@ -106,6 +105,12 @@ def find_config_path(project_dir: str) -> str | None:
     return path if os.path.isfile(path) else None
 
 
+def _supported_flow_presets() -> set[str]:
+    from chipcompiler import rtl2gds as rtl2gds_api
+
+    return set(rtl2gds_api.get_flow_builders())
+
+
 def validate_project_config(cfg: ProjectConfig) -> list[str]:
     toml_error = getattr(cfg, "_toml_error", None)
     if toml_error:
@@ -149,7 +154,7 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
 
     if not cfg.flow_preset:
         errors.append("flow.preset is required")
-    elif cfg.flow_preset not in SUPPORTED_FLOW_PRESETS:
+    elif cfg.flow_preset not in _supported_flow_presets():
         errors.append(f"unsupported flow.preset: {cfg.flow_preset}")
 
     if cfg.flow_run and cfg.flow_run not in SUPPORTED_FLOW_RUNS:

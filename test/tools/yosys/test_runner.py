@@ -170,6 +170,44 @@ def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
     assert "slang plugin check failed" in log_file.read_text()
 
 
+def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
+    workspace, step, output_file, _ = _build_workspace_and_step(tmp_path)
+    step.data = {"requires_slang": False}
+    updates = []
+
+    class FakeSubFlow:
+        def __init__(self, workspace, workspace_step):
+            pass
+
+        def update_step(self, step_name, state, runtime="", memory=0, info=None):
+            updates.append((step_name, state))
+
+    class FakeChecklist:
+        def __init__(self, workspace, workspace_step):
+            pass
+
+        def check(self):
+            return None
+
+    def fail_slang_check(*args, **kwargs):
+        raise AssertionError("native Verilog must not probe the Slang plugin")
+
+    def fake_run(cmd, cwd, env, stdout, stderr):
+        output_file.write_text("module top(); endmodule\n")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(runner, "YosysSubFlow", FakeSubFlow)
+    monkeypatch.setattr(runner, "YosysChecklist", FakeChecklist)
+    monkeypatch.setattr(runner, "build_step_metrics", lambda workspace, step: None)
+    monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], {"PATH": "/tmp"}))
+    monkeypatch.setattr(runner, "check_slang_plugin", fail_slang_check)
+    monkeypatch.setattr(runner, "_run_ecc_synthesis_sta", lambda **kwargs: True)
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    assert runner.run_step(workspace=workspace, step=step) is True
+    assert ("run yosys", StateEnum.Success) in updates
+
+
 def test_run_step_marks_invalid_when_yosys_is_missing(tmp_path, monkeypatch):
     workspace, step, _, log_file = _build_workspace_and_step(tmp_path)
     updates = []

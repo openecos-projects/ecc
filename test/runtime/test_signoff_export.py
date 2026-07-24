@@ -1,12 +1,16 @@
 import queue
 import threading
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from chipcompiler.runtime import signoff_export
-from chipcompiler.runtime.requests import WorkspaceExportSignoffRequest
+from chipcompiler.runtime.requests import (
+    WorkspaceExportSignoffRequest,
+    WorkspaceInspectSignoffRequest,
+)
 from chipcompiler.runtime.sessions import WorkspaceSessionRegistry
 from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
 
@@ -85,73 +89,74 @@ def test_workspace_export_signoff_waits_for_session_mutation_lock(monkeypatch, t
     assert entered.is_set()
 
 
-def test_inspect_signoff_package_returns_grouped_review_with_actionable_details(
-    monkeypatch,
-):
+def test_inspect_signoff_package_reads_current_home_checklist(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    checklist_path = workspace_dir / "home" / "checklist.json"
+    checklist_path.parent.mkdir(parents=True)
+    checklist_path.write_text(json.dumps({
+        "schema_version": 3,
+        "kind": "signoff_checklist",
+        "status": "blocked",
+        "summary": {"passed": 1, "blocked": 1, "attention": 1, "unavailable": 0},
+        "checklist": [
+            {
+                "id": "quality.drc.clean",
+                "step": "drc",
+                "category": "quality_gate",
+                "owner": "qor",
+                "policy": "block",
+                "state": "failed",
+                "blocked": True,
+                "title": "Final DRC clean",
+                "summary": "drc_count=2 (required == 0)",
+                "source": {
+                    "kind": "qor_gate",
+                    "path": "drc_ecc/analysis/qor_summary.json",
+                    "gate_id": "qor.drc.clean",
+                },
+                "evidence": [{"kind": "feature", "path": "drc_ecc/feature/drc.step.json"}],
+            },
+            {
+                "id": "report.optional.image",
+                "step": "workspace",
+                "category": "report",
+                "owner": "checklist",
+                "policy": "warn",
+                "state": "warning",
+                "blocked": False,
+                "title": "Optional image",
+                "summary": "Optional image is missing.",
+                "source": {"kind": "package", "path": "filler_ecc/output/gcd_filler.png"},
+                "evidence": [],
+            },
+            {
+                "id": "provenance.initial.rtl",
+                "step": "workspace",
+                "category": "provenance",
+                "owner": "checklist",
+                "policy": "block",
+                "state": "pass",
+                "blocked": False,
+                "title": "Initial RTL",
+                "summary": "Current output is present and non-empty.",
+                "source": {"kind": "provenance", "path": "origin/gcd.v"},
+                "evidence": [],
+            },
+        ],
+    }), encoding="utf-8")
+
     class FakeFlow:
         def __init__(self, workspace):
-            assert workspace == "workspace"
+            assert workspace.directory == workspace_dir
 
         def collect_signoff_package(self, options):
             assert options.archive is False
             assert options.materialize is False
-            return SimpleNamespace(
-                copied=[
-                    {
-                        "destination": "initial/gcd.v",
-                        "size_bytes": 10,
-                    },
-                    {
-                        "destination": "config/sta.json",
-                        "size_bytes": 20,
-                    },
-                    {
-                        "destination": "final/timing/sta/MAX_125/RCworst/qor_summary.rpt",
-                        "size_bytes": 30,
-                    },
-                ],
-                missing_required=["harden/gcd.gds", "flow step RCX is Failed"],
-                missing_optional=["final/design/gcd.png"],
-                warnings=["home checklist contains failed or warning items"],
-                issues=[
-                    SimpleNamespace(
-                        kind="resource",
-                        label="harden.gds",
-                        location="Harden_ecc/output/gcd_Harden.gds",
-                        reason="Required file is missing or empty",
-                        required=True,
-                        destination="harden/gcd.gds",
-                    ),
-                    SimpleNamespace(
-                        kind="flow",
-                        label="RCX flow step",
-                        location="RCX",
-                        reason="State is Failed",
-                        required=True,
-                        destination="flow step RCX",
-                    ),
-                    SimpleNamespace(
-                        kind="resource",
-                        label="final.design.image",
-                        location="filler_ecc/output/gcd_filler.png",
-                        reason="Optional file is missing or empty",
-                        required=False,
-                        destination="final/design/gcd.png",
-                    ),
-                    SimpleNamespace(
-                        kind="checklist",
-                        label="check setup slack",
-                        location="STA / Timing / check setup slack",
-                        reason="Failed: WNS is negative",
-                        required=False,
-                        destination="final/reports/checklist.json",
-                    ),
-                ],
-            )
+            return SimpleNamespace()
 
     monkeypatch.setattr(signoff_export, "EngineFlow", FakeFlow)
 
-    review = signoff_export.inspect_signoff_package("workspace")
+    review = signoff_export.inspect_signoff_package(SimpleNamespace(directory=workspace_dir))
 
     assert review["status"] == "blocked"
     assert [group["id"] for group in review["groups"]] == [
@@ -163,59 +168,49 @@ def test_inspect_signoff_package_returns_grouped_review_with_actionable_details(
         "spef",
         "reports",
     ]
-    assert review["groups"][2] == {
-        "id": "harden",
-        "label": "Harden",
+    drc_group = next(group for group in review["groups"] if group["id"] == "final_design")
+    assert drc_group == {
+        "id": "final_design",
+        "label": "Final Design",
         "status": "blocked",
         "available": 0,
-        "expected": 1,
-        "summary": "1 required resource missing",
+        "expected": 2,
+        "summary": "1 blocking checklist requirements",
     }
-    assert review["groups"][3]["status"] == "attention"
-    assert [risk["severity"] for risk in review["risks"]] == [
-        "blocked",
-        "blocked",
-        "warning",
-        "warning",
-    ]
-    harden_risk = next(
-        risk for risk in review["risks"] if risk["title"] == "Harden resources missing"
-    )
-    assert harden_risk["details"] == [
+    assert next(group for group in review["groups"] if group["id"] == "reports")["status"] == "ready"
+    assert [risk["severity"] for risk in review["risks"]] == ["blocked", "warning"]
+    blocked_risk = next(risk for risk in review["risks"] if risk["severity"] == "blocked")
+    assert blocked_risk["details"] == [
         {
-            "kind": "resource",
-            "label": "harden.gds",
-            "location": "Harden_ecc/output/gcd_Harden.gds",
-            "reason": "Required file is missing or empty",
+            "kind": "quality_gate",
+            "label": "Final DRC clean",
+            "location": "drc_ecc/analysis/qor_summary.json",
+            "reason": "drc_count=2 (required == 0)",
+            "owner": "qor",
+            "policy": "block",
+            "state": "failed",
+            "evidence": [{"kind": "feature", "path": "drc_ecc/feature/drc.step.json"}],
         }
     ]
-    flow_risk = next(
-        risk for risk in review["risks"] if risk["title"] == "Flow requirements not complete"
-    )
-    assert flow_risk["details"] == [
-        {
-            "kind": "flow",
-            "label": "RCX flow step",
-            "location": "RCX",
-            "reason": "State is Failed",
-        }
-    ]
-    checklist_risk = next(
-        risk for risk in review["risks"] if risk["title"] == "Checklist attention"
-    )
-    assert checklist_risk["details"] == [
-        {
-            "kind": "checklist",
-            "label": "check setup slack",
-            "location": "STA / Timing / check setup slack",
-            "reason": "Failed: WNS is negative",
-        }
-    ]
-    assert all(
-        not detail["location"].startswith("/")
-        for risk in review["risks"]
-        for detail in risk["details"]
-    )
+
+
+def test_inspect_signoff_package_blocks_when_current_checklist_is_unavailable(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    (workspace_dir / "home").mkdir(parents=True)
+
+    class FakeFlow:
+        def __init__(self, workspace):
+            assert workspace.directory == workspace_dir
+
+        def collect_signoff_package(self, options):
+            return SimpleNamespace()
+
+    monkeypatch.setattr(signoff_export, "EngineFlow", FakeFlow)
+
+    review = signoff_export.inspect_signoff_package(SimpleNamespace(directory=workspace_dir))
+
+    assert review["status"] == "blocked"
+    assert review["risks"][0]["title"] == "Signoff checklist unavailable"
 
 
 def test_workspace_inspect_signoff_waits_for_session_mutation_lock(monkeypatch, tmp_path):
@@ -232,14 +227,9 @@ def test_workspace_inspect_signoff_waits_for_session_mutation_lock(monkeypatch, 
 
     monkeypatch.setattr(signoff_export, "inspect_signoff_package", fake_inspect)
     api = WorkspaceRuntimeApi(sessions=sessions)
-    request_class = getattr(
-        __import__("chipcompiler.runtime.requests", fromlist=["WorkspaceInspectSignoffRequest"]),
-        "WorkspaceInspectSignoffRequest",
-    )
-
     def run_inspection():
         try:
-            results.put(api.inspect_signoff(request_class(workspace_id=session.workspace_id)))
+            results.put(api.inspect_signoff(WorkspaceInspectSignoffRequest(workspace_id=session.workspace_id)))
         except BaseException as error:  # pragma: no cover - re-raised below
             results.put(error)
 

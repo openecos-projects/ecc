@@ -45,27 +45,31 @@ proc processAbcScript {abc_script} {
 # read liberty files and prepare some variables
 source init_tech.tcl
 
-yosys plugin -i slang
+# Use Slang only for input forms that require its filelist/SystemVerilog support.
+if {$use_slang} {
+    yosys plugin -i slang
 
-# Check if FILELIST is set and non-empty, prioritize it over individual Verilog files
-if {[info exists filelist] && $filelist ne ""} {
-    # Use SystemVerilog filelist file
-    puts "Reading SystemVerilog sources from filelist: $filelist"
-    yosys read_slang -F $filelist --top $top_design \
-            --compat-mode --keep-hierarchy \
-            +define+SYNTHESIS \
-            --allow-use-before-declare \
-            --ignore-timing \
-            -Wduplicate-definition
+    # Check if FILELIST is set and non-empty, prioritize it over individual Verilog files
+    if {[info exists filelist] && $filelist ne ""} {
+        puts "Reading SystemVerilog sources from filelist: $filelist"
+        yosys read_slang -F $filelist --top $top_design \
+                --compat-mode --keep-hierarchy \
+                +define+SYNTHESIS \
+                --allow-use-before-declare \
+                --ignore-timing \
+                -Wduplicate-definition
+    } else {
+        puts "Reading SystemVerilog sources from rtl files: $rtl_file"
+        yosys read_slang {*}$rtl_file --top $top_design \
+                --compat-mode --keep-hierarchy \
+                +define+SYNTHESIS \
+                --allow-use-before-declare \
+                --ignore-timing \
+                -Wduplicate-definition
+    }
 } else {
-    # Fall back to individual Verilog files
-    puts "Reading Verilog sources from rtl files: $rtl_file"
-    yosys read_slang {*}$rtl_file --top $top_design \
-            --compat-mode --keep-hierarchy \
-            +define+SYNTHESIS \
-            --allow-use-before-declare \
-            --ignore-timing \
-            -Wduplicate-definition
+    puts "Reading Verilog sources with native parser: $rtl_file"
+    yosys read_verilog -sv {*}$rtl_file
 }
 
 # preserve hierarchy of selected modules/instances

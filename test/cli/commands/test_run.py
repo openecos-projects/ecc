@@ -2,6 +2,8 @@ import json
 import os
 from types import SimpleNamespace
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -53,7 +55,7 @@ def _install_flow_mocks(monkeypatch):
     monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
-        "chipcompiler.rtl2gds.build_rtl2gds_flow",
+        "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
         lambda: [("Synthesis", "yosys", "Unstart")],
     )
     monkeypatch.setattr(
@@ -62,6 +64,24 @@ def _install_flow_mocks(monkeypatch):
     )
 
     return capture
+
+
+def _set_flow_preset(project_dir, preset):
+    toml_path = os.path.join(project_dir, "ecc.toml")
+    with open(toml_path) as f:
+        content = f.read()
+    content = content.replace('preset = "rtl2gds"', f'preset = "{preset}"')
+    with open(toml_path, "w") as f:
+        f.write(content)
+
+
+def _patch_all_flow_builders(monkeypatch):
+    markers = {}
+    for attr in ("build_rtl2gds_flow", "build_rcx_flow", "build_harden_flow", "build_syn_sta_flow"):
+        steps = [("Synthesis", "yosys", "Unstart"), (attr, "ecc", "Unstart")]
+        markers[attr] = steps
+        monkeypatch.setattr(f"chipcompiler.rtl2gds.builder.{attr}", lambda steps=steps: steps)
+    return markers
 
 
 class TestRun:
@@ -189,3 +209,42 @@ class TestRun:
         assert "inspect_cmd" in record
         assert "metrics_cmd" not in record
         assert "log_cmd" in record
+
+
+class TestRunFlowPreset:
+    @pytest.mark.parametrize(
+        "preset,builder_attr",
+        [
+            ("rtl2gds", "build_rtl2gds_flow"),
+            ("rcx", "build_rcx_flow"),
+            ("harden", "build_harden_flow"),
+            ("syn_sta", "build_syn_sta_flow"),
+        ],
+    )
+    def test_run_dispatches_builder_for_preset(
+        self, tmp_path, monkeypatch, create_cli_project, preset, builder_attr
+    ):
+        project_dir = create_cli_project()
+        _set_flow_preset(project_dir, preset)
+        _install_flow_mocks(monkeypatch)
+        markers = _patch_all_flow_builders(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir])
+
+        assert rc == 0
+        assert DummyFlow.instances[0].added_steps == markers[builder_attr]
+
+    def test_run_overwrite_rebuilds_flow_with_new_preset(
+        self, tmp_path, monkeypatch, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(run_dir, profile="main")
+        _set_flow_preset(project_dir, "harden")
+        _install_flow_mocks(monkeypatch)
+        markers = _patch_all_flow_builders(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--overwrite"])
+
+        assert rc == 0
+        assert DummyFlow.instances[0].added_steps == markers["build_harden_flow"]

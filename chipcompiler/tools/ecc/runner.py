@@ -2,24 +2,22 @@
 # -*- encoding: utf-8 -*-
 import sys
 import os
+import shutil
 from pathlib import Path
        
 from chipcompiler.data import WorkspaceStep, Workspace, StateEnum, StepEnum
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.tools.ecc.plot import ECCToolsPlot
-from chipcompiler.tools.ecc.metrics import build_step_metrics
+from chipcompiler.tools.ecc.metrics import (
+    build_step_metrics,
+    save_cts_timing_feature_facts,
+    save_rcx_spef_feature_facts,
+)
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.checklist import EccChecklist
+from chipcompiler.tools.ecc.sta_qor import sta_artifact_directory
 from chipcompiler.utility import json_read
-
-
-def safe_dir_name(name: str) -> str:
-    value = "".join(
-        char if char.isalnum() or char in ("-", "_", ".") else "_"
-        for char in name.strip()
-    )
-    return value or "spef"
 
 
 def temperature_token(temperature) -> str:
@@ -30,6 +28,57 @@ def temperature_token(temperature) -> str:
     except (TypeError, ValueError):
         pass
     return str(temperature).replace("-", "m").replace(".", "p")
+
+
+def copy_rcx_spef_outputs(workspace: Workspace, step: WorkspaceStep):
+    output_dir_text = os.fspath(step.output.get("dir", "") or "")
+    if not output_dir_text:
+        return
+
+    output_dir = Path(output_dir_text)
+    if output_dir_text.startswith("/"):
+        relative_output_dir = output_dir_text[1:]
+        if relative_output_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
+            output_dir = Path(workspace.directory) / relative_output_dir
+
+    spef_writer_dir = output_dir / "spef_writer"
+    if not spef_writer_dir.is_dir():
+        return
+
+    spef_outputs = step.output.get("spef", [])
+    if isinstance(spef_outputs, (str, os.PathLike)):
+        spef_outputs = [spef_outputs]
+
+    expected_paths = []
+    for spef_output in spef_outputs:
+        if not spef_output:
+            continue
+
+        spef_path = Path(spef_output)
+        spef_text = os.fspath(spef_output)
+        if spef_text.startswith("/"):
+            relative_spef = spef_text[1:]
+            if relative_spef.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
+                spef_path = Path(workspace.directory) / relative_spef
+
+        expected_paths.append(spef_path)
+
+    if not expected_paths:
+        expected_paths = [
+            output_dir / spef_path.name
+            for spef_path in spef_writer_dir.glob("*.spef")
+        ]
+
+    for expected_path in expected_paths:
+        source_path = spef_writer_dir / expected_path.name
+        if not source_path.is_file():
+            continue
+
+        expected_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, expected_path)
+        workspace.logger.info("Copied RCX SPEF %s to %s",
+                              source_path,
+                              expected_path)
 
 
 def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
@@ -62,16 +111,16 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
             liberty_files = liberty.get("path", [])
 
             for rcx_corner_name in rcx_corner_names:
+                spef_name = (
+                    f"{spef_design_name}_{rcx_corner_name}_"
+                    f"{temperature_token(temperature)}C.spef"
+                )
                 items.append({
                     "corner": corner_name,
                     "temperature": temperature,
                     "rcx_corner": rcx_corner_name,
                     "liberty_files": liberty_files,
-                    "spef_file": os.path.join(
-                        rcx_output_dir,
-                        f"{spef_design_name}_{rcx_corner_name}_"
-                        f"{temperature_token(temperature)}C.spef",
-                    ),
+                    "spef_file": os.path.join(rcx_output_dir, spef_name),
                 })
 
     return items
@@ -217,7 +266,8 @@ def run_sta_without_spef(workspace: Workspace,
         liberty_paths = workspace.pdk.libs
         sdc_path = workspace.pdk.sdc
         data_dir = step.data.get("dir", "")
-        report_dir = step.report.get("dir", "")
+        report_root = step.report.get("dir", "")
+        feature_root = step.feature.get("dir", "")
 
         if not netlist_path or not os.path.isfile(netlist_path):
             raise FileNotFoundError(f"synthesis netlist does not exist: {netlist_path}")
@@ -234,13 +284,14 @@ def run_sta_without_spef(workspace: Workspace,
 
         if not sdc_path or not os.path.isfile(sdc_path):
             raise FileNotFoundError(f"STA SDC does not exist: {sdc_path}")
-        if not data_dir or not report_dir:
-            raise ValueError("synthesis STA data or report directory is not configured")
+        if not data_dir or not report_root or not feature_root:
+            raise ValueError("synthesis STA data, report, or feature directory is not configured")
 
         work_dir = Path(data_dir) / "sta"
         work_dir.mkdir(parents=True, exist_ok=True)
-        report_dir = Path(report_dir)
-        report_dir.mkdir(parents=True, exist_ok=True)
+        corner = "post_synthesis"
+        report_dir = Path(report_root) / corner
+        feature_dir = Path(feature_root) / corner
 
         if ecc_module is None:
             ecc_module = ECCToolsModule()
@@ -265,9 +316,11 @@ def run_sta_without_spef(workspace: Workspace,
         ecc_module.run_timing(
             config=workspace.config.get(StepEnum.STA.value, ""),
             work_dir=work_dir,
-            output_dir=report_dir,
+            report_dir=report_dir,
+            feature_dir=feature_dir,
             lib_paths=liberty_paths,
             sdc_path=sdc_path,
+            corner=corner,
         )
     except Exception as exc:
         workspace.logger.warning(
@@ -275,7 +328,11 @@ def run_sta_without_spef(workspace: Workspace,
         )
         return False
 
-    workspace.logger.info("Post-synthesis STA report saved to %s", report_dir)
+    workspace.logger.info(
+        "Post-synthesis STA artifacts saved to report=%s feature=%s",
+        report_dir,
+        feature_dir,
+    )
     return True
 
 def save_data(workspace: Workspace,
@@ -534,6 +591,11 @@ def run_cts(workspace: Workspace,
         sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Success)
         
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        if not save_cts_timing_feature_facts(
+            step, ecc_module.feature_cts_timing()
+        ):
+            workspace.logger.error("Failed to persist CTS timing feature facts")
+            return False
             
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -989,10 +1051,14 @@ def run_rcx(workspace: Workspace,
         ecc_module.init_rcx(config=workspace.config.get(StepEnum.RCX.value, ""),
                             pdk=workspace.pdk.name)
         ecc_module.run_rcx()
-        ecc_module.report_rcx()
+        ecc_module.destroy_rcx()
+        copy_rcx_spef_outputs(workspace, step)
         sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
         
         save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False, report_timing=False)
+        if not save_rcx_spef_feature_facts(workspace=workspace, step=step):
+            workspace.logger.error("Failed to persist RCX SPEF feature facts")
+            return False
         
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value,
                              state=StateEnum.Success) 
@@ -1071,29 +1137,49 @@ def run_sta(workspace: Workspace,
                                  state=StateEnum.Imcomplete)
             return False
 
-        report_corner_dir = f"{corner_name}_{temperature_token(temperature)}"
-        report_dir = os.path.join(
-            step.output.get("dir", ""),
-            safe_dir_name(report_corner_dir),
-            safe_dir_name(rcx_corner_name),
+        report_dir = sta_artifact_directory(
+            step.report.get("dir", ""),
+            corner_name,
+            temperature,
+            rcx_corner_name,
         )
-        os.makedirs(report_dir, exist_ok=True)
+        feature_dir = sta_artifact_directory(
+            step.feature.get("dir", ""),
+            corner_name,
+            temperature,
+            rcx_corner_name,
+        )
+        if report_dir is None or feature_dir is None:
+            workspace.logger.error(
+                "STA report or feature directory is not configured for %s/%s",
+                corner_name,
+                rcx_corner_name,
+            )
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
+                                 state=StateEnum.Imcomplete)
+            return False
+
+        corner = f"{report_dir.parent.name}/{report_dir.name}"
 
         ecc_module.run_timing(
             config=workspace.config.get(StepEnum.STA.value, ""),
-            output_dir=report_dir,
             work_dir=step.data.get(StepEnum.STA.value, ""),
+            report_dir=report_dir,
+            feature_dir=feature_dir,
             lib_paths=liberty_files,
             sdc_path=workspace.pdk.sdc,
             spef_path=spef_file,
+            output_modes=("report", "structured"),
+            corner=corner,
         )
 
         workspace.logger.info(
-            "STA report for %s/%s at %sC saved to %s",
+            "STA artifacts for %s/%s at %sC saved to report=%s feature=%s",
             corner_name,
             rcx_corner_name,
             temperature,
             report_dir,
+            feature_dir,
         )
 
     sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Success)

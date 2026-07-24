@@ -190,7 +190,7 @@ class TestRunSet:
             ),
         )
         monkeypatch.setattr(
-            "chipcompiler.rtl2gds.build_rtl2gds_flow",
+            "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
             lambda: [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
@@ -271,7 +271,7 @@ class TestRunSet:
             ),
         )
         monkeypatch.setattr(
-            "chipcompiler.rtl2gds.build_rtl2gds_flow",
+            "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
             lambda: [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(

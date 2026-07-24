@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-import os
 
 from chipcompiler.data import (
     Workspace, 
@@ -101,6 +100,9 @@ def build_analysis(workspace: Workspace,
                    step: WorkspaceStep) -> dict:          
     info = {
         "metrics" : step.analysis.get('metrics', ""),
+        "qor_metrics" : step.analysis.get('qor_metrics', ""),
+        "qor_summary" : step.analysis.get('qor_summary', ""),
+        "qor_hotspots" : step.analysis.get('qor_hotspots', ""),
         "statis" : step.analysis.get('statis_csv', ""),
         "data summary" : step.feature.get('db', ""),
         "step feature" : step.feature.get('step', ""),
@@ -285,19 +287,15 @@ def build_checklist(workspace: Workspace,
 
 def build_sta(workspace: Workspace, 
                     step: WorkspaceStep) -> dict:          
-    top_module = workspace.design.top_module
-    sta_data_dir = step.data.get(f"{StepEnum.STA.value}", "")
-    if not sta_data_dir:
-        sta_data_dir = os.path.join(step.directory, "data", "sta")
-
     sta_report = step.report.get("sta", {})
-    info = {
-        "timing": sta_report.get("timing", os.path.join(sta_data_dir, f"{top_module}.rpt")),
-        "hold": sta_report.get("hold", os.path.join(sta_data_dir, f"{top_module}_hold.skew")),
-        "setup": sta_report.get("setup", os.path.join(sta_data_dir, f"{top_module}_setup.skew")),
-        "cap": sta_report.get("cap", os.path.join(sta_data_dir, f"{top_module}.cap")),
-        "fanout": sta_report.get("fanout", os.path.join(sta_data_dir, f"{top_module}.fanout")),
-        "trans": sta_report.get("trans", os.path.join(sta_data_dir, f"{top_module}.trans")),
+    sta_feature = step.feature.get("sta", {})
+    return {
+        "report_root": sta_report.get("dir", step.report.get("dir", "")),
+        "feature_root": sta_feature.get("dir", step.feature.get("dir", "")),
+        "qor_summary_root": sta_feature.get(
+            "qor_summary_root", step.feature.get("dir", "")
+        ),
+        "timing_paths_root": sta_feature.get(
+            "timing_paths_root", step.feature.get("dir", "")
+        ),
     }
-
-    return info

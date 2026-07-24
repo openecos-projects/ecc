@@ -46,6 +46,45 @@ def _workspace_libs(workspace: Workspace) -> list[Path]:
     return [Path(path) for path in lib_paths if path]
 
 
+def _plain_verilog_filelist_paths(filelist: str) -> list[str] | None:
+    """Return plain Verilog sources when a filelist needs no Slang features."""
+    try:
+        lines = Path(filelist).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    sources = []
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("//"):
+            continue
+        if line.startswith(("+", "-", "@")):
+            return None
+        source = Path(line.strip('"'))
+        if not source.is_absolute():
+            source = Path(filelist).parent / source
+        if source.suffix.lower() != ".v" or not source.is_file():
+            return None
+        sources.append(str(source.resolve()))
+
+    return sources or None
+
+
+def _yosys_source_config(workspace: Workspace, step: WorkspaceStep) -> tuple[bool, list[str], str]:
+    """Classify RTL input as native-Verilog or Slang-required."""
+    filelist = workspace.design.input_filelist or workspace.parameters.data.get("File list", "")
+    if filelist and os.path.exists(filelist):
+        plain_sources = _plain_verilog_filelist_paths(filelist)
+        if plain_sources is not None:
+            return False, plain_sources, ""
+        return True, [], filelist
+
+    rtl_file = step.input.get("verilog", "")
+    if rtl_file and os.path.exists(rtl_file) and Path(rtl_file).suffix.lower() == ".v":
+        return False, [os.path.abspath(rtl_file)], ""
+    return True, [], ""
+
+
 def generate_global_var_tcl(workspace: Workspace,
                            step: WorkspaceStep) -> str:
     """Generate global_var.tcl content dynamically from workspace configuration."""
@@ -112,12 +151,16 @@ def generate_global_var_tcl(workspace: Workspace,
     script.set("clk_freq_mhz", clk_freq_mhz)
     script.blank_line()
 
-    if has_valid_filelist:
+    use_slang, native_rtl_files, slang_filelist = _yosys_source_config(workspace, step)
+    step.data["requires_slang"] = use_slang
+
+    script.set("use_slang", "true" if use_slang else "false")
+    if use_slang and slang_filelist:
         script.comment("RTL source files (from filelist)")
-        script.set_path("filelist", _abspath(filelist))
+        script.set_path("filelist", _abspath(slang_filelist))
     else:
         script.comment("RTL source files")
-        script.set_list("rtl_file", [_abspath(rtl_file)])
+        script.set_list("rtl_file", native_rtl_files or [_abspath(rtl_file)])
     script.blank_line()
 
     script.comment("Output files")
@@ -220,6 +263,7 @@ def build_step(workspace: Workspace,
     feature_dir = step.directory / "feature"
     step.feature = {
         "dir": feature_dir,
+        "step": feature_dir / f"{step.name}.step.json",
         "generic_stat": feature_dir / f"{step.name}_generic_stat.json",
         "stat": feature_dir / f"{step.name}_stat.json",
     }
@@ -244,9 +288,13 @@ def build_step(workspace: Workspace,
     }
 
     analysis_dir = step.directory / "analysis"
+    qor_metrics_path = analysis_dir / "qor_metrics.json"
     step.analysis = {
         "dir": analysis_dir,
-        "metrics": analysis_dir / f"{step.name}_metrics.json"
+        "metrics": qor_metrics_path,
+        "qor_metrics": qor_metrics_path,
+        "qor_summary": analysis_dir / "qor_summary.json",
+        "qor_hotspots": analysis_dir / "qor_hotspots.json",
     }  
     
     # build sub flow paths and data

@@ -110,7 +110,11 @@ def build_step(workspace: Workspace,
         "db": feature_dir / f"{step.name}.db.json",
         "step": feature_dir / f"{step.name}.step.json",
         "map": feature_dir / f"{step.name}.map.json",
-        "timing": data_dir / "sta" / f"{workspace.design.top_module}.rpt.json",
+        "sta": {
+            "dir": feature_dir,
+            "qor_summary_root": feature_dir,
+            "timing_paths_root": feature_dir,
+        },
     }
     
     # build report paths
@@ -120,12 +124,7 @@ def build_step(workspace: Workspace,
         "db": report_dir / f"{step.name}.db.rpt",
         "step": report_dir / f"{step.name}.rpt",
         "sta": {
-            "timing": data_dir / "sta" / f"{workspace.design.top_module}.rpt",
-            "hold": data_dir / "sta" / f"{workspace.design.top_module}_hold.skew",
-            "setup": data_dir / "sta" / f"{workspace.design.top_module}_setup.skew",
-            "cap": data_dir / "sta" / f"{workspace.design.top_module}.cap",
-            "fanout": data_dir / "sta" / f"{workspace.design.top_module}.fanout",
-            "trans": data_dir / "sta" / f"{workspace.design.top_module}.trans",
+            "dir": report_dir,
         },
     }
     
@@ -145,9 +144,14 @@ def build_step(workspace: Workspace,
     
     # build analysis paths
     analysis_dir = step.directory / "analysis"
+    qor_metrics_path = analysis_dir / "qor_metrics.json"
     step.analysis = {
         "dir": analysis_dir,
-        "metrics": analysis_dir / f"{step.name}_metrics.json",
+        "metrics": qor_metrics_path,
+        "qor_metrics": qor_metrics_path,
+        "qor_summary": analysis_dir / "qor_summary.json",
+        "qor_hotspots": analysis_dir / "qor_hotspots.json",
+        "sta_timing_issues": analysis_dir / "sta_timing_issues.json",
         "statis_csv": analysis_dir / f"{step.name}_statis.csv"
     }    
     
