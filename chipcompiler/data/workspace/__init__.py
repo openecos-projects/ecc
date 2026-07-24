@@ -155,8 +155,9 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
     ),
     (StepEnum.RCX, "ecc"): ("flow", "db", StepEnum.RCX.value),
     (StepEnum.STA, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
-    (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
-    (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
+    (StepEnum.HARDEN, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
+    (StepEnum.PLACEMENT, "dreamplace"): ("flow", "db", "dreamplace"),
+    (StepEnum.LEGALIZATION, "dreamplace"): ("flow", "db", "dreamplace"),
 }
 
 

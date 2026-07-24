@@ -203,7 +203,8 @@ class EngineFlow:
                 for spef in ecc_output.spef if ecc_output else []:
                     if not os.path.exists(spef):
                         break
-                success = True
+                else:
+                    success = True
             case (
                 StepEnum.TIMING_OPT.value
                 | StepEnum.TIMING_OPT_DRV.value

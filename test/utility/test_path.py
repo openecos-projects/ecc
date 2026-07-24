@@ -5,7 +5,6 @@ from chipcompiler.utility.path import (
     path_is_within,
     path_list,
     path_text,
-    path_texts,
     stringify_paths,
 )
 
@@ -30,10 +29,6 @@ def test_path_text_converts_optional_path_values():
     assert path_text(None) == ""
     assert path_text(Path("/tmp/workspace")) == "/tmp/workspace"
     assert path_text("relative/file.v") == "relative/file.v"
-
-
-def test_path_texts_filters_none_and_converts_paths():
-    assert path_texts([Path("/tmp/a"), None, "b"]) == ["/tmp/a", "b"]
 
 
 def test_optional_path_converts_non_empty_values_to_paths():

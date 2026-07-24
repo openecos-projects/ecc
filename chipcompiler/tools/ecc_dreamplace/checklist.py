@@ -221,7 +221,7 @@ class DreamplaceChecklist:
         )
 
     def has_plot_files(self) -> bool:
-        step_dirs = self.workspace_step.data.steps or {}
+        step_dirs = self.workspace_step.data.steps
         pattern = os.path.join(
             step_dirs.get(self.workspace_step.name, ""),
             self.workspace.design.name,

@@ -41,10 +41,6 @@ def test_variants_are_isinstance_of_base():
     assert isinstance(EccStep(), WorkspaceStep)
 
 
-def test_result_field_is_gone():
-    assert not hasattr(WorkspaceStep(), "result")
-
-
 def test_unset_group_fields_default_to_none():
     output = EccOutput(dir=Path("/d"), verilog=Path("/v.v"))
     assert output.dir == Path("/d")

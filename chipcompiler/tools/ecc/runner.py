@@ -309,7 +309,7 @@ def save_data(
     if report_timing:
         ecc_module.release_sta()
         ecc_module.init_sta(
-            output_dir=(step.data.steps or {}).get("sta", ""),
+            output_dir=step.data.steps.get("sta", ""),
             top_module=workspace.design.top_module,
             lib_paths=workspace.pdk.libs,
             sdc_path=workspace.pdk.sdc,
@@ -488,10 +488,10 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
 
         ecc_module.run_cts(
             config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
-            output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
+            output=step.data.steps.get(StepEnum.CTS.value, ""),
         )
 
-        ecc_module.report_cts(output=(step.data.steps or {}).get(StepEnum.CTS.value, ""))
+        ecc_module.report_cts(output=step.data.steps.get(StepEnum.CTS.value, ""))
 
         ecc_module.feature_cts_map(json_path=step.feature.map or "")
 
@@ -592,7 +592,7 @@ def run_routing(
         ):
             ecc_module.release_sta()
             ecc_module.init_sta(
-                output_dir=(step.data.steps or {}).get(StepEnum.ROUTING.value, ""),
+                output_dir=step.data.steps.get(StepEnum.ROUTING.value, ""),
                 top_module=workspace.design.top_module,
                 lib_paths=workspace.pdk.libs,
                 sdc_path=workspace.pdk.sdc,
@@ -626,7 +626,7 @@ def run_drc(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.init_drc(output_dir=(step.data.steps or {}).get(StepEnum.DRC.value, ""))
+        ecc_module.init_drc(output_dir=step.data.steps.get(StepEnum.DRC.value, ""))
         ecc_module.run_drc(
             config=workspace.config.get(f"{StepEnum.DRC.value}", ""),
             report_path=step.report.step or "",
@@ -922,7 +922,7 @@ def run_harden(
         ecc_module.write_timing_model(
             output_lib_path=step.output.lib or "",
             config=workspace.config.get(StepEnum.STA.value, ""),
-            output_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
+            output_dir=step.data.steps.get(StepEnum.STA.value, ""),
             lib_paths=signoff_item["liberty_files"],
             sdc_path=workspace.pdk.sdc,
             spef_path=signoff_item["spef_file"],
@@ -1042,7 +1042,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         ecc_module.run_timing(
             config=workspace.config.get(StepEnum.STA.value, ""),
             output_dir=report_dir,
-            work_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
+            work_dir=step.data.steps.get(StepEnum.STA.value, ""),
             lib_paths=liberty_files,
             sdc_path=workspace.pdk.sdc,
             spef_path=spef_file,

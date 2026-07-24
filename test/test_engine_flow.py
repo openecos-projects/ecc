@@ -32,6 +32,24 @@ def test_check_step_result_harden_reads_ecc_only_lef_lib(tmp_path):
     assert EngineFlow(Workspace()).check_step_result(step_missing) is False
 
 
+def test_check_step_result_rcx_requires_listed_spef_files(tmp_path):
+    spef_a = tmp_path / "a.spef"
+    spef_b = tmp_path / "b.spef"
+    spef_a.write_text("")
+    spef_b.write_text("")
+    step = EccStep(name=StepEnum.RCX.value, output=EccOutput(spef=[spef_a, spef_b]))
+    assert EngineFlow(Workspace()).check_step_result(step) is True
+    # empty spef list -> still success
+    step_empty = EccStep(name=StepEnum.RCX.value, output=EccOutput(spef=[]))
+    assert EngineFlow(Workspace()).check_step_result(step_empty) is True
+    # one listed spef missing -> not success
+    step_missing = EccStep(
+        name=StepEnum.RCX.value,
+        output=EccOutput(spef=[spef_a, tmp_path / "missing.spef"]),
+    )
+    assert EngineFlow(Workspace()).check_step_result(step_missing) is False
+
+
 def test_check_step_result_default_requires_def_verilog_gds(tmp_path):
     for name in ("gcd.def", "gcd.v", "gcd.gds"):
         (tmp_path / name).write_text("")

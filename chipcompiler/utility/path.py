@@ -14,10 +14,6 @@ def path_text(path) -> str:
     return "" if path is None else str(path)
 
 
-def path_texts(paths: list) -> list[str]:
-    return [path_text(path) for path in paths if path is not None]
-
-
 def path_is_within(path: Path, directory: Path) -> bool:
     try:
         return Path(path).resolve().is_relative_to(Path(directory).resolve())

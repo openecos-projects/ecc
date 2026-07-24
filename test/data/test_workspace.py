@@ -435,8 +435,22 @@ def test_step_config_keys_return_workspace_config_keys():
         StepEnum.RCX.value,
         StepEnum.STA.value,
     )
-    assert data_api.step_config_keys("place", "dreamplace") == ("dreamplace",)
-    assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys("Harden", "ecc") == (
+        "flow",
+        "db",
+        StepEnum.RCX.value,
+        StepEnum.STA.value,
+    )
+    assert data_api.step_config_keys("place", "dreamplace") == (
+        "flow",
+        "db",
+        "dreamplace",
+    )
+    assert data_api.step_config_keys("legalization", "dreamplace") == (
+        "flow",
+        "db",
+        "dreamplace",
+    )
     assert data_api.step_config_keys("synthesis", "yosys") == ()
     assert data_api.step_config_keys("place", None) == ()
 
@@ -493,6 +507,8 @@ def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
         config_dir / "cts_default_config.json",
     )
     assert data_api.step_config_paths(str(workspace_dir), "place", "dreamplace") == (
+        config_dir / "flow_config.json",
+        config_dir / "db_default_config.json",
         config_dir / "dreamplace.json",
     )
     assert data_api.step_config_paths(workspace_dir, "place", "ECC") == ()

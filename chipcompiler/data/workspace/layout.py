@@ -191,7 +191,7 @@ class EccAnalysis(AnalysisPaths):
 @dataclass
 class SubflowState:
     path: Path | None = None
-    steps: list = field(default_factory=list)
+    steps: list[dict] = field(default_factory=list)
 
 
 @dataclass

@@ -122,7 +122,7 @@ class ECCToolsPlot:
         return True
 
     def plot_routing_heatmap(self) -> bool:
-        data_dir = (self.step.data.steps or {}).get(StepEnum.ROUTING.value, "")
+        data_dir = self.step.data.steps.get(StepEnum.ROUTING.value, "")
         if not os.path.exists(data_dir):
             return False
 
