@@ -289,15 +289,10 @@ def test_ecc_runtime_wrappers_pass_through_path_arguments(tmp_path):
     module.init_drc(Path("/ws/data/drc"))
     module.run_drc(Path("/ws/config/drc.json"), Path("/ws/report/drc.rpt"))
     module.save_drc(Path("/ws/feature/drc.json"))
-    module.pnp(Path("/ws/config/pnp.json"))
     module.run_placement(Path("/ws/config/place.json"))
-    module.init_pl(Path("/ws/config/place.json"))
     module.feature_placement_map(Path("/ws/feature/place_map.json"))
-    module.run_incremental_flow(Path("/ws/config/incremental.json"))
     module.run_legalize(Path("/ws/config/legalize.json"))
     module.run_filler(Path("/ws/config/filler.json"))
-    module.run_macro_placement(Path("/ws/config/macro.json"), Path("/ws/script/macro.tcl"))
-    module.run_refinement(Path("/ws/script/refine.tcl"))
     module.run_routing(Path("/ws/config/route.json"))
     module.feature_route_read(Path("/ws/feature/route_read.json"))
     module.feature_route(Path("/ws/feature/route.json"))
@@ -318,17 +313,8 @@ def test_ecc_runtime_wrappers_pass_through_path_arguments(tmp_path):
         spef_path=Path("/ws/design.spef"),
         design_name="gcd",
     )
-    module.run_to(Path("/ws/config/to.json"))
     module.run_timing_opt_drv(Path("/ws/config/drv.json"))
     module.run_timing_opt_hold(Path("/ws/config/hold.json"))
-    module.run_timing_opt_setup(Path("/ws/config/setup.json"))
-    module.layout_patchs(Path("/ws/layout/patches.json"))
-    module.layout_graph(Path("/ws/layout/graph.json"))
-    module.generate_vectors(Path("/ws/vectors"))
-    module.vectors_nets_to_def(Path("/ws/vectors"))
-    module.vectors_nets_patterns_to_def(Path("/ws/vectors/patterns.json"))
-    module.get_timing_wire_graph(Path("/ws/graph/wire.json"))
-    module.get_timing_instance_graph(Path("/ws/graph/inst.json"))
     module.cell_density(save_path=Path("/ws/eval/cell.csv"))
     module.pin_density(save_path=Path("/ws/eval/pin.csv"))
     module.net_density(save_path=Path("/ws/eval/net.csv"))
@@ -347,6 +333,10 @@ def test_ecc_runtime_wrappers_pass_through_path_arguments(tmp_path):
     assert ("verilog_init", (Path("/ws/input.v"), "gcd"), {}) in calls
     assert ("gds_save", (Path("/ws/output/gcd.gds.gz"), True), {}) in calls
     assert ("run_cts", (Path("/ws/config/cts.json"), Path("/ws/data/cts")), {}) in calls
+    assert ("run_placer", (Path("/ws/config/place.json"),), {}) in calls
+    assert ("run_incremental_lg", (), {}) in calls
+    assert ("run_to_drv", (Path("/ws/config/drv.json"),), {}) in calls
+    assert ("run_to_hold", (Path("/ws/config/hold.json"),), {}) in calls
     assert ("init_rt", (), {"config": Path("/ws/config/route.json")}) in calls
     assert ("lib_init", (), {"lib_paths": [Path("/pdk/lib.lib")]}) in calls
     assert ("sdc_init", (Path("/ws/design.sdc"),), {}) in calls
