@@ -111,6 +111,25 @@ def test_yosys_builder_constructs_path_objects_and_creates_dirs(tmp_path):
     assert step.analysis.dir and step.analysis.dir.is_dir()
 
 
+def test_build_step_config_raises_when_script_dir_is_unset(tmp_path):
+    workspace, step, _ = _build_workspace_and_step(tmp_path)
+    # The helper builds the step by hand, so script.dir stays None; the real
+    # build_step() constructor always populates it before build_step_config().
+    with pytest.raises(RuntimeError, match="step.script.dir is unset"):
+        yosys_builder.build_step_config(workspace, step)
+
+
+def test_build_step_config_raises_when_data_dir_is_unset(tmp_path):
+    workspace, step, _ = _build_workspace_and_step(tmp_path)
+    script_dir = tmp_path / "Synthesis_yosys" / "script"
+    script_dir.mkdir(parents=True)
+    step.script.dir = script_dir
+    step.data.dir = None
+
+    with pytest.raises(RuntimeError, match="step.data.dir is unset"):
+        yosys_builder.build_step_config(workspace, step)
+
+
 def test_yosys_subflow_writes_path_payload_as_json_strings(tmp_path):
     workspace = Workspace(
         directory=tmp_path,

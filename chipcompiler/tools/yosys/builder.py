@@ -281,7 +281,12 @@ def build_step_config(workspace: Workspace, step: YosysStep):
 
     current_dir = Path(__file__).resolve().parent
     scripts_dir = current_dir / "scripts"
-    script_dir = Path(step.script.dir) if step.script.dir else Path(step.directory or "")
+    if step.script.dir is None:
+        raise RuntimeError(
+            "step.script.dir is unset: yosys build_step() must populate the script "
+            "directory before build_step_config()"
+        )
+    script_dir = step.script.dir
 
     for file in ["yosys_synthesis.tcl", "init_tech.tcl"]:
         src = scripts_dir / file
@@ -297,9 +302,15 @@ def build_step_config(workspace: Workspace, step: YosysStep):
     if aig_file.exists():
         _copy_writable(aig_file, script_dir / "lazy_man_synth_library.aig")
 
+    if step.data.dir is None:
+        raise RuntimeError(
+            "step.data.dir is unset: yosys build_step() must populate the data "
+            "directory before build_step_config()"
+        )
+    data_dir = step.data.dir
+
     try:
         tcl_content = generate_global_var_tcl(workspace, step)
-        data_dir = step.data.dir or Path(step.directory or "") / "data"
         global_var_path = data_dir / "global_var.tcl"
         with global_var_path.open("w") as f:
             f.write(tcl_content)

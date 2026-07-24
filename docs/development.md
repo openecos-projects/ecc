@@ -85,10 +85,6 @@ uv run ruff check chipcompiler/ test/
 uv run ty check
 uv run pyright chipcompiler/
 uv run mypy chipcompiler/
-
-# Legacy formatters
-uv run black chipcompiler/ test/
-uv run isort chipcompiler/ test/
 ```
 
 ## Git Hooks
