@@ -55,9 +55,13 @@ name = "ics55"
 root = "/path/to/ics55"
 
 [flow]
-preset = "rtl2gds"
+preset = "rtl2gds" # rtl2gds | rcx | harden
 run = "default"
 ```
+
+`flow.preset` accepts `rtl2gds`, `rcx`, or `harden` (`rcx` appends the RCX and
+STA steps, `harden` additionally appends the Harden step). To switch flows on
+an existing project, update `flow.preset` and re-run with `--overwrite`.
 
 Then validate and run:
 

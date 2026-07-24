@@ -3,7 +3,7 @@ import tomllib
 from dataclasses import dataclass, field
 
 SUPPORTED_PDK_NAMES = {"ics55"}
-SUPPORTED_FLOW_PRESETS = {"rtl2gds"}
+SUPPORTED_FLOW_PRESETS = {"rtl2gds", "rcx", "harden"}
 SUPPORTED_FLOW_RUNS = {"default"}
 FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
 RTL_SUFFIXES = {".v", ".sv", ".svh", ".vh"}

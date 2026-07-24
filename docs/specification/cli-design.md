@@ -443,15 +443,19 @@ name = "ics55"
 root = "/path/to/ics55"
 
 [flow]
-preset = "rtl2gds"
+preset = "rtl2gds" # rtl2gds | rcx | harden
 run = "default"
 
 [params.place]
 target_density = 0.65
 ```
 
-Current validation supports the `ics55` PDK, the `rtl2gds` flow preset, and
-`flow.run = "default"`. `design.rtl` must contain exactly one entry; use a
+Current validation supports the `ics55` PDK, the `rtl2gds`, `rcx`, and
+`harden` flow presets, and `flow.run = "default"`. The preset selects the flow
+builder: `rcx` appends the RCX and STA steps to the rtl2gds flow, and `harden`
+additionally appends the Harden step. Switching presets on an existing run
+requires `ecc run --overwrite` to rebuild the workspace.
+`design.rtl` must contain exactly one entry; use a
 filelist (`.f`, `.fl`, or `.filelist`) for multi-source RTL designs. If
 `pdk.root` is empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
 `ICS55_PDK_ROOT`.
