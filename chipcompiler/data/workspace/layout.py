@@ -55,7 +55,7 @@ class EccOutput(OutputPaths):
     view_json_edits: Path | None = None
     lef: Path | None = None
     lib: Path | None = None
-    spef: list[Path] = field(default_factory=list)
+    spef: list[str] = field(default_factory=list)
 
 
 # --- data ------------------------------------------------------------------

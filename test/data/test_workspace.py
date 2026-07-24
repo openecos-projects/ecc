@@ -422,12 +422,12 @@ def test_step_config_keys_return_workspace_config_keys():
     assert data_api.step_config_keys("legalization", "ecc") == (
         "flow",
         "db",
-        StepEnum.PLACEMENT.value,
+        StepEnum.LEGALIZATION.value,
     )
     assert data_api.step_config_keys("filler", "ecc") == (
         "flow",
         "db",
-        StepEnum.PLACEMENT.value,
+        StepEnum.FILLER.value,
     )
     assert data_api.step_config_keys("sta", "ecc") == (
         "flow",
