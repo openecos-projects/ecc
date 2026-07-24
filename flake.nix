@@ -146,6 +146,8 @@
         "chipcompiler.tools"
         "chipcompiler.cli"
       ];
+
+      meta.mainProgram = "ecc";
     };
   in flake-parts.lib.mkFlake { inherit inputs; } {
     systems = [ "x86_64-linux" ];
