@@ -36,7 +36,7 @@ Use `nix run . -- ...` to create an ECC project, validate its `ecc.toml`,
 and run the full RTL2GDS flow.
 
 ```bash
-nix run . -- init gcd
+nix run . -- init gcd # Or use `ecc init gcd` if you have `ecc` in the Path
 cp ./rtl/gcd.v gcd/rtl/gcd.v
 ```
 
@@ -66,6 +66,12 @@ nix run . -- check --project gcd
 nix run . -- run --project gcd
 nix run . -- status --project gcd
 nix run . -- log --project gcd
+
+# Or use ecc command if you have `ecc` in the Path
+# ecc check --project gcd
+# ecc run --project gcd
+# ecc status --project gcd
+# ecc log --project gcd
 ```
 
 ## Features

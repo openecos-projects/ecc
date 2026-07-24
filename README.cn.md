@@ -35,7 +35,7 @@ GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-s
 可以使用 `nix run . -- ...` 创建 ECC 项目，校验 `ecc.toml`，并执行完整 RTL2GDS 流程。
 
 ```bash
-nix run . -- init gcd
+nix run . -- init gcd # 如果 PATH 中已有 `ecc`，也可以使用 `ecc init gcd`
 cp ./rtl/gcd.v gcd/rtl/gcd.v
 ```
 
@@ -64,8 +64,14 @@ run = "default"
 nix run . -- check --project gcd
 nix run . -- run --project gcd
 nix run . -- status --project gcd
-nix run . -- metrics --project gcd
 nix run . -- log --project gcd
+
+# 如果 PATH 中已有 `ecc`，也可以使用 ecc 命令
+# ecc check --project gcd
+# ecc run --project gcd
+# ecc status --project gcd
+# ecc metrics --project gcd
+# ecc log --project gcd
 ```
 
 ## 功能特性
