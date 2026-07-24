@@ -56,7 +56,7 @@ name = "ics55"
 root = ""
 
 [flow]
-# preset: rtl2gds | rcx | harden
+# preset: rtl2gds | rcx | harden | syn_sta
 preset = "rtl2gds"
 run = "default"
 """
@@ -297,11 +297,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
     try:
         engine_flow = EngineFlow(workspace=workspace)
-        flow_builders = {
-            "rtl2gds": rtl2gds_api.build_rtl2gds_flow,
-            "rcx": rtl2gds_api.build_rcx_flow,
-            "harden": rtl2gds_api.build_harden_flow,
-        }
+        flow_builders = rtl2gds_api.get_flow_builders()
         if not engine_flow.has_init():
             for step, tool, state in flow_builders[cfg.flow_preset]():
                 engine_flow.add_step(step=step, tool=tool, state=state)

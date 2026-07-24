@@ -55,7 +55,7 @@ def _install_flow_mocks(monkeypatch):
     monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
-        "chipcompiler.rtl2gds.build_rtl2gds_flow",
+        "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
         lambda: [("Synthesis", "yosys", "Unstart")],
     )
     monkeypatch.setattr(
@@ -77,10 +77,10 @@ def _set_flow_preset(project_dir, preset):
 
 def _patch_all_flow_builders(monkeypatch):
     markers = {}
-    for attr in ("build_rtl2gds_flow", "build_rcx_flow", "build_harden_flow"):
+    for attr in ("build_rtl2gds_flow", "build_rcx_flow", "build_harden_flow", "build_syn_sta_flow"):
         steps = [("Synthesis", "yosys", "Unstart"), (attr, "ecc", "Unstart")]
         markers[attr] = steps
-        monkeypatch.setattr(f"chipcompiler.rtl2gds.{attr}", lambda steps=steps: steps)
+        monkeypatch.setattr(f"chipcompiler.rtl2gds.builder.{attr}", lambda steps=steps: steps)
     return markers
 
 
@@ -218,6 +218,7 @@ class TestRunFlowPreset:
             ("rtl2gds", "build_rtl2gds_flow"),
             ("rcx", "build_rcx_flow"),
             ("harden", "build_harden_flow"),
+            ("syn_sta", "build_syn_sta_flow"),
         ],
     )
     def test_run_dispatches_builder_for_preset(

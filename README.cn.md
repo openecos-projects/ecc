@@ -54,13 +54,13 @@ name = "ics55"
 root = "/path/to/ics55"
 
 [flow]
-preset = "rtl2gds" # rtl2gds | rcx | harden
+preset = "rtl2gds" # rtl2gds | rcx | harden | syn_sta
 run = "default"
 ```
 
-`flow.preset` 可选 `rtl2gds`、`rcx`、`harden`（`rcx` 追加 RCX 和 STA 步骤，
-`harden` 再追加 Harden 步骤）。已有项目切换 flow：修改 `flow.preset` 后加
-`--overwrite` 重跑。
+`flow.preset` 可选 `rtl2gds`、`rcx`、`harden`、`syn_sta`（`rcx` 追加 RCX 和
+STA 步骤，`harden` 再追加 Harden 步骤，`syn_sta` 仅综合并附 netlist 级
+STA 报告）。已有项目切换 flow：修改 `flow.preset` 后加 `--overwrite` 重跑。
 
 然后校验并运行：
 
