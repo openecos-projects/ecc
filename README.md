@@ -61,7 +61,8 @@ run = "default"
 
 `flow.preset` accepts `rtl2gds`, `rcx`, `harden`, or `syn_sta` (`rcx` appends
 the RCX and STA steps, `harden` additionally appends the Harden step, and
-`syn_sta` runs synthesis only, with a netlist-level STA report). To switch
+`syn_sta` runs synthesis only, with a best-effort
+netlist-level STA report (an STA failure does not fail the step). To switch
 flows on an existing project, update `flow.preset` and re-run with `--overwrite`.
 
 Then validate and run:

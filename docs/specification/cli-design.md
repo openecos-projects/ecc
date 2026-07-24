@@ -455,7 +455,8 @@ flow presets are discovered from the `build_*_flow` defs in
 `chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `rcx`, `harden`, and
 `syn_sta`). The preset selects the flow builder: `rcx` appends the RCX and STA
 steps to the rtl2gds flow, `harden` additionally appends the Harden step, and
-`syn_sta` runs synthesis only, with a netlist-level STA report. Switching
+`syn_sta` runs synthesis only, with a best-effort netlist-level STA report
+(an STA failure does not fail the step). Switching
 presets on an existing run requires `ecc run --overwrite` to rebuild the
 workspace.
 `design.rtl` must contain exactly one entry; use a
