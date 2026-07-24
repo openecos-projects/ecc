@@ -7,10 +7,12 @@ from typing import TypeAlias
 
 from numpy import double
 
-from chipcompiler.utility.path import path_text, path_texts
+from chipcompiler.utility.path import path_text
 
-# Path arguments to the native-wrapper methods are normalized via path_text(),
-# so they accept a Path, a str, or None (a step group field is Path | None).
+# Path arguments are passed through to the native bindings unchanged; the
+# bindings accept str | os.PathLike | None (None only where the binding
+# parameter is optional). path_text remains only for the two string-typed
+# config_dict values, whose boundary is std::map<std::string, std::string>.
 PathArg: TypeAlias = str | Path | None
 
 
@@ -83,35 +85,35 @@ class ECCToolsModule:
         self, flow_config: str, db_config: str, output_dir: PathArg, feature_dir: PathArg
     ):
         """init_config"""
-        self.ecc.flow_init(flow_config=path_text(flow_config))
+        self.ecc.flow_init(flow_config=flow_config)
 
         self.ecc.db_init(
-            config_path=path_text(db_config),
-            output_path=path_text(output_dir),
-            feature_path=path_text(feature_dir),
+            config_path=db_config,
+            output_path=output_dir,
+            feature_path=feature_dir,
         )
 
     def update_step_paths(self, output_dir: PathArg, feature_dir: PathArg):
         self.ecc.db_init(
-            output_path=path_text(output_dir),
-            feature_path=path_text(feature_dir),
+            output_path=output_dir,
+            feature_path=feature_dir,
         )
 
     def update_sta_data_config(
         self, db_config: str, output_dir: str, lib_paths: list[str], sdc_path: str
     ):
         self.ecc.db_init(
-            config_path=path_text(db_config),
-            output_path=path_text(output_dir),
-            lib_paths=path_texts(lib_paths),
-            sdc_path=path_text(sdc_path),
+            config_path=db_config,
+            output_path=output_dir,
+            lib_paths=lib_paths,
+            sdc_path=sdc_path,
         )
 
     ########################################################################
     # data api
     ########################################################################
     def idb_init(self, config_path: str):
-        return self.ecc.idb_init(path_text(config_path))
+        return self.ecc.idb_init(config_path)
 
     def set_net(self, net_name: str, net_type: str):
         """
@@ -177,40 +179,40 @@ class ECCToolsModule:
     ########################################################################
     def init_techlef(self, tech_lef_path: str):
         """init tech lef"""
-        self.ecc.tech_lef_init(path_text(tech_lef_path))
+        self.ecc.tech_lef_init(tech_lef_path)
 
     def init_lefs(self, lef_paths: list):
         """init_lef"""
-        self.ecc.lef_init(lef_paths=path_texts(lef_paths))
+        self.ecc.lef_init(lef_paths=lef_paths)
 
     def read_def(self, path: str = ""):
         """init def"""
-        self.ecc.def_init(def_path=path_text(path))
+        self.ecc.def_init(def_path=path)
 
     def read_verilog(self, verilog: PathArg, top_module: str):
         """init verilog"""
-        self.ecc.verilog_init(path_text(verilog), top_module)
+        self.ecc.verilog_init(verilog, top_module)
 
     def def_save(self, def_path: PathArg):
         """save def file"""
-        self.ecc.def_save(def_name=path_text(def_path))
+        self.ecc.def_save(def_name=def_path)
 
     def gds_save(self, output_path: PathArg, *, is_harden: bool = False):
         """save gds file"""
-        self.ecc.gds_save(path_text(output_path), is_harden)
+        self.ecc.gds_save(output_path, is_harden)
 
     def tcl_save(self, output_path: str):
         """save tcl file"""
-        self.ecc.tcl_save(path_text(output_path))
+        self.ecc.tcl_save(output_path)
 
     def verilog_save(self, output_verilog, cell_names: set | None = None):
         """verilog save"""
         if cell_names is None:
             cell_names = set()
-        self.ecc.netlist_save(netlist_path=path_text(output_verilog), exclude_cell_names=cell_names)
+        self.ecc.netlist_save(netlist_path=output_verilog, exclude_cell_names=cell_names)
 
     def json_save(self, path: str):
-        self.ecc.json_save(path=path_text(path))
+        self.ecc.json_save(path=path)
 
     def view_json_save(
         self,
@@ -231,7 +233,7 @@ class ECCToolsModule:
                 compressed package files.
         """
         return self.ecc.view_json_save(
-            output_dir=path_text(output_dir),
+            output_dir=output_dir,
             json_format=json_format,
             compress=compress,
         )
@@ -245,15 +247,15 @@ class ECCToolsModule:
             compress: When True, prefer reading edits_path + ".gz" if edits_path
                 does not already end with ".gz".
         """
-        return self.ecc.view_json_apply_edits(edits_path=path_text(edits_path), compress=compress)
+        return self.ecc.view_json_apply_edits(edits_path=edits_path, compress=compress)
 
     def save_data(self, path: PathArg):
         """save ECC data"""
-        return self.ecc.save_data(path=path_text(path))
+        return self.ecc.save_data(path=path)
 
     def load_data(self, path: str | Path):
         """load ECC data"""
-        return self.ecc.load_data(path=path_text(path))
+        return self.ecc.load_data(path=path)
 
     def is_db_data_exists(self, db_path: str | Path) -> bool:
         if not db_path or not os.path.isdir(db_path):
@@ -290,7 +292,7 @@ class ECCToolsModule:
         """write SoC json"""
         if harden_cores is None:
             harden_cores = []
-        return self.ecc.write_soc_json(path=path_text(path), harden_cores=harden_cores)
+        return self.ecc.write_soc_json(path=path, harden_cores=harden_cores)
 
     ########################################################################
     # feature api
@@ -299,50 +301,50 @@ class ECCToolsModule:
         """
         generate feature summary
         """
-        self.ecc.feature_summary(path_text(json_path))
+        self.ecc.feature_summary(json_path)
 
     def feature_step(self, step: str, json_path: PathArg):
         """
         generate step feature
         """
-        self.ecc.feature_tool(path_text(json_path), step)
+        self.ecc.feature_tool(json_path, step)
 
     def feature_eval_map(self, path: str, bin_cnt_x: int, bin_cnt_y: int):
         return self.ecc.feature_eval_map(
-            path=path_text(path),
+            path=path,
             bin_cnt_x=bin_cnt_x,
             bin_cnt_y=bin_cnt_y,
         )
 
     def feature_eval_summary(self, path: str, grid_size: int):
-        return self.ecc.feature_eval_summary(path=path_text(path), grid_size=grid_size)
+        return self.ecc.feature_eval_summary(path=path, grid_size=grid_size)
 
     def feature_timing_eval_summary(self, path: str):
-        return self.ecc.feature_timing_eval_summary(path=path_text(path))
+        return self.ecc.feature_timing_eval_summary(path=path)
 
     def feature_net_eval(self, path: str):
-        return self.ecc.feature_net_eval(path=path_text(path))
+        return self.ecc.feature_net_eval(path=path)
 
     def feature_cong_map(self, step: str, dir: str):
-        return self.ecc.feature_cong_map(step=step, dir=path_text(dir))
+        return self.ecc.feature_cong_map(step=step, dir=dir)
 
     ########################################################################
     # reports api
     ########################################################################
     def report_wirelength(self, path: str = ""):
-        return self.ecc.report_wirelength(path=path_text(path))
+        return self.ecc.report_wirelength(path=path)
 
     def report_summary(self, path: PathArg):
         """
         generate step report
         """
-        self.ecc.report_db(path_text(path))
+        self.ecc.report_db(path)
 
     def report_congestion(self, path: str = ""):
-        return self.ecc.report_congestion(path=path_text(path))
+        return self.ecc.report_congestion(path=path)
 
     def report_dangling_net(self, path: str = ""):
-        return self.ecc.report_dangling_net(path=path_text(path))
+        return self.ecc.report_dangling_net(path=path)
 
     def report_route(
         self,
@@ -351,7 +353,7 @@ class ECCToolsModule:
         *,
         summary: bool = True,
     ):
-        return self.ecc.report_route(path=path_text(path), net=net, summary=summary)
+        return self.ecc.report_route(path=path, net=net, summary=summary)
 
     def report_place_distribution(self, prefixes: list[str] | None = None):
         if prefixes is None:
@@ -371,7 +373,7 @@ class ECCToolsModule:
         )
 
     def report_drc(self, path: str):
-        return self.ecc.report_drc(path=path_text(path))
+        return self.ecc.report_drc(path=path)
 
     ########################################################################
     # power api
@@ -398,16 +400,16 @@ class ECCToolsModule:
     # CTS api
     ########################################################################
     def run_cts(self, config: str, output: PathArg) -> bool:
-        return self.ecc.run_cts(path_text(config), path_text(output))
+        return self.ecc.run_cts(config, output)
 
     def report_cts(self, output: PathArg):
-        self.ecc.cts_report(path_text(output))
+        self.ecc.cts_report(output)
 
     def feature_cts_map(self, json_path: PathArg, map_grid_size=1):
         """
         generate cts map feature
         """
-        self.ecc.feature_cts_eval(path_text(json_path), map_grid_size)
+        self.ecc.feature_cts_eval(json_path, map_grid_size)
 
     ########################################################################
     # DRC api
@@ -416,19 +418,19 @@ class ECCToolsModule:
         """
         init drc config
         """
-        self.ecc.init_drc(temp_directory_path=path_text(output_dir), thread_number=therad_number)
+        self.ecc.init_drc(temp_directory_path=output_dir, thread_number=therad_number)
 
     def run_drc(self, config: str, report_path: PathArg = "") -> bool:
         """
         run drc check
         """
-        self.ecc.run_drc(config=path_text(config), report=path_text(report_path))
+        self.ecc.run_drc(config=config, report=report_path)
 
     def save_drc(self, feature_path: PathArg):
         """
         generate drc result
         """
-        self.ecc.save_drc(path=path_text(feature_path))
+        self.ecc.save_drc(path=feature_path)
 
     ########################################################################
     # floorplan api
@@ -772,16 +774,16 @@ class ECCToolsModule:
     # pnp api
     ########################################################################
     def pnp(self, config: str):
-        self.ecc.run_pnp(path_text(config))
+        self.ecc.run_pnp(config)
 
     ########################################################################
     # placement api
     ########################################################################
     def run_placement(self, config: str):
-        self.ecc.run_placer(path_text(config))
+        self.ecc.run_placer(config)
 
     def init_pl(self, config: str):
-        return self.ecc.init_pl(config=path_text(config))
+        return self.ecc.init_pl(config=config)
 
     def destroy_pl(self):
         return self.ecc.destroy_pl()
@@ -790,25 +792,25 @@ class ECCToolsModule:
         """
         generate placement map feature
         """
-        self.ecc.feature_pl_eval(path_text(json_path), map_grid_size)
+        self.ecc.feature_pl_eval(json_path, map_grid_size)
 
     def run_incremental_flow(self, config: str):
-        return self.ecc.run_incremental_flow(config=path_text(config))
+        return self.ecc.run_incremental_flow(config=config)
 
     def run_legalize(self, config: str):
         self.ecc.run_incremental_lg()
 
     def run_filler(self, config: str):
-        self.ecc.insert_filler(path_text(config))
+        self.ecc.insert_filler(config)
 
     def run_macro_placement(self, config: str, tcl_path=""):
         """
         run macro placement
         """
-        self.ecc.runMP(path_text(config), path_text(tcl_path))
+        self.ecc.runMP(config, tcl_path)
 
     def run_refinement(self, tcl_path=""):
-        self.ecc.runRef(path_text(tcl_path))
+        self.ecc.runRef(tcl_path)
 
     def run_ai_placement(self, config: str, onnx_path: str, normalization_path: str):
         """
@@ -818,9 +820,7 @@ class ECCToolsModule:
             onnx_path: Path to the ONNX model file
             normalization_path: Path to the normalization parameters JSON file
         """
-        self.ecc.run_ai_placement(
-            path_text(config), path_text(onnx_path), path_text(normalization_path)
-        )
+        self.ecc.run_ai_placement(config, onnx_path, normalization_path)
 
     def placer_run_mp(self):
         return self.ecc.placer_run_mp()
@@ -846,10 +846,10 @@ class ECCToolsModule:
     def run_ert(self, config: str = "", config_dict: dict[str, str] | None = None):
         if config_dict is None:
             config_dict = {}
-        return self.ecc.run_ert(config=path_text(config), config_dict=config_dict)
+        return self.ecc.run_ert(config=config, config_dict=config_dict)
 
     def run_routing(self, config: str):
-        self.ecc.init_rt(config=path_text(config))
+        self.ecc.init_rt(config=config)
         self.ecc.run_rt()
         self.ecc.destroy_rt()
 
@@ -858,11 +858,11 @@ class ECCToolsModule:
 
     # read route json file to ecc route data
     def feature_route_read(self, json_path: str):
-        self.ecc.feature_route_read(path=path_text(json_path))
+        self.ecc.feature_route_read(path=json_path)
 
     # read route def and save route data to json
     def feature_route(self, json_path: str):
-        self.ecc.feature_route(path=path_text(json_path))
+        self.ecc.feature_route(path=json_path)
 
     def is_rt_timing_enable(self, config: str):
         if os.path.exists(config):
@@ -881,8 +881,8 @@ class ECCToolsModule:
     ########################################################################
     def init_rcx(self, config: str, pdk: str = "ics55"):
         if pdk:
-            return self.ecc.init_rcx(config=path_text(config), pdk=pdk)
-        return self.ecc.init_rcx(config=path_text(config))
+            return self.ecc.init_rcx(config=config, pdk=pdk)
+        return self.ecc.init_rcx(config=config)
 
     def run_rcx(self):
         return self.ecc.run_rcx()
@@ -904,13 +904,13 @@ class ECCToolsModule:
     ):
         if lib_paths is None:
             lib_paths = []
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
-        self.ecc.sdc_init(path_text(sdc_path))
-        self.ecc.spef_init(path_text(spef_path))
+        self.ecc.lib_init(lib_paths=lib_paths)
+        self.ecc.sdc_init(sdc_path)
+        self.ecc.spef_init(spef_path)
         config_dict = {}
         if work_dir:
             config_dict["-temp_directory_path"] = path_text(work_dir)
-        self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
+        self.ecc.init_sta(config=config, config_dict=config_dict)
         try:
             self.ecc.run_sta()
         finally:
@@ -998,7 +998,7 @@ class ECCToolsModule:
         return None
 
     def write_abstract_lef(self, output_lef_path: PathArg):
-        return self.ecc.write_abstract_lef(path_text(output_lef_path))
+        return self.ecc.write_abstract_lef(output_lef_path)
 
     def write_timing_model(
         self,
@@ -1024,11 +1024,11 @@ class ECCToolsModule:
                 design_name = design_name[: -len("_Harden")]
 
         sta_output_dir = Path(output_dir) if output_dir else output_lib_path.parent
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
-        self.ecc.sdc_init(path_text(sdc_path))
-        self.ecc.spef_init(path_text(spef_path))
+        self.ecc.lib_init(lib_paths=lib_paths)
+        self.ecc.sdc_init(sdc_path)
+        self.ecc.spef_init(spef_path)
         config_dict = {"-temp_directory_path": path_text(sta_output_dir)}
-        self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
+        self.ecc.init_sta(config=config, config_dict=config_dict)
         try:
             self.ecc.extract_lib()
         finally:
@@ -1104,25 +1104,25 @@ class ECCToolsModule:
     # timing opt api
     ########################################################################
     def run_to(self, config: str):
-        return self.ecc.run_to(config=path_text(config))
+        return self.ecc.run_to(config=config)
 
     def run_timing_opt_drv(self, config: str):
-        self.ecc.run_to_drv(path_text(config))
+        self.ecc.run_to_drv(config)
 
     def run_timing_opt_hold(self, config: str):
-        self.ecc.run_to_hold(path_text(config))
+        self.ecc.run_to_hold(config)
 
     def run_timing_opt_setup(self, config: str):
-        self.ecc.run_to_setup(path_text(config))
+        self.ecc.run_to_setup(config)
 
     ########################################################################
     # data vectorization
     ########################################################################
     def layout_patchs(self, path: str):
-        return self.ecc.layout_patchs(path=path_text(path))
+        return self.ecc.layout_patchs(path=path)
 
     def layout_graph(self, path: str):
-        return self.ecc.layout_graph(path=path_text(path))
+        return self.ecc.layout_graph(path=path)
 
     def generate_vectors(
         self,
@@ -1138,7 +1138,7 @@ class ECCToolsModule:
         generate vectorized data from design
         """
         self.ecc.generate_vectors(
-            dir=path_text(vectors_dir),
+            dir=vectors_dir,
             patch_row_step=patch_row_step,
             patch_col_step=patch_col_step,
             batch_mode=batch_mode,
@@ -1150,16 +1150,16 @@ class ECCToolsModule:
         """
         save vectorized data to def
         """
-        self.ecc.read_vectors_nets(dir=path_text(vectors_dir))
+        self.ecc.read_vectors_nets(dir=vectors_dir)
 
     def vectors_nets_patterns_to_def(self, path):
-        self.ecc.read_vectors_nets_patterns(path=path_text(path))
+        self.ecc.read_vectors_nets_patterns(path=path)
 
     def get_timing_wire_graph(self, wire_graph_path: str):
-        return self.ecc.get_timing_wire_graph(path_text(wire_graph_path))
+        return self.ecc.get_timing_wire_graph(wire_graph_path)
 
     def get_timing_instance_graph(self, instance_graph_path: str):
-        return self.ecc.get_timing_instance_graph(path_text(instance_graph_path))
+        return self.ecc.get_timing_instance_graph(instance_graph_path)
 
     ########################################################################
     # evaluation api
@@ -1176,7 +1176,7 @@ class ECCToolsModule:
         return self.ecc.cell_density(
             bin_cnt_x=bin_cnt_x,
             bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
+            save_path=save_path,
         )
 
     def pin_density(
@@ -1188,7 +1188,7 @@ class ECCToolsModule:
         return self.ecc.pin_density(
             bin_cnt_x=bin_cnt_x,
             bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
+            save_path=save_path,
         )
 
     def net_density(
@@ -1200,7 +1200,7 @@ class ECCToolsModule:
         return self.ecc.net_density(
             bin_cnt_x=bin_cnt_x,
             bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
+            save_path=save_path,
         )
 
     def rudy_congestion(
@@ -1212,7 +1212,7 @@ class ECCToolsModule:
         return self.ecc.rudy_congestion(
             bin_cnt_x=bin_cnt_x,
             bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
+            save_path=save_path,
         )
 
     def lut_rudy_congestion(
@@ -1224,11 +1224,11 @@ class ECCToolsModule:
         return self.ecc.lut_rudy_congestion(
             bin_cnt_x=bin_cnt_x,
             bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
+            save_path=save_path,
         )
 
     def egr_congestion(self, save_path: str = ""):
-        return self.ecc.egr_congestion(save_path=path_text(save_path))
+        return self.ecc.egr_congestion(save_path=save_path)
 
     def timing_power_hpwl(self):
         return self.ecc.timing_power_hpwl()
@@ -1250,35 +1250,35 @@ class ECCToolsModule:
 
     def eval_cell_hierarchy(self, plot_path: str, level: int, forward: int):
         return self.ecc.eval_cell_hierarchy(
-            plot_path=path_text(plot_path),
+            plot_path=plot_path,
             level=level,
             forward=forward,
         )
 
     def eval_macro_hierarchy(self, plot_path: str, level: int, forward: int):
         return self.ecc.eval_macro_hierarchy(
-            plot_path=path_text(plot_path),
+            plot_path=plot_path,
             level=level,
             forward=forward,
         )
 
     def eval_macro_connection(self, plot_path: str, level: int, forward: int):
         return self.ecc.eval_macro_connection(
-            plot_path=path_text(plot_path),
+            plot_path=plot_path,
             level=level,
             forward=forward,
         )
 
     def eval_macro_pin_connection(self, plot_path: str, level: int, forward: int):
         return self.ecc.eval_macro_pin_connection(
-            plot_path=path_text(plot_path),
+            plot_path=plot_path,
             level=level,
             forward=forward,
         )
 
     def eval_macro_io_pin_connection(self, plot_path: str, level: int, forward: int):
         return self.ecc.eval_macro_io_pin_connection(
-            plot_path=path_text(plot_path),
+            plot_path=plot_path,
             level=level,
             forward=forward,
         )
@@ -1290,7 +1290,7 @@ class ECCToolsModule:
     # net optimization
     ########################################################################
     def run_net_opt(self, config: str):
-        return self.ecc.fix_fanout(path_text(config))
+        return self.ecc.fix_fanout(config)
 
     def build_rc_tree_from_flat_data(
         self,

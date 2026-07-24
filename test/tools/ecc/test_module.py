@@ -89,17 +89,6 @@ class FakeEcc:
         return record_call
 
 
-def _assert_no_path_values(value):
-    if isinstance(value, Path):
-        raise AssertionError(f"native ECC boundary received Path: {value!r}")
-    if isinstance(value, dict):
-        for item in value.values():
-            _assert_no_path_values(item)
-    elif isinstance(value, (list, tuple, set)):
-        for item in value:
-            _assert_no_path_values(item)
-
-
 def test_ecc_tools_module_imports_installed_native_extension():
     module = ECCToolsModule()
     assert module.get_ecc() is not None
@@ -158,7 +147,7 @@ def test_view_json_save_passes_output_options():
         (
             "view_json_save",
             {
-                "output_dir": "/tmp/view_json",
+                "output_dir": Path("/tmp/view_json"),
                 "json_format": "compact",
                 "compress": True,
             },
@@ -182,14 +171,14 @@ def test_view_json_apply_edits_passes_compress_option():
         (
             "view_json_apply_edits",
             {
-                "edits_path": "/tmp/view_json/edits/layout_edits.json.gz",
+                "edits_path": Path("/tmp/view_json/edits/layout_edits.json.gz"),
                 "compress": True,
             },
         ),
     ]
 
 
-def test_ecc_binding_wrappers_stringify_path_arguments():
+def test_ecc_binding_wrappers_pass_through_path_arguments():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
@@ -222,41 +211,41 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     )
 
     assert module.ecc.calls == [
-        ("flow_init", {"flow_config": "/ws/config/flow.json"}),
+        ("flow_init", {"flow_config": Path("/ws/config/flow.json")}),
         (
             "db_init",
             {
-                "config_path": "/ws/config/db.json",
-                "output_path": "/ws/output",
-                "feature_path": "/ws/feature",
+                "config_path": Path("/ws/config/db.json"),
+                "output_path": Path("/ws/output"),
+                "feature_path": Path("/ws/feature"),
             },
         ),
         (
             "db_init",
             {
-                "output_path": "/ws/output",
-                "feature_path": "/ws/feature",
+                "output_path": Path("/ws/output"),
+                "feature_path": Path("/ws/feature"),
             },
         ),
-        ("tech_lef_init", "/pdk/tech.lef"),
-        ("lef_init", {"lef_paths": ["/pdk/std.lef"]}),
-        ("idb_init", "/ws/config/db.json"),
+        ("tech_lef_init", Path("/pdk/tech.lef")),
+        ("lef_init", {"lef_paths": [Path("/pdk/std.lef")]}),
+        ("idb_init", Path("/ws/config/db.json")),
         (
             "db_init",
             {
-                "config_path": "/ws/config/db.json",
-                "output_path": "/ws/out",
-                "lib_paths": ["/pdk/lib.lib"],
-                "sdc_path": "/ws/design.sdc",
+                "config_path": Path("/ws/config/db.json"),
+                "output_path": Path("/ws/out"),
+                "lib_paths": [Path("/pdk/lib.lib")],
+                "sdc_path": Path("/ws/design.sdc"),
             },
         ),
-        ("lib_init", (), {"lib_paths": ["/pdk/lib.lib"]}),
-        ("sdc_init", ("/ws/design.sdc",), {}),
-        ("spef_init", ("/ws/design.spef",), {}),
+        ("lib_init", (), {"lib_paths": [Path("/pdk/lib.lib")]}),
+        ("sdc_init", (Path("/ws/design.sdc"),), {}),
+        ("spef_init", (Path("/ws/design.spef"),), {}),
         (
             "init_sta",
             {
-                "config": "/ws/config/sta.json",
+                "config": Path("/ws/config/sta.json"),
                 "config_dict": {"-temp_directory_path": "/ws/sta_work"},
             },
         ),
@@ -265,7 +254,7 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     ]
 
 
-def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
+def test_ecc_runtime_wrappers_pass_through_path_arguments(tmp_path):
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
     timing_output = tmp_path / "output" / "gcd.lib"
@@ -353,11 +342,25 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.eval_macro_io_pin_connection(Path("/ws/eval/macro_io.png"), 1, 1)
     module.run_net_opt(Path("/ws/config/fixfanout.json"))
 
-    _assert_no_path_values(module.ecc.calls)
+    calls = module.ecc.calls
+    assert ("def_init", (), {"def_path": Path("/ws/input.def")}) in calls
+    assert ("verilog_init", (Path("/ws/input.v"), "gcd"), {}) in calls
+    assert ("gds_save", (Path("/ws/output/gcd.gds.gz"), True), {}) in calls
+    assert ("run_cts", (Path("/ws/config/cts.json"), Path("/ws/data/cts")), {}) in calls
+    assert ("init_rt", (), {"config": Path("/ws/config/route.json")}) in calls
+    assert ("lib_init", (), {"lib_paths": [Path("/pdk/lib.lib")]}) in calls
+    assert ("sdc_init", (Path("/ws/design.sdc"),), {}) in calls
+    assert (
+        "init_sta",
+        {
+            "config": Path("/ws/config/sta.json"),
+            "config_dict": {"-temp_directory_path": str(timing_work_dir)},
+        },
+    ) in calls
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
     assert [
         call[0]
-        for call in module.ecc.calls
+        for call in calls
         if call[0]
         in {
             "lib_init",
