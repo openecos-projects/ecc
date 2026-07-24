@@ -189,3 +189,5 @@ task_plan.md
 .agents/
 
 .ccache
+
+.trellis
