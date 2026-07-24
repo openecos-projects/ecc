@@ -587,7 +587,7 @@ dev = [
 
 [[package]]
 name = "ecc-tools-bin"
-version = "0.1.0a7"
+version = "0.1.0a8"
 source = { editable = "chipcompiler/thirdparty/ecc-tools" }
 dependencies = [
     { name = "numpy" },
