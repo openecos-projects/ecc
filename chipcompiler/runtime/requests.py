@@ -52,6 +52,11 @@ class WorkspaceInspectSignoffRequest:
 
 
 @dataclass(frozen=True)
+class WorkspaceExtractFoundationRequest:
+    workspace_id: str
+
+
+@dataclass(frozen=True)
 class WorkspaceInfoRequest:
     workspace_id: str
     step: str

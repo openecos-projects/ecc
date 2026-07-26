@@ -10,6 +10,7 @@ import threading
 from collections.abc import Callable
 from copy import copy, deepcopy
 from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -27,6 +28,7 @@ from chipcompiler.runtime.requests import (
     LayoutEditSaveRequest,
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
+    WorkspaceExtractFoundationRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
     WorkspaceInspectSignoffRequest,
@@ -212,6 +214,38 @@ class WorkspaceRuntimeApi:
             return inspect_signoff_package(session.workspace)
 
         return self._with_session_mutation_lock(request.workspace_id, inspect)
+
+    def extract_foundation(self, request: WorkspaceExtractFoundationRequest) -> dict:
+        def extract(session: WorkspaceSession) -> dict:
+            from chipcompiler.data.foundation import FoundationExtractor
+
+            workspace_directory = Path(session.workspace.directory).resolve()
+            FoundationExtractor(str(workspace_directory), profile="iccd_full_v1").extract(
+                include_raw_refs=False,
+                materialize_audit_tables=True,
+                route_detail_level="full",
+            )
+            manifest = workspace_directory / "foundation_data/ecc/manifest.json"
+            try:
+                payload = json.loads(manifest.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise RuntimeApiError(
+                    "command_failed",
+                    f"foundation extraction failed: {exc}",
+                ) from exc
+            if payload.get("contract_name") != "foundation_data/ecc":
+                raise RuntimeApiError(
+                    "command_failed",
+                    "foundation extractor produced an unsupported contract",
+                )
+            return {
+                "manifestRef": "foundation_data/ecc/manifest.json",
+                "manifestSha256": sha256(manifest.read_bytes()).hexdigest(),
+                "contractName": payload["contract_name"],
+                "schemaVersion": payload.get("schema_version"),
+            }
+
+        return self._with_session_mutation_lock(request.workspace_id, extract)
 
     def close_workspace(self, request: WorkspaceIdRequest) -> dict:
         def close(session: WorkspaceSession) -> dict:

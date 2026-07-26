@@ -18,6 +18,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceCloseRequest,
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
+    WorkspaceExtractFoundationRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
     WorkspaceInspectSignoffRequest,
@@ -85,6 +86,11 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="workspace.inspect_signoff",
         request_model=WorkspaceInspectSignoffRequest,
         handler_name="inspect_signoff",
+    ),
+    RuntimeMethodSpec(
+        method_name="workspace.extract_foundation",
+        request_model=WorkspaceExtractFoundationRequest,
+        handler_name="extract_foundation",
     ),
     RuntimeMethodSpec(
         method_name="flow.run",

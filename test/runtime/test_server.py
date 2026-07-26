@@ -7,6 +7,7 @@ from chipcompiler.runtime.requests import (
     DbEnsureRequest,
     DbReleaseRequest,
     WorkspaceExportSignoffRequest,
+    WorkspaceExtractFoundationRequest,
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
 )
@@ -48,6 +49,9 @@ class CompleteFakeApi:
 
     def inspect_signoff(self, _request):
         raise AssertionError("unexpected inspect_signoff call")
+
+    def extract_foundation(self, _request):
+        raise AssertionError("unexpected extract_foundation call")
 
     def flow_run(self, _request):
         raise AssertionError("unexpected flow_run call")
@@ -188,6 +192,29 @@ def test_workspace_method_dispatches_typed_request_to_runtime_api():
         "jsonrpc": "2.0",
         "result": {"workspaceId": "workspace-1", "directory": "/ws"},
         "id": 4,
+    }
+
+
+def test_workspace_extract_foundation_dispatches_typed_request():
+    class FakeApi(CompleteFakeApi):
+        def extract_foundation(self, request):
+            assert isinstance(request, WorkspaceExtractFoundationRequest)
+            return {"manifestRef": "foundation_data/ecc/manifest.json"}
+
+    server = RuntimeServer(api=FakeApi())
+
+    response = _dispatch(
+        server,
+        (
+            '{"jsonrpc":"2.0","method":"workspace.extract_foundation",'
+            '"params":{"workspaceId":"workspace-1"},"id":5}'
+        ),
+    )
+
+    assert response == {
+        "jsonrpc": "2.0",
+        "result": {"manifestRef": "foundation_data/ecc/manifest.json"},
+        "id": 5,
     }
 
 

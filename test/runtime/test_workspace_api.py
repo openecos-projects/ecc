@@ -1,6 +1,7 @@
 import json
 import queue
 import threading
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +14,7 @@ from chipcompiler.runtime.requests import (
     FlowRunRequest,
     FlowRunStepRequest,
     WorkspaceCreateRequest,
+    WorkspaceExtractFoundationRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
@@ -410,6 +412,51 @@ def test_open_workspace_reuses_existing_same_directory_session(monkeypatch, tmp_
 
     assert second["workspaceId"] == first["workspaceId"]
     assert api.sessions.get_session(second["workspaceId"]).workspace is first_session.workspace
+
+
+def test_extract_foundation_returns_manifest_receipt(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    captured = {}
+
+    class FakeExtractor:
+        def __init__(self, directory, *, profile):
+            captured["directory"] = directory
+            captured["profile"] = profile
+
+        def extract(self, **kwargs):
+            captured["kwargs"] = kwargs
+            manifest = ws / "foundation_data/ecc/manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(
+                '{"contract_name":"foundation_data/ecc","schema_version":"v1"}',
+                encoding="utf-8",
+            )
+
+    monkeypatch.setattr("chipcompiler.data.foundation.FoundationExtractor", FakeExtractor)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.extract_foundation(
+        WorkspaceExtractFoundationRequest(workspace_id=workspace_id)
+    )
+
+    assert result == {
+        "manifestRef": "foundation_data/ecc/manifest.json",
+        "manifestSha256": sha256(
+            b'{"contract_name":"foundation_data/ecc","schema_version":"v1"}'
+        ).hexdigest(),
+        "contractName": "foundation_data/ecc",
+        "schemaVersion": "v1",
+    }
+    assert captured == {
+        "directory": str(ws.resolve()),
+        "profile": "iccd_full_v1",
+        "kwargs": {
+            "include_raw_refs": False,
+            "materialize_audit_tables": True,
+            "route_detail_level": "full",
+        },
+    }
 
 
 def test_workspace_home_and_info_use_session_id(monkeypatch, tmp_path):
