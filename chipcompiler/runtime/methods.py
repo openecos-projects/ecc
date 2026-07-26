@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any, Final, Generic, TypeVar
 
 from chipcompiler.runtime.requests import (
+    CandidateBindInputRequest,
+    CandidateMaterializeRequest,
     DbEnsureRequest,
     DbReleaseRequest,
     FloorplanEditInspectRequest,
@@ -91,6 +93,21 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="workspace.extract_foundation",
         request_model=WorkspaceExtractFoundationRequest,
         handler_name="extract_foundation",
+    ),
+    RuntimeMethodSpec(
+        method_name="candidate.export_capabilities",
+        request_model=WorkspaceIdRequest,
+        handler_name="export_candidate_capabilities",
+    ),
+    RuntimeMethodSpec(
+        method_name="candidate.bind_input",
+        request_model=CandidateBindInputRequest,
+        handler_name="bind_candidate_input",
+    ),
+    RuntimeMethodSpec(
+        method_name="candidate.materialize",
+        request_model=CandidateMaterializeRequest,
+        handler_name="materialize_candidate",
     ),
     RuntimeMethodSpec(
         method_name="flow.run",

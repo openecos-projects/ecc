@@ -64,6 +64,22 @@ class WorkspaceInfoRequest:
 
 
 @dataclass(frozen=True)
+class CandidateBindInputRequest:
+    workspace_id: str
+    target_step: str
+    source_step: str
+    candidate_id: str
+
+
+@dataclass(frozen=True)
+class CandidateMaterializeRequest:
+    workspace_id: str
+    target_step: str
+    candidate_id: str
+    patch: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
 class FlowRunRequest:
     workspace_id: str
     rerun: bool = False
@@ -147,6 +163,9 @@ FIELD_ALIASES = {
     "paramJson": "parameters",
     "rtlList": "rtl_list",
     "workspaceId": "workspace_id",
+    "targetStep": "target_step",
+    "sourceStep": "source_step",
+    "candidateId": "candidate_id",
     "configPath": "config_path",
     "outputPath": "output_path",
     "infoId": "info_id",

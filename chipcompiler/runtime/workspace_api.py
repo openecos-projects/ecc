@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from chipcompiler.runtime.requests import (
+    CandidateBindInputRequest,
+    CandidateMaterializeRequest,
     DbEnsureRequest,
     DbReleaseRequest,
     FloorplanEditInspectRequest,
@@ -246,6 +248,42 @@ class WorkspaceRuntimeApi:
             }
 
         return self._with_session_mutation_lock(request.workspace_id, extract)
+
+    def export_candidate_capabilities(self, request: WorkspaceIdRequest) -> dict:
+        def export(session: WorkspaceSession) -> dict:
+            from chipcompiler.data import export_candidate_capabilities
+
+            return export_candidate_capabilities(session.workspace)
+
+        return self._with_session_mutation_lock(request.workspace_id, export)
+
+    def bind_candidate_input(self, request: CandidateBindInputRequest) -> dict:
+        def bind(session: WorkspaceSession) -> dict:
+            from chipcompiler.data import bind_candidate_input
+
+            flow = build_flow_for_workspace(session.workspace)
+            return bind_candidate_input(
+                session.workspace,
+                flow,
+                request.target_step,
+                request.source_step,
+                request.candidate_id,
+            )
+
+        return self._with_session_mutation_lock(request.workspace_id, bind)
+
+    def materialize_candidate(self, request: CandidateMaterializeRequest) -> dict:
+        def materialize(session: WorkspaceSession) -> dict:
+            from chipcompiler.data import materialize_candidate_config
+
+            return materialize_candidate_config(
+                session.workspace,
+                request.target_step,
+                request.patch,
+                request.candidate_id,
+            )
+
+        return self._with_session_mutation_lock(request.workspace_id, materialize)
 
     def close_workspace(self, request: WorkspaceIdRequest) -> dict:
         def close(session: WorkspaceSession) -> dict:

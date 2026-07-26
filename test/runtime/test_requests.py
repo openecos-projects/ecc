@@ -4,6 +4,8 @@ import pytest
 
 from chipcompiler.runtime.methods import runtime_method_by_name
 from chipcompiler.runtime.requests import (
+    CandidateBindInputRequest,
+    CandidateMaterializeRequest,
     DbEnsureRequest,
     DbReleaseRequest,
     FloorplanEditInspectRequest,
@@ -69,6 +71,43 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
     assert request.rtl_list == ["a.v"]
     assert request.sdc == "/constraints/top.sdc"
     assert request.flow_config == flow_config
+
+
+@pytest.mark.parametrize(
+    ("method", "params", "request_type"),
+    [
+        (
+            "candidate.export_capabilities",
+            {"workspaceId": "ws-1"},
+            WorkspaceIdRequest,
+        ),
+        (
+            "candidate.bind_input",
+            {
+                "workspaceId": "ws-1",
+                "targetStep": "place",
+                "sourceStep": "fixFanout",
+                "candidateId": "candidate_0001",
+            },
+            CandidateBindInputRequest,
+        ),
+        (
+            "candidate.materialize",
+            {
+                "workspaceId": "ws-1",
+                "targetStep": "place",
+                "candidateId": "candidate_0001",
+                "patch": [{"knob_id": "place.target_density", "value": 0.6}],
+            },
+            CandidateMaterializeRequest,
+        ),
+    ],
+)
+def test_candidate_payloads_parse_to_typed_request_models(method, params, request_type):
+    request = _parse_runtime_request(method, params)
+
+    assert isinstance(request, request_type)
+    assert is_dataclass(request)
 
 
 @pytest.mark.parametrize(

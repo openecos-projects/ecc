@@ -9,6 +9,8 @@ import pytest
 
 from chipcompiler.data import StateEnum
 from chipcompiler.runtime.requests import (
+    CandidateBindInputRequest,
+    CandidateMaterializeRequest,
     DbEnsureRequest,
     DbReleaseRequest,
     FlowRunRequest,
@@ -256,6 +258,55 @@ def test_create_workspace_returns_plain_runtime_result_and_session(monkeypatch, 
     assert capture["create_kwargs"]["sdc"] == "/constraints/top.sdc"
     assert DummyFlow.instances[0].created
     assert api.sessions.get_session(result["workspaceId"]).directory == ws.resolve()
+
+
+def test_candidate_runtime_methods_bind_existing_workspace_artifacts(monkeypatch, tmp_path):
+    _capture, workspace_dir = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    created = api.create_workspace(WorkspaceCreateRequest(directory=str(workspace_dir)))
+    calls = []
+
+    monkeypatch.setattr(
+        "chipcompiler.data.export_candidate_capabilities",
+        lambda workspace: calls.append(("export", workspace.directory)) or {"registry_sha256": "registry"},
+    )
+    monkeypatch.setattr(
+        "chipcompiler.data.bind_candidate_input",
+        lambda workspace, flow, target, source, candidate: calls.append(
+            ("bind", workspace.directory, flow, target, source, candidate)
+        )
+        or {"receipt_sha256": "input"},
+    )
+    monkeypatch.setattr(
+        "chipcompiler.data.materialize_candidate_config",
+        lambda workspace, target, patch, candidate: calls.append(
+            ("materialize", workspace.directory, target, patch, candidate)
+        )
+        or {"receipt_sha256": "materialization"},
+    )
+
+    capabilities = api.export_candidate_capabilities(WorkspaceIdRequest(created["workspaceId"]))
+    binding = api.bind_candidate_input(
+        CandidateBindInputRequest(
+            workspace_id=created["workspaceId"],
+            target_step="place",
+            source_step="fixFanout",
+            candidate_id="candidate_0001",
+        )
+    )
+    materialization = api.materialize_candidate(
+        CandidateMaterializeRequest(
+            workspace_id=created["workspaceId"],
+            target_step="place",
+            candidate_id="candidate_0001",
+            patch=[{"knob_id": "place.target_density", "value": 0.6}],
+        )
+    )
+
+    assert capabilities == {"registry_sha256": "registry"}
+    assert binding == {"receipt_sha256": "input"}
+    assert materialization == {"receipt_sha256": "materialization"}
+    assert [call[0] for call in calls] == ["export", "bind", "materialize"]
 
 
 def test_create_workspace_forwards_dynamic_flow_config(monkeypatch, tmp_path):
