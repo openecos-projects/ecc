@@ -32,8 +32,8 @@ class CandidateKnob:
     unavailable_reason: str | None = None
 
 
-def _cts_number(name: str, minimum: float = 0.0) -> CandidateKnob:
-    return CandidateKnob(f"cts.{name}", "CTS", "CTS", (name,), "number", minimum)
+def _cts_number(name: str, minimum: float = 0.0, maximum: float | None = None) -> CandidateKnob:
+    return CandidateKnob(f"cts.{name}", "CTS", "CTS", (name,), "number", minimum, maximum)
 
 
 def _cts_uint(name: str, minimum: int = 1) -> CandidateKnob:
@@ -220,7 +220,7 @@ CANDIDATE_KNOBS = (
         ("RT", "-enable_timing"),
         "bool_int",
     ),
-    _cts_number("skew_bound"),
+    _cts_number("skew_bound", maximum=1.0),
     _cts_number("max_buf_tran"),
     _cts_number("root_input_slew"),
     _cts_number("max_sink_tran"),

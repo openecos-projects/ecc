@@ -340,7 +340,9 @@ def test_export_capabilities_writes_stable_schema_and_backend_truth(tmp_path):
     assert capabilities["schema_version"] == 1
     assert capabilities["registry_sha256"].startswith("sha256:")
     assert cts["backend"]["available"] is True
-    assert any(knob["knob_id"] == "cts.skew_bound" for knob in cts["knobs"])
+    skew_bound = next(knob for knob in cts["knobs"] if knob["knob_id"] == "cts.skew_bound")
+    assert skew_bound["minimum"] == 0.0
+    assert skew_bound["maximum"] == 1.0
     assert legalization["backend"] == {
         "tool": "dreamplace",
         "expected_tool": "dreamplace",
@@ -348,8 +350,7 @@ def test_export_capabilities_writes_stable_schema_and_backend_truth(tmp_path):
         "available": True,
     }
     assert any(
-        knob["knob_id"] == "legalization.detailed_place_flag"
-        for knob in legalization["knobs"]
+        knob["knob_id"] == "legalization.detailed_place_flag" for knob in legalization["knobs"]
     )
     assert filler["backend"]["available"] is False
     assert filler["candidate_generation"] is False
@@ -367,9 +368,7 @@ def test_native_legalization_backend_is_fail_closed_for_candidates(tmp_path):
     legalization["tool"] = "ecc"
 
     capabilities = export_candidate_capabilities(workspace)
-    target = next(
-        item for item in capabilities["targets"] if item["target_step"] == "legalization"
-    )
+    target = next(item for item in capabilities["targets"] if item["target_step"] == "legalization")
 
     assert target["candidate_generation"] is False
     assert target["backend"]["tool"] == "ecc"
@@ -402,14 +401,10 @@ def test_materialized_candidate_rejects_backend_drift_before_execution(tmp_path)
 
 def test_duplicate_workspace_target_is_fail_closed_for_candidates(tmp_path):
     workspace = _workspace(tmp_path)
-    workspace.flow.data["steps"].append(
-        {"name": "legalization", "tool": "dreamplace"}
-    )
+    workspace.flow.data["steps"].append({"name": "legalization", "tool": "dreamplace"})
 
     capabilities = export_candidate_capabilities(workspace)
-    target = next(
-        item for item in capabilities["targets"] if item["target_step"] == "legalization"
-    )
+    target = next(item for item in capabilities["targets"] if item["target_step"] == "legalization")
 
     assert target["candidate_generation"] is False
     with pytest.raises(CandidateMaterializationError, match="not candidate-capable"):
