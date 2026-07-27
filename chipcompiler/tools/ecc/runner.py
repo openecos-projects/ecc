@@ -362,7 +362,6 @@ def save_data(
     """
     if ecc_module is None:
         return False
-
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
     ecc_module.gds_save(output_path=step.output.gds or "")
@@ -380,11 +379,8 @@ def save_data(
                 geometry_manifest,
             )
             return False
-    # ecc_module.json_save(path=step.output.json or "")
-    ecc_module.view_json_save(
-        output_dir=step.output.view_json or "", json_format="compact", compress=True
-    )
-    ecc_module.view_json_apply_edits(edits_path=step.output.view_json_edits or "", compress=True)
+    # View JSON serialization is intentionally skipped. The GUI reads the
+    # geometry snapshot generated above instead.
     ecc_module.feature_sammry(json_path=step.feature.db or "")
     if feature_step:
         ecc_module.feature_step(step=step.name, json_path=step.feature.step or "")
