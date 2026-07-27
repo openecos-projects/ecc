@@ -230,6 +230,64 @@ def test_view_json_apply_edits_passes_compress_option():
     ]
 
 
+def test_place_instance_forwards_legacy_defaults():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    assert module.place_instance(
+        inst_name="u_sram_0",
+        llx=100000,
+        lly=200000,
+        orient="N",
+        cellmaster="SRAM_1RW",
+        source="DIST",
+    ) is True
+
+    assert module.ecc.calls == [
+        (
+            "place_instance",
+            (),
+            {
+                "inst_name": "u_sram_0",
+                "llx": 100000,
+                "lly": 200000,
+                "orient": "N",
+                "cellmaster": "SRAM_1RW",
+                "source": "DIST",
+            },
+        ),
+    ]
+
+
+def test_place_instance_forwards_gui_controls_and_failure():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    calls = []
+    module.ecc = SimpleNamespace(place_instance=lambda **kwargs: calls.append(kwargs) or False)
+
+    assert module.place_instance(
+        inst_name="u_sram_0",
+        llx=110000,
+        lly=210000,
+        orient="",
+        cellmaster="",
+        placement_status="preserve",
+        create_if_missing=False,
+    ) is False
+
+    assert calls == [
+        {
+            "inst_name": "u_sram_0",
+            "llx": 110000,
+            "lly": 210000,
+            "orient": "",
+            "cellmaster": "",
+            "source": "",
+            "placement_status": "preserve",
+            "create_if_missing": False,
+        },
+    ]
+
+
 def test_geometry_snapshot_save_passes_output_directory():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
@@ -238,6 +296,27 @@ def test_geometry_snapshot_save_passes_output_directory():
 
     assert module.ecc.calls == [
         ("geometry_snapshot_save", (), {"output_dir": "/tmp/geometry"}),
+    ]
+
+
+def test_geometry_edit_session_wrappers_forward_instance_name():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    assert module.initialize_geometry_session() is True
+    assert module.sync_instance_geometry("u_sram_0") is True
+    assert module.geometry_session_snapshot_save(Path("/tmp/session-geometry")) is True
+    assert module.reset_geometry_session() is True
+
+    assert module.ecc.calls == [
+        ("initialize_geometry_session", (), {}),
+        ("sync_instance_geometry", (), {"inst_name": "u_sram_0"}),
+        (
+            "geometry_session_snapshot_save",
+            (),
+            {"output_dir": "/tmp/session-geometry"},
+        ),
+        ("reset_geometry_session", (), {}),
     ]
 
 

@@ -35,10 +35,18 @@ def test_persistent_db_method_registry_is_separate_and_opt_in():
         runtime_method_names,
     )
 
-    expected_methods = ("db.ensure", "db.release")
+    expected_methods = (
+        "db.ensure",
+        "db.release",
+        "layout.edit.begin",
+        "layout.edit.apply",
+        "layout.edit.save",
+        "layout.edit.discard",
+    )
 
     assert persistent_db_method_names() == expected_methods
-    assert runtime_method_names(persistent_db_enabled=True)[-2:] == expected_methods
+    enabled_methods = runtime_method_names(persistent_db_enabled=True)
+    assert enabled_methods[-len(expected_methods):] == expected_methods
     assert "db.ensure" not in runtime_method_names()
     assert len(PERSISTENT_DB_METHODS) == len(expected_methods)
 
@@ -105,6 +113,8 @@ def test_persistent_db_server_capabilities_include_db_methods():
     )
     assert "db.ensure" in server.capabilities
     assert "db.release" in server.capabilities
+    assert "layout.edit.begin" in server.capabilities
+    assert "layout.edit.save" in server.capabilities
 
 
 def test_requests_module_does_not_own_runtime_method_table():

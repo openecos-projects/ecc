@@ -8,6 +8,10 @@ from chipcompiler.runtime.requests import (
     DbReleaseRequest,
     FlowRunRequest,
     FlowRunStepRequest,
+    LayoutEditApplyRequest,
+    LayoutEditBeginRequest,
+    LayoutEditDiscardRequest,
+    LayoutEditSaveRequest,
     WorkspaceCloseRequest,
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
@@ -102,6 +106,26 @@ PERSISTENT_DB_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="db.release",
         request_model=DbReleaseRequest,
         handler_name="db_release",
+    ),
+    RuntimeMethodSpec(
+        method_name="layout.edit.begin",
+        request_model=LayoutEditBeginRequest,
+        handler_name="layout_edit_begin",
+    ),
+    RuntimeMethodSpec(
+        method_name="layout.edit.apply",
+        request_model=LayoutEditApplyRequest,
+        handler_name="layout_edit_apply",
+    ),
+    RuntimeMethodSpec(
+        method_name="layout.edit.save",
+        request_model=LayoutEditSaveRequest,
+        handler_name="layout_edit_save",
+    ),
+    RuntimeMethodSpec(
+        method_name="layout.edit.discard",
+        request_model=LayoutEditDiscardRequest,
+        handler_name="layout_edit_discard",
     ),
 )
 

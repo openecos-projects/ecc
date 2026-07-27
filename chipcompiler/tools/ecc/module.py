@@ -193,6 +193,31 @@ class ECCToolsModule:
     def create_net(self, net_name: str, conn_type: str = ""):
         return self.ecc.create_net(net_name=net_name, conn_type=conn_type)
 
+    def place_instance(
+        self,
+        inst_name: str,
+        llx: int,
+        lly: int,
+        orient: str,
+        cellmaster: str,
+        source: str = "",
+        placement_status: str = "fixed",
+        *,
+        create_if_missing: bool = True,
+    ):
+        params = {
+            "inst_name": inst_name,
+            "llx": llx,
+            "lly": lly,
+            "orient": orient,
+            "cellmaster": cellmaster,
+            "source": source,
+        }
+        if placement_status != "fixed" or not create_if_missing:
+            params["placement_status"] = placement_status
+            params["create_if_missing"] = create_if_missing
+        return self.ecc.place_instance(**params)
+
     def set_exclude_cell_names(self, cell_names: set):
         self.cell_names = cell_names
 

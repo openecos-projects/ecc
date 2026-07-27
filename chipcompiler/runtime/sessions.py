@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -13,7 +14,25 @@ class WorkspaceSession:
     directory: Path
     workspace: Any
     db_handle: Any = None
+    layout_edit_session: LayoutEditSession | None = None
     mutation_lock: threading.Lock = field(default_factory=threading.Lock)
+
+
+@dataclass
+class LayoutEditSession:
+    edit_session_id: str
+    workspace_id: str
+    step_name: str
+    workspace_step: Any
+    db_handle: Any
+    source_kind: str
+    source_paths: tuple[Path, ...]
+    source_fingerprint: str
+    geometry_output_dir: Path
+    revision: int = 0
+    geometry_revision: int = 0
+    dirty: bool = False
+    command_results: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 class WorkspaceSessionNotFound(KeyError):
@@ -65,6 +84,7 @@ class WorkspaceSessionRegistry:
         with self._lock:
             for session in self._sessions.values():
                 self._release_session_db(session)
+                self._release_layout_edit_session(session)
             self._sessions.clear()
             self._sessions_by_directory.clear()
 
@@ -88,6 +108,7 @@ class WorkspaceSessionRegistry:
         if session is None:
             raise WorkspaceSessionNotFound(workspace_id)
         self._release_session_db(session)
+        self._release_layout_edit_session(session)
         self._sessions_by_directory.pop(session.directory, None)
 
     def _release_session_db(self, session: WorkspaceSession) -> bool:
@@ -99,3 +120,27 @@ class WorkspaceSessionRegistry:
         if self._db_releaser is not None:
             self._db_releaser(db_handle)
         return True
+
+    def release_layout_edit_session(self, session: WorkspaceSession) -> bool:
+        return self._release_layout_edit_session(session)
+
+    def _release_layout_edit_session(self, session: WorkspaceSession) -> bool:
+        layout_edit_session = session.layout_edit_session
+        if layout_edit_session is None:
+            return False
+
+        session.layout_edit_session = None
+        _reset_layout_edit_geometry_session(layout_edit_session.db_handle)
+        if self._db_releaser is not None:
+            self._db_releaser(layout_edit_session.db_handle)
+        shutil.rmtree(layout_edit_session.geometry_output_dir.parent, ignore_errors=True)
+        return True
+
+
+def _reset_layout_edit_geometry_session(db_handle: Any) -> None:
+    module = getattr(db_handle, "engine", None)
+    if module is None:
+        module = getattr(db_handle, "ecc_module", None)
+    reset_geometry_session = getattr(module, "reset_geometry_session", None)
+    if callable(reset_geometry_session):
+        reset_geometry_session()
