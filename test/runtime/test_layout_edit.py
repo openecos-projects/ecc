@@ -1,9 +1,13 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from chipcompiler.runtime.requests import (
+    FloorplanEditInspectRequest,
+    FloorplanEditRunAutoRequest,
+    FloorplanEditValidateRequest,
     LayoutEditApplyRequest,
     LayoutEditBeginRequest,
     LayoutEditDiscardRequest,
@@ -21,6 +25,9 @@ class FakeLayoutModule:
         self.sync_calls = []
         self.export_calls = []
         self.session_snapshot_calls = []
+        self.editor_calls = []
+        self.validation_result = {"ok": True, "diagnostics": []}
+        self.export_intent = {"ok": True}
 
     def initialize_geometry_session(self):
         self.initialize_calls += 1
@@ -75,6 +82,44 @@ class FakeLayoutModule:
         (geometry_dir / "geometry.manifest").write_text("session geometry", encoding="utf-8")
         return True
 
+    def floorplan_editor_apply(self, request):
+        self.editor_calls.append(request)
+        return {
+            "accepted": True,
+            "changed": True,
+            "affectedRefs": [{"kind": "blockage", "id": "blockage-1"}],
+            "geometryDelta": {
+                "ok": True,
+                "snapshotRequired": True,
+                "updatedShapeCount": 0,
+                "insertedShapeCount": 1,
+                "deletedShapeCount": 0,
+                "missingShapeCount": 0,
+                "events": [{"shapeId": 31, "op": "insert"}],
+            },
+            "modelPatch": {
+                "floorplanPlan": {"placement_blockages": [{"id": "blockage-1"}]},
+                "pdnPlan": {"manual_segments": [{"id": "segment-1"}]},
+                "configPatch": {"editor": {"enabled": True}},
+                "parametersPatch": {"Floorplan": {"edited": True}},
+            },
+            "diagnostics": [{"severity": "warning", "message": "preview"}],
+        }
+
+    def floorplan_editor_validate(self, scope):
+        assert scope
+        return self.validation_result
+
+    def floorplan_editor_export_intent(self):
+        return self.export_intent
+
+    def floorplan_editor_inspect(self):
+        return {"ownerCount": 3}
+
+    def verilog_save(self, output_verilog):
+        self.export_calls.append("verilog")
+        Path(output_verilog).write_text("module gcd; endmodule\n", encoding="utf-8")
+
 
 class FakeEngineDb:
     def __init__(self, module):
@@ -110,7 +155,7 @@ class FakeFlow:
         return self.workspace_step if name == self.workspace_step.name else None
 
 
-def _make_layout_workspace(tmp_path, *, with_db=False):
+def _make_layout_workspace(tmp_path, *, with_db=False, with_editor_workspace=False):
     workspace_dir = tmp_path / "workspace"
     output_dir = workspace_dir / "Floorplan_ecc" / "output"
     output_dir.mkdir(parents=True)
@@ -129,14 +174,40 @@ def _make_layout_workspace(tmp_path, *, with_db=False):
             "gds": output_dir / "gcd_Floorplan.gds",
             "geometry": output_dir / "geometry",
             "geometry_manifest": output_dir / "geometry" / "geometry.manifest",
+            "verilog": output_dir / "gcd_Floorplan.v",
         },
     )
     workspace = SimpleNamespace(directory=workspace_dir)
+    if with_editor_workspace:
+        config_path = workspace_dir / "config" / "fp_default_config.json"
+        config_path.parent.mkdir()
+        config_path.write_text('{"legacy": true}\n', encoding="utf-8")
+        parameters_path = workspace_dir / "parameters.json"
+        parameters_path.write_text('{"Floorplan": {"edited": false}}\n', encoding="utf-8")
+        flow_path = workspace_dir / "flow.json"
+        flow_data = {
+            "steps": [
+                {"name": "Floorplan", "state": "Success", "runtime": "1s"},
+                {"name": "place", "state": "Success", "runtime": "2s"},
+                {"name": "route", "state": "Success", "runtime": "3s"},
+            ]
+        }
+        flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
+        workspace.config = {"Floorplan": config_path}
+        workspace.parameters = SimpleNamespace(
+            path=parameters_path,
+            data={"Floorplan": {"edited": False}},
+        )
+        workspace.flow = SimpleNamespace(path=flow_path, data=flow_data)
     return workspace, step
 
 
-def _open_api(monkeypatch, tmp_path, *, with_db=False):
-    workspace, step = _make_layout_workspace(tmp_path, with_db=with_db)
+def _open_api(monkeypatch, tmp_path, *, with_db=False, with_editor_workspace=False):
+    workspace, step = _make_layout_workspace(
+        tmp_path,
+        with_db=with_db,
+        with_editor_workspace=with_editor_workspace,
+    )
     module = FakeLayoutModule()
     flow_calls = []
 
@@ -392,3 +463,116 @@ def test_layout_edit_apply_allows_preserve_orientation_for_existing_instance(
 
     assert result["revision"] == 1
     assert module.place_calls[0]["orient"] == ""
+
+
+def test_floorplan_editor_apply_inspect_validate_and_save_publish_editor_artifacts(
+    monkeypatch,
+    tmp_path,
+):
+    api, session, step, module, _flow_calls = _open_api(
+        monkeypatch,
+        tmp_path,
+        with_editor_workspace=True,
+    )
+    begin = _begin(api, session.workspace_id)
+
+    applied = api.layout_edit_apply(
+        LayoutEditApplyRequest(
+            edit_session_id=begin["editSessionId"],
+            command_id="blockage-1",
+            base_revision=0,
+            operation={"kind": "upsert_blockage", "id": "blockage-1"},
+        )
+    )
+
+    assert applied["revision"] == 1
+    assert applied["affectedRefs"] == [{"kind": "blockage", "id": "blockage-1"}]
+    assert applied["modelPatch"]["floorplanPlan"]["placement_blockages"] == [{"id": "blockage-1"}]
+    assert module.editor_calls == [{"kind": "upsert_blockage", "id": "blockage-1"}]
+    config_path = session.workspace.config["Floorplan"]
+    assert config_path.read_text(encoding="utf-8") == '{"legacy": true}\n'
+
+    inspected = api.floorplan_edit_inspect(
+        FloorplanEditInspectRequest(edit_session_id=begin["editSessionId"])
+    )
+    assert inspected["state"] == {"ownerCount": 3}
+    assert inspected["floorplanPlan"]["placement_blockages"] == [{"id": "blockage-1"}]
+
+    validated = api.floorplan_edit_validate(
+        FloorplanEditValidateRequest(edit_session_id=begin["editSessionId"], scope="pdn")
+    )
+    assert validated["valid"] is True
+
+    module.export_intent = {
+        "ok": True,
+        "floorplanPlan": {"outline": {"die": [0, 0, 100, 100]}},
+        "pdnPlan": {"manual_vias": [{"id": "via-1"}]},
+        "parametersPatch": {"PDN": {"edited": True}},
+        "requiresVerilog": True,
+    }
+    saved = api.layout_edit_save(
+        LayoutEditSaveRequest(
+            edit_session_id=begin["editSessionId"],
+            expected_revision=applied["revision"],
+        )
+    )
+
+    assert saved["saved"] is True
+    assert saved["artifacts"]["configPath"] == str(config_path)
+    assert saved["artifacts"]["parametersPath"] == str(session.workspace.parameters.path)
+    assert saved["artifacts"]["verilogPath"] == str(step.output["verilog"])
+    assert saved["artifacts"]["flowPath"] == str(session.workspace.flow.path)
+    assert module.export_calls == ["def", "db", "gds", "geometry", "verilog"]
+    saved_config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved_config["FloorplanPlan"]["outline"] == {"die": [0, 0, 100, 100]}
+    assert saved_config["PdnPlan"]["manual_vias"] == [{"id": "via-1"}]
+    assert saved_config["editor"] == {"enabled": True}
+    saved_parameters = json.loads(session.workspace.parameters.path.read_text(encoding="utf-8"))
+    assert saved_parameters["Floorplan"]["edited"] is True
+    assert saved_parameters["PDN"] == {"edited": True}
+    assert step.output["verilog"].is_file()
+    stale_steps = session.workspace.flow.data["steps"][1:]
+    assert [item["state"] for item in stale_steps] == ["Unstart", "Unstart"]
+    assert [item["runtime"] for item in stale_steps] == ["", ""]
+
+
+def test_floorplan_editor_run_auto_is_idempotent_and_save_rejects_invalid_result(
+    monkeypatch,
+    tmp_path,
+):
+    api, session, _step, module, _flow_calls = _open_api(monkeypatch, tmp_path)
+    begin = _begin(api, session.workspace_id)
+
+    first = api.floorplan_edit_run_auto(
+        FloorplanEditRunAutoRequest(
+            edit_session_id=begin["editSessionId"],
+            command_id="auto-1",
+            base_revision=0,
+            request={"mode": "macro"},
+        )
+    )
+    replay = api.floorplan_edit_run_auto(
+        FloorplanEditRunAutoRequest(
+            edit_session_id=begin["editSessionId"],
+            command_id="auto-1",
+            base_revision=0,
+            request={"mode": "macro"},
+        )
+    )
+
+    assert replay == first
+    assert module.editor_calls == [{"kind": "run_auto", "request": {"mode": "macro"}}]
+    module.validation_result = {
+        "ok": False,
+        "diagnostics": [{"severity": "error", "message": "bad outline"}],
+    }
+    with pytest.raises(RuntimeApiError) as exc_info:
+        api.layout_edit_save(
+            LayoutEditSaveRequest(
+                edit_session_id=begin["editSessionId"],
+                expected_revision=first["revision"],
+            )
+        )
+
+    assert exc_info.value.code == "floorplan_validation_failed"
+    assert module.export_calls == []

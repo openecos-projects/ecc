@@ -1,7 +1,14 @@
 from dataclasses import is_dataclass
 
 import chipcompiler.runtime.requests as requests
-from chipcompiler.runtime.requests import DbEnsureRequest, DbReleaseRequest, WorkspaceOpenRequest
+from chipcompiler.runtime.requests import (
+    DbEnsureRequest,
+    DbReleaseRequest,
+    FloorplanEditInspectRequest,
+    FloorplanEditRunAutoRequest,
+    FloorplanEditValidateRequest,
+    WorkspaceOpenRequest,
+)
 from chipcompiler.runtime.server import BASE_CAPABILITIES, RuntimeServer
 
 
@@ -42,11 +49,14 @@ def test_persistent_db_method_registry_is_separate_and_opt_in():
         "layout.edit.apply",
         "layout.edit.save",
         "layout.edit.discard",
+        "floorplan.edit.inspect",
+        "floorplan.edit.run_auto",
+        "floorplan.edit.validate",
     )
 
     assert persistent_db_method_names() == expected_methods
     enabled_methods = runtime_method_names(persistent_db_enabled=True)
-    assert enabled_methods[-len(expected_methods):] == expected_methods
+    assert enabled_methods[-len(expected_methods) :] == expected_methods
     assert "db.ensure" not in runtime_method_names()
     assert len(PERSISTENT_DB_METHODS) == len(expected_methods)
 
@@ -92,6 +102,15 @@ def test_persistent_db_method_lookup_requires_enabled_capability():
     assert release_spec is not None
     assert release_spec.request_model is DbReleaseRequest
     assert release_spec.handler_name == "db_release"
+    inspect_spec = runtime_method_by_name("floorplan.edit.inspect", persistent_db_enabled=True)
+    assert inspect_spec is not None
+    assert inspect_spec.request_model is FloorplanEditInspectRequest
+    auto_spec = runtime_method_by_name("floorplan.edit.run_auto", persistent_db_enabled=True)
+    assert auto_spec is not None
+    assert auto_spec.request_model is FloorplanEditRunAutoRequest
+    validate_spec = runtime_method_by_name("floorplan.edit.validate", persistent_db_enabled=True)
+    assert validate_spec is not None
+    assert validate_spec.request_model is FloorplanEditValidateRequest
 
 
 def test_default_server_capabilities_are_generated_from_runtime_registry():
@@ -115,6 +134,7 @@ def test_persistent_db_server_capabilities_include_db_methods():
     assert "db.release" in server.capabilities
     assert "layout.edit.begin" in server.capabilities
     assert "layout.edit.save" in server.capabilities
+    assert "floorplan.edit.inspect" in server.capabilities
 
 
 def test_requests_module_does_not_own_runtime_method_table():

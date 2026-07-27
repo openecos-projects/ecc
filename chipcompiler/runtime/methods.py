@@ -6,6 +6,9 @@ from typing import Any, Final, Generic, TypeVar
 from chipcompiler.runtime.requests import (
     DbEnsureRequest,
     DbReleaseRequest,
+    FloorplanEditInspectRequest,
+    FloorplanEditRunAutoRequest,
+    FloorplanEditValidateRequest,
     FlowRunRequest,
     FlowRunStepRequest,
     LayoutEditApplyRequest,
@@ -126,6 +129,21 @@ PERSISTENT_DB_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="layout.edit.discard",
         request_model=LayoutEditDiscardRequest,
         handler_name="layout_edit_discard",
+    ),
+    RuntimeMethodSpec(
+        method_name="floorplan.edit.inspect",
+        request_model=FloorplanEditInspectRequest,
+        handler_name="floorplan_edit_inspect",
+    ),
+    RuntimeMethodSpec(
+        method_name="floorplan.edit.run_auto",
+        request_model=FloorplanEditRunAutoRequest,
+        handler_name="floorplan_edit_run_auto",
+    ),
+    RuntimeMethodSpec(
+        method_name="floorplan.edit.validate",
+        request_model=FloorplanEditValidateRequest,
+        handler_name="floorplan_edit_validate",
     ),
 )
 

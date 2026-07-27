@@ -33,6 +33,13 @@ class LayoutEditSession:
     geometry_revision: int = 0
     dirty: bool = False
     command_results: dict[str, dict[str, Any]] = field(default_factory=dict)
+    floorplan_plan: dict[str, Any] = field(default_factory=dict)
+    pdn_plan: dict[str, Any] = field(default_factory=dict)
+    config_patch: dict[str, Any] = field(default_factory=dict)
+    parameters_patch: dict[str, Any] = field(default_factory=dict)
+    requires_verilog: bool = False
+    used_floorplan_editor: bool = False
+    validation_diagnostics: list[dict[str, Any]] = field(default_factory=list)
 
 
 class WorkspaceSessionNotFound(KeyError):

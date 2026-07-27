@@ -6,6 +6,9 @@ from chipcompiler.runtime.methods import runtime_method_by_name
 from chipcompiler.runtime.requests import (
     DbEnsureRequest,
     DbReleaseRequest,
+    FloorplanEditInspectRequest,
+    FloorplanEditRunAutoRequest,
+    FloorplanEditValidateRequest,
     FlowRunRequest,
     FlowRunStepRequest,
     LayoutEditApplyRequest,
@@ -145,6 +148,26 @@ def test_first_slice_payloads_parse_to_typed_request_models(method, params, requ
             "layout.edit.discard",
             {"editSessionId": "layout-edit-1"},
             LayoutEditDiscardRequest,
+        ),
+        (
+            "floorplan.edit.inspect",
+            {"editSessionId": "layout-edit-1"},
+            FloorplanEditInspectRequest,
+        ),
+        (
+            "floorplan.edit.run_auto",
+            {
+                "editSessionId": "layout-edit-1",
+                "commandId": "auto-1",
+                "baseRevision": 1,
+                "request": {"mode": "macro"},
+            },
+            FloorplanEditRunAutoRequest,
+        ),
+        (
+            "floorplan.edit.validate",
+            {"editSessionId": "layout-edit-1", "scope": "pdn"},
+            FloorplanEditValidateRequest,
         ),
     ],
 )

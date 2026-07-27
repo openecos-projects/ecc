@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import shutil
 import tempfile
 from collections.abc import Callable
-from copy import copy
+from copy import copy, deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, TypeVar
@@ -14,6 +15,9 @@ from typing import Any, TypeVar
 from chipcompiler.runtime.requests import (
     DbEnsureRequest,
     DbReleaseRequest,
+    FloorplanEditInspectRequest,
+    FloorplanEditRunAutoRequest,
+    FloorplanEditValidateRequest,
     FlowRunRequest,
     FlowRunStepRequest,
     LayoutEditApplyRequest,
@@ -415,9 +419,9 @@ class WorkspaceRuntimeApi:
                 )
 
             edit_session_id = self._new_layout_edit_id()
-            geometry_output_dir = Path(
-                tempfile.mkdtemp(prefix=f"ecc-{edit_session_id}-geometry-")
-            ) / "geometry-0"
+            geometry_output_dir = (
+                Path(tempfile.mkdtemp(prefix=f"ecc-{edit_session_id}-geometry-")) / "geometry-0"
+            )
             try:
                 _write_layout_edit_geometry_snapshot(module, geometry_output_dir)
             except Exception:
@@ -444,84 +448,63 @@ class WorkspaceRuntimeApi:
 
     def layout_edit_apply(self, request: LayoutEditApplyRequest) -> dict:
         def apply(session: WorkspaceSession, edit_session: LayoutEditSession) -> dict:
-            if not isinstance(request.command_id, str) or not request.command_id.strip():
-                raise RuntimeApiError("invalid_request", "missing required field: command_id")
-
-            previous_result = edit_session.command_results.get(request.command_id)
-            if previous_result is not None:
-                return previous_result
-
-            _validate_layout_edit_revision(request.base_revision, "base_revision")
-            if request.base_revision != edit_session.revision:
-                raise RuntimeApiError(
-                    "version_conflict",
-                    "layout edit revision does not match",
-                    {
-                        "expectedRevision": request.base_revision,
-                        "actualRevision": edit_session.revision,
-                    },
-                )
-
-            placement = _layout_edit_place_instance_operation(request.operation)
-            module = _db_engine_module(edit_session.db_handle)
-            place_instance = getattr(module, "place_instance", None)
-            if not callable(place_instance):
-                raise RuntimeApiError("command_failed", "place_instance is unavailable")
-
-            accepted = place_instance(
-                inst_name=placement["inst_name"],
-                llx=placement["llx"],
-                lly=placement["lly"],
-                orient=placement["orient"],
-                cellmaster=placement["cellmaster"],
-                source=placement["source"],
-                placement_status=placement["placement_status"],
-                create_if_missing=placement["create_if_missing"],
+            return _apply_layout_edit_operation(
+                edit_session,
+                command_id=request.command_id,
+                base_revision=request.base_revision,
+                operation=request.operation,
             )
-            if not accepted:
-                raise RuntimeApiError(
-                    "placement_rejected",
-                    "place_instance rejected the requested placement",
-                    {"instanceName": placement["inst_name"]},
-                )
-
-            geometry_delta = _sync_layout_edit_instance_geometry(
-                module,
-                placement["inst_name"],
-            )
-            next_geometry_output_dir = (
-                edit_session.geometry_output_dir.parent
-                / f"geometry-{edit_session.geometry_revision + 1}"
-            )
-            geometry_manifest_path = _write_layout_edit_geometry_snapshot(
-                module,
-                next_geometry_output_dir,
-            )
-            previous_geometry_output_dir = edit_session.geometry_output_dir
-            edit_session.geometry_output_dir = next_geometry_output_dir
-            shutil.rmtree(previous_geometry_output_dir, ignore_errors=True)
-            edit_session.revision += 1
-            edit_session.geometry_revision += 1
-            edit_session.dirty = True
-            result = {
-                "editSessionId": edit_session.edit_session_id,
-                "commandId": request.command_id,
-                "revision": edit_session.revision,
-                "geometryRevision": edit_session.geometry_revision,
-                "geometryManifestPath": str(geometry_manifest_path),
-                "dirty": True,
-                "operation": {
-                    "kind": "place_instance",
-                    "instanceName": placement["inst_name"],
-                    "origin": {"x": placement["llx"], "y": placement["lly"]},
-                    "orient": placement["orient"],
-                },
-                "geometryDelta": geometry_delta,
-            }
-            edit_session.command_results[request.command_id] = result
-            return result
 
         return self._with_layout_edit_session_mutation_lock(request.edit_session_id, apply)
+
+    def floorplan_edit_inspect(self, request: FloorplanEditInspectRequest) -> dict:
+        def inspect(_session: WorkspaceSession, edit_session: LayoutEditSession) -> dict:
+            module = _db_engine_module(edit_session.db_handle)
+            module_state = _floorplan_editor_inspect(module)
+            return {
+                "editSessionId": edit_session.edit_session_id,
+                "revision": edit_session.revision,
+                "geometryRevision": edit_session.geometry_revision,
+                "geometryManifestPath": str(edit_session.geometry_output_dir / "geometry.manifest"),
+                "dirty": edit_session.dirty,
+                "floorplanPlan": deepcopy(edit_session.floorplan_plan),
+                "pdnPlan": deepcopy(edit_session.pdn_plan),
+                "diagnostics": deepcopy(edit_session.validation_diagnostics),
+                "state": module_state,
+            }
+
+        return self._with_layout_edit_session_mutation_lock(request.edit_session_id, inspect)
+
+    def floorplan_edit_run_auto(self, request: FloorplanEditRunAutoRequest) -> dict:
+        def run_auto(_session: WorkspaceSession, edit_session: LayoutEditSession) -> dict:
+            if not isinstance(request.request, dict):
+                raise RuntimeApiError("invalid_request", "request must be an object")
+            return _apply_layout_edit_operation(
+                edit_session,
+                command_id=request.command_id,
+                base_revision=request.base_revision,
+                operation={"kind": "run_auto", "request": request.request},
+            )
+
+        return self._with_layout_edit_session_mutation_lock(request.edit_session_id, run_auto)
+
+    def floorplan_edit_validate(self, request: FloorplanEditValidateRequest) -> dict:
+        def validate(_session: WorkspaceSession, edit_session: LayoutEditSession) -> dict:
+            scope = request.scope.strip() if isinstance(request.scope, str) else ""
+            if not scope:
+                raise RuntimeApiError("invalid_request", "scope must be a non-empty string")
+            module = _db_engine_module(edit_session.db_handle)
+            result = _floorplan_editor_validate(module, scope)
+            edit_session.validation_diagnostics = _floorplan_diagnostics(result)
+            return {
+                "editSessionId": edit_session.edit_session_id,
+                "revision": edit_session.revision,
+                "scope": scope,
+                "valid": _floorplan_validation_ok(result),
+                "diagnostics": deepcopy(edit_session.validation_diagnostics),
+            }
+
+        return self._with_layout_edit_session_mutation_lock(request.edit_session_id, validate)
 
     def layout_edit_save(self, request: LayoutEditSaveRequest) -> dict:
         def save(session: WorkspaceSession, edit_session: LayoutEditSession) -> dict:
@@ -549,7 +532,21 @@ class WorkspaceRuntimeApi:
                     },
                 )
 
-            _publish_layout_edit_artifacts(edit_session)
+            module = _db_engine_module(edit_session.db_handle)
+            if edit_session.used_floorplan_editor:
+                validation = _floorplan_editor_validate(module, "all")
+                edit_session.validation_diagnostics = _floorplan_diagnostics(validation)
+                if not _floorplan_validation_ok(validation):
+                    raise RuntimeApiError(
+                        "floorplan_validation_failed",
+                        "floorplan edit validation failed",
+                        {"diagnostics": deepcopy(edit_session.validation_diagnostics)},
+                    )
+                _merge_floorplan_export_intent(
+                    edit_session, _floorplan_editor_export_intent(module)
+                )
+
+            artifacts = _publish_layout_edit_artifacts(edit_session, session.workspace)
             output_db = _path_or_none(_workspace_step_output_value(edit_session.workspace_step, "db"))
             if output_db is None:
                 raise RuntimeApiError("command_failed", "layout edit output DB is missing")
@@ -557,7 +554,7 @@ class WorkspaceRuntimeApi:
             edit_session.source_paths = (output_db,)
             edit_session.source_fingerprint = _artifact_fingerprint(edit_session.source_paths)
             edit_session.dirty = False
-            return _layout_edit_save_result(edit_session, saved=True)
+            return _layout_edit_save_result(edit_session, saved=True, artifacts=artifacts)
 
         return self._with_layout_edit_session_mutation_lock(request.edit_session_id, save)
 
@@ -707,8 +704,14 @@ def _layout_edit_begin_result(edit_session: LayoutEditSession, *, reused: bool) 
     }
 
 
-def _layout_edit_save_result(edit_session: LayoutEditSession, *, saved: bool) -> dict:
-    artifacts = _layout_edit_published_artifacts(edit_session.workspace_step)
+def _layout_edit_save_result(
+    edit_session: LayoutEditSession,
+    *,
+    saved: bool,
+    artifacts: dict[str, str] | None = None,
+) -> dict:
+    if artifacts is None:
+        artifacts = _layout_edit_published_artifacts(edit_session.workspace_step)
     return {
         "editSessionId": edit_session.edit_session_id,
         "revision": edit_session.revision,
@@ -770,6 +773,365 @@ def _layout_edit_workspace_step(
     return replace(workspace_step, input=edit_input)
 
 
+_FLOORPLAN_EDITOR_OPERATION_KINDS = frozenset(
+    {
+        "set_floorplan_outline",
+        "replace_tracks",
+        "upsert_io_pin_port",
+        "upsert_blockage",
+        "delete_blockage",
+        "upsert_instance_halo",
+        "delete_instance_halo",
+        "pdn.plan.patch",
+        "pdn.manual_segment.upsert",
+        "pdn.manual_segment.delete",
+        "pdn.manual_via.upsert",
+        "pdn.manual_via.delete",
+        "run_auto",
+    }
+)
+
+
+def _apply_layout_edit_operation(
+    edit_session: LayoutEditSession,
+    *,
+    command_id: object,
+    base_revision: object,
+    operation: object,
+) -> dict:
+    if not isinstance(command_id, str) or not command_id.strip():
+        raise RuntimeApiError("invalid_request", "missing required field: command_id")
+
+    previous_result = edit_session.command_results.get(command_id)
+    if previous_result is not None:
+        return previous_result
+
+    _validate_layout_edit_revision(base_revision, "base_revision")
+    if base_revision != edit_session.revision:
+        raise RuntimeApiError(
+            "version_conflict",
+            "layout edit revision does not match",
+            {
+                "expectedRevision": base_revision,
+                "actualRevision": edit_session.revision,
+            },
+        )
+    if not isinstance(operation, dict):
+        raise RuntimeApiError("invalid_request", "operation must be an object")
+
+    kind = operation.get("kind")
+    if kind == "place_instance":
+        result = _apply_layout_edit_place_instance(edit_session, command_id, operation)
+    else:
+        result = _apply_floorplan_editor_operation(edit_session, command_id, operation)
+    edit_session.command_results[command_id] = result
+    return result
+
+
+def _apply_layout_edit_place_instance(
+    edit_session: LayoutEditSession,
+    command_id: str,
+    operation: dict[str, Any],
+) -> dict:
+    placement = _layout_edit_place_instance_operation(operation)
+    module = _db_engine_module(edit_session.db_handle)
+    place_instance = getattr(module, "place_instance", None)
+    if not callable(place_instance):
+        raise RuntimeApiError("command_failed", "place_instance is unavailable")
+
+    accepted = place_instance(
+        inst_name=placement["inst_name"],
+        llx=placement["llx"],
+        lly=placement["lly"],
+        orient=placement["orient"],
+        cellmaster=placement["cellmaster"],
+        source=placement["source"],
+        placement_status=placement["placement_status"],
+        create_if_missing=placement["create_if_missing"],
+    )
+    if not accepted:
+        raise RuntimeApiError(
+            "placement_rejected",
+            "place_instance rejected the requested placement",
+            {"instanceName": placement["inst_name"]},
+        )
+
+    geometry_delta = _sync_layout_edit_instance_geometry(module, placement["inst_name"])
+    geometry_manifest_path = _advance_layout_edit_geometry_snapshot(edit_session, module)
+    edit_session.revision += 1
+    edit_session.geometry_revision += 1
+    edit_session.dirty = True
+    if placement["create_if_missing"]:
+        edit_session.requires_verilog = True
+    return {
+        "editSessionId": edit_session.edit_session_id,
+        "commandId": command_id,
+        "revision": edit_session.revision,
+        "geometryRevision": edit_session.geometry_revision,
+        "geometryManifestPath": str(geometry_manifest_path),
+        "dirty": True,
+        "operation": {
+            "kind": "place_instance",
+            "instanceName": placement["inst_name"],
+            "origin": {"x": placement["llx"], "y": placement["lly"]},
+            "orient": placement["orient"],
+        },
+        "geometryDelta": geometry_delta,
+    }
+
+
+def _apply_floorplan_editor_operation(
+    edit_session: LayoutEditSession,
+    command_id: str,
+    operation: dict[str, Any],
+) -> dict:
+    kind = operation.get("kind")
+    if not isinstance(kind, str) or kind not in _FLOORPLAN_EDITOR_OPERATION_KINDS:
+        raise RuntimeApiError("invalid_request", "unsupported layout edit operation")
+
+    module = _db_engine_module(edit_session.db_handle)
+    editor_result = _floorplan_editor_apply(module, operation)
+    if not _floorplan_editor_accepted(editor_result):
+        diagnostics = _floorplan_diagnostics(editor_result)
+        raise RuntimeApiError(
+            "floorplan_rejected",
+            "floorplan editor rejected the requested operation",
+            {"operationKind": kind, "diagnostics": diagnostics},
+        )
+
+    model_patch = _floorplan_model_patch(editor_result)
+    _merge_floorplan_model_patch(edit_session, model_patch)
+    diagnostics = _floorplan_diagnostics(editor_result)
+    edit_session.validation_diagnostics = diagnostics
+    changed = bool(editor_result.get("changed", True))
+    geometry_delta = _floorplan_geometry_delta(editor_result)
+    geometry_manifest_path = edit_session.geometry_output_dir / "geometry.manifest"
+    if changed:
+        geometry_manifest_path = _advance_layout_edit_geometry_snapshot(edit_session, module)
+        edit_session.revision += 1
+        edit_session.geometry_revision += 1
+        edit_session.dirty = True
+    edit_session.used_floorplan_editor = True
+    if _floorplan_bool(editor_result, "instancesChanged", "instances_changed") or _floorplan_bool(
+        model_patch,
+        "instancesChanged",
+        "instances_changed",
+    ):
+        edit_session.requires_verilog = True
+
+    return {
+        "editSessionId": edit_session.edit_session_id,
+        "commandId": command_id,
+        "revision": edit_session.revision,
+        "geometryRevision": edit_session.geometry_revision,
+        "geometryManifestPath": str(geometry_manifest_path),
+        "dirty": edit_session.dirty,
+        "operation": {"kind": kind},
+        "affectedRefs": _floorplan_affected_refs(editor_result),
+        "geometryDelta": geometry_delta,
+        "modelPatch": model_patch,
+        "diagnostics": diagnostics,
+        "changed": changed,
+    }
+
+
+def _advance_layout_edit_geometry_snapshot(edit_session: LayoutEditSession, module) -> Path:
+    next_geometry_output_dir = (
+        edit_session.geometry_output_dir.parent / f"geometry-{edit_session.geometry_revision + 1}"
+    )
+    geometry_manifest_path = _write_layout_edit_geometry_snapshot(module, next_geometry_output_dir)
+    previous_geometry_output_dir = edit_session.geometry_output_dir
+    edit_session.geometry_output_dir = next_geometry_output_dir
+    shutil.rmtree(previous_geometry_output_dir, ignore_errors=True)
+    return geometry_manifest_path
+
+
+def _floorplan_editor_apply(module, operation: dict[str, Any]) -> dict[str, Any]:
+    apply = getattr(module, "floorplan_editor_apply", None)
+    if not callable(apply):
+        apply = getattr(module, "floorplan_edit_apply", None)
+    if not callable(apply):
+        raise RuntimeApiError("command_failed", "floorplan editor is unavailable")
+    payload = deepcopy(operation)
+    result = _call_floorplan_editor_apply(apply, payload)
+    if not isinstance(result, dict):
+        raise RuntimeApiError("command_failed", "floorplan editor returned an invalid result")
+    return result
+
+
+def _call_floorplan_editor_apply(apply, payload: dict[str, Any]):
+    try:
+        signature = inspect.signature(apply)
+    except (TypeError, ValueError):
+        return apply(request=payload)
+
+    parameters = signature.parameters.values()
+    accepts_keyword_request = "request" in signature.parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
+    )
+    if accepts_keyword_request:
+        return apply(request=payload)
+    return apply(payload)
+
+
+def _floorplan_editor_inspect(module) -> dict[str, Any]:
+    inspect = getattr(module, "floorplan_editor_inspect", None)
+    if not callable(inspect):
+        inspect = getattr(module, "floorplan_edit_inspect", None)
+    if not callable(inspect):
+        return {}
+    result = inspect()
+    return deepcopy(result) if isinstance(result, dict) else {}
+
+
+def _floorplan_editor_validate(module, scope: str) -> dict[str, Any]:
+    validate = getattr(module, "floorplan_editor_validate", None)
+    if not callable(validate):
+        validate = getattr(module, "floorplan_validate", None)
+    if not callable(validate):
+        return {"ok": True, "diagnostics": []}
+    try:
+        result = validate(scope=scope)
+    except TypeError:
+        result = validate(scope)
+    if not isinstance(result, dict):
+        raise RuntimeApiError("command_failed", "floorplan validation returned an invalid result")
+    return result
+
+
+def _floorplan_editor_export_intent(module) -> dict[str, Any]:
+    export_intent = getattr(module, "floorplan_editor_export_intent", None)
+    if not callable(export_intent):
+        export_intent = getattr(module, "floorplan_export_intent", None)
+    if not callable(export_intent):
+        raise RuntimeApiError("command_failed", "floorplan editor export is unavailable")
+    result = export_intent()
+    if not isinstance(result, dict):
+        raise RuntimeApiError(
+            "command_failed", "floorplan editor export returned an invalid result"
+        )
+    if not _floorplan_editor_accepted(result):
+        raise RuntimeApiError(
+            "command_failed",
+            "floorplan editor failed to export edit intent",
+            {"diagnostics": _floorplan_diagnostics(result)},
+        )
+    return result
+
+
+def _floorplan_editor_accepted(result: dict[str, Any]) -> bool:
+    return bool(result.get("accepted", result.get("ok", False)))
+
+
+def _floorplan_validation_ok(result: dict[str, Any]) -> bool:
+    return bool(result.get("ok", result.get("accepted", False)))
+
+
+def _floorplan_diagnostics(result: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = result.get("diagnostics", [])
+    if not isinstance(raw, list):
+        return []
+    diagnostics = []
+    for item in raw:
+        if isinstance(item, dict):
+            diagnostics.append(deepcopy(item))
+        elif isinstance(item, str):
+            diagnostics.append({"message": item})
+    return diagnostics
+
+
+def _floorplan_affected_refs(result: dict[str, Any]) -> list[Any]:
+    refs = result.get("affectedRefs", result.get("affected_refs", []))
+    return deepcopy(refs) if isinstance(refs, list) else []
+
+
+def _floorplan_geometry_delta(result: dict[str, Any]) -> dict[str, Any]:
+    delta = result.get("geometryDelta", result.get("geometry_delta", {}))
+    if not isinstance(delta, dict):
+        delta = {}
+    return {
+        "ok": bool(delta.get("ok", True)),
+        "snapshotRequired": bool(
+            delta.get(
+                "snapshotRequired",
+                delta.get(
+                    "snapshot_required",
+                    result.get("snapshotRequired", result.get("snapshot_required", False)),
+                ),
+            )
+        ),
+        "updatedShapeCount": _geometry_delta_count(delta, "updatedShapeCount"),
+        "insertedShapeCount": _geometry_delta_count(delta, "insertedShapeCount"),
+        "deletedShapeCount": _geometry_delta_count(delta, "deletedShapeCount"),
+        "missingShapeCount": _geometry_delta_count(delta, "missingShapeCount"),
+        "events": deepcopy(delta.get("events", []))
+        if isinstance(delta.get("events", []), list)
+        else [],
+    }
+
+
+def _floorplan_model_patch(result: dict[str, Any]) -> dict[str, Any]:
+    patch = result.get("modelPatch", result.get("model_patch", {}))
+    if patch is None:
+        return {}
+    if not isinstance(patch, dict):
+        raise RuntimeApiError("command_failed", "floorplan editor returned an invalid model patch")
+    return deepcopy(patch)
+
+
+def _floorplan_bool(data: dict[str, Any], *keys: str) -> bool:
+    return any(bool(data.get(key, False)) for key in keys)
+
+
+def _merge_floorplan_model_patch(
+    edit_session: LayoutEditSession, model_patch: dict[str, Any]
+) -> None:
+    floorplan_plan = _floorplan_patch_mapping(model_patch, "floorplanPlan", "floorplan_plan")
+    pdn_plan = _floorplan_patch_mapping(model_patch, "pdnPlan", "pdn_plan")
+    config_patch = _floorplan_patch_mapping(model_patch, "configPatch", "config_patch")
+    parameters_patch = _floorplan_patch_mapping(
+        model_patch,
+        "parametersPatch",
+        "parameters_patch",
+    )
+    _deep_merge(edit_session.floorplan_plan, floorplan_plan)
+    _deep_merge(edit_session.pdn_plan, pdn_plan)
+    _deep_merge(edit_session.config_patch, config_patch)
+    _deep_merge(edit_session.parameters_patch, parameters_patch)
+
+
+def _merge_floorplan_export_intent(edit_session: LayoutEditSession, intent: dict[str, Any]) -> None:
+    nested_intent = intent.get("intent")
+    if isinstance(nested_intent, dict):
+        intent = nested_intent
+    _merge_floorplan_model_patch(edit_session, intent)
+    if _floorplan_bool(intent, "requiresVerilog", "requires_verilog"):
+        edit_session.requires_verilog = True
+
+
+def _floorplan_patch_mapping(data: dict[str, Any], *keys: str) -> dict[str, Any]:
+    present = [key for key in keys if key in data]
+    if len(present) > 1:
+        raise RuntimeApiError("command_failed", f"duplicate floorplan model patch field: {keys[0]}")
+    if not present:
+        return {}
+    value = data[present[0]]
+    if not isinstance(value, dict):
+        raise RuntimeApiError(
+            "command_failed", f"floorplan model patch field must be an object: {keys[0]}"
+        )
+    return deepcopy(value)
+
+
+def _deep_merge(target: dict[str, Any], patch: dict[str, Any]) -> None:
+    for key, value in patch.items():
+        current = target.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            _deep_merge(current, value)
+        else:
+            target[key] = deepcopy(value)
+
+
 def _layout_edit_place_instance_operation(operation: object) -> dict[str, Any]:
     if not isinstance(operation, dict):
         raise RuntimeApiError("invalid_request", "operation must be an object")
@@ -779,11 +1141,14 @@ def _layout_edit_place_instance_operation(operation: object) -> dict[str, Any]:
     inst_name = _layout_edit_text(operation, "inst_name", "instName")
     cellmaster = _layout_edit_optional_text(operation, "cellmaster", "cellMaster")
     source = _layout_edit_optional_text(operation, "source")
-    placement_status = _layout_edit_optional_text(
-        operation,
-        "placement_status",
-        "placementStatus",
-    ) or "preserve"
+    placement_status = (
+        _layout_edit_optional_text(
+            operation,
+            "placement_status",
+            "placementStatus",
+        )
+        or "preserve"
+    )
     create_if_missing = _layout_edit_optional_bool(
         operation,
         "create_if_missing",
@@ -901,26 +1266,28 @@ def _geometry_delta_count(delta: dict, key: str) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
-def _publish_layout_edit_artifacts(edit_session: LayoutEditSession) -> None:
+def _publish_layout_edit_artifacts(edit_session: LayoutEditSession, workspace) -> dict[str, str]:
     targets = _layout_edit_publish_targets(edit_session.workspace_step)
+    staged_workspace_data = _layout_edit_workspace_staging(edit_session, workspace)
+    targets.update(staged_workspace_data["targets"])
     stage_parent = _layout_edit_stage_parent(targets.values())
     stage_root = Path(
         tempfile.mkdtemp(prefix=f".layout-edit-{edit_session.edit_session_id}-", dir=stage_parent)
     )
-    staged = {
-        "def": stage_root / targets["def"].name,
-        "db": stage_root / targets["db"].name,
-        "gds": stage_root / targets["gds"].name,
-        "geometry": stage_root / targets["geometry"].name,
-    }
+    staged = {key: stage_root / key / target.name for key, target in targets.items()}
     try:
         module = _db_engine_module(edit_session.db_handle)
+        for staged_path in staged.values():
+            staged_path.parent.mkdir(parents=True, exist_ok=True)
         module.def_save(def_path=str(staged["def"]))
         module.save_data(path=str(staged["db"]))
         module.gds_save(output_path=str(staged["gds"]))
         if not module.geometry_snapshot_save(output_dir=str(staged["geometry"])):
             raise RuntimeApiError("command_failed", "failed to export layout geometry snapshot")
+        _stage_layout_edit_workspace_json(staged, staged_workspace_data)
+        _stage_layout_edit_verilog(module, staged, edit_session)
         _validate_layout_edit_staging(staged, targets)
+        _validate_layout_edit_workspace_staging(staged, staged_workspace_data)
         _publish_staged_layout_edit_artifacts(stage_root, staged, targets)
     except RuntimeApiError:
         raise
@@ -928,6 +1295,177 @@ def _publish_layout_edit_artifacts(edit_session: LayoutEditSession) -> None:
         raise RuntimeApiError("command_failed", f"failed to publish layout edit: {exc}") from exc
     finally:
         shutil.rmtree(stage_root, ignore_errors=True)
+
+    _apply_layout_edit_workspace_staging(workspace, staged_workspace_data)
+    artifacts = _layout_edit_published_artifacts(edit_session.workspace_step)
+    artifacts.update(staged_workspace_data["artifacts"])
+    return artifacts
+
+
+def _layout_edit_workspace_staging(
+    edit_session: LayoutEditSession,
+    workspace,
+) -> dict[str, Any]:
+    targets: dict[str, Path] = {}
+    json_data: dict[str, dict[str, Any]] = {}
+    artifacts: dict[str, str] = {}
+    result: dict[str, Any] = {
+        "targets": targets,
+        "json": json_data,
+        "artifacts": artifacts,
+        "parametersData": None,
+        "flowData": None,
+    }
+
+    if edit_session.used_floorplan_editor:
+        config_target = _floorplan_config_target(workspace)
+        config_data = _read_layout_edit_json(config_target)
+        _deep_merge(config_data, edit_session.config_patch)
+        config_data["FloorplanPlan"] = deepcopy(edit_session.floorplan_plan)
+        config_data["PdnPlan"] = deepcopy(edit_session.pdn_plan)
+        targets["config"] = config_target
+        json_data["config"] = config_data
+        artifacts["configPath"] = str(config_target)
+
+    if edit_session.parameters_patch:
+        parameter_target = _workspace_path(workspace, "parameters", "path")
+        if parameter_target is None:
+            raise RuntimeApiError("command_failed", "workspace parameters path is missing")
+        parameter_data = deepcopy(getattr(getattr(workspace, "parameters", None), "data", {}) or {})
+        if not isinstance(parameter_data, dict):
+            raise RuntimeApiError("command_failed", "workspace parameters are invalid")
+        _deep_merge(parameter_data, edit_session.parameters_patch)
+        targets["parameters"] = parameter_target
+        json_data["parameters"] = parameter_data
+        artifacts["parametersPath"] = str(parameter_target)
+        result["parametersData"] = parameter_data
+
+    if edit_session.requires_verilog:
+        verilog_target = _path_or_none(
+            _workspace_step_output_value(edit_session.workspace_step, "verilog")
+        )
+        if verilog_target is None:
+            raise RuntimeApiError("command_failed", "layout edit output Verilog is missing")
+        targets["verilog"] = verilog_target
+        artifacts["verilogPath"] = str(verilog_target)
+
+    flow_target = _workspace_path(workspace, "flow", "path")
+    flow_data = deepcopy(getattr(getattr(workspace, "flow", None), "data", {}) or {})
+    if (
+        flow_target is not None
+        and isinstance(flow_data, dict)
+        and _mark_placement_and_later_stale(flow_data, edit_session.step_name)
+    ):
+        targets["flow"] = flow_target
+        json_data["flow"] = flow_data
+        artifacts["flowPath"] = str(flow_target)
+        result["flowData"] = flow_data
+
+    return result
+
+
+def _floorplan_config_target(workspace) -> Path:
+    config = getattr(workspace, "config", {})
+    if isinstance(config, dict):
+        config_target = _path_or_none(config.get("Floorplan"))
+        if config_target is not None:
+            return config_target
+    workspace_directory = _path_or_none(getattr(workspace, "directory", None))
+    if workspace_directory is None:
+        raise RuntimeApiError("command_failed", "workspace directory is missing")
+    return workspace_directory / "config" / "fp_default_config.json"
+
+
+def _workspace_path(workspace, owner_name: str, path_name: str) -> Path | None:
+    owner = getattr(workspace, owner_name, None)
+    return _path_or_none(getattr(owner, path_name, None))
+
+
+def _read_layout_edit_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeApiError("command_failed", f"failed to read JSON artifact: {path}") from exc
+    if not isinstance(data, dict):
+        raise RuntimeApiError("command_failed", f"JSON artifact must contain an object: {path}")
+    return data
+
+
+def _stage_layout_edit_workspace_json(
+    staged: dict[str, Path],
+    workspace_staging: dict[str, Any],
+) -> None:
+    for key, data in workspace_staging["json"].items():
+        staged_path = staged[key]
+        staged_path.parent.mkdir(parents=True, exist_ok=True)
+        staged_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _stage_layout_edit_verilog(
+    module, staged: dict[str, Path], edit_session: LayoutEditSession
+) -> None:
+    if "verilog" not in staged:
+        return
+    save_verilog = getattr(module, "verilog_save", None)
+    if not callable(save_verilog):
+        raise RuntimeApiError("command_failed", "verilog_save is unavailable")
+    staged["verilog"].parent.mkdir(parents=True, exist_ok=True)
+    save_verilog(output_verilog=str(staged["verilog"]))
+
+
+def _validate_layout_edit_workspace_staging(
+    staged: dict[str, Path],
+    workspace_staging: dict[str, Any],
+) -> None:
+    for key in workspace_staging["json"]:
+        if not staged[key].is_file():
+            raise RuntimeApiError("command_failed", f"layout edit staged {key} is missing")
+        _read_layout_edit_json(staged[key])
+    if "verilog" in staged and not staged["verilog"].is_file():
+        raise RuntimeApiError("command_failed", "layout edit staged Verilog is missing")
+
+
+def _apply_layout_edit_workspace_staging(workspace, workspace_staging: dict[str, Any]) -> None:
+    parameters_data = workspace_staging["parametersData"]
+    if parameters_data is not None:
+        workspace.parameters.data = parameters_data
+    flow_data = workspace_staging["flowData"]
+    if flow_data is not None:
+        workspace.flow.data = flow_data
+
+
+def _mark_placement_and_later_stale(flow_data: dict[str, Any], step_name: str) -> bool:
+    if step_name != "Floorplan":
+        return False
+    steps = flow_data.get("steps")
+    if not isinstance(steps, list):
+        return False
+    placement_index = next(
+        (
+            index
+            for index, step in enumerate(steps)
+            if isinstance(step, dict) and step.get("name") == "place"
+        ),
+        None,
+    )
+    if placement_index is None:
+        return False
+    changed = False
+    for step in steps[placement_index:]:
+        if not isinstance(step, dict):
+            continue
+        desired = {
+            "state": "Unstart",
+            "runtime": "",
+            "peak memory (mb)": 0,
+        }
+        for key, value in desired.items():
+            if step.get(key) != value:
+                step[key] = value
+                changed = True
+    return changed
 
 
 def _layout_edit_publish_targets(workspace_step) -> dict[str, Path]:
@@ -988,7 +1526,7 @@ def _publish_staged_layout_edit_artifacts(
     staged: dict[str, Path],
     targets: dict[str, Path],
 ) -> None:
-    artifact_keys = ("def", "db", "gds", "geometry")
+    artifact_keys = tuple(targets)
     backup_dir = stage_root / "backup"
     backup_dir.mkdir()
     journal_path = stage_root / "publish.journal"

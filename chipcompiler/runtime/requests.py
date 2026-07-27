@@ -108,6 +108,25 @@ class LayoutEditDiscardRequest:
     edit_session_id: str
 
 
+@dataclass(frozen=True)
+class FloorplanEditInspectRequest:
+    edit_session_id: str
+
+
+@dataclass(frozen=True)
+class FloorplanEditRunAutoRequest:
+    edit_session_id: str
+    command_id: str
+    base_revision: int
+    request: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class FloorplanEditValidateRequest:
+    edit_session_id: str
+    scope: str = "all"
+
+
 class RequestValidationError(ValueError):
     def __init__(self, reason: str):
         super().__init__(reason)
