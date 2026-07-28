@@ -77,15 +77,6 @@ jobs:
           yosys -V
           yosys -p "plugin -i slang"
 
-      - name: Ruff format check
-        run: uv run --no-sync ruff format --check chipcompiler test
-
-      - name: Ruff lint
-        run: uv run --no-sync ruff check chipcompiler test
-
-      # - name: Pyright
-      #   run: uv run pyright chipcompiler
-
       - name: Pytest
         run: uv run --no-sync pytest test/ --ignore=test/integration/test_harden_flow.py --ignore=test/integration/test_rcx_flow.py --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report=
 
@@ -141,3 +132,25 @@ jobs:
           if-no-files-found: ignore
           path: |
             dist/ecc.tar
+
+  lint:
+    needs: check-version
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_34_x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python dependencies
+        uses: ./.github/actions/setup-python-deps
+
+      - name: Ruff format check
+        run: uv run --no-sync ruff format --check chipcompiler test
+
+      - name: Ruff lint
+        run: uv run --no-sync ruff check chipcompiler test
+
+      # - name: Pyright
+      #   run: uv run pyright chipcompiler
