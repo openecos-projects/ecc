@@ -150,6 +150,7 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.step is not None
     step.feature.step.write_text(json.dumps({"CTS": {"buffer_num": 3}}))
     timing_quality = {
         "schema_version": 1,
@@ -230,6 +231,8 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
 
     assert ecc_runner.run_sta_without_spef(workspace, step) is True
 
+    assert step.feature.dir is not None
+    assert step.report.dir is not None
     assert module.calls == [
         (
             "init_config",
@@ -363,6 +366,8 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
     assert ecc_runner.run_sta(workspace, step) is True
 
     calls = [payload for name, payload in module.calls if name == "run_timing"]
+    assert step.feature.dir is not None
+    assert step.report.dir is not None
     assert calls == [
         {
             "config": sta_config,

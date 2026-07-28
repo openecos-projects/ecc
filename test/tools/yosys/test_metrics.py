@@ -17,6 +17,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         input_verilog=tmp_path / "gcd.v",
     )
     build_step_space(step)
+    assert step.feature.step is not None
     step.feature.step.write_text(
         json.dumps(
             {
@@ -36,6 +37,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         ),
         encoding="utf-8",
     )
+    assert step.feature.stat is not None
     step.feature.stat.write_text(
         json.dumps(
             {
@@ -53,11 +55,16 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
     metrics = build_step_metrics(workspace, step)
 
     assert metrics is not None
+    assert step.analysis.metrics is not None
     assert step.analysis.metrics.name == "qor_metrics.json"
     assert step.analysis.metrics.is_file()
+    assert step.analysis.qor_metrics is not None
     assert step.analysis.qor_metrics.is_file()
+    assert step.analysis.qor_summary is not None
     assert step.analysis.qor_summary.is_file()
+    assert step.analysis.qor_hotspots is not None
     assert step.analysis.qor_hotspots.is_file()
+    assert step.analysis.dir is not None
     assert not (step.analysis.dir / "Synthesis_metrics.json").exists()
 
     qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))

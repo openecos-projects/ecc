@@ -21,11 +21,11 @@ def test_synthesis_checklist_records_current_mapped_netlist(tmp_path):
     checklist_path = tmp_path / "Synthesis_yosys" / "checklist.json"
     step = SimpleNamespace(
         name=StepEnum.SYNTHESIS.value,
-        checklist=ChecklistState(path=str(checklist_path)),
+        checklist=ChecklistState(path=checklist_path),
         analysis=AnalysisPaths(),
         feature=YosysFeature(),
         report=YosysReport(),
-        output=YosysOutput(verilog=str(netlist)),
+        output=YosysOutput(verilog=netlist),
     )
 
     assert YosysSynthesisChecklist(SimpleNamespace(), step).check() is True

@@ -9,7 +9,7 @@ def test_placement_checklist_writes_current_empty_v3_snapshot(tmp_path):
     checklist_path = tmp_path / "place_dreamplace" / "checklist.json"
     step = SimpleNamespace(
         name=StepEnum.PLACEMENT.value,
-        checklist=ChecklistState(path=str(checklist_path)),
+        checklist=ChecklistState(path=checklist_path),
         analysis=EccAnalysis(),
         feature=EccFeature(),
         output=EccOutput(),

@@ -10,7 +10,7 @@ class SizerChecklist:
         self.workspace_step = workspace_step
         self.build_checklist()
 
-    def build_checklist(self) -> list:
+    def build_checklist(self) -> list | dict:
         refresh_step_checklist(self.workspace, self.workspace_step)
         return self.workspace_step.checklist.checklist
 

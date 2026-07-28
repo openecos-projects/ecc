@@ -9,6 +9,7 @@ Verifies:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -200,10 +201,10 @@ def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
         workspace=workspace,
         step=step,
         ecc_module=None,
-        input_def="input.def",
-        input_verilog="input.v",
-        output_def="output.def",
-        output_verilog="output.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
+        output_def=Path("output.def"),
+        output_verilog=Path("output.v"),
     )
 
     params = module._build_params(FakeDreamplaceParams, legalize_only=False)

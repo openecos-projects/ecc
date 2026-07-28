@@ -514,6 +514,7 @@ def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.db is not None
     step.feature.db.write_text(
         json.dumps(
             {
@@ -538,6 +539,7 @@ def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
     metrics = build_metrics_net_opt(workspace, step)
 
     assert metrics is not None
+    assert step.analysis.qor_metrics is not None
     assert step.analysis.qor_metrics.exists()
     qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     assert qor_metrics["schema_version"] == 3
@@ -585,6 +587,7 @@ def test_ecc_metrics_uses_actual_db_max_fanout_before_configured_target(tmp_path
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.db is not None
     step.feature.db.write_text(
         json.dumps({"Pins": {"max_fanout": 37}}),
         encoding="utf-8",
@@ -593,6 +596,7 @@ def test_ecc_metrics_uses_actual_db_max_fanout_before_configured_target(tmp_path
     metrics = build_metrics_net_opt(workspace, step)
 
     assert metrics.data["Max fanout"] == 37
+    assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
         for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
@@ -613,6 +617,7 @@ def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.db is not None
     step.feature.db.write_text(
         json.dumps(
             {
@@ -636,8 +641,10 @@ def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
     metrics = build_metrics_net_opt(workspace, step)
 
     assert metrics is not None
+    assert step.analysis.qor_summary is not None
     assert step.analysis.qor_summary.exists()
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
+    assert step.analysis.qor_metrics is not None
     qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     assert summary["schema_version"] == 4
     assert summary["tool"] == "ecc"
@@ -664,6 +671,7 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.step is not None
     step.feature.step.write_text(
         json.dumps({"drc": {"number": 3}}),
         encoding="utf-8",
@@ -672,6 +680,7 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
     metrics = build_metrics_drc(workspace, step)
 
     assert metrics is not None
+    assert step.analysis.qor_summary is not None
     assert step.analysis.qor_summary.exists()
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "blocked"
@@ -703,6 +712,7 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
             ],
         }
     ]
+    assert step.analysis.qor_hotspots is not None
     hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     assert hotspots["hotspots"] == []
 
@@ -719,6 +729,7 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.step is not None
     step.feature.step.write_text(
         json.dumps(
             {
@@ -755,6 +766,7 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
     metrics = build_metrics_drc(workspace, step)
 
     assert metrics.data["drc_num"] == 99
+    assert step.analysis.qor_hotspots is not None
     hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     records = hotspots["hotspots"]
     assert [(record["metric_id"], record["value"]) for record in records] == [
@@ -785,6 +797,7 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
         "description": "12 DRC violations: Minimum Spacing on M3.",
     }
     assert all("violation_detail" not in record and "bbox" not in record for record in records)
+    assert step.analysis.qor_metrics is not None
     qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     details = {detail["id"]: detail for detail in qor_metrics["details"]}
     assert details["drc_rule_layer_summary"] == {
@@ -874,11 +887,13 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(drc_step)
+    assert drc_step.feature.step is not None
     drc_step.feature.step.write_text(json.dumps({"drc": {}}), encoding="utf-8")
 
     drc_metrics = build_metrics_drc(workspace, drc_step)
 
     assert "drc_num" not in drc_metrics.data
+    assert drc_step.analysis.qor_summary is not None
     drc_summary = json.loads(drc_step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert drc_summary["missing_metrics"] == [
         {
@@ -909,6 +924,7 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(legal_step)
+    assert legal_step.feature.step is not None
     legal_step.feature.step.write_text(
         json.dumps({"legalization": {}}),
         encoding="utf-8",
@@ -917,6 +933,7 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
     legal_metrics = build_metrics_legalization(workspace, legal_step)
 
     assert "total_movement" not in legal_metrics.data
+    assert legal_step.analysis.qor_summary is not None
     legal_summary = json.loads(legal_step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert legal_summary["missing_metrics"] == []
 
@@ -941,6 +958,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     pin_density_csv.write_text("0,2\n4,6\n", encoding="utf-8")
     margin_union_csv = tmp_path / "place_union_margin.csv"
     margin_union_csv.write_text("10,20\n30,40\n", encoding="utf-8")
+    assert step.feature.map is not None
     step.feature.map.write_text(
         json.dumps(
             {
@@ -1008,6 +1026,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     assert map_records[("pin", "allcell_pin_density", None)]["high_bin_count"] == 1
     assert map_records[("margin", "union", None)]["top_5_percent_average"] == 40
 
+    assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
         for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
@@ -1023,6 +1042,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     }
     assert details["place_map_metrics"]["presentation"] == "place_map_summary"
     assert details["place_map_metrics"]["feature_source"]["path"] == "feature/place.map.json"
+    assert step.analysis.qor_hotspots is not None
     hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     assert hotspots["schema_version"] == 3
     assert hotspots["tool"] == "ecc"
@@ -1058,6 +1078,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.step is not None
     step.feature.step.write_text(
         json.dumps(
             {
@@ -1083,6 +1104,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         ),
         encoding="utf-8",
     )
+    assert step.analysis.dir is not None
     legacy_metrics = step.analysis.dir / "CTS_metrics.json"
     legacy_preview = step.analysis.dir / "CTS_metrics.png"
     legacy_metrics.write_text("{}", encoding="utf-8")
@@ -1094,6 +1116,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
     assert metrics.data["max_level_of_clock_tree"] == 2
     assert not legacy_metrics.exists()
     assert not legacy_preview.exists()
+    assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
         for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
@@ -1184,6 +1207,7 @@ def test_ecc_metrics_persists_structured_cts_timing_without_log(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.step is not None
     step.feature.step.write_text(json.dumps({"CTS": {}}), encoding="utf-8")
     timing_quality = {
         "schema_version": 1,
@@ -1251,6 +1275,7 @@ def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
     metrics = build_metrics_cts(workspace, step)
 
     assert metrics.data["buffer_num"] == 3
+    assert step.analysis.qor_metrics is not None
     payload = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     assert payload["metrics"] == []
     assert payload["integrity"] == {
@@ -1258,6 +1283,7 @@ def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
         "invalid_metric_source_ids": ["cts_buffer_count"],
         "invalid_detail_ids": [],
     }
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["analysis_status"] == "incomplete"
     assert summary["quality_status"] == "pass"
@@ -1289,6 +1315,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.step is not None
     step.feature.step.write_text(
         json.dumps(
             {
@@ -1379,6 +1406,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
         ],
     }
 
+    assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
         for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
@@ -1393,6 +1421,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
     }
     assert details["route_layer_metrics"]["presentation"] == "layer_table"
     assert details["route_layer_metrics"]["feature_source"]["path"] == "feature/route.step.json"
+    assert step.analysis.qor_hotspots is not None
     hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     hotspot_records = {record["metric_id"]: record for record in hotspots["hotspots"]}
     assert hotspot_records["route_la_total_overflow"] == {
@@ -1425,6 +1454,7 @@ def test_ecc_metrics_qor_summary_lists_missing_supported_route_metrics(tmp_path)
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.db is not None
     step.feature.db.write_text(
         json.dumps({"Nets": {"wire_len": 5198.943, "num_via": 1470}}),
         encoding="utf-8",
@@ -1433,6 +1463,7 @@ def test_ecc_metrics_qor_summary_lists_missing_supported_route_metrics(tmp_path)
     metrics = build_metrics_routing(workspace, step)
 
     assert metrics is not None
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert [item["metric_id"] for item in summary["missing_metrics"]] == [
         "route_dr_total_violation_count",
@@ -1456,6 +1487,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.output.dir is not None
     existing_spef = [
         step.output.dir / "gcd_Cbest_125C.spef",
         step.output.dir / "gcd_Cworst_125C.spef",
@@ -1490,7 +1522,9 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
         encoding="utf-8",
     )
     step.output.spef = [*existing_spef, missing_spef]
+    assert step.output.def_ is not None
     step.output.def_.write_text("def", encoding="utf-8")
+    assert step.output.gds is not None
     step.output.gds.write_text("gds", encoding="utf-8")
 
     assert ecc_metrics.save_rcx_spef_feature_facts(workspace, step)
@@ -1507,6 +1541,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     assert metrics.data["rcx_worst_total_resistance_ohm"] == 2000
     assert metrics.data["rcx_output_def_exists"] == 1
     assert metrics.data["rcx_output_gds_exists"] == 1
+    assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
         for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
@@ -1550,6 +1585,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
         "path": "feature/RCX.step.json",
         "selector": "/rcx/signoff_metrics/coverage/missing_count",
     }
+    assert step.feature.step is not None
     rcx_feature = json.loads(step.feature.step.read_text(encoding="utf-8"))
     assert rcx_feature["rcx"]["electrical_summary"] == {
         "schema_version": 1,
@@ -1598,6 +1634,7 @@ def test_ecc_metrics_blocks_invalid_rcx_spef_electrical_data(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.output.dir is not None
     spef_path = step.output.dir / "gcd_Cbest_125C.spef"
     spef_path.write_text(
         """*SPEF \"IEEE 1481-1998\"
@@ -1617,6 +1654,7 @@ invalid cap record
 
     assert metrics.data["rcx_spef_parse_failure_count"] == 1
     assert "rcx_worst_total_capacitance_ff" not in metrics.data
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "blocked"
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
@@ -1638,6 +1676,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     )
     build_step_space(step)
 
+    assert step.feature.dir is not None
     reports = {
         step.feature.dir / "MAX_125" / "RCworst" / "qor_summary.json": {
             "path_groups": [
@@ -1769,6 +1808,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert metrics.data["hold_violation_count"] == 1
     assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
     assert metrics.data["sta_worst_hold_corner"] == "MIN_m40/Cbest"
+    assert step.analysis.metrics is not None
     assert step.analysis.metrics.name == "qor_metrics.json"
     sta_path_group_metrics = metrics.data["sta_path_group_metrics"]
     assert len(sta_path_group_metrics["records"]) == 4
@@ -1807,6 +1847,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         "frequency_mhz": 800,
     }
     assert io_record["hold"] == {"wns": -0.2, "tns": -0.2, "nvp": 2}
+    assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
         for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
@@ -1839,6 +1880,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         "path": "feature/sta.step.json",
         "selector": "/sta/signoff_metrics/coverage/available_count",
     }
+    assert step.feature.step is not None
     sta_feature = json.loads(step.feature.step.read_text(encoding="utf-8"))["sta"]
     assert {
         key: sta_feature[key]
@@ -1870,12 +1912,14 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert details["sta_path_group_metrics"]["feature_source"]["path"] == (
         "feature/MAX_125/RCworst/qor_summary.json"
     )
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "incomplete"
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
         "qor.sta.setup_closed": "unavailable",
         "qor.sta.hold_closed": "unavailable",
     }
+    assert step.analysis.sta_timing_issues is not None
     issues = json.loads(step.analysis.sta_timing_issues.read_text(encoding="utf-8"))
     assert issues["near_fail_slack_ns"] == 0.05
     assert [issue["issue_id"] for issue in issues["issues"]] == [
@@ -1932,6 +1976,7 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
         encoding="utf-8",
     )
     workspace.config[StepEnum.STA.value] = sta_config
+    assert step.feature.dir is not None
     feature_path = step.feature.dir / "MAX_125" / "RCworst" / "qor_summary.json"
     feature_path.parent.mkdir(parents=True, exist_ok=True)
     feature_path.write_text(
@@ -1953,6 +1998,7 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
     assert metrics.data["sta_corner_count"] == 1
     assert metrics.data["sta_expected_corner_count"] == 2
     assert metrics.data["sta_missing_corner_count"] == 1
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "incomplete"
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
@@ -2008,6 +2054,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
             {"wns": 0.03, "tns": 0.0, "nvp": 0},
         ),
     ):
+        assert step.feature.dir is not None
         summary_path = step.feature.dir / corner / "qor_summary.json"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(
@@ -2023,6 +2070,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
 
     metrics = ecc_metrics.build_metrics_sta(workspace, step)
 
+    assert step.feature.step is not None
     feature = json.loads(step.feature.step.read_text(encoding="utf-8"))["sta"]
     signoff = feature["signoff_metrics"]
     assert signoff["coverage"] == {
@@ -2049,6 +2097,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
     }
     assert corners["MIN_m40/RCbest"]["process_corner"] == "FF"
     assert corners["MIN_m40/RCbest"]["voltage_v"] == 1.32
+    assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
         for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
@@ -2067,6 +2116,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
         "score": True,
         "trend": True,
     }
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "pass"
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
@@ -2088,6 +2138,7 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.output.dir is not None
     legacy_path = step.output.dir / "MAX_125" / "RCworst" / "gcd.rpt.json"
     legacy_path.parent.mkdir(parents=True, exist_ok=True)
     legacy_path.write_text(
@@ -2104,6 +2155,7 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
 
     assert "max_WNS" not in metrics.data
     assert metrics.data["sta_corner_count"] == 0
+    assert step.analysis.qor_metrics is not None
     qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     assert qor_metrics["details"] == []
     assert qor_metrics["integrity"] == {
@@ -2111,6 +2163,7 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
         "invalid_metric_source_ids": [],
         "invalid_detail_ids": [],
     }
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert "sta_setup_wns" in {item["metric_id"] for item in summary["missing_metrics"]}
     assert summary["analysis_status"] == "incomplete"
@@ -2129,9 +2182,13 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.output.gds is not None
     step.output.gds.write_text("gds", encoding="utf-8")
+    assert step.output.lef is not None
     step.output.lef.write_text("lef", encoding="utf-8")
+    assert step.output.lib is not None
     step.output.lib.write_text("lib", encoding="utf-8")
+    assert step.output.image is not None
     step.output.image.write_text("png", encoding="utf-8")
 
     metrics = ecc_metrics.build_metrics_harden(workspace, step)
@@ -2142,6 +2199,7 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
     assert "harden_preview_exists" not in metrics.data
     assert "harden_lib_check_exists" not in metrics.data
     assert metrics.data["harden_artifact_missing_count"] == 0
+    assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
         for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
@@ -2155,8 +2213,10 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
         "path": "feature/Harden.step.json",
         "selector": "/harden/artifact_missing_count",
     }
+    assert step.feature.step is not None
     harden_feature = json.loads(step.feature.step.read_text(encoding="utf-8"))
     assert harden_feature["harden"]["artifact_missing_count"] == 0
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "pass"
     assert summary["gates"] == []
@@ -2233,6 +2293,7 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
 
     ecc_metrics.build_metrics_harden(workspace, step)
 
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["schema_version"] == 4
     assert summary["quality_status"] == "pass"
@@ -2269,6 +2330,7 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
 
     ecc_metrics.build_metrics_harden(workspace, step)
 
+    assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["schema_version"] == 4
     assert summary["quality_status"] == "pass"
@@ -2467,6 +2529,7 @@ def test_ecc_build_step_space_creates_path_directories(tmp_path):
     assert step.log.dir and step.log.dir.is_dir()
     assert step.script.dir and step.script.dir.is_dir()
     assert step.analysis.dir and step.analysis.dir.is_dir()
+    assert step.directory is not None
     assert (step.directory / "data" / "pl" / "density").is_dir()
     assert (step.directory / "data" / "pl" / "report").is_dir()
 
