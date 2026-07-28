@@ -18,7 +18,7 @@ from chipcompiler.cli.inspection.log_view import (
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.pretty import style as _style
 from chipcompiler.data import StateEnum, log_flow
-from chipcompiler.utility.log import redirect_stdio_to_file
+from chipcompiler.utility.log import flush_cstdio, redirect_stdio_to_file
 
 
 def supports_color(stream, mode, env=None):
@@ -285,6 +285,9 @@ def _preserve_cli_stdio():
         for stream in (sys.stdout, sys.stderr):
             with contextlib.suppress(Exception):
                 stream.flush()
+        # Drain C/C++ buffered output while fds still point at the step log,
+        # or it leaks to the terminal on the next flush after restore.
+        flush_cstdio()
 
         try:
             os.dup2(saved_stdout_fd, 1)

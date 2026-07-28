@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import ctypes
 import logging
 import os
 import sys
@@ -56,6 +57,17 @@ def rotate_log_on_start(log_file: str, max_bytes: int, backup_count: int) -> Non
     os.replace(log_file, f"{log_file}.1")
 
 
+def flush_cstdio() -> None:
+    """Flush C stdio buffers (printf/std::cout/glog) that Python-level flushes miss.
+
+    C/C++ output sits in libc's user-space buffer and is written to fd 1/2 only
+    on flush, so it must be drained before retargeting the fds, or the pending
+    bytes land in whatever the fd points to at flush time.
+    """
+    with suppress(Exception):
+        ctypes.CDLL(None).fflush(None)
+
+
 def redirect_stdio_to_file(log_file: str) -> TextIO:
     """Redirect process stdout/stderr to log_file at file-descriptor level."""
     # The stream intentionally stays open: its fd is dup2'd onto stdout/stderr below.
@@ -64,6 +76,7 @@ def redirect_stdio_to_file(log_file: str) -> TextIO:
     for stream in (sys.stdout, sys.stderr):
         with suppress(Exception):
             stream.flush()
+    flush_cstdio()
 
     os.dup2(log_stream.fileno(), 1)
     os.dup2(log_stream.fileno(), 2)
