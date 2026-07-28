@@ -3,7 +3,7 @@ import gzip
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import LogPaths, ScriptPaths, StateEnum, StepInput, YosysOutput
+from chipcompiler.data import LogPaths, ScriptPaths, StateEnum, StepInput, YosysData, YosysOutput
 from chipcompiler.tools.yosys import runner
 
 
@@ -172,7 +172,7 @@ def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
 
 def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
     workspace, step, output_file, _ = _build_workspace_and_step(tmp_path)
-    step.data = {"requires_slang": False}
+    step.data = YosysData(requires_slang=False)
     updates = []
 
     class FakeSubFlow:

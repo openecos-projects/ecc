@@ -2,6 +2,7 @@
 import os
 import shutil
 from pathlib import Path
+
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.metrics import (
@@ -28,7 +29,7 @@ def temperature_token(temperature) -> str:
 
 
 def copy_rcx_spef_outputs(workspace: Workspace, step: WorkspaceStep):
-    output_dir_text = os.fspath(step.output.get("dir", "") or "")
+    output_dir_text = os.fspath(step.output.dir or "" or "")
     if not output_dir_text:
         return
 
@@ -42,7 +43,7 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: WorkspaceStep):
     if not spef_writer_dir.is_dir():
         return
 
-    spef_outputs = step.output.get("spef", [])
+    spef_outputs = step.output.spef or []
     if isinstance(spef_outputs, (str, os.PathLike)):
         spef_outputs = [spef_outputs]
 
@@ -62,8 +63,7 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: WorkspaceStep):
 
     if not expected_paths:
         expected_paths = [
-            output_dir / spef_path.name
-            for spef_path in spef_writer_dir.glob("*.spef")
+            output_dir / spef_path.name for spef_path in spef_writer_dir.glob("*.spef")
         ]
 
     for expected_path in expected_paths:
@@ -73,9 +73,7 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: WorkspaceStep):
 
         expected_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, expected_path)
-        workspace.logger.info("Copied RCX SPEF %s to %s",
-                              source_path,
-                              expected_path)
+        workspace.logger.info("Copied RCX SPEF %s to %s", source_path, expected_path)
 
 
 def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
@@ -106,16 +104,17 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
 
             for rcx_corner_name in rcx_corner_names:
                 spef_name = (
-                    f"{spef_design_name}_{rcx_corner_name}_"
-                    f"{temperature_token(temperature)}C.spef"
+                    f"{spef_design_name}_{rcx_corner_name}_{temperature_token(temperature)}C.spef"
                 )
-                items.append({
-                    "corner": corner_name,
-                    "temperature": temperature,
-                    "rcx_corner": rcx_corner_name,
-                    "liberty_files": liberty_files,
-                    "spef_file": os.path.join(rcx_output_dir, spef_name),
-                })
+                items.append(
+                    {
+                        "corner": corner_name,
+                        "temperature": temperature,
+                        "rcx_corner": rcx_corner_name,
+                        "liberty_files": liberty_files,
+                        "spef_file": os.path.join(rcx_output_dir, spef_name),
+                    }
+                )
 
     return items
 
@@ -553,9 +552,7 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Success)
 
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
-        if not save_cts_timing_feature_facts(
-            step, ecc_module.feature_cts_timing()
-        ):
+        if not save_cts_timing_feature_facts(step, ecc_module.feature_cts_timing()):
             workspace.logger.error("Failed to persist CTS timing feature facts")
             return False
 
@@ -1030,7 +1027,6 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             workspace.logger.error("Failed to persist RCX SPEF feature facts")
             return False
 
-
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
@@ -1114,8 +1110,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
                 corner_name,
                 rcx_corner_name,
             )
-            sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value,
-                                 state=StateEnum.Imcomplete)
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
             return False
 
         corner = f"{report_dir.parent.name}/{report_dir.name}"

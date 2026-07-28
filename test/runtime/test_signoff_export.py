@@ -1,6 +1,6 @@
+import json
 import queue
 import threading
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -93,57 +93,62 @@ def test_inspect_signoff_package_reads_current_home_checklist(monkeypatch, tmp_p
     workspace_dir = tmp_path / "workspace"
     checklist_path = workspace_dir / "home" / "checklist.json"
     checklist_path.parent.mkdir(parents=True)
-    checklist_path.write_text(json.dumps({
-        "schema_version": 3,
-        "kind": "signoff_checklist",
-        "status": "blocked",
-        "summary": {"passed": 1, "blocked": 1, "attention": 1, "unavailable": 0},
-        "checklist": [
+    checklist_path.write_text(
+        json.dumps(
             {
-                "id": "quality.drc.clean",
-                "step": "drc",
-                "category": "quality_gate",
-                "owner": "qor",
-                "policy": "block",
-                "state": "failed",
-                "blocked": True,
-                "title": "Final DRC clean",
-                "summary": "drc_count=2 (required == 0)",
-                "source": {
-                    "kind": "qor_gate",
-                    "path": "drc_ecc/analysis/qor_summary.json",
-                    "gate_id": "qor.drc.clean",
-                },
-                "evidence": [{"kind": "feature", "path": "drc_ecc/feature/drc.step.json"}],
-            },
-            {
-                "id": "report.optional.image",
-                "step": "workspace",
-                "category": "report",
-                "owner": "checklist",
-                "policy": "warn",
-                "state": "warning",
-                "blocked": False,
-                "title": "Optional image",
-                "summary": "Optional image is missing.",
-                "source": {"kind": "package", "path": "filler_ecc/output/gcd_filler.png"},
-                "evidence": [],
-            },
-            {
-                "id": "provenance.initial.rtl",
-                "step": "workspace",
-                "category": "provenance",
-                "owner": "checklist",
-                "policy": "block",
-                "state": "pass",
-                "blocked": False,
-                "title": "Initial RTL",
-                "summary": "Current output is present and non-empty.",
-                "source": {"kind": "provenance", "path": "origin/gcd.v"},
-                "evidence": [],
-            },
-        ],
-    }), encoding="utf-8")
+                "schema_version": 3,
+                "kind": "signoff_checklist",
+                "status": "blocked",
+                "summary": {"passed": 1, "blocked": 1, "attention": 1, "unavailable": 0},
+                "checklist": [
+                    {
+                        "id": "quality.drc.clean",
+                        "step": "drc",
+                        "category": "quality_gate",
+                        "owner": "qor",
+                        "policy": "block",
+                        "state": "failed",
+                        "blocked": True,
+                        "title": "Final DRC clean",
+                        "summary": "drc_count=2 (required == 0)",
+                        "source": {
+                            "kind": "qor_gate",
+                            "path": "drc_ecc/analysis/qor_summary.json",
+                            "gate_id": "qor.drc.clean",
+                        },
+                        "evidence": [{"kind": "feature", "path": "drc_ecc/feature/drc.step.json"}],
+                    },
+                    {
+                        "id": "report.optional.image",
+                        "step": "workspace",
+                        "category": "report",
+                        "owner": "checklist",
+                        "policy": "warn",
+                        "state": "warning",
+                        "blocked": False,
+                        "title": "Optional image",
+                        "summary": "Optional image is missing.",
+                        "source": {"kind": "package", "path": "filler_ecc/output/gcd_filler.png"},
+                        "evidence": [],
+                    },
+                    {
+                        "id": "provenance.initial.rtl",
+                        "step": "workspace",
+                        "category": "provenance",
+                        "owner": "checklist",
+                        "policy": "block",
+                        "state": "pass",
+                        "blocked": False,
+                        "title": "Initial RTL",
+                        "summary": "Current output is present and non-empty.",
+                        "source": {"kind": "provenance", "path": "origin/gcd.v"},
+                        "evidence": [],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     class FakeFlow:
         def __init__(self, workspace):
@@ -177,7 +182,8 @@ def test_inspect_signoff_package_reads_current_home_checklist(monkeypatch, tmp_p
         "expected": 2,
         "summary": "1 blocking checklist requirements",
     }
-    assert next(group for group in review["groups"] if group["id"] == "reports")["status"] == "ready"
+    reports_group = next(group for group in review["groups"] if group["id"] == "reports")
+    assert reports_group["status"] == "ready"
     assert [risk["severity"] for risk in review["risks"]] == ["blocked", "warning"]
     blocked_risk = next(risk for risk in review["risks"] if risk["severity"] == "blocked")
     assert blocked_risk["details"] == [
@@ -194,7 +200,9 @@ def test_inspect_signoff_package_reads_current_home_checklist(monkeypatch, tmp_p
     ]
 
 
-def test_inspect_signoff_package_blocks_when_current_checklist_is_unavailable(monkeypatch, tmp_path):
+def test_inspect_signoff_package_blocks_when_current_checklist_is_unavailable(
+    monkeypatch, tmp_path
+):
     workspace_dir = tmp_path / "workspace"
     (workspace_dir / "home").mkdir(parents=True)
 
@@ -227,9 +235,14 @@ def test_workspace_inspect_signoff_waits_for_session_mutation_lock(monkeypatch, 
 
     monkeypatch.setattr(signoff_export, "inspect_signoff_package", fake_inspect)
     api = WorkspaceRuntimeApi(sessions=sessions)
+
     def run_inspection():
         try:
-            results.put(api.inspect_signoff(WorkspaceInspectSignoffRequest(workspace_id=session.workspace_id)))
+            results.put(
+                api.inspect_signoff(
+                    WorkspaceInspectSignoffRequest(workspace_id=session.workspace_id)
+                )
+            )
         except BaseException as error:  # pragma: no cover - re-raised below
             results.put(error)
 

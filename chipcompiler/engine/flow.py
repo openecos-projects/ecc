@@ -329,13 +329,15 @@ class EngineFlow:
             "size_bytes": size_bytes,
         }
 
-    def save_step_flow_facts(self,
-                             workspace_step: WorkspaceStep,
-                             state: StateEnum,
-                             runtime_seconds: float,
-                             peak_memory_mb: float,
-                             timing_constraints: dict) -> bool:
-        feature_path = workspace_step.feature.get("step")
+    def save_step_flow_facts(
+        self,
+        workspace_step: WorkspaceStep,
+        state: StateEnum,
+        runtime_seconds: float,
+        peak_memory_mb: float,
+        timing_constraints: dict,
+    ) -> bool:
+        feature_path = getattr(workspace_step.feature, "step", None)
         if feature_path is None or feature_path == "":
             return False
 

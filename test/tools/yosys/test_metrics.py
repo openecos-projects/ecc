@@ -17,7 +17,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         input_verilog=tmp_path / "gcd.v",
     )
     build_step_space(step)
-    step.feature["step"].write_text(
+    step.feature.step.write_text(
         json.dumps(
             {
                 "run": {
@@ -36,7 +36,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         ),
         encoding="utf-8",
     )
-    step.feature["stat"].write_text(
+    step.feature.stat.write_text(
         json.dumps(
             {
                 "design": {
@@ -53,14 +53,14 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
     metrics = build_step_metrics(workspace, step)
 
     assert metrics is not None
-    assert step.analysis["metrics"].name == "qor_metrics.json"
-    assert step.analysis["metrics"].is_file()
-    assert step.analysis["qor_metrics"].is_file()
-    assert step.analysis["qor_summary"].is_file()
-    assert step.analysis["qor_hotspots"].is_file()
-    assert not (step.analysis["dir"] / "Synthesis_metrics.json").exists()
+    assert step.analysis.metrics.name == "qor_metrics.json"
+    assert step.analysis.metrics.is_file()
+    assert step.analysis.qor_metrics.is_file()
+    assert step.analysis.qor_summary.is_file()
+    assert step.analysis.qor_hotspots.is_file()
+    assert not (step.analysis.dir / "Synthesis_metrics.json").exists()
 
-    qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     assert qor_metrics["schema_version"] == 3
     records = {record["id"]: record for record in qor_metrics["metrics"]}
     assert records["synthesis_cell_area"]["value"] == 456.79
@@ -105,7 +105,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         }
     }
 
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["schema_version"] == 4
     assert summary["analysis_status"] == "valid"
     assert summary["quality_status"] == "pass"

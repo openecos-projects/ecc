@@ -13,8 +13,8 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.tools.ecc import runner as ecc_runner
-from chipcompiler.tools.ecc.checklist import EccRcxChecklist
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
+from chipcompiler.tools.ecc.checklist import EccRcxChecklist
 
 
 class FakeEccModule:
@@ -150,23 +150,25 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["step"].write_text(json.dumps({"CTS": {"buffer_num": 3}}))
+    step.feature.step.write_text(json.dumps({"CTS": {"buffer_num": 3}}))
     timing_quality = {
         "schema_version": 1,
         "analysis_stage": "cts_fast_sta_post_optimization",
         "availability": "available",
         "clock_count": 1,
-        "clocks": [{
-            "clock": "clk",
-            "sink_count": 10,
-            "target_skew_ns": 0.08,
-            "initial_skew_ns": 0.05,
-            "optimized_skew_ns": 0.04,
-            "min_insertion_latency_ns": 0.12,
-            "max_insertion_latency_ns": 0.28,
-            "mean_insertion_latency_ns": 0.2,
-            "target_met": True,
-        }],
+        "clocks": [
+            {
+                "clock": "clk",
+                "sink_count": 10,
+                "target_skew_ns": 0.08,
+                "initial_skew_ns": 0.05,
+                "optimized_skew_ns": 0.04,
+                "min_insertion_latency_ns": 0.12,
+                "max_insertion_latency_ns": 0.28,
+                "mean_insertion_latency_ns": 0.2,
+                "target_met": True,
+            }
+        ],
         "worst_optimized_skew_ns": 0.04,
         "worst_max_insertion_latency_ns": 0.28,
         "target_unmet_count": 0,
@@ -178,7 +180,7 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
 
     assert ecc_runner.run_cts(workspace, step, module) is True
 
-    feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
+    feature = json.loads(step.feature.step.read_text(encoding="utf-8"))
     assert feature["CTS"] == {
         "buffer_num": 3,
         "timing_quality": timing_quality,
@@ -193,7 +195,8 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
 
 
 def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_feature(
-        tmp_path, monkeypatch):
+    tmp_path, monkeypatch
+):
     netlist = tmp_path / "output" / "gcd.v"
     techlef = tmp_path / "pdk" / "tech.lef"
     lef = tmp_path / "pdk" / "std.lef"
@@ -244,16 +247,16 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
             "run_timing",
             {
                 "config": workspace.config[StepEnum.STA.value],
-                "work_dir": step.data["dir"] / "sta",
-                "report_dir": step.report["dir"] / "post_synthesis",
-                "feature_dir": step.feature["dir"] / "post_synthesis",
+                "work_dir": step.data.dir / "sta",
+                "report_dir": step.report.dir / "post_synthesis",
+                "feature_dir": step.feature.dir / "post_synthesis",
                 "lib_paths": [liberty],
                 "sdc_path": sdc,
                 "corner": "post_synthesis",
             },
         ),
     ]
-    assert (step.data["dir"] / "sta").is_dir()
+    assert (step.data.dir / "sta").is_dir()
     assert logger.warnings == []
 
 
@@ -324,13 +327,15 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         path.write_text("", encoding="utf-8")
     sta_config = config_dir / "sta.json"
     sta_config.write_text(
-        json.dumps({
-            "liberty": [
-                {"corner": "MAX", "temperature": 125, "path": [str(max_lib)]},
-                {"corner": "MIN", "temperature": -40, "path": [str(min_lib)]},
-            ],
-            "signoff": [{"MAX": ["RCworst"], "MIN": ["Cbest"]}],
-        }),
+        json.dumps(
+            {
+                "liberty": [
+                    {"corner": "MAX", "temperature": 125, "path": [str(max_lib)]},
+                    {"corner": "MIN", "temperature": -40, "path": [str(min_lib)]},
+                ],
+                "signoff": [{"MAX": ["RCworst"], "MIN": ["Cbest"]}],
+            }
+        ),
         encoding="utf-8",
     )
     rcx_config = config_dir / "rcx.json"
@@ -343,11 +348,11 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         config={StepEnum.STA.value: sta_config, StepEnum.RCX.value: rcx_config},
         logger=logger,
     )
-    step = WorkspaceStep(
+    step = EccStep(
         name=StepEnum.STA.value,
-        data={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"},
-        report={"dir": tmp_path / "sta_ecc" / "report"},
-        feature={"dir": tmp_path / "sta_ecc" / "feature"},
+        data=EccData(steps={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"}),
+        report=EccReport(dir=tmp_path / "sta_ecc" / "report"),
+        feature=EccFeature(dir=tmp_path / "sta_ecc" / "feature"),
     )
     module = FakeSynthesisStaModule()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
@@ -361,9 +366,9 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
     assert calls == [
         {
             "config": sta_config,
-            "work_dir": step.data[StepEnum.STA.value],
-            "report_dir": step.report["dir"] / "MAX_125" / "RCworst",
-            "feature_dir": step.feature["dir"] / "MAX_125" / "RCworst",
+            "work_dir": step.data.steps[StepEnum.STA.value],
+            "report_dir": step.report.dir / "MAX_125" / "RCworst",
+            "feature_dir": step.feature.dir / "MAX_125" / "RCworst",
             "lib_paths": [str(max_lib)],
             "sdc_path": sdc,
             "spef_path": str(spef_root / "gcd_RCworst_125C.spef"),
@@ -372,9 +377,9 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         },
         {
             "config": sta_config,
-            "work_dir": step.data[StepEnum.STA.value],
-            "report_dir": step.report["dir"] / "MIN_m40" / "Cbest",
-            "feature_dir": step.feature["dir"] / "MIN_m40" / "Cbest",
+            "work_dir": step.data.steps[StepEnum.STA.value],
+            "report_dir": step.report.dir / "MIN_m40" / "Cbest",
+            "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",
             "lib_paths": [str(min_lib)],
             "sdc_path": sdc,
             "spef_path": str(spef_root / "gcd_Cbest_m40C.spef"),

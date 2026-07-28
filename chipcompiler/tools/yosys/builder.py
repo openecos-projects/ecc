@@ -14,6 +14,7 @@ from chipcompiler.data import (
     StepInput,
     SubflowState,
     Workspace,
+    WorkspaceStep,
     YosysData,
     YosysFeature,
     YosysOutput,

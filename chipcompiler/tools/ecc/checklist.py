@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import glob
 import os
+from pathlib import Path
 
 from chipcompiler.data import Checklist, CheckState, EccStep, StepEnum, Workspace
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
@@ -13,7 +14,6 @@ from chipcompiler.tools.ecc.sta_qor import (
     sta_timing_paths_paths,
 )
 from chipcompiler.utility import json_read
-
 
 
 class EccChecklist:
@@ -168,36 +168,6 @@ class EccChecklist:
 
     def check(self) -> bool:
         return refresh_step_checklist(self.workspace, self.workspace_step)
-
-
-    def update_item(self, step: str, type: str, item: str, state: str | CheckState, info: str = ""):
-        checklist = Checklist(path=self.workspace_step.checklist.path or "")
-        checklist.update(step=step, type=type, item=item, state=state, info=info)
-
-    def check(self) -> bool:
-        step = StepEnum(self.workspace_step.name)
-        checker_class = {
-            StepEnum.FLOORPLAN: EccFloorplanChecklist,
-            StepEnum.NETLIST_OPT: EccNetlistOptChecklist,
-            StepEnum.CTS: EccCtsChecklist,
-            StepEnum.TIMING_OPT_DRV: EccTimingOptDrvChecklist,
-            StepEnum.TIMING_OPT_HOLD: EccTimingOptHoldChecklist,
-            StepEnum.TIMING_OPT_SETUP: EccTimingOptSetupChecklist,
-            StepEnum.ROUTING: EccRoutingChecklist,
-            StepEnum.DRC: EccDrcChecklist,
-            StepEnum.FILLER: EccFillerChecklist,
-            StepEnum.HARDEN: EccHardenChecklist,
-            StepEnum.RCX: EccRcxChecklist,
-            StepEnum.STA: EccStaChecklist,
-        }.get(step)
-        if checker_class is None:
-            return True
-
-        return checker_class(
-            self.workspace,
-            self.workspace_step,
-            init_checklist=False,
-        ).check()
 
     def check_file(self, path: str | Path, text_tokens: list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:

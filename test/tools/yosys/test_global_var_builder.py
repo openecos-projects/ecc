@@ -161,7 +161,7 @@ def test_plain_verilog_filelist_uses_native_parser(tmp_path):
     assert "set filelist" not in text
     assert "set rtl_file [list " in text
     assert os.path.abspath(tmp_path / "top.v") in text
-    assert step.data["requires_slang"] is False
+    assert step.data.requires_slang is False
 
 
 def test_systemverilog_filelist_keeps_slang_mode(tmp_path):
@@ -174,7 +174,7 @@ def test_systemverilog_filelist_keeps_slang_mode(tmp_path):
     assert "set use_slang true" in text
     assert re.search(rf"^set\s+filelist\s+{re.escape(os.path.abspath(filelist))}$", text, re.M)
     assert "set rtl_file" not in text
-    assert step.data["requires_slang"] is True
+    assert step.data.requires_slang is True
 
 
 def test_rtl_mode_emits_rtl_file_as_tcl_list(tmp_path):
@@ -185,7 +185,7 @@ def test_rtl_mode_emits_rtl_file_as_tcl_list(tmp_path):
     assert "set rtl_file [list " in text
     assert os.path.abspath(rtl_file) in text
     assert "set use_slang false" in text
-    assert step.data["requires_slang"] is False
+    assert step.data.requires_slang is False
 
 
 def test_lists_are_emitted_as_tcl_lists_without_split(tmp_path):

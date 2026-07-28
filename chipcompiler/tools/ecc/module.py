@@ -962,10 +962,13 @@ class ECCToolsModule:
         config_dict = {}
         if work_dir:
             config_dict["-temp_directory_path"] = path_text(work_dir)
-        config_dict.update({
-            "-output_timing_reports": "1" if "report" in modes else "0",
-            "-timing_path_limit": str(max_paths_per_analysis),
-        })
+        config_dict.update(
+            {
+                "-output_timing_reports": "1" if "report" in modes else "0",
+                "-output_timing_features": "1" if "structured" in modes else "0",
+                "-timing_path_limit": str(max_paths_per_analysis),
+            }
+        )
         if corner:
             config_dict["-timing_corner"] = corner
         self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
@@ -990,10 +993,7 @@ class ECCToolsModule:
                 _copy_sta_artifact(source_path, Path(report_dir))
         if "structured" in modes:
             names = {path.name for path in structured_paths}
-            missing = [
-                name for name in STA_REQUIRED_STRUCTURED_FILENAMES
-                if name not in names
-            ]
+            missing = [name for name in STA_REQUIRED_STRUCTURED_FILENAMES if name not in names]
             if missing:
                 raise FileNotFoundError(
                     f"iSTA did not produce requested structured artifacts: {', '.join(missing)}"

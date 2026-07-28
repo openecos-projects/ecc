@@ -74,7 +74,7 @@ def _step_directory(step: WorkspaceStep) -> Path:
     directory = getattr(step, "directory", None)
     if directory:
         return Path(directory)
-    checklist_path = step.checklist.get("path") if isinstance(step.checklist, dict) else None
+    checklist_path = step.checklist.path
     if checklist_path:
         return Path(checklist_path).parent
     return Path(".")
@@ -214,7 +214,7 @@ def _quality_gate_items_from_summary(
 
 def _quality_gate_items(workspace: Workspace, step: WorkspaceStep) -> list[dict]:
     step_directory = _step_directory(step)
-    summary_path = step.analysis.get("qor_summary") if isinstance(step.analysis, dict) else None
+    summary_path = step.analysis.qor_summary
     return _quality_gate_items_from_summary(
         workspace,
         step.name,
@@ -226,15 +226,15 @@ def _quality_gate_items(workspace: Workspace, step: WorkspaceStep) -> list[dict]
 def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict]:
     if step.name == StepEnum.HARDEN.value:
         artifacts = (
-            ("gds", "Harden GDS", step.output.get("gds")),
-            ("lef", "Harden LEF", step.output.get("lef")),
-            ("lib", "Harden LIB", step.output.get("lib")),
+            ("gds", "Harden GDS", getattr(step.output, "gds", None)),
+            ("lef", "Harden LEF", getattr(step.output, "lef", None)),
+            ("lib", "Harden LIB", getattr(step.output, "lib", None)),
         )
     elif step.name == StepEnum.RCX.value:
-        spefs = step.output.get("spef", [])
+        spefs = getattr(step.output, "spef", []) or []
         files = [Path(path) for path in spefs] if isinstance(spefs, list) else []
         if not files:
-            output_dir = step.output.get("dir")
+            output_dir = step.output.dir
             files = sorted(Path(output_dir).glob("*.spef")) if output_dir else []
         state = (
             "pass" if files and all(_file_state(path)[0] == "pass" for path in files) else "failed"
@@ -253,15 +253,15 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                     if state == "pass"
                     else "Current RCX SPEF output files are missing or empty."
                 ),
-                source={"kind": "output", "path": _path_text(workspace, step.output.get("dir"))},
+                source={"kind": "output", "path": _path_text(workspace, step.output.dir)},
                 evidence=[
                     {"kind": "output", "path": _path_text(workspace, path)} for path in files
                 ],
             )
         ]
     elif step.name == StepEnum.STA.value:
-        report_dir = step.report.get("dir")
-        feature_dir = step.feature.get("dir")
+        report_dir = step.report.dir
+        feature_dir = step.feature.dir
         reports = (
             list(Path(report_dir).rglob("*.rpt"))
             if report_dir and Path(report_dir).is_dir()
@@ -311,7 +311,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
             ),
         ]
     elif step.name == StepEnum.SYNTHESIS.value:
-        artifacts = (("netlist", "Mapped synthesis netlist", step.output.get("verilog")),)
+        artifacts = (("netlist", "Mapped synthesis netlist", step.output.verilog),)
     else:
         return []
 
@@ -337,14 +337,14 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
 
 def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     """Replace one step checklist with its current signoff-relevant evidence."""
-    checklist_path = Path(step.checklist.get("path", _step_directory(step) / "checklist.json"))
+    checklist_path = Path(step.checklist.path or _step_directory(step) / "checklist.json")
     checklist_path.parent.mkdir(parents=True, exist_ok=True)
     checklist = Checklist(checklist_path)
     items = [*_quality_gate_items(workspace, step), *_step_artifact_items(workspace, step)]
-    step.checklist["checklist"] = checklist.replace(items)
+    step.checklist.checklist = checklist.replace(items)
     if getattr(workspace, "directory", None):
         rebuild_home_checklist(workspace)
-    return not any(item["blocked"] for item in step.checklist["checklist"])
+    return not any(item["blocked"] for item in step.checklist.checklist)
 
 
 def _flow_items(workspace: Workspace) -> list[dict]:

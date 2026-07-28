@@ -17,7 +17,6 @@ from chipcompiler.data import (
     EccStep,
     OriginDesign,
     OutputPaths,
-    StaReportPaths,
     Workspace,
     WorkspaceStep,
     WorkspaceStepBase,
@@ -130,10 +129,10 @@ def test_group_to_dict_flattens_data_steps_and_projects_nested_sta():
     # per-step dirs are flattened to top-level keys; "steps" itself is dropped.
     assert projected == {"dir": Path("/d"), "Timing optimization": Path("/d/to")}
 
-    report = EccReport(dir=Path("/r"), sta=StaReportPaths(timing=Path("/r/t.rpt")))
+    report = EccReport(dir=Path("/r"), sta={"dir": Path("/r/sta")})
     projected = step_group_to_dict(report)
-    # nested StaReportPaths becomes a nested dict; its unset subfields are dropped.
-    assert projected == {"dir": Path("/r"), "sta": {"timing": Path("/r/t.rpt")}}
+    # the sta mapping passes through as a nested dict.
+    assert projected == {"dir": Path("/r"), "sta": {"dir": Path("/r/sta")}}
 
 
 def _shape_keys(step):
@@ -162,10 +161,12 @@ def test_log_projection_yosys_shape_has_no_foreign_keys(tmp_path):
         ["dir", "def", "verilog", "fixed_verilog", "json", "report", "image"]
     )
     assert keys["data"] == sorted(["dir", "tmp"])
-    assert keys["feature"] == sorted(["dir", "generic_stat", "stat"])
+    assert keys["feature"] == sorted(["dir", "step", "generic_stat", "stat"])
     assert keys["report"] == sorted(["dir", "stat", "check"])
     assert keys["script"] == sorted(["dir", "main"])  # no sizer_env/sizer_cmd
-    assert keys["analysis"] == sorted(["dir", "metrics"])
+    assert keys["analysis"] == sorted(
+        ["dir", "metrics", "qor_metrics", "qor_summary", "qor_hotspots"]
+    )
     # foreign ecc-only keys never appear on the synthesis shape
     for foreign in ("db", "gds", "lef", "lib", "spef", "view_json"):
         assert foreign not in keys["output"]
@@ -193,7 +194,17 @@ def test_log_projection_ecc_shape_has_no_sizer_keys(tmp_path):
     )
     assert keys["script"] == sorted(["dir", "main"])  # a normal ECC step is not sizer
     assert keys["report"] == sorted(["dir", "db", "step", "sta"])
-    assert keys["analysis"] == sorted(["dir", "metrics", "statis_csv"])
+    assert keys["analysis"] == sorted(
+        [
+            "dir",
+            "metrics",
+            "qor_metrics",
+            "qor_summary",
+            "qor_hotspots",
+            "sta_timing_issues",
+            "statis_csv",
+        ]
+    )
 
 
 def test_log_projection_sizer_shape_includes_sizer_script_keys(tmp_path):
@@ -233,7 +244,6 @@ def test_log_workspace_step_renders_legacy_tables(tmp_path):
     # legacy key/value tables present; typed-dataclass repr absent.
     assert "def" in rendered
     assert "EccOutput(" not in rendered
-    assert "StaReportPaths(" not in rendered
 
 
 def test_load_metrics_requires_present_metrics_path():

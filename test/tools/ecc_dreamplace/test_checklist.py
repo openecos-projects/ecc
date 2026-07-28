@@ -1,8 +1,7 @@
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import StepEnum
+from chipcompiler.data import ChecklistState, EccAnalysis, EccFeature, EccOutput, StepEnum
 from chipcompiler.tools.ecc_dreamplace.checklist import DreamplacePlacementChecklist
 
 
@@ -10,10 +9,10 @@ def test_placement_checklist_writes_current_empty_v3_snapshot(tmp_path):
     checklist_path = tmp_path / "place_dreamplace" / "checklist.json"
     step = SimpleNamespace(
         name=StepEnum.PLACEMENT.value,
-        checklist={"path": str(checklist_path)},
-        analysis={},
-        feature={},
-        output={},
+        checklist=ChecklistState(path=str(checklist_path)),
+        analysis=EccAnalysis(),
+        feature=EccFeature(),
+        output=EccOutput(),
     )
 
     assert DreamplacePlacementChecklist(SimpleNamespace(), step).check() is True

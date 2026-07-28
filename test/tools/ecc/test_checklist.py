@@ -2,7 +2,17 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import EccOutput, EccStep, OriginDesign, StepEnum, Workspace
+from chipcompiler.data import (
+    ChecklistState,
+    EccAnalysis,
+    EccFeature,
+    EccOutput,
+    EccReport,
+    EccStep,
+    OriginDesign,
+    StepEnum,
+    Workspace,
+)
 from chipcompiler.tools.ecc.checklist import EccRcxChecklist, EccStaChecklist
 from chipcompiler.tools.ecc.sta_qor import sta_qor_summary_paths
 
@@ -46,10 +56,10 @@ def test_sta_checklist_references_v4_quality_gates_and_current_artifacts(tmp_pat
     workspace = SimpleNamespace()
     step = SimpleNamespace(
         name=StepEnum.STA.value,
-        checklist={"path": str(checklist_path)},
-        analysis={"qor_summary": str(summary_path)},
-        report={"dir": str(report_root.parent.parent)},
-        feature={"dir": str(feature_root.parent.parent)},
+        checklist=ChecklistState(path=str(checklist_path)),
+        analysis=EccAnalysis(qor_summary=str(summary_path)),
+        report=EccReport(dir=str(report_root.parent.parent)),
+        feature=EccFeature(dir=str(feature_root.parent.parent)),
     )
 
     assert EccStaChecklist(workspace, step).check() is True
@@ -69,10 +79,12 @@ def test_sta_checklist_blocks_missing_v4_gate_summary(tmp_path):
     workspace = SimpleNamespace()
     step = SimpleNamespace(
         name=StepEnum.STA.value,
-        checklist={"path": str(checklist_path)},
-        analysis={"qor_summary": str(tmp_path / "sta_ecc" / "analysis" / "qor_summary.json")},
-        report={"dir": str(tmp_path / "sta_ecc" / "report")},
-        feature={"dir": str(tmp_path / "sta_ecc" / "feature")},
+        checklist=ChecklistState(path=str(checklist_path)),
+        analysis=EccAnalysis(
+            qor_summary=str(tmp_path / "sta_ecc" / "analysis" / "qor_summary.json")
+        ),
+        report=EccReport(dir=str(tmp_path / "sta_ecc" / "report")),
+        feature=EccFeature(dir=str(tmp_path / "sta_ecc" / "feature")),
     )
 
     assert EccStaChecklist(workspace, step).check() is False

@@ -933,7 +933,7 @@ def _sta_timing_issue_source_file(step: WorkspaceStep, path: Path) -> str:
 
 
 def _sta_timing_artifact_paths_payload(step: WorkspaceStep, timing_artifacts) -> list[dict]:
-    report_root = step.report.get("dir")
+    report_root = step.report.dir
     artifact_paths = []
     for artifact in sorted(timing_artifacts, key=lambda artifact: artifact.corner):
         feature_dir = artifact.path.parent
@@ -1041,7 +1041,7 @@ def _save_sta_timing_issues(
     timing_artifacts,
     expected_paths: list[tuple[str, Path]],
 ) -> bool:
-    output_path = step.analysis.get("sta_timing_issues")
+    output_path = getattr(step.analysis, "sta_timing_issues", None)
     if output_path is None:
         return True
     return json_write(
@@ -1315,10 +1315,10 @@ def _rcx_signoff_metrics(
 
 def save_rcx_spef_feature_facts(workspace: Workspace, step: WorkspaceStep) -> bool:
     """Persist bounded RCX electrical summaries before QoR analysis reads them."""
-    output_dir = step.output.get("dir", "")
+    output_dir = step.output.dir or ""
     actual_spef_paths = _existing_files_in(output_dir, "*.spef")
     expected_spef_paths = [
-        Path(spef_path) for spef_path in step.output.get("spef", []) if spef_path
+        Path(spef_path) for spef_path in getattr(step.output, "spef", []) or [] if spef_path
     ]
     missing_spef_paths = [spef_path for spef_path in expected_spef_paths if not spef_path.is_file()]
     corner_summaries = []
@@ -1340,10 +1340,10 @@ def save_rcx_spef_feature_facts(workspace: Workspace, step: WorkspaceStep) -> bo
             len(expected_spef_paths) if expected_spef_paths else len(actual_spef_paths)
         ),
         "missing_corner_count": len(missing_spef_paths),
-        "output_def_exists": _artifact_exists(
-            step.output.get("def", ""), output_dir, "*_RCX.def.gz"
+        "output_def_exists": _artifact_exists(step.output.def_ or "", output_dir, "*_RCX.def.gz"),
+        "output_gds_exists": _artifact_exists(
+            getattr(step.output, "gds", "") or "", output_dir, "*.gds"
         ),
-        "output_gds_exists": _artifact_exists(step.output.get("gds", ""), output_dir, "*.gds"),
         "electrical_summary": {
             "schema_version": 1,
             "parsed_corner_count": len(corner_summaries),
@@ -1370,7 +1370,7 @@ def save_cts_timing_feature_facts(step: WorkspaceStep, timing_quality: dict) -> 
     """Merge iCTS post-optimization FastSTA timing facts into CTS feature data."""
     if not isinstance(timing_quality, dict):
         return False
-    feature_path = step.feature.get("step")
+    feature_path = getattr(step.feature, "step", None)
     feature = json_read(feature_path)
     cts = feature.get("CTS") if isinstance(feature, dict) else None
     cts = cts if isinstance(cts, dict) else {}
@@ -1382,7 +1382,7 @@ def save_cts_timing_feature_facts(step: WorkspaceStep, timing_quality: dict) -> 
 
 
 def _save_step_feature_facts(step: WorkspaceStep, key: str, facts: dict) -> bool:
-    feature_path = step.feature.get("step")
+    feature_path = getattr(step.feature, "step", None)
     if feature_path is None:
         return False
     existing = json_read(feature_path)
@@ -1614,7 +1614,7 @@ def _sta_qor_record_corner(step_metrics: StepMetrics, legacy_name: str) -> str |
 
 
 def _sta_qor_source_file(step: WorkspaceStep) -> str | None:
-    feature_dir = step.feature.get("dir")
+    feature_dir = step.feature.dir
     if feature_dir is None or feature_dir == "":
         return None
     return str(Path(feature_dir) / "**" / STA_QOR_SUMMARY_FILENAME)
@@ -1786,7 +1786,7 @@ def _metric_analysis_group_and_rating(
 def _sta_corner_context(step: WorkspaceStep, corner: str | None) -> dict | None:
     if step.name != StepEnum.STA.value or not corner:
         return None
-    feature = json_read(step.feature.get("step", ""))
+    feature = json_read(getattr(step.feature, "step", "") or "")
     sta = feature.get("sta") if isinstance(feature, dict) else None
     signoff_metrics = sta.get("signoff_metrics") if isinstance(sta, dict) else None
     corners = signoff_metrics.get("corners") if isinstance(signoff_metrics, dict) else None
@@ -1844,7 +1844,7 @@ _RUN_FEATURE_METRICS = (
 
 
 def _run_feature_qor_records(step: WorkspaceStep) -> list[dict]:
-    feature_path = step.feature.get("step")
+    feature_path = getattr(step.feature, "step", None)
     source_path = _relative_step_path(step, feature_path)
     if source_path is None:
         return []
@@ -1885,7 +1885,7 @@ def _run_feature_qor_records(step: WorkspaceStep) -> list[dict]:
 
 
 def _timing_constraint_context(step: WorkspaceStep) -> dict | None:
-    feature_path = step.feature.get("step")
+    feature_path = getattr(step.feature, "step", None)
     source_path = _relative_step_path(step, feature_path)
     if source_path is None:
         return None
@@ -1929,7 +1929,7 @@ def _metric_feature_source(
     selector = ""
 
     if metric_id.startswith("synthesis_"):
-        feature_path = step.feature.get("stat")
+        feature_path = getattr(step.feature, "stat", None)
         selector = {
             "synthesis_cell_area": "/design/area",
             "synthesis_cell_count": "/design/num_cells",
@@ -1937,14 +1937,14 @@ def _metric_feature_source(
             "synthesis_port_count": "/design/num_port_bits",
         }.get(metric_id, "")
     elif metric_id in _DB_FEATURE_SELECTORS:
-        feature_path = step.feature.get("db")
+        feature_path = getattr(step.feature, "db", None)
         selector = _DB_FEATURE_SELECTORS[metric_id]
     elif metric_id == "fanout_max":
-        feature_path = step.feature.get("db")
+        feature_path = getattr(step.feature, "db", None)
         selector = "/Pins/max_fanout"
     elif metric_id.startswith("place_"):
         feature_path = (
-            step.feature.get("map")
+            getattr(step.feature, "map", None)
             if metric_id
             in {
                 "place_hpwl",
@@ -1955,7 +1955,7 @@ def _metric_feature_source(
                 "place_rudy_utilization_max",
                 "place_lutrudy_utilization_max",
             }
-            else step.feature.get("step")
+            else getattr(step.feature, "step", None)
         )
         selector = {
             "place_hpwl": "/Wirelength/HPWL",
@@ -1971,7 +1971,7 @@ def _metric_feature_source(
         "clock_path_max_buffer",
         "clock_path_min_buffer",
     }:
-        feature_path = step.feature.get("step")
+        feature_path = getattr(step.feature, "step", None)
         selector = {
             "clock_path_max_buffer": "/CTS/clock_path_max_buffer",
             "clock_path_min_buffer": "/CTS/clock_path_min_buffer",
@@ -1987,13 +1987,13 @@ def _metric_feature_source(
             "cts_skew_target_unmet_count": ("/CTS/timing_quality/target_unmet_count"),
         }.get(metric_id, "")
     elif metric_id in {"route_wirelength", "route_via_count"}:
-        feature_path = step.feature.get("db")
+        feature_path = getattr(step.feature, "db", None)
         selector = {
             "route_wirelength": "/Nets/wire_len",
             "route_via_count": "/Nets/num_via",
         }.get(metric_id, "")
     elif metric_id.startswith("route_") or metric_id == "drc_count":
-        feature_path = step.feature.get("step")
+        feature_path = getattr(step.feature, "step", None)
         selector = {
             "drc_count": "/drc/number",
             "route_dr_total_violation_count": "/route/DR",
@@ -2004,7 +2004,7 @@ def _metric_feature_source(
             "route_la_total_demand": "/route/LA",
         }.get(metric_id, "")
     elif metric_id.startswith("rcx_") or metric_id.startswith("harden_"):
-        feature_path = step.feature.get("step")
+        feature_path = getattr(step.feature, "step", None)
         selector = {
             "rcx_spef_file_count": "/rcx/spef_file_count",
             "rcx_expected_corner_count": "/rcx/expected_corner_count",
@@ -2027,12 +2027,12 @@ def _metric_feature_source(
             "harden_artifact_missing_count": "/harden/artifact_missing_count",
         }.get(metric_id, "")
     elif metric_id in _STA_FEATURE_SELECTORS:
-        feature_dir = step.feature.get("dir")
+        feature_dir = step.feature.dir
         if feature_dir and corner:
             feature_path = Path(feature_dir) / corner / STA_QOR_SUMMARY_FILENAME
         selector = _STA_FEATURE_SELECTORS.get(metric_id, "")
     elif metric_id in _STA_AGGREGATE_FEATURE_SELECTORS:
-        feature_path = step.feature.get("step")
+        feature_path = getattr(step.feature, "step", None)
         selector = _STA_AGGREGATE_FEATURE_SELECTORS[metric_id]
 
     path = _relative_step_path(step, feature_path)
@@ -2048,11 +2048,15 @@ def _metric_feature_source(
 def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[dict]:
     details = []
     detail_specs = (
-        ("place_map_metrics", "place_map_summary", step.feature.get("map")),
-        ("cts_clock_skew_metrics", "cts_clock_skew_table", step.feature.get("step")),
-        ("route_layer_metrics", "layer_table", step.feature.get("step")),
-        ("rcx_electrical_corner_metrics", "rcx_spef_corner_table", step.feature.get("step")),
-        ("sta_path_group_metrics", "path_group_table", step.feature.get("dir")),
+        ("place_map_metrics", "place_map_summary", getattr(step.feature, "map", None)),
+        ("cts_clock_skew_metrics", "cts_clock_skew_table", getattr(step.feature, "step", None)),
+        ("route_layer_metrics", "layer_table", getattr(step.feature, "step", None)),
+        (
+            "rcx_electrical_corner_metrics",
+            "rcx_spef_corner_table",
+            getattr(step.feature, "step", None),
+        ),
+        ("sta_path_group_metrics", "path_group_table", step.feature.dir),
     )
     for detail_id, presentation, feature_path in detail_specs:
         summary = step_metrics.data.get(detail_id)
@@ -2085,7 +2089,7 @@ def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[
             }
         )
     if step.name == StepEnum.DRC.value:
-        feature_path = step.feature.get("step")
+        feature_path = getattr(step.feature, "step", None)
         source_path = _relative_step_path(step, feature_path)
         if source_path is not None:
             rule_layers = [
@@ -2587,7 +2591,7 @@ def _sta_qor_hard_gates(records: list[dict]) -> list[dict]:
 def _signoff_readiness(step: WorkspaceStep) -> dict | None:
     if step.name not in {StepEnum.RCX.value, StepEnum.STA.value}:
         return None
-    feature = json_read(step.feature.get("step", ""))
+    feature = json_read(getattr(step.feature, "step", "") or "")
     feature_key = "rcx" if step.name == StepEnum.RCX.value else "sta"
     facts = feature.get(feature_key) if isinstance(feature, dict) else None
     signoff_metrics = facts.get("signoff_metrics") if isinstance(facts, dict) else None
@@ -2766,7 +2770,7 @@ def _quality_gates(step: WorkspaceStep, records: list[dict]) -> list[dict]:
             )
         ]
 
-    feature = json_read(step.feature.get("step", ""))
+    feature = json_read(getattr(step.feature, "step", "") or "")
     feature = feature if isinstance(feature, dict) else {}
 
     if step.name == StepEnum.RCX.value:
@@ -2993,7 +2997,7 @@ def _drc_rule_display_name(rule: str) -> str:
 
 
 def _drc_rule_layer_hotspot_records(step: WorkspaceStep) -> list[dict]:
-    feature_path = step.feature.get("step")
+    feature_path = getattr(step.feature, "step", None)
     if feature_path is None:
         return []
 
@@ -3081,7 +3085,7 @@ def build_qor_hotspots_payload(
 
 
 def save_qor_metrics(workspace: Workspace, step: WorkspaceStep, step_metrics: StepMetrics) -> bool:
-    qor_metrics_path = step.analysis.get("qor_metrics")
+    qor_metrics_path = step.analysis.qor_metrics
     if qor_metrics_path is None:
         return True
 
@@ -3096,7 +3100,7 @@ def save_qor_metrics(workspace: Workspace, step: WorkspaceStep, step_metrics: St
 
 
 def save_qor_summary(workspace: Workspace, step: WorkspaceStep, step_metrics: StepMetrics) -> bool:
-    qor_summary_path = step.analysis.get("qor_summary")
+    qor_summary_path = step.analysis.qor_summary
     if qor_summary_path is None:
         return True
 
@@ -3111,7 +3115,7 @@ def save_qor_summary(workspace: Workspace, step: WorkspaceStep, step_metrics: St
 
 
 def save_qor_hotspots(workspace: Workspace, step: WorkspaceStep, step_metrics: StepMetrics) -> bool:
-    qor_hotspots_path = step.analysis.get("qor_hotspots")
+    qor_hotspots_path = step.analysis.qor_hotspots
     if qor_hotspots_path is None:
         return True
 
@@ -3126,7 +3130,7 @@ def save_qor_hotspots(workspace: Workspace, step: WorkspaceStep, step_metrics: S
 
 
 def _remove_legacy_step_metric_artifacts(step: WorkspaceStep) -> bool:
-    analysis_dir = step.analysis.get("dir")
+    analysis_dir = step.analysis.dir
     if analysis_dir is None or analysis_dir == "":
         return True
 
@@ -3149,6 +3153,7 @@ def save_step_metrics(workspace: Workspace, step: WorkspaceStep, step_metrics: S
     if not save_qor_hotspots(workspace=workspace, step=step, step_metrics=step_metrics):
         return False
     return _remove_legacy_step_metric_artifacts(step)
+
 
 def build_step_metrics(
     workspace: Workspace, step: EccStep, subflow: EccSubFlow = None
@@ -3196,7 +3201,7 @@ def build_step_metrics(
         return metrics
 
     info = {}
-    data = json_read(step.feature.db or "")
+    data = json_read(getattr(step.feature, "db", "") or "")
     if data is not None:
         instance_num = data.get("Design Statis", {}).get("num_instances", 0)
         info["instance"] = instance_num
@@ -3217,7 +3222,7 @@ def build_step_metrics(
 def build_metrics_timing(workspace: Workspace, step: EccStep) -> dict:
     metrics = {}
 
-    data = json_read(step.feature.get("timing", ""))
+    data = json_read(getattr(step.feature, "timing", "") or "")
     max_WNS = None
     if isinstance(data, dict) and len(data) > 0:
         for slack_item in data.get("slack", []):
@@ -3245,7 +3250,7 @@ def build_metrics_db(workspace: Workspace, step: EccStep) -> dict:
 
     metrics["Tool"] = step.tool
 
-    data = json_read(step.feature.db or "")
+    data = json_read(getattr(step.feature, "db", "") or "")
     if isinstance(data, dict):
         layout = data.get("Design Layout", {})
         statistics = data.get("Design Statis", {})
@@ -3292,7 +3297,7 @@ def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics:
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.step or ""
+    json_path = getattr(step.feature, "step", "") or ""
     data = json_read(json_path)
     if len(data) > 0:
         # Add floorplan specific metrics here
@@ -3324,8 +3329,8 @@ def build_metrics_net_opt(workspace: Workspace, step: EccStep) -> StepMetrics:
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
 
-    json_path = step.feature.get("step", "")
-    db_data = json_read(step.feature.get("db", ""))
+    json_path = getattr(step.feature, "step", "") or ""
+    db_data = json_read(getattr(step.feature, "db", "") or "")
     pins = db_data.get("Pins", {}) if isinstance(db_data, dict) else {}
     fanout = pins.get("max_fanout") if isinstance(pins, dict) else None
     if fanout is None:
@@ -3359,7 +3364,7 @@ def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics:
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.step or ""
+    json_path = getattr(step.feature, "step", "") or ""
     data = json_read(json_path)
     if len(data) > 0:
         # Add filler specific metrics here
@@ -3392,7 +3397,7 @@ def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics:
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.step or ""
+    json_path = getattr(step.feature, "step", "") or ""
     data = json_read(json_path)
     if isinstance(data, dict):
         drc = data.get("drc", {})
@@ -3426,7 +3431,7 @@ def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics:
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.db or ""
+    json_path = getattr(step.feature, "db", "") or ""
     data = json_read(json_path)
     if isinstance(data, dict):
         nets = data.get("Nets", {})
@@ -3434,13 +3439,13 @@ def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics:
             _add_number_metric(metrics, "wire_len", nets.get("wire_len"))
             _add_number_metric(metrics, "num_via", nets.get("num_via"))
 
-    route_data = json_read(step.feature.get("step", ""))
+    route_data = json_read(getattr(step.feature, "step", "") or "")
     if isinstance(route_data, dict):
         route = route_data.get("route", {})
         route = route if isinstance(route, dict) else {}
         metrics["route_layer_metrics"] = _route_layer_metrics(
             route,
-            step.feature.get("step", ""),
+            getattr(step.feature, "step", "") or "",
         )
         la = route.get("LA", {})
         la = la if isinstance(la, dict) else {}
@@ -3497,11 +3502,11 @@ def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics:
     Build RCX metrics from its bounded feature facts.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis["metrics"]
+    step_metrics.path = step.analysis.metrics or ""
 
     metrics = {}
     metrics.update(build_metrics_db(workspace, step))
-    feature = json_read(step.feature.get("step", ""))
+    feature = json_read(getattr(step.feature, "step", "") or "")
     rcx = feature.get("rcx") if isinstance(feature, dict) else None
     rcx = rcx if isinstance(rcx, dict) else {}
     signoff_metrics = rcx.get("signoff_metrics")
@@ -3539,7 +3544,7 @@ def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics:
         }
 
     step_metrics.data = metrics
-    image_path = str(step.output.get("image", ""))
+    image_path = str(step.output.image or "")
     report = f"{step.name} step metrics:\n"
 
     step_metrics.report.append((image_path, report))
@@ -3555,12 +3560,12 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics:
     Build STA multi-corner timing summary metrics.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis["metrics"]
+    step_metrics.path = step.analysis.metrics or ""
 
     metrics = {}
     metrics.update(build_metrics_db(workspace, step))
 
-    feature_dir = Path(step.feature.get("dir", ""))
+    feature_dir = Path(step.feature.dir or "")
     qor_paths = sta_qor_summary_paths(workspace, feature_dir)
     summaries = [
         summary
@@ -3682,7 +3687,7 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
     step_metrics.data = metrics
-    image_path = str(step.output.get("image", ""))
+    image_path = str(step.output.image or "")
     report = f"{step.name} step metrics:\n"
 
     step_metrics.report.append((image_path, report))
@@ -3698,19 +3703,25 @@ def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics:
     Build final harden package completeness metrics.
     """
     step_metrics = StepMetrics()
-    step_metrics.path = step.analysis["metrics"]
+    step_metrics.path = step.analysis.metrics or ""
 
     metrics = {}
     metrics.update(build_metrics_db(workspace, step))
 
-    output_dir = step.output.get("dir", "")
+    output_dir = step.output.dir or ""
     # Final delivery requires the implementation artifacts.  The LIB source
     # audit TSV is no longer emitted by STA, and preview rendering is a UI aid
     # generated after analysis, so neither belongs to package completeness.
     artifact_checks = {
-        "harden_gds_exists": _artifact_exists(step.output.get("gds", ""), output_dir, "*.gds"),
-        "harden_lef_exists": _artifact_exists(step.output.get("lef", ""), output_dir, "*.lef"),
-        "harden_lib_exists": _artifact_exists(step.output.get("lib", ""), output_dir, "*.lib"),
+        "harden_gds_exists": _artifact_exists(
+            getattr(step.output, "gds", "") or "", output_dir, "*.gds"
+        ),
+        "harden_lef_exists": _artifact_exists(
+            getattr(step.output, "lef", "") or "", output_dir, "*.lef"
+        ),
+        "harden_lib_exists": _artifact_exists(
+            getattr(step.output, "lib", "") or "", output_dir, "*.lib"
+        ),
     }
     metrics.update(artifact_checks)
     metrics["harden_artifact_missing_count"] = sum(
@@ -3727,7 +3738,7 @@ def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
     step_metrics.data = metrics
-    image_path = str(step.output.get("image", ""))
+    image_path = str(step.output.image or "")
     report = f"{step.name} step metrics:\n"
 
     step_metrics.report.append((image_path, report))
@@ -3753,7 +3764,7 @@ def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetri
     # Current legalization feature output only carries run facts.  Movement
     # totals are no longer emitted by the tool, so do not synthesize a stale
     # V3 metric requirement from an absent legacy field.
-    json_path = step.feature.step or ""
+    json_path = getattr(step.feature, "step", "") or ""
 
     step_metrics.data = metrics
 
@@ -3782,7 +3793,7 @@ def build_metrics_timing_opt_hold(workspace: Workspace, step: EccStep) -> StepMe
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.step or ""
+    json_path = getattr(step.feature, "step", "") or ""
     # data = json_read(json_path)
     # if len(data) > 0:
     #     for clk_item in data.get("optHold", {}).get("clocks_timing", []):
@@ -3819,7 +3830,7 @@ def build_metrics_timing_opt_drv(workspace: Workspace, step: EccStep) -> StepMet
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.step or ""
+    json_path = getattr(step.feature, "step", "") or ""
     # data = json_read(json_path)
     # if len(data) > 0:
     #     for clk_item in data.get("optDrv", {}).get("clocks_timing", []):
@@ -3856,7 +3867,7 @@ def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics:
     metrics.update(build_metrics_db(workspace, step))
 
     # step matrics
-    json_path = step.feature.step or ""
+    json_path = getattr(step.feature, "step", "") or ""
     data = json_read(json_path)
     if isinstance(data, dict):
         cts = data.get("CTS", {})
@@ -3928,13 +3939,13 @@ def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics:
     # Placement congestion and wirelength are emitted through place.map.json.
     # The old place.step.json overflow/bin fields are not part of the current
     # DreamPlace feature contract.
-    json_path = step.feature.step or ""
+    json_path = getattr(step.feature, "step", "") or ""
 
-    map_data = json_read(step.feature.map or "")
+    map_data = json_read(getattr(step.feature, "map", None) or "")
     if isinstance(map_data, dict):
         metrics["place_map_metrics"] = _place_map_metrics(
             map_data,
-            step.feature.map or "",
+            getattr(step.feature, "map", None) or "",
         )
         wirelength = map_data.get("Wirelength", {})
         wirelength = wirelength if isinstance(wirelength, dict) else {}

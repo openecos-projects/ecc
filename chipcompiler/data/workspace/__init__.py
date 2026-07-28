@@ -82,6 +82,9 @@ def step_group_to_dict(group: Any) -> dict:
         if f.name == "steps" and isinstance(group, EccData):
             result.update(group.steps)
             continue
+        if f.name == "requires_slang":
+            # typed-model gate flag, not a legacy path key; never projected.
+            continue
         value = getattr(group, f.name)
         if is_dataclass(value) and not isinstance(value, type):
             value = step_group_to_dict(value)

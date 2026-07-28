@@ -1,9 +1,15 @@
 import gzip
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import StepEnum
+from chipcompiler.data import (
+    AnalysisPaths,
+    ChecklistState,
+    StepEnum,
+    YosysFeature,
+    YosysOutput,
+    YosysReport,
+)
 from chipcompiler.tools.yosys.checklist import YosysSynthesisChecklist
 
 
@@ -15,11 +21,11 @@ def test_synthesis_checklist_records_current_mapped_netlist(tmp_path):
     checklist_path = tmp_path / "Synthesis_yosys" / "checklist.json"
     step = SimpleNamespace(
         name=StepEnum.SYNTHESIS.value,
-        checklist={"path": str(checklist_path)},
-        analysis={},
-        feature={},
-        report={},
-        output={"verilog": str(netlist)},
+        checklist=ChecklistState(path=str(checklist_path)),
+        analysis=AnalysisPaths(),
+        feature=YosysFeature(),
+        report=YosysReport(),
+        output=YosysOutput(verilog=str(netlist)),
     )
 
     assert YosysSynthesisChecklist(SimpleNamespace(), step).check() is True

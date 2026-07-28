@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-import chipcompiler.utility as chipcompiler_utility
 import pytest
+
+import chipcompiler.utility as chipcompiler_utility
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
 from chipcompiler.tools.ecc import plot as ecc_plot
@@ -332,9 +333,7 @@ def test_run_timing_splits_text_reports_and_structured_artifacts(tmp_path):
     assert (feature_dir / "qor_summary.json").is_file()
     assert (feature_dir / "timing_paths.json").is_file()
     init_config = next(
-        call[1]
-        for call in module.ecc.calls
-        if len(call) == 2 and call[0] == "init_sta"
+        call[1] for call in module.ecc.calls if len(call) == 2 and call[0] == "init_sta"
     )
     assert init_config["config_dict"] == {
         "-temp_directory_path": str(tmp_path / "data" / "sta"),
@@ -515,7 +514,7 @@ def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["db"].write_text(
+    step.feature.db.write_text(
         json.dumps(
             {
                 "Design Layout": {
@@ -539,8 +538,8 @@ def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
     metrics = build_metrics_net_opt(workspace, step)
 
     assert metrics is not None
-    assert step.analysis["qor_metrics"].exists()
-    qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    assert step.analysis.qor_metrics.exists()
+    qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     assert qor_metrics["schema_version"] == 3
     assert qor_metrics["tool"] == "ecc"
     assert qor_metrics["step"] == StepEnum.NETLIST_OPT.value
@@ -586,7 +585,7 @@ def test_ecc_metrics_uses_actual_db_max_fanout_before_configured_target(tmp_path
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["db"].write_text(
+    step.feature.db.write_text(
         json.dumps({"Pins": {"max_fanout": 37}}),
         encoding="utf-8",
     )
@@ -596,9 +595,7 @@ def test_ecc_metrics_uses_actual_db_max_fanout_before_configured_target(tmp_path
     assert metrics.data["Max fanout"] == 37
     records = {
         record["id"]: record
-        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
-            "metrics"
-        ]
+        for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
     }
     assert records["fanout_max"]["value"] == 37
 
@@ -616,7 +613,7 @@ def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["db"].write_text(
+    step.feature.db.write_text(
         json.dumps(
             {
                 "Design Layout": {
@@ -639,9 +636,9 @@ def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
     metrics = build_metrics_net_opt(workspace, step)
 
     assert metrics is not None
-    assert step.analysis["qor_summary"].exists()
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    assert step.analysis.qor_summary.exists()
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
+    qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     assert summary["schema_version"] == 4
     assert summary["tool"] == "ecc"
     assert summary["step"] == StepEnum.NETLIST_OPT.value
@@ -667,7 +664,7 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["step"].write_text(
+    step.feature.step.write_text(
         json.dumps({"drc": {"number": 3}}),
         encoding="utf-8",
     )
@@ -675,8 +672,8 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
     metrics = build_metrics_drc(workspace, step)
 
     assert metrics is not None
-    assert step.analysis["qor_summary"].exists()
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    assert step.analysis.qor_summary.exists()
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "blocked"
     assert summary["gates"] == [
         {
@@ -706,7 +703,7 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
             ],
         }
     ]
-    hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
+    hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     assert hotspots["hotspots"] == []
 
 
@@ -722,7 +719,7 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["step"].write_text(
+    step.feature.step.write_text(
         json.dumps(
             {
                 "drc": {
@@ -758,7 +755,7 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
     metrics = build_metrics_drc(workspace, step)
 
     assert metrics.data["drc_num"] == 99
-    hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
+    hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     records = hotspots["hotspots"]
     assert [(record["metric_id"], record["value"]) for record in records] == [
         ("drc:Antenna:M1", 12),
@@ -788,7 +785,7 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
         "description": "12 DRC violations: Minimum Spacing on M3.",
     }
     assert all("violation_detail" not in record and "bbox" not in record for record in records)
-    qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     details = {detail["id"]: detail for detail in qor_metrics["details"]}
     assert details["drc_rule_layer_summary"] == {
         "id": "drc_rule_layer_summary",
@@ -877,31 +874,33 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(drc_step)
-    drc_step.feature["step"].write_text(json.dumps({"drc": {}}), encoding="utf-8")
+    drc_step.feature.step.write_text(json.dumps({"drc": {}}), encoding="utf-8")
 
     drc_metrics = build_metrics_drc(workspace, drc_step)
 
     assert "drc_num" not in drc_metrics.data
-    drc_summary = json.loads(drc_step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert drc_summary["missing_metrics"] == [{
-        "metric_id": "drc_count",
-        "reason": (
-            "Required field /drc/number is absent or non-numeric in "
-            "feature/drc.step.json; metric drc_count was not produced."
-        ),
-        "evidence": {
-            "source": {
-                "kind": "feature",
-                "path": "feature/drc.step.json",
-                "selector": "/drc/number",
-            },
-            "diagnosis": (
+    drc_summary = json.loads(drc_step.analysis.qor_summary.read_text(encoding="utf-8"))
+    assert drc_summary["missing_metrics"] == [
+        {
+            "metric_id": "drc_count",
+            "reason": (
                 "Required field /drc/number is absent or non-numeric in "
                 "feature/drc.step.json; metric drc_count was not produced."
             ),
-            "availability": "source_field_missing",
-        },
-    }]
+            "evidence": {
+                "source": {
+                    "kind": "feature",
+                    "path": "feature/drc.step.json",
+                    "selector": "/drc/number",
+                },
+                "diagnosis": (
+                    "Required field /drc/number is absent or non-numeric in "
+                    "feature/drc.step.json; metric drc_count was not produced."
+                ),
+                "availability": "source_field_missing",
+            },
+        }
+    ]
 
     legal_step = build_step(
         workspace=workspace,
@@ -910,7 +909,7 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(legal_step)
-    legal_step.feature["step"].write_text(
+    legal_step.feature.step.write_text(
         json.dumps({"legalization": {}}),
         encoding="utf-8",
     )
@@ -918,9 +917,7 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
     legal_metrics = build_metrics_legalization(workspace, legal_step)
 
     assert "total_movement" not in legal_metrics.data
-    legal_summary = json.loads(
-        legal_step.analysis["qor_summary"].read_text(encoding="utf-8")
-    )
+    legal_summary = json.loads(legal_step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert legal_summary["missing_metrics"] == []
 
 
@@ -944,7 +941,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     pin_density_csv.write_text("0,2\n4,6\n", encoding="utf-8")
     margin_union_csv = tmp_path / "place_union_margin.csv"
     margin_union_csv.write_text("10,20\n30,40\n", encoding="utf-8")
-    step.feature["map"].write_text(
+    step.feature.map.write_text(
         json.dumps(
             {
                 "Wirelength": {
@@ -988,7 +985,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
         (record["group"], record["metric"], record.get("direction")): record
         for record in metrics.data["place_map_metrics"]["maps"]
     }
-    assert metrics.data["place_map_metrics"]["source_file"] == str(step.feature["map"])
+    assert metrics.data["place_map_metrics"]["source_file"] == str(step.feature.map)
     assert map_records[("congestion", "egr", "union")] == {
         "group": "congestion",
         "metric": "egr",
@@ -1013,9 +1010,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
 
     records = {
         record["id"]: record
-        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
-            "metrics"
-        ]
+        for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
     }
     assert records["place_hpwl"]["value"] == 3880.214
     assert records["place_grwl"]["value"] == 4509
@@ -1024,11 +1019,11 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     assert "place_map_metrics" not in records
     details = {
         detail["id"]: detail
-        for detail in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"]
+        for detail in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["details"]
     }
     assert details["place_map_metrics"]["presentation"] == "place_map_summary"
     assert details["place_map_metrics"]["feature_source"]["path"] == "feature/place.map.json"
-    hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
+    hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     assert hotspots["schema_version"] == 3
     assert hotspots["tool"] == "ecc"
     assert hotspots["step"] == StepEnum.PLACEMENT.value
@@ -1063,7 +1058,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["step"].write_text(
+    step.feature.step.write_text(
         json.dumps(
             {
                 "CTS": {
@@ -1088,8 +1083,8 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         ),
         encoding="utf-8",
     )
-    legacy_metrics = step.analysis["dir"] / "CTS_metrics.json"
-    legacy_preview = step.analysis["dir"] / "CTS_metrics.png"
+    legacy_metrics = step.analysis.dir / "CTS_metrics.json"
+    legacy_preview = step.analysis.dir / "CTS_metrics.png"
     legacy_metrics.write_text("{}", encoding="utf-8")
     legacy_preview.write_text("legacy", encoding="utf-8")
 
@@ -1101,9 +1096,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
     assert not legacy_preview.exists()
     records = {
         record["id"]: record
-        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
-            "metrics"
-        ]
+        for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
     }
     assert records["cts_clock_wirelength_max"]["value"] == 97514
     assert records["cts_clock_tree_max_level"]["value"] == 2
@@ -1149,7 +1142,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
     }
     details = {
         detail["id"]: detail
-        for detail in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"]
+        for detail in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["details"]
     }
     assert details["cts_clock_skew_metrics"] == {
         "id": "cts_clock_skew_metrics",
@@ -1191,7 +1184,7 @@ def test_ecc_metrics_persists_structured_cts_timing_without_log(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["step"].write_text(json.dumps({"CTS": {}}), encoding="utf-8")
+    step.feature.step.write_text(json.dumps({"CTS": {}}), encoding="utf-8")
     timing_quality = {
         "schema_version": 1,
         "analysis_stage": "cts_fast_sta_post_optimization",
@@ -1232,7 +1225,7 @@ def test_ecc_metrics_persists_structured_cts_timing_without_log(tmp_path):
     assert metrics.data["cts_worst_optimized_skew_ns"] == 0.07
     assert metrics.data["cts_worst_max_insertion_latency_ns"] == 0.42
     assert metrics.data["cts_skew_target_unmet_count"] == 1
-    feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
+    feature = json.loads(step.feature.step.read_text(encoding="utf-8"))
     assert feature["CTS"]["timing_quality"] == timing_quality
 
 
@@ -1253,19 +1246,19 @@ def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
         json.dumps({"CTS": {"buffer_num": 3}}),
         encoding="utf-8",
     )
-    step.feature["step"] = untraceable_feature
+    step.feature.step = untraceable_feature
 
     metrics = build_metrics_cts(workspace, step)
 
     assert metrics.data["buffer_num"] == 3
-    payload = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    payload = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     assert payload["metrics"] == []
     assert payload["integrity"] == {
         "status": "incomplete",
         "invalid_metric_source_ids": ["cts_buffer_count"],
         "invalid_detail_ids": [],
     }
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["analysis_status"] == "incomplete"
     assert summary["quality_status"] == "pass"
     assert {
@@ -1296,7 +1289,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["step"].write_text(
+    step.feature.step.write_text(
         json.dumps(
             {
                 "route": {
@@ -1348,7 +1341,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
     assert metrics.data["route_dr_total_via_count"] == 1470
     assert metrics.data["route_layer_metrics"] == {
         "schema_version": 1,
-        "source_file": str(step.feature["step"]),
+        "source_file": str(step.feature.step),
         "final_dr_iteration": 3,
         "layers": [
             {
@@ -1388,9 +1381,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
 
     records = {
         record["id"]: record
-        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
-            "metrics"
-        ]
+        for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
     }
     assert records["route_la_total_overflow"]["value"] == 2
     assert records["route_dr_total_violation_count"]["value"] == 0
@@ -1398,11 +1389,11 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
     assert "route_layer_metrics" not in records
     details = {
         detail["id"]: detail
-        for detail in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"]
+        for detail in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["details"]
     }
     assert details["route_layer_metrics"]["presentation"] == "layer_table"
     assert details["route_layer_metrics"]["feature_source"]["path"] == "feature/route.step.json"
-    hotspots = json.loads(step.analysis["qor_hotspots"].read_text(encoding="utf-8"))
+    hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     hotspot_records = {record["metric_id"]: record for record in hotspots["hotspots"]}
     assert hotspot_records["route_la_total_overflow"] == {
         "kind": "routing_overflow",
@@ -1434,7 +1425,7 @@ def test_ecc_metrics_qor_summary_lists_missing_supported_route_metrics(tmp_path)
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.feature["db"].write_text(
+    step.feature.db.write_text(
         json.dumps({"Nets": {"wire_len": 5198.943, "num_via": 1470}}),
         encoding="utf-8",
     )
@@ -1442,7 +1433,7 @@ def test_ecc_metrics_qor_summary_lists_missing_supported_route_metrics(tmp_path)
     metrics = build_metrics_routing(workspace, step)
 
     assert metrics is not None
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert [item["metric_id"] for item in summary["missing_metrics"]] == [
         "route_dr_total_violation_count",
         "route_dr_total_patch_count",
@@ -1466,10 +1457,10 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     )
     build_step_space(step)
     existing_spef = [
-        step.output["dir"] / "gcd_Cbest_125C.spef",
-        step.output["dir"] / "gcd_Cworst_125C.spef",
+        step.output.dir / "gcd_Cbest_125C.spef",
+        step.output.dir / "gcd_Cworst_125C.spef",
     ]
-    missing_spef = step.output["dir"] / "gcd_TYPICAL_25C.spef"
+    missing_spef = step.output.dir / "gcd_TYPICAL_25C.spef"
     existing_spef[0].write_text(
         """*SPEF \"IEEE 1481-1998\"
 *C_UNIT 1.0 PF
@@ -1498,9 +1489,9 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
 """,
         encoding="utf-8",
     )
-    step.output["spef"] = [*existing_spef, missing_spef]
-    step.output["def"].write_text("def", encoding="utf-8")
-    step.output["gds"].write_text("gds", encoding="utf-8")
+    step.output.spef = [*existing_spef, missing_spef]
+    step.output.def_.write_text("def", encoding="utf-8")
+    step.output.gds.write_text("gds", encoding="utf-8")
 
     assert ecc_metrics.save_rcx_spef_feature_facts(workspace, step)
     for spef_path in existing_spef:
@@ -1518,9 +1509,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     assert metrics.data["rcx_output_gds_exists"] == 1
     records = {
         record["id"]: record
-        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
-            "metrics"
-        ]
+        for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
     }
     assert records["rcx_spef_file_count"]["value"] == 2
     assert records["rcx_missing_corner_count"]["value"] == 1
@@ -1538,9 +1527,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     }
     details = {
         detail["id"]: detail
-        for detail in json.loads(
-            step.analysis["qor_metrics"].read_text(encoding="utf-8")
-        )["details"]
+        for detail in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["details"]
     }
     rcx_detail = details["rcx_electrical_corner_metrics"]
     assert rcx_detail["presentation"] == "rcx_spef_corner_table"
@@ -1563,7 +1550,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
         "path": "feature/RCX.step.json",
         "selector": "/rcx/signoff_metrics/coverage/missing_count",
     }
-    rcx_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
+    rcx_feature = json.loads(step.feature.step.read_text(encoding="utf-8"))
     assert rcx_feature["rcx"]["electrical_summary"] == {
         "schema_version": 1,
         "parsed_corner_count": 2,
@@ -1611,7 +1598,7 @@ def test_ecc_metrics_blocks_invalid_rcx_spef_electrical_data(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    spef_path = step.output["dir"] / "gcd_Cbest_125C.spef"
+    spef_path = step.output.dir / "gcd_Cbest_125C.spef"
     spef_path.write_text(
         """*SPEF \"IEEE 1481-1998\"
 *C_UNIT 1.0 FF
@@ -1623,14 +1610,14 @@ invalid cap record
 """,
         encoding="utf-8",
     )
-    step.output["spef"] = [spef_path]
+    step.output.spef = [spef_path]
 
     assert ecc_metrics.save_rcx_spef_feature_facts(workspace, step)
     metrics = ecc_metrics.build_metrics_rcx(workspace, step)
 
     assert metrics.data["rcx_spef_parse_failure_count"] == 1
     assert "rcx_worst_total_capacitance_ff" not in metrics.data
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "blocked"
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
         "qor.rcx.corner_coverage": "failed",
@@ -1652,7 +1639,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     build_step_space(step)
 
     reports = {
-        step.feature["dir"] / "MAX_125" / "RCworst" / "qor_summary.json": {
+        step.feature.dir / "MAX_125" / "RCworst" / "qor_summary.json": {
             "path_groups": [
                 {
                     "name": "core",
@@ -1671,7 +1658,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
             },
             "design_statistics": {},
         },
-        step.feature["dir"] / "MIN_m40" / "Cbest" / "qor_summary.json": {
+        step.feature.dir / "MIN_m40" / "Cbest" / "qor_summary.json": {
             "path_groups": [
                 {
                     "name": "core",
@@ -1699,65 +1686,73 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
             "schema_version": 1,
             "corner": "MAX_125/RCworst",
             "path_limit": 20,
-            "paths": [{
-                "path_id": "setup_path",
-                "analysis_type": "setup",
-                "path_group": "core",
-                "start_point": "u_launch:CK",
-                "end_point": "u_capture:D",
-                "launch_clock": "clk",
-                "capture_clock": "clk",
-                "check_type": "setup",
-                "slack_ns": -0.2,
-                "arrival_ns": 1.2,
-                "required_ns": 1.0,
-                "cppr_ns": 0.0,
-                "launch_clock_network_delay_ns": 0.12,
-                "capture_clock_network_delay_ns": 0.18,
-                "stages": [{
-                    "kind": "cell_arc",
-                    "pin": "u_buf:Y",
-                    "instance": "u_buf",
-                    "cell": "BUFX3",
-                    "incremental_delay_ns": 0.12,
+            "paths": [
+                {
+                    "path_id": "setup_path",
+                    "analysis_type": "setup",
+                    "path_group": "core",
+                    "start_point": "u_launch:CK",
+                    "end_point": "u_capture:D",
+                    "launch_clock": "clk",
+                    "capture_clock": "clk",
+                    "check_type": "setup",
+                    "slack_ns": -0.2,
                     "arrival_ns": 1.2,
-                    "transition": "rise",
-                }],
-            }],
+                    "required_ns": 1.0,
+                    "cppr_ns": 0.0,
+                    "launch_clock_network_delay_ns": 0.12,
+                    "capture_clock_network_delay_ns": 0.18,
+                    "stages": [
+                        {
+                            "kind": "cell_arc",
+                            "pin": "u_buf:Y",
+                            "instance": "u_buf",
+                            "cell": "BUFX3",
+                            "incremental_delay_ns": 0.12,
+                            "arrival_ns": 1.2,
+                            "transition": "rise",
+                        }
+                    ],
+                }
+            ],
         },
         "MIN_m40/Cbest": {
             "schema_version": 1,
             "corner": "MIN_m40/Cbest",
             "path_limit": 20,
-            "paths": [{
-                "path_id": "hold_path",
-                "analysis_type": "hold",
-                "path_group": "core",
-                "start_point": "u_launch:CK",
-                "end_point": "u_capture:D",
-                "launch_clock": "clk",
-                "capture_clock": "clk",
-                "check_type": "hold",
-                "slack_ns": -0.05,
-                "arrival_ns": 0.25,
-                "required_ns": 0.2,
-                "cppr_ns": 0.0,
-                "launch_clock_network_delay_ns": 0.08,
-                "capture_clock_network_delay_ns": 0.04,
-                "stages": [{
-                    "kind": "net_arc",
-                    "pin": "u_net:Y",
-                    "instance": "u_net",
-                    "cell": "",
-                    "incremental_delay_ns": 0.08,
+            "paths": [
+                {
+                    "path_id": "hold_path",
+                    "analysis_type": "hold",
+                    "path_group": "core",
+                    "start_point": "u_launch:CK",
+                    "end_point": "u_capture:D",
+                    "launch_clock": "clk",
+                    "capture_clock": "clk",
+                    "check_type": "hold",
+                    "slack_ns": -0.05,
                     "arrival_ns": 0.25,
-                    "transition": "fall",
-                }],
-            }],
+                    "required_ns": 0.2,
+                    "cppr_ns": 0.0,
+                    "launch_clock_network_delay_ns": 0.08,
+                    "capture_clock_network_delay_ns": 0.04,
+                    "stages": [
+                        {
+                            "kind": "net_arc",
+                            "pin": "u_net:Y",
+                            "instance": "u_net",
+                            "cell": "",
+                            "incremental_delay_ns": 0.08,
+                            "arrival_ns": 0.25,
+                            "transition": "fall",
+                        }
+                    ],
+                }
+            ],
         },
     }
     for corner, payload in timing_paths.items():
-        path = step.feature["dir"] / corner / "timing_paths.json"
+        path = step.feature.dir / corner / "timing_paths.json"
         path.write_text(json.dumps(payload), encoding="utf-8")
 
     metrics = ecc_metrics.build_metrics_sta(workspace, step)
@@ -1774,12 +1769,11 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert metrics.data["hold_violation_count"] == 1
     assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
     assert metrics.data["sta_worst_hold_corner"] == "MIN_m40/Cbest"
-    assert step.analysis["metrics"].name == "qor_metrics.json"
+    assert step.analysis.metrics.name == "qor_metrics.json"
     sta_path_group_metrics = metrics.data["sta_path_group_metrics"]
     assert len(sta_path_group_metrics["records"]) == 4
     core_group = next(
-        group for group in sta_path_group_metrics["path_groups"]
-        if group["path_group"] == "core"
+        group for group in sta_path_group_metrics["path_groups"] if group["path_group"] == "core"
     )
     assert core_group == {
         "path_group": "core",
@@ -1802,7 +1796,8 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         },
     }
     io_record = next(
-        record for record in sta_path_group_metrics["records"]
+        record
+        for record in sta_path_group_metrics["records"]
         if record["path_group"] == "io" and record["corner"] == "MAX_125/RCworst"
     )
     assert io_record["setup"] == {
@@ -1814,9 +1809,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert io_record["hold"] == {"wns": -0.2, "tns": -0.2, "nvp": 2}
     records = {
         record["id"]: record
-        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
-            "metrics"
-        ]
+        for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
     }
     assert records["sta_setup_wns"]["value"] == -0.2
     assert records["sta_hold_wns"]["value"] == -0.05
@@ -1846,7 +1839,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         "path": "feature/sta.step.json",
         "selector": "/sta/signoff_metrics/coverage/available_count",
     }
-    sta_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))["sta"]
+    sta_feature = json.loads(step.feature.step.read_text(encoding="utf-8"))["sta"]
     assert {
         key: sta_feature[key]
         for key in (
@@ -1871,19 +1864,19 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert "sta_path_group_metrics" not in records
     details = {
         detail["id"]: detail
-        for detail in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))["details"]
+        for detail in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["details"]
     }
     assert details["sta_path_group_metrics"]["presentation"] == "path_group_table"
     assert details["sta_path_group_metrics"]["feature_source"]["path"] == (
         "feature/MAX_125/RCworst/qor_summary.json"
     )
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "incomplete"
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
         "qor.sta.setup_closed": "unavailable",
         "qor.sta.hold_closed": "unavailable",
     }
-    issues = json.loads(step.analysis["sta_timing_issues"].read_text(encoding="utf-8"))
+    issues = json.loads(step.analysis.sta_timing_issues.read_text(encoding="utf-8"))
     assert issues["near_fail_slack_ns"] == 0.05
     assert [issue["issue_id"] for issue in issues["issues"]] == [
         "sta_timing:MAX_125/RCworst:setup:setup_path",
@@ -1927,27 +1920,31 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
     sta_config = tmp_path / "config" / "sta.json"
     sta_config.parent.mkdir(parents=True, exist_ok=True)
     sta_config.write_text(
-        json.dumps({
-            "liberty": [
-                {"corner": "MAX", "temperature": 125},
-                {"corner": "MIN", "temperature": -40},
-            ],
-            "signoff": [{"MAX": ["RCworst"], "MIN": ["Cbest"]}],
-        }),
+        json.dumps(
+            {
+                "liberty": [
+                    {"corner": "MAX", "temperature": 125},
+                    {"corner": "MIN", "temperature": -40},
+                ],
+                "signoff": [{"MAX": ["RCworst"], "MIN": ["Cbest"]}],
+            }
+        ),
         encoding="utf-8",
     )
     workspace.config[StepEnum.STA.value] = sta_config
-    feature_path = step.feature["dir"] / "MAX_125" / "RCworst" / "qor_summary.json"
+    feature_path = step.feature.dir / "MAX_125" / "RCworst" / "qor_summary.json"
     feature_path.parent.mkdir(parents=True, exist_ok=True)
     feature_path.write_text(
-        json.dumps({
-            "path_groups": [],
-            "summary": {
-                "setup": {"wns": 0.1, "tns": 0.0, "nvp": 0, "frequency_mhz": 750},
-                "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
-            },
-            "design_statistics": {},
-        }),
+        json.dumps(
+            {
+                "path_groups": [],
+                "summary": {
+                    "setup": {"wns": 0.1, "tns": 0.0, "nvp": 0, "frequency_mhz": 750},
+                    "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
+                },
+                "design_statistics": {},
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -1956,7 +1953,7 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
     assert metrics.data["sta_corner_count"] == 1
     assert metrics.data["sta_expected_corner_count"] == 2
     assert metrics.data["sta_missing_corner_count"] == 1
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "incomplete"
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
         "qor.sta.setup_closed": "unavailable",
@@ -1979,21 +1976,23 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
     sta_config = tmp_path / "config" / "sta.json"
     sta_config.parent.mkdir(parents=True, exist_ok=True)
     sta_config.write_text(
-        json.dumps({
-            "liberty": [
-                {
-                    "corner": "MAX",
-                    "temperature": 125,
-                    "path": ["/pdk/lib/design_ss_rcworst_1p08_125.lib"],
-                },
-                {
-                    "corner": "MIN",
-                    "temperature": -40,
-                    "path": ["/pdk/lib/design_ff_rcbest_1p32_m40.lib"],
-                },
-            ],
-            "signoff": [{"MAX": ["RCworst"], "MIN": ["RCbest"]}],
-        }),
+        json.dumps(
+            {
+                "liberty": [
+                    {
+                        "corner": "MAX",
+                        "temperature": 125,
+                        "path": ["/pdk/lib/design_ss_rcworst_1p08_125.lib"],
+                    },
+                    {
+                        "corner": "MIN",
+                        "temperature": -40,
+                        "path": ["/pdk/lib/design_ff_rcbest_1p32_m40.lib"],
+                    },
+                ],
+                "signoff": [{"MAX": ["RCworst"], "MIN": ["RCbest"]}],
+            }
+        ),
         encoding="utf-8",
     )
     workspace.config[StepEnum.STA.value] = sta_config
@@ -2009,20 +2008,22 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
             {"wns": 0.03, "tns": 0.0, "nvp": 0},
         ),
     ):
-        summary_path = step.feature["dir"] / corner / "qor_summary.json"
+        summary_path = step.feature.dir / corner / "qor_summary.json"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(
-            json.dumps({
-                "path_groups": [],
-                "summary": {"setup": setup, "hold": hold},
-                "design_statistics": {},
-            }),
+            json.dumps(
+                {
+                    "path_groups": [],
+                    "summary": {"setup": setup, "hold": hold},
+                    "design_statistics": {},
+                }
+            ),
             encoding="utf-8",
         )
 
     metrics = ecc_metrics.build_metrics_sta(workspace, step)
 
-    feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))["sta"]
+    feature = json.loads(step.feature.step.read_text(encoding="utf-8"))["sta"]
     signoff = feature["signoff_metrics"]
     assert signoff["coverage"] == {
         "status": "pass",
@@ -2050,9 +2051,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
     assert corners["MIN_m40/RCbest"]["voltage_v"] == 1.32
     records = {
         record["id"]: record
-        for record in json.loads(
-            step.analysis["qor_metrics"].read_text(encoding="utf-8")
-        )["metrics"]
+        for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
     }
     assert records["sta_setup_wns"]["analysis_group"] == "sta_setup_closure"
     assert records["sta_setup_wns"]["corner_context"] == {
@@ -2068,7 +2067,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
         "score": True,
         "trend": True,
     }
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "pass"
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
         "qor.sta.setup_closed": "pass",
@@ -2089,13 +2088,15 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    legacy_path = step.output["dir"] / "MAX_125" / "RCworst" / "gcd.rpt.json"
+    legacy_path = step.output.dir / "MAX_125" / "RCworst" / "gcd.rpt.json"
     legacy_path.parent.mkdir(parents=True, exist_ok=True)
     legacy_path.write_text(
-        json.dumps({
-            "summary": [{"delay_type": "max", "freq": 750}],
-            "slack": [{"delay_type": "max", "WNS": 0.1, "TNS": 0.0}],
-        }),
+        json.dumps(
+            {
+                "summary": [{"delay_type": "max", "freq": 750}],
+                "slack": [{"delay_type": "max", "WNS": 0.1, "TNS": 0.0}],
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -2103,17 +2104,15 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
 
     assert "max_WNS" not in metrics.data
     assert metrics.data["sta_corner_count"] == 0
-    qor_metrics = json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))
+    qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
     assert qor_metrics["details"] == []
     assert qor_metrics["integrity"] == {
         "status": "pass",
         "invalid_metric_source_ids": [],
         "invalid_detail_ids": [],
     }
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
-    assert "sta_setup_wns" in {
-        item["metric_id"] for item in summary["missing_metrics"]
-    }
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
+    assert "sta_setup_wns" in {item["metric_id"] for item in summary["missing_metrics"]}
     assert summary["analysis_status"] == "incomplete"
     assert summary["quality_status"] == "incomplete"
 
@@ -2130,10 +2129,10 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    step.output["gds"].write_text("gds", encoding="utf-8")
-    step.output["lef"].write_text("lef", encoding="utf-8")
-    step.output["lib"].write_text("lib", encoding="utf-8")
-    step.output["image"].write_text("png", encoding="utf-8")
+    step.output.gds.write_text("gds", encoding="utf-8")
+    step.output.lef.write_text("lef", encoding="utf-8")
+    step.output.lib.write_text("lib", encoding="utf-8")
+    step.output.image.write_text("png", encoding="utf-8")
 
     metrics = ecc_metrics.build_metrics_harden(workspace, step)
 
@@ -2145,9 +2144,7 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
     assert metrics.data["harden_artifact_missing_count"] == 0
     records = {
         record["id"]: record
-        for record in json.loads(step.analysis["qor_metrics"].read_text(encoding="utf-8"))[
-            "metrics"
-        ]
+        for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
     }
     assert records["harden_artifact_missing_count"]["value"] == 0
     assert records["harden_gds_exists"]["value"] == 1
@@ -2158,9 +2155,9 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
         "path": "feature/Harden.step.json",
         "selector": "/harden/artifact_missing_count",
     }
-    harden_feature = json.loads(step.feature["step"].read_text(encoding="utf-8"))
+    harden_feature = json.loads(step.feature.step.read_text(encoding="utf-8"))
     assert harden_feature["harden"]["artifact_missing_count"] == 0
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["quality_status"] == "pass"
     assert summary["gates"] == []
 
@@ -2169,14 +2166,16 @@ def _write_harden_signoff_summary(tmp_path, step_name, *, status="pass", hard_ga
     summary_path = tmp_path / f"{step_name}_ecc" / "analysis" / "qor_summary.json"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(
-        json.dumps({
-            "schema_version": 3,
-            "step": step_name,
-            "status": status,
-            "hard_gates": hard_gates or [],
-            "blocking_issues": [],
-            "missing_metrics": [],
-        }),
+        json.dumps(
+            {
+                "schema_version": 3,
+                "step": step_name,
+                "status": status,
+                "hard_gates": hard_gates or [],
+                "blocking_issues": [],
+                "missing_metrics": [],
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -2187,7 +2186,7 @@ def _write_harden_output_artifacts(step):
         ("lef", "lef"),
         ("lib", "lib"),
     ):
-        step.output[output_key].write_text(contents, encoding="utf-8")
+        getattr(step.output, output_key).write_text(contents, encoding="utf-8")
 
 
 def _green_sta_hard_gates():
@@ -2234,7 +2233,7 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
 
     ecc_metrics.build_metrics_harden(workspace, step)
 
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["schema_version"] == 4
     assert summary["quality_status"] == "pass"
     assert summary["gates"] == []
@@ -2270,7 +2269,7 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
 
     ecc_metrics.build_metrics_harden(workspace, step)
 
-    summary = json.loads(step.analysis["qor_summary"].read_text(encoding="utf-8"))
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
     assert summary["schema_version"] == 4
     assert summary["quality_status"] == "pass"
     assert summary["gates"] == []

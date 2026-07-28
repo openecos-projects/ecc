@@ -118,7 +118,8 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 
         with open(log_path, "w") as log_file:
-            if step.data.requires_slang and not check_slang_plugin(
+            step_data = getattr(step, "data", None)
+            if getattr(step_data, "requires_slang", True) and not check_slang_plugin(
                 yosys_cmd=yosys_cmd,
                 cwd_dir=cwd_dir,
                 yosys_env=yosys_env,
