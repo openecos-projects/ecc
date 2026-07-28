@@ -82,8 +82,7 @@ def sta_artifact_directory(
     return artifact_root / _safe_dir_name(report_corner_dir) / _safe_dir_name(rcx_corner_name)
 
 
-def configured_sta_artifact_directories(workspace: Workspace,
-                                        root) -> list[tuple[str, Path]]:
+def configured_sta_artifact_directories(workspace: Workspace, root) -> list[tuple[str, Path]]:
     sta_data = json_read(workspace.config.get(StepEnum.STA.value, ""))
     if not isinstance(sta_data, dict):
         return []
@@ -124,10 +123,12 @@ def configured_sta_artifact_directories(workspace: Workspace,
                 if artifact_dir is None or artifact_dir in seen_paths:
                     continue
                 seen_paths.add(artifact_dir)
-                report_directories.append((
-                    artifact_dir.relative_to(artifact_root).as_posix(),
-                    artifact_dir,
-                ))
+                report_directories.append(
+                    (
+                        artifact_dir.relative_to(artifact_root).as_posix(),
+                        artifact_dir,
+                    )
+                )
 
     return report_directories
 
@@ -155,13 +156,11 @@ def sta_qor_summary_paths(workspace: Workspace, feature_root) -> list[tuple[str,
     return _artifact_paths(workspace, feature_root, STA_QOR_SUMMARY_FILENAME)
 
 
-def sta_timing_paths_paths(workspace: Workspace,
-                           feature_root) -> list[tuple[str, Path]]:
+def sta_timing_paths_paths(workspace: Workspace, feature_root) -> list[tuple[str, Path]]:
     return _artifact_paths(workspace, feature_root, STA_TIMING_PATHS_FILENAME)
 
 
-def sta_report_artifact_paths(workspace: Workspace,
-                              report_root) -> list[tuple[str, Path]]:
+def sta_report_artifact_paths(workspace: Workspace, report_root) -> list[tuple[str, Path]]:
     report_directories = configured_sta_artifact_directories(workspace, report_root)
     return [
         (corner, artifact_dir / report_name)

@@ -266,16 +266,13 @@ def build_checklist(workspace: Workspace, step: EccStep) -> dict:
 
     return info
 
+
 def build_sta(workspace: Workspace, step: EccStep) -> dict:
     sta_report = step.report.sta or {}
     sta_feature = step.feature.sta or {}
     return {
         "report_root": sta_report.get("dir", step.report.dir or ""),
         "feature_root": sta_feature.get("dir", step.feature.dir or ""),
-        "qor_summary_root": sta_feature.get(
-            "qor_summary_root", step.feature.dir or ""
-        ),
-        "timing_paths_root": sta_feature.get(
-            "timing_paths_root", step.feature.dir or ""
-        ),
+        "qor_summary_root": sta_feature.get("qor_summary_root", step.feature.dir or ""),
+        "timing_paths_root": sta_feature.get("timing_paths_root", step.feature.dir or ""),
     }

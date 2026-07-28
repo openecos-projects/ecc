@@ -40,29 +40,31 @@ def test_checklist_replaces_legacy_data_with_current_snapshot(tmp_path):
     checklist = Checklist(path)
     assert checklist.data["checklist"] == []
 
-    checklist.replace([
-        {
-            "id": "quality.drc.clean",
-            "step": "drc",
-            "category": "quality_gate",
-            "owner": "qor",
-            "policy": "block",
-            "state": "failed",
-            "title": "Final DRC clean",
-            "summary": "drc_count=2 (required == 0)",
-            "source": {"kind": "qor_gate", "path": "drc_ecc/analysis/qor_summary.json"},
-            "evidence": [{"kind": "feature", "path": "drc_ecc/feature/drc.step.json"}],
-        },
-        {
-            "id": "report.optional.image",
-            "step": "workspace",
-            "category": "report",
-            "owner": "checklist",
-            "policy": "warn",
-            "state": "warning",
-            "title": "Optional image",
-        },
-    ])
+    checklist.replace(
+        [
+            {
+                "id": "quality.drc.clean",
+                "step": "drc",
+                "category": "quality_gate",
+                "owner": "qor",
+                "policy": "block",
+                "state": "failed",
+                "title": "Final DRC clean",
+                "summary": "drc_count=2 (required == 0)",
+                "source": {"kind": "qor_gate", "path": "drc_ecc/analysis/qor_summary.json"},
+                "evidence": [{"kind": "feature", "path": "drc_ecc/feature/drc.step.json"}],
+            },
+            {
+                "id": "report.optional.image",
+                "step": "workspace",
+                "category": "report",
+                "owner": "checklist",
+                "policy": "warn",
+                "state": "warning",
+                "title": "Optional image",
+            },
+        ]
+    )
 
     assert checklist.data["status"] == "blocked"
     assert checklist.data["summary"] == {

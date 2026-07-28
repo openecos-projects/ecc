@@ -75,6 +75,8 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
             "size_bytes": len(sdc_contents.encode("utf-8")),
         }
     }
+
+
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
     verilog = tmp_path / "gcd.v"
     verilog.write_text("module gcd; endmodule\n")
