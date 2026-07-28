@@ -83,8 +83,7 @@ class RuntimeServer:
             api_method = getattr(self.api, spec.handler_name, None)
             if not callable(api_method):
                 raise TypeError(
-                    f"runtime method {spec.method_name} handler "
-                    f"{spec.handler_name} is not callable"
+                    f"runtime method {spec.method_name} handler {spec.handler_name} is not callable"
                 )
             self.dispatcher.add_method(
                 spec.method_name,

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 """
 Filelist parsing utilities for handling EDA tool filelist files.
@@ -24,17 +23,15 @@ Example filelist content:
 """
 
 import os
-from typing import List
-
 
 UNSUPPORTED_OPTIONS = {
-    '-f': 'Recursive filelist files',
-    '-v': 'Library files',
-    '-y': 'Library search directories',
+    "-f": "Recursive filelist files",
+    "-v": "Library files",
+    "-y": "Library search directories",
 }
 
 
-def parse_filelist(filelist_path: str) -> List[str]:
+def parse_filelist(filelist_path: str) -> list[str]:
     """
     Parse a filelist file and extract all file paths.
 
@@ -58,7 +55,7 @@ def parse_filelist(filelist_path: str) -> List[str]:
 
     file_paths = []
 
-    with open(filelist_path, 'r', encoding='utf-8') as f:
+    with open(filelist_path, encoding="utf-8") as f:
         for line_num, line in enumerate(f, 1):
             path = _parse_line(line, line_num)
             if path:
@@ -77,18 +74,20 @@ def _parse_line(line: str, line_num: int) -> str | None:
     line = line.strip()
 
     # Skip empty lines and comment lines
-    if not line or line.startswith(('#', '//', '`')):
+    if not line or line.startswith(("#", "//", "`")):
         return None
 
     # Skip +incdir and other + options
-    if line.startswith('+'):
+    if line.startswith("+"):
         return None
 
     # Handle - options
-    if line.startswith('-'):
+    if line.startswith("-"):
         option = line.split()[0]
         if option in UNSUPPORTED_OPTIONS:
-            descriptions = '\n'.join(f"  {opt}: {desc}" for opt, desc in UNSUPPORTED_OPTIONS.items())
+            descriptions = "\n".join(
+                f"  {opt}: {desc}" for opt, desc in UNSUPPORTED_OPTIONS.items()
+            )
             raise ValueError(
                 f"Unsupported filelist option at line {line_num}: '{option}'\n"
                 f"The parser does not support:\n"
@@ -99,14 +98,14 @@ def _parse_line(line: str, line_num: int) -> str | None:
 
     # Remove inline comments and quotes
     line = _remove_inline_comment(line)
-    return line.strip('"\'') or None
+    return line.strip("\"'") or None
 
 
 def _remove_inline_comment(line: str) -> str:
     """Remove inline comments from a line."""
-    for marker in ('#', '//'):
+    for marker in ("#", "//"):
         if marker in line:
-            line = line[:line.index(marker)].strip()
+            line = line[: line.index(marker)].strip()
     return line
 
 
@@ -132,7 +131,7 @@ def resolve_path(path: str, base_dir: str) -> str:
     return os.path.abspath(os.path.join(base_dir, path))
 
 
-def validate_filelist(filelist_path: str) -> tuple[List[str], List[str]]:
+def validate_filelist(filelist_path: str) -> tuple[list[str], list[str]]:
     """
     Validate a filelist by checking if all referenced files exist.
 
@@ -188,16 +187,16 @@ def get_filelist_info(filelist_path: str) -> dict:
     file_sizes = _compute_file_sizes(existing_files, filelist_dir)
 
     return {
-        'filelist': abs_filelist,
-        'base_dir': filelist_dir,
-        'total_files': len(existing_files) + len(missing_files),
-        'existing_files': existing_files,
-        'missing_files': missing_files,
-        'file_sizes': file_sizes
+        "filelist": abs_filelist,
+        "base_dir": filelist_dir,
+        "total_files": len(existing_files) + len(missing_files),
+        "existing_files": existing_files,
+        "missing_files": missing_files,
+        "file_sizes": file_sizes,
     }
 
 
-def _compute_file_sizes(file_paths: List[str], base_dir: str) -> dict:
+def _compute_file_sizes(file_paths: list[str], base_dir: str) -> dict:
     """Compute file sizes for a list of file paths."""
     file_sizes = {}
     for file_path in file_paths:
@@ -209,7 +208,7 @@ def _compute_file_sizes(file_paths: List[str], base_dir: str) -> dict:
     return file_sizes
 
 
-def parse_incdir_directives(filelist_path: str) -> List[str]:
+def parse_incdir_directives(filelist_path: str) -> list[str]:
     """
     Parse +incdir directives from a filelist file.
 
@@ -232,14 +231,14 @@ def parse_incdir_directives(filelist_path: str) -> List[str]:
 
     incdir_paths = []
 
-    with open(filelist_path, 'r', encoding='utf-8') as f:
+    with open(filelist_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
 
-            if not line or line.startswith(('#', '//', '`')):
+            if not line or line.startswith(("#", "//", "`")):
                 continue
 
-            if line.startswith('+incdir+'):
+            if line.startswith("+incdir+"):
                 path = _extract_incdir_path(line)
                 if path:
                     incdir_paths.append(path)
@@ -249,6 +248,6 @@ def parse_incdir_directives(filelist_path: str) -> List[str]:
 
 def _extract_incdir_path(line: str) -> str:
     """Extract path from +incdir+ directive, handling comments and quotes."""
-    path = line.removeprefix('+incdir+')
+    path = line.removeprefix("+incdir+")
     path = _remove_inline_comment(path).strip()
-    return path.strip('"\'') or ""
+    return path.strip("\"'") or ""

@@ -93,7 +93,7 @@ class ParamDiffInput:
     project: ProjectOptions
 
 
-def output_options(json_output: bool, jsonl: bool, plain: bool) -> OutputOptions:
+def output_options(*, json_output: bool, jsonl: bool, plain: bool) -> OutputOptions:
     return OutputOptions(json=json_output, jsonl=jsonl, plain=plain)
 
 

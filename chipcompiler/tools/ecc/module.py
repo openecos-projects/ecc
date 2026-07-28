@@ -106,11 +106,9 @@ class ECCToolsModule:
     ########################################################################
     # config api
     ########################################################################
-    def init_config(self,
-                    flow_config : str,
-                    db_config : str,
-                    output_dir : PathArg,
-                    feature_dir : PathArg):
+    def init_config(
+        self, flow_config: str, db_config: str, output_dir: PathArg, feature_dir: PathArg
+    ):
         """init_config"""
         self.ecc.flow_init(flow_config=path_text(flow_config))
 
@@ -216,9 +214,7 @@ class ECCToolsModule:
         """init def"""
         self.ecc.def_init(def_path=path_text(path))
 
-    def read_verilog(self,
-                     verilog : PathArg,
-                     top_module: str):
+    def read_verilog(self, verilog: PathArg, top_module: str):
         """init verilog"""
         self.ecc.verilog_init(path_text(verilog), top_module)
 
@@ -226,7 +222,7 @@ class ECCToolsModule:
         """save def file"""
         self.ecc.def_save(def_name=path_text(def_path))
 
-    def gds_save(self, output_path: PathArg, is_harden: bool = False):
+    def gds_save(self, output_path: PathArg, *, is_harden: bool = False):
         """save gds file"""
         self.ecc.gds_save(path_text(output_path), is_harden)
 
@@ -247,6 +243,7 @@ class ECCToolsModule:
         self,
         output_dir: PathArg,
         json_format: str = "pretty",
+        *,
         compress: bool = False,
     ):
         """
@@ -266,7 +263,7 @@ class ECCToolsModule:
             compress=compress,
         )
 
-    def view_json_apply_edits(self, edits_path: PathArg, compress: bool = False):
+    def view_json_apply_edits(self, edits_path: PathArg, *, compress: bool = False):
         """
         Apply edits generated for a view JSON package.
 
@@ -331,9 +328,7 @@ class ECCToolsModule:
         """
         self.ecc.feature_summary(path_text(json_path))
 
-    def feature_step(self, 
-                     step: str, 
-                     json_path: PathArg):
+    def feature_step(self, step: str, json_path: PathArg):
         """
         generate step feature
         """
@@ -364,8 +359,7 @@ class ECCToolsModule:
     def report_wirelength(self, path: str = ""):
         return self.ecc.report_wirelength(path=path_text(path))
 
-    def report_summary(self, 
-                       path: PathArg):
+    def report_summary(self, path: PathArg):
         """
         generate step report
         """
@@ -381,6 +375,7 @@ class ECCToolsModule:
         self,
         path: str = "",
         net: str = "",
+        *,
         summary: bool = True,
     ):
         return self.ecc.report_route(path=path_text(path), net=net, summary=summary)
@@ -429,21 +424,17 @@ class ECCToolsModule:
     ########################################################################
     # CTS api
     ########################################################################
-    def run_cts(self,
-                config: str,
-                output : PathArg) -> bool:
+    def run_cts(self, config: str, output: PathArg) -> bool:
         return self.ecc.run_cts(path_text(config), path_text(output))
 
-    def report_cts(self, output : PathArg):
+    def report_cts(self, output: PathArg):
         self.ecc.cts_report(path_text(output))
 
     def feature_cts_timing(self) -> dict:
         """Return post-optimization CTS FastSTA timing aggregates."""
         return self.ecc.cts_timing_feature()
-    
-    def feature_cts_map(self,
-                        json_path: PathArg,
-                        map_grid_size=1):
+
+    def feature_cts_map(self, json_path: PathArg, map_grid_size=1):
         """
         generate cts map feature
         """
@@ -452,24 +443,18 @@ class ECCToolsModule:
     ########################################################################
     # DRC api
     ########################################################################
-    def init_drc(self,
-                 output_dir : PathArg,
-                 therad_number : int = 128):
+    def init_drc(self, output_dir: PathArg, therad_number: int = 128):
         """
         init drc config
         """
-        self.ecc.init_drc(
-            temp_directory_path=path_text(output_dir),
-            thread_number=therad_number)
-        
-    def run_drc(self,
-                config: str,
-                report_path : PathArg="") -> bool:
+        self.ecc.init_drc(temp_directory_path=path_text(output_dir), thread_number=therad_number)
+
+    def run_drc(self, config: str, report_path: PathArg = "") -> bool:
         """
         run drc check
         """
         self.ecc.run_drc(config=path_text(config), report=path_text(report_path))
-        
+
     def save_drc(self, feature_path: PathArg):
         """
         generate drc result
@@ -602,7 +587,7 @@ class ECCToolsModule:
             distance=distance,
         )
 
-    def add_routing_blockage(self, layer: str, box: str, exceptpgnet: bool):
+    def add_routing_blockage(self, layer: str, box: str, *, exceptpgnet: bool):
         return self.ecc.add_routing_blockage(
             layer=layer,
             box=box,
@@ -613,8 +598,8 @@ class ECCToolsModule:
         self,
         layer: str,
         distance: str,
-        exceptpgnet: bool = False,
         *,
+        exceptpgnet: bool = False,
         inst_name: str,
     ):
         return self.ecc.add_routing_halo(
@@ -645,14 +630,14 @@ class ECCToolsModule:
     ########################################################################
     # pdn api
     ########################################################################
-    def add_pdn_io(self, net_name: str, direction: str, is_power: bool, pin_name: str = None):
+    def add_pdn_io(self, net_name: str, direction: str, *, is_power: bool, pin_name: str = None):
         if pin_name is None:
             pin_name = net_name
         return self.ecc.add_pdn_io(
             pin_name=pin_name, net_name=net_name, direction=direction, is_power=is_power
         )
 
-    def global_net_connect(self, net_name: str, instance_pin_name: str, is_power: bool):
+    def global_net_connect(self, net_name: str, instance_pin_name: str, *, is_power: bool):
         return self.ecc.global_net_connect(
             net_name=net_name, instance_pin_name=instance_pin_name, is_power=is_power
         )
@@ -831,7 +816,7 @@ class ECCToolsModule:
 
     def destroy_pl(self):
         return self.ecc.destroy_pl()
-        
+
     def feature_placement_map(self, json_path: PathArg, map_grid_size=1):
         """
         generate placement map feature
@@ -1019,11 +1004,7 @@ class ECCToolsModule:
     def run_sta(self, output_dir: str):
         return None
 
-    def init_sta(self,
-                 output_dir : PathArg,
-                 top_module : str,
-                 lib_paths : list[str],
-                 sdc_path: str):
+    def init_sta(self, output_dir: PathArg, top_module: str, lib_paths: list[str], sdc_path: str):
         return None
 
     def release_sta(self):
@@ -1102,7 +1083,8 @@ class ECCToolsModule:
         lib_paths: list[str] | None = None,
         sdc_path: str = "",
         spef_path: str = "",
-        design_name: str = ""):
+        design_name: str = "",
+    ):
         output_lib_path = Path(output_lib_path or "")
         output_lib_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1164,6 +1146,7 @@ class ECCToolsModule:
         digits: int = 3,
         delay_type: str = "max_min",
         exclude_cell_names: list[str] | None = None,
+        *,
         derate: bool = False,
         is_clock_cap: bool = False,
         is_not_bak_rpt: bool = True,
@@ -1220,6 +1203,7 @@ class ECCToolsModule:
         vectors_dir: str,
         patch_row_step: int = 9,
         patch_col_step: int = 9,
+        *,
         batch_mode: bool = True,
         is_placement_mode: bool = False,
         sta_mode: int = 0,

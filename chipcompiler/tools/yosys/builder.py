@@ -98,8 +98,7 @@ def _yosys_source_config(workspace: Workspace, step: WorkspaceStep) -> tuple[boo
     return True, [], ""
 
 
-def generate_global_var_tcl(workspace: Workspace,
-                           step: YosysStep) -> str:
+def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     """Generate global_var.tcl content dynamically from workspace configuration."""
     if not workspace.design.top_module:
         raise ValueError("TOP_NAME (workspace.design.top_module) not set")
@@ -205,7 +204,7 @@ def generate_global_var_tcl(workspace: Workspace,
     script.blank_line()
 
     script.comment("Working directories")
-    script.set_path("tmp_dir", os.path.join(data_dir, 'tmp'))
+    script.set_path("tmp_dir", os.path.join(data_dir, "tmp"))
     script.blank_line()
     script.comment("##############")
     script.blank_line()
@@ -223,14 +222,16 @@ def generate_global_var_tcl(workspace: Workspace,
     return script.build()
 
 
-def build_step(workspace: Workspace,
-               step_name: str,
-               input_def: Path | None,
-               input_verilog: Path | None,
-               input_db : Path | str | None = None,
-               output_def: Path | None = None,
-               output_verilog: Path | None = None,
-               output_gds: Path | None = None) -> YosysStep:
+def build_step(
+    workspace: Workspace,
+    step_name: str,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | str | None = None,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+    output_gds: Path | None = None,
+) -> YosysStep:
     """
     Build the synthesis step in the specified workspace.
 
@@ -309,8 +310,7 @@ def build_step_space(step: YosysStep) -> None:
     Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
 
 
-def build_step_config(workspace: Workspace,
-                      step: YosysStep):
+def build_step_config(workspace: Workspace, step: YosysStep):
     """
     Build the configuration files for the synthesis step.
 
@@ -327,59 +327,56 @@ def build_step_config(workspace: Workspace,
             os.chmod(dst, os.stat(dst).st_mode | stat.S_IWUSR)
 
     current_dir = Path(__file__).resolve().parent
-    scripts_dir = current_dir / 'scripts'
+    scripts_dir = current_dir / "scripts"
     script_dir = Path(step.script.dir) if step.script.dir else Path(step.directory or "")
 
-    for file in ['yosys_synthesis.tcl', 'init_tech.tcl']:
+    for file in ["yosys_synthesis.tcl", "init_tech.tcl"]:
         src = scripts_dir / file
         if src.exists():
             _copy_writable(src, script_dir / file)
 
-    abc_script = scripts_dir / 'abc-opt.script'
+    abc_script = scripts_dir / "abc-opt.script"
     if abc_script.exists():
-        _copy_writable(abc_script, script_dir / 'abc-opt.script')
+        _copy_writable(abc_script, script_dir / "abc-opt.script")
 
-    configs_dir = current_dir / 'configs'
-    aig_file = configs_dir / 'lazy_man_synth_library.aig'
+    configs_dir = current_dir / "configs"
+    aig_file = configs_dir / "lazy_man_synth_library.aig"
     if aig_file.exists():
-        _copy_writable(aig_file, script_dir / 'lazy_man_synth_library.aig')
+        _copy_writable(aig_file, script_dir / "lazy_man_synth_library.aig")
 
     try:
         tcl_content = generate_global_var_tcl(workspace, step)
         data_dir = step.data.dir or Path(step.directory or "") / "data"
-        global_var_path = data_dir / 'global_var.tcl'
-        with global_var_path.open('w') as f:
+        global_var_path = data_dir / "global_var.tcl"
+        with global_var_path.open("w") as f:
             f.write(tcl_content)
     except (ValueError, OSError) as e:
         print(f"Error generating global_var.tcl: {e}")
         raise
-    
+
     # build subflow json
-    build_sub_flow(workspace=workspace,
-                   workspace_step=step)
-    
-    build_checklist(workspace=workspace,
-                    workspace_step=step)
+    build_sub_flow(workspace=workspace, workspace_step=step)
+
+    build_checklist(workspace=workspace, workspace_step=step)
 
 
-def build_sub_flow(workspace : Workspace,
-                   workspace_step : YosysStep):
+def build_sub_flow(workspace: Workspace, workspace_step: YosysStep):
     from .subflow import YosysSubFlow
-    subflow = YosysSubFlow(workspace=workspace,
-                           workspace_step=workspace_step)
-    
-    subflow.build_sub_flow()    
-    
-def build_checklist(workspace : Workspace,
-                    workspace_step : YosysStep):
+
+    subflow = YosysSubFlow(workspace=workspace, workspace_step=workspace_step)
+
+    subflow.build_sub_flow()
+
+
+def build_checklist(workspace: Workspace, workspace_step: YosysStep):
     from .checklist import YosysChecklist
-    checklist = YosysChecklist(workspace=workspace,
-                               workspace_step=workspace_step)
-    
-    checklist.build_checklist() 
-        
-def build_environment(workspace: Workspace,
-                      step: YosysStep):
+
+    checklist = YosysChecklist(workspace=workspace, workspace_step=workspace_step)
+
+    checklist.build_checklist()
+
+
+def build_environment(workspace: Workspace, step: YosysStep):
     """
     Build the environment for the given step.
     """

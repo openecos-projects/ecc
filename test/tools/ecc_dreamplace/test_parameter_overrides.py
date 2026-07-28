@@ -16,9 +16,7 @@ def test_flat_legacy_keys_map_to_dreamplace_fields(dreamplace_default_config):
         "Target density": _alternate_float(dreamplace_default_config["target_density"]),
         "Target overflow": _alternate_float(dreamplace_default_config["stop_overflow"]),
         "Cell padding x": dreamplace_default_config["cell_padding_x"] + 500,
-        "Routability opt flag": _alternate_flag(
-            dreamplace_default_config["routability_opt_flag"]
-        ),
+        "Routability opt flag": _alternate_flag(dreamplace_default_config["routability_opt_flag"]),
     }
 
     result = apply_parameter_overrides(dreamplace_default_config, parameter_data)
@@ -31,9 +29,7 @@ def test_flat_legacy_keys_map_to_dreamplace_fields(dreamplace_default_config):
 
 def test_nested_dreamplace_overrides_are_applied(dreamplace_default_config):
     overrides = {
-        "routability_opt_flag": _alternate_flag(
-            dreamplace_default_config["routability_opt_flag"]
-        ),
+        "routability_opt_flag": _alternate_flag(dreamplace_default_config["routability_opt_flag"]),
         "target_density": _alternate_float(dreamplace_default_config["target_density"]),
     }
     parameter_data = {"DreamPlace": overrides}

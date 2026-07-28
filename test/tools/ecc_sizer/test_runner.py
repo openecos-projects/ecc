@@ -42,11 +42,14 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    assert sizer_runner.run_step(
-        workspace,
-        step,
-        ecc_module=ExplodingEccModule(),
-    ) == StateEnum.Success
+    assert (
+        sizer_runner.run_step(
+            workspace,
+            step,
+            ecc_module=ExplodingEccModule(),
+        )
+        == StateEnum.Success
+    )
     assert _subflow_states(step)["run sizer"] == StateEnum.Success.value
     assert calls == [
         (
@@ -62,6 +65,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
             False,
         )
     ]
+
 
 def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
@@ -119,6 +123,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
 
     assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
     assert _subflow_states(step)["run sizer"] == StateEnum.Imcomplete.value
+
 
 def test_public_sizer_run_marks_invalid_when_tool_missing(tmp_path, monkeypatch):
     from chipcompiler.tools import run_step as public_run_step

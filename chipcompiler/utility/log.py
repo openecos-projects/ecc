@@ -1,16 +1,16 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-import os
 import logging
-from logging.handlers import RotatingFileHandler
+import os
 import sys
-from datetime import datetime
-from typing import Optional, TextIO
 import time
+from contextlib import suppress
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
+from typing import TextIO
 
 
-#TODO: Move some functions to Logger Module
+# TODO: Move some functions to Logger Module
 def build_timestamped_log_file(log_file: str, pid: int | None = None) -> str:
     """
     Build a timestamped log file path from a base path.
@@ -26,10 +26,7 @@ def build_timestamped_log_file(log_file: str, pid: int | None = None) -> str:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     pid_value = os.getpid() if pid is None else pid
 
-    if ext:
-        file_name = f"{stem}-{timestamp}-{pid_value}{ext}"
-    else:
-        file_name = f"{stem}-{timestamp}-{pid_value}"
+    file_name = f"{stem}-{timestamp}-{pid_value}{ext}" if ext else f"{stem}-{timestamp}-{pid_value}"
 
     return os.path.join(base_dir, file_name)
 
@@ -61,13 +58,12 @@ def rotate_log_on_start(log_file: str, max_bytes: int, backup_count: int) -> Non
 
 def redirect_stdio_to_file(log_file: str) -> TextIO:
     """Redirect process stdout/stderr to log_file at file-descriptor level."""
-    log_stream = open(log_file, "a", encoding="utf-8", buffering=1)
+    # The stream intentionally stays open: its fd is dup2'd onto stdout/stderr below.
+    log_stream = open(log_file, "a", encoding="utf-8", buffering=1)  # noqa: SIM115
 
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with suppress(Exception):
             stream.flush()
-        except Exception:
-            pass
 
     os.dup2(log_stream.fileno(), 1)
     os.dup2(log_stream.fileno(), 2)
@@ -93,13 +89,13 @@ class Logger:
     def __init__(
         self,
         name: str = "ecc",
-        log_file: Optional[str] = None,
-        log_dir: Optional[str] = None,
+        log_file: str | None = None,
+        log_dir: str | None = None,
         max_bytes: int = 10 * 1024 * 1024,  # 10MB
         backup_count: int = 5,
         level: int = logging.INFO,
-        console_level: Optional[int] = None,
-        file_level: Optional[int] = None,
+        console_level: int | None = None,
+        file_level: int | None = None,
         fmt: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     ):
         self.logger = logging.getLogger(name)
@@ -113,9 +109,13 @@ class Logger:
             console_handler.setFormatter(formatter)
             console_handler.setLevel(logging.WARNING if console_level is None else console_level)
             self.logger.addHandler(console_handler)
-            
+
             if log_file or log_dir:
-                file = log_file if log_file else f"{log_dir}/{name}.{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+                file = (
+                    log_file
+                    if log_file
+                    else f"{log_dir}/{name}.{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+                )
                 file_handler = RotatingFileHandler(
                     file, maxBytes=max_bytes, backupCount=backup_count
                 )
@@ -137,30 +137,30 @@ class Logger:
 
     def critical(self, msg: str, *args, **kwargs):
         self.logger.critical(msg, *args, **kwargs)
-        
-    def log_separator(self, max_len = 60):
-        self.logger.info('#' * max_len)
-        
-    def log_section(self, section : str, max_len = 60):
+
+    def log_separator(self, max_len=60):
+        self.logger.info("#" * max_len)
+
+    def log_section(self, section: str, max_len=60):
         if len(section) >= max_len:
             section = section[:max_len]
         self.logger.info("")
-        self.logger.info('#' * max_len)
+        self.logger.info("#" * max_len)
         padding = (max_len - len(section)) // 2
-        self.logger.info(' ' * padding + section + ' ' * padding)
-        self.logger.info('#' * max_len)
+        self.logger.info(" " * padding + section + " " * padding)
+        self.logger.info("#" * max_len)
         self.logger.info("")
 
 
 def create_logger(
     name: str = "ecc",
-    log_file: Optional[str] = None,
-    log_dir: Optional[str] = None,
+    log_file: str | None = None,
+    log_dir: str | None = None,
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
     level: int = logging.INFO,
-    console_level: Optional[int] = None,
-    file_level: Optional[int] = None,
+    console_level: int | None = None,
+    file_level: int | None = None,
     fmt: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 ) -> Logger:
     if log_file is not None and os.path.exists(log_file):
@@ -184,7 +184,7 @@ def create_logger(
             console_level=console_level,
             file_level=file_level,
             fmt=fmt,
-        ) 
+        )
     else:
         return Logger(
             name=name,

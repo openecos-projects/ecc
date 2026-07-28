@@ -513,6 +513,7 @@ class TestLogNoErrorsInDisclosure:
         out = capsys.readouterr().out
         assert "--errors" not in out
 
+
 class TestLogUnreadableFile:
     """AC-9: Unreadable log files return non-zero with OS error."""
 

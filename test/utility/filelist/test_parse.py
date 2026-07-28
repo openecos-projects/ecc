@@ -20,10 +20,7 @@ class TestParseFilelist:
     def test_parse_with_comments(self, tmp_path):
         filelist = tmp_path / "design.f"
         filelist.write_text(
-            "# This is a comment\n"
-            "rtl/top.v\n"
-            "// Another comment\n"
-            "rtl/sub.v  # inline comment\n"
+            "# This is a comment\nrtl/top.v\n// Another comment\nrtl/sub.v  # inline comment\n"
         )
 
         assert parse_filelist(str(filelist)) == ["rtl/top.v", "rtl/sub.v"]
@@ -36,7 +33,7 @@ class TestParseFilelist:
 
     def test_parse_with_quotes(self, tmp_path):
         filelist = tmp_path / "design.f"
-        filelist.write_text('"path with spaces/file.v"\n' "'another path/file.v'\n")
+        filelist.write_text("\"path with spaces/file.v\"\n'another path/file.v'\n")
 
         assert parse_filelist(str(filelist)) == ["path with spaces/file.v", "another path/file.v"]
 
@@ -155,12 +152,7 @@ class TestParseIncdirDirectives:
         assert dirs == ["./include"]
 
     def test_parse_multiple_incdir(self, parse_incdir_from_content):
-        content = (
-            "+incdir+./include\n"
-            "+incdir+./rtl/common\n"
-            "+incdir+../shared/headers\n"
-            "rtl/top.v\n"
-        )
+        content = "+incdir+./include\n+incdir+./rtl/common\n+incdir+../shared/headers\nrtl/top.v\n"
         dirs = parse_incdir_from_content(content)
         assert dirs == ["./include", "./rtl/common", "../shared/headers"]
 
@@ -170,9 +162,7 @@ class TestParseIncdirDirectives:
 
     def test_parse_incdir_with_comments(self, parse_incdir_from_content):
         content = (
-            "+incdir+./include  # Main headers\n"
-            "+incdir+./rtl/common // Common headers\n"
-            "rtl/top.v\n"
+            "+incdir+./include  # Main headers\n+incdir+./rtl/common // Common headers\nrtl/top.v\n"
         )
         dirs = parse_incdir_from_content(content)
         assert dirs == ["./include", "./rtl/common"]
@@ -186,11 +176,7 @@ class TestParseIncdirDirectives:
         assert dirs == []
 
     def test_parse_incdir_skip_comments(self, parse_incdir_from_content):
-        content = (
-            "# +incdir+./should_skip\n"
-            "// +incdir+./also_skip\n"
-            "+incdir+./valid\n"
-        )
+        content = "# +incdir+./should_skip\n// +incdir+./also_skip\n+incdir+./valid\n"
         dirs = parse_incdir_from_content(content)
         assert dirs == ["./valid"]
 

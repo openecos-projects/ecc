@@ -30,7 +30,7 @@ def supports_color(file=None, env=None, mode=None):
     return env.get("TERM", "") != "dumb"
 
 
-def style(text, code, enabled=True):
+def style(text, code, *, enabled=True):
     if not enabled:
         return text
     return f"{code}{text}{RESET}"
@@ -50,23 +50,23 @@ def display_key(key):
 # --- Pretty block rendering ---
 
 
-def render_header(tag, color=True):
-    return style(f"[{tag}]", BOLD, color)
+def render_header(tag, *, color=True):
+    return style(f"[{tag}]", BOLD, enabled=color)
 
 
-def render_field(label, value, color=True, dim_label=False):
+def render_field(label, value, *, color=True, dim_label=False):
     if dim_label:
-        return f"  {style(label + ':', DIM, color)} {value}"
+        return f"  {style(label + ':', DIM, enabled=color)} {value}"
     return f"  {label}: {value}"
 
 
-def render_generic_block(records, file=None, color=True, tag=None):
+def render_generic_block(records, file=None, *, color=True, tag=None):
     """Render records as a generic pretty block."""
     target = file or sys.stdout
     first = records[0] if records else {}
 
     header_tag = tag or _infer_tag(first)
-    target.write(f"{render_header(header_tag, color)}\n")
+    target.write(f"{render_header(header_tag, color=color)}\n")
 
     for record in records:
         for key, value in record.items():
@@ -108,74 +108,76 @@ _STATUS_COLORS = {
 }
 
 
-def status_style(status_text, color=True):
+def status_style(status_text, *, color=True):
     code = _STATUS_COLORS.get(status_text)
     if code and color:
-        return style(status_text, code, True)
+        return style(status_text, code, enabled=True)
     return status_text
 
 
 # --- Command-specific pretty renderers ---
 
 
-def render_init(records, file=None, color=True):
+def render_init(records, file=None, *, color=True):
     target = file or sys.stdout
     r = records[0]
-    target.write(f"{render_header('init', color)}\n")
+    target.write(f"{render_header('init', color=color)}\n")
     target.write(f"  project: {r.get('project', '')}\n")
-    target.write(f"  status: {status_style(r.get('status', ''), color)}\n")
+    target.write(f"  status: {status_style(r.get('status', ''), color=color)}\n")
     target.write(f"  path: {r.get('path', '')}\n")
     _render_disclosure_fields(target, r, color)
     target.write("\n")
 
 
-def render_check(records, file=None, color=True):
+def render_check(records, file=None, *, color=True):
     target = file or sys.stdout
     first = records[0]
 
     if first.get("kind") == "error" or first.get("status") == "fail":
-        target.write(f"{render_header('check', color)}\n")
+        target.write(f"{render_header('check', color=color)}\n")
         for r in records:
             reason = r.get("reason", r.get("error", ""))
-            target.write(f"  {status_style('fail', color)} {reason}\n")
+            target.write(f"  {status_style('fail', color=color)} {reason}\n")
             if r.get("inspect"):
-                target.write(render_field("inspect", r["inspect"], color, dim_label=True) + "\n")
+                target.write(
+                    render_field("inspect", r["inspect"], color=color, dim_label=True) + "\n"
+                )
         target.write("\n")
         return
 
-    target.write(f"{render_header('check', color)}\n")
+    target.write(f"{render_header('check', color=color)}\n")
     r = records[0]
     target.write(f"  project: {r.get('project', '')}\n")
-    target.write(f"  status: {status_style(r.get('status', ''), color)}\n")
+    target.write(f"  status: {status_style(r.get('status', ''), color=color)}\n")
     target.write(f"  config: {r.get('config', '')}\n")
     _render_disclosure_fields(target, r, color)
 
     for r in records[1:]:
         label = r.get("check", "")
         st = r.get("status", "")
-        target.write(f"  {label}: {status_style(st, color)}\n")
+        target.write(f"  {label}: {status_style(st, color=color)}\n")
         if r.get("path"):
             target.write(f"    path: {r['path']}\n")
         if r.get("inspect"):
-            target.write(render_field("inspect", r["inspect"], color, dim_label=True) + "\n")
+            target.write(render_field("inspect", r["inspect"], color=color, dim_label=True) + "\n")
 
     target.write("\n")
 
 
-def render_run_summary(records, file=None, color=True):
+def render_run_summary(records, file=None, *, color=True):
     target = file or sys.stdout
     r = records[0]
     st = r.get("status", "")
     tag = "run"
-    target.write(f"{render_header(tag, color)}\n")
+    target.write(f"{render_header(tag, color=color)}\n")
     target.write(f"  run: {r.get('run', '')}\n")
-    target.write(f"  status: {status_style(st, color)}\n")
+    target.write(f"  status: {status_style(st, color=color)}\n")
     target.write(f"  workspace: {r.get('workspace', '')}\n")
     _render_disclosure_fields(target, r, color)
     target.write("\n")
 
 
-def render_status(records, file=None, color=True):
+def render_status(records, file=None, *, color=True):
     target = file or sys.stdout
     first = records[0]
 
@@ -184,9 +186,9 @@ def render_status(records, file=None, color=True):
         return
 
     st = first.get("status", "")
-    target.write(f"{render_header('status', color)}\n")
+    target.write(f"{render_header('status', color=color)}\n")
     target.write(f"  run: {first.get('run', '')}\n")
-    target.write(f"  status: {status_style(st, color)}\n")
+    target.write(f"  status: {status_style(st, color=color)}\n")
     if first.get("workspace"):
         target.write(f"  workspace: {first['workspace']}\n")
     _render_disclosure_fields(target, first, color)
@@ -195,15 +197,17 @@ def render_status(records, file=None, color=True):
     if step_records:
         target.write("\n")
         target.write(
-            f"  {style('steps', CYAN if color else None, color)}:\n" if color else "  steps:\n"
+            f"  {style('steps', CYAN if color else None, enabled=color)}:\n"
+            if color
+            else "  steps:\n"
         )
         for r in step_records:
             step = r.get("step", "")
             tool = r.get("tool", "")
             st = r.get("status", "")
             runtime = r.get("runtime", "") or ""
-            step_label = style(step, CYAN, color) if color else step
-            status_label = status_style(st, color)
+            step_label = style(step, CYAN, enabled=color) if color else step
+            status_label = status_style(st, color=color)
             line = f"    {step_label} ({tool}) {status_label}"
             if runtime:
                 line += f" {runtime}"
@@ -213,7 +217,7 @@ def render_status(records, file=None, color=True):
     target.write("\n")
 
 
-def render_config(records, file=None, color=True):
+def render_config(records, file=None, *, color=True):
     target = file or sys.stdout
     first = records[0]
 
@@ -222,7 +226,7 @@ def render_config(records, file=None, color=True):
         return
 
     if first.get("config_status") == "none":
-        target.write(f"{render_header('config', color)}\n")
+        target.write(f"{render_header('config', color=color)}\n")
         msg = (
             f"  No configuration for step {first.get('step', '')}.\n"
             if first.get("step")
@@ -232,7 +236,7 @@ def render_config(records, file=None, color=True):
         target.write("\n")
         return
 
-    target.write(f"{render_header('config', color)}\n")
+    target.write(f"{render_header('config', color=color)}\n")
 
     current_scope = None
     for r in records:
@@ -241,7 +245,7 @@ def render_config(records, file=None, color=True):
             if current_scope is not None:
                 target.write("\n")
             current_scope = scope
-            scope_label = style(scope, CYAN, color) if color else scope
+            scope_label = style(scope, CYAN, enabled=color) if color else scope
             target.write(f"  {scope_label}:\n")
 
         config = r.get("config", r.get("key", ""))
@@ -263,18 +267,18 @@ def render_config(records, file=None, color=True):
             target.write("\n")
 
         if r.get("inspect"):
-            target.write(render_field("inspect", r["inspect"], color, dim_label=True) + "\n")
+            target.write(render_field("inspect", r["inspect"], color=color, dim_label=True) + "\n")
 
     target.write("\n")
 
 
-def render_error(records, file=None, color=True):
+def render_error(records, file=None, *, color=True):
     target = file or sys.stdout
-    target.write(f"{render_header('error', color)}\n")
+    target.write(f"{render_header('error', color=color)}\n")
     for record in records:
         error = record.get("error", record.get("kind", "error"))
         reason = record.get("reason", "")
-        target.write(f"  {style(error, RED, color)}")
+        target.write(f"  {style(error, RED, enabled=color)}")
         if reason:
             target.write(f" {reason}")
         target.write("\n")
@@ -284,7 +288,7 @@ def render_error(records, file=None, color=True):
             if value is None:
                 continue
             dk = display_key(key)
-            target.write(render_field(dk, value, color, dim_label=True) + "\n")
+            target.write(render_field(dk, value, color=color, dim_label=True) + "\n")
     target.write("\n")
 
 
@@ -306,7 +310,7 @@ def _render_disclosure_fields(target, record, color):
         if not value:
             continue
         label = display_key(key)
-        target.write(render_field(label, value, color, dim_label=True) + "\n")
+        target.write(render_field(label, value, color=color, dim_label=True) + "\n")
 
 
 def _render_step_disclosure(target, record, color, indent="      "):
@@ -315,7 +319,7 @@ def _render_step_disclosure(target, record, color, indent="      "):
         if not value:
             continue
         label = display_key(key)
-        dim_label = style(f"{label}:", DIM, color) if color else f"{label}:"
+        dim_label = style(f"{label}:", DIM, enabled=color) if color else f"{label}:"
         target.write(f"{indent}{dim_label} {value}\n")
 
 

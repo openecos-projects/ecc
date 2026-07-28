@@ -470,7 +470,8 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     assert [
         call[0]
         for call in module.ecc.calls
-        if call[0] in {
+        if call[0]
+        in {
             "lib_init",
             "sdc_init",
             "spef_init",
@@ -2522,9 +2523,7 @@ def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
     assert ecc_service.get_step_info(workspace, step, "metrics") == {
         "metrics": str(tmp_path / "metrics.json"),
     }
-    assert ecc_service.get_step_info(workspace, step, "subflow") == {
-        "path": str(step.subflow.path)
-    }
+    assert ecc_service.get_step_info(workspace, step, "subflow") == {"path": str(step.subflow.path)}
     assert ecc_service.get_step_info(workspace, step, "config") == {
         "config": str(workspace.config[StepEnum.PLACEMENT.value]),
     }

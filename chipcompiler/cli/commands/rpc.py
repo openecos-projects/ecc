@@ -12,6 +12,7 @@ rpc_app = typer.Typer(
 
 @rpc_app.command("serve", help="Serve the private ECC JSON-RPC runtime")
 def serve_cmd(
+    *,
     stdio: Annotated[
         bool,
         typer.Option("--stdio", help="Use Content-Length framed stdio transport."),

@@ -4,9 +4,7 @@ from chipcompiler.data.workspace import copy_filelist_with_sources
 
 
 class TestCopyFilelistWithSources:
-    def test_copy_simple_filelist(
-        self, tmp_path, workspace_dir, write_rtl_file, create_filelist
-    ):
+    def test_copy_simple_filelist(self, tmp_path, workspace_dir, write_rtl_file, create_filelist):
         project_dir = tmp_path / "project"
         project_dir.mkdir()
         write_rtl_file(project_dir / "gcd.v", "gcd")
@@ -23,9 +21,7 @@ class TestCopyFilelistWithSources:
         assert copied_file.exists()
         assert copied_file.read_text() == "module gcd(); endmodule"
 
-    def test_copy_nested_structure(
-        self, tmp_path, workspace_dir, write_rtl_file, create_filelist
-    ):
+    def test_copy_nested_structure(self, tmp_path, workspace_dir, write_rtl_file, create_filelist):
         project_dir = tmp_path / "project"
         (project_dir / "rtl" / "core").mkdir(parents=True)
         (project_dir / "rtl" / "mem").mkdir(parents=True)
@@ -81,8 +77,12 @@ class TestCopyFilelistWithSources:
 
 class TestCopyFilelistWithIncdir:
     def test_copy_with_incdir_basic(
-        self, tmp_path, write_rtl_file, write_header_file, setup_project_with_incdir,
-        copy_filelist_content
+        self,
+        tmp_path,
+        write_rtl_file,
+        write_header_file,
+        setup_project_with_incdir,
+        copy_filelist_content,
     ):
         project_dir = tmp_path / "project"
         rtl_dir, include_dir = setup_project_with_incdir(project_dir)
@@ -113,8 +113,12 @@ class TestCopyFilelistWithIncdir:
         assert len(verilog_files) == 2
 
     def test_copy_with_incdir_nested_structure(
-        self, tmp_path, write_rtl_file, write_header_file, setup_project_with_incdir,
-        copy_filelist_content
+        self,
+        tmp_path,
+        write_rtl_file,
+        write_header_file,
+        setup_project_with_incdir,
+        copy_filelist_content,
     ):
         project_dir = tmp_path / "project"
         rtl_dir, include_dir = setup_project_with_incdir(project_dir)
@@ -138,9 +142,7 @@ class TestCopyFilelistWithIncdir:
 
         write_rtl_file(project_dir / "rtl" / "top.v", "top")
 
-        origin_dir = copy_filelist_content(
-            project_dir, "+incdir+./missing_include\nrtl/top.v\n"
-        )
+        origin_dir = copy_filelist_content(project_dir, "+incdir+./missing_include\nrtl/top.v\n")
 
         assert (origin_dir / "rtl" / "top.v").exists()
 

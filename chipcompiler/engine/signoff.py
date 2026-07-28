@@ -105,7 +105,7 @@ class SignoffPackageCollector:
         issues: list[SignoffPackageIssue] = []
 
         def add_file(
-            role: str, source: Path | None, destination: str, required: bool = False
+            role: str, source: Path | None, destination: str, *, required: bool = False
         ) -> None:
             self._add_file(
                 workspace_dir=workspace_dir,
@@ -535,6 +535,7 @@ class SignoffPackageCollector:
         role: str,
         source: Path | None,
         destination: str,
+        *,
         required: bool,
         copied: list[dict],
         missing_required: list[str],
@@ -593,6 +594,7 @@ class SignoffPackageCollector:
         copied: list[dict],
         missing_optional: list[str],
         issues: list[SignoffPackageIssue],
+        *,
         materialize: bool,
     ) -> None:
         if not source_dir.is_dir():
@@ -620,6 +622,7 @@ class SignoffPackageCollector:
         copied: list[dict],
         missing_optional: list[str],
         issues: list[SignoffPackageIssue],
+        *,
         materialize: bool,
     ) -> None:
         patterns = [

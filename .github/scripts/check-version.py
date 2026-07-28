@@ -37,14 +37,16 @@ def main() -> int:
 
     if not py_ver or not init_ver:
         print(
-            f"ERROR: missing version metadata. pyproject.toml='{py_ver}' chipcompiler/__version__='{init_ver}'",
+            f"ERROR: missing version metadata. pyproject.toml='{py_ver}' "
+            f"chipcompiler/__version__='{init_ver}'",
             file=sys.stderr,
         )
         return 1
 
     if py_ver != init_ver:
         print(
-            f"ERROR: version mismatch. pyproject.toml='{py_ver}' chipcompiler/__version__='{init_ver}'",
+            f"ERROR: version mismatch. pyproject.toml='{py_ver}' "
+            f"chipcompiler/__version__='{init_ver}'",
             file=sys.stderr,
         )
         return 1

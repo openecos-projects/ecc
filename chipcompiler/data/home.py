@@ -32,19 +32,13 @@ from .checklist import Checklist
 #     "checklist" : ""
 # }
 home_json = {
-    "parameters" : "",
-    "flow" : "",
-    "layout" : "",
-    "GDS merge" : "",
-    "checklist" : "",
-    "metrics":{},
-    "monitor" : {
-        "step" : [],
-        "memory" : [],
-        "runtime" : [],
-        "instance" : [],
-        "frequency" : []
-    }
+    "parameters": "",
+    "flow": "",
+    "layout": "",
+    "GDS merge": "",
+    "checklist": "",
+    "metrics": {},
+    "monitor": {"step": [], "memory": [], "runtime": [], "instance": [], "frequency": []},
 }
 
 _monitor_keys = ("step", "memory", "runtime", "instance", "frequency")
@@ -56,8 +50,10 @@ _monitor_defaults = {
     "frequency": 0.0,
 }
 
+
 def _default_home_data() -> dict:
     return deepcopy(home_json)
+
 
 def _normalize_home_data(data: dict) -> tuple[dict, bool]:
     normalized = _default_home_data()
@@ -97,32 +93,35 @@ def _normalize_home_data(data: dict) -> tuple[dict, bool]:
 
     return normalized, changed
 
+
 def _read_normalized_home_data(path: Path) -> tuple[dict, bool]:
     return _normalize_home_data(json_read(path))
+
 
 class HomeData:
     """
     Home data information
     """
-    def __init__(self, path : Path | None = None):
-        self.path : Path | None = Path(path) if path else None # home data file path
-        self.data : dict = {} # home data
-            
-    def init(self, path : Path):
+
+    def __init__(self, path: Path | None = None):
+        self.path: Path | None = Path(path) if path else None  # home data file path
+        self.data: dict = {}  # home data
+
+    def init(self, path: Path):
         self.path = Path(path)
-        self.data : dict = {}
-    
+        self.data: dict = {}
+
         if self.path.exists():
             self._repair_or_reload()
         else:
             self.reset()
-            
+
     def reload(self):
         self._repair_or_reload()
-        
+
     def reset(self):
         self._update(lambda data: data.clear() or data.update(_default_home_data()))
-            
+
     def save(self):
         source = self.data
         self._update(lambda data: data.clear() or data.update(source), force=True)
@@ -138,7 +137,7 @@ class HomeData:
             finally:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
-    def _update(self, mutator: Callable[[dict], bool | None], force: bool = False) -> None:
+    def _update(self, mutator: Callable[[dict], bool | None], *, force: bool = False) -> None:
         with self._locked():
             path = self._path_required()
             data, repaired = _read_normalized_home_data(path)
@@ -168,17 +167,17 @@ class HomeData:
             return True
 
         self._update(mutator)
-        
-    def set_parameters(self, path : Path):
+
+    def set_parameters(self, path: Path):
         self._set_path_value("parameters", path)
-        
-    def set_flow(self, path : Path):
+
+    def set_flow(self, path: Path):
         self._set_path_value("flow", path)
-    
-    def set_layout(self, path : Path):
+
+    def set_layout(self, path: Path):
         self._set_path_value("layout", path)
-    
-    def set_gds_merge(self, path : Path):
+
+    def set_gds_merge(self, path: Path):
         self._set_path_value("GDS merge", path)
 
     def _set_metric(self, key: str, image_path: Path):
@@ -191,32 +190,34 @@ class HomeData:
             return True
 
         self._update(mutator)
-        
-    def set_metrics_inst_dist(self, image_path : Path):
+
+    def set_metrics_inst_dist(self, image_path: Path):
         self._set_metric("instances dist.", image_path)
-        
-    def set_metrics_layer_via_dist(self, image_path : Path):
+
+    def set_metrics_layer_via_dist(self, image_path: Path):
         self._set_metric("layer via dist.", image_path)
-        
-    def set_metrics_layer_wire_dist(self, image_path : Path):
+
+    def set_metrics_layer_wire_dist(self, image_path: Path):
         self._set_metric("layer wire dist.", image_path)
-        
-    def set_metrics_pin_dist(self, image_path : Path):
+
+    def set_metrics_pin_dist(self, image_path: Path):
         self._set_metric("pin dist.", image_path)
-        
-    def set_metrics_drc_dist(self, image_path : Path):
+
+    def set_metrics_drc_dist(self, image_path: Path):
         self._set_metric("drc dist.", image_path)
-        
-    def set_metrics_cts_skew_map(self, image_path : Path):
+
+    def set_metrics_cts_skew_map(self, image_path: Path):
         self._set_metric("CTS skew map", image_path)
-    
-    def update_monitor(self,
-                       step : str,
-                       sub_step : str,
-                       memory : str,
-                       runtime : str,
-                       instance : int=0,
-                       frequency : float=0.0):
+
+    def update_monitor(
+        self,
+        step: str,
+        sub_step: str,
+        memory: str,
+        runtime: str,
+        instance: int = 0,
+        frequency: float = 0.0,
+    ):
         def mutator(data: dict) -> bool:
             target_instance = instance
             target_frequency = frequency
@@ -252,23 +253,18 @@ class HomeData:
             return True
 
         self._update(mutator)
-        
-    def set_checklist(self, checklist_path : Path):
+
+    def set_checklist(self, checklist_path: Path):
         path = checklist_path
         if not path.exists():
             Checklist(path=path).save()
 
         self._set_path_value("checklist", path)
-            
+
     def get_checklist_header(self):
         return Checklist(path=Path(self.data.get("checklist", ""))).header
-        
-    def update_checklist(self,
-                         step : str, 
-                         type : str,
-                         item : str,
-                         state : str,
-                         info : str = ""):
+
+    def update_checklist(self, step: str, type: str, item: str, state: str, info: str = ""):
         checklist = Checklist(path=Path(self.data.get("checklist", "")))
         checklist.update(step=step, type=type, item=item, state=state, info=info)
 

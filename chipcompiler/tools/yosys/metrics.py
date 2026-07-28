@@ -4,8 +4,7 @@ from chipcompiler.tools.ecc.metrics import save_step_metrics
 from chipcompiler.utility import dict_to_str, json_read
 
 
-def build_step_metrics(workspace: Workspace,
-                       step: YosysStep) -> StepMetrics:
+def build_step_metrics(workspace: Workspace, step: YosysStep) -> StepMetrics:
     """
     Build and persist synthesis metrics from Yosys stat JSON.
     Args:
@@ -22,7 +21,7 @@ def build_step_metrics(workspace: Workspace,
     if not data:
         return None
 
-    design_data = data.get('design', {})
+    design_data = data.get("design", {})
 
     metrics = {
         "Tool": step.tool,
@@ -40,7 +39,7 @@ def build_step_metrics(workspace: Workspace,
         f"Area: {metrics['Cell area']}"
     )
     step_metrics.report.append(("", report))
-    
+
     workspace.logger.info("\nmetrics - \n%s", dict_to_str(step_metrics.data))
 
     if save_step_metrics(workspace, step, step_metrics):

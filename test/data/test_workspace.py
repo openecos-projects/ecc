@@ -777,7 +777,9 @@ def test_sync_workspace_config_to_parameters_preserves_routability_flag_string_c
         dreamplace["routability_opt_flag"] = raw_value
         json_write(workspace.config["dreamplace"], dreamplace)
 
-        assert sync_workspace_config_to_parameters(workspace, workspace.config["dreamplace"]) is True
+        assert (
+            sync_workspace_config_to_parameters(workspace, workspace.config["dreamplace"]) is True
+        )
 
         params = json_read(parameter_path)
         assert params["Routability opt flag"] == expected

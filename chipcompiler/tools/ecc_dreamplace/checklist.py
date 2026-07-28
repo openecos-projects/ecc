@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 
 from chipcompiler.data import (
-    CheckState,
     Checklist,
+    CheckState,
     EccStep,
     StepEnum,
     Workspace,
@@ -35,7 +35,7 @@ class DreamplaceChecklist:
     }
 
     def __init__(
-        self, workspace: Workspace, workspace_step: EccStep, init_checklist: bool = True
+        self, workspace: Workspace, workspace_step: EccStep, *, init_checklist: bool = True
     ):
         self.workspace = workspace
         self.workspace_step = workspace_step
@@ -97,8 +97,7 @@ class DreamplaceChecklist:
 
         return all(token in content for token in text_tokens)
 
-    def read_text(self,
-                  path : str | Path) -> str:
+    def read_text(self, path: str | Path) -> str:
         if not path or not os.path.isfile(path):
             return ""
 
@@ -117,8 +116,7 @@ class DreamplaceChecklist:
     def step_file_success(self) -> bool:
         output = self.workspace_step.output
         return all(
-            self.check_file(path or "")
-            for path in (output.def_, output.verilog, output.gds)
+            self.check_file(path or "") for path in (output.def_, output.verilog, output.gds)
         )
 
     def qor_metrics(self) -> QorMetrics:

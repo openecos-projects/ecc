@@ -166,9 +166,13 @@ def test_stdio_server_redirects_fd_stdout_noise_away_from_protocol_stdout(capfd)
 
 
 def test_rpc_stdio_subprocess_smoke():
-    stdin = _request("rpc.hello", 1, {"version": 1}) + _request("rpc.ping", 2) + _request(
-        "rpc.shutdown",
-        3,
+    stdin = (
+        _request("rpc.hello", 1, {"version": 1})
+        + _request("rpc.ping", 2)
+        + _request(
+            "rpc.shutdown",
+            3,
+        )
     )
 
     completed = subprocess.run(

@@ -12,9 +12,9 @@ def test_collect_package_extension_binaries_checks_sibling_bin(tmp_path):
     extension.parent.mkdir()
     extension.touch()
 
-    assert collect_package_extension_binaries(
-        [package_dir], "ecc_py*.so", "ecc_tools_bin"
-    ) == [(str(extension), "ecc_tools_bin")]
+    assert collect_package_extension_binaries([package_dir], "ecc_py*.so", "ecc_tools_bin") == [
+        (str(extension), "ecc_tools_bin")
+    ]
 
 
 def test_pyinstaller_payload_filter_excludes_oversized_paths():

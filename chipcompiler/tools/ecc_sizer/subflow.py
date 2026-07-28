@@ -93,7 +93,7 @@ class SizerSubFlow:
         peak_memory = self.get_peak_memory() - self.start_memory
         peak_memory = 0 if peak_memory < 0 else round(peak_memory, 3)
 
-        for step_dict in (self.workspace_step.subflow.steps or []):
+        for step_dict in self.workspace_step.subflow.steps or []:
             if step_dict.get("name") == step_name:
                 step_dict["state"] = state
                 step_dict["runtime"] = runtime

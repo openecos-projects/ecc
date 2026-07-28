@@ -3150,10 +3150,9 @@ def save_step_metrics(workspace: Workspace, step: WorkspaceStep, step_metrics: S
         return False
     return _remove_legacy_step_metric_artifacts(step)
 
-
-def build_step_metrics(workspace: Workspace,
-                       step: EccStep,
-                       subflow: EccSubFlow = None) -> StepMetrics:
+def build_step_metrics(
+    workspace: Workspace, step: EccStep, subflow: EccSubFlow = None
+) -> StepMetrics:
     """
     Build and return a StepMetrics instance for the given workspace step.
     """

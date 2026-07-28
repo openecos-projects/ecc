@@ -1,6 +1,7 @@
 import os
 import sys
 from collections.abc import Callable
+from typing import Protocol
 
 from chipcompiler.cli.core.inputs import LogInput
 from chipcompiler.cli.core.invocation import CommandInput
@@ -13,7 +14,18 @@ from chipcompiler.cli.handlers.param import (
 )
 from chipcompiler.cli.rendering.render import render_result
 
-Renderer = Callable[[CommandResult, CommandContext, CommandInput, bool], None]
+
+class Renderer(Protocol):
+    def __call__(
+        self,
+        result: CommandResult,
+        ctx: CommandContext,
+        command_input: CommandInput,
+        *,
+        color: bool,
+    ) -> None: ...
+
+
 RendererKey = tuple[str, OutputMode]
 ParamTextRenderer = Callable[[tuple[dict, ...]], None]
 
@@ -24,11 +36,12 @@ def render_command_result(
     result: CommandResult,
     ctx: CommandContext,
     command_input: CommandInput,
+    *,
     color: bool,
 ) -> None:
     renderer = RENDERERS.get((render_key, ctx.output_mode))
     if renderer is not None:
-        renderer(result, ctx, command_input, color)
+        renderer(result, ctx, command_input, color=color)
         return
 
     render_result(result, ctx.output_mode, command=command, color=color)
@@ -39,6 +52,7 @@ def _render_param_text(render_text: ParamTextRenderer) -> Renderer:
         result: CommandResult,
         ctx: CommandContext,
         command_input: CommandInput,
+        *,
         color: bool,
     ) -> None:
         from chipcompiler.cli.rendering.pretty import render_error
@@ -55,6 +69,7 @@ def _render_log_text(
     result: CommandResult,
     ctx: CommandContext,
     command_input: CommandInput,
+    *,
     color: bool,
 ) -> None:
     from chipcompiler.cli.inspection.log_view import (
@@ -132,6 +147,7 @@ def _render_log_plain(
     result: CommandResult,
     ctx: CommandContext,
     command_input: CommandInput,
+    *,
     color: bool,
 ) -> None:
     from chipcompiler.cli.inspection.log_view import render_log_records_plain

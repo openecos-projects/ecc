@@ -5,20 +5,16 @@ from pathlib import Path
 from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
 
 
-def load_eda_module(eda_tool: str, check_dependency: bool = True):
+def load_eda_module(eda_tool: str, *, check_dependency: bool = True):
     """
     Load and return the EDA tool module based on the given eda tool name.
     """
+
     def check_module(eda_module):
-        functions = [
-            'is_eda_exist',
-            'build_step_space',
-            'build_step_config',
-            'run_step'
-        ]
-        
+        functions = ["is_eda_exist", "build_step_space", "build_step_config", "run_step"]
+
         return all(hasattr(eda_module, func) for func in functions)
-    
+
     import importlib
 
     module_alias = {
@@ -36,7 +32,7 @@ def load_eda_module(eda_tool: str, check_dependency: bool = True):
 
     # check eda tool exist
     if not check_module(eda_module):
-        functions = ['is_eda_exist', 'build_step_space', 'build_step_config', 'run_step']
+        functions = ["is_eda_exist", "build_step_space", "build_step_config", "run_step"]
         missing = [f for f in functions if not hasattr(eda_module, f)]
         logging.error("EDA tool '%s': module loaded but missing interface: %s", eda_tool, missing)
         return None
@@ -50,46 +46,50 @@ def load_eda_module(eda_tool: str, check_dependency: bool = True):
 
     return eda_module
 
-def create_step(workspace : Workspace, 
-               step : str, 
-               eda : str,
-               input_def : Path | None,
-               input_verilog : Path | None,
-               input_db : Path | str | None = None,
-               output_def : Path | None = None,
-               output_verilog : Path | None = None,
-               output_gds : Path | None = None,
-               initialize_config : bool = False) -> WorkspaceStep:
+
+def create_step(
+    workspace: Workspace,
+    step: str,
+    eda: str,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | str | None = None,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+    output_gds: Path | None = None,
+    *,
+    initialize_config: bool = False,
+) -> WorkspaceStep:
     """
     Create and return an EDA tool instance based on the given step and eda tool name.
     """
     # check eda tool exist
     eda_module = load_eda_module(eda, check_dependency=eda != "sizer")
-    if eda_module is None \
-        or not hasattr(eda_module, 'build_step'):
+    if eda_module is None or not hasattr(eda_module, "build_step"):
         return None
-    
+
     # build step
-    step = eda_module.build_step(workspace=workspace,
-                                 step_name=step,
-                                 input_def=input_def,
-                                 input_verilog=input_verilog,
-                                 input_db=input_db,
-                                 output_def=output_def,
-                                 output_verilog=output_verilog,
-                                 output_gds=output_gds)
-    
+    step = eda_module.build_step(
+        workspace=workspace,
+        step_name=step,
+        input_def=input_def,
+        input_verilog=input_verilog,
+        input_db=input_db,
+        output_def=output_def,
+        output_verilog=output_verilog,
+        output_gds=output_gds,
+    )
+
     # build step sub workspace
     eda_module.build_step_space(step)
-    
+
     if initialize_config:
         eda_module.build_step_config(workspace, step)
-    
+
     return step
 
-def run_step(workspace: Workspace,
-             step: WorkspaceStep,
-             ecc_module = None) -> bool:
+
+def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool:
     """
     Run the given step using the provided EDA engine.
     """
@@ -97,18 +97,16 @@ def run_step(workspace: Workspace,
     eda_module = load_eda_module(step.tool, check_dependency=step.tool != "sizer")
     if eda_module is None:
         return False
-    
-    # update config 
+
+    # update config
     eda_module.build_step_config(workspace, step)
-    
+
     log_workspace_step(step, workspace.logger)
-    
-    return eda_module.run_step(workspace=workspace, 
-                               step=step,
-                               ecc_module=ecc_module)
-    
-def save_layout_image(workspace: Workspace,
-                      step: WorkspaceStep) -> bool:
+
+    return eda_module.run_step(workspace=workspace, step=step, ecc_module=ecc_module)
+
+
+def save_layout_image(workspace: Workspace, step: WorkspaceStep) -> bool:
     """
     Save the layout image for the given step.
     """
@@ -116,13 +114,13 @@ def save_layout_image(workspace: Workspace,
     eda_module = load_eda_module("klayout")
     if eda_module is None:
         return False
-    
+
     from chipcompiler.tools.klayout_tool.runner import save_gds_image
-    return save_gds_image(workspace=workspace,
-                          step=step)
-    
-def build_step_metrics(workspace: Workspace, 
-                       step: WorkspaceStep) -> StepMetrics:
+
+    return save_gds_image(workspace=workspace, step=step)
+
+
+def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
     """
     build step metrics
     """
@@ -130,14 +128,12 @@ def build_step_metrics(workspace: Workspace,
     if eda_module is None:
         return None
 
-    metrics = eda_module.build_step_metrics(workspace=workspace,
-                                            step=step)
-    
+    metrics = eda_module.build_step_metrics(workspace=workspace, step=step)
+
     return metrics
-    
-def get_step_info(workspace: Workspace, 
-                  step: WorkspaceStep,
-                  id : str) -> dict:
+
+
+def get_step_info(workspace: Workspace, step: WorkspaceStep, id: str) -> dict:
     """
     get step info by step and command id, return dict as resource definition
     """
@@ -160,6 +156,4 @@ def get_step_info(workspace: Workspace,
         logging.error("EDA tool '%s': module missing get_step_info", step.tool)
         return None
 
-    return eda_module.get_step_info(workspace=workspace,
-                                    step=step,
-                                    id=id)
+    return eda_module.get_step_info(workspace=workspace, step=step, id=id)

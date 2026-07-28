@@ -1,10 +1,9 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
-from dataclasses import dataclass, field
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from chipcompiler.utility.path import optional_path, path_list
@@ -17,30 +16,31 @@ class PDK:
     """
     Dataclass for PDK information
     """
-    name : str = "" # pdk name
-    version : str = "" # pdk version
-    root : Path | None = None # resolved pdk root path
-    tech : Path | None = None # pdk tech lef file
-    lefs : list = field(default_factory=list) # pdk lef files
-    libs : list = field(default_factory=list) # pdk liberty files
-    mapping_file : Path | None = None # pdk mapping file
-    corners : list = field(default_factory=list) 
-    sdc : Path | None = None # pdk sdc file
-    spef : Path | None = None # pdk spef file
-    site_core : str = "" # core site
-    site_io : str = "" # io site
-    site_corner : str = "" # corner site
-    tap_cell : str = "" # tap cell
-    end_cap : str = "" # end cap
-    buffers : list = field(default_factory=list) # buffers
-    fillers : list = field(default_factory=list) # fillers
-    tie_high_cell : str = ""
-    tie_high_port : str = ""
-    tie_low_cell : str = ""
-    tie_low_port : str = ""
-    dont_use : list = field(default_factory=list) # don't use cell list
-    abc_driver_cell : str = "" # ABC driving cell
-    abc_load : float = 0.015 # ABC output load
+
+    name: str = ""  # pdk name
+    version: str = ""  # pdk version
+    root: Path | None = None  # resolved pdk root path
+    tech: Path | None = None  # pdk tech lef file
+    lefs: list = field(default_factory=list)  # pdk lef files
+    libs: list = field(default_factory=list)  # pdk liberty files
+    mapping_file: Path | None = None  # pdk mapping file
+    corners: list = field(default_factory=list)
+    sdc: Path | None = None  # pdk sdc file
+    spef: Path | None = None  # pdk spef file
+    site_core: str = ""  # core site
+    site_io: str = ""  # io site
+    site_corner: str = ""  # corner site
+    tap_cell: str = ""  # tap cell
+    end_cap: str = ""  # end cap
+    buffers: list = field(default_factory=list)  # buffers
+    fillers: list = field(default_factory=list)  # fillers
+    tie_high_cell: str = ""
+    tie_high_port: str = ""
+    tie_low_cell: str = ""
+    tie_low_port: str = ""
+    dont_use: list = field(default_factory=list)  # don't use cell list
+    abc_driver_cell: str = ""  # ABC driving cell
+    abc_load: float = 0.015  # ABC output load
 
     def __post_init__(self) -> None:
         self.root = optional_path(self.root)
@@ -77,6 +77,7 @@ class PDK:
             logger.error(msg)
             raise ValueError(msg)
 
+
 def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
     with open(pdk_config, encoding="utf-8") as file:
         data = json.load(file)
@@ -87,8 +88,7 @@ def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
     config_name = str(data.get("name", "")).strip()
     if requested_name and config_name and requested_name.lower() != config_name.lower():
         raise ValueError(
-            f"PDK name mismatch: command line pdk={requested_name}, "
-            f"pdk_json.name={config_name}"
+            f"PDK name mismatch: command line pdk={requested_name}, pdk_json.name={config_name}"
         )
 
     return PDK(
@@ -118,8 +118,9 @@ def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
         abc_load=float(data.get("abc_load", 0.015)),
     )
 
+
 def get_pdk(
-    pdk_name : str,
+    pdk_name: str,
     pdk_root: str | Path = "",
     pdk_config: str | Path = "",
 ) -> PDK:
@@ -140,6 +141,7 @@ def get_pdk(
         pdk = PDK(name=pdk_name_normalized)
     pdk.validate()
     return pdk
+
 
 def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
     root = Path(__file__).resolve().parents[2]
@@ -162,41 +164,25 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
     ]
     lib_paths = [
         (
-            stdcell_dir / "ics55_LLSC_H7CR" / "liberty"
+            stdcell_dir
+            / "ics55_LLSC_H7CR"
+            / "liberty"
             / "ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
         ),
         (
-            stdcell_dir / "ics55_LLSC_H7CL" / "liberty"
+            stdcell_dir
+            / "ics55_LLSC_H7CL"
+            / "liberty"
             / "ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib"
         ),
     ]
     mapping_file = None
     corners = [
-        {
-            "name" : "TYPICAL",
-            "temperature" : [25],
-            "spef_file" : "./TYP.spef"
-        },
-        {
-            "name" : "RCbest",
-            "temperature" : [-40, 125],
-            "spef_file" : "./RCbest.spef"
-        },
-        {
-            "name" : "RCworst",
-            "temperature" : [-40, 125],
-            "spef_file" : "./RCworst.spef"
-        },
-        {
-            "name" : "Cbest",
-            "temperature" : [-40, 125],
-            "spef_file" : "./Cbest.spef"
-        },
-        {
-            "name" : "Cworst",
-            "temperature" : [-40, 125],
-            "spef_file" : "./Cworst.spef"
-        }
+        {"name": "TYPICAL", "temperature": [25], "spef_file": "./TYP.spef"},
+        {"name": "RCbest", "temperature": [-40, 125], "spef_file": "./RCbest.spef"},
+        {"name": "RCworst", "temperature": [-40, 125], "spef_file": "./RCworst.spef"},
+        {"name": "Cbest", "temperature": [-40, 125], "spef_file": "./Cbest.spef"},
+        {"name": "Cworst", "temperature": [-40, 125], "spef_file": "./Cworst.spef"},
     ]
 
     pdk = PDK(
@@ -206,34 +192,29 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
         tech=tech_path if tech_path.is_file() else None,
         lefs=[path for path in lef_paths if path.is_file()],
         libs=[path for path in lib_paths if path.is_file()],
-        mapping_file = mapping_file,
+        mapping_file=mapping_file,
         corners=corners,
-        site_core = "core7",
-        site_io = "core7",
-        site_corner = "core7",
-        tap_cell = "FILLTAPH7R",
-        end_cap = "FILLTAPH7R",
-        buffers = [
-            "BUFX8H7L",
-            "BUFX12H7L",
-            "BUFX16H7L",
-            "BUFX20H7L"
-        ],
-        fillers = [
+        site_core="core7",
+        site_io="core7",
+        site_corner="core7",
+        tap_cell="FILLTAPH7R",
+        end_cap="FILLTAPH7R",
+        buffers=["BUFX8H7L", "BUFX12H7L", "BUFX16H7L", "BUFX20H7L"],
+        fillers=[
             "FILLER64H7R",
             "FILLER32H7R",
             "FILLER16H7R",
             "FILLER8H7R",
             "FILLER4H7R",
             "FILLER2H7R",
-            "FILLER1H7R" 
+            "FILLER1H7R",
         ],
-        tie_high_cell = "TIEHIH7R",
-        tie_high_port = "Z",
-        tie_low_cell = "TIELOH7R",
-        tie_low_port = "Z",
-        abc_driver_cell = "BUFX0P5H7R",
-        abc_load = 0.015,
+        tie_high_cell="TIEHIH7R",
+        tie_high_port="Z",
+        tie_low_cell="TIELOH7R",
+        tie_low_port="Z",
+        abc_driver_cell="BUFX0P5H7R",
+        abc_load=0.015,
         dont_use=[
             "DFFSRQX*",
             "DFFSRX*",
@@ -245,11 +226,12 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
             "*OAI222*",
             "*OAI33*",
             "*NOR4*",
-            "ICG*"
-        ]
+            "ICG*",
+        ],
     )
 
     return pdk
+
 
 def PDK_SG13G2(pdk_root: str | Path = "") -> PDK:
     root_text = (
@@ -260,14 +242,9 @@ def PDK_SG13G2(pdk_root: str | Path = "") -> PDK:
     resolved_root = Path(root_text).expanduser().resolve()
 
     tech_path = resolved_root / "libs.ref" / "sg13g2_stdcell" / "lef" / "sg13g2_tech.lef"
-    lef_paths = [
-        resolved_root / "libs.ref" / "sg13g2_stdcell" / "lef" / "sg13g2_stdcell.lef"
-    ]
+    lef_paths = [resolved_root / "libs.ref" / "sg13g2_stdcell" / "lef" / "sg13g2_stdcell.lef"]
     lib_paths = [
-        (
-            resolved_root / "libs.ref" / "sg13g2_stdcell" / "lib"
-            / "sg13g2_stdcell_typ_1p20V_25C.lib"
-        )
+        (resolved_root / "libs.ref" / "sg13g2_stdcell" / "lib" / "sg13g2_stdcell_typ_1p20V_25C.lib")
     ]
 
     pdk = PDK(
@@ -278,29 +255,13 @@ def PDK_SG13G2(pdk_root: str | Path = "") -> PDK:
         lefs=[path for path in lef_paths if path.is_file()],
         libs=[path for path in lib_paths if path.is_file()],
         site_core="CoreSite",
-        buffers=[
-            "sg13g2_buf_1",
-            "sg13g2_buf_2",
-            "sg13g2_buf_4",
-            "sg13g2_buf_8",
-            "sg13g2_buf_16"
-        ],
-        fillers=[
-            "sg13g2_fill_1",
-            "sg13g2_fill_2",
-            "sg13g2_decap_4",
-            "sg13g2_decap_8"
-        ],
+        buffers=["sg13g2_buf_1", "sg13g2_buf_2", "sg13g2_buf_4", "sg13g2_buf_8", "sg13g2_buf_16"],
+        fillers=["sg13g2_fill_1", "sg13g2_fill_2", "sg13g2_decap_4", "sg13g2_decap_8"],
         tie_high_cell="sg13g2_tiehi",
         tie_high_port="L_HI",
         tie_low_cell="sg13g2_tielo",
         tie_low_port="L_LO",
-        dont_use=[
-            "sg13g2_lgcp_1",
-            "sg13g2_sighold",
-            "sg13g2_slgcp_1",
-            "sg13g2_dfrbp_2"
-        ]
+        dont_use=["sg13g2_lgcp_1", "sg13g2_sighold", "sg13g2_slgcp_1", "sg13g2_dfrbp_2"],
     )
 
     return pdk

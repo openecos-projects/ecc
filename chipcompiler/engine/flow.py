@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 import hashlib
 import logging
@@ -20,10 +19,10 @@ from chipcompiler.utility.log import redirect_stdio_to_file
 logger = logging.getLogger(__name__)
 
 
-def get_process_rss_mb(pid : int) -> float:
+def get_process_rss_mb(pid: int) -> float:
     peak_memory = 0
     try:
-        with open(f"/proc/{pid}/status", 'r') as f:
+        with open(f"/proc/{pid}/status") as f:
             for line in f:
                 if line.startswith("VmRSS:"):
                     rss_kb = int(line.split()[1])
@@ -33,23 +32,23 @@ def get_process_rss_mb(pid : int) -> float:
         pass
     return peak_memory
 
-def track_current_process_memory(pid : int,
-                                 stop_event : Event,
-                                 peak_memory : list[float]):
+
+def track_current_process_memory(pid: int, stop_event: Event, peak_memory: list[float]):
     while not stop_event.is_set():
         peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
         stop_event.wait(0.1)
     peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
 
+
 class EngineFlow:
-    def __init__(self, workspace : Workspace, engine_db : EngineDB = None):
+    def __init__(self, workspace: Workspace, engine_db: EngineDB = None):
         self.workspace = workspace
         self.workspace_steps = []
-        self.engine_db = engine_db # db engine for this flow
-        
+        self.engine_db = engine_db  # db engine for this flow
+
         if self.workspace is not None:
             self.load()
-    
+
     def build_default_steps(self):
         # Flow step sequences
         steps = []
@@ -66,100 +65,84 @@ class EngineFlow:
         steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
         # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
         # steps.append(self.init_flow_step(StepEnum.SIGNOFF, "ecc", StateEnum.Unstart))
-        
-        self.workspace.flow.data = {"steps" : steps}
-        
+
+        self.workspace.flow.data = {"steps": steps}
+
         self.save()
-    
+
     def has_init(self):
-        return True if self.workspace is not None and len(self.workspace.flow.data.get("steps", [])) > 0 else False
-    
-    def init_flow_step(self,
-                  step : StepEnum | str,
-                  tool : str,
-                  state : str | StateEnum):
+        return self.workspace is not None and len(self.workspace.flow.data.get("steps", [])) > 0
+
+    def init_flow_step(self, step: StepEnum | str, tool: str, state: str | StateEnum):
         step_value = step.value if isinstance(step, StepEnum) else step
         state_value = state.value if isinstance(state, StateEnum) else state
         return {
-            "name" : step_value, # step name
-            "tool" : tool, # eda tool name
-            "state" : state_value, # step state
-            "runtime" : "", # step run time
-            "peak memory (mb)" : 0, # step peak memory
-            "info" : {} # step additional infomation
+            "name": step_value,  # step name
+            "tool": tool,  # eda tool name
+            "state": state_value,  # step state
+            "runtime": "",  # step run time
+            "peak memory (mb)": 0,  # step peak memory
+            "info": {},  # step additional infomation
         }
-        
-    def add_step(self,
-                 step : StepEnum | str,
-                 tool : str,
-                 state : str | StateEnum):
+
+    def add_step(self, step: StepEnum | str, tool: str, state: str | StateEnum):
         steps = self.workspace.flow.data.get("steps", [])
         steps.append(self.init_flow_step(step, tool, state))
-        
-        self.workspace.flow.data = {"steps" : steps}
-        
+
+        self.workspace.flow.data = {"steps": steps}
+
         self.save()
-    
+
     def load(self) -> bool:
         """
         load flow config json from workspace
         """
         from chipcompiler.utility import json_read
+
         if not self.workspace.flow.path:
             self.workspace.flow.data = {}
             return False
         self.workspace.flow.data = json_read(self.workspace.flow.path)
-        if len(self.workspace.flow.data.get("steps", [])) <= 0:
-            return False
+        return len(self.workspace.flow.data.get("steps", [])) > 0
 
-        return True
-        
     def save(self) -> bool:
         """
         save flow to workspace json
         """
         from chipcompiler.utility import json_write
-        return json_write(self.workspace.flow.path, 
-                          self.workspace.flow.data)
-        
-    def get_step(self,
-                 name : str,
-                 tool : str):
+
+        return json_write(self.workspace.flow.path, self.workspace.flow.data)
+
+    def get_step(self, name: str, tool: str):
         for step in self.workspace.flow.data.get("steps", []):
             if step.get("name") == name and step.get("tool") == tool:
                 return step
-        
+
         return None
-    
-    def get_workspace_step(self,
-                           name : str) -> WorkspaceStep | None:
+
+    def get_workspace_step(self, name: str) -> WorkspaceStep | None:
         for workspace_step in self.workspace_steps:
             if workspace_step.name == name:
                 return workspace_step
-        
+
         return None
-    
-    def check_state(self,
-                   name : str,
-                   tool : str,
-                   state : str | StateEnum):
+
+    def check_state(self, name: str, tool: str, state: str | StateEnum):
         """
         return True if step state has been set
         """
         step = self.get_step(name, tool)
         state_value = state.value if isinstance(state, StateEnum) else state
-        if step is not None \
-            and step.get("state") == state_value:
-            return True
-            
-        return False
-        
-    def set_state(self, 
-                 name : str,
-                 tool : str,
-                 state : str | StateEnum,
-                 runtime : str=None,
-                 peak_memory : float=None) -> bool:
+        return step is not None and step.get("state") == state_value
+
+    def set_state(
+        self,
+        name: str,
+        tool: str,
+        state: str | StateEnum,
+        runtime: str = None,
+        peak_memory: float = None,
+    ) -> bool:
         state_value = state.value if isinstance(state, StateEnum) else state
         for step in self.workspace.flow.data.get("steps", []):
             if step.get("name") == name and step.get("tool") == tool:
@@ -171,35 +154,37 @@ class EngineFlow:
 
                 self.save()
                 return True
-            
+
         return False
-    
+
     def clear_states(self):
         from chipcompiler.data import StateEnum
+
         for step in self.workspace.flow.data.get("steps", []):
             step["state"] = StateEnum.Unstart.value
             step["runtime"] = ""
             step["peak memory (mb)"] = 0
-            
+
         self.save()
-        
+
     def is_flow_success(self):
         """
         check all steps success
         """
         from chipcompiler.data import StateEnum
+
         for step in self.workspace.flow.data.get("steps", []):
-            if(step["state"] != StateEnum.Success.value):
+            if step["state"] != StateEnum.Success.value:
                 return False
-            
+
         return True
-    
-    def check_step_result(self,
-                          workspace_step : WorkspaceStep):
+
+    def check_step_result(self, workspace_step: WorkspaceStep):
         """
         check step output exist
         """
         import os
+
         success = False
         output = workspace_step.output
         # HARDEN/RCX/GDS results live on the place-and-route (ecc) output leaves.
@@ -209,11 +194,14 @@ class EngineFlow:
                 if os.path.exists(output.verilog or ""):
                     success = True
             case StepEnum.HARDEN.value:
-                if ecc_output and os.path.exists(ecc_output.lef or "") and \
-                    os.path.exists(ecc_output.lib or ""):
+                if (
+                    ecc_output
+                    and os.path.exists(ecc_output.lef or "")
+                    and os.path.exists(ecc_output.lib or "")
+                ):
                     success = True
             case StepEnum.RCX.value:
-                for spef in (ecc_output.spef if ecc_output else []):
+                for spef in ecc_output.spef if ecc_output else []:
                     if not os.path.exists(spef):
                         break
                 success = True
@@ -223,14 +211,15 @@ class EngineFlow:
                 | StepEnum.TIMING_OPT_HOLD.value
                 | StepEnum.TIMING_OPT_SETUP.value
             ):
-                if os.path.exists(output.def_ or "") and \
-                    os.path.exists(output.verilog or ""):
+                if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
-            case default:
+            case _:
                 gds = ecc_output.gds if ecc_output else None
-                if os.path.exists(output.def_ or "") and \
-                    os.path.exists(output.verilog or "") and \
-                        os.path.exists(gds or ""):
+                if (
+                    os.path.exists(output.def_ or "")
+                    and os.path.exists(output.verilog or "")
+                    and os.path.exists(gds or "")
+                ):
                     success = True
         return success
 
@@ -260,50 +249,54 @@ class EngineFlow:
                 input_verilog = pre_step.output.verilog
                 input_db = pre_step.output.db
 
-            from chipcompiler.tools import create_step, run_step
+            from chipcompiler.tools import create_step
+
             # create workspace step
-            eda_step = create_step(workspace=self.workspace,
-                                   step=step["name"],
-                                   eda=step["tool"],
-                                   input_def=input_def,
-                                   input_verilog=input_verilog,
-                                   input_db=input_db,
-                                   initialize_config=True)
+            eda_step = create_step(
+                workspace=self.workspace,
+                step=step["name"],
+                eda=step["tool"],
+                input_def=input_def,
+                input_verilog=input_verilog,
+                input_db=input_db,
+                initialize_config=True,
+            )
             # save workspace step
             if eda_step is not None:
-                if pre_step is not None \
-                    and pre_step.name == StepEnum.RCX.value \
-                    and eda_step.name == StepEnum.STA.value \
-                    and isinstance(eda_step.output, EccOutput) \
-                    and isinstance(pre_step.output, EccOutput):
+                if (
+                    pre_step is not None
+                    and pre_step.name == StepEnum.RCX.value
+                    and eda_step.name == StepEnum.STA.value
+                    and isinstance(eda_step.output, EccOutput)
+                    and isinstance(pre_step.output, EccOutput)
+                ):
                     eda_step.output.spef = pre_step.output.spef
                 self.workspace_steps.append(eda_step)
                 pre_step = eda_step
             else:
                 # error create step, TBD
                 pass
-            
+
     def init_db_engine(self) -> bool:
         if len(self.workspace_steps) <= 0:
             return False
-        
-        # check ecc is initialized by last step, if exist and success, use it to init db engine directly.
+
+        # check ecc is initialized by last step, if exist and success,
+        # use it to init db engine directly.
         if self.engine_db is None:
             self.engine_db = EngineDB(workspace=self.workspace)
         else:
             if self.engine_db.has_init():
                 return True
-        
+
         # init engine step by last workpsace step data if all step run success
         workspace_step = None
         for ws_step in self.workspace_steps:
-            if not self.check_state(name=ws_step.name,
-                                    tool=ws_step.tool,
-                                    state=StateEnum.Success):
+            if not self.check_state(name=ws_step.name, tool=ws_step.tool, state=StateEnum.Success):
                 # use the first unsuccess step to setup db engine
                 workspace_step = ws_step
                 break
-                                
+
         return self.engine_db.create_db_engine(step=workspace_step)
 
     def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
@@ -357,21 +350,25 @@ class EngineFlow:
         }
         payload["constraints"] = {"sdc": timing_constraints}
         return json_write(file_path=feature_path, data=payload)
-    
-    def run_steps(self, rerun=False) -> bool:
+
+    def run_steps(self, *, rerun=False) -> bool:
         """
         run all flow steps
         """
-        
-        for workspace_step in self.workspace_steps: 
-            self.workspace.logger.log_section(f"{workspace_step.tool} - begin step - {workspace_step.name}")
+
+        for workspace_step in self.workspace_steps:
+            self.workspace.logger.log_section(
+                f"{workspace_step.tool} - begin step - {workspace_step.name}"
+            )
             self.init_db_engine()
-            state = self.run_step(workspace_step, rerun)
-            
+            state = self.run_step(workspace_step, rerun=rerun)
+
             log_flow(workspace=self.workspace)
-            self.workspace.logger.log_section(f"{workspace_step.tool} - end step - {workspace_step.name}")
-            
-            match(state):
+            self.workspace.logger.log_section(
+                f"{workspace_step.tool} - end step - {workspace_step.name}"
+            )
+
+            match state:
                 case StateEnum.Success:
                     continue
                 case StateEnum.Invalid:
@@ -384,12 +381,10 @@ class EngineFlow:
                     return False
                 case StateEnum.Ongoing:
                     return False
-        
+
         return True
-            
-    def run_step(self,
-                 workspace_step : WorkspaceStep | str,
-                 rerun : bool = False) -> StateEnum:
+
+    def run_step(self, workspace_step: WorkspaceStep | str, *, rerun: bool = False) -> StateEnum:
         """
         run single step
         """
@@ -397,12 +392,12 @@ class EngineFlow:
             workspace_step = self.get_workspace_step(workspace_step)
         if workspace_step is None:
             return StateEnum.Invalid
-            
+
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
 
-        if not rerun and self.check_state(name=workspace_step.name,
-                            tool=workspace_step.tool,
-                            state=StateEnum.Success):
+        if not rerun and self.check_state(
+            name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Success
+        ):
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             return StateEnum.Success
@@ -410,9 +405,7 @@ class EngineFlow:
         # set state ongoing
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()
-        self.set_state(name=workspace_step.name,
-                       tool=workspace_step.tool,
-                       state=StateEnum.Ongoing)
+        self.set_state(name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Ongoing)
 
         # run step
         log_file = workspace_step.log.file or ""
@@ -423,7 +416,7 @@ class EngineFlow:
                 redirect_stdio_to_file(log_file)
             except Exception:
                 traceback.print_exc()
-    
+
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
         self.workspace.logger.info(f"[STEP] {step_tag} pid={os.getpid()} started")
 
@@ -431,13 +424,18 @@ class EngineFlow:
         start_memory_mb = get_process_rss_mb(pid)
         peak_memory = [start_memory_mb]
         stop_memory_monitor = Event()
-        memory_monitor = Thread(target=track_current_process_memory,
-                                args=(pid, stop_memory_monitor, peak_memory),
-                                daemon=True)
+        memory_monitor = Thread(
+            target=track_current_process_memory,
+            args=(pid, stop_memory_monitor, peak_memory),
+            daemon=True,
+        )
         memory_monitor.start()
         try:
             from chipcompiler.tools import run_step as run_tool_step
-            result = run_tool_step(workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine)
+
+            result = run_tool_step(
+                workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine
+            )
             self.workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
         except Exception:
             self.workspace.logger.error(f"[STEP] {step_tag} failed with exception")
@@ -453,16 +451,26 @@ class EngineFlow:
         runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
 
         # determine and save state
-        state = (StateEnum.Success
-                 if self.check_step_result(workspace_step=workspace_step)
-                 else StateEnum.Imcomplete)
-        self.set_state(name=workspace_step.name,
-                       tool=workspace_step.tool,
-                       state=state,
-                       runtime=runtime,
-                       peak_memory=peak_memory_mb)
-        self.workspace.logger.info("[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
-                    step_tag, state.value, runtime, peak_memory_mb, 0)
+        state = (
+            StateEnum.Success
+            if self.check_step_result(workspace_step=workspace_step)
+            else StateEnum.Imcomplete
+        )
+        self.set_state(
+            name=workspace_step.name,
+            tool=workspace_step.tool,
+            state=state,
+            runtime=runtime,
+            peak_memory=peak_memory_mb,
+        )
+        self.workspace.logger.info(
+            "[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
+            step_tag,
+            state.value,
+            runtime,
+            peak_memory_mb,
+            0,
+        )
 
         # save layout snapshot on success
         if state == StateEnum.Success:
@@ -492,6 +500,7 @@ class EngineFlow:
                     step_tag,
                 )
             from chipcompiler.tools import save_layout_image
+
             save_layout_image(workspace=self.workspace, step=workspace_step)
 
         self.clear_db_engine_after_step(workspace_step, state)

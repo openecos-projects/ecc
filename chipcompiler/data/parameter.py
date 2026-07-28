@@ -1,52 +1,45 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 
 ICS55_PARAMETERS_TEMPLATE = {
-    "PDK":"ICS55",
-    "Design":"",
-    "Top module":"",
-    "Die" : {
+    "PDK": "ICS55",
+    "Design": "",
+    "Top module": "",
+    "Die": {"Size": [], "Area": 0},
+    "Core": {
         "Size": [],
-        "Area": 0
-    },
-    "Core" : {
-        "Size": [],
-        "Area" : 0,
+        "Area": 0,
         "Bounding box": "",
         "Utilitization": 0.4,
-        "Margin" : [2, 2],
-        "Aspect ratio" : 1
+        "Margin": [2, 2],
+        "Aspect ratio": 1,
     },
-    "Max fanout" : 20,
-    "Target density" : 0.2,
-    "Target overflow" : 0.1,
+    "Max fanout": 20,
+    "Target density": 0.2,
+    "Target overflow": 0.1,
     "Global right padding": 0,
     "Cell padding x": 300,
     "Routability opt flag": 1,
-    "Clock" : "",
-    "Frequency max [MHz]" : 100,
-    "Bottom layer" : "MET2",
-    "Top layer" : "MET5"
+    "Clock": "",
+    "Frequency max [MHz]": 100,
+    "Bottom layer": "MET2",
+    "Top layer": "MET5",
 }
 SG13G2_PARAMETERS_TEMPLATE = {
     "PDK": "sg13g2",
     "Design": "",
     "Top module": "",
-    "Die": {
-        "Size": [],
-        "Area": 0
-    },
+    "Die": {"Size": [], "Area": 0},
     "Core": {
         "Size": [],
         "Area": 0,
         "Bounding box": "",
-        "Utilitization": 0.65,       
-        "Margin": [17.5, 17.5],      
-        "Aspect ratio": 1
+        "Utilitization": 0.65,
+        "Margin": [17.5, 17.5],
+        "Aspect ratio": 1,
     },
     "Max fanout": 20,
     "Target density": 0.65,
@@ -56,49 +49,55 @@ SG13G2_PARAMETERS_TEMPLATE = {
     "Routability opt flag": 1,
     "Clock": "",
     "Frequency max [MHz]": 100,
-    "Bottom layer": "Metal2",        
-    "Top layer": "Metal5",           
+    "Bottom layer": "Metal2",
+    "Top layer": "Metal5",
     "Floorplan": {
-        "Tap distance": 0,           
-        "Auto place pin": {
-            "layer": "Metal3", 
-            "width": 300,
-            "height": 600,
-            "sides": []
-        },
+        "Tap distance": 0,
+        "Auto place pin": {"layer": "Metal3", "width": 300, "height": 600, "sides": []},
         "Tracks": [
             {"layer": "Metal1", "x start": 0, "x step": 420, "y start": 0, "y step": 420},
-            {"layer": "Metal2", "x start": 0, "x step": 480, "y start": 0, "y step": 480},  
+            {"layer": "Metal2", "x start": 0, "x step": 480, "y start": 0, "y step": 480},
             {"layer": "Metal3", "x start": 0, "x step": 420, "y start": 0, "y step": 420},
             {"layer": "Metal4", "x start": 0, "x step": 480, "y start": 0, "y step": 480},
             {"layer": "Metal5", "x start": 0, "x step": 420, "y start": 0, "y step": 420},
-        ]
+        ],
     },
     "PDN": {
         "IO": [
             {"net name": "VDD", "direction": "INOUT", "is power": True},
-            {"net name": "VSS", "direction": "INOUT", "is power": False}
+            {"net name": "VSS", "direction": "INOUT", "is power": False},
         ],
         "Global connect": [
             {"net name": "VDD", "instance pin name": "VDD", "is power": True},
-            {"net name": "VSS", "instance pin name": "VSS", "is power": False}
+            {"net name": "VSS", "instance pin name": "VSS", "is power": False},
         ],
         "Grid": {
             "layer": "Metal1",
             "power net": "VDD",
             "power ground": "VSS",
             "width": 0.44,
-            "offset": 0
+            "offset": 0,
         },
         "Stripe": [
-            {"layer": "Metal4", "power net": "VDD", "ground net": "VSS", "width": 1.6, "pitch": 20, "offset": 1},
-            {"layer": "Metal5", "power net": "VDD", "ground net": "VSS", "width": 1.6, "pitch": 20, "offset": 1}
+            {
+                "layer": "Metal4",
+                "power net": "VDD",
+                "ground net": "VSS",
+                "width": 1.6,
+                "pitch": 20,
+                "offset": 1,
+            },
+            {
+                "layer": "Metal5",
+                "power net": "VDD",
+                "ground net": "VSS",
+                "width": 1.6,
+                "pitch": 20,
+                "offset": 1,
+            },
         ],
-        "Connect layers": [
-            {"layers": ["Metal1", "Metal5"]},
-            {"layers": ["Metal4", "Metal5"]}
-        ]
-    }
+        "Connect layers": [{"layers": ["Metal1", "Metal5"]}, {"layers": ["Metal4", "Metal5"]}],
+    },
 }
 
 ICS55_DESIGN_PARAMETERS = {
@@ -110,27 +109,33 @@ ICS55_DESIGN_PARAMETERS = {
     }
 }
 
+
 @dataclass
 class Parameters:
     """
     Dataclass for design parameters
     """
-    path : Path | None = None # parameters file path
-    data : dict = field(default_factory=dict) # parameters data
 
-def load_parameter(path : Path) -> Parameters:
+    path: Path | None = None  # parameters file path
+    data: dict = field(default_factory=dict)  # parameters data
+
+
+def load_parameter(path: Path) -> Parameters:
     from chipcompiler.utility import json_read
+
     parameter = Parameters()
     parameter.path = Path(path)
     parameter.data = json_read(parameter.path)
     return parameter
-    
-def save_parameter(parameter : Parameters) -> bool:
+
+
+def save_parameter(parameter: Parameters) -> bool:
     from chipcompiler.utility import json_write
+
     if parameter.path is None:
         return False
-    return json_write(file_path=parameter.path,
-                      data=parameter.data)
+    return json_write(file_path=parameter.path, data=parameter.data)
+
 
 def get_parameters(pdk_name: str = "", path: Path | None = None) -> Parameters:
     parameter_path = Path(path) if path else None
@@ -148,7 +153,8 @@ def get_parameters(pdk_name: str = "", path: Path | None = None) -> Parameters:
 
     return parameters
 
-def get_design_parameters(pdk_name : str, design : str = "", path : Path | None = None) -> Parameters:
+
+def get_design_parameters(pdk_name: str, design: str = "", path: Path | None = None) -> Parameters:
     """
     Return parameters resolved by PDK and optional design name.
     """
@@ -163,7 +169,8 @@ def get_design_parameters(pdk_name : str, design : str = "", path : Path | None 
     parameters.data.update(design_info)
     return parameters
 
-def update_parameters(parameters_src : dict, parameters_target : dict) -> dict:
+
+def update_parameters(parameters_src: dict, parameters_target: dict) -> dict:
     """
     Update parameters_target with data from parameters_src.
     If a value is a list, it will be replaced entirely.

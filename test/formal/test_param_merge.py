@@ -123,7 +123,7 @@ def test_scalar_override_wins(num_keys: int) -> None:
                     src[i] != tgt[i],
                     res[i] != src[i],
                 ),
-                True,
+                c=True,
             )
         )
 
@@ -144,7 +144,7 @@ def test_absent_keys_preserved(num_keys: int) -> None:
             If(
                 k == i,
                 And(Not(src_p[i]), tgt_p[i], res[i] != tgt[i]),
-                True,
+                c=True,
             )
         )
 
@@ -172,7 +172,7 @@ def test_list_replaced_not_appended(num_keys: int) -> None:
                     src[i] != tgt[i],
                     res[i] != src[i],
                 ),
-                True,
+                c=True,
             )
         )
 
@@ -193,7 +193,7 @@ def test_new_key_added(num_keys: int) -> None:
             If(
                 k == i,
                 And(src_p[i], Not(tgt_p[i]), res[i] != src[i]),
-                True,
+                c=True,
             )
         )
 

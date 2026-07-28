@@ -22,7 +22,7 @@ class YosysChecklist:
     }
 
     def __init__(
-        self, workspace: Workspace, workspace_step: YosysStep, init_checklist: bool = True
+        self, workspace: Workspace, workspace_step: YosysStep, *, init_checklist: bool = True
     ):
         self.workspace = workspace
         self.workspace_step = workspace_step

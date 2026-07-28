@@ -2,8 +2,8 @@ from pathlib import Path
 
 from chipcompiler.utility.path import (
     optional_path,
-    path_list,
     path_is_within,
+    path_list,
     path_text,
     path_texts,
     stringify_paths,

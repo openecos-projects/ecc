@@ -15,6 +15,7 @@ from chipcompiler.tools.ecc.sta_qor import (
 from chipcompiler.utility import json_read
 
 
+
 class EccChecklist:
     CHECKLIST_ITEMS = {
         StepEnum.FLOORPLAN: [
@@ -119,7 +120,7 @@ class EccChecklist:
     }
 
     def __init__(
-        self, workspace: Workspace, workspace_step: EccStep, init_checklist: bool = True
+        self, workspace: Workspace, workspace_step: EccStep, *, init_checklist: bool = True
     ):
         self.workspace = workspace
         self.workspace_step = workspace_step
@@ -168,7 +169,37 @@ class EccChecklist:
     def check(self) -> bool:
         return refresh_step_checklist(self.workspace, self.workspace_step)
 
-    def check_file(self, path: str, text_tokens: list | None = None) -> bool:
+
+    def update_item(self, step: str, type: str, item: str, state: str | CheckState, info: str = ""):
+        checklist = Checklist(path=self.workspace_step.checklist.path or "")
+        checklist.update(step=step, type=type, item=item, state=state, info=info)
+
+    def check(self) -> bool:
+        step = StepEnum(self.workspace_step.name)
+        checker_class = {
+            StepEnum.FLOORPLAN: EccFloorplanChecklist,
+            StepEnum.NETLIST_OPT: EccNetlistOptChecklist,
+            StepEnum.CTS: EccCtsChecklist,
+            StepEnum.TIMING_OPT_DRV: EccTimingOptDrvChecklist,
+            StepEnum.TIMING_OPT_HOLD: EccTimingOptHoldChecklist,
+            StepEnum.TIMING_OPT_SETUP: EccTimingOptSetupChecklist,
+            StepEnum.ROUTING: EccRoutingChecklist,
+            StepEnum.DRC: EccDrcChecklist,
+            StepEnum.FILLER: EccFillerChecklist,
+            StepEnum.HARDEN: EccHardenChecklist,
+            StepEnum.RCX: EccRcxChecklist,
+            StepEnum.STA: EccStaChecklist,
+        }.get(step)
+        if checker_class is None:
+            return True
+
+        return checker_class(
+            self.workspace,
+            self.workspace_step,
+            init_checklist=False,
+        ).check()
+
+    def check_file(self, path: str | Path, text_tokens: list | None = None) -> bool:
         if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
             return False
 
@@ -556,9 +587,7 @@ class EccTimingOptDrvChecklist(EccChecklist):
 
         try:
             with open(
-                self.workspace_step.log.file or "",
-                encoding="utf-8",
-                errors="ignore",
+                self.workspace_step.log.file or "", encoding="utf-8", errors="ignore"
             ) as file:
                 log_text = file.read().lower()
         except OSError:
@@ -741,9 +770,7 @@ class EccRoutingChecklist(EccChecklist):
         step = StepEnum.ROUTING.value
         metrics = self.qor_metrics()
         db = json_read(self.workspace_step.feature.db or "")
-        feature = json_read(self.workspace_step.feature.step or "").get(
-            StepEnum.ROUTING.value, {}
-        )
+        feature = json_read(self.workspace_step.feature.step or "").get(StepEnum.ROUTING.value, {})
         config = json_read(self.workspace.config.get(StepEnum.ROUTING.value, ""))
 
         layers = db.get("Layers", {})
@@ -889,9 +916,7 @@ class EccFillerChecklist(EccChecklist):
 
         try:
             with open(
-                self.workspace_step.log.file or "",
-                encoding="utf-8",
-                errors="ignore",
+                self.workspace_step.log.file or "", encoding="utf-8", errors="ignore"
             ) as file:
                 log_text = file.read()
         except OSError:

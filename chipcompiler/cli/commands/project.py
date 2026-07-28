@@ -34,26 +34,31 @@ def register_project_commands(app: typer.Typer) -> None:
 
 
 def init_cmd(
+    *,
     name: Annotated[str, typer.Argument()],
     plain: PlainOption = False,
 ) -> None:
-    command_input = InitInput(name=name, output=output_options(False, False, plain))
+    command_input = InitInput(
+        name=name, output=output_options(json_output=False, jsonl=False, plain=plain)
+    )
     execute_command("init", command_input, project_handlers.init)
 
 
 def check_cmd(
+    *,
     project: ProjectOption = None,
     json_output: JsonOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = CheckInput(
-        output=output_options(json_output, False, plain),
+        output=output_options(json_output=json_output, jsonl=False, plain=plain),
         project=project_options(project),
     )
     execute_command("check", command_input, project_handlers.check)
 
 
 def run_cmd(
+    *,
     project: ProjectOption = None,
     overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
     json_output: JsonOption = False,
@@ -68,7 +73,7 @@ def run_cmd(
     plain: PlainOption = False,
 ) -> None:
     command_input = RunInput(
-        output=output_options(json_output, jsonl, plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
         overwrite=overwrite,
         param_set=tuple(param_set or ()),
@@ -77,6 +82,7 @@ def run_cmd(
 
 
 def status_cmd(
+    *,
     project: ProjectOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
@@ -84,13 +90,14 @@ def status_cmd(
     run_id: RunIdOption = None,
 ) -> None:
     command_input = StatusInput(
-        output=output_options(json_output, jsonl, plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project, run_id),
     )
     execute_command("status", command_input, inspect_handlers.status)
 
 
 def log_cmd(
+    *,
     step: Annotated[str | None, typer.Argument()] = None,
     project: ProjectOption = None,
     errors: Annotated[bool, typer.Option("--errors", hidden=True)] = False,
@@ -100,7 +107,7 @@ def log_cmd(
     run_id: RunIdOption = None,
 ) -> None:
     command_input = LogInput(
-        output=output_options(json_output, jsonl, plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project, run_id),
         step=step,
         errors=errors,
@@ -109,6 +116,7 @@ def log_cmd(
 
 
 def config_cmd(
+    *,
     step: Annotated[str | None, typer.Argument()] = None,
     resolved: Annotated[bool, typer.Option("--resolved")] = False,
     project: ProjectOption = None,
@@ -120,7 +128,7 @@ def config_cmd(
     if not resolved:
         raise typer.BadParameter("--resolved is required", param_hint="--resolved")
     command_input = ConfigInput(
-        output=output_options(json_output, jsonl, plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project, run_id),
         step=step,
         resolved=resolved,

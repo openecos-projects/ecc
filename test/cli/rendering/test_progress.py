@@ -34,7 +34,7 @@ def _strip_ansi(text):
 
 
 class FakeTTYStderr:
-    def __init__(self, isatty_value=True):
+    def __init__(self, *, isatty_value=True):
         self._isatty = isatty_value
         self.written = []
 
@@ -86,32 +86,32 @@ def _make_ctx(mode=OutputMode.TEXT):
 
 class TestSupportsColor:
     def test_enabled_text_tty(self):
-        assert (
-            supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "xterm-256color"}) is True
-        )
+        env = {"TERM": "xterm-256color"}
+        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is True
 
     def test_disabled_non_tty(self):
-        assert supports_color(FakeTTYStderr(False), OutputMode.TEXT) is False
+        assert supports_color(FakeTTYStderr(isatty_value=False), OutputMode.TEXT) is False
 
     def test_disabled_no_isattr(self):
         assert supports_color(io.StringIO(), OutputMode.TEXT) is False
 
     def test_disabled_no_color(self):
-        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"NO_COLOR": "1"}) is False
+        env = {"NO_COLOR": "1"}
+        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is False
 
     def test_disabled_term_dumb(self):
-        assert supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "dumb"}) is False
+        env = {"TERM": "dumb"}
+        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is False
 
     def test_disabled_json(self):
-        assert supports_color(FakeTTYStderr(True), OutputMode.JSON) is False
+        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.JSON) is False
 
     def test_disabled_jsonl(self):
-        assert supports_color(FakeTTYStderr(True), OutputMode.JSONL) is False
+        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.JSONL) is False
 
     def test_enabled_with_clean_env(self):
-        assert (
-            supports_color(FakeTTYStderr(True), OutputMode.TEXT, {"TERM": "xterm-256color"}) is True
-        )
+        env = {"TERM": "xterm-256color"}
+        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is True
 
 
 # -- style --
@@ -119,11 +119,11 @@ class TestSupportsColor:
 
 class TestStyle:
     def test_applies_code_when_enabled(self):
-        result = style("hello", GREEN, True)
+        result = style("hello", GREEN, enabled=True)
         assert result == f"{GREEN}hello{RESET}"
 
     def test_passthrough_when_disabled(self):
-        assert style("hello", GREEN, False) == "hello"
+        assert style("hello", GREEN, enabled=False) == "hello"
 
 
 # -- should_enable_run_progress --
@@ -132,23 +132,23 @@ class TestStyle:
 class TestShouldEnableRunProgress:
     def test_enabled_text_tty(self):
         ctx = _make_ctx(OutputMode.TEXT)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(True)) is True
+        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is True
 
     def test_disabled_json(self):
         ctx = _make_ctx(OutputMode.JSON)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(True)) is False
+        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is False
 
     def test_disabled_jsonl(self):
         ctx = _make_ctx(OutputMode.JSONL)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(True)) is False
+        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is False
 
     def test_disabled_plain(self):
         ctx = _make_ctx(OutputMode.PLAIN)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(True)) is False
+        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is False
 
     def test_disabled_no_tty(self):
         ctx = _make_ctx(OutputMode.TEXT)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(False)) is False
+        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=False)) is False
 
     def test_disabled_no_isattr(self):
         ctx = _make_ctx(OutputMode.TEXT)
@@ -293,8 +293,7 @@ class TestIncrementalLogTail:
         assert tail.poll(now=10.0) == "StaDataPropagation.cc:710] data bwd propagation start"
 
         assert (
-            tail.poll(now=16.0)
-            == "running fixfanout, last log 6s ago: "
+            tail.poll(now=16.0) == "running fixfanout, last log 6s ago: "
             "StaDataPropagation.cc:710] data bwd propagation start"
         )
         assert tail.last_line == "StaDataPropagation.cc:710] data bwd propagation start"
@@ -380,7 +379,7 @@ class TestMonitorLogProgress:
 
 class TestRunProgressRenderer:
     def test_running_writes_log_prefix(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.running("working...")
         output = "".join(buf.written)
@@ -388,13 +387,13 @@ class TestRunProgressRenderer:
         assert "  log: working..." in output
 
     def test_clear_noop_without_transient(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.clear()
         assert buf.written == []
 
     def test_truncates_long_running_text(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 20)
         r.running("x" * 100)
         output = "".join(buf.written)
@@ -402,14 +401,14 @@ class TestRunProgressRenderer:
         assert len(display) <= 20
 
     def test_start_step_emits_header(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.start_step("synthesis", "yosys")
         output = "".join(buf.written)
         assert "> synthesis (yosys)\n" in output
 
     def test_start_step_separator_after_first(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.start_step("synthesis", "yosys")
         r.start_step("floorplan", "ecc")
@@ -417,21 +416,21 @@ class TestRunProgressRenderer:
         assert "\n> floorplan (ecc)\n" in output
 
     def test_start_step_no_separator_before_first(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.start_step("synthesis", "yosys")
         output = "".join(buf.written)
         assert not output.startswith("\n")
 
     def test_start_run_emits_header(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.start_run("default", "/tmp/runs/default")
         output = "".join(buf.written)
         assert "[run] default workspace=/tmp/runs/default\n" in output
 
     def test_finish_step_success(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.finish_step(
             "synthesis",
@@ -440,7 +439,7 @@ class TestRunProgressRenderer:
             "0:00:06",
             "output/synth.log",
             "ecc log synthesis --errors",
-            True,
+            success=True,
         )
         output = "".join(buf.written)
         assert "✓ synthesis (yosys) 0:00:06\n" in output
@@ -448,7 +447,7 @@ class TestRunProgressRenderer:
         assert "  inspect: ecc log synthesis --errors\n" in output
 
     def test_finish_step_non_success(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.finish_step(
             "placement",
@@ -457,7 +456,7 @@ class TestRunProgressRenderer:
             "0:00:00",
             "",
             "ecc log placement --errors",
-            False,
+            success=False,
         )
         output = "".join(buf.written)
         assert "✗ placement (dreamplace) incomplete 0:00:00\n" in output
@@ -465,24 +464,24 @@ class TestRunProgressRenderer:
         assert "  inspect: ecc log placement --errors\n" in output
 
     def test_finish_step_clears_transient_to_clean_line(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.running("transient log")
-        r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", True)
+        r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", success=True)
         output = "".join(buf.written)
         # The final clear before the summary must move to a clean line
         assert "\r\x1b[K\n✓ synthesis" in output
 
     def test_finish_step_non_success_clears_transient_to_clean_line(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
         r.running("transient log")
-        r.finish_step("placement", "dreamplace", "incomplete", "0:00:00", "", "cmd", False)
+        r.finish_step("placement", "dreamplace", "incomplete", "0:00:00", "", "cmd", success=False)
         output = "".join(buf.written)
         assert "\r\x1b[K\n✗ placement" in output
 
     def test_running_with_color(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
         r.running("working...")
         output = "".join(buf.written)
@@ -490,24 +489,24 @@ class TestRunProgressRenderer:
         assert "log:" in output
 
     def test_running_without_color(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=False)
         r.running("working...")
         output = "".join(buf.written)
         assert DIM not in output
 
     def test_no_color_codes_when_disabled(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=False)
         r.start_run("default", "/tmp")
         r.start_step("synthesis", "yosys")
-        r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", True)
+        r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", success=True)
         output = "".join(buf.written)
         for code in (BOLD, DIM, CYAN, GREEN, RED):
             assert code not in output
 
     def test_start_step_with_color(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
         r.start_step("synthesis", "yosys")
         output = "".join(buf.written)
@@ -518,23 +517,23 @@ class TestRunProgressRenderer:
         assert cyan_pos < marker_pos
 
     def test_start_run_with_color(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
         r.start_run("default", "/tmp")
         output = "".join(buf.written)
         assert BOLD in output
 
     def test_finish_step_success_with_color(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
-        r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", True)
+        r.finish_step("synthesis", "yosys", "success", "0:00:06", "log", "cmd", success=True)
         output = "".join(buf.written)
         assert GREEN in output
 
     def test_finish_step_non_success_with_color(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80, color=True)
-        r.finish_step("placement", "dreamplace", "incomplete", "0:00:00", "", "cmd", False)
+        r.finish_step("placement", "dreamplace", "incomplete", "0:00:00", "", "cmd", success=False)
         output = "".join(buf.written)
         assert RED in output
 
@@ -544,7 +543,7 @@ class TestRunProgressRenderer:
 
 class TestStableProgressStream:
     def test_fallback_returns_stream_without_fileno(self):
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
 
         stream = progress._stable_stream_from(buf)
 
@@ -648,10 +647,12 @@ def _make_step(name, tool, log_file=""):
 
 def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=None):
     if init_db_engine_fn is None:
+
         def init_db_engine_fn(self):
             return None
 
     if check_state_fn is None:
+
         def check_state_fn(self, name, tool, state):
             return False
 
@@ -676,7 +677,7 @@ class TestRunFlowWithProgress:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         output = "".join(buf.written)
@@ -698,7 +699,7 @@ class TestRunFlowWithProgress:
             fake_run_step,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is False
         assert call_count[0] == 2
@@ -710,7 +711,7 @@ class TestRunFlowWithProgress:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(), "myproject", buf)
         plain = _strip_ansi("".join(buf.written))
         assert "  inspect: ecc log synthesis --project myproject\n" in plain
@@ -725,7 +726,7 @@ class TestRunFlowWithProgress:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         assert "  log:" in output
@@ -740,7 +741,7 @@ class TestRunFlowWithProgress:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         plain = _strip_ansi("".join(buf.written))
@@ -754,7 +755,7 @@ class TestRunFlowWithProgress:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         assert "[run]" in output
@@ -770,7 +771,7 @@ class TestRunFlowWithProgress:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         output = "".join(buf.written)
@@ -791,7 +792,7 @@ class TestRunFlowWithProgress:
             fake_run_step,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
@@ -812,7 +813,7 @@ class TestRunFlowWithProgress:
             fake_run_step,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         plain = _strip_ansi("".join(buf.written))
@@ -835,7 +836,7 @@ class TestRunFlowWithProgress:
             fake_run_step,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         plain = _strip_ansi("".join(buf.written))
@@ -849,7 +850,7 @@ class TestRunFlowWithProgress:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
 
         assert "yosys - begin step - Synthesis" in sections
@@ -873,7 +874,7 @@ class TestRunFlowWithProgress:
             fake_run_step,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
 
         begin_idx = call_order.index(("section", "ecc - begin step - Floorplan"))
@@ -900,7 +901,7 @@ class TestRunFlowWithProgress:
             init_db_engine_fn=fake_init_db_engine,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
 
         begin_idx = call_order.index(("section", "yosys - begin step - Synthesis"))
@@ -1021,7 +1022,7 @@ class TestRunFlowWithProgress:
             check_state_fn=fake_check_state,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
 
         assert result is True
@@ -1039,7 +1040,7 @@ class TestRunFlowWithProgress:
             raising_run_step,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         with pytest.raises(RuntimeError, match="tool crashed"):
             run_flow_with_progress(flow, _make_ctx(), None, buf)
 
@@ -1056,7 +1057,7 @@ class TestRunFlowWithProgress:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         assert "\x1b[36m" in output  # cyan for step header
@@ -1068,7 +1069,7 @@ class TestRunFlowWithProgress:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(False)
+        buf = FakeTTYStderr(isatty_value=False)
         run_flow_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         for code in (BOLD, CYAN, GREEN, RED, DIM):
@@ -1185,7 +1186,7 @@ class TestFailureContextIntegration:
             fail_step,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
@@ -1203,7 +1204,7 @@ class TestFailureContextIntegration:
             lambda self, s: StateEnum.Success,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is True
         plain = _strip_ansi("".join(buf.written))
@@ -1217,7 +1218,7 @@ class TestFailureContextIntegration:
             lambda self, s: StateEnum.Imcomplete,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
@@ -1236,7 +1237,7 @@ class TestFailureContextIntegration:
             lambda self, s: StateEnum.Imcomplete,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
@@ -1252,7 +1253,7 @@ class TestFailureContextIntegration:
             lambda self, s: StateEnum.Imcomplete,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
@@ -1269,7 +1270,7 @@ class TestFailureContextIntegration:
             lambda self, s: StateEnum.Imcomplete,
         )
 
-        buf = FakeTTYStderr(True)
+        buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         raw = "".join(buf.written)

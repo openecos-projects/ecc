@@ -53,9 +53,7 @@ def _write_fixed_netlist(src_path: str | Path, dst_path: str | Path) -> bool:
     return True
 
 
-def _run_ecc_synthesis_sta(workspace: Workspace,
-                           step: YosysStep,
-                           ecc_module=None) -> bool:
+def _run_ecc_synthesis_sta(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
     """Run optional ECC STA without making ECC a Yosys import dependency."""
     try:
         from chipcompiler.tools.ecc.runner import run_sta_without_spef
@@ -72,9 +70,7 @@ def _run_ecc_synthesis_sta(workspace: Workspace,
         return False
 
 
-def run_step(workspace: Workspace,
-             step: YosysStep,
-             ecc_module=None) -> bool:
+def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
     """
     Run the synthesis step using yosys.
 
@@ -151,18 +147,18 @@ def run_step(workspace: Workspace,
                 step=step,
                 ecc_module=ecc_module,
             )
-            
+
             build_step_metrics(workspace=workspace, step=step)
-            
+
             sub_flow.update_step(step_name="analysis", state=StateEnum.Success)
-            
+
             checklist = YosysChecklist(workspace=workspace, workspace_step=step)
             checklist.check()
-            
+
             return True
         else:
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
-            
+
             print(
                 f"Error: Output netlist not generated at {step.output.verilog}. "
                 f"yosys exit code: {result.returncode}"

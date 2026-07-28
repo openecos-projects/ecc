@@ -15,11 +15,10 @@ def test_redirect_stdout_to_stderr_restores_fd_1_and_fd_2(tmp_path):
         os.dup2(stdout_file.fileno(), 1)
         os.dup2(stderr_file.fileno(), 2)
         try:
-            with redirect_stdout_to_stderr():
-                with open(redirected_target, "wb") as redirected_file:
-                    os.dup2(redirected_file.fileno(), 2)
-                    os.write(1, b"captured stdout\n")
-                    os.write(2, b"captured stderr\n")
+            with redirect_stdout_to_stderr(), open(redirected_target, "wb") as redirected_file:
+                os.dup2(redirected_file.fileno(), 2)
+                os.write(1, b"captured stdout\n")
+                os.write(2, b"captured stderr\n")
 
             os.write(1, b"restored stdout\n")
             os.write(2, b"restored stderr\n")

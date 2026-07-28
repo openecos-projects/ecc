@@ -30,7 +30,7 @@ _EXCEPTION_RE = re.compile(
 )
 
 
-def classify_line(line: str, in_traceback: bool = False) -> LineKind:
+def classify_line(line: str, *, in_traceback: bool = False) -> LineKind:
     if line.strip() == _TRACEBACK_HEADER:
         return LineKind.TRACEBACK
     if in_traceback:
@@ -76,7 +76,7 @@ def annotate_log_lines(lines: list[str]) -> list[LogLine]:
     result = []
     in_traceback = False
     for i, text in enumerate(lines):
-        kind = classify_line(text, in_traceback)
+        kind = classify_line(text, in_traceback=in_traceback)
         if kind == LineKind.TRACEBACK and text.strip() == _TRACEBACK_HEADER:
             in_traceback = True
         elif (
@@ -141,13 +141,14 @@ def render_log_pretty(
     lines: list[str],
     inspect_cmd: str,
     file=None,
+    *,
     color: bool = True,
 ) -> None:
     target = file or sys.stdout
     annotated = annotate_log_lines(lines)
 
-    log_tag = style("[log]", BOLD, color)
-    source_label = f"  {style('source:', DIM, color)}" if color else "  source:"
+    log_tag = style("[log]", BOLD, enabled=color)
+    source_label = f"  {style('source:', DIM, enabled=color)}" if color else "  source:"
     target.write(f"{log_tag} step={step}\n")
     target.write(f"{source_label} {source}\n")
 
@@ -162,7 +163,7 @@ def render_log_pretty(
         else:
             target.write(f"  {label} {ll.text}\n")
 
-    inspect_label = f"  {style('inspect:', DIM, color)}" if color else "  inspect:"
+    inspect_label = f"  {style('inspect:', DIM, enabled=color)}" if color else "  inspect:"
     target.write(f"{inspect_label} {inspect_cmd}\n")
 
 
@@ -210,12 +211,13 @@ def tail_lines_for_log(path: str, max_lines: int = 10) -> list[str]:
 def render_log_listing_pretty(
     records: list[dict],
     file=None,
+    *,
     color: bool = True,
     tail_map: dict | None = None,
 ) -> None:
     target = file or sys.stdout
 
-    log_tag = style("[logs]", BOLD, color)
+    log_tag = style("[logs]", BOLD, enabled=color)
     target.write(f"{log_tag}\n")
 
     for rec in records:
@@ -224,20 +226,22 @@ def render_log_listing_pretty(
         inspect = rec.get("inspect_cmd") or rec.get("inspect", "")
 
         if step:
-            label = f"  {style(step, CYAN, color)}" if color else f"  {step}"
+            label = f"  {style(step, CYAN, enabled=color)}" if color else f"  {step}"
         else:
-            label = f"  {style('run', CYAN, color)}" if color else "  run"
+            label = f"  {style('run', CYAN, enabled=color)}" if color else "  run"
 
         target.write(f"{label}  {source}\n")
 
         if tail_map and source in tail_map:
             tail_lines = tail_map[source]
             if tail_lines:
-                target.write(f"    {style('tail:', DIM, color)}\n" if color else "    tail:\n")
+                target.write(
+                    f"    {style('tail:', DIM, enabled=color)}\n" if color else "    tail:\n"
+                )
                 for tl in tail_lines:
                     target.write(f"      {tl}\n")
 
-        inspect_label = f"  {style('inspect:', DIM, color)}" if color else "  inspect:"
+        inspect_label = f"  {style('inspect:', DIM, enabled=color)}" if color else "  inspect:"
         target.write(f"{inspect_label} {inspect}\n")
 
 

@@ -10,9 +10,7 @@ from .utility import get_sizer_command, is_eda_exist, is_sizer_runtime_exist
 
 
 def _has_required_outputs(step: EccStep) -> bool:
-    return os.path.exists(step.output.def_ or "") and os.path.exists(
-        step.output.verilog or ""
-    )
+    return os.path.exists(step.output.def_ or "") and os.path.exists(step.output.verilog or "")
 
 
 def run_step(
