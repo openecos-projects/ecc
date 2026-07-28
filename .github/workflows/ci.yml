@@ -150,15 +150,7 @@ jobs:
         run: uv run --no-sync ruff format --check chipcompiler test
 
       - name: Ruff lint
-        run: uv run --no-sync ruff check --output-format=junit chipcompiler test > ruff-report.xml
-
-      - name: Upload ruff report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ruff-report
-          if-no-files-found: ignore
-          path: ruff-report.xml
+        run: uv run --no-sync ruff check --output-format=github chipcompiler test
 
       # - name: Pyright
       #   run: uv run pyright chipcompiler
