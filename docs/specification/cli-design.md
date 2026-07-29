@@ -464,6 +464,34 @@ filelist (`.f`, `.fl`, or `.filelist`) for multi-source RTL designs. If
 `pdk.root` is empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
 `ICS55_PDK_ROOT`.
 
+### PDK Field Overrides
+
+Users can override individual fields of a built-in PDK (such as `ics55`) directly
+from `ecc.toml` without authoring a complete external PDK JSON:
+
+```toml
+[pdk]
+name = "ics55"
+root = "/path/to/ics55"
+
+[pdk.overrides]
+dont_use = ["DFFSRQX*", "ICG*"]
+abc_load = 0.020
+```
+
+Overrides are applied in memory via whole-field replacement at workspace creation.
+The override delta reaches the Yosys builder and other tool steps within a single
+`ecc run`, but is not persisted to workspace metadata. On `load_workspace` (e.g.,
+via `ecc status` or a subsequent run), the base PDK is recomputed and scalar/list
+overrides like `dont_use` are not retained. Path-field overrides (`tech`, `lefs`,
+`libs`) are clobbered on reload from the generated `db.json` and are therefore
+out of intended scope for this mechanism; the primary use case is tuning cell
+lists and synthesis parameters.
+
+Overrides are validated at `ecc check` time — unknown keys, type mismatches, and
+path-existence failures are caught before any run begins. `ecc config --resolved`
+surfaces the raw `[pdk.overrides]` input as a project configuration entry.
+
 The resolved configuration used by each step should be inspectable:
 
 ```bash

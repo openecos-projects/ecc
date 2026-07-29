@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 from chipcompiler.utility.path import optional_path, path_list
@@ -78,6 +78,52 @@ class PDK:
             raise ValueError(msg)
 
 
+_DEFAULT_PDK = PDK()
+
+
+def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
+    """
+    Apply field overrides to a PDK instance via whole-field replacement.
+
+    Args:
+        pdk: Base PDK instance
+        overrides: Mapping of field names to new values
+
+    Returns:
+        New PDK instance with overrides applied
+
+    Raises:
+        ValueError: If unknown fields or type-invalid values are provided
+    """
+    if not overrides:
+        return pdk
+
+    valid = {f.name for f in fields(PDK)}
+    unknown = sorted(set(overrides) - valid)
+    if unknown:
+        raise ValueError(f"unknown PDK override fields: {unknown}; valid fields: {sorted(valid)}")
+
+    if "name" in overrides or "version" in overrides:
+        raise ValueError(
+            "PDK override fields 'name' and 'version' cannot be overridden; "
+            "use the appropriate built-in PDK name instead"
+        )
+
+    for key, value in overrides.items():
+        default = getattr(_DEFAULT_PDK, key)
+        if isinstance(default, list):
+            ok, kind = isinstance(value, list), "a list"
+        elif isinstance(default, float):
+            ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+            kind = "a number"
+        else:
+            ok, kind = isinstance(value, str), "a string"
+        if not ok:
+            raise ValueError(f"PDK override '{key}' must be {kind}, got {type(value).__name__}")
+
+    return replace(pdk, **overrides)
+
+
 def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
     with open(pdk_config, encoding="utf-8") as file:
         data = json.load(file)
@@ -123,6 +169,7 @@ def get_pdk(
     pdk_name: str,
     pdk_root: str | Path = "",
     pdk_config: str | Path = "",
+    overrides: dict | None = None,
 ) -> PDK:
     """
     Return the PDK instance based on the given pdk name.
@@ -139,6 +186,7 @@ def get_pdk(
         pdk = PDK_SG13G2(pdk_root=pdk_root)
     else:
         pdk = PDK(name=pdk_name_normalized)
+    pdk = apply_pdk_overrides(pdk, overrides or {})
     pdk.validate()
     return pdk
 

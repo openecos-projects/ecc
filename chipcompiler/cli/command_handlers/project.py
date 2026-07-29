@@ -261,6 +261,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             parameters=parameters,
             input_filelist=input_filelist,
             pdk_root=pdk_root,
+            pdk_overrides=cfg.pdk_overrides,
         )
     except Exception as exc:
         return CommandResult.err(

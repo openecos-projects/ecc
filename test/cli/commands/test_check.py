@@ -9,7 +9,7 @@ class TestCheck:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
@@ -20,7 +20,7 @@ class TestCheck:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         monkeypatch.chdir(project_dir)
         rc = cli_main.run(["check"])
@@ -126,7 +126,7 @@ class TestCheck:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 0
@@ -235,3 +235,54 @@ class TestMissingConfigErrorRecord:
         data = json.loads(capsys.readouterr().out)
         record = data["records"][0]
         assert "inspect" in record or "inspect_cmd" in record
+
+    def test_check_pdk_overrides_valid(self, tmp_path, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\ndont_use = ["ICG*"]\n')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 0
+
+    def test_check_pdk_overrides_unknown_key(self, tmp_path, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\ndontuse = ["ICG*"]\n')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._pdk_root_from_env",
+            lambda: str(tmp_path / "ics55"),
+        )
+        (tmp_path / "ics55").mkdir(exist_ok=True)
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+
+    def test_check_pdk_overrides_type_mismatch(self, tmp_path, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\nabc_load = "fast"\n')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._pdk_root_from_env",
+            lambda: str(tmp_path / "ics55"),
+        )
+        (tmp_path / "ics55").mkdir(exist_ok=True)
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+
+    def test_check_pdk_overrides_non_table(self, tmp_path, create_cli_project, capsys):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content = content.replace("[pdk]", '[pdk]\noverrides = "not a table"')
+        with open(toml_path, "w") as f:
+            f.write(content)
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "must be a table" in out

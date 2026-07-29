@@ -20,6 +20,7 @@ class ProjectConfig:
 
     pdk_name: str = ""
     pdk_root: str = ""
+    pdk_overrides: dict[str, object] = field(default_factory=dict)
 
     flow_preset: str = ""
     flow_run: str = ""
@@ -68,6 +69,9 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     def _str(val, default=""):
         return val if isinstance(val, str) else default
 
+    pdk_overrides_raw = pdk.get("overrides", {})
+    pdk_overrides = {} if not isinstance(pdk_overrides_raw, dict) else pdk_overrides_raw
+
     cfg = ProjectConfig(
         design_name=_str(design.get("name", "")),
         design_top=_str(design.get("top", "")),
@@ -76,11 +80,17 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         design_frequency_mhz=freq,
         pdk_name=_str(pdk.get("name", "")),
         pdk_root=_str(pdk.get("root", "")),
+        pdk_overrides=pdk_overrides,
         flow_preset=_str(flow.get("preset", "")),
         flow_run=_str(flow.get("run", "default"), "default"),
         config_path=config_path,
         project_dir=project_dir,
     )
+
+    if "overrides" in pdk and not isinstance(pdk_overrides_raw, dict):
+        cfg._pdk_config_errors = [
+            "[pdk.overrides] must be a table (mapping), not " + type(pdk_overrides_raw).__name__
+        ]
 
     params_raw = data.get("params")
     if isinstance(params_raw, dict):
@@ -118,6 +128,11 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
 
     errors = []
 
+    pdk_config_errors = getattr(cfg, "_pdk_config_errors", None)
+    if pdk_config_errors:
+        for pe in pdk_config_errors:
+            errors.append(f"invalid PDK configuration: {pe}")
+
     param_errors = getattr(cfg, "_param_errors", None)
     if param_errors:
         for pe in param_errors:
@@ -146,7 +161,7 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         if not os.path.isdir(pdk_root):
             errors.append(f"pdk.root is not a directory: {cfg.pdk_root or '$(env)'}")
         else:
-            pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root)
+            pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root, cfg.pdk_overrides)
             if pdk_err:
                 errors.append(pdk_err)
     else:
@@ -234,13 +249,15 @@ def _resolve_pdk_root(cfg: ProjectConfig) -> str:
     return _resolve_path(cfg.project_dir, cfg.pdk_root)
 
 
-def _validate_pdk_contents(pdk_name: str, pdk_root: str) -> str | None:
+def _validate_pdk_contents(
+    pdk_name: str, pdk_root: str, pdk_overrides: dict | None = None
+) -> str | None:
     if not pdk_root:
         return None
     try:
         from chipcompiler.data.pdk import get_pdk
 
-        get_pdk(pdk_name, pdk_root)
+        get_pdk(pdk_name, pdk_root, overrides=pdk_overrides)
         return None
     except ValueError as exc:
         return str(exc)
