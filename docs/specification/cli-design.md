@@ -500,6 +500,10 @@ The override delta reaches the Yosys builder and other tool steps within a singl
 - **`sdc`/`spef`**: Copied into `origin/` when present; rediscovered by `load_workspace`.
   Out of intended scope.
 
+- **`mapping_file`**: Applied only to the in-memory PDK for the current run. The
+  workspace path does not serialize it and `load_workspace` never restores it, so a
+  `mapping_file` override is dropped on reload. Out of intended scope.
+
 The primary use case is tuning cell lists (`dont_use`) and synthesis parameters
 (`abc_load`), which are scalar/list fields consumed within a run.
 
