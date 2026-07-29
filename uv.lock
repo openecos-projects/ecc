@@ -590,6 +590,7 @@ name = "ecc-tools-bin"
 version = "0.1.0a8"
 source = { editable = "chipcompiler/thirdparty/ecc-tools" }
 dependencies = [
+    { name = "matplotlib" },
     { name = "numpy" },
 ]
 
@@ -600,7 +601,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy" }]
+requires-dist = [
+    { name = "matplotlib", specifier = ">=3.4" },
+    { name = "numpy" },
+]
 
 [package.metadata.requires-dev]
 dev = [

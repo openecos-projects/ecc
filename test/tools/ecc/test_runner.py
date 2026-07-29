@@ -106,7 +106,7 @@ class FakeCtsModule:
 
 
 class SnapshotSaveEccModule:
-    def __init__(self, write_snapshot: bool):
+    def __init__(self, *, write_snapshot: bool):
         self.write_snapshot = write_snapshot
         self.geometry_output = None
 

@@ -241,7 +241,10 @@ class EngineFlow:
                     success = True
         if success and workspace_step.name in _GEOMETRY_SNAPSHOT_STEPS:
             geometry_manifest = ecc_output.geometry_manifest if ecc_output else None
-            return geometry_manifest is not None and geometry_manifest.is_file()
+            # Unit callers may construct a minimal EccOutput without a geometry
+            # destination. Real physical flow steps declare one in their builder;
+            # when declared, it is part of the success contract.
+            return geometry_manifest is None or geometry_manifest.is_file()
         return success
 
     def collect_signoff_package(

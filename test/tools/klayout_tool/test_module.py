@@ -34,12 +34,14 @@ def test_save_snapshot_image_passes_path_text_to_klayout(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "klayout.db", db)
     monkeypatch.setitem(sys.modules, "klayout.lay", lay)
     sys.modules.pop("chipcompiler.tools.klayout_tool.module", None)
+    sys.modules.pop("chipcompiler.tools.klayout_tool.image", None)
 
     klayout_module = importlib.import_module("chipcompiler.tools.klayout_tool.module")
     module = klayout_module.KlayoutModule(workspace=Workspace(), step=WorkspaceStep())
 
     gds_file = tmp_path / "design.gds"
     img_file = tmp_path / "design.png"
+    gds_file.write_text("GDS", encoding="utf-8")
     module.save_snapshot_image(gds_file=gds_file, img_file=img_file, weight=800, height=600)
 
     assert calls["load_layout"] == (str(gds_file), 0)

@@ -234,14 +234,17 @@ def test_place_instance_forwards_legacy_defaults():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.place_instance(
-        inst_name="u_sram_0",
-        llx=100000,
-        lly=200000,
-        orient="N",
-        cellmaster="SRAM_1RW",
-        source="DIST",
-    ) is True
+    assert (
+        module.place_instance(
+            inst_name="u_sram_0",
+            llx=100000,
+            lly=200000,
+            orient="N",
+            cellmaster="SRAM_1RW",
+            source="DIST",
+        )
+        is True
+    )
 
     assert module.ecc.calls == [
         (
@@ -264,15 +267,18 @@ def test_place_instance_forwards_gui_controls_and_failure():
     calls = []
     module.ecc = SimpleNamespace(place_instance=lambda **kwargs: calls.append(kwargs) or False)
 
-    assert module.place_instance(
-        inst_name="u_sram_0",
-        llx=110000,
-        lly=210000,
-        orient="",
-        cellmaster="",
-        placement_status="preserve",
-        create_if_missing=False,
-    ) is False
+    assert (
+        module.place_instance(
+            inst_name="u_sram_0",
+            llx=110000,
+            lly=210000,
+            orient="",
+            cellmaster="",
+            placement_status="preserve",
+            create_if_missing=False,
+        )
+        is False
+    )
 
     assert calls == [
         {

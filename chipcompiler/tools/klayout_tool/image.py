@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import os
 
-from chipcompiler.utility.path import path_text
 from klayout import lay
+
+from chipcompiler.utility.path import path_text
 
 
 def save_snapshot_image(

@@ -2,9 +2,8 @@
 import os
 from pathlib import Path
 
-from chipcompiler.tools.klayout_tool.image import save_snapshot_image as render_snapshot_image
-
 from chipcompiler.data import EccOutput, Workspace, WorkspaceStep
+from chipcompiler.tools.klayout_tool.image import save_snapshot_image as render_snapshot_image
 
 
 class KlayoutModule:

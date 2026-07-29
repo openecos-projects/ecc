@@ -185,6 +185,8 @@ def test_log_projection_ecc_shape_has_no_sizer_keys(tmp_path):
             "image",
             "db",
             "gds",
+            "geometry",
+            "geometry_manifest",
             "view_json",
             "view_json_edits",
             "lef",

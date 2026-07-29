@@ -1,8 +1,39 @@
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
 from chipcompiler.pyinstaller_utils import (
     collect_package_extension_binaries,
     filter_collected_payloads,
     filter_hiddenimports,
 )
+
+
+def test_ecc_tools_editable_import_does_not_rebuild_native_payload():
+    config_path = (
+        Path(__file__).parents[2] / "chipcompiler" / "thirdparty" / "ecc-tools" / "pyproject.toml"
+    )
+    config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+
+    assert config["tool"]["scikit-build"]["editable"]["rebuild"] is False
+
+
+def test_ecc_tools_native_import_coexists_with_matplotlib():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "faulthandler",
+            "-c",
+            "import ecc_tools_bin.ecc_py; import matplotlib.pyplot",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_collect_package_extension_binaries_checks_sibling_bin(tmp_path):

@@ -547,7 +547,9 @@ class WorkspaceRuntimeApi:
                 )
 
             artifacts = _publish_layout_edit_artifacts(edit_session, session.workspace)
-            output_db = _path_or_none(_workspace_step_output_value(edit_session.workspace_step, "db"))
+            output_db = _path_or_none(
+                _workspace_step_output_value(edit_session.workspace_step, "db")
+            )
             if output_db is None:
                 raise RuntimeApiError("command_failed", "layout edit output DB is missing")
             edit_session.source_kind = "db"
