@@ -72,20 +72,29 @@ class PDK:
             for liberty in self.libs:
                 if not liberty.is_file():
                     errors.append(f"PDK liberty file not found: {liberty}")
-        if self.mapping_file and not self.mapping_file.is_file():
-            errors.append(f"PDK mapping file not found: {self.mapping_file}")
-        if self.sdc and not self.sdc.is_file():
-            errors.append(f"PDK SDC file not found: {self.sdc}")
-        if self.spef and not self.spef.is_file():
-            errors.append(f"PDK SPEF file not found: {self.spef}")
-        if errors:
-            msg = "PDK validation failed:\n  " + "\n  ".join(errors)
-            logger.error(msg)
-            raise ValueError(msg)
+        _raise_pdk_validation_error(errors)
+
+
+def _raise_pdk_validation_error(errors: list) -> None:
+    if errors:
+        msg = "PDK validation failed:\n  " + "\n  ".join(errors)
+        logger.error(msg)
+        raise ValueError(msg)
 
 
 _DEFAULT_PDK = PDK()
 _PROTECTED_FIELDS = {"name", "version"}
+
+# Optional path fields not covered by PDK.validate() (which only checks the
+# always-required root/tech/lefs/libs). When one of these is set through an
+# override, its existence is checked here so a bad configured path fails before
+# a run; base and external PDKs are unaffected because the check is scoped to
+# override-supplied keys only.
+_OPTIONAL_PATH_LABELS = {
+    "mapping_file": "PDK mapping file not found",
+    "sdc": "PDK SDC file not found",
+    "spef": "PDK SPEF file not found",
+}
 
 
 def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
@@ -100,7 +109,8 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
         New PDK instance with overrides applied
 
     Raises:
-        ValueError: If unknown fields or type-invalid values are provided
+        ValueError: If unknown fields or type-invalid values are provided, or an
+            override-supplied optional path (mapping_file/sdc/spef) does not exist
     """
     if not overrides:
         return pdk
@@ -133,7 +143,18 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
         if not ok:
             raise ValueError(f"PDK override '{key}' must be {kind}, got {type(value).__name__}")
 
-    return replace(pdk, **overrides)
+    updated = replace(pdk, **overrides)
+
+    errors = []
+    for key, label in _OPTIONAL_PATH_LABELS.items():
+        if key not in overrides:
+            continue
+        path = getattr(updated, key)
+        if path and not path.is_file():
+            errors.append(f"{label}: {path}")
+    _raise_pdk_validation_error(errors)
+
+    return updated
 
 
 def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
