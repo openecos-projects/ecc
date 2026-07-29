@@ -91,7 +91,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         project_dir=project_dir,
     )
 
-    if "overrides" in pdk and not isinstance(pdk_overrides_raw, dict):
+    if not isinstance(pdk_overrides_raw, dict):
         cfg._pdk_config_errors = [
             "[pdk.overrides] must be a table (mapping), not " + type(pdk_overrides_raw).__name__
         ]
@@ -126,21 +126,16 @@ def _supported_flow_presets() -> set[str]:
 
 
 def validate_project_config(cfg: ProjectConfig) -> list[str]:
-    toml_error = getattr(cfg, "_toml_error", None)
-    if toml_error:
-        return [f"malformed ecc.toml: {toml_error}"]
+    if cfg._toml_error:
+        return [f"malformed ecc.toml: {cfg._toml_error}"]
 
     errors = []
 
-    pdk_config_errors = getattr(cfg, "_pdk_config_errors", None)
-    if pdk_config_errors:
-        for pe in pdk_config_errors:
-            errors.append(f"invalid PDK configuration: {pe}")
+    for pe in cfg._pdk_config_errors:
+        errors.append(f"invalid PDK configuration: {pe}")
 
-    param_errors = getattr(cfg, "_param_errors", None)
-    if param_errors:
-        for pe in param_errors:
-            errors.append(f"invalid params: {pe}")
+    for pe in cfg._param_errors:
+        errors.append(f"invalid params: {pe}")
 
     if not cfg.design_name:
         errors.append("design.name is required")
