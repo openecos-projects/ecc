@@ -141,7 +141,7 @@ class TestPlainFlagAcceptance:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         rc = cli_main.run(["check", "--project", project_dir, "--plain"])
         assert rc == 0
@@ -162,7 +162,7 @@ class TestPlainFlagAcceptance:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         rc = cli_main.run(["config", "--resolved", "--plain", "--project", project_dir])
         assert rc == 0
@@ -186,7 +186,7 @@ class TestPrettyDefaultOutput:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
@@ -264,7 +264,7 @@ class TestPrettyDefaultOutput:
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
 
         rc = cli_main.run(["run", "--project", project_dir])

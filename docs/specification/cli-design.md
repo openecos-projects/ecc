@@ -481,12 +481,27 @@ abc_load = 0.020
 
 Overrides are applied in memory via whole-field replacement at workspace creation.
 The override delta reaches the Yosys builder and other tool steps within a single
-`ecc run`, but is not persisted to workspace metadata. On `load_workspace` (e.g.,
-via `ecc status` or a subsequent run), the base PDK is recomputed and scalar/list
-overrides like `dont_use` are not retained. Path-field overrides (`tech`, `lefs`,
-`libs`) are clobbered on reload from the generated `db.json` and are therefore
-out of intended scope for this mechanism; the primary use case is tuning cell
-lists and synthesis parameters.
+`ecc run`. Persistence behavior varies by field category:
+
+- **Scalar/list fields** (`dont_use`, `buffers`, `fillers`, tie cells, `abc_load`):
+  Applied in memory and consumed within the run (e.g., baked into generated Yosys
+  scripts). Not written to `parameters.json`. On `load_workspace` (e.g., `ecc status`
+  or subsequent run without `[pdk.overrides]` in `ecc.toml`), these fields are
+  recomputed from the base built-in PDK. Effect: single-run only, dropped on reload
+  unless the override is present in `ecc.toml` for the next run.
+
+- **`root`**: Written to `parameters.json` as `PDK Root` and re-read by `load_workspace`.
+  Overriding `root` is redundant with `pdk.root` in `[pdk]`; use `pdk.root` instead.
+
+- **Path fields** (`tech`, `lefs`, `libs`): Written to `db.json` at build time and
+  restored by `load_workspace`. Path overrides survive through `db.json`, not through
+  PDK recomputation. Out of intended scope.
+
+- **`sdc`/`spef`**: Copied into `origin/` when present; rediscovered by `load_workspace`.
+  Out of intended scope.
+
+The primary use case is tuning cell lists (`dont_use`) and synthesis parameters
+(`abc_load`), which are scalar/list fields consumed within a run.
 
 Overrides are validated at `ecc check` time — unknown keys, type mismatches, and
 path-existence failures are caught before any run begins. `ecc config --resolved`

@@ -79,6 +79,7 @@ class PDK:
 
 
 _DEFAULT_PDK = PDK()
+_PROTECTED_FIELDS = {"name", "version"}
 
 
 def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
@@ -98,14 +99,19 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
     if not overrides:
         return pdk
 
-    valid = {f.name for f in fields(PDK)}
-    unknown = sorted(set(overrides) - valid)
-    if unknown:
-        raise ValueError(f"unknown PDK override fields: {unknown}; valid fields: {sorted(valid)}")
+    all_fields = {f.name for f in fields(PDK)}
+    overridable = sorted(all_fields - _PROTECTED_FIELDS)
+    unknown = sorted(set(overrides) - all_fields)
 
-    if "name" in overrides or "version" in overrides:
+    if unknown:
         raise ValueError(
-            "PDK override fields 'name' and 'version' cannot be overridden; "
+            f"unknown PDK override fields: {unknown}; valid overridable fields: {overridable}"
+        )
+
+    protected = sorted(set(overrides) & _PROTECTED_FIELDS)
+    if protected:
+        raise ValueError(
+            f"PDK override fields {protected} cannot be overridden; "
             "use the appropriate built-in PDK name instead"
         )
 

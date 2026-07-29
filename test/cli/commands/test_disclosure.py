@@ -17,7 +17,7 @@ class TestDisclosureCommands:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0

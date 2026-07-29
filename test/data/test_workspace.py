@@ -1094,3 +1094,25 @@ def test_workspace_pdk_overrides_not_persisted_on_reload(
 
     base_pdk = get_pdk("ics55", pdk_root=pdk_root)
     assert loaded.pdk.dont_use == base_pdk.dont_use
+
+
+def test_create_workspace_pdk_overrides_typo_propagates(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    import pytest
+
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    with pytest.raises(ValueError, match="unknown PDK override fields"):
+        create_workspace(
+            directory=str(workspace_dir),
+            origin_def="",
+            origin_verilog=str(rtl_path),
+            pdk="ics55",
+            parameters=default_ics55_parameters,
+            pdk_root=str(pdk_root),
+            pdk_overrides={"dontuse": ["ICG*"]},
+        )

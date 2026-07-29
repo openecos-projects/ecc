@@ -234,7 +234,7 @@ class TestMultilineTomlValues:
             f.write("not valid json{")
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda pdk_root, pdk_name: [],
+            lambda name, root, overrides=None: [],
         )
         rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
         assert rc == 1
@@ -248,7 +248,7 @@ class TestMultilineTomlValues:
             json.dump([1, 2, 3], f)
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda pdk_root, pdk_name: [],
+            lambda name, root, overrides=None: [],
         )
         rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
         assert rc == 1
@@ -262,7 +262,7 @@ class TestMultilineTomlValues:
             json.dump({"nonexistent.param": 42}, f)
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda pdk_root, pdk_name: [],
+            lambda name, root, overrides=None: [],
         )
         rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
         assert rc == 1

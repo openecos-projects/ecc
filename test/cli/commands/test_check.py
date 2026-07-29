@@ -248,7 +248,9 @@ class TestMissingConfigErrorRecord:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
 
-    def test_check_pdk_overrides_unknown_key(self, tmp_path, monkeypatch, create_cli_project):
+    def test_check_pdk_overrides_unknown_key(
+        self, tmp_path, monkeypatch, create_cli_project, capsys
+    ):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path, "a") as f:
@@ -260,8 +262,13 @@ class TestMissingConfigErrorRecord:
         (tmp_path / "ics55").mkdir(exist_ok=True)
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
+        out = capsys.readouterr().out
+        assert "unknown PDK override fields" in out
+        assert "dontuse" in out
 
-    def test_check_pdk_overrides_type_mismatch(self, tmp_path, monkeypatch, create_cli_project):
+    def test_check_pdk_overrides_type_mismatch(
+        self, tmp_path, monkeypatch, create_cli_project, capsys
+    ):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path, "a") as f:
@@ -273,6 +280,8 @@ class TestMissingConfigErrorRecord:
         (tmp_path / "ics55").mkdir(exist_ok=True)
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
+        out = capsys.readouterr().out
+        assert "must be a number" in out
 
     def test_check_pdk_overrides_non_table(self, tmp_path, create_cli_project, capsys):
         project_dir = create_cli_project()

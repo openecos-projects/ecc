@@ -60,7 +60,7 @@ def _install_flow_mocks(monkeypatch):
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.config._validate_pdk_contents",
-        lambda name, root: None,
+        lambda name, root, overrides=None: None,
     )
 
     return capture
@@ -248,3 +248,14 @@ class TestRunFlowPreset:
 
         assert rc == 0
         assert DummyFlow.instances[0].added_steps == markers["build_harden_flow"]
+
+    def test_run_forwards_pdk_overrides(self, tmp_path, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\ndont_use = ["ICG*"]\n')
+        capture = _install_flow_mocks(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir])
+        assert rc == 0
+        assert capture["create_kwargs"]["pdk_overrides"] == {"dont_use": ["ICG*"]}
