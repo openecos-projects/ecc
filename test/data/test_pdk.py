@@ -187,8 +187,8 @@ def test_apply_pdk_overrides_type_mismatch_list_field(tmp_path, minimal_ics55_pd
         apply_pdk_overrides(base_pdk, {"dont_use": "ICG*"})
 
 
-@pytest.mark.parametrize("field", ["lefs", "libs"])
-def test_apply_pdk_overrides_rejects_non_string_path_list_element(
+@pytest.mark.parametrize("field", ["lefs", "libs", "buffers", "fillers", "dont_use"])
+def test_apply_pdk_overrides_rejects_non_string_list_element(
     tmp_path, minimal_ics55_pdk_factory, field
 ):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
@@ -198,7 +198,7 @@ def test_apply_pdk_overrides_rejects_non_string_path_list_element(
         ValueError,
         match=f"PDK override '{field}' elements must be strings, got int at index 1",
     ):
-        apply_pdk_overrides(base_pdk, {field: ["valid.lef", 1]})
+        apply_pdk_overrides(base_pdk, {field: ["ok", 1]})
 
 
 def test_apply_pdk_overrides_type_mismatch_float_field(tmp_path, minimal_ics55_pdk_factory):

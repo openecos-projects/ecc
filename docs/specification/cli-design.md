@@ -490,7 +490,10 @@ The override delta reaches the Yosys builder and other tool steps within a singl
   scripts). Not written to `parameters.json`. On `load_workspace` (e.g., `ecc status`
   or subsequent run without `[pdk.overrides]` in `ecc.toml`), these fields are
   recomputed from the base built-in PDK. Effect: single-run only, dropped on reload
-  unless the override is present in `ecc.toml` for the next run.
+  unless the override is present in `ecc.toml` for the next run. `corners` is the
+  exception in this list: no tool step currently consumes it (PDK-to-RCX propagation
+  is not wired in `refresh_workspace_config`), so a `corners` override only changes
+  the in-memory PDK — exactly like the base PDK's own `corners`.
 
 - **`root`**: Written to `parameters.json` as `PDK Root` and re-read by `load_workspace`.
   Overriding `root` is redundant with `pdk.root` in `[pdk]`; use `pdk.root` instead.

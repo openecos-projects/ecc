@@ -32,13 +32,13 @@ class PDK:
     site_corner: str = ""  # corner site
     tap_cell: str = ""  # tap cell
     end_cap: str = ""  # end cap
-    buffers: list = field(default_factory=list)  # buffers
-    fillers: list = field(default_factory=list)  # fillers
+    buffers: list[str] = field(default_factory=list[str])  # buffers
+    fillers: list[str] = field(default_factory=list[str])  # fillers
     tie_high_cell: str = ""
     tie_high_port: str = ""
     tie_low_cell: str = ""
     tie_low_port: str = ""
-    dont_use: list = field(default_factory=list)  # don't use cell list
+    dont_use: list[str] = field(default_factory=list[str])  # don't use cell list
     abc_driver_cell: str = ""  # ABC driving cell
     abc_load: float = 0.015  # ABC output load
 
@@ -90,6 +90,7 @@ _PROTECTED_FIELDS = {"name", "version"}
 # with the field definitions.
 PATH_SCALAR_FIELDS = {f.name for f in fields(PDK) if f.type == Path | None}
 PATH_LIST_FIELDS = {f.name for f in fields(PDK) if f.type == list[Path]}
+STRING_LIST_FIELDS = {f.name for f in fields(PDK) if f.type == list[str]}
 
 # Optional path fields not covered by PDK.validate() (which only checks the
 # always-required root/tech/lefs/libs). When one of these is set through an
@@ -147,9 +148,11 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
             ok, kind = isinstance(value, str), "a string"
         if not ok:
             raise ValueError(f"PDK override '{key}' must be {kind}, got {type(value).__name__}")
-        # Path-list elements hit Path() in __post_init__; reject non-strings
-        # here with ValueError instead of escaping replace() as TypeError.
-        if key in PATH_LIST_FIELDS and isinstance(value, list):
+        # Path-list elements hit Path() in __post_init__; cell-name list
+        # elements are written verbatim into generated tool configs. Reject
+        # non-strings here with ValueError instead of escaping replace() as
+        # TypeError or reaching tool input.
+        if key in PATH_LIST_FIELDS | STRING_LIST_FIELDS and isinstance(value, list):
             for index, element in enumerate(value):
                 if not isinstance(element, str):
                     raise ValueError(

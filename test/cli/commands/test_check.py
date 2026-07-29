@@ -354,19 +354,20 @@ class TestMissingConfigErrorRecord:
         assert "PDK SDC file not found" in out
         assert os.path.join(project_dir, "constraints", "missing.sdc") in out
 
-    def test_check_pdk_overrides_lefs_non_string_element(
-        self, tmp_path, create_cli_project, capsys
+    @pytest.mark.parametrize("field", ["lefs", "dont_use"])
+    def test_check_pdk_overrides_non_string_list_element(
+        self, tmp_path, create_cli_project, capsys, field
     ):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path, "a") as f:
-            f.write("\n[pdk.overrides]\nlefs = [1]\n")
+            f.write(f"\n[pdk.overrides]\n{field} = [1]\n")
 
         rc = cli_main.run(["check", "--project", project_dir])
 
         captured = capsys.readouterr()
         assert rc == 1
-        assert "PDK override 'lefs' elements must be strings" in captured.out
+        assert f"PDK override '{field}' elements must be strings" in captured.out
         assert "Traceback" not in captured.err
 
     def test_check_pdk_overrides_non_table(self, tmp_path, create_cli_project, capsys):
