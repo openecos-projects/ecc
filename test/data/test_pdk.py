@@ -138,6 +138,20 @@ def test_apply_pdk_overrides_replaces_whole_field(tmp_path, minimal_ics55_pdk_fa
     assert overridden == expected
 
 
+def test_apply_pdk_overrides_nonexistent_optional_path_stays_pure(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from dataclasses import replace
+
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    base_pdk = get_pdk("ics55", pdk_root=pdk_root)
+    missing_sdc = tmp_path / "missing.sdc"
+
+    overridden = apply_pdk_overrides(base_pdk, {"sdc": str(missing_sdc)})
+
+    assert overridden == replace(base_pdk, sdc=str(missing_sdc))
+
+
 def test_apply_pdk_overrides_empty_dict_is_noop(tmp_path, minimal_ics55_pdk_factory):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     base_pdk = get_pdk("ics55", pdk_root=pdk_root)

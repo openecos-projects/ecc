@@ -87,7 +87,7 @@ _PROTECTED_FIELDS = {"name", "version"}
 
 # Optional path fields not covered by PDK.validate() (which only checks the
 # always-required root/tech/lefs/libs). When one of these is set through an
-# override, its existence is checked here so a bad configured path fails before
+# override, get_pdk checks its existence so a bad configured path fails before
 # a run; base and external PDKs are unaffected because the check is scoped to
 # override-supplied keys only.
 _OPTIONAL_PATH_LABELS = {
@@ -109,8 +109,7 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
         New PDK instance with overrides applied
 
     Raises:
-        ValueError: If unknown fields or type-invalid values are provided, or an
-            override-supplied optional path (mapping_file/sdc/spef) does not exist
+        ValueError: If unknown fields or type-invalid values are provided
     """
     if not overrides:
         return pdk
@@ -143,18 +142,7 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
         if not ok:
             raise ValueError(f"PDK override '{key}' must be {kind}, got {type(value).__name__}")
 
-    updated = replace(pdk, **overrides)
-
-    errors = []
-    for key, label in _OPTIONAL_PATH_LABELS.items():
-        if key not in overrides:
-            continue
-        path = getattr(updated, key)
-        if path and not path.is_file():
-            errors.append(f"{label}: {path}")
-    _raise_pdk_validation_error(errors)
-
-    return updated
+    return replace(pdk, **overrides)
 
 
 def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
@@ -219,8 +207,17 @@ def get_pdk(
         pdk = PDK_SG13G2(pdk_root=pdk_root)
     else:
         pdk = PDK(name=pdk_name_normalized)
-    pdk = apply_pdk_overrides(pdk, overrides or {})
+    overrides = overrides or {}
+    pdk = apply_pdk_overrides(pdk, overrides)
     pdk.validate()
+    errors = []
+    for key, label in _OPTIONAL_PATH_LABELS.items():
+        if key not in overrides:
+            continue
+        path = getattr(pdk, key)
+        if path and not path.is_file():
+            errors.append(f"{label}: {path}")
+    _raise_pdk_validation_error(errors)
     return pdk
 
 

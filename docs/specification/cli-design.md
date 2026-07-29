@@ -483,7 +483,9 @@ Overrides are applied in memory via whole-field replacement at workspace creatio
 The override delta reaches the Yosys builder and other tool steps within a single
 `ecc run`. Persistence behavior varies by field category:
 
-- **Scalar/list fields** (`dont_use`, `buffers`, `fillers`, tie cells, `abc_load`):
+- **Scalar/list fields** (`corners`, `site_core`, `site_io`, `site_corner`,
+  `tap_cell`, `end_cap`, `buffers`, `fillers`, `tie_high_cell`, `tie_high_port`,
+  `tie_low_cell`, `tie_low_port`, `dont_use`, `abc_driver_cell`, `abc_load`):
   Applied in memory and consumed within the run (e.g., baked into generated Yosys
   scripts). Not written to `parameters.json`. On `load_workspace` (e.g., `ecc status`
   or subsequent run without `[pdk.overrides]` in `ecc.toml`), these fields are
@@ -509,9 +511,11 @@ The primary use case is tuning cell lists (`dont_use`) and synthesis parameters
 
 Overrides are validated at `ecc check` time — unknown keys, type mismatches, and
 path-existence failures are caught before any run begins. Path-existence is checked
-for every path field an override sets, including the optional `tech`, `lefs`, `libs`,
-`mapping_file`, `sdc`, and `spef`: a non-empty value pointing at a missing file fails
-`ecc check` regardless of whether that field is later persisted or regenerated.
+for every path field an override sets: the required `tech`, `lefs`, and `libs`
+(checked for every PDK by `PDK.validate()`) and the optional `mapping_file`, `sdc`,
+and `spef` (checked only when an override supplies them). A non-empty value pointing
+at a missing file fails `ecc check` regardless of whether that field is later
+persisted or regenerated.
 `ecc config --resolved` surfaces the raw `[pdk.overrides]` input as a project
 configuration entry.
 
