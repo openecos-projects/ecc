@@ -236,15 +236,14 @@ class TestMissingConfigErrorRecord:
         record = data["records"][0]
         assert "inspect" in record or "inspect_cmd" in record
 
-    def test_check_pdk_overrides_valid(self, tmp_path, monkeypatch, create_cli_project):
-        project_dir = create_cli_project()
+    def test_check_pdk_overrides_valid(
+        self, tmp_path, monkeypatch, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path, "a") as f:
             f.write('\n[pdk.overrides]\ndont_use = ["ICG*"]\n')
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
 
@@ -282,6 +281,20 @@ class TestMissingConfigErrorRecord:
         assert rc == 1
         out = capsys.readouterr().out
         assert "must be a number" in out
+
+    def test_check_pdk_overrides_nonexistent_tech(
+        self, tmp_path, create_cli_project, minimal_ics55_pdk_factory, capsys
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\ntech = "/no/such.lef"\n')
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "PDK tech LEF not found" in out or "PDK validation failed" in out
+        assert "/no/such.lef" in out
 
     def test_check_pdk_overrides_non_table(self, tmp_path, create_cli_project, capsys):
         project_dir = create_cli_project()
