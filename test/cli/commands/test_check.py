@@ -320,6 +320,55 @@ class TestMissingConfigErrorRecord:
         assert message in out
         assert "/no/such.file" in out
 
+    def test_check_pdk_overrides_relative_sdc_resolves_against_project_dir(
+        self, tmp_path, monkeypatch, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        sdc_path = os.path.join(project_dir, "constraints", "design.sdc")
+        with open(sdc_path, "w") as f:
+            f.write("create_clock -period 1 [get_ports clk]\n")
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\nsdc = "constraints/design.sdc"\n')
+        monkeypatch.chdir(tmp_path)
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        assert rc == 0
+
+    def test_check_pdk_overrides_missing_relative_sdc_reports_project_resolved_path(
+        self, tmp_path, monkeypatch, create_cli_project, minimal_ics55_pdk_factory, capsys
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\nsdc = "constraints/missing.sdc"\n')
+        monkeypatch.chdir(tmp_path)
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "PDK SDC file not found" in out
+        assert os.path.join(project_dir, "constraints", "missing.sdc") in out
+
+    def test_check_pdk_overrides_lefs_non_string_element(
+        self, tmp_path, create_cli_project, capsys
+    ):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write("\n[pdk.overrides]\nlefs = [1]\n")
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "PDK override 'lefs' elements must be strings" in captured.out
+        assert "Traceback" not in captured.err
+
     def test_check_pdk_overrides_non_table(self, tmp_path, create_cli_project, capsys):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")

@@ -145,6 +145,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project.config import (
         find_config_path,
         load_project_config,
+        resolve_pdk_overrides,
         resolve_pdk_root,
         resolve_rtl,
         to_parameters,
@@ -261,7 +262,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             parameters=parameters,
             input_filelist=input_filelist,
             pdk_root=pdk_root,
-            pdk_overrides=cfg.pdk_overrides,
+            pdk_overrides=resolve_pdk_overrides(cfg),
         )
     except Exception as exc:
         return CommandResult.err(

@@ -165,7 +165,7 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         if not os.path.isdir(pdk_root):
             errors.append(f"pdk.root is not a directory: {cfg.pdk_root or '$(env)'}")
         else:
-            pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root, cfg.pdk_overrides)
+            pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root, resolve_pdk_overrides(cfg))
             if pdk_err:
                 errors.append(pdk_err)
     else:
@@ -251,6 +251,26 @@ def _resolve_pdk_root(cfg: ProjectConfig) -> str:
     if not cfg.pdk_root:
         return _pdk_root_from_env()
     return _resolve_path(cfg.project_dir, cfg.pdk_root)
+
+
+def resolve_pdk_overrides(cfg: ProjectConfig) -> dict[str, object]:
+    """Return pdk_overrides with path-field values resolved against the project dir.
+
+    Only fields the PDK dataclass declares as paths are rewritten; non-path
+    values such as dont_use glob patterns pass through untouched.
+    """
+    from chipcompiler.data.pdk import PATH_LIST_FIELDS, PATH_SCALAR_FIELDS
+
+    resolved = dict(cfg.pdk_overrides)
+    for key, value in resolved.items():
+        if key in PATH_SCALAR_FIELDS and isinstance(value, str):
+            resolved[key] = _resolve_path(cfg.project_dir, value)
+        elif key in PATH_LIST_FIELDS and isinstance(value, list):
+            resolved[key] = [
+                _resolve_path(cfg.project_dir, element) if isinstance(element, str) else element
+                for element in value
+            ]
+    return resolved
 
 
 def _validate_pdk_contents(

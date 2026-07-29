@@ -78,8 +78,8 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
 
     workspace = _workspace(tmp_path)
     workspace.pdk.tech = str(tmp_path / "tech_lef" / "tech.lef")
-    workspace.pdk.lefs = [str(tmp_path / "lef_dir" / "std_cell.lef")]
-    workspace.pdk.libs = [str(tmp_path / "lib_dir" / "slow_corner.lib")]
+    workspace.pdk.lefs = [tmp_path / "lef_dir" / "std_cell.lef"]
+    workspace.pdk.libs = [tmp_path / "lib_dir" / "slow_corner.lib"]
     workspace.pdk.sdc = str(tmp_path / "constraints" / "main_clock.sdc")
     workspace.pdk.spef = str(tmp_path / "rcx" / "route_parasitic.spef")
 

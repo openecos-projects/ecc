@@ -21,8 +21,8 @@ class PDK:
     version: str = ""  # pdk version
     root: Path | None = None  # resolved pdk root path
     tech: Path | None = None  # pdk tech lef file
-    lefs: list = field(default_factory=list)  # pdk lef files
-    libs: list = field(default_factory=list)  # pdk liberty files
+    lefs: list[Path] = field(default_factory=list[Path])  # pdk lef files
+    libs: list[Path] = field(default_factory=list[Path])  # pdk liberty files
     mapping_file: Path | None = None  # pdk mapping file
     corners: list = field(default_factory=list)
     sdc: Path | None = None  # pdk sdc file
@@ -85,6 +85,12 @@ def _raise_pdk_validation_error(errors: list) -> None:
 _DEFAULT_PDK = PDK()
 _PROTECTED_FIELDS = {"name", "version"}
 
+# Fields whose values are filesystem paths, derived from the dataclass
+# annotations so CLI path resolution and override validation stay in sync
+# with the field definitions.
+PATH_SCALAR_FIELDS = {f.name for f in fields(PDK) if f.type == Path | None}
+PATH_LIST_FIELDS = {f.name for f in fields(PDK) if f.type == list[Path]}
+
 # Optional path fields not covered by PDK.validate() (which only checks the
 # always-required root/tech/lefs/libs). When one of these is set through an
 # override, get_pdk checks its existence so a bad configured path fails before
@@ -141,6 +147,15 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
             ok, kind = isinstance(value, str), "a string"
         if not ok:
             raise ValueError(f"PDK override '{key}' must be {kind}, got {type(value).__name__}")
+        # Path-list elements hit Path() in __post_init__; reject non-strings
+        # here with ValueError instead of escaping replace() as TypeError.
+        if key in PATH_LIST_FIELDS and isinstance(value, list):
+            for index, element in enumerate(value):
+                if not isinstance(element, str):
+                    raise ValueError(
+                        f"PDK override '{key}' elements must be strings, "
+                        f"got {type(element).__name__} at index {index}"
+                    )
 
     return replace(pdk, **overrides)
 

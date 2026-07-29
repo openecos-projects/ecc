@@ -258,4 +258,31 @@ class TestRunFlowPreset:
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
-        assert capture["create_kwargs"]["pdk_overrides"] == {"dont_use": ["ICG*"]}
+        create_kwargs = capture["create_kwargs"]
+        assert create_kwargs is not None
+        assert create_kwargs["pdk_overrides"] == {"dont_use": ["ICG*"]}
+
+    def test_run_forwards_resolved_pdk_override_paths(
+        self, tmp_path, monkeypatch, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write(
+                "\n[pdk.overrides]\n"
+                'sdc = "constraints/design.sdc"\n'
+                f'spef = "{tmp_path}/absolute.spef"\n'
+                'dont_use = ["ICG*"]\n'
+            )
+        capture = _install_flow_mocks(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir])
+
+        assert rc == 0
+        create_kwargs = capture["create_kwargs"]
+        assert create_kwargs is not None
+        assert create_kwargs["pdk_overrides"] == {
+            "sdc": os.path.join(project_dir, "constraints", "design.sdc"),
+            "spef": str(tmp_path / "absolute.spef"),
+            "dont_use": ["ICG*"],
+        }

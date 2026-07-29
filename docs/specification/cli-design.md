@@ -510,8 +510,10 @@ The primary use case is tuning cell lists (`dont_use`) and synthesis parameters
 (`abc_load`), which are scalar/list fields consumed within a run.
 
 Overrides are validated at `ecc check` time — unknown keys, type mismatches, and
-path-existence failures are caught before any run begins. Path-existence is checked
-for every path field an override sets: the required `tech`, `lefs`, and `libs`
+path-existence failures are caught before any run begins. Path values in overrides
+resolve against the project directory (like `pdk.root` and `design.rtl`), and the
+resolved paths are what `ecc run` forwards to workspace creation. Path-existence is
+checked for every path field an override sets: the required `tech`, `lefs`, and `libs`
 (checked for every PDK by `PDK.validate()`) and the optional `mapping_file`, `sdc`,
 and `spef` (checked only when an override supplies them). A non-empty value pointing
 at a missing file fails `ecc check` regardless of whether that field is later

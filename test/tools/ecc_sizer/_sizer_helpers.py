@@ -19,8 +19,8 @@ def _workspace(tmp_path):
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(
             tech=Path("tech.lef"),
-            lefs=["std.lef"],
-            libs=["slow.lib"],
+            lefs=[Path("std.lef")],
+            libs=[Path("slow.lib")],
             sdc=Path("clock.sdc"),
             spef=Path("route.spef"),
         ),
