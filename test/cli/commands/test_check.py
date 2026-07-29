@@ -237,7 +237,7 @@ class TestMissingConfigErrorRecord:
         assert "inspect" in record or "inspect_cmd" in record
 
     def test_check_pdk_overrides_valid(
-        self, tmp_path, monkeypatch, create_cli_project, minimal_ics55_pdk_factory
+        self, tmp_path, create_cli_project, minimal_ics55_pdk_factory
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=str(pdk_root))
@@ -293,7 +293,7 @@ class TestMissingConfigErrorRecord:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
         out = capsys.readouterr().out
-        assert "PDK tech LEF not found" in out or "PDK validation failed" in out
+        assert "PDK tech LEF not found" in out
         assert "/no/such.lef" in out
 
     def test_check_pdk_overrides_non_table(self, tmp_path, create_cli_project, capsys):
