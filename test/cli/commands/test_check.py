@@ -1,6 +1,8 @@
 import json
 import os
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -295,6 +297,28 @@ class TestMissingConfigErrorRecord:
         out = capsys.readouterr().out
         assert "PDK tech LEF not found" in out
         assert "/no/such.lef" in out
+
+    @pytest.mark.parametrize(
+        ("field", "message"),
+        [
+            ("mapping_file", "PDK mapping file not found"),
+            ("sdc", "PDK SDC file not found"),
+            ("spef", "PDK SPEF file not found"),
+        ],
+    )
+    def test_check_pdk_overrides_nonexistent_optional_path(
+        self, tmp_path, create_cli_project, minimal_ics55_pdk_factory, capsys, field, message
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write(f'\n[pdk.overrides]\n{field} = "/no/such.file"\n')
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert message in out
+        assert "/no/such.file" in out
 
     def test_check_pdk_overrides_non_table(self, tmp_path, create_cli_project, capsys):
         project_dir = create_cli_project()

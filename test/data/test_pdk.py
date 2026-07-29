@@ -230,3 +230,40 @@ def test_get_pdk_overrides_validated(tmp_path, minimal_ics55_pdk_factory):
 
     with pytest.raises(ValueError, match="PDK validation failed"):
         get_pdk("ics55", pdk_root=pdk_root, overrides={"tech": "/no/such.lef"})
+
+
+@pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        ("mapping_file", "PDK mapping file not found"),
+        ("sdc", "PDK SDC file not found"),
+        ("spef", "PDK SPEF file not found"),
+    ],
+)
+def test_get_pdk_optional_path_override_nonexistent_raises(
+    tmp_path, minimal_ics55_pdk_factory, field, message
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+
+    with pytest.raises(ValueError, match=message):
+        get_pdk("ics55", pdk_root=pdk_root, overrides={field: "/no/such.file"})
+
+
+@pytest.mark.parametrize("field", ["mapping_file", "sdc", "spef"])
+def test_get_pdk_optional_path_override_existing_ok(tmp_path, minimal_ics55_pdk_factory, field):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    real_file = tmp_path / f"{field}.file"
+    real_file.write_text("content\n")
+
+    pdk = get_pdk("ics55", pdk_root=pdk_root, overrides={field: str(real_file)})
+
+    assert getattr(pdk, field) == real_file
+
+
+def test_pdk_validate_optional_paths_absent_ok(tmp_path, minimal_ics55_pdk_factory):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+
+    pdk = get_pdk("ics55", pdk_root=pdk_root)
+
+    assert pdk.mapping_file is None
+    assert pdk.spef is None

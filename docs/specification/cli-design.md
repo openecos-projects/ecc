@@ -508,8 +508,12 @@ The primary use case is tuning cell lists (`dont_use`) and synthesis parameters
 (`abc_load`), which are scalar/list fields consumed within a run.
 
 Overrides are validated at `ecc check` time — unknown keys, type mismatches, and
-path-existence failures are caught before any run begins. `ecc config --resolved`
-surfaces the raw `[pdk.overrides]` input as a project configuration entry.
+path-existence failures are caught before any run begins. Path-existence is checked
+for every path field an override sets, including the optional `tech`, `lefs`, `libs`,
+`mapping_file`, `sdc`, and `spef`: a non-empty value pointing at a missing file fails
+`ecc check` regardless of whether that field is later persisted or regenerated.
+`ecc config --resolved` surfaces the raw `[pdk.overrides]` input as a project
+configuration entry.
 
 The resolved configuration used by each step should be inspectable:
 

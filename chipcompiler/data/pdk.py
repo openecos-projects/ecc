@@ -72,6 +72,12 @@ class PDK:
             for liberty in self.libs:
                 if not liberty.is_file():
                     errors.append(f"PDK liberty file not found: {liberty}")
+        if self.mapping_file and not self.mapping_file.is_file():
+            errors.append(f"PDK mapping file not found: {self.mapping_file}")
+        if self.sdc and not self.sdc.is_file():
+            errors.append(f"PDK SDC file not found: {self.sdc}")
+        if self.spef and not self.spef.is_file():
+            errors.append(f"PDK SPEF file not found: {self.spef}")
         if errors:
             msg = "PDK validation failed:\n  " + "\n  ".join(errors)
             logger.error(msg)
