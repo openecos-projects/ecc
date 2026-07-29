@@ -275,6 +275,36 @@ def test_layout_edit_begin_prefers_selected_step_output_db(monkeypatch, tmp_path
     assert loaded_step.input["db"] == step.output["db"]
 
 
+def test_layout_edit_begin_rejects_another_workspace_until_active_session_is_discarded(
+    monkeypatch,
+    tmp_path,
+):
+    api, first_session, _step, module, _flow_calls = _open_api(monkeypatch, tmp_path)
+    second_workspace = SimpleNamespace(directory=tmp_path / "second-workspace")
+    second_session = api.sessions.open_session(
+        second_workspace.directory,
+        workspace=second_workspace,
+    )
+
+    first = _begin(api, first_session.workspace_id)
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        _begin(api, second_session.workspace_id)
+
+    assert exc_info.value.code == "layout_edit_active"
+    assert exc_info.value.data == {
+        "editSessionId": first["editSessionId"],
+        "workspaceId": first_session.workspace_id,
+    }
+    assert module.initialize_calls == 1
+
+    api.layout_edit_discard(LayoutEditDiscardRequest(first["editSessionId"]))
+    second = _begin(api, second_session.workspace_id)
+
+    assert second["workspaceId"] == second_session.workspace_id
+    assert module.initialize_calls == 2
+
+
 def test_layout_edit_apply_calls_place_instance_without_persisting_artifacts(monkeypatch, tmp_path):
     api, session, step, module, _flow_calls = _open_api(monkeypatch, tmp_path)
     begin = _begin(api, session.workspace_id)

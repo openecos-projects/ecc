@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 from collections.abc import Callable
 from copy import copy, deepcopy
 from dataclasses import replace
@@ -62,6 +63,11 @@ class WorkspaceRuntimeApi:
         self.sessions = sessions or WorkspaceSessionRegistry(db_releaser=_close_db_handle)
         self._next_layout_edit_id = 1
         self._layout_edit_sessions: dict[str, LayoutEditSession] = {}
+        # ecc_tools_bin currently owns one process-global GeometryEditSession.
+        # Keep its native DB and derived GeometryStore exclusive until that
+        # session is reset, so a second workspace cannot replace the store
+        # underneath an active editor.
+        self._layout_edit_lock = threading.RLock()
 
     def create_workspace(self, request: WorkspaceCreateRequest) -> dict:
         if not request.directory:
@@ -353,96 +359,109 @@ class WorkspaceRuntimeApi:
         self._require_persistent_db()
 
         def begin(session: WorkspaceSession) -> dict:
-            active_session = session.layout_edit_session
-            if active_session is not None:
-                if active_session.step_name != request.step:
+            with self._layout_edit_lock:
+                active_session = session.layout_edit_session
+                if active_session is not None:
+                    if active_session.step_name != request.step:
+                        raise RuntimeApiError(
+                            "layout_edit_active",
+                            "layout edit session already active for step: "
+                            f"{active_session.step_name}",
+                            {"editSessionId": active_session.edit_session_id},
+                        )
+                    if (
+                        request.expected_source_fingerprint
+                        and request.expected_source_fingerprint != active_session.source_fingerprint
+                    ):
+                        raise RuntimeApiError(
+                            "source_changed",
+                            "layout edit source fingerprint does not match",
+                            {
+                                "expectedSourceFingerprint": request.expected_source_fingerprint,
+                                "actualSourceFingerprint": active_session.source_fingerprint,
+                            },
+                        )
+                    return _layout_edit_begin_result(active_session, reused=True)
+
+                active_session = next(iter(self._layout_edit_sessions.values()), None)
+                if active_session is not None:
                     raise RuntimeApiError(
                         "layout_edit_active",
-                        f"layout edit session already active for step: {active_session.step_name}",
-                        {"editSessionId": active_session.edit_session_id},
+                        "layout edit session already active for another workspace",
+                        {
+                            "editSessionId": active_session.edit_session_id,
+                            "workspaceId": active_session.workspace_id,
+                        },
                     )
+
+                engine_flow = build_flow_for_workspace(session.workspace)
+                workspace_step = engine_flow.get_workspace_step(request.step)
+                if workspace_step is None:
+                    raise RuntimeApiError("command_failed", f"step not found: {request.step}")
+
+                source_kind, source_paths = _layout_edit_source(workspace_step)
+                source_fingerprint = _artifact_fingerprint(source_paths)
                 if (
                     request.expected_source_fingerprint
-                    and request.expected_source_fingerprint != active_session.source_fingerprint
+                    and request.expected_source_fingerprint != source_fingerprint
                 ):
                     raise RuntimeApiError(
                         "source_changed",
                         "layout edit source fingerprint does not match",
                         {
                             "expectedSourceFingerprint": request.expected_source_fingerprint,
-                            "actualSourceFingerprint": active_session.source_fingerprint,
+                            "actualSourceFingerprint": source_fingerprint,
                         },
                     )
-                return _layout_edit_begin_result(active_session, reused=True)
 
-            engine_flow = build_flow_for_workspace(session.workspace)
-            workspace_step = engine_flow.get_workspace_step(request.step)
-            if workspace_step is None:
-                raise RuntimeApiError("command_failed", f"step not found: {request.step}")
-
-            source_kind, source_paths = _layout_edit_source(workspace_step)
-            source_fingerprint = _artifact_fingerprint(source_paths)
-            if (
-                request.expected_source_fingerprint
-                and request.expected_source_fingerprint != source_fingerprint
-            ):
-                raise RuntimeApiError(
-                    "source_changed",
-                    "layout edit source fingerprint does not match",
-                    {
-                        "expectedSourceFingerprint": request.expected_source_fingerprint,
-                        "actualSourceFingerprint": source_fingerprint,
-                    },
+                edit_step = _layout_edit_workspace_step(
+                    workspace_step,
+                    source_kind=source_kind,
+                    source_paths=source_paths,
                 )
+                initialized = _init_db_engine_for_workspace_step(engine_flow, edit_step)
+                db_handle = getattr(engine_flow, "engine_db", None)
+                if not initialized or not _db_handle_is_initialized(db_handle):
+                    _close_db_handle(db_handle)
+                    raise RuntimeApiError(
+                        "command_failed",
+                        f"failed to initialize layout edit DB for step: {request.step}",
+                    )
 
-            edit_step = _layout_edit_workspace_step(
-                workspace_step,
-                source_kind=source_kind,
-                source_paths=source_paths,
-            )
-            initialized = _init_db_engine_for_workspace_step(engine_flow, edit_step)
-            db_handle = getattr(engine_flow, "engine_db", None)
-            if not initialized or not _db_handle_is_initialized(db_handle):
-                _close_db_handle(db_handle)
-                raise RuntimeApiError(
-                    "command_failed",
-                    f"failed to initialize layout edit DB for step: {request.step}",
+                module = _db_engine_module(db_handle)
+                initialize_geometry = getattr(module, "initialize_geometry_session", None)
+                if not callable(initialize_geometry) or not initialize_geometry():
+                    _close_db_handle(db_handle)
+                    raise RuntimeApiError(
+                        "command_failed",
+                        f"failed to initialize layout geometry for step: {request.step}",
+                    )
+
+                edit_session_id = self._new_layout_edit_id()
+                geometry_output_dir = (
+                    Path(tempfile.mkdtemp(prefix=f"ecc-{edit_session_id}-geometry-")) / "geometry-0"
                 )
+                try:
+                    _write_layout_edit_geometry_snapshot(module, geometry_output_dir)
+                except Exception:
+                    _close_db_handle(db_handle)
+                    shutil.rmtree(geometry_output_dir.parent, ignore_errors=True)
+                    raise
 
-            module = _db_engine_module(db_handle)
-            initialize_geometry = getattr(module, "initialize_geometry_session", None)
-            if not callable(initialize_geometry) or not initialize_geometry():
-                _close_db_handle(db_handle)
-                raise RuntimeApiError(
-                    "command_failed",
-                    f"failed to initialize layout geometry for step: {request.step}",
+                edit_session = LayoutEditSession(
+                    edit_session_id=edit_session_id,
+                    workspace_id=session.workspace_id,
+                    step_name=request.step,
+                    workspace_step=workspace_step,
+                    db_handle=db_handle,
+                    source_kind=source_kind,
+                    source_paths=source_paths,
+                    source_fingerprint=source_fingerprint,
+                    geometry_output_dir=geometry_output_dir,
                 )
-
-            edit_session_id = self._new_layout_edit_id()
-            geometry_output_dir = (
-                Path(tempfile.mkdtemp(prefix=f"ecc-{edit_session_id}-geometry-")) / "geometry-0"
-            )
-            try:
-                _write_layout_edit_geometry_snapshot(module, geometry_output_dir)
-            except Exception:
-                _close_db_handle(db_handle)
-                shutil.rmtree(geometry_output_dir.parent, ignore_errors=True)
-                raise
-
-            edit_session = LayoutEditSession(
-                edit_session_id=edit_session_id,
-                workspace_id=session.workspace_id,
-                step_name=request.step,
-                workspace_step=workspace_step,
-                db_handle=db_handle,
-                source_kind=source_kind,
-                source_paths=source_paths,
-                source_fingerprint=source_fingerprint,
-                geometry_output_dir=geometry_output_dir,
-            )
-            session.layout_edit_session = edit_session
-            self._layout_edit_sessions[edit_session.edit_session_id] = edit_session
-            return _layout_edit_begin_result(edit_session, reused=False)
+                session.layout_edit_session = edit_session
+                self._layout_edit_sessions[edit_session.edit_session_id] = edit_session
+                return _layout_edit_begin_result(edit_session, reused=False)
 
         return self._with_session_mutation_lock(request.workspace_id, begin)
 
@@ -627,11 +646,12 @@ class WorkspaceRuntimeApi:
         return self._with_session_mutation_lock(edit_session.workspace_id, run)
 
     def _discard_layout_edit_session(self, session: WorkspaceSession) -> bool:
-        edit_session = session.layout_edit_session
-        if edit_session is None:
-            return False
-        self._layout_edit_sessions.pop(edit_session.edit_session_id, None)
-        return self.sessions.release_layout_edit_session(session)
+        with self._layout_edit_lock:
+            edit_session = session.layout_edit_session
+            if edit_session is None:
+                return False
+            self._layout_edit_sessions.pop(edit_session.edit_session_id, None)
+            return self.sessions.release_layout_edit_session(session)
 
     def _release_session_db(self, session: WorkspaceSession) -> bool:
         return self.sessions.release_session_db(session)
