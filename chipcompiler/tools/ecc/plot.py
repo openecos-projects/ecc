@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import concurrent.futures
 import os
+import multiprocessing
 
 from tqdm import tqdm
 
@@ -12,6 +13,8 @@ from chipcompiler.utility import (
     plot_metrics,
 )
 
+
+MAX_PLOT_WORKERS = 4
 
 class ECCToolsPlot:
     def __init__(self, workspace: Workspace, step: EccStep):
@@ -157,18 +160,18 @@ class ECCToolsPlot:
         if not valid_paths:
             self.workspace.logger.warning("No valid CSV files found for plotting.")
             return
-
-        # Use ThreadPoolExecutor for multi-threading with progress bar (limit to 10 threads)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            # Create a progress bar
-            list(
-                tqdm(
-                    executor.map(plot_csv_map, valid_paths),
-                    total=len(valid_paths),
-                    desc="Plotting array maps",
-                    unit="file",
-                )
-            )
+        worker_count = min(MAX_PLOT_WORKERS, len(valid_paths))
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=worker_count,
+            mp_context=multiprocessing.get_context("spawn"),
+        ) as executor:
+            for _ in tqdm(
+                executor.map(plot_csv_map, valid_paths),
+                total=len(valid_paths),
+                desc="Plotting array maps",
+                unit="file",
+            ):
+                pass
 
     def plot_drc_statis(self) -> bool:
         # build layer header
