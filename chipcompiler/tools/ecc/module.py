@@ -303,6 +303,22 @@ class ECCToolsModule:
         """Export the current in-memory IDB geometry for GUI rendering."""
         return self.ecc.geometry_snapshot_save(output_dir=path_text(output_dir))
 
+    def initialize_geometry_session(self):
+        """Begin a geometry edit session for incremental GUI updates."""
+        return self.ecc.initialize_geometry_session()
+
+    def sync_instance_geometry(self, inst_name: str):
+        """Synchronize one edited instance from IDB into the geometry session."""
+        return self.ecc.sync_instance_geometry(inst_name=inst_name)
+
+    def geometry_session_snapshot_save(self, output_dir: PathArg):
+        """Export the incremental geometry-session snapshot for GUI rendering."""
+        return self.ecc.geometry_session_snapshot_save(output_dir=path_text(output_dir))
+
+    def reset_geometry_session(self):
+        """Discard the active geometry edit session."""
+        return self.ecc.reset_geometry_session()
+
     def save_data(self, path: PathArg):
         """save ECC data"""
         return self.ecc.save_data(path=path_text(path))
