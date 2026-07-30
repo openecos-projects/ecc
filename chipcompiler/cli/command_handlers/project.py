@@ -1,3 +1,4 @@
+import contextlib
 import os
 import shutil
 import sys
@@ -113,15 +114,12 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 
     run_dir_display = "runs/default"
     if ctx.run_id is not None:
+        run_dir_display = ctx.run_dir
         if _canonically_inside(ctx.run_dir, ctx.project_dir):
-            try:
+            with contextlib.suppress(ValueError):
                 run_dir_display = os.path.relpath(
                     os.path.realpath(ctx.run_dir), os.path.realpath(ctx.project_dir)
                 )
-            except ValueError:
-                run_dir_display = ctx.run_dir
-        else:
-            run_dir_display = ctx.run_dir
 
     records = [
         {
