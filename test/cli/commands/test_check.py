@@ -1,6 +1,8 @@
 import json
 import os
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -9,7 +11,7 @@ class TestCheck:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 0
@@ -20,7 +22,7 @@ class TestCheck:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         monkeypatch.chdir(project_dir)
         rc = cli_main.run(["check"])
@@ -126,7 +128,7 @@ class TestCheck:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 0
@@ -235,3 +237,148 @@ class TestMissingConfigErrorRecord:
         data = json.loads(capsys.readouterr().out)
         record = data["records"][0]
         assert "inspect" in record or "inspect_cmd" in record
+
+    def test_check_pdk_overrides_valid(
+        self, tmp_path, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\ndont_use = ["ICG*"]\n')
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 0
+
+    def test_check_pdk_overrides_unknown_key(
+        self, tmp_path, monkeypatch, create_cli_project, capsys
+    ):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\ndontuse = ["ICG*"]\n')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._pdk_root_from_env",
+            lambda: str(tmp_path / "ics55"),
+        )
+        (tmp_path / "ics55").mkdir(exist_ok=True)
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "unknown PDK override fields" in out
+        assert "dontuse" in out
+
+    def test_check_pdk_overrides_type_mismatch(
+        self, tmp_path, monkeypatch, create_cli_project, capsys
+    ):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\nabc_load = "fast"\n')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._pdk_root_from_env",
+            lambda: str(tmp_path / "ics55"),
+        )
+        (tmp_path / "ics55").mkdir(exist_ok=True)
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "must be a number" in out
+
+    def test_check_pdk_overrides_nonexistent_tech(
+        self, tmp_path, create_cli_project, minimal_ics55_pdk_factory, capsys
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\ntech = "/no/such.lef"\n')
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "PDK tech LEF not found" in out
+        assert "/no/such.lef" in out
+
+    @pytest.mark.parametrize(
+        ("field", "message"),
+        [
+            ("mapping_file", "PDK mapping file not found"),
+            ("sdc", "PDK SDC file not found"),
+            ("spef", "PDK SPEF file not found"),
+        ],
+    )
+    def test_check_pdk_overrides_nonexistent_optional_path(
+        self, tmp_path, create_cli_project, minimal_ics55_pdk_factory, capsys, field, message
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write(f'\n[pdk.overrides]\n{field} = "/no/such.file"\n')
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert message in out
+        assert "/no/such.file" in out
+
+    def test_check_pdk_overrides_relative_sdc_resolves_against_project_dir(
+        self, tmp_path, monkeypatch, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        sdc_path = os.path.join(project_dir, "constraints", "design.sdc")
+        with open(sdc_path, "w") as f:
+            f.write("create_clock -period 1 [get_ports clk]\n")
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\nsdc = "constraints/design.sdc"\n')
+        monkeypatch.chdir(tmp_path)
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        assert rc == 0
+
+    def test_check_pdk_overrides_missing_relative_sdc_reports_project_resolved_path(
+        self, tmp_path, monkeypatch, create_cli_project, minimal_ics55_pdk_factory, capsys
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\nsdc = "constraints/missing.sdc"\n')
+        monkeypatch.chdir(tmp_path)
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "PDK SDC file not found" in out
+        assert os.path.join(project_dir, "constraints", "missing.sdc") in out
+
+    @pytest.mark.parametrize("field", ["lefs", "dont_use"])
+    def test_check_pdk_overrides_non_string_list_element(
+        self, tmp_path, create_cli_project, capsys, field
+    ):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write(f"\n[pdk.overrides]\n{field} = [1]\n")
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert f"PDK override '{field}' elements must be strings" in captured.out
+        assert "Traceback" not in captured.err
+
+    def test_check_pdk_overrides_non_table(self, tmp_path, create_cli_project, capsys):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content = content.replace("[pdk]", '[pdk]\noverrides = "not a table"')
+        with open(toml_path, "w") as f:
+            f.write(content)
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "must be a table" in out

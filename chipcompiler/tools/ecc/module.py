@@ -607,7 +607,7 @@ class ECCToolsModule:
         work_dir: PathArg = "",
         report_dir: PathArg = "",
         feature_dir: PathArg = "",
-        lib_paths: list[str] | None = None,
+        lib_paths: list[Path] | list[str] | None = None,
         sdc_path: str = "",
         spef_path: str = "",
         output_modes: tuple[str, ...] = ("report", "structured"),
@@ -678,7 +678,9 @@ class ECCToolsModule:
     def run_sta(self, output_dir: str):
         return None
 
-    def init_sta(self, output_dir: PathArg, top_module: str, lib_paths: list[str], sdc_path: str):
+    def init_sta(
+        self, output_dir: PathArg, top_module: str, lib_paths: list[Path] | list[str], sdc_path: str
+    ):
         return None
 
     def release_sta(self):

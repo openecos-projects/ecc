@@ -84,7 +84,7 @@ class TestNativeTomlTypeValidation:
             f.write(content)
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda pdk_root, pdk_name: [],
+            lambda name, root, overrides=None: [],
         )
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 0

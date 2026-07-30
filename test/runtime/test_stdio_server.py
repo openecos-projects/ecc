@@ -49,8 +49,8 @@ def _write_subprocess_request(process: subprocess.Popen, method: str, request_id
     process.stdin.flush()
 
 
-def _create_real_workspace(tmp_path: Path) -> Path:
-    pdk_root = _create_minimal_ics55_pdk(tmp_path / "ics55")
+def _create_real_workspace(tmp_path: Path, minimal_ics55_pdk_factory) -> Path:
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
     workspace_dir = tmp_path / "workspace"
@@ -69,24 +69,6 @@ def _create_real_workspace(tmp_path: Path) -> Path:
         },
     )
     return workspace_dir
-
-
-def _create_minimal_ics55_pdk(root: Path) -> Path:
-    tech_path = root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
-    tech_path.parent.mkdir(parents=True, exist_ok=True)
-    tech_path.write_text("VERSION 5.8 ;\n")
-
-    stdcell_root = root / "IP" / "STD_cell" / "ics55_LLSC_H7C_V1p10C100"
-    for flavor in ("ics55_LLSC_H7CR", "ics55_LLSC_H7CL"):
-        lef_path = stdcell_root / flavor / "lef" / f"{flavor}_ecos.lef"
-        lef_path.parent.mkdir(parents=True, exist_ok=True)
-        lef_path.write_text("VERSION 5.8 ;\n")
-
-        lib_path = stdcell_root / flavor / "liberty" / f"{flavor}_ss_rcworst_1p08_125_nldm.lib"
-        lib_path.parent.mkdir(parents=True, exist_ok=True)
-        lib_path.write_text("library(test) { }\n")
-
-    return root
 
 
 def test_stdio_server_writes_only_content_length_framed_responses():
@@ -215,8 +197,8 @@ def test_rpc_stdio_subprocess_persistent_db_smoke():
     assert "db.release" in responses[0]["result"]["capabilities"]
 
 
-def test_rpc_stdio_subprocess_workspace_open_home_smoke(tmp_path):
-    ws = _create_real_workspace(tmp_path)
+def test_rpc_stdio_subprocess_workspace_open_home_smoke(tmp_path, minimal_ics55_pdk_factory):
+    ws = _create_real_workspace(tmp_path, minimal_ics55_pdk_factory)
     process = subprocess.Popen(
         [sys.executable, "-m", "chipcompiler.cli.main", "rpc", "serve", "--stdio"],
         cwd=os.getcwd(),

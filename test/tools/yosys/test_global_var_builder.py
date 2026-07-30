@@ -53,7 +53,7 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
             input_filelist=str(filelist) if filelist is not None else "",
         ),
         pdk=PDK(
-            libs=[str(lib_a), str(lib_b)],
+            libs=[lib_a, lib_b],
             dont_use=["DFF*", "CELL WITH SPACE"],
             tie_low_cell="TIELO",
             tie_low_port="Z",

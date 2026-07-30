@@ -722,3 +722,42 @@ run = "default"
         data = json.loads(capsys.readouterr().out)
         rtl_item = next(i for i in data["records"] if i["config"] == "design.rtl.0")
         assert rtl_item["resolved"] == str(rtl_dir / "gcd.v")
+
+
+def test_config_resolved_pdk_overrides_present(
+    tmp_path,
+    capsys,
+    monkeypatch,
+    create_cli_project,
+    mock_pdk_validation,
+):
+    mock_pdk_validation()
+    project_dir = create_cli_project()
+    toml_path = os.path.join(project_dir, "ecc.toml")
+    with open(toml_path, "a") as f:
+        f.write('\n[pdk.overrides]\ndont_use = ["ICG*", "DFFSRQX*"]\n')
+
+    rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    keys = [item["config"] for item in data["records"]]
+    assert "pdk.overrides" in keys
+    overrides_item = next(i for i in data["records"] if i["config"] == "pdk.overrides")
+    assert overrides_item["value"] == {"dont_use": ["ICG*", "DFFSRQX*"]}
+
+
+def test_config_resolved_pdk_overrides_absent(
+    tmp_path,
+    capsys,
+    monkeypatch,
+    create_cli_project,
+    mock_pdk_validation,
+):
+    mock_pdk_validation()
+    project_dir = create_cli_project()
+
+    rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    keys = [item["config"] for item in data["records"]]
+    assert "pdk.overrides" not in keys

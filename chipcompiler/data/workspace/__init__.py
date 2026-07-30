@@ -1049,6 +1049,7 @@ def create_workspace(
     pdk_json: str | Path = "",
     flow_config: dict | None = None,
     sdc: str | Path = "",
+    pdk_overrides: dict | None = None,
 ) -> Workspace:
     """
     Create a workspace for chip design flow.
@@ -1094,7 +1095,9 @@ def create_workspace(
         workspace.pdk = pdk
 
     if isinstance(pdk, str):
-        workspace.pdk = get_pdk(pdk_name=pdk, pdk_root=pdk_root, pdk_config=pdk_json)
+        workspace.pdk = get_pdk(
+            pdk_name=pdk, pdk_root=pdk_root, pdk_config=pdk_json, overrides=pdk_overrides
+        )
 
     explicit_sdc_path = Path(sdc).expanduser().resolve() if sdc else None
     if explicit_sdc_path is not None:

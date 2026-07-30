@@ -39,7 +39,7 @@ class TestCliProvenance:
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         monkeypatch.setattr(
             "chipcompiler.cli.rendering.progress.should_enable_run_progress",
@@ -101,7 +101,7 @@ class TestCliProvenance:
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         monkeypatch.setattr(
             "chipcompiler.cli.rendering.progress.should_enable_run_progress",
@@ -168,7 +168,7 @@ class TestCliProvenance:
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         monkeypatch.setattr(
             "chipcompiler.cli.rendering.progress.should_enable_run_progress",

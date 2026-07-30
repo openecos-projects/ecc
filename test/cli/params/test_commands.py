@@ -195,7 +195,7 @@ class TestRunSet:
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         monkeypatch.setattr(
             "chipcompiler.cli.rendering.progress.should_enable_run_progress",
@@ -276,7 +276,7 @@ class TestRunSet:
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         monkeypatch.setattr(
             "chipcompiler.cli.rendering.progress.should_enable_run_progress",
@@ -344,7 +344,7 @@ class TestConfigResolved:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         run_dir = os.path.join(project_dir, "runs", "default")
         home = os.path.join(run_dir, "home")
@@ -368,7 +368,7 @@ class TestConfigResolved:
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
@@ -393,7 +393,7 @@ class TestConfigResolved:
         project_dir = create_cli_project(freq=200.0)
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root: None,
+            lambda name, root, overrides=None: None,
         )
         run_dir = os.path.join(project_dir, "runs", "default")
         home = os.path.join(run_dir, "home")

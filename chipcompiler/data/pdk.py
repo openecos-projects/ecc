@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 from chipcompiler.utility.path import optional_path, path_list
@@ -21,8 +21,8 @@ class PDK:
     version: str = ""  # pdk version
     root: Path | None = None  # resolved pdk root path
     tech: Path | None = None  # pdk tech lef file
-    lefs: list = field(default_factory=list)  # pdk lef files
-    libs: list = field(default_factory=list)  # pdk liberty files
+    lefs: list[Path] = field(default_factory=list[Path])  # pdk lef files
+    libs: list[Path] = field(default_factory=list[Path])  # pdk liberty files
     mapping_file: Path | None = None  # pdk mapping file
     corners: list = field(default_factory=list)
     sdc: Path | None = None  # pdk sdc file
@@ -32,13 +32,13 @@ class PDK:
     site_corner: str = ""  # corner site
     tap_cell: str = ""  # tap cell
     end_cap: str = ""  # end cap
-    buffers: list = field(default_factory=list)  # buffers
-    fillers: list = field(default_factory=list)  # fillers
+    buffers: list[str] = field(default_factory=list[str])  # buffers
+    fillers: list[str] = field(default_factory=list[str])  # fillers
     tie_high_cell: str = ""
     tie_high_port: str = ""
     tie_low_cell: str = ""
     tie_low_port: str = ""
-    dont_use: list = field(default_factory=list)  # don't use cell list
+    dont_use: list[str] = field(default_factory=list[str])  # don't use cell list
     abc_driver_cell: str = ""  # ABC driving cell
     abc_load: float = 0.015  # ABC output load
 
@@ -72,10 +72,95 @@ class PDK:
             for liberty in self.libs:
                 if not liberty.is_file():
                     errors.append(f"PDK liberty file not found: {liberty}")
-        if errors:
-            msg = "PDK validation failed:\n  " + "\n  ".join(errors)
-            logger.error(msg)
-            raise ValueError(msg)
+        _raise_pdk_validation_error(errors)
+
+
+def _raise_pdk_validation_error(errors: list) -> None:
+    if errors:
+        msg = "PDK validation failed:\n  " + "\n  ".join(errors)
+        logger.error(msg)
+        raise ValueError(msg)
+
+
+_DEFAULT_PDK = PDK()
+_PROTECTED_FIELDS = {"name", "version"}
+
+# Fields whose values are filesystem paths, derived from the dataclass
+# annotations so CLI path resolution and override validation stay in sync
+# with the field definitions.
+PATH_SCALAR_FIELDS = {f.name for f in fields(PDK) if f.type == Path | None}
+PATH_LIST_FIELDS = {f.name for f in fields(PDK) if f.type == list[Path]}
+STRING_LIST_FIELDS = {f.name for f in fields(PDK) if f.type == list[str]}
+
+# Optional path fields not covered by PDK.validate() (which only checks the
+# always-required root/tech/lefs/libs). When one of these is set through an
+# override, get_pdk checks its existence so a bad configured path fails before
+# a run; base and external PDKs are unaffected because the check is scoped to
+# override-supplied keys only.
+_OPTIONAL_PATH_LABELS = {
+    "mapping_file": "PDK mapping file not found",
+    "sdc": "PDK SDC file not found",
+    "spef": "PDK SPEF file not found",
+}
+
+
+def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
+    """
+    Apply field overrides to a PDK instance via whole-field replacement.
+
+    Args:
+        pdk: Base PDK instance
+        overrides: Mapping of field names to new values
+
+    Returns:
+        New PDK instance with overrides applied
+
+    Raises:
+        ValueError: If unknown fields or type-invalid values are provided
+    """
+    if not overrides:
+        return pdk
+
+    all_fields = {f.name for f in fields(PDK)}
+    overridable = sorted(all_fields - _PROTECTED_FIELDS)
+    unknown = sorted(set(overrides) - all_fields)
+
+    if unknown:
+        raise ValueError(
+            f"unknown PDK override fields: {unknown}; valid overridable fields: {overridable}"
+        )
+
+    protected = sorted(set(overrides) & _PROTECTED_FIELDS)
+    if protected:
+        raise ValueError(
+            f"PDK override fields {protected} cannot be overridden; "
+            "use the appropriate built-in PDK name instead"
+        )
+
+    for key, value in overrides.items():
+        default = getattr(_DEFAULT_PDK, key)
+        if isinstance(default, list):
+            ok, kind = isinstance(value, list), "a list"
+        elif isinstance(default, float):
+            ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+            kind = "a number"
+        else:
+            ok, kind = isinstance(value, str), "a string"
+        if not ok:
+            raise ValueError(f"PDK override '{key}' must be {kind}, got {type(value).__name__}")
+        # Path-list elements hit Path() in __post_init__; cell-name list
+        # elements are written verbatim into generated tool configs. Reject
+        # non-strings here with ValueError instead of escaping replace() as
+        # TypeError or reaching tool input.
+        if key in PATH_LIST_FIELDS | STRING_LIST_FIELDS and isinstance(value, list):
+            for index, element in enumerate(value):
+                if not isinstance(element, str):
+                    raise ValueError(
+                        f"PDK override '{key}' elements must be strings, "
+                        f"got {type(element).__name__} at index {index}"
+                    )
+
+    return replace(pdk, **overrides)
 
 
 def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
@@ -123,6 +208,7 @@ def get_pdk(
     pdk_name: str,
     pdk_root: str | Path = "",
     pdk_config: str | Path = "",
+    overrides: dict | None = None,
 ) -> PDK:
     """
     Return the PDK instance based on the given pdk name.
@@ -139,7 +225,17 @@ def get_pdk(
         pdk = PDK_SG13G2(pdk_root=pdk_root)
     else:
         pdk = PDK(name=pdk_name_normalized)
+    overrides = overrides or {}
+    pdk = apply_pdk_overrides(pdk, overrides)
     pdk.validate()
+    errors = []
+    for key, label in _OPTIONAL_PATH_LABELS.items():
+        if key not in overrides:
+            continue
+        path = getattr(pdk, key)
+        if path and not path.is_file():
+            errors.append(f"{label}: {path}")
+    _raise_pdk_validation_error(errors)
     return pdk
 
 

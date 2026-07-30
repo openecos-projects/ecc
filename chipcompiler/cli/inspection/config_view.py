@@ -83,6 +83,20 @@ def build_project_config_items(
         }
     )
 
+    # PDK overrides
+    if cfg.pdk_overrides:
+        items.append(
+            {
+                "kind": "config",
+                "scope": "project",
+                "key": "pdk.overrides",
+                "value": cfg.pdk_overrides,
+                "resolved": cfg.pdk_overrides,
+                "source": "ecc.toml",
+                "inspect_cmd": inspect,
+            }
+        )
+
     # Run directory
     try:
         run_dir_rel = os.path.relpath(run_dir, project_dir)

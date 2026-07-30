@@ -464,6 +464,66 @@ filelist (`.f`, `.fl`, or `.filelist`) for multi-source RTL designs. If
 `pdk.root` is empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
 `ICS55_PDK_ROOT`.
 
+### PDK Field Overrides
+
+Users can override individual fields of a built-in PDK (such as `ics55`) directly
+from `ecc.toml` without authoring a complete external PDK JSON:
+
+```toml
+[pdk]
+name = "ics55"
+root = "/path/to/ics55"
+
+[pdk.overrides]
+dont_use = ["DFFSRQX*", "ICG*"]
+abc_load = 0.020
+```
+
+Overrides are applied in memory via whole-field replacement at workspace creation.
+The override delta reaches the Yosys builder and other tool steps within a single
+`ecc run`. Persistence behavior varies by field category:
+
+- **Scalar/list fields** (`corners`, `site_core`, `site_io`, `site_corner`,
+  `tap_cell`, `end_cap`, `buffers`, `fillers`, `tie_high_cell`, `tie_high_port`,
+  `tie_low_cell`, `tie_low_port`, `dont_use`, `abc_driver_cell`, `abc_load`):
+  Applied in memory and consumed within the run (e.g., baked into generated Yosys
+  scripts). Not written to `parameters.json`. On `load_workspace` (e.g., `ecc status`
+  or subsequent run without `[pdk.overrides]` in `ecc.toml`), these fields are
+  recomputed from the base built-in PDK. Effect: single-run only, dropped on reload
+  unless the override is present in `ecc.toml` for the next run. `corners` is the
+  exception in this list: no tool step currently consumes it (PDK-to-RCX propagation
+  is not wired in `refresh_workspace_config`), so a `corners` override only changes
+  the in-memory PDK — exactly like the base PDK's own `corners`.
+
+- **`root`**: Written to `parameters.json` as `PDK Root` and re-read by `load_workspace`.
+  Overriding `root` is redundant with `pdk.root` in `[pdk]`; use `pdk.root` instead.
+
+- **Path fields** (`tech`, `lefs`, `libs`): Written to `db.json` at build time and
+  restored by `load_workspace`. Path overrides survive through `db.json`, not through
+  PDK recomputation. Out of intended scope.
+
+- **`sdc`/`spef`**: Copied into `origin/` when present; rediscovered by `load_workspace`.
+  Out of intended scope.
+
+- **`mapping_file`**: Applied only to the in-memory PDK for the current run. The
+  workspace path does not serialize it and `load_workspace` never restores it, so a
+  `mapping_file` override is dropped on reload. Out of intended scope.
+
+The primary use case is tuning cell lists (`dont_use`) and synthesis parameters
+(`abc_load`), which are scalar/list fields consumed within a run.
+
+Overrides are validated at `ecc check` time — unknown keys, type mismatches, and
+path-existence failures are caught before any run begins. Path values in overrides
+resolve against the project directory (like `pdk.root` and `design.rtl`), and the
+resolved paths are what `ecc run` forwards to workspace creation. Path-existence is
+checked for every path field an override sets: the required `tech`, `lefs`, and `libs`
+(checked for every PDK by `PDK.validate()`) and the optional `mapping_file`, `sdc`,
+and `spef` (checked only when an override supplies them). A non-empty value pointing
+at a missing file fails `ecc check` regardless of whether that field is later
+persisted or regenerated.
+`ecc config --resolved` surfaces the raw `[pdk.overrides]` input as a project
+configuration entry.
+
 The resolved configuration used by each step should be inspectable:
 
 ```bash

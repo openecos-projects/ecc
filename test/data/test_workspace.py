@@ -597,6 +597,59 @@ def test_load_workspace_restores_pdk_root_from_parameters(
     assert all(path.is_relative_to(resolved_root) for path in loaded.pdk.libs)
 
 
+def test_load_workspace_external_pdk_recovers_origin_sdc_spef(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    tech = next((pdk_root / "prtech").rglob("*.lef"))
+    lef = next(pdk_root.rglob("ics55_LLSC_H7CR_ecos.lef"))
+    lib = next(pdk_root.rglob("*.lib"))
+    sdc_source = tmp_path / "source.sdc"
+    sdc_source.write_text("# sdc\n")
+    spef_source = tmp_path / "source.spef"
+    spef_source.write_text("# spef\n")
+    pdk_json = tmp_path / "pdk.json"
+    pdk_json.write_text(
+        json.dumps(
+            {
+                "name": "ics55",
+                "root": str(pdk_root),
+                "tech": str(tech),
+                "lefs": [str(lef)],
+                "libs": [str(lib)],
+                "sdc": str(sdc_source),
+                "spef": str(spef_source),
+            }
+        )
+    )
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_json=str(pdk_json),
+    )
+
+    origin_sdc = (workspace_dir / "origin" / "source.sdc").resolve()
+    origin_spef = (workspace_dir / "origin" / "source.spef").resolve()
+    assert origin_sdc.is_file()
+    assert origin_spef.is_file()
+
+    sdc_source.unlink()
+    spef_source.unlink()
+
+    loaded = load_workspace(str(workspace_dir))
+
+    assert loaded is not None
+    assert loaded.pdk.sdc == origin_sdc
+    assert loaded.pdk.spef == origin_spef
+
+
 def test_workspace_config_refresh_uses_updated_parameters(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -1020,3 +1073,99 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
     assert loaded.pdk.root == resolved_root
     assert loaded.parameters.data.get("PDK Root") == str(resolved_root)
     assert all(path.is_relative_to(resolved_root) for path in loaded.pdk.libs)
+
+
+def test_create_workspace_with_pdk_overrides_str_branch(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=str(pdk_root),
+        pdk_overrides={"dont_use": ["ICG*"]},
+    )
+
+    assert workspace is not None
+    assert workspace.pdk.dont_use == ["ICG*"]
+
+
+def test_create_workspace_with_pdk_overrides_pdk_object_ignored(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    from chipcompiler.data.pdk import get_pdk
+
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    pdk_obj = get_pdk("ics55", pdk_root=pdk_root)
+    original_dont_use = pdk_obj.dont_use
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk=pdk_obj,
+        parameters=default_ics55_parameters,
+        pdk_overrides={"dont_use": ["ICG*"]},
+    )
+
+    assert workspace is not None
+    assert workspace.pdk.dont_use == original_dont_use
+
+
+def test_workspace_pdk_overrides_not_persisted_on_reload(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=str(pdk_root),
+        pdk_overrides={"dont_use": ["ICG*"]},
+    )
+    assert workspace.pdk.dont_use == ["ICG*"]
+
+    loaded = load_workspace(str(workspace_dir))
+
+    from chipcompiler.data.pdk import get_pdk
+
+    base_pdk = get_pdk("ics55", pdk_root=pdk_root)
+    assert loaded.pdk.dont_use == base_pdk.dont_use
+
+
+def test_create_workspace_pdk_overrides_typo_propagates(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    import pytest
+
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    with pytest.raises(ValueError, match="unknown PDK override fields"):
+        create_workspace(
+            directory=str(workspace_dir),
+            origin_def="",
+            origin_verilog=str(rtl_path),
+            pdk="ics55",
+            parameters=default_ics55_parameters,
+            pdk_root=str(pdk_root),
+            pdk_overrides={"dontuse": ["ICG*"]},
+        )
