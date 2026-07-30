@@ -543,12 +543,8 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     well_tap.setdefault("distance_micron", 58.0)
 
     side_endcap = phy_placer.setdefault("side_endcap", {})
-    side_endcap["left_cell_name"] = workspace.pdk.end_cap or side_endcap.get(
-        "left_cell_name", ""
-    )
-    side_endcap["right_cell_name"] = workspace.pdk.end_cap or side_endcap.get(
-        "right_cell_name", ""
-    )
+    side_endcap["left_cell_name"] = workspace.pdk.end_cap or side_endcap.get("left_cell_name", "")
+    side_endcap["right_cell_name"] = workspace.pdk.end_cap or side_endcap.get("right_cell_name", "")
 
     _macro_location_file(Path(config_path), floorplan)
     json_write(config_path, floorplan)
