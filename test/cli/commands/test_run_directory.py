@@ -1,9 +1,29 @@
 import json
 import os
+import shutil
 
 import pytest
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.command_handlers.project import _canonically_inside
+
+
+def _spy_mutations(monkeypatch):
+    calls = {"chmod": [], "rmtree": []}
+    real_chmod = os.chmod
+    real_rmtree = shutil.rmtree
+
+    def chmod_spy(path, mode, **kwargs):
+        calls["chmod"].append(path)
+        return real_chmod(path, mode, **kwargs)
+
+    def rmtree_spy(path, *args, **kwargs):
+        calls["rmtree"].append(path)
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "chmod", chmod_spy)
+    monkeypatch.setattr(shutil, "rmtree", rmtree_spy)
+    return calls
 
 
 class TestRunDirectory:
@@ -177,7 +197,7 @@ class TestRunDirectory:
 
 class TestOverwriteGuard:
     def test_refuses_foreign_non_empty_dir(
-        self, tmp_path, capsys, create_cli_project, mock_pdk_validation
+        self, tmp_path, capsys, create_cli_project, mock_pdk_validation, monkeypatch
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -188,6 +208,7 @@ class TestOverwriteGuard:
             f.write("precious\n")
         os.chmod(keep, 0o400)
 
+        mutations = _spy_mutations(monkeypatch)
         rc = cli_main.run(
             ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
         )
@@ -202,6 +223,7 @@ class TestOverwriteGuard:
                 "reason": "target is not an ECC run directory",
             }
         ]
+        assert mutations == {"chmod": [], "rmtree": []}
         with open(keep) as f:
             assert f.read() == "precious\n"
         assert os.stat(keep).st_mode & 0o777 == 0o400
@@ -354,7 +376,7 @@ class TestOverwriteGuard:
         assert os.path.isfile(os.path.join(real_run, "home", "flow.json"))
 
     def test_refuses_ancestor_symlink_to_empty_dir(
-        self, tmp_path, capsys, create_cli_project, mock_pdk_validation
+        self, tmp_path, capsys, create_cli_project, mock_pdk_validation, monkeypatch
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -362,6 +384,7 @@ class TestOverwriteGuard:
         victim.mkdir(parents=True)
         os.symlink(str(tmp_path / "external"), os.path.join(project_dir, "sweeps"))
 
+        mutations = _spy_mutations(monkeypatch)
         rc = cli_main.run(
             [
                 "run",
@@ -384,10 +407,17 @@ class TestOverwriteGuard:
                 "reason": "target is not an ECC run directory",
             }
         ]
+        assert mutations == {"chmod": [], "rmtree": []}
         assert victim.is_dir()
 
     def test_refuses_ancestor_symlink_to_sentinel_dir(
-        self, tmp_path, capsys, create_cli_project, create_flow_json, mock_pdk_validation
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        create_flow_json,
+        mock_pdk_validation,
+        monkeypatch,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -398,6 +428,7 @@ class TestOverwriteGuard:
         os.chmod(keep, 0o400)
         os.symlink(str(tmp_path / "external"), os.path.join(project_dir, "sweeps"))
 
+        mutations = _spy_mutations(monkeypatch)
         rc = cli_main.run(
             [
                 "run",
@@ -420,13 +451,20 @@ class TestOverwriteGuard:
                 "reason": "target is not an ECC run directory",
             }
         ]
+        assert mutations == {"chmod": [], "rmtree": []}
         assert keep.read_text() == "precious\n"
         assert os.stat(keep).st_mode & 0o777 == 0o400
         assert (victim / "home" / "flow.json").is_file()
         os.chmod(keep, 0o644)
 
     def test_refuses_dotdot_after_symlink_component(
-        self, tmp_path, capsys, create_cli_project, create_flow_json, mock_pdk_validation
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        create_flow_json,
+        mock_pdk_validation,
+        monkeypatch,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -441,6 +479,7 @@ class TestOverwriteGuard:
         os.symlink(str(child), os.path.join(project_dir, "sweeps", "jump"))
 
         run_id = os.path.join("sweeps", "jump", "..", "victim")
+        mutations = _spy_mutations(monkeypatch)
         rc = cli_main.run(
             ["run", "--project", project_dir, "--run-id", run_id, "--overwrite", "--json"]
         )
@@ -455,13 +494,20 @@ class TestOverwriteGuard:
                 "reason": "target is not an ECC run directory",
             }
         ]
+        assert mutations == {"chmod": [], "rmtree": []}
         assert keep.read_text() == "precious\n"
         assert os.stat(keep).st_mode & 0o777 == 0o400
         assert (victim / "home" / "flow.json").is_file()
         os.chmod(keep, 0o644)
 
     def test_refuses_dotdot_escape_through_symlinked_project_dir(
-        self, tmp_path, capsys, create_cli_project, create_flow_json, mock_pdk_validation
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        create_flow_json,
+        mock_pdk_validation,
+        monkeypatch,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -476,6 +522,7 @@ class TestOverwriteGuard:
         os.chmod(keep, 0o400)
 
         run_id = os.path.join("..", "victim")
+        mutations = _spy_mutations(monkeypatch)
         rc = cli_main.run(["run", "--project", link, "--run-id", run_id, "--overwrite", "--json"])
 
         assert rc == 1
@@ -488,9 +535,21 @@ class TestOverwriteGuard:
                 "reason": "target is not an ECC run directory",
             }
         ]
+        assert mutations == {"chmod": [], "rmtree": []}
         assert keep.read_text() == "precious\n"
         assert os.stat(keep).st_mode & 0o777 == 0o400
         os.chmod(keep, 0o644)
+
+
+class TestCanonicallyInside:
+    def test_root_anchor_contains_everything(self):
+        assert _canonically_inside("/tmp/x", "/")
+        assert _canonically_inside("/", "/")
+
+    def test_sibling_is_outside(self, tmp_path):
+        anchor = tmp_path / "project"
+        anchor.mkdir()
+        assert not _canonically_inside(str(tmp_path / "other"), str(anchor))
 
 
 class TestRunDirAliasRefusal:

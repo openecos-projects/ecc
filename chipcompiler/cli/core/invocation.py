@@ -37,7 +37,7 @@ def build_context(command_input: CommandInput) -> CommandContext:
     configured = config_run_id(project_dir)
     config_error = None
     if isinstance(configured, InvalidFlowRun):
-        if not cli_run_id:
+        if cli_run_id is None:
             config_error = configured.problem
         configured = None
 

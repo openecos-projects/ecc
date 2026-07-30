@@ -120,7 +120,9 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     if ctx.run_id is not None:
         if _canonically_inside(ctx.run_dir, ctx.project_dir):
             try:
-                run_dir_display = os.path.relpath(ctx.run_dir, ctx.project_dir)
+                run_dir_display = os.path.relpath(
+                    os.path.realpath(ctx.run_dir), os.path.realpath(ctx.project_dir)
+                )
             except ValueError:
                 run_dir_display = ctx.run_dir
         else:
@@ -185,7 +187,7 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     """Return True when path's canonical resolution is anchor or below it."""
     real_base = os.path.realpath(anchor)
     real = os.path.realpath(path)
-    return real == real_base or real.startswith(real_base + os.sep)
+    return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:

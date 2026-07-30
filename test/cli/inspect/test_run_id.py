@@ -371,3 +371,41 @@ class TestInvalidConfigRun:
         assert rc == 0
         records = json.loads(capsys.readouterr().out)["records"]
         assert records[0]["workspace"] == run_dir
+
+    def test_empty_run_id_bypasses_invalid_flow_run_for_status(
+        self, tmp_path, capsys, create_cli_project, create_flow_json, set_flow_run
+    ):
+        project_dir = create_cli_project()
+        set_flow_run(project_dir, 'run = ""')
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(run_dir)
+
+        rc = cli_main.run(["status", "--run-id", "", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "run": "default",
+            "status": "success",
+            "workspace": run_dir,
+            "inspect_cmd": f"ecc status --project {project_dir}",
+            "log_cmd": f"ecc log --project {project_dir}",
+        }
+
+    def test_empty_run_id_bypasses_invalid_flow_run_for_log(
+        self, tmp_path, capsys, create_cli_project, create_flow_json, set_flow_run
+    ):
+        project_dir = create_cli_project()
+        set_flow_run(project_dir, 'run = ""')
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(run_dir)
+
+        rc = cli_main.run(["log", "--run-id", "", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "log_status": "no_logs",
+            "workspace": run_dir,
+            "run": f"ecc run --project {project_dir}",
+        }

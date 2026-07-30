@@ -565,3 +565,28 @@ class TestCheckRunDirDisplay:
             "run": f"ecc run --project {project_dir}",
             "inspect_cmd": f"ecc status --project {project_dir}",
         }
+
+    def test_check_reports_absolute_in_project_run_dir_via_symlinked_project(
+        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
+    ):
+        project_dir = create_cli_project()
+        project_link = str(tmp_path / "project_link")
+        os.symlink(project_dir, project_link)
+        set_flow_run(project_dir, f'run = "{os.path.join(project_dir, "runs", "exp1")}"')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", project_link, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "project": "gcd",
+            "status": "checked",
+            "config": "ecc.toml",
+            "run_dir": os.path.join("runs", "exp1"),
+            "run": f"ecc run --project {project_link}",
+            "inspect_cmd": f"ecc status --project {project_link}",
+        }

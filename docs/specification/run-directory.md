@@ -62,7 +62,7 @@ byte-for-byte identical to before (`runs/default`, run id `None`).
 cli_run_id = command_input.project.run_id
 configured = config_run_id(project_dir)   # None | str | InvalidFlowRun
 if isinstance(configured, InvalidFlowRun):
-    if not cli_run_id:
+    if cli_run_id is None:
         config_error = configured.problem  # strict, see below
     configured = None
 run_dir, run_id = resolve_run_dir(
@@ -70,9 +70,13 @@ run_dir, run_id = resolve_run_dir(
 )
 ```
 
-The `is not None` form preserves the pre-existing collapse of an empty
-`--run-id ""` to the default run inside `resolve_run_dir`; a truthiness-based
-`cli_run_id or configured` would reroute `""` to the configured run.
+One presence rule governs both the suppression gate and resolution:
+`cli_run_id is None`. The `is not None` form preserves the pre-existing
+collapse of an empty `--run-id ""` to the default run inside
+`resolve_run_dir`; a truthiness-based `cli_run_id or configured` would
+reroute `""` to the configured run, and a truthiness-based suppression gate
+would refuse `""` with a `config_error` even though it resolves to the
+default run.
 
 `config_run_id` (`cli/project/config.py`) is the config-owned reader of
 `[flow] run`, applying one canonical rule shared with
@@ -100,7 +104,10 @@ label, which mislabeled `sweeps/s1/r4` as `r4`).
 configured/resolved directory only for non-default runs: project-relative when
 the resolved directory is canonically inside the project (`..foo/run` displays
 relatively; a path escaping via `..` or through a symlinked component displays
-absolute).
+absolute). The relative form is computed in canonical coordinates —
+`relpath(realpath(run_dir), realpath(project_dir))` — so a symlinked
+`--project` with an absolute real in-project run still displays
+`runs/<name>`, never a `../...` path.
 
 ### `ecc run --run-id`
 
@@ -120,8 +127,12 @@ values that cannot name a run directory, using the same canonical rule as
 When `[flow] run` is present but invalid and no `--run-id` is given, the
 inspection commands (`status`/`log`/`config`) fail with a `config_error`
 record carrying the reason and exit non-zero, instead of silently falling back
-to the default run. An explicit `--run-id` bypasses the broken key.
-`ecc run`/`ecc check` already report it through full config validation.
+to the default run. An explicit `--run-id` (including the empty form, which
+collapses to the default run) bypasses the broken key for `status`/`log`;
+project-scoped `ecc config --resolved` still surfaces it because that view
+runs full config validation (the step-scoped view never read ecc.toml, on main
+as well). `ecc run`/`ecc check` already report it through full config
+validation.
 
 ### Overwrite safety (R5)
 
@@ -167,8 +178,18 @@ documents the key and is the no-op value.
   `home/flow.json`-bearing targets are deleted.
 
 Non-goals this iteration: `~`/`$VAR` expansion for run paths; CLI-side
-`--run-id` shape validation (only `[flow] run` is shape-validated); changes
-under `tools/`, `engine/`, or `data/workspace/`; QoR changes of any kind. The
+`--run-id` shape validation (only `[flow] run` is shape-validated) — this also
+covers the empty-form disclosure combination: an explicit `--run-id ""`
+collapses to the default identity, so with a configured `[flow] run` the
+bare disclosure hints (`ecc run`, `ecc run --overwrite`) name the configured
+run, not the inspected default; resolving that requires validating or
+normalizing the empty CLI value, which is exactly the deferred CLI-side
+shape-validation work. `ecc check` displays the resolved directory for any
+valid-shape `[flow] run` — including alias values like `.` or the absolute
+project directory that the write side refuses with `invalid_run_id` — because
+the alias refusal is a write-side safety guard (DEC-2/DEC-6), not a config
+shape rule; read-side display of such aliases is intentional. Changes under
+`tools/`, `engine/`, or `data/workspace/`; QoR changes of any kind. The
 guard-to-`rmtree` TOCTOU window is accepted under the single-user local-CLI
 threat model.
 
