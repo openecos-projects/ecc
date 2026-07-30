@@ -236,6 +236,7 @@ def test_candidate_rerun_dispatches_typed_request():
         def candidate_rerun(self, request):
             assert isinstance(request, CandidateRerunRequest)
             return {
+                "end_step": request.end_step,
                 "execution_scope": request.execution_scope,
                 "target_step": request.target_step,
             }
@@ -248,13 +249,17 @@ def test_candidate_rerun_dispatches_typed_request():
             '{"jsonrpc":"2.0","method":"candidate.rerun","params":'
             '{"workspaceId":"workspace-1","candidateId":"gcd-rerun-place",'
             '"targetStep":"place","patch":[{"knob_id":"place.target_density",'
-            '"value":0.55}],"executionScope":"full_flow"},"id":5}'
+            '"value":0.55}],"executionScope":"full_flow","endStep":"CTS"},"id":5}'
         ),
     )
 
     assert response == {
         "jsonrpc": "2.0",
-        "result": {"execution_scope": "full_flow", "target_step": "place"},
+        "result": {
+            "end_step": "CTS",
+            "execution_scope": "full_flow",
+            "target_step": "place",
+        },
         "id": 5,
     }
 

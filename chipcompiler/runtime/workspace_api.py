@@ -296,7 +296,7 @@ class WorkspaceRuntimeApi:
             flow = self._build_flow_for_session(session, attach_session_db=False)
             try:
                 steps = self._candidate_rerun_steps(
-                    flow, request.target_step, request.execution_scope
+                    flow, request.target_step, request.end_step, request.execution_scope
                 )
                 if request.patch:
                     self._materialize_candidate_rerun(session.workspace, flow, request)
@@ -315,6 +315,7 @@ class WorkspaceRuntimeApi:
                             f"{workspace_step.name} failed with state {_state_value(state)}",
                         )
                 return {
+                    "end_step": request.end_step,
                     "execution_scope": request.execution_scope,
                     "target_step": request.target_step,
                 }
@@ -851,14 +852,29 @@ class WorkspaceRuntimeApi:
             ) from error
 
     @staticmethod
-    def _candidate_rerun_steps(engine_flow, target_step: str, execution_scope: str) -> list:
+    def _candidate_rerun_steps(
+        engine_flow, target_step: str, end_step: str, execution_scope: str
+    ) -> list:
         if execution_scope not in {"single_step", "full_flow"}:
             raise RuntimeApiError("invalid_request", "candidate rerun execution scope is invalid")
         steps = list(getattr(engine_flow, "workspace_steps", ()))
-        for index, step in enumerate(steps):
-            if step.name == target_step:
-                return steps[index:] if execution_scope == "full_flow" else [step]
-        raise RuntimeApiError("command_failed", f"step not found: {target_step}")
+        target_index = next(
+            (index for index, step in enumerate(steps) if step.name == target_step), None
+        )
+        end_index = next((index for index, step in enumerate(steps) if step.name == end_step), None)
+        if target_index is None or end_index is None:
+            raise RuntimeApiError(
+                "command_failed", f"rerun step not found: {target_step} or {end_step}"
+            )
+        if execution_scope == "single_step":
+            if target_step != end_step:
+                raise RuntimeApiError(
+                    "invalid_request", "single-step rerun end step must match the target step"
+                )
+            return [steps[target_index]]
+        if end_index < target_index:
+            raise RuntimeApiError("invalid_request", "rerun end step precedes the target step")
+        return steps[target_index : end_index + 1]
 
     @staticmethod
     def _materialize_candidate_rerun(

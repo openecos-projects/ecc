@@ -1275,16 +1275,17 @@ def test_flow_run_step_rejects_an_invalid_candidate_before_tool_execution(monkey
 
 
 @pytest.mark.parametrize(
-    ("execution_scope", "expected_run_calls", "cleared_steps"),
+    ("execution_scope", "end_step", "expected_run_calls", "cleared_steps"),
     [
-        ("single_step", [("place", True)], ("place",)),
-        ("full_flow", [("place", True), ("CTS", True)], ("place", "CTS")),
+        ("single_step", "place", [("place", True)], ("place",)),
+        ("full_flow", "CTS", [("place", True), ("CTS", True)], ("place", "CTS")),
     ],
 )
 def test_candidate_rerun_rebuilds_the_requested_scope(
     monkeypatch,
     tmp_path,
     execution_scope,
+    end_step,
     expected_run_calls,
     cleared_steps,
 ):
@@ -1303,12 +1304,20 @@ def test_candidate_rerun_rebuilds_the_requested_scope(
             "output": {"dir": ws / "CTS_ecc/output"},
             "analysis": {"dir": ws / "CTS_ecc/analysis"},
         },
+        {
+            "name": "legalization",
+            "tool": "dreamplace",
+            "output": {"dir": ws / "legalization_dreamplace/output"},
+            "analysis": {"dir": ws / "legalization_dreamplace/analysis"},
+        },
     )
     for path in (
         ws / "place_dreamplace/output",
         ws / "CTS_ecc/output",
         ws / "place_dreamplace/analysis",
         ws / "CTS_ecc/analysis",
+        ws / "legalization_dreamplace/output",
+        ws / "legalization_dreamplace/analysis",
     ):
         path.mkdir(parents=True)
         (path / "stale").write_text("stale")
@@ -1351,12 +1360,17 @@ def test_candidate_rerun_rebuilds_the_requested_scope(
             workspace_id=workspace_id,
             candidate_id="gcd-rerun-place",
             target_step="place",
+            end_step=end_step,
             patch=[{"knob_id": "place.target_density", "value": 0.55}],
             execution_scope=execution_scope,
         )
     )
 
-    assert result == {"execution_scope": execution_scope, "target_step": "place"}
+    assert result == {
+        "end_step": end_step,
+        "execution_scope": execution_scope,
+        "target_step": "place",
+    }
     assert calls == [
         ("bind", "place", "fixFanout", "gcd-rerun-place"),
         (
@@ -1371,6 +1385,10 @@ def test_candidate_rerun_rebuilds_the_requested_scope(
     directories = {
         "place": (ws / "place_dreamplace/output", ws / "place_dreamplace/analysis"),
         "CTS": (ws / "CTS_ecc/output", ws / "CTS_ecc/analysis"),
+        "legalization": (
+            ws / "legalization_dreamplace/output",
+            ws / "legalization_dreamplace/analysis",
+        ),
     }
     for step, paths in directories.items():
         if step in cleared_steps:

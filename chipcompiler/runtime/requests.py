@@ -83,6 +83,7 @@ class CandidateMaterializeRequest:
 class CandidateRerunRequest:
     workspace_id: str
     target_step: str
+    end_step: str
     candidate_id: str
     patch: list[dict[str, Any]]
     execution_scope: str
@@ -173,6 +174,7 @@ FIELD_ALIASES = {
     "rtlList": "rtl_list",
     "workspaceId": "workspace_id",
     "targetStep": "target_step",
+    "endStep": "end_step",
     "sourceStep": "source_step",
     "candidateId": "candidate_id",
     "executionScope": "execution_scope",
