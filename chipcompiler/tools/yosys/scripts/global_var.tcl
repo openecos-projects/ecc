@@ -10,6 +10,7 @@ if {[info exists ::env(FILELIST)]} {
     set rtl_file            [split $::env(RTL_FILE)]
 }
 set final_netlist_file      "$::env(NETLIST_FILE)"
+set final_netlist_sim_file  "$::env(NETLIST_SIM_FILE)"
 set timing_cell_stat_rpt    "$::env(TIMING_CELL_STAT_RPT)"
 set timing_cell_count_rpt   "$::env(TIMING_CELL_COUNT_RPT)"
 set generic_stat_json       "$::env(GENERIC_STAT_JSON)"

@@ -278,7 +278,7 @@ opt_clean -purge
 autoname
 
 # write synthesized design for netlist simulation without splitting module ports
-write_verilog -noattr -noexpr -nohex -nodec -defparam ${final_netlist_file}.sim.v.gz
+write_verilog -attr2comment -noexpr -nohex -nodec -defparam ${final_netlist_sim_file}
 
 # splitting nets resolves unwanted compound assign statements in netlist (assign {..} = {..}
 splitnets -format __v -ports

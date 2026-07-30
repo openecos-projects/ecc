@@ -44,6 +44,7 @@ class OutputPaths:
 
 @dataclass
 class YosysOutput(OutputPaths):
+    sim_verilog: Path | None = None
     fixed_verilog: Path | None = None
     report: Path | None = None
 

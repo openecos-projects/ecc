@@ -131,6 +131,7 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
 
     # Convert all paths to absolute since Yosys runs in script/ subdirectory
     netlist_file = _abspath(step.output.verilog or "")
+    netlist_sim_file = _abspath(step.output.sim_verilog or "")
     timing_cell_stat_rpt = _abspath(step.report.stat)
     timing_cell_count_rpt = _abspath(step.report.check)
     generic_stat_json = _abspath(step.report.stat)
@@ -178,6 +179,7 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
 
     script.comment("Output files")
     script.set_path("final_netlist_file", netlist_file)
+    script.set_path("final_netlist_sim_file", netlist_sim_file)
     script.set_path("timing_cell_stat_rpt", timing_cell_stat_rpt)
     script.set_path("timing_cell_count_rpt", timing_cell_count_rpt)
     script.set_path("generic_stat_json", generic_stat_json)
@@ -258,6 +260,7 @@ def build_step(
                 if output_verilog
                 else output_dir / f"{design}_{step_name}.v.gz"
             ),
+            sim_verilog=output_dir / f"{design}_{step_name}_sim.v.gz",
             fixed_verilog=output_dir / f"{design}_{step_name}_fixed.v.gz",
             json=output_dir / f"{design}_{step_name}.json",
             report=output_dir / f"{design}_{step_name}.rpt",
