@@ -262,6 +262,30 @@ class TestConfigRunResolution:
             "start_cmd": f"ecc run --project {project_dir}",
         }
 
+    def test_unreadable_config_falls_back_to_default_run(
+        self, tmp_path, capsys, create_cli_project, create_flow_json, monkeypatch
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(run_dir)
+
+        def deny(config_path):
+            raise PermissionError(13, "Permission denied", config_path)
+
+        monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", deny)
+
+        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "run": "default",
+            "status": "success",
+            "workspace": run_dir,
+            "inspect_cmd": f"ecc status --project {project_dir}",
+            "log_cmd": f"ecc log --project {project_dir}",
+        }
+
 
 class TestNamedRunDisclosures:
     def test_status_missing_disclosure_carries_run_id(self, tmp_path, capsys, create_cli_project):

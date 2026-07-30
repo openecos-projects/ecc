@@ -493,3 +493,75 @@ class TestCheckRunDirDisplay:
             "run": f"ecc run --project {project_dir}",
             "inspect_cmd": f"ecc status --project {project_dir}",
         }
+
+    def test_check_reports_dotdot_prefixed_name_run_dir_relatively(
+        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
+    ):
+        project_dir = create_cli_project()
+        set_flow_run(project_dir, 'run = "..foo/run"')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "project": "gcd",
+            "status": "checked",
+            "config": "ecc.toml",
+            "run_dir": os.path.join("..foo", "run"),
+            "run": f"ecc run --project {project_dir}",
+            "inspect_cmd": f"ecc status --project {project_dir}",
+        }
+
+    def test_check_reports_parent_escaping_run_dir_absolute(
+        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
+    ):
+        project_dir = create_cli_project()
+        set_flow_run(project_dir, 'run = "../outside"')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "project": "gcd",
+            "status": "checked",
+            "config": "ecc.toml",
+            "run_dir": os.path.join(project_dir, "..", "outside"),
+            "run": f"ecc run --project {project_dir}",
+            "inspect_cmd": f"ecc status --project {project_dir}",
+        }
+
+    def test_check_reports_symlink_escaping_run_dir_absolute(
+        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
+    ):
+        project_dir = create_cli_project()
+        external = tmp_path / "external"
+        external.mkdir()
+        os.symlink(str(external), os.path.join(project_dir, "link"))
+        set_flow_run(project_dir, 'run = "link/run"')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "project": "gcd",
+            "status": "checked",
+            "config": "ecc.toml",
+            "run_dir": os.path.join(project_dir, "link", "run"),
+            "run": f"ecc run --project {project_dir}",
+            "inspect_cmd": f"ecc status --project {project_dir}",
+        }

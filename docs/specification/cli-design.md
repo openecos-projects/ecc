@@ -291,10 +291,13 @@ ecc config cts --resolved --run-id sweeps/sweep_001/run_004
 ```
 
 With `[flow] run = "exp1"` in `ecc.toml`, bare `ecc run`, `ecc status`,
-`ecc log`, and `ecc config` all target `runs/exp1`. `--overwrite` only deletes
-a directory ECC recognizes — a missing target, an empty directory, or one
-containing `home/flow.json` — and refuses any other existing target before
-mutating anything, so foreign data is never removed.
+`ecc log`, and `ecc config` all target `runs/exp1`. A run id that resolves to
+the project directory or the `runs/` container is rejected outright.
+`--overwrite` deletes only a directory ECC recognizes: the target must not
+exist yet, be an empty directory, or contain a real `home/flow.json`, and it
+must resolve canonically where its spelling claims — no symlink component may
+redirect it, even behind `..` segments (the project directory is the trusted
+anchor). Refusals happen before any `chmod` or `rmtree`.
 
 Run tags and `ecc diff` remain planned work.
 

@@ -150,7 +150,10 @@ def config_run_id(project_dir: str) -> str | InvalidFlowRun | None:
     config_path = find_config_path(project_dir)
     if config_path is None:
         return None
-    cfg = load_project_config(config_path)
+    try:
+        cfg = load_project_config(config_path)
+    except OSError:
+        return None
     if cfg._toml_error:
         return None
     if cfg._flow_run_error is not None:

@@ -118,11 +118,13 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 
     run_dir_display = "runs/default"
     if ctx.run_id is not None:
-        try:
-            run_dir_rel = os.path.relpath(ctx.run_dir, ctx.project_dir)
-        except ValueError:
-            run_dir_rel = ctx.run_dir
-        run_dir_display = ctx.run_dir if run_dir_rel.startswith("..") else run_dir_rel
+        if _canonically_inside(ctx.run_dir, ctx.project_dir):
+            try:
+                run_dir_display = os.path.relpath(ctx.run_dir, ctx.project_dir)
+            except ValueError:
+                run_dir_display = ctx.run_dir
+        else:
+            run_dir_display = ctx.run_dir
 
     records = [
         {
@@ -156,6 +158,34 @@ def _is_ecc_run_dir(path: str) -> bool:
     home = os.path.join(path, "home")
     flow_json = os.path.join(home, "flow.json")
     return not os.path.islink(home) and not os.path.islink(flow_json) and os.path.isfile(flow_json)
+
+
+def _resolves_as_spelled(path: str, anchor: str) -> bool:
+    """Return True when path canonically resolves where its spelling claims.
+
+    For a path spelled inside anchor, the canonical resolution must equal the
+    anchor's canonical resolution plus the textual tail; for any other path
+    (external or escaping), the canonical resolution must equal the
+    normalized spelling. A symlink component that redirects the target —
+    including one hidden behind ".." segments, which os.path.normpath would
+    collapse textually — breaks the equality. The anchor itself is trusted,
+    so a project reached through a symlinked parent keeps working.
+    """
+    spelled = os.path.normpath(path)
+    base = os.path.normpath(anchor)
+    if spelled == base:
+        return os.path.realpath(path) == os.path.realpath(base)
+    if spelled.startswith(base + os.sep):
+        tail = spelled[len(base) + 1 :]
+        return os.path.realpath(path) == os.path.join(os.path.realpath(base), tail)
+    return os.path.realpath(path) == spelled
+
+
+def _canonically_inside(path: str, anchor: str) -> bool:
+    """Return True when path's canonical resolution is anchor or below it."""
+    real_base = os.path.realpath(anchor)
+    real = os.path.realpath(path)
+    return real == real_base or real.startswith(real_base + os.sep)
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
@@ -225,10 +255,10 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     # to input parsing, progress renderer selection, and CommandResult mapping.
     run_dir = ctx.run_dir
     run_name = ctx.run_id or "default"
-    if os.path.normpath(run_dir) in {
-        os.path.normpath(project_dir),
-        os.path.normpath(os.path.join(project_dir, "runs")),
-    }:
+    protected = (project_dir, os.path.join(project_dir, "runs"))
+    spelled = {os.path.normpath(p) for p in protected}
+    canonical = {os.path.realpath(p) for p in protected}
+    if os.path.normpath(run_dir) in spelled or os.path.realpath(run_dir) in canonical:
         return CommandResult.err(
             [
                 {
@@ -256,7 +286,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         )
 
     if command_input.overwrite and os.path.lexists(run_dir):
-        if os.path.islink(run_dir) or not _is_ecc_run_dir(run_dir):
+        if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
             return CommandResult.err(
                 [
                     {
