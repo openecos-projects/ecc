@@ -45,7 +45,6 @@ scripts.ecc = "chipcompiler.cli.main:main"
 dev = [
   "auditwheel>=6",
   "black>=23",
-  "conventional-pre-commit>=4.3.0",
   "mypy>=1",
   "prek>=0.2.20",
   "pyinstaller==6.17",
