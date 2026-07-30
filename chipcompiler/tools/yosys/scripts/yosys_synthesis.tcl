@@ -213,7 +213,11 @@ attrmap -rename dont_touch keep
 attrmvcp -copy -attr keep
 
 # generic synthesis (coarse)
-synth -top $top_design -flatten -run :fine
+set flatten_flag ""
+if {$keep_hierarchy == "false"} {
+  set flatten_flag "-flatten"
+}
+synth -top $top_design {*}$flatten_flag -run :fine
 
 share -aggressive
 onehot
