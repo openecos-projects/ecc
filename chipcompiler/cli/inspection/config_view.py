@@ -18,7 +18,10 @@ def build_project_config_items(
     if config_path is None:
         return [{"kind": "error", "status": "missing_config"}], 1
 
-    cfg = load_project_config(config_path)
+    try:
+        cfg = load_project_config(config_path)
+    except OSError:
+        return [{"kind": "error", "status": "invalid_config"}], 1
     if getattr(cfg, "_toml_error", None):
         return [{"kind": "error", "status": "invalid_config"}], 1
 

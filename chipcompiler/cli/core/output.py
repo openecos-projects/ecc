@@ -5,7 +5,7 @@ def disclosure_cmd(command: str, project: str | None = None, run_id: str | None 
     parts = [command]
     if project:
         parts.append(f"--project {shlex.quote(project)}")
-    if run_id:
+    if run_id is not None:
         parts.append(f"--run-id {shlex.quote(run_id)}")
     return " ".join(parts)
 

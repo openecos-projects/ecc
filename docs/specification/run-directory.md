@@ -78,6 +78,11 @@ reroute `""` to the configured run, and a truthiness-based suppression gate
 would refuse `""` with a `config_error` even though it resolves to the
 default run.
 
+The resolver also preserves selector presence: an absent selector returns
+`(runs/default, None)`, while an explicit empty selector returns
+`(runs/default, "")`. The directory and the displayed effective name are
+identical in both cases; only the disclosed commands differ (see below).
+
 `config_run_id` (`cli/project/config.py`) is the config-owned reader of
 `[flow] run`, applying one canonical rule shared with
 `validate_project_config`, so resolution and validation never disagree:
@@ -95,10 +100,16 @@ recomputes `os.path.join(project_dir, "runs", "default")`.
 
 One identity is used everywhere: `effective_run_name = ctx.run_id or "default"`.
 It appears in the run success / `run_exists` / `workspace_failed` /
-`flow_failed` records, in the `inspect_cmd` / `log_cmd` disclosure hints
-(`--run-id <id>` included for non-default runs, bare for the default run), and
+`flow_failed` records, in the `inspect_cmd` / `log_cmd` disclosure hints, and
 in the run progress header (replacing the old `os.path.basename(run_dir)`
 label, which mislabeled `sweeps/s1/r4` as `r4`).
+
+Disclosure hints include `--run-id <id>` whenever a selector was explicitly
+given — including the empty form, rendered as `--run-id ''` — and stay bare
+only when no selector was given at all. An explicit `--run-id ""` therefore
+inspects the default run AND produces commands that resolve back to the
+default run, instead of silently falling through to a configured
+`[flow] run`.
 
 `ecc check` keeps printing `runs/default` for default projects and shows the
 configured/resolved directory only for non-default runs: project-relative when
@@ -127,12 +138,12 @@ values that cannot name a run directory, using the same canonical rule as
 When `[flow] run` is present but invalid and no `--run-id` is given, the
 inspection commands (`status`/`log`/`config`) fail with a `config_error`
 record carrying the reason and exit non-zero, instead of silently falling back
-to the default run. An explicit `--run-id` (including the empty form, which
-collapses to the default run) bypasses the broken key for `status`/`log`;
-project-scoped `ecc config --resolved` still surfaces it because that view
-runs full config validation (the step-scoped view never read ecc.toml, on main
-as well). `ecc run`/`ecc check` already report it through full config
-validation.
+to the default run. An explicit `--run-id` (including the empty form) bypasses
+the broken key for `status`/`log`. `ecc config` — project- and step-scoped
+alike — always fails on the invalid key: the handler consults the config-owned
+rule before choosing a view, independent of the selector, so no config view
+can silently succeed on a broken `[flow] run`. `ecc run`/`ecc check` already
+report it through full config validation.
 
 ### Overwrite safety (R5)
 
@@ -178,18 +189,13 @@ documents the key and is the no-op value.
   `home/flow.json`-bearing targets are deleted.
 
 Non-goals this iteration: `~`/`$VAR` expansion for run paths; CLI-side
-`--run-id` shape validation (only `[flow] run` is shape-validated) — this also
-covers the empty-form disclosure combination: an explicit `--run-id ""`
-collapses to the default identity, so with a configured `[flow] run` the
-bare disclosure hints (`ecc run`, `ecc run --overwrite`) name the configured
-run, not the inspected default; resolving that requires validating or
-normalizing the empty CLI value, which is exactly the deferred CLI-side
-shape-validation work. `ecc check` displays the resolved directory for any
-valid-shape `[flow] run` — including alias values like `.` or the absolute
-project directory that the write side refuses with `invalid_run_id` — because
-the alias refusal is a write-side safety guard (DEC-2/DEC-6), not a config
-shape rule; read-side display of such aliases is intentional. Changes under
-`tools/`, `engine/`, or `data/workspace/`; QoR changes of any kind. The
+`--run-id` shape validation for NUL and other invalid filesystem inputs (only
+`[flow] run` is shape-validated). `ecc check` displays the resolved directory
+for any valid-shape `[flow] run` — including alias values like `.` or the
+absolute project directory that the write side refuses with `invalid_run_id`
+— because the alias refusal is a write-side safety guard (DEC-2/DEC-6), not a
+config shape rule; read-side display of such aliases is intentional. Changes
+under `tools/`, `engine/`, or `data/workspace/`; QoR changes of any kind. The
 guard-to-`rmtree` TOCTOU window is accepted under the single-user local-CLI
 threat model.
 
@@ -200,8 +206,15 @@ threat model.
 - `cli/core/invocation.py` — `build_context` resolves the effective run id and
   carries `config_error`.
 - `cli/core/types.py` — `CommandContext.config_error`.
-- `cli/command_handlers/inspect.py` — status/log/config fail fast on
-  `ctx.config_error`.
+- `cli/command_handlers/inspect.py` — status/log fail fast on
+  `ctx.config_error`; `config` consults `config_run_id` directly so both
+  views reject an invalid `[flow] run` under any selector.
+- `cli/inspection/discovery.py` — `resolve_run_dir` preserves selector
+  presence (`"" -> (runs/default, "")`).
+- `cli/inspection/config_view.py` — project view reports `invalid_config`
+  instead of crashing on an unreadable ecc.toml (`OSError`).
+- `cli/core/output.py` — `disclosure_cmd` appends `--run-id` on presence
+  (`is not None`), quoting the empty form as `''`.
 - `cli/command_handlers/project.py` — run handler consumes `ctx.run_dir` +
   effective run name; alias refusal and overwrite guard; `ecc check` run-aware
   display.
@@ -213,21 +226,29 @@ threat model.
 
 - `test/cli/commands/test_run_directory.py` — write targets for all three path
   forms, config-driven runs, precedence, `run_exists`/overwrite records for
-  named runs, the alias refusals (textual and symlink spellings), and the
-  overwrite guard: foreign non-empty dir, symlink target, plain file, empty
-  dir, symlinked `home`/`flow.json`, symlink-redirected targets (ancestor
-  symlink to empty and sentinel-bearing dirs, `..` after a symlink component,
-  `..` escape through a symlinked project dir), and a default run under a
-  symlinked project dir, with refusal-before-mutation assertions on content
-  and modes.
+  named runs and for the explicit empty selector (generated commands carry
+  `--run-id ''`).
+- `test/cli/commands/test_overwrite_guard.py` — the alias refusals (textual
+  and symlink spellings) and the overwrite guard: foreign non-empty dir,
+  symlink target, plain file, empty dir, symlinked `home`/`flow.json`,
+  symlink-redirected targets (ancestor symlink to empty and sentinel-bearing
+  dirs, `..` after a symlink component, `..` escape through a symlinked
+  project dir), and a default run under a symlinked project dir, with
+  refusal-before-mutation assertions on content, modes, and zero
+  chmod/rmtree calls; `_canonically_inside` unit tests.
 - `test/cli/commands/conftest.py` — shared `flow_mocks` fixture
   (create_workspace capture + DummyFlow engine) used by the run tests.
 - `test/cli/project/test_config_run_id.py` — `config_run_id` returns `None`
   for an unreadable config.
 - `test/cli/inspect/test_run_id.py` — config-derived bare inspection for
   status/log/config, `--run-id` override of config, strict `config_error` on
-  invalid `[flow] run`, `--run-id` bypass, and the unreadable-config fallback
-  to the default run.
+  invalid `[flow] run`, `--run-id` bypass, explicit-empty selector records
+  carrying `--run-id ''`, and the unreadable-config fallback to the default
+  run.
+- `test/cli/inspect/test_config_strict.py` — step-scoped
+  `ecc config --resolved` rejects empty and non-string `[flow] run` under
+  explicit non-empty and empty selectors, with real step artifacts present;
+  project view reports `invalid_config` for an unreadable ecc.toml.
 - `test/cli/commands/test_check.py` — shape validation accept/reject matrix
   and `run_dir` display (default/configured/absolute/`..foo`/parent-escaping/
   symlink-escaping).

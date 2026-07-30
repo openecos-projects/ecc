@@ -9,7 +9,7 @@ from chipcompiler.cli.core.output import (
 
 def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
     if not run_id:
-        return os.path.join(project_dir, "runs", "default"), None
+        return os.path.join(project_dir, "runs", "default"), run_id
 
     if run_id == "default":
         return os.path.join(project_dir, "runs", "default"), "default"
