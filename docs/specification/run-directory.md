@@ -227,7 +227,10 @@ threat model.
 - `test/cli/commands/test_run_directory.py` — write targets for all three path
   forms, config-driven runs, precedence, `run_exists`/overwrite records for
   named runs and for the explicit empty selector (generated commands carry
-  `--run-id ''`).
+  `--run-id ''`), and a write-read symmetry regression: real
+  `create_workspace`/`EngineFlow` persist `runs/exp1/home/flow.json` (only
+  external step execution stubbed), then bare `ecc status` reads that same
+  directory with no test-created artifacts in between.
 - `test/cli/commands/test_overwrite_guard.py` — the alias refusals (textual
   and symlink spellings) and the overwrite guard: foreign non-empty dir,
   symlink target, plain file, empty dir, symlinked `home`/`flow.json`,

@@ -220,3 +220,61 @@ class TestRunDirectory:
                 "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
             }
         ]
+
+    def test_run_then_status_reads_persisted_named_run(
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        set_flow_run,
+        minimal_ics55_pdk_factory,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        set_flow_run(project_dir, 'run = "exp1"')
+        monkeypatch.setattr(
+            "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
+            lambda: [("Synthesis", "yosys", "Unstart")],
+        )
+        monkeypatch.setattr(
+            "chipcompiler.engine.flow.EngineFlow.create_step_workspaces", lambda self: None
+        )
+        monkeypatch.setattr(
+            "chipcompiler.engine.flow.EngineFlow.run_steps", lambda self, *, rerun=False: True
+        )
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        run_dir = os.path.join(project_dir, "runs", "exp1")
+        assert rc == 0
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "run": "exp1",
+                "status": "success",
+                "workspace": run_dir,
+                "inspect_cmd": f"ecc status --project {project_dir} --run-id exp1",
+                "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
+            }
+        ]
+        assert os.path.isfile(os.path.join(run_dir, "home", "flow.json"))
+
+        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "run": "exp1",
+                "status": "unstart",
+                "workspace": run_dir,
+                "inspect_cmd": f"ecc status --project {project_dir} --run-id exp1",
+                "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
+            },
+            {
+                "step": "synthesis",
+                "tool": "yosys",
+                "status": "unstart",
+                "runtime": None,
+                "log_cmd": f"ecc log synthesis --project {project_dir} --run-id exp1",
+            },
+        ]
