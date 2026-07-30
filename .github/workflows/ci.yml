@@ -66,7 +66,7 @@ jobs:
         run: |
           git clone --depth 10 https://github.com/openecos-projects/icsprout55-pdk.git chipcompiler/thirdparty/icsprout55-pdk
           cd chipcompiler/thirdparty/icsprout55-pdk
-          git checkout 7517041c8ae80ce99b44ff1ad4ebca6de5ee3c53
+          git checkout 7517041c8ae80ce99b44ff1ad4ebca6de5ee3c53 # Pin for ecc-dreamplace error on latest pdk, remove this after upstream fix.
           curl -fsSL https://github.com/Emin017/icsprout55-pdk/commit/9a4df8c336158a78947cbcbe6b18d19cae5bab3c.patch | git apply --verbose
           grep -q 'RELEASE_TAG ?= latest' Makefile || { echo "Patch failed to apply"; exit 1; }
           make unzip RELEASE_TAG=v1.10.100
