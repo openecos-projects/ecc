@@ -60,6 +60,39 @@ class TestOverwriteGuard:
         assert os.stat(keep).st_mode & 0o777 == 0o400
         os.chmod(keep, 0o644)
 
+    def test_refuses_unreadable_target_dir(
+        self, tmp_path, capsys, create_cli_project, mock_pdk_validation, monkeypatch
+    ):
+        mock_pdk_validation()
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "exp1")
+        os.makedirs(run_dir)
+        os.chmod(run_dir, 0o000)
+        mutations = _spy_mutations(monkeypatch)
+
+        try:
+            rc = cli_main.run(
+                ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+            )
+            chmod_calls = list(mutations["chmod"])
+            rmtree_calls = list(mutations["rmtree"])
+        finally:
+            os.chmod(run_dir, 0o755)
+
+        assert rc == 1
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "kind": "error",
+                "error": "overwrite_refused",
+                "run": "exp1",
+                "workspace": run_dir,
+                "reason": "target is not an ECC run directory",
+            }
+        ]
+        assert chmod_calls == []
+        assert rmtree_calls == []
+        assert os.path.isdir(run_dir)
+
     def test_refuses_symlink_target(
         self, tmp_path, capsys, create_cli_project, create_flow_json, mock_pdk_validation
     ):
@@ -530,7 +563,7 @@ class TestPartialWorkspaceRecovery:
         ]
         assert not os.path.lexists(run_dir)
 
-    def test_failed_creation_preserves_pre_existing_dir(
+    def test_existing_dir_without_overwrite_preserves_content(
         self, tmp_path, capsys, create_cli_project, mock_pdk_validation, monkeypatch
     ):
         mock_pdk_validation()
@@ -540,7 +573,6 @@ class TestPartialWorkspaceRecovery:
         keep = os.path.join(run_dir, "keep.txt")
         with open(keep, "w") as f:
             f.write("precious\n")
-        monkeypatch.setattr("chipcompiler.data.create_workspace", _failing_create_workspace)
         mutations = _spy_mutations(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
@@ -549,13 +581,13 @@ class TestPartialWorkspaceRecovery:
         assert json.loads(capsys.readouterr().out)["records"] == [
             {
                 "kind": "error",
-                "error": "workspace_failed",
+                "error": "run_exists",
                 "run": "exp1",
                 "workspace": run_dir,
-                "reason": "rtl copy failed",
+                "overwrite": f"ecc run --overwrite --project {project_dir} --run-id exp1",
             }
         ]
-        assert mutations["rmtree"] == []
+        assert mutations == {"chmod": [], "rmtree": []}
         with open(keep) as f:
             assert f.read() == "precious\n"
 
@@ -596,11 +628,9 @@ class TestPartialWorkspaceRecovery:
         mock_pdk_validation()
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "exp1")
-        # A concurrent run won the target and is mid-population: the
-        # directory exists by the time this process attempts its atomic
-        # create, and create_workspace reports the existing data.
+        # A concurrent run won the target and is mid-population: this
+        # process loses the atomic create and must stop before writing.
         os.makedirs(os.path.join(run_dir, "home"))
-        monkeypatch.setattr("chipcompiler.data.create_workspace", _none_create_workspace)
         mutations = _spy_mutations(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
@@ -609,14 +639,33 @@ class TestPartialWorkspaceRecovery:
         assert json.loads(capsys.readouterr().out)["records"] == [
             {
                 "kind": "error",
-                "error": "workspace_failed",
+                "error": "run_exists",
                 "run": "exp1",
                 "workspace": run_dir,
+                "overwrite": f"ecc run --overwrite --project {project_dir} --run-id exp1",
             }
         ]
         assert mutations["rmtree"] == []
         assert os.path.isdir(os.path.join(run_dir, "home"))
 
+    def test_empty_dir_without_overwrite_reports_run_exists(
+        self, tmp_path, capsys, create_cli_project, mock_pdk_validation
+    ):
+        mock_pdk_validation()
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "exp1")
+        os.makedirs(run_dir)
 
-def _none_create_workspace(**kwargs):
-    return None
+        rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
+
+        assert rc == 1
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "kind": "error",
+                "error": "run_exists",
+                "run": "exp1",
+                "workspace": run_dir,
+                "overwrite": f"ecc run --overwrite --project {project_dir} --run-id exp1",
+            }
+        ]
+        assert os.listdir(run_dir) == []

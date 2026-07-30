@@ -30,6 +30,28 @@ class TestCheck:
         out = capsys.readouterr().out
         assert "checked" in out
 
+    def test_check_parses_config_once(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        from chipcompiler.cli.project import config as config_module
+
+        real_load = config_module.load_project_config
+        calls = []
+
+        def counting_load(config_path):
+            calls.append(config_path)
+            return real_load(config_path)
+
+        monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", counting_load)
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        assert len(calls) == 1
+
     def test_check_fails_missing_ecc_toml(self, tmp_path):
         rc = cli_main.run(["check", "--project", str(tmp_path)])
         assert rc == 1

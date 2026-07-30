@@ -7,7 +7,12 @@ import typer
 from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.inspection.discovery import resolve_run_dir
-from chipcompiler.cli.project.config import InvalidFlowRun, config_run_id, resolve_project_dir
+from chipcompiler.cli.project.config import (
+    InvalidFlowRun,
+    config_run_id_from,
+    load_run_config,
+    resolve_project_dir,
+)
 
 
 class CommandInput(Protocol):
@@ -34,7 +39,8 @@ def build_context(command_input: CommandInput) -> CommandContext:
     project_dir = resolve_project_dir(project)
 
     cli_run_id = command_input.project.run_id
-    configured = config_run_id(project_dir)
+    cfg = load_run_config(project_dir)
+    configured = config_run_id_from(cfg)
     config_error = None
     if isinstance(configured, InvalidFlowRun):
         if cli_run_id is None:
@@ -58,6 +64,7 @@ def build_context(command_input: CommandInput) -> CommandContext:
         run_id=run_id,
         output_mode=mode,
         config_error=config_error,
+        config=cfg,
     )
 
 

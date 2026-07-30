@@ -140,6 +140,28 @@ def find_config_path(project_dir: str) -> str | None:
     return path if os.path.isfile(path) else None
 
 
+def load_run_config(project_dir: str) -> ProjectConfig | None:
+    """Parse the project's ecc.toml; None when it is missing or unreadable."""
+    config_path = find_config_path(project_dir)
+    if config_path is None:
+        return None
+    try:
+        return load_project_config(config_path)
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def config_run_id_from(cfg: ProjectConfig | None) -> str | InvalidFlowRun | None:
+    """Apply the canonical [flow] run rule to an already-parsed config."""
+    if cfg is None or cfg._toml_error:
+        return None
+    if cfg._flow_run_error is not None:
+        return InvalidFlowRun(cfg._flow_run_error)
+    if cfg.flow_run == "default":
+        return None
+    return cfg.flow_run
+
+
 def config_run_id(project_dir: str) -> str | InvalidFlowRun | None:
     """Return the [flow] run id configured in the project's ecc.toml.
 
@@ -147,20 +169,7 @@ def config_run_id(project_dir: str) -> str | InvalidFlowRun | None:
     InvalidFlowRun when the key is present but cannot name a run directory;
     otherwise the run id string.
     """
-    config_path = find_config_path(project_dir)
-    if config_path is None:
-        return None
-    try:
-        cfg = load_project_config(config_path)
-    except (OSError, UnicodeDecodeError):
-        return None
-    if cfg._toml_error:
-        return None
-    if cfg._flow_run_error is not None:
-        return InvalidFlowRun(cfg._flow_run_error)
-    if cfg.flow_run == "default":
-        return None
-    return cfg.flow_run
+    return config_run_id_from(load_run_config(project_dir))
 
 
 def _supported_flow_presets() -> set[str]:

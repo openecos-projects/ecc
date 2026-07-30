@@ -96,6 +96,13 @@ identical in both cases; only the disclosed commands differ (see below).
 The `run` handler consumes `ctx.run_dir` / `ctx.run_id` directly; no code path
 recomputes `os.path.join(project_dir, "runs", "default")`.
 
+`build_context` parses ecc.toml once (`load_run_config`) and carries the
+snapshot on `ctx.config`; `ecc run` and `ecc check` validate that same parse,
+so run selection and execution can never read different configurations. The
+`ecc config` strictness gate applies the same canonical rule to the snapshot
+(`config_run_id_from`). As a side effect, `run`/`check` report
+`missing_config` for an unreadable ecc.toml instead of crashing.
+
 ### Effective run identity
 
 One identity is used everywhere: `effective_run_name = ctx.run_id or "default"`.
@@ -165,21 +172,27 @@ Two independent checks run before any `chmod`/`rmtree`:
      `normpath` would collapse textually but the kernel resolves through the
      link); external or escaping paths must equal their normalized spelling;
    - or the target is not an empty directory and does not contain a real
-     (non-symlinked) `home/flow.json` sentinel.
+     (non-symlinked) `home/flow.json` sentinel. A directory that cannot be
+     inspected (e.g. no read permission) is refused the same way instead of
+     failing with a traceback.
 
 A nonexistent target proceeds (no-op guard), an empty directory proceeds, and
 a sentinel-bearing directory proceeds. Refusals leave the target bit-for-bit
 untouched: no `chmod` walk and no `rmtree` run. No new marker file is
 introduced; `home/flow.json` is what `read_flow_json` already keys on.
 
-A failed `create_workspace` does not strand a partial tree the guard would
-later refuse: the run handler attempts `os.makedirs(run_dir)` before calling
-`create_workspace`, and only the process whose `makedirs` actually created
-the directory owns the cleanup — on `workspace_failed` it removes the
-partial tree, so a plain retry starts clean. Ownership is atomic, so a
-concurrent loser (`FileExistsError`) never deletes the winner's active
-workspace, and a directory that existed before the invocation is never
-auto-removed — retrying against it hits the same DEC-6 refusal as before.
+A target directory that already exists is never written into: after the
+overwrite step the run handler attempts `os.makedirs(run_dir)`, and a
+`FileExistsError` stops the run with a `run_exists` record (same shape and
+overwrite disclosure as the flow.json check). Ownership is therefore
+exclusive — exactly one process ever writes into the target, so when the
+owner's `create_workspace` fails (`workspace_failed`), removing the partial
+tree can only ever delete its own output, and a concurrent loser stops
+before writing instead of racing the winner. A deliberate side effect: a
+pre-existing directory without `home/flow.json` (including an empty one) no
+longer proceeds without `--overwrite`; the disclosure leads to
+`--overwrite`, whose guard allows the empty case and refuses foreign
+content.
 
 ### Init template
 
@@ -210,11 +223,13 @@ threat model.
 
 ## Files touched
 
-- `cli/project/config.py` — `config_run_id`, `InvalidFlowRun`, canonical shape
-  rule, `_flow_run_error` on `ProjectConfig`; `SUPPORTED_FLOW_RUNS` deleted.
-- `cli/core/invocation.py` — `build_context` resolves the effective run id and
-  carries `config_error`.
-- `cli/core/types.py` — `CommandContext.config_error`.
+- `cli/project/config.py` — `load_run_config`, `config_run_id_from`,
+  `config_run_id`, `InvalidFlowRun`, canonical shape rule, `_flow_run_error`
+  on `ProjectConfig`; `SUPPORTED_FLOW_RUNS` deleted.
+- `cli/core/invocation.py` — `build_context` parses ecc.toml once, resolves
+  the effective run id from the snapshot, and carries `config_error` and the
+  snapshot.
+- `cli/core/types.py` — `CommandContext.config_error` and `.config`.
 - `cli/command_handlers/inspect.py` — status/log fail fast on
   `ctx.config_error`; `config` consults `config_run_id` directly so both
   views reject an invalid `[flow] run` under any selector.
@@ -225,9 +240,10 @@ threat model.
 - `cli/core/output.py` — `disclosure_cmd` appends `--run-id` on presence
   (`is not None`), quoting the empty form as `''`.
 - `cli/command_handlers/project.py` — run handler consumes `ctx.run_dir` +
-  effective run name; alias refusal and overwrite guard; failed
-  `create_workspace` removes only a target this process created atomically
-  (`os.makedirs` ownership); `ecc check` run-aware display.
+  effective run name and validates the `ctx.config` snapshot; alias refusal
+  and overwrite guard (unreadable targets refused safely); an existing target
+  stops with `run_exists`; failed `create_workspace` removes only the
+  atomically owned target; `ecc check` run-aware display.
 - `cli/commands/project.py` — `--run-id` on `run_cmd`.
 - `cli/rendering/progress.py` — progress header labeled by effective run name.
 - `docs/specification/cli-design.md` — run-writer paragraph and validation note.
@@ -237,21 +253,23 @@ threat model.
 - `test/cli/commands/test_run_directory.py` — write targets for all three path
   forms, config-driven runs, precedence, `run_exists`/overwrite records for
   named runs and for the explicit empty selector (generated commands carry
-  `--run-id ''`), and a write-read symmetry regression: real
+  `--run-id ''`), a write-read symmetry regression: real
   `create_workspace`/`EngineFlow` persist `runs/exp1/home/flow.json` (only
   external step execution stubbed), then bare `ecc status` reads that same
-  directory with no test-created artifacts in between.
+  directory with no test-created artifacts in between, and a single-snapshot
+  regression asserting `ecc run` parses ecc.toml exactly once.
 - `test/cli/commands/test_overwrite_guard.py` — the alias refusals (textual
   and symlink spellings) and the overwrite guard: foreign non-empty dir,
-  symlink target, plain file, empty dir, symlinked `home`/`flow.json`,
-  symlink-redirected targets (ancestor symlink to empty and sentinel-bearing
-  dirs, `..` after a symlink component, `..` escape through a symlinked
-  project dir), and a default run under a symlinked project dir, with
-  refusal-before-mutation assertions on content, modes, and zero
-  chmod/rmtree calls; `_canonically_inside` unit tests; partial-workspace
-  recovery: a failed `create_workspace` removes a fresh or guarded-overwritten
-  target, never touches a pre-existing directory, and never deletes a
-  concurrently created workspace after losing the atomic ownership race.
+  symlink target, plain file, empty dir, unreadable dir, symlinked
+  `home`/`flow.json`, symlink-redirected targets (ancestor symlink to empty
+  and sentinel-bearing dirs, `..` after a symlink component, `..` escape
+  through a symlinked project dir), and a default run under a symlinked
+  project dir, with refusal-before-mutation assertions on content, modes, and
+  zero chmod/rmtree calls; `_canonically_inside` unit tests; recovery
+  semantics: an existing target without `--overwrite` stops with `run_exists`
+  (foreign content, concurrent winner's partial tree, and empty dir alike,
+  with preservation assertions), and a failed `create_workspace` removes the
+  atomically owned fresh or guarded-overwritten target.
 - `test/cli/commands/conftest.py` — shared `flow_mocks` fixture
   (create_workspace capture + DummyFlow engine) used by the run tests.
 - `test/cli/project/test_config_run_id.py` — `config_run_id` returns `None`

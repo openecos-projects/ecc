@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from enum import Enum
 
+from chipcompiler.cli.project.config import ProjectConfig
+
 
 class OutputMode(Enum):
     TEXT = "text"
@@ -17,6 +19,7 @@ class CommandContext:
     run_id: str | None
     output_mode: OutputMode
     config_error: str | None = None
+    config: ProjectConfig | None = None
 
 
 @dataclass(frozen=True)

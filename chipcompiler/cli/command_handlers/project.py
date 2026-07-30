@@ -79,16 +79,12 @@ run = "default"
 
 
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.project.config import (
-        find_config_path,
-        load_project_config,
-        validate_project_config,
-    )
+    from chipcompiler.cli.project.config import validate_project_config
 
     project = ctx.project
 
-    config_path = find_config_path(ctx.project_dir)
-    if config_path is None:
+    cfg = ctx.config
+    if cfg is None:
         return CommandResult.err(
             [
                 error_record(
@@ -99,7 +95,6 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    cfg = load_project_config(config_path)
     errors = validate_project_config(cfg)
 
     if errors:
@@ -155,8 +150,11 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 def _is_ecc_run_dir(path: str) -> bool:
     if not os.path.isdir(path):
         return False
-    if not os.listdir(path):
-        return True
+    try:
+        if not os.listdir(path):
+            return True
+    except OSError:
+        return False
     home = os.path.join(path, "home")
     flow_json = os.path.join(home, "flow.json")
     return not os.path.islink(home) and not os.path.islink(flow_json) and os.path.isfile(flow_json)
@@ -193,8 +191,6 @@ def _canonically_inside(path: str, anchor: str) -> bool:
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     from chipcompiler import rtl2gds as rtl2gds_api
     from chipcompiler.cli.project.config import (
-        find_config_path,
-        load_project_config,
         resolve_pdk_overrides,
         resolve_pdk_root,
         resolve_rtl,
@@ -207,8 +203,8 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     project = ctx.project
     project_dir = ctx.project_dir
 
-    config_path = find_config_path(project_dir)
-    if config_path is None:
+    cfg = ctx.config
+    if cfg is None:
         return CommandResult.err(
             [
                 {
@@ -219,7 +215,6 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    cfg = load_project_config(config_path)
     errors = validate_project_config(cfg)
     if errors:
         return CommandResult.err(
@@ -312,14 +307,27 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         os.chmod(run_dir, 0o755)
         shutil.rmtree(run_dir)
 
-    # A failed create_workspace may leave a partial tree; only the process
-    # that atomically created the target may remove it — never a
-    # pre-existing or concurrently created directory. create_workspace
-    # re-attempts the creation, so a real error surfaces from there.
+    # Only the process that atomically creates the target may proceed or
+    # clean up a failed create_workspace: an existing target (pre-existing
+    # or won by a concurrent run) is never written into or removed by this
+    # invocation. create_workspace re-attempts the creation, so any other
+    # error surfaces from there.
     owns_target = False
     try:
         os.makedirs(run_dir)
         owns_target = True
+    except FileExistsError:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "run_exists",
+                    "run": run_name,
+                    "workspace": run_dir,
+                    "overwrite": disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
+                }
+            ]
+        )
     except OSError:
         pass
 

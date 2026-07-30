@@ -12,7 +12,7 @@ from chipcompiler.cli.core.output import (
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.cli.project.config import InvalidFlowRun, config_run_id
+from chipcompiler.cli.project.config import InvalidFlowRun, config_run_id_from
 
 
 def _config_error_result(ctx: CommandContext, reason: str) -> CommandResult:
@@ -219,7 +219,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
 
 
 def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
-    configured = config_run_id(ctx.project_dir)
+    configured = config_run_id_from(ctx.config)
     if isinstance(configured, InvalidFlowRun):
         return _config_error_result(ctx, configured.problem)
 

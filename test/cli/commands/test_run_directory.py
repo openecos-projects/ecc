@@ -278,3 +278,34 @@ class TestRunDirectory:
                 "log_cmd": f"ecc log synthesis --project {project_dir} --run-id exp1",
             },
         ]
+
+    def test_run_parses_config_once(
+        self, tmp_path, capsys, create_cli_project, set_flow_run, flow_mocks, monkeypatch
+    ):
+        project_dir = create_cli_project()
+        set_flow_run(project_dir, 'run = "exp1"')
+        from chipcompiler.cli.project import config as config_module
+
+        real_load = config_module.load_project_config
+        calls = []
+
+        def counting_load(config_path):
+            calls.append(config_path)
+            return real_load(config_path)
+
+        monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", counting_load)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        assert len(calls) == 1
+        run_dir = os.path.join(project_dir, "runs", "exp1")
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "run": "exp1",
+                "status": "success",
+                "workspace": run_dir,
+                "inspect_cmd": f"ecc status --project {project_dir} --run-id exp1",
+                "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
+            }
+        ]
