@@ -589,3 +589,34 @@ class TestPartialWorkspaceRecovery:
             }
         ]
         assert not os.path.lexists(run_dir)
+
+    def test_lost_ownership_race_preserves_active_workspace(
+        self, tmp_path, capsys, create_cli_project, mock_pdk_validation, monkeypatch
+    ):
+        mock_pdk_validation()
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "exp1")
+        # A concurrent run won the target and is mid-population: the
+        # directory exists by the time this process attempts its atomic
+        # create, and create_workspace reports the existing data.
+        os.makedirs(os.path.join(run_dir, "home"))
+        monkeypatch.setattr("chipcompiler.data.create_workspace", _none_create_workspace)
+        mutations = _spy_mutations(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
+
+        assert rc == 1
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "kind": "error",
+                "error": "workspace_failed",
+                "run": "exp1",
+                "workspace": run_dir,
+            }
+        ]
+        assert mutations["rmtree"] == []
+        assert os.path.isdir(os.path.join(run_dir, "home"))
+
+
+def _none_create_workspace(**kwargs):
+    return None

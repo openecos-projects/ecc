@@ -173,10 +173,12 @@ untouched: no `chmod` walk and no `rmtree` run. No new marker file is
 introduced; `home/flow.json` is what `read_flow_json` already keys on.
 
 A failed `create_workspace` does not strand a partial tree the guard would
-later refuse: when the target directory was created by this invocation (it
-did not exist beforehand, or this invocation's guarded `--overwrite` removed
-it), a `workspace_failed` outcome also removes that partial tree, so a plain
-retry starts clean. A directory that existed before the invocation is never
+later refuse: the run handler attempts `os.makedirs(run_dir)` before calling
+`create_workspace`, and only the process whose `makedirs` actually created
+the directory owns the cleanup — on `workspace_failed` it removes the
+partial tree, so a plain retry starts clean. Ownership is atomic, so a
+concurrent loser (`FileExistsError`) never deletes the winner's active
+workspace, and a directory that existed before the invocation is never
 auto-removed — retrying against it hits the same DEC-6 refusal as before.
 
 ### Init template
@@ -224,8 +226,8 @@ threat model.
   (`is not None`), quoting the empty form as `''`.
 - `cli/command_handlers/project.py` — run handler consumes `ctx.run_dir` +
   effective run name; alias refusal and overwrite guard; failed
-  `create_workspace` removes only a self-created partial target; `ecc check`
-  run-aware display.
+  `create_workspace` removes only a target this process created atomically
+  (`os.makedirs` ownership); `ecc check` run-aware display.
 - `cli/commands/project.py` — `--run-id` on `run_cmd`.
 - `cli/rendering/progress.py` — progress header labeled by effective run name.
 - `docs/specification/cli-design.md` — run-writer paragraph and validation note.
@@ -248,7 +250,8 @@ threat model.
   refusal-before-mutation assertions on content, modes, and zero
   chmod/rmtree calls; `_canonically_inside` unit tests; partial-workspace
   recovery: a failed `create_workspace` removes a fresh or guarded-overwritten
-  target and never touches a pre-existing directory.
+  target, never touches a pre-existing directory, and never deletes a
+  concurrently created workspace after losing the atomic ownership race.
 - `test/cli/commands/conftest.py` — shared `flow_mocks` fixture
   (create_workspace capture + DummyFlow engine) used by the run tests.
 - `test/cli/project/test_config_run_id.py` — `config_run_id` returns `None`
