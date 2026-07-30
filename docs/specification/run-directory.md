@@ -87,8 +87,8 @@ identical in both cases; only the disclosed commands differ (see below).
 `[flow] run`, applying one canonical rule shared with
 `validate_project_config`, so resolution and validation never disagree:
 
-- key absent, `"default"`, or config unreadable (missing, malformed TOML, or
-  `OSError` on read) → `None` (collapse to default)
+- key absent, `"default"`, or config unreadable (missing, malformed TOML,
+  `OSError`, or invalid UTF-8 on read) → `None` (collapse to default)
 - present but empty / whitespace-only / leading-trailing whitespace /
   NUL-containing / non-string → `InvalidFlowRun(problem)`
 - otherwise → the string value
@@ -172,6 +172,13 @@ a sentinel-bearing directory proceeds. Refusals leave the target bit-for-bit
 untouched: no `chmod` walk and no `rmtree` run. No new marker file is
 introduced; `home/flow.json` is what `read_flow_json` already keys on.
 
+A failed `create_workspace` does not strand a partial tree the guard would
+later refuse: when the target directory was created by this invocation (it
+did not exist beforehand, or this invocation's guarded `--overwrite` removed
+it), a `workspace_failed` outcome also removes that partial tree, so a plain
+retry starts clean. A directory that existed before the invocation is never
+auto-removed — retrying against it hits the same DEC-6 refusal as before.
+
 ### Init template
 
 `ecc init` keeps writing `run = "default"` in the generated `[flow]` block — it
@@ -212,12 +219,13 @@ threat model.
 - `cli/inspection/discovery.py` — `resolve_run_dir` preserves selector
   presence (`"" -> (runs/default, "")`).
 - `cli/inspection/config_view.py` — project view reports `invalid_config`
-  instead of crashing on an unreadable ecc.toml (`OSError`).
+  instead of crashing on an unreadable ecc.toml (`OSError` or invalid UTF-8).
 - `cli/core/output.py` — `disclosure_cmd` appends `--run-id` on presence
   (`is not None`), quoting the empty form as `''`.
 - `cli/command_handlers/project.py` — run handler consumes `ctx.run_dir` +
-  effective run name; alias refusal and overwrite guard; `ecc check` run-aware
-  display.
+  effective run name; alias refusal and overwrite guard; failed
+  `create_workspace` removes only a self-created partial target; `ecc check`
+  run-aware display.
 - `cli/commands/project.py` — `--run-id` on `run_cmd`.
 - `cli/rendering/progress.py` — progress header labeled by effective run name.
 - `docs/specification/cli-design.md` — run-writer paragraph and validation note.
@@ -238,20 +246,23 @@ threat model.
   dirs, `..` after a symlink component, `..` escape through a symlinked
   project dir), and a default run under a symlinked project dir, with
   refusal-before-mutation assertions on content, modes, and zero
-  chmod/rmtree calls; `_canonically_inside` unit tests.
+  chmod/rmtree calls; `_canonically_inside` unit tests; partial-workspace
+  recovery: a failed `create_workspace` removes a fresh or guarded-overwritten
+  target and never touches a pre-existing directory.
 - `test/cli/commands/conftest.py` — shared `flow_mocks` fixture
   (create_workspace capture + DummyFlow engine) used by the run tests.
 - `test/cli/project/test_config_run_id.py` — `config_run_id` returns `None`
-  for an unreadable config.
+  for an unreadable or non-UTF-8 config.
 - `test/cli/inspect/test_run_id.py` — config-derived bare inspection for
   status/log/config, `--run-id` override of config, strict `config_error` on
   invalid `[flow] run`, `--run-id` bypass, explicit-empty selector records
-  carrying `--run-id ''`, and the unreadable-config fallback to the default
-  run.
+  carrying `--run-id ''`, and the unreadable/non-UTF-8 config fallback to the
+  default run.
 - `test/cli/inspect/test_config_strict.py` — step-scoped
   `ecc config --resolved` rejects empty and non-string `[flow] run` under
   explicit non-empty and empty selectors, with real step artifacts present;
-  project view reports `invalid_config` for an unreadable ecc.toml.
+  project view reports `invalid_config` for an unreadable or non-UTF-8
+  ecc.toml.
 - `test/cli/commands/test_check.py` — shape validation accept/reject matrix
   and `run_dir` display (default/configured/absolute/`..foo`/parent-escaping/
   symlink-escaping).

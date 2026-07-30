@@ -69,3 +69,21 @@ class TestConfigUnreadableFallback:
                 "inspect": f"ecc check --project {project_dir}",
             }
         ]
+
+    def test_config_resolved_reports_invalid_config_on_non_utf8_toml(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        with open(os.path.join(project_dir, "ecc.toml"), "wb") as f:
+            f.write(b'[flow]\nrun = "\xff\xfe"\n')
+
+        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+
+        assert rc == 1
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "kind": "error",
+                "error": "invalid_config",
+                "inspect": f"ecc check --project {project_dir}",
+            }
+        ]

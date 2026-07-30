@@ -287,6 +287,10 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
+    # A failed create_workspace below may leave a partial tree; only a
+    # directory this invocation created (fresh, or removed by the guarded
+    # overwrite) may be auto-removed — never a pre-existing one.
+    fresh_target = not os.path.lexists(run_dir)
     if command_input.overwrite and os.path.lexists(run_dir):
         if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
             return CommandResult.err(
@@ -311,6 +315,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     os.chmod(fp, 0o644)
         os.chmod(run_dir, 0o755)
         shutil.rmtree(run_dir)
+        fresh_target = True
 
     _, origin_verilog, input_filelist = resolve_rtl(cfg)
     parameters = to_parameters(cfg)
@@ -343,6 +348,8 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             pdk_overrides=resolve_pdk_overrides(cfg),
         )
     except Exception as exc:
+        if fresh_target:
+            shutil.rmtree(run_dir, ignore_errors=True)
         return CommandResult.err(
             [
                 {
@@ -356,6 +363,8 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         )
 
     if workspace is None:
+        if fresh_target:
+            shutil.rmtree(run_dir, ignore_errors=True)
         return CommandResult.err(
             [
                 {

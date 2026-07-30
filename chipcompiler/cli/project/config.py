@@ -152,7 +152,7 @@ def config_run_id(project_dir: str) -> str | InvalidFlowRun | None:
         return None
     try:
         cfg = load_project_config(config_path)
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     if cfg._toml_error:
         return None

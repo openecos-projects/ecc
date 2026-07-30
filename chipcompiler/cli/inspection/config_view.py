@@ -20,7 +20,7 @@ def build_project_config_items(
 
     try:
         cfg = load_project_config(config_path)
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return [{"kind": "error", "status": "invalid_config"}], 1
     if getattr(cfg, "_toml_error", None):
         return [{"kind": "error", "status": "invalid_config"}], 1

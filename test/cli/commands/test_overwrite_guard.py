@@ -500,3 +500,92 @@ class TestRunDirAliasRefusal:
                 "reason": "run id must not resolve to the project or runs container",
             }
         ]
+
+
+def _failing_create_workspace(**kwargs):
+    os.makedirs(os.path.join(kwargs["directory"], "home"))
+    raise RuntimeError("rtl copy failed")
+
+
+class TestPartialWorkspaceRecovery:
+    def test_failed_creation_removes_fresh_target(
+        self, tmp_path, capsys, create_cli_project, mock_pdk_validation, monkeypatch
+    ):
+        mock_pdk_validation()
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "exp1")
+        monkeypatch.setattr("chipcompiler.data.create_workspace", _failing_create_workspace)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
+
+        assert rc == 1
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "kind": "error",
+                "error": "workspace_failed",
+                "run": "exp1",
+                "workspace": run_dir,
+                "reason": "rtl copy failed",
+            }
+        ]
+        assert not os.path.lexists(run_dir)
+
+    def test_failed_creation_preserves_pre_existing_dir(
+        self, tmp_path, capsys, create_cli_project, mock_pdk_validation, monkeypatch
+    ):
+        mock_pdk_validation()
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "exp1")
+        os.makedirs(run_dir)
+        keep = os.path.join(run_dir, "keep.txt")
+        with open(keep, "w") as f:
+            f.write("precious\n")
+        monkeypatch.setattr("chipcompiler.data.create_workspace", _failing_create_workspace)
+        mutations = _spy_mutations(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
+
+        assert rc == 1
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "kind": "error",
+                "error": "workspace_failed",
+                "run": "exp1",
+                "workspace": run_dir,
+                "reason": "rtl copy failed",
+            }
+        ]
+        assert mutations["rmtree"] == []
+        with open(keep) as f:
+            assert f.read() == "precious\n"
+
+    def test_failed_creation_after_overwrite_removes_partial(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        create_flow_json,
+        mock_pdk_validation,
+        monkeypatch,
+    ):
+        mock_pdk_validation()
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "exp1")
+        create_flow_json(run_dir)
+        monkeypatch.setattr("chipcompiler.data.create_workspace", _failing_create_workspace)
+
+        rc = cli_main.run(
+            ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+        )
+
+        assert rc == 1
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {
+                "kind": "error",
+                "error": "workspace_failed",
+                "run": "exp1",
+                "workspace": run_dir,
+                "reason": "rtl copy failed",
+            }
+        ]
+        assert not os.path.lexists(run_dir)
