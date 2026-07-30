@@ -6,6 +6,7 @@ from typing import Any, Final, Generic, TypeVar
 from chipcompiler.runtime.requests import (
     CandidateBindInputRequest,
     CandidateMaterializeRequest,
+    CandidateRerunRequest,
     DbEnsureRequest,
     DbReleaseRequest,
     FloorplanEditInspectRequest,
@@ -108,6 +109,11 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="candidate.materialize",
         request_model=CandidateMaterializeRequest,
         handler_name="materialize_candidate",
+    ),
+    RuntimeMethodSpec(
+        method_name="candidate.rerun",
+        request_model=CandidateRerunRequest,
+        handler_name="candidate_rerun",
     ),
     RuntimeMethodSpec(
         method_name="flow.run",

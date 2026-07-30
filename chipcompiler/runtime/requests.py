@@ -80,6 +80,15 @@ class CandidateMaterializeRequest:
 
 
 @dataclass(frozen=True)
+class CandidateRerunRequest:
+    workspace_id: str
+    target_step: str
+    candidate_id: str
+    patch: list[dict[str, Any]]
+    execution_scope: str
+
+
+@dataclass(frozen=True)
 class FlowRunRequest:
     workspace_id: str
     rerun: bool = False
@@ -166,6 +175,7 @@ FIELD_ALIASES = {
     "targetStep": "target_step",
     "sourceStep": "source_step",
     "candidateId": "candidate_id",
+    "executionScope": "execution_scope",
     "configPath": "config_path",
     "outputPath": "output_path",
     "infoId": "info_id",

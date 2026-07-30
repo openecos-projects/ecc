@@ -11,6 +11,7 @@ from chipcompiler.data import StateEnum
 from chipcompiler.runtime.requests import (
     CandidateBindInputRequest,
     CandidateMaterializeRequest,
+    CandidateRerunRequest,
     DbEnsureRequest,
     DbReleaseRequest,
     FlowRunRequest,
@@ -137,6 +138,15 @@ class DummyFlow:
             if step.name == name:
                 return step
         return None
+
+    def get_step(self, name, tool):
+        for step in self.workspace.flow.data.get("steps", []):
+            if step.get("name") == name and step.get("tool") == tool:
+                return step
+        return None
+
+    def save(self):
+        return True
 
     def check_state(self, name, tool, state):
         return getattr(state, "value", state) == StateEnum.Success.value and name in (
@@ -1211,6 +1221,162 @@ def test_flow_run_step_rerun_refreshes_before_db_init(monkeypatch, tmp_path):
         ("init_db_engine",),
         ("run_step", "Floorplan", True),
     ]
+
+
+def test_flow_run_step_rerun_verifies_and_reapplies_candidate_input(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    candidate_calls = []
+
+    monkeypatch.setattr(
+        "chipcompiler.data.validate_candidate_step_contract",
+        lambda workspace, step: candidate_calls.append(("validate", workspace.directory, step))
+        or "gcd-rerun-place",
+    )
+    monkeypatch.setattr(
+        "chipcompiler.data.reapply_candidate_input_binding",
+        lambda workspace, flow, step: candidate_calls.append(
+            ("reapply", workspace.directory, flow, step)
+        ),
+    )
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.flow_run_step(
+        FlowRunStepRequest(workspace_id=workspace_id, step="Floorplan", rerun=True)
+    )
+
+    flow = DummyFlow.instances[-1]
+    assert result == {"step": "Floorplan", "state": "Success"}
+    assert candidate_calls == [
+        ("validate", ws.resolve(), "Floorplan"),
+        ("reapply", ws.resolve(), flow, "Floorplan"),
+    ]
+
+
+def test_flow_run_step_rejects_an_invalid_candidate_before_tool_execution(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    def reject_candidate(*_args):
+        raise ValueError("candidate receipt mismatch")
+
+    monkeypatch.setattr(
+        "chipcompiler.data.validate_candidate_step_contract",
+        reject_candidate,
+    )
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    with pytest.raises(RuntimeApiError, match="candidate receipt mismatch"):
+        api.flow_run_step(
+            FlowRunStepRequest(workspace_id=workspace_id, step="Floorplan", rerun=True)
+        )
+
+    assert DummyFlow.instances[-1].run_calls == []
+
+
+@pytest.mark.parametrize(
+    ("execution_scope", "expected_run_calls", "cleared_steps"),
+    [
+        ("single_step", [("place", True)], ("place",)),
+        ("full_flow", [("place", True), ("CTS", True)], ("place", "CTS")),
+    ],
+)
+def test_candidate_rerun_rebuilds_the_requested_scope(
+    monkeypatch,
+    tmp_path,
+    execution_scope,
+    expected_run_calls,
+    cleared_steps,
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    DummyFlow.workspace_step_specs = (
+        {"name": "fixFanout", "tool": "ecc", "output": {"dir": ws / "fixFanout_ecc/output"}},
+        {
+            "name": "place",
+            "tool": "dreamplace",
+            "output": {"dir": ws / "place_dreamplace/output"},
+            "analysis": {"dir": ws / "place_dreamplace/analysis"},
+        },
+        {
+            "name": "CTS",
+            "tool": "ecc",
+            "output": {"dir": ws / "CTS_ecc/output"},
+            "analysis": {"dir": ws / "CTS_ecc/analysis"},
+        },
+    )
+    for path in (
+        ws / "place_dreamplace/output",
+        ws / "CTS_ecc/output",
+        ws / "place_dreamplace/analysis",
+        ws / "CTS_ecc/analysis",
+    ):
+        path.mkdir(parents=True)
+        (path / "stale").write_text("stale")
+    calls = []
+    monkeypatch.setattr(
+        "chipcompiler.data.bind_candidate_input",
+        lambda workspace, flow, target, source, candidate: calls.append(
+            ("bind", target, source, candidate)
+        )
+        or {},
+    )
+    monkeypatch.setattr(
+        "chipcompiler.data.materialize_candidate_config",
+        lambda workspace, target, patch, candidate: calls.append(
+            ("materialize", target, patch, candidate)
+        )
+        or {},
+    )
+    monkeypatch.setattr(
+        "chipcompiler.data.validate_candidate_step_contract",
+        lambda _workspace, _target: "gcd-rerun-place",
+    )
+    monkeypatch.setattr(
+        "chipcompiler.data.reapply_candidate_input_binding",
+        lambda _workspace, _flow, target: calls.append(("reapply", target)) or {},
+    )
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [
+            {"name": "fixFanout", "tool": "ecc", "state": "Success"},
+            {"name": "place", "tool": "dreamplace", "state": "Success"},
+            {"name": "CTS", "tool": "ecc", "state": "Success"},
+        ]
+    }
+
+    result = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id=workspace_id,
+            candidate_id="gcd-rerun-place",
+            target_step="place",
+            patch=[{"knob_id": "place.target_density", "value": 0.55}],
+            execution_scope=execution_scope,
+        )
+    )
+
+    assert result == {"execution_scope": execution_scope, "target_step": "place"}
+    assert calls == [
+        ("bind", "place", "fixFanout", "gcd-rerun-place"),
+        (
+            "materialize",
+            "place",
+            [{"knob_id": "place.target_density", "value": 0.55}],
+            "gcd-rerun-place",
+        ),
+        ("reapply", "place"),
+    ]
+    assert DummyFlow.instances[-1].run_calls == expected_run_calls
+    directories = {
+        "place": (ws / "place_dreamplace/output", ws / "place_dreamplace/analysis"),
+        "CTS": (ws / "CTS_ecc/output", ws / "CTS_ecc/analysis"),
+    }
+    for step, paths in directories.items():
+        if step in cleared_steps:
+            assert all(list(path.iterdir()) == [] for path in paths)
+        else:
+            assert all((path / "stale").is_file() for path in paths)
 
 
 def test_flow_run_step_skips_successful_step_without_db_init(monkeypatch, tmp_path):
