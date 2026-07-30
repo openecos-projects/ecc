@@ -1,168 +1,119 @@
 {
-    "Floorplan" : {
-        "Tap distance" : 58,
-        "Auto place pin" : {
-          "layer" : "MET3",
-          "width" : 300,
-          "height" : 600,
-          "sides" : []  
-        },
-        "Tracks" :[
-            {
-                "layer" : "MET1",
-                "x start" : 0,
-                "x step" : 200,
-                "y start" : 0,
-                "y step" : 200
-            },
-            {
-                "layer" : "MET2",
-                "x start" : 0,
-                "x step" : 200,
-                "y start" : 0,
-                "y step" : 200
-            },
-            {
-                "layer" : "MET3",
-                "x start" : 0,
-                "x step" : 200,
-                "y start" : 0,
-                "y step" : 200
-            },
-            {
-                "layer" : "MET4",
-                "x start" : 0,
-                "x step" : 200,
-                "y start" : 0,
-                "y step" : 200
-            },
-            {
-                "layer" : "MET5",
-                "x start" : 0,
-                "x step" : 200,
-                "y start" : 0,
-                "y step" : 200
-            },
-            {
-                "layer" : "T4M2",
-                "x start" : 0,
-                "x step" : 800,
-                "y start" : 0,
-                "y step" : 800
-            },
-            {
-                "layer" : "RDL",
-                "x start" : 0,
-                "x step" : 5000,
-                "y start" : 0,
-                "y step" : 5000
-            }
-        ]
+    "ifp": {
+        "temp_directory_path": "",
+        "thread_number": 16
     },
-    "Macro Placement" : [],
-    "PDN" : {
-        "IO" : [
-            {
-                "net name" : "VDD",
-                "direction" : "INOUT",
-                "is power" : true
-            },
-            {
-                "net name" : "VDDIO",
-                "direction" : "INOUT",
-                "is power" : true
-            },
-            {
-                "net name" : "VSS",
-                "direction" : "INOUT",
-                "is power" : false
-            },
-            {
-                "net name" : "VSSIO",
-                "direction" : "INOUT",
-                "is power" : false
-            }
+    "macro_placer": {
+        "macro_placement_halo": 3.0,
+        "macro_routing_halo": 3.0,
+        "macro_location_path": "macro_locations.txt"
+    },
+    "die_builder": {
+        "site_name": "core7",
+        "core_width_to_height_ratio": 1.0,
+        "core_utilization": 0.3,
+        "left_margin_micron": 2.0,
+        "right_margin_micron": 2.0,
+        "top_margin_micron": 2.0,
+        "bottom_margin_micron": 2.0
+    },
+    "io_placer": {
+        "io_layer_list": [
+            "MET3",
+            "MET4"
         ],
-        "Global connect" : [
-            {
-                "net name" : "VDD",
-                "instance pin name" : "VDD",
-                "is power" : true
-            },
-            {
-                "net name" : "VDD",
-                "instance pin name" : "VDD1",
-                "is power" : true
-            },
-            {
-                "net name" : "VDD",
-                "instance pin name" : "VNW",
-                "is power" : true
-            },
-            {
-                "net name" : "VDDIO",
-                "instance pin name" : "VDDIO",
-                "is power" : true
-            },
-            {
-                "net name" : "VSS",
-                "instance pin name" : "VSS",
-                "is power" : false
-            },
-            {
-                "net name" : "VSS",
-                "instance pin name" : "VSS1",
-                "is power" : false
-            },
-            {
-                "net name" : "VSS",
-                "instance pin name" : "VPW",
-                "is power" : false
-            },
-            {
-                "net name" : "VSSIO",
-                "instance pin name" : "VSSIO",
-                "is power" : false
-            }
-        ],
-        "Grid" : {
-            "layer" : "MET1",
-            "power net" : "VDD",
-            "ground net" : "VSS",
-            "width" : 0.16,
-            "offset" : 0
+        "width_micron": 0.1,
+        "depth_micron": 0.7
+    },
+    "phy_placer": {
+        "well_tap": {
+            "cell_name": "FILLTAPH7R",
+            "distance_micron": 58.0
         },
-        "Stripe" : [
+        "side_endcap": {
+            "left_cell_name": "FILLTAPH7R",
+            "right_cell_name": "FILLTAPH7R"
+        },
+        "edge_endcap": {
+            "top_cell_name_list": [
+                "FILLCAP4H7R",
+                "FILLCAP8H7R",
+                "FILLCAP16H7R",
+                "FILLCAP32H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ],
+            "bottom_cell_name_list": [
+                "FILLCAP4H7R",
+                "FILLCAP8H7R",
+                "FILLCAP16H7R",
+                "FILLCAP32H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ]
+        },
+        "boundary_tap": {
+            "top_cell_name_list": [
+                "FILLCAP4H7R",
+                "FILLCAP8H7R",
+                "FILLCAP16H7R",
+                "FILLCAP32H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ],
+            "bottom_cell_name_list": [
+                "FILLCAP4H7R",
+                "FILLCAP8H7R",
+                "FILLCAP16H7R",
+                "FILLCAP32H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ],
+            "rule_micron": 30.0
+        }
+    },
+    "pdn_generator": {
+        "global_connect": [
             {
-                "layer" : "MET4",
-                "power net" : "VDD",
-                "ground net" : "VSS",
-                "width" : 1,
-                "pitch" : 16,
-                "offset" : 0.5                        
+                "net_name": "VDD",
+                "instance_pin_name": "VDD",
+                "is_power": true
             },
             {
-                "layer" : "MET5",
-                "power net" : "VDD",
-                "ground net" : "VSS",
-                "width" : 1,
-                "pitch" : 16,
-                "offset" : 0.5                        
+                "net_name": "VSS",
+                "instance_pin_name": "VSS",
+                "is_power": false
             }
         ],
-        "Connect layers" : [
+        "rail": [
             {
-                "layers" : [
-                    "MET1",
-                    "MET4"
-                ]
+                "routing_layer_name": "MET1",
+                "width_micron": 0.16
+            }
+        ],
+        "stripe": [
+            {
+                "routing_layer_name": "MET4",
+                "width_micron": 1.0,
+                "pitch_micron": 16.0,
+                "offset_micron": 0.5
             },
             {
-                "layers" : [
-                    "MET4",
-                    "MET5"
-                ]
+                "routing_layer_name": "MET5",
+                "width_micron": 1.0,
+                "pitch_micron": 16.0,
+                "offset_micron": 0.5
+            }
+        ],
+        "connect_layers": [
+            {
+                "bottom_routing_layer_name": "MET1",
+                "top_routing_layer_name": "MET4"
+            },
+            {
+                "bottom_routing_layer_name": "MET4",
+                "top_routing_layer_name": "MET5"
             }
         ]
-    } 
+    }
 }

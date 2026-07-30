@@ -782,161 +782,16 @@ def run_floorplan(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        # init floorplan
-        die_area = workspace.parameters.data.get("Die", {}).get("Size", [])
-        core_area = workspace.parameters.data.get("Core", {}).get("Size", [])
-        util = workspace.parameters.data.get("Core", {}).get("Utilitization", 0.3)
-        margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
-        aspect_ratio = workspace.parameters.data.get("Core", {}).get("Aspect ratio", 1)
-        if len(die_area) == 0:
-            # init by core utilization
-            ecc_module.init_floorplan_by_core_utilization(
-                core_site=workspace.pdk.site_core,
-                io_site=workspace.pdk.site_io,
-                corner_site=workspace.pdk.site_corner,
-                core_util=util,
-                x_margin=margin[0],
-                y_margin=margin[1],
-                aspect_ratio=aspect_ratio,
-            )
-        else:
-            # init by die and core area
-            if len(die_area) != 2 or len(margin) != 2:
-                return reslut
-
-            str_die = f"0, 0, {die_area[0]}, {die_area[1]}"
-
-            if len(core_area) == 2:
-                str_core = (
-                    f"{margin[0]}, {margin[1]}, "
-                    f"{core_area[0] + margin[0]}, {core_area[1] + margin[1]}"
-                )
-            else:
-                str_core = (
-                    f"{margin[0]}, {margin[1]}, "
-                    f"{die_area[0] - margin[0]}, {die_area[1] - margin[1]}"
-                )
-
-            ecc_module.init_floorplan_by_area(
-                die_area=str_die,
-                core_area=str_core,
-                core_site=workspace.pdk.site_core,
-                io_site=workspace.pdk.site_io,
-                corner_site=workspace.pdk.site_corner,
-            )
-
+        ecc_module.init_fp(config=workspace.config.get(StepEnum.FLOORPLAN.value, ""))
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value, state=StateEnum.Success)
 
-        floorplan_dict = json_read(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
-
-        # create tracks
-        json_floorplan = floorplan_dict.get("Floorplan", {})
-        json_track = json_floorplan.get("Tracks", [])
-        for item in json_track:
-            ecc_module.gern_track(
-                layer=item.get("layer", ""),
-                x_start=item.get("x start", 0),
-                x_step=item.get("x step", 0),
-                y_start=item.get("y start", 0),
-                y_step=item.get("y step", 0),
-            )
+        ecc_module.run_fp()
         sub_flow.update_step(step_name=EccSubFlowEnum.create_tracks.value, state=StateEnum.Success)
-
-        # Macro Placement
-        json_macro_placement = floorplan_dict.get("Macro Placement", [])
-        if len(json_macro_placement) > 0:
-            for item in json_macro_placement:
-                ecc_module.place_instance(
-                    inst_name=item.get("inst_name", ""),
-                    llx=item.get("llx", 0),
-                    lly=item.get("lly", 0),
-                    orient=item.get("orient", ""),
-                    cellmaster=item.get("cellmaster", ""),
-                    source=item.get("source", ""),
-                )
-
-        # PDN
-        json_PDN = floorplan_dict.get("PDN", {})
-
-        # IO placement
-        json_io_pins = json_PDN.get("IO", {})
-        for item in json_io_pins:
-            net_name = item.get("net name", "")
-            direction = item.get("direction", "")
-            is_power = item.get("is power")
-            ecc_module.add_pdn_io(net_name=net_name, direction=direction, is_power=is_power)
-
-        # PDN global connect
-        json_global_connect = json_PDN.get("Global connect", {})
-        for item in json_global_connect:
-            net_name = item.get("net name", "")
-            instance_pin_name = item.get("instance pin name", "")
-            is_power = item.get("is power", 1)
-            ecc_module.global_net_connect(
-                net_name=net_name, instance_pin_name=instance_pin_name, is_power=is_power
-            )
-
-        # auto place io pins
-        json_iopin_place = json_floorplan.get("Auto place pin", {})
-        if len(json_iopin_place) > 0:
-            ecc_module.auto_place_pins(
-                layer=json_iopin_place.get("layer", ""),
-                width=json_iopin_place.get("width", 0),
-                height=json_iopin_place.get("height", 0),
-                sides=json_iopin_place.get("sides", []),
-            )
         sub_flow.update_step(step_name=EccSubFlowEnum.place_io_pins.value, state=StateEnum.Success)
-
-        # tap cell
-        ecc_module.tapcell(
-            tapcell=workspace.pdk.tap_cell,
-            distance=json_floorplan.get("Tap distance", 0),
-            endcap=workspace.pdk.end_cap,
-        )
         sub_flow.update_step(step_name=EccSubFlowEnum.tap_cell.value, state=StateEnum.Success)
-
-        # PDN grid
-        json_pdn_grid = json_PDN.get("Grid", {})
-        if len(json_pdn_grid) > 0:
-            layer = json_pdn_grid.get("layer", "")
-            power_net = json_pdn_grid.get("power net", "")
-            ground_net = json_pdn_grid.get("ground net", "")
-            width = json_pdn_grid.get("width", 0)
-            offset = json_pdn_grid.get("offset", 0)
-            ecc_module.create_pdn_grid(
-                layer=layer, net_power=power_net, net_ground=ground_net, width=width, offset=offset
-            )
-
-        # PDN stripe
-        json_pdn_stripe = json_PDN.get("Stripe", {})
-        for item in json_pdn_stripe:
-            layer = item.get("layer", "")
-            power_net = item.get("power net", "")
-            ground_net = item.get("ground net", "")
-            width = item.get("width", 0)
-            pitch = item.get("pitch", 0)
-            offset = item.get("offset", 0)
-            ecc_module.create_pdn_stripe(
-                layer=layer,
-                net_power=power_net,
-                net_ground=ground_net,
-                width=width,
-                pitch=pitch,
-                offset=offset,
-            )
-
-        # PDN connect layers
-        json_pdn_connect_layers = json_PDN.get("Connect layers", [])
-        for item in json_pdn_connect_layers:
-            layers = item.get("layers", [])
-            if len(layers) >= 2:
-                ecc_module.connect_pdn_layers(layers)
-
         sub_flow.update_step(step_name=EccSubFlowEnum.PDN.value, state=StateEnum.Success)
 
-        # set clock net
-        clock_name = workspace.parameters.data.get("Clock", "")
-        ecc_module.set_net(net_name=clock_name, net_type="CLOCK")
+        ecc_module.destroy_fp()
         sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value, state=StateEnum.Success)
 
         reslut = save_data(

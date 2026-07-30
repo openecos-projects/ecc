@@ -464,6 +464,96 @@ def _coerce_legacy_dreamplace_routability_flag(workspace: Workspace, dreamplace:
         )
 
 
+def _load_default_floorplan_config() -> dict:
+    from chipcompiler.utility import json_read
+
+    root_dir = Path(__file__).resolve().parent.parent.parent
+    return json_read(root_dir / "tools" / "ecc" / "configs" / "fp_default_config.json")
+
+
+def _has_new_floorplan_schema(config: dict) -> bool:
+    return all(
+        key in config
+        for key in (
+            "ifp",
+            "macro_placer",
+            "die_builder",
+            "io_placer",
+            "phy_placer",
+            "pdn_generator",
+        )
+    )
+
+
+def _macro_location_file(config_path: Path, floorplan: dict) -> Path:
+    macro_placer = floorplan.setdefault("macro_placer", {})
+    macro_path_text = str(macro_placer.get("macro_location_path") or "macro_locations.txt")
+    macro_placer["macro_location_path"] = macro_path_text
+    macro_path = Path(macro_path_text)
+    if not macro_path.is_absolute():
+        macro_path = config_path.parent / macro_path
+    macro_path.parent.mkdir(parents=True, exist_ok=True)
+    if not macro_path.exists():
+        macro_path.write_text("", encoding="utf-8")
+    return macro_path
+
+
+def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None = None) -> None:
+    from chipcompiler.utility import json_read, json_write
+
+    config_path = workspace.config.get(StepEnum.FLOORPLAN.value)
+    if not config_path:
+        return
+
+    floorplan = json_read(config_path) if Path(config_path).exists() else {}
+    if not _has_new_floorplan_schema(floorplan):
+        floorplan = _load_default_floorplan_config()
+
+    ifp = floorplan.setdefault("ifp", {})
+    ifp.setdefault("thread_number", 16)
+    if step is not None:
+        workdir = step.data.workdir_for(StepEnum.FLOORPLAN.value)
+        if workdir:
+            ifp["temp_directory_path"] = path_text(workdir)
+
+    core = workspace.parameters.data.get("Core", {})
+    margin = core.get("Margin", [])
+    if len(margin) < 2:
+        margin = [
+            floorplan.get("die_builder", {}).get("left_margin_micron", 10.0),
+            floorplan.get("die_builder", {}).get("bottom_margin_micron", 10.0),
+        ]
+
+    die_builder = floorplan.setdefault("die_builder", {})
+    die_builder["site_name"] = workspace.pdk.site_core or die_builder.get("site_name", "")
+    die_builder["core_width_to_height_ratio"] = core.get(
+        "Aspect ratio", die_builder.get("core_width_to_height_ratio", 1.0)
+    )
+    die_builder["core_utilization"] = core.get(
+        "Utilitization", die_builder.get("core_utilization", 0.5)
+    )
+    die_builder["left_margin_micron"] = margin[0]
+    die_builder["right_margin_micron"] = margin[0]
+    die_builder["top_margin_micron"] = margin[1]
+    die_builder["bottom_margin_micron"] = margin[1]
+
+    phy_placer = floorplan.setdefault("phy_placer", {})
+    well_tap = phy_placer.setdefault("well_tap", {})
+    well_tap["cell_name"] = workspace.pdk.tap_cell or well_tap.get("cell_name", "")
+    well_tap.setdefault("distance_micron", 58.0)
+
+    side_endcap = phy_placer.setdefault("side_endcap", {})
+    side_endcap["left_cell_name"] = workspace.pdk.end_cap or side_endcap.get(
+        "left_cell_name", ""
+    )
+    side_endcap["right_cell_name"] = workspace.pdk.end_cap or side_endcap.get(
+        "right_cell_name", ""
+    )
+
+    _macro_location_file(Path(config_path), floorplan)
+    json_write(config_path, floorplan)
+
+
 def _ensure_writable(path: str):
     import os
     import stat
@@ -593,6 +683,8 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     router["RT"]["-bottom_routing_layer"] = workspace.parameters.data.get("Bottom layer", "")
     router["RT"]["-top_routing_layer"] = workspace.parameters.data.get("Top layer", "")
     json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
+
+    _refresh_floorplan_config(workspace)
 
     _apply_parameter_mappings_to_workspace_config(workspace)
 
@@ -762,6 +854,9 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     db["INPUT"]["verilog_path"] = path_text(step.input.verilog)
     db["OUTPUT"]["output_dir_path"] = path_text(step.output.dir)
     json_write(workspace.config["db"], db)
+
+    if step.name == StepEnum.FLOORPLAN.value:
+        _refresh_floorplan_config(workspace, step=step)
 
     if step.name == StepEnum.ROUTING.value and isinstance(step.data, EccData):
         router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
