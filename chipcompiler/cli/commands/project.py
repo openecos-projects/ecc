@@ -60,6 +60,7 @@ def check_cmd(
 def run_cmd(
     *,
     project: ProjectOption = None,
+    run_id: RunIdOption = None,
     overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
@@ -74,7 +75,7 @@ def run_cmd(
 ) -> None:
     command_input = RunInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project),
+        project=project_options(project, run_id),
         overwrite=overwrite,
         param_set=tuple(param_set or ()),
     )

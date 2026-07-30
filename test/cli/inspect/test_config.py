@@ -652,16 +652,25 @@ preset = "{defaults["flow_preset"]}"
 run = "{defaults["flow_run"]}"
 '''
 
-    def test_unsupported_flow_run_rejected(
-        self, tmp_path, capsys, monkeypatch, mock_pdk_validation
-    ):
+    def test_named_flow_run_accepted(self, tmp_path, capsys, monkeypatch, mock_pdk_validation):
+        mock_pdk_validation()
+        project_dir = tmp_path / "named_run"
+        project_dir.mkdir()
+        toml = self._valid_toml(tmp_path, flow_run="custom", rtl=f'["{tmp_path}/rtl/gcd.v"]')
+        (project_dir / "ecc.toml").write_text(toml)
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        assert rc == 0
+
+    def test_invalid_flow_run_rejected(self, tmp_path, capsys, monkeypatch, mock_pdk_validation):
         mock_pdk_validation()
         project_dir = tmp_path / "bad_run"
         project_dir.mkdir()
-        toml = self._valid_toml(tmp_path, flow_run="custom")
+        toml = self._valid_toml(tmp_path, flow_run="")
         (project_dir / "ecc.toml").write_text(toml)
         rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
         assert rc == 1
+        out = capsys.readouterr().out
+        assert "unsupported flow.run" in out
 
     def test_empty_clock_port_rejected(self, tmp_path, capsys, monkeypatch, mock_pdk_validation):
         mock_pdk_validation()

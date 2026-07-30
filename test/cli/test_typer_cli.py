@@ -192,6 +192,31 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
     }
 
 
+def test_run_accepts_run_id_option(monkeypatch, tmp_path):
+    seen = {}
+
+    monkeypatch.setattr(
+        "chipcompiler.cli.core.invocation.resolve_project_dir",
+        lambda project: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "chipcompiler.cli.core.invocation.resolve_run_dir",
+        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
+    )
+
+    def fake_run(command_input, ctx):
+        seen["input_type"] = type(command_input).__name__
+        seen["run_id"] = command_input.project.run_id
+        return CommandResult.ok([{"status": "ok"}])
+
+    monkeypatch.setattr("chipcompiler.cli.command_handlers.project.run", fake_run)
+
+    rc = cli_main.run(["run", "--run-id", "run_004"])
+
+    assert rc == 0
+    assert seen == {"input_type": "RunInput", "run_id": "run_004"}
+
+
 def test_rpc_routes_through_root_typer(monkeypatch):
     seen = {}
 

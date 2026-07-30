@@ -14,7 +14,22 @@ from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 
 
+def _config_error_result(ctx: CommandContext) -> CommandResult:
+    return CommandResult.err(
+        [
+            error_record(
+                "config_error",
+                reason=ctx.config_error,
+                inspect=disclosure_cmd("ecc check", ctx.project),
+            )
+        ]
+    )
+
+
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
+    if ctx.config_error:
+        return _config_error_result(ctx)
+
     from chipcompiler.cli.inspection.discovery import (
         CORRUPT_FLOW_JSON,
         _safe_steps,
@@ -33,7 +48,7 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
                     "run": display_run,
                     "status": "missing",
                     "workspace": ctx.run_dir,
-                    "start_cmd": disclosure_cmd("ecc run", project),
+                    "start_cmd": disclosure_cmd("ecc run", project, ctx.run_id),
                 }
             ]
         )
@@ -78,6 +93,9 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
 
 
 def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
+    if ctx.config_error:
+        return _config_error_result(ctx)
+
     from chipcompiler.cli.inspection.discovery import (
         discover_logs,
         discover_step_dirs,
@@ -116,7 +134,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
                     {
                         "log_status": "no_logs",
                         "workspace": ctx.run_dir,
-                        "run": disclosure_cmd("ecc run", project),
+                        "run": disclosure_cmd("ecc run", project, ctx.run_id),
                     }
                 ]
             )
@@ -200,6 +218,9 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
 
 
 def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
+    if ctx.config_error:
+        return _config_error_result(ctx)
+
     from chipcompiler.cli.inspection.config_view import (
         build_project_config_items,
         build_step_config_items,

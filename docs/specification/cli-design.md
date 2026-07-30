@@ -277,15 +277,24 @@ ecc run --tag dense_place
 ecc diff baseline dense_place
 ```
 
-The implemented run writer currently creates `runs/default`. Inspection
-commands support `--run-id` for selecting `runs/<id>`, a relative run path, or
-an absolute run directory:
+The run writer and the inspection commands resolve the run directory through
+the same rule: `--run-id` wins over `[flow] run` in `ecc.toml`, which falls
+back to `runs/default`. Accepted forms are a bare name (`runs/<name>`), a
+project-relative path with a separator, or an absolute path used verbatim:
 
 ```bash
+ecc run --run-id exp1
+ecc run --run-id sweeps/sweep_001/run_004 --overwrite
 ecc status --run-id default
 ecc log cts --run-id run_005
 ecc config cts --resolved --run-id sweeps/sweep_001/run_004
 ```
+
+With `[flow] run = "exp1"` in `ecc.toml`, bare `ecc run`, `ecc status`,
+`ecc log`, and `ecc config` all target `runs/exp1`. `--overwrite` only deletes
+a directory ECC recognizes — a missing target, an empty directory, or one
+containing `home/flow.json` — and refuses any other existing target before
+mutating anything, so foreign data is never removed.
 
 Run tags and `ecc diff` remain planned work.
 
@@ -450,7 +459,13 @@ run = "default"
 target_density = 0.65
 ```
 
-Current validation supports the `ics55` PDK and `flow.run = "default"`. Valid
+Current validation supports the `ics55` PDK. `flow.run` selects the run
+directory and accepts the same forms as `--run-id`: a bare name, a
+project-relative path, or an absolute path; `"default"` (or an absent key)
+keeps `runs/default`. Values that cannot name a run directory — empty,
+whitespace-padded, NUL-containing, or non-string — are rejected, and
+inspection commands fail with a config error when `[flow] run` is present but
+invalid. Valid
 flow presets are discovered from the `build_*_flow` defs in
 `chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `rcx`, `harden`, and
 `syn_sta`). The preset selects the flow builder: `rcx` appends the RCX and STA

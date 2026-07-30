@@ -116,12 +116,20 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
+    run_dir_display = "runs/default"
+    if ctx.run_id is not None:
+        try:
+            run_dir_rel = os.path.relpath(ctx.run_dir, ctx.project_dir)
+        except ValueError:
+            run_dir_rel = ctx.run_dir
+        run_dir_display = ctx.run_dir if run_dir_rel.startswith("..") else run_dir_rel
+
     records = [
         {
             "project": cfg.design_name,
             "status": "checked",
             "config": "ecc.toml",
-            "run_dir": "runs/default",
+            "run_dir": run_dir_display,
             "run": disclosure_cmd("ecc run", project),
             "inspect_cmd": disclosure_cmd("ecc status", project),
         }
@@ -138,6 +146,16 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
         )
 
     return CommandResult.ok(records)
+
+
+def _is_ecc_run_dir(path: str) -> bool:
+    if not os.path.isdir(path):
+        return False
+    if not os.listdir(path):
+        return True
+    home = os.path.join(path, "home")
+    flow_json = os.path.join(home, "flow.json")
+    return not os.path.islink(home) and not os.path.islink(flow_json) and os.path.isfile(flow_json)
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
@@ -205,7 +223,23 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     # chipcompiler.runtime.project_runner.run_project or
     # chipcompiler.engine.project_run.prepare_and_run. Keep CLI ownership limited
     # to input parsing, progress renderer selection, and CommandResult mapping.
-    run_dir = os.path.join(project_dir, "runs", "default")
+    run_dir = ctx.run_dir
+    run_name = ctx.run_id or "default"
+    if os.path.normpath(run_dir) in {
+        os.path.normpath(project_dir),
+        os.path.normpath(os.path.join(project_dir, "runs")),
+    }:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "invalid_run_id",
+                    "run": run_name,
+                    "workspace": run_dir,
+                    "reason": "run id must not resolve to the project or runs container",
+                }
+            ]
+        )
     flow_json = os.path.join(run_dir, "home", "flow.json")
 
     if os.path.exists(flow_json) and not command_input.overwrite:
@@ -214,14 +248,26 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 {
                     "kind": "error",
                     "error": "run_exists",
-                    "run": "default",
+                    "run": run_name,
                     "workspace": run_dir,
-                    "overwrite": disclosure_cmd("ecc run --overwrite", project),
+                    "overwrite": disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
                 }
             ]
         )
 
-    if command_input.overwrite and os.path.exists(run_dir):
+    if command_input.overwrite and os.path.lexists(run_dir):
+        if os.path.islink(run_dir) or not _is_ecc_run_dir(run_dir):
+            return CommandResult.err(
+                [
+                    {
+                        "kind": "error",
+                        "error": "overwrite_refused",
+                        "run": run_name,
+                        "workspace": run_dir,
+                        "reason": "target is not an ECC run directory",
+                    }
+                ]
+            )
         for root, dirs, files in os.walk(run_dir):
             for d in dirs:
                 dp = os.path.join(root, d)
@@ -270,7 +316,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 {
                     "kind": "error",
                     "error": "workspace_failed",
-                    "run": "default",
+                    "run": run_name,
                     "workspace": run_dir,
                     "reason": str(exc),
                 }
@@ -283,7 +329,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 {
                     "kind": "error",
                     "error": "workspace_failed",
-                    "run": "default",
+                    "run": run_name,
                     "workspace": run_dir,
                 }
             ]
@@ -320,11 +366,11 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             return CommandResult.err(
                 [
                     {
-                        "run": "default",
+                        "run": run_name,
                         "status": "failed",
                         "workspace": run_dir,
-                        "inspect_cmd": disclosure_cmd("ecc status", project),
-                        "log": disclosure_cmd("ecc log", project),
+                        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+                        "log": disclosure_cmd("ecc log", project, ctx.run_id),
                     }
                 ]
             )
@@ -334,7 +380,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 {
                     "kind": "error",
                     "error": "flow_failed",
-                    "run": "default",
+                    "run": run_name,
                     "workspace": run_dir,
                     "reason": str(exc),
                 }
@@ -344,11 +390,11 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(
         [
             {
-                "run": "default",
+                "run": run_name,
                 "status": "success",
                 "workspace": run_dir,
-                "inspect_cmd": disclosure_cmd("ecc status", project),
-                "log_cmd": disclosure_cmd("ecc log", project),
+                "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+                "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
             }
         ]
     )

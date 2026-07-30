@@ -382,3 +382,114 @@ class TestMissingConfigErrorRecord:
         assert rc == 1
         out = capsys.readouterr().out
         assert "must be a table" in out
+
+
+class TestCheckFlowRunShape:
+    @pytest.mark.parametrize(
+        "run_line",
+        ['run = "exp1"', 'run = "sweeps/s1/r4"', 'run = "/data/runs/x"'],
+    )
+    def test_check_accepts_run_shapes(
+        self, tmp_path, monkeypatch, create_cli_project, set_flow_run, run_line
+    ):
+        project_dir = create_cli_project()
+        set_flow_run(project_dir, run_line)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        assert rc == 0
+
+    @pytest.mark.parametrize(
+        ("run_line", "reason"),
+        [
+            ('run = ""', "unsupported flow.run: "),
+            ('run = "   "', "unsupported flow.run:    "),
+            ('run = " exp1 "', "unsupported flow.run:  exp1 "),
+            ("run = 42", "unsupported flow.run: 42"),
+            ('run = "\\u0000"', "unsupported flow.run: \x00"),
+        ],
+    )
+    def test_check_rejects_invalid_run_shapes(
+        self, tmp_path, capsys, create_cli_project, set_flow_run, run_line, reason
+    ):
+        project_dir = create_cli_project()
+        set_flow_run(project_dir, run_line)
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc == 1
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert any(record.get("reason") == reason for record in records)
+
+
+class TestCheckRunDirDisplay:
+    def test_check_reports_default_run_dir(self, tmp_path, monkeypatch, capsys, create_cli_project):
+        project_dir = create_cli_project()
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "project": "gcd",
+            "status": "checked",
+            "config": "ecc.toml",
+            "run_dir": "runs/default",
+            "run": f"ecc run --project {project_dir}",
+            "inspect_cmd": f"ecc status --project {project_dir}",
+        }
+
+    def test_check_reports_configured_run_dir(
+        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
+    ):
+        project_dir = create_cli_project()
+        set_flow_run(project_dir, 'run = "exp1"')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "project": "gcd",
+            "status": "checked",
+            "config": "ecc.toml",
+            "run_dir": os.path.join("runs", "exp1"),
+            "run": f"ecc run --project {project_dir}",
+            "inspect_cmd": f"ecc status --project {project_dir}",
+        }
+
+    def test_check_reports_absolute_configured_run_dir(
+        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
+    ):
+        project_dir = create_cli_project()
+        abs_run = str(tmp_path / "external_run")
+        set_flow_run(project_dir, f'run = "{abs_run}"')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0] == {
+            "project": "gcd",
+            "status": "checked",
+            "config": "ecc.toml",
+            "run_dir": abs_run,
+            "run": f"ecc run --project {project_dir}",
+            "inspect_cmd": f"ecc status --project {project_dir}",
+        }

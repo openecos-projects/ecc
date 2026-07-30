@@ -422,7 +422,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         engine_flow.workspace.home.reset()
 
         run_dir = engine_flow.workspace.directory
-        run_name = os.path.basename(run_dir) or "default"
+        run_name = ctx.run_id or "default"
         renderer.start_run(run_name, run_dir)
 
         for workspace_step in engine_flow.workspace_steps:
@@ -491,7 +491,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
                 except ValueError:
                     rel_log = log_path
 
-            inspect = disclosure_cmd(f"ecc log {step_token}", project)
+            inspect = disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id)
 
             is_success = state == StateEnum.Success
             renderer.finish_step(step_token, tool, status, runtime, rel_log, inspect, is_success)

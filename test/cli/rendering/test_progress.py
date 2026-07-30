@@ -71,12 +71,12 @@ def _wait_until(predicate, timeout=1.0):
     return predicate()
 
 
-def _make_ctx(mode=OutputMode.TEXT):
+def _make_ctx(mode=OutputMode.TEXT, run_id=None):
     return CommandContext(
         project_dir="/tmp/project",
         project=None,
         run_dir="/tmp/project/runs/default",
-        run_id=None,
+        run_id=run_id,
         output_mode=mode,
     )
 
@@ -730,6 +730,33 @@ class TestRunFlowWithProgress:
         run_flow_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         assert "  log:" in output
+
+    def test_run_label_uses_ctx_run_id(self, tmp_path):
+        run_dir = tmp_path / "sweeps" / "s1" / "r4"
+        flow = _make_flow(
+            _make_ws(str(run_dir)),
+            [_make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(isatty_value=True)
+        result = run_flow_with_progress(flow, _make_ctx(run_id="sweeps/s1/r4"), None, buf)
+
+        assert result is True
+        plain = _strip_ansi("".join(buf.written))
+        assert f"[run] sweeps/s1/r4 workspace={run_dir}\n" in plain
+
+    def test_inspect_detail_carries_run_id(self):
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("Synthesis", "yosys", "/tmp/synth.log")],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(isatty_value=True)
+        run_flow_with_progress(flow, _make_ctx(run_id="exp1"), "myproject", buf)
+        plain = _strip_ansi("".join(buf.written))
+        assert "  inspect: ecc log synthesis --project myproject --run-id exp1\n" in plain
 
     def test_step_headers_emitted(self):
         flow = _make_flow(

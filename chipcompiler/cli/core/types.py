@@ -16,6 +16,7 @@ class CommandContext:
     run_dir: str
     run_id: str | None
     output_mode: OutputMode
+    config_error: str | None = None
 
 
 @dataclass(frozen=True)
