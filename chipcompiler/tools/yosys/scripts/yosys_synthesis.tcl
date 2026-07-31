@@ -39,6 +39,7 @@ set exclude_cells [concat {*}[lmap cell $dont_use_cells {concat "-dont_use" $cel
 
 set synth_strategy "DELAY 4"
 if {[info exists env(YOSYS_SYNTH_STRATEGY)]} {
+  # TODO: Move this to global_var.tcl
   set synth_strategy $::env(YOSYS_SYNTH_STRATEGY)
 }
 
