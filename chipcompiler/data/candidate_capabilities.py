@@ -48,9 +48,7 @@ def export_candidate_capabilities(workspace: Any) -> dict[str, Any]:
 
 
 def _group_knobs_by_target() -> list[tuple[str, list[Any], list[Any]]]:
-    knobs_by_target: dict[str, list[Any]] = {
-        target: [] for target in CANDIDATE_TARGET_BACKENDS
-    }
+    knobs_by_target: dict[str, list[Any]] = {target: [] for target in CANDIDATE_TARGET_BACKENDS}
     for knob in candidate_capability_registry():
         knobs_by_target.setdefault(knob.target_step, []).append(knob)
     return [

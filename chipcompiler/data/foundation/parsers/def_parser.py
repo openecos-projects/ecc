@@ -77,7 +77,9 @@ class DefData:
 
 
 _COMPONENT_RE = re.compile(r"^\s*-\s+(\S+)\s+(\S+)(.*)")
-_PLACED_RE = re.compile(r"\+\s+(?:PLACED|FIXED)\s+\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)\s+(\S+)")
+_PLACED_RE = re.compile(
+    r"\+\s+(?:PLACED|FIXED)\s+\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)\s+(\S+)"
+)
 _PIN_RE = re.compile(r"\(\s+(\S+)\s+(\S+)\s+\)")
 _POINT_RE = re.compile(r"\(\s*(-?\d+(?:\.\d+)?|\*)\s+(-?\d+(?:\.\d+)?|\*)\s+\)")
 
@@ -147,7 +149,9 @@ def _parse_def_lines(lines) -> dict[str, Any]:
     def flush_net() -> None:
         nonlocal current_net_name, current_net_chunks
         if current_net_name:
-            result["nets"].append(_net_from_chunks(current_net_name, current_net_chunks, special=current_net_special))
+            result["nets"].append(
+                _net_from_chunks(current_net_name, current_net_chunks, special=current_net_special)
+            )
         current_net_name = ""
         current_net_chunks = []
 
@@ -166,7 +170,10 @@ def _parse_def_lines(lines) -> dict[str, Any]:
             if diearea_match:
                 llx, lly, urx, ury = (float(diearea_match.group(i)) for i in range(1, 5))
                 result["diearea"] = {"llx": llx, "lly": lly, "urx": urx, "ury": ury}
-            gcell_match = re.search(r"GCELLGRID\s+([XY])\s+(-?\d+(?:\.\d+)?)\s+DO\s+(\d+)\s+STEP\s+(-?\d+(?:\.\d+)?)", stripped)
+            gcell_match = re.search(
+                r"GCELLGRID\s+([XY])\s+(-?\d+(?:\.\d+)?)\s+DO\s+(\d+)\s+STEP\s+(-?\d+(?:\.\d+)?)",
+                stripped,
+            )
             if gcell_match:
                 axis = gcell_match.group(1)
                 values = result["gcell_x"] if axis == "X" else result["gcell_y"]
@@ -177,7 +184,10 @@ def _parse_def_lines(lines) -> dict[str, Any]:
                     value = start + idx * step
                     if not values or value > values[-1]:
                         values.append(value)
-            track_match = re.search(r"TRACKS\s+([XY])\s+(-?\d+(?:\.\d+)?)\s+DO\s+(\d+)\s+STEP\s+(-?\d+(?:\.\d+)?)\s+LAYER\s+(\S+)", stripped)
+            track_match = re.search(
+                r"TRACKS\s+([XY])\s+(-?\d+(?:\.\d+)?)\s+DO\s+(\d+)\s+STEP\s+(-?\d+(?:\.\d+)?)\s+LAYER\s+(\S+)",
+                stripped,
+            )
             if track_match:
                 result["tracks"].append(
                     DefTrack(
@@ -224,21 +234,33 @@ def _parse_def_lines(lines) -> dict[str, Any]:
                 layers = []
                 if "+ LAYERS" in stripped:
                     layers = stripped.split("+ LAYERS", 1)[1].replace(";", "").split()[:3]
-                current_via = {"name": tokens[1], "layers": layers, "rects_by_layer": {}, "source": "def_vias"}
+                current_via = {
+                    "name": tokens[1],
+                    "layers": layers,
+                    "rects_by_layer": {},
+                    "source": "def_vias",
+                }
                 current_via_layer = None
                 continue
             if current_via is None:
                 continue
-            layer_match = re.search(r"\+\s+LAYER\s+(\S+)", stripped) or re.match(r"LAYER\s+(\S+)", stripped)
+            layer_match = re.search(r"\+\s+LAYER\s+(\S+)", stripped) or re.match(
+                r"LAYER\s+(\S+)", stripped
+            )
             if layer_match:
                 current_via_layer = layer_match.group(1)
                 current_via.setdefault("rects_by_layer", {}).setdefault(current_via_layer, [])
                 if current_via_layer not in current_via.setdefault("layers", []):
                     current_via["layers"].append(current_via_layer)
-            rect_match = re.search(r"RECT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", stripped)
+            rect_match = re.search(
+                r"RECT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)",
+                stripped,
+            )
             if rect_match and current_via_layer:
                 llx, lly, urx, ury = (float(rect_match.group(i)) for i in range(1, 5))
-                current_via.setdefault("rects_by_layer", {}).setdefault(current_via_layer, []).append({"llx": llx, "lly": lly, "urx": urx, "ury": ury})
+                current_via.setdefault("rects_by_layer", {}).setdefault(
+                    current_via_layer, []
+                ).append({"llx": llx, "lly": lly, "urx": urx, "ury": ury})
             continue
 
         if section == "COMPONENTS":
@@ -253,7 +275,9 @@ def _parse_def_lines(lines) -> dict[str, Any]:
                     {
                         "name": name,
                         "master": master,
-                        "origin": {"x": float(placed.group(1)), "y": float(placed.group(2))} if placed else None,
+                        "origin": {"x": float(placed.group(1)), "y": float(placed.group(2))}
+                        if placed
+                        else None,
                         "orientation": placed.group(3) if placed else None,
                         "source": "def_components",
                     }
@@ -347,7 +371,9 @@ def _parse_diearea(lines: list[str]) -> dict[str, float] | None:
 def _parse_gcell_axis(lines: list[str], axis: str) -> list[float]:
     values: list[float] = []
     for line in lines:
-        match = re.search(rf"GCELLGRID\s+{axis}\s+(-?\d+(?:\.\d+)?)\s+DO\s+(\d+)\s+STEP\s+(-?\d+(?:\.\d+)?)", line)
+        match = re.search(
+            rf"GCELLGRID\s+{axis}\s+(-?\d+(?:\.\d+)?)\s+DO\s+(\d+)\s+STEP\s+(-?\d+(?:\.\d+)?)", line
+        )
         if not match:
             continue
         start = float(match.group(1))
@@ -363,7 +389,10 @@ def _parse_gcell_axis(lines: list[str], axis: str) -> list[float]:
 def _parse_tracks(lines: list[str]) -> list[DefTrack]:
     tracks: list[DefTrack] = []
     for line in lines:
-        match = re.search(r"TRACKS\s+([XY])\s+(-?\d+(?:\.\d+)?)\s+DO\s+(\d+)\s+STEP\s+(-?\d+(?:\.\d+)?)\s+LAYER\s+(\S+)", line)
+        match = re.search(
+            r"TRACKS\s+([XY])\s+(-?\d+(?:\.\d+)?)\s+DO\s+(\d+)\s+STEP\s+(-?\d+(?:\.\d+)?)\s+LAYER\s+(\S+)",
+            line,
+        )
         if match:
             tracks.append(
                 DefTrack(
@@ -424,21 +453,33 @@ def _parse_vias(lines: list[str]) -> list[dict[str, Any]]:
             layers = []
             if "+ LAYERS" in stripped:
                 layers = stripped.split("+ LAYERS", 1)[1].replace(";", "").split()[:3]
-            current = {"name": tokens[1], "layers": layers, "rects_by_layer": {}, "source": "def_vias"}
+            current = {
+                "name": tokens[1],
+                "layers": layers,
+                "rects_by_layer": {},
+                "source": "def_vias",
+            }
             current_layer = None
             continue
         if current is None:
             continue
-        layer_match = re.search(r"\+\s+LAYER\s+(\S+)", stripped) or re.match(r"LAYER\s+(\S+)", stripped)
+        layer_match = re.search(r"\+\s+LAYER\s+(\S+)", stripped) or re.match(
+            r"LAYER\s+(\S+)", stripped
+        )
         if layer_match:
             current_layer = layer_match.group(1)
             current.setdefault("rects_by_layer", {}).setdefault(current_layer, [])
             if current_layer not in current.setdefault("layers", []):
                 current["layers"].append(current_layer)
-        rect_match = re.search(r"RECT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", stripped)
+        rect_match = re.search(
+            r"RECT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)",
+            stripped,
+        )
         if rect_match and current_layer:
             llx, lly, urx, ury = (float(rect_match.group(i)) for i in range(1, 5))
-            current.setdefault("rects_by_layer", {}).setdefault(current_layer, []).append({"llx": llx, "lly": lly, "urx": urx, "ury": ury})
+            current.setdefault("rects_by_layer", {}).setdefault(current_layer, []).append(
+                {"llx": llx, "lly": lly, "urx": urx, "ury": ury}
+            )
     return vias
 
 
@@ -463,7 +504,9 @@ def _parse_components(lines: list[str]) -> list[dict[str, Any]]:
             {
                 "name": name,
                 "master": master,
-                "origin": {"x": float(placed.group(1)), "y": float(placed.group(2))} if placed else None,
+                "origin": {"x": float(placed.group(1)), "y": float(placed.group(2))}
+                if placed
+                else None,
                 "orientation": placed.group(3) if placed else None,
                 "source": "def_components",
             }
@@ -565,7 +608,13 @@ def _net_from_chunks(name: str, chunks: list[str], *, special: bool) -> DefNet:
     ]
     wires = _parse_routed_wires(name, text, special=special)
     use_match = re.search(r"\+\s+USE\s+(\S+)", text)
-    return DefNet(name=name, pins=pins, wires=wires, special=special, use=use_match.group(1) if use_match else None)
+    return DefNet(
+        name=name,
+        pins=pins,
+        wires=wires,
+        special=special,
+        use=use_match.group(1) if use_match else None,
+    )
 
 
 def _looks_numeric(value: str) -> bool:
@@ -602,7 +651,18 @@ def _parse_routed_wires(net_name: str, text: str, *, special: bool) -> list[DefW
             x = previous[0] if raw_x == "*" else float(raw_x)
             y = previous[1] if raw_y == "*" else float(raw_y)
             if (x, y) != previous:
-                wires.append(DefWire(net=net_name, layer=layer, x1=previous[0], y1=previous[1], x2=x, y2=y, width=width, special=special))
+                wires.append(
+                    DefWire(
+                        net=net_name,
+                        layer=layer,
+                        x1=previous[0],
+                        y1=previous[1],
+                        x2=x,
+                        y2=y,
+                        width=width,
+                        special=special,
+                    )
+                )
             previous = (x, y)
         if via:
             via_point = previous
@@ -611,12 +671,26 @@ def _parse_routed_wires(net_name: str, text: str, *, special: bool) -> list[DefW
                 if raw_x != "*" and raw_y != "*":
                     via_point = (float(raw_x), float(raw_y))
             if via_point is not None:
-                wires.append(DefWire(net=net_name, layer=layer, x1=via_point[0], y1=via_point[1], x2=via_point[0], y2=via_point[1], width=width, via=via, special=special))
+                wires.append(
+                    DefWire(
+                        net=net_name,
+                        layer=layer,
+                        x1=via_point[0],
+                        y1=via_point[1],
+                        x2=via_point[0],
+                        y2=via_point[1],
+                        width=width,
+                        via=via,
+                        special=special,
+                    )
+                )
     return wires
 
 
 def _extract_via(chunk: str, last_point: tuple[str, str]) -> str | None:
-    point_pattern = r"\(\s*" + re.escape(last_point[0]) + r"\s+" + re.escape(last_point[1]) + r"\s*\)"
+    point_pattern = (
+        r"\(\s*" + re.escape(last_point[0]) + r"\s+" + re.escape(last_point[1]) + r"\s*\)"
+    )
     parts = re.split(point_pattern, chunk, maxsplit=1)
     tail = parts[-1] if len(parts) > 1 else chunk
     for token in re.findall(r"\b[A-Za-z_][A-Za-z0-9_.$-]*\b", tail):

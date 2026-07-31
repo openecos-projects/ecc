@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import concurrent.futures
-import os
 import multiprocessing
+import os
 
 from tqdm import tqdm
 
@@ -13,8 +13,8 @@ from chipcompiler.utility import (
     plot_metrics,
 )
 
-
 MAX_PLOT_WORKERS = 4
+
 
 class ECCToolsPlot:
     def __init__(self, workspace: Workspace, step: EccStep):

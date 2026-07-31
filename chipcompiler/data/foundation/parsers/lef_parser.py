@@ -57,7 +57,9 @@ _END_RE = re.compile(r"^\s*END(?:\s+(\S+))?\s*$")
 _DIRECTION_RE = re.compile(r"\bDIRECTION\s+(\S+)\s*;")
 _USE_RE = re.compile(r"\bUSE\s+(\S+)\s*;")
 _LAYER_RE = re.compile(r"^\s*LAYER\s+(\S+)\s*;?")
-_RECT_RE = re.compile(r"\bRECT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*;")
+_RECT_RE = re.compile(
+    r"\bRECT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*;"
+)
 _SIZE_RE = re.compile(r"\bSIZE\s+(-?\d+(?:\.\d+)?)\s+BY\s+(-?\d+(?:\.\d+)?)\s*;")
 _CLASS_RE = re.compile(r"\bCLASS\s+(\S+)\s*;")
 _SITE_RE = re.compile(r"\bSITE\s+(\S+)\s*;")
@@ -106,7 +108,9 @@ def parse_lef_library(path: Path) -> LefLibrary:
     return LefLibrary(macros=macros, layers=layers, vias=vias)
 
 
-def _parse_macro(lines: list[str], start: int, macro_name: str, source: str) -> tuple[LefMacro, int]:
+def _parse_macro(
+    lines: list[str], start: int, macro_name: str, source: str
+) -> tuple[LefMacro, int]:
     macro_pins: dict[str, LefPin] = {}
     macro_size: dict[str, float] | None = None
     macro_class: str | None = None
@@ -126,7 +130,10 @@ def _parse_macro(lines: list[str], start: int, macro_name: str, source: str) -> 
         if pin_name is None:
             size_match = _SIZE_RE.search(stripped)
             if size_match:
-                macro_size = {"width": float(size_match.group(1)), "height": float(size_match.group(2))}
+                macro_size = {
+                    "width": float(size_match.group(1)),
+                    "height": float(size_match.group(2)),
+                }
             class_match = _CLASS_RE.search(stripped)
             if class_match:
                 macro_class = class_match.group(1).upper()
@@ -145,7 +152,14 @@ def _parse_macro(lines: list[str], start: int, macro_name: str, source: str) -> 
                 continue
             end_match = _END_RE.match(stripped)
             if end_match and end_match.group(1) == macro_name:
-                return LefMacro(name=macro_name, pins=macro_pins, source=source, size=macro_size, macro_class=macro_class, site=site), idx + 1
+                return LefMacro(
+                    name=macro_name,
+                    pins=macro_pins,
+                    source=source,
+                    size=macro_size,
+                    macro_class=macro_class,
+                    site=site,
+                ), idx + 1
             idx += 1
             continue
 
@@ -177,12 +191,25 @@ def _parse_macro(lines: list[str], start: int, macro_name: str, source: str) -> 
             )
         end_match = _END_RE.match(stripped)
         if end_match and end_match.group(1) == pin_name:
-            macro_pins[pin_name] = LefPin(name=pin_name, direction=pin_direction, use=pin_use, shapes=pin_shapes, source=source)
+            macro_pins[pin_name] = LefPin(
+                name=pin_name,
+                direction=pin_direction,
+                use=pin_use,
+                shapes=pin_shapes,
+                source=source,
+            )
             pin_name = None
             current_layer = None
             port_index = -1
         idx += 1
-    return LefMacro(name=macro_name, pins=macro_pins, source=source, size=macro_size, macro_class=macro_class, site=site), idx
+    return LefMacro(
+        name=macro_name,
+        pins=macro_pins,
+        source=source,
+        size=macro_size,
+        macro_class=macro_class,
+        site=site,
+    ), idx
 
 
 def _parse_layer(lines: list[str], start: int, name: str, source: str) -> tuple[LefLayer, int]:
@@ -211,9 +238,25 @@ def _parse_layer(lines: list[str], start: int, name: str, source: str) -> tuple[
             spacing = float(spacing_match.group(1))
         end_match = _END_RE.match(stripped)
         if end_match and end_match.group(1) == name:
-            return LefLayer(name=name, layer_type=layer_type, direction=direction, pitch=pitch, width=width, spacing=spacing, source=source), idx + 1
+            return LefLayer(
+                name=name,
+                layer_type=layer_type,
+                direction=direction,
+                pitch=pitch,
+                width=width,
+                spacing=spacing,
+                source=source,
+            ), idx + 1
         idx += 1
-    return LefLayer(name=name, layer_type=layer_type, direction=direction, pitch=pitch, width=width, spacing=spacing, source=source), idx
+    return LefLayer(
+        name=name,
+        layer_type=layer_type,
+        direction=direction,
+        pitch=pitch,
+        width=width,
+        spacing=spacing,
+        source=source,
+    ), idx
 
 
 def _parse_via(lines: list[str], start: int, name: str, source: str) -> tuple[LefVia, int]:
@@ -229,12 +272,18 @@ def _parse_via(lines: list[str], start: int, name: str, source: str) -> tuple[Le
         rect_match = _RECT_RE.search(stripped)
         if rect_match and current_layer:
             llx, lly, urx, ury = (float(rect_match.group(i)) for i in range(1, 5))
-            rects_by_layer.setdefault(current_layer, []).append({"llx": llx, "lly": lly, "urx": urx, "ury": ury})
+            rects_by_layer.setdefault(current_layer, []).append(
+                {"llx": llx, "lly": lly, "urx": urx, "ury": ury}
+            )
         end_match = _END_RE.match(stripped)
         if end_match and end_match.group(1) == name:
-            return LefVia(name=name, layers=list(rects_by_layer), rects_by_layer=rects_by_layer, source=source), idx + 1
+            return LefVia(
+                name=name, layers=list(rects_by_layer), rects_by_layer=rects_by_layer, source=source
+            ), idx + 1
         idx += 1
-    return LefVia(name=name, layers=list(rects_by_layer), rects_by_layer=rects_by_layer, source=source), idx
+    return LefVia(
+        name=name, layers=list(rects_by_layer), rects_by_layer=rects_by_layer, source=source
+    ), idx
 
 
 def parse_lef_files(paths: list[Path]) -> dict[str, LefMacro]:

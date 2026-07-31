@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Iterable, Mapping, Any
+from typing import Any
 
 
 def write_json(path: Path, payload: Mapping[str, Any] | list[Any]) -> None:
@@ -129,7 +130,9 @@ def write_parquet(
         right_names = set(right.names)
         for field in left:
             if field.name in right_names:
-                fields.append(pa.field(field.name, merge_types(field.type, right.field(field.name).type)))
+                fields.append(
+                    pa.field(field.name, merge_types(field.type, right.field(field.name).type))
+                )
             else:
                 fields.append(field)
         left_names = set(left.names)
@@ -177,9 +180,7 @@ def write_parquet(
         fields = []
         for name in names:
             values = [row.get(name) for row in rows if row.get(name) is not None]
-            if not values:
-                field_type = pa.string()
-            elif any(isinstance(value, str) or isinstance(value, (dict, list, tuple)) for value in values):
+            if not values or any(isinstance(value, (str, dict, list, tuple)) for value in values):
                 field_type = pa.string()
             elif any(isinstance(value, float) for value in values):
                 field_type = pa.float64()
@@ -198,7 +199,7 @@ def write_parquet(
         writer = pq.ParquetWriter(path, active_schema)
         start = 0
         while start < len(rows):
-            chunk = rows[start:start + normalized_batch_size]
+            chunk = rows[start : start + normalized_batch_size]
             table = pa.Table.from_pylist(
                 coerce_rows_to_schema(chunk, active_schema),
                 schema=active_schema,
@@ -226,7 +227,11 @@ def write_parquet(
             if batch:
                 open_writer_with_initial_rows(batch)
             else:
-                empty_schema = schema or (pa.schema([(column, pa.string()) for column in column_names]) if column_names else pa.schema([]))
+                empty_schema = schema or (
+                    pa.schema([(column, pa.string()) for column in column_names])
+                    if column_names
+                    else pa.schema([])
+                )
                 writer = pq.ParquetWriter(path, empty_schema)
         elif batch:
             flush(batch)

@@ -48,9 +48,7 @@ def sha256_path(path: Path) -> str | None:
 
 def validate_candidate_id(candidate_id: Any) -> str:
     if not isinstance(candidate_id, str) or not _CANDIDATE_ID_PATTERN.fullmatch(candidate_id):
-        raise ValueError(
-            "candidate_id must use 1-128 ASCII letters, digits, '.', '_', '-', or ':'"
-        )
+        raise ValueError("candidate_id must use 1-128 ASCII letters, digits, '.', '_', '-', or ':'")
     return candidate_id
 
 

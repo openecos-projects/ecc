@@ -4,8 +4,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-
-_LAYER_RE = re.compile(r"idx:(\d+)\s+order:(\d+)\s+name:(\S+)\s+prefer_direction:(horizontal|vertical)", re.IGNORECASE)
+_LAYER_RE = re.compile(
+    r"idx:(\d+)\s+order:(\d+)\s+name:(\S+)\s+prefer_direction:(horizontal|vertical)", re.IGNORECASE
+)
 _TOTAL_RE = re.compile(r"\|\s*(total_[a-z_]+)\s*\|\s*(-?\d+(?:\.\d+)?)\s*\|", re.IGNORECASE)
 
 

@@ -54,9 +54,7 @@ def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_
         config={"dreamplace": config_path},
         pdk=SimpleNamespace(),
         logger=SimpleNamespace(),
-        flow=SimpleNamespace(
-            data={"steps": [{"name": "legalization", "tool": "dreamplace"}]}
-        ),
+        flow=SimpleNamespace(data={"steps": [{"name": "legalization", "tool": "dreamplace"}]}),
     )
     step = SimpleNamespace(name="legalization", tool="dreamplace")
     materialize_candidate_config(

@@ -1,31 +1,34 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import csv
 import gzip
 import json
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import pytest
 
-from chipcompiler.data.foundation import FoundationExtractor
 import chipcompiler.data.foundation.extractor as extractor_module
+import chipcompiler.data.foundation.table_contract as table_contract_module
+from chipcompiler.data.foundation import FoundationExtractor
+from chipcompiler.data.foundation.grid.canonical_grid import build_patch_grid
 from chipcompiler.data.foundation.parsers.def_parser import parse_def
 from chipcompiler.data.foundation.parsers.route_native_demand_capacity import (
     parse_route_native_demand_capacity_artifacts,
 )
-from chipcompiler.data.foundation.grid.canonical_grid import build_patch_grid
 from chipcompiler.data.foundation.table_contract import TABLE_SPECS, write_tables
-import chipcompiler.data.foundation.table_contract as table_contract_module
 from chipcompiler.data.foundation.writers import write_parquet
-
 
 
 def _read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+
 
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -177,7 +180,13 @@ def _make_workspace(
             "PDK": "ics55",
             "Design": "gcd",
             "Die": {"Size": [], "Area": 0},
-            "Core": {"Size": [], "Area": 0, "Utilitization": 0.5, "Margin": [2, 2], "Aspect ratio": 1},
+            "Core": {
+                "Size": [],
+                "Area": 0,
+                "Utilitization": 0.5,
+                "Margin": [2, 2],
+                "Aspect ratio": 1,
+            },
             "Max fanout": 20,
             "Target density": 0.3,
             "Target overflow": 0.1,
@@ -194,12 +203,28 @@ def _make_workspace(
         ("route_ecc", "route"),
         ("drc_ecc", "drc"),
     ]:
-        _write_json(ws / stage_dir / "analysis" / f"{stage_name}_metrics.json", {"Tool": "ecc", "max_WNS": "1.0"})
-        _write_json(ws / stage_dir / "config" / "fp_default_config.json", {"Floorplan": {"Tap distance": 58}})
-        _write_json(ws / stage_dir / "config" / "pl_default_config.json", {"PL": {"GP": {"global_right_padding": 0}}})
+        _write_json(
+            ws / stage_dir / "analysis" / f"{stage_name}_metrics.json",
+            {"Tool": "ecc", "max_WNS": "1.0"},
+        )
+        _write_json(
+            ws / stage_dir / "config" / "fp_default_config.json",
+            {"Floorplan": {"Tap distance": 58}},
+        )
+        _write_json(
+            ws / stage_dir / "config" / "pl_default_config.json",
+            {"PL": {"GP": {"global_right_padding": 0}}},
+        )
         _write_json(
             ws / stage_dir / "config" / "rt_default_config.json",
-            {"RT": {"-bottom_routing_layer": "MET2", "-top_routing_layer": "MET5", "-thread_number": "50", "-enable_timing": "0"}},
+            {
+                "RT": {
+                    "-bottom_routing_layer": "MET2",
+                    "-top_routing_layer": "MET5",
+                    "-thread_number": "50",
+                    "-enable_timing": "0",
+                }
+            },
         )
         if "dreamplace" in stage_dir:
             _write_json(
@@ -230,41 +255,179 @@ def _make_workspace(
                         "type": "group",
                         "struct name": "Instance_U1",
                         "children": [
-                            {"type": "box", "layer": 0, "path": [[0, 0], [10, 0], [10, 20], [0, 20], [0, 0]]}
+                            {
+                                "type": "box",
+                                "layer": 0,
+                                "path": [[0, 0], [10, 0], [10, 20], [0, 20], [0, 0]],
+                            }
                         ],
                     },
                     {
                         "type": "group",
                         "struct name": "Macro_SRAM0",
                         "children": [
-                            {"type": "box", "layer": 0, "path": [[50, 50], [100, 50], [100, 100], [50, 100], [50, 50]]}
+                            {
+                                "type": "box",
+                                "layer": 0,
+                                "path": [[50, 50], [100, 50], [100, 100], [50, 100], [50, 50]],
+                            }
                         ],
                     },
                 ],
             },
         )
 
-    _write_csv(ws / "place_dreamplace" / "feature" / "density_map" / "place_allcell_density.csv", [[1, 2], [3, 4]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "density_map" / "place_macro_density.csv", [[1, 2], [3, 4]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "density_map" / "place_stdcell_density.csv", [[1, 2], [3, 4]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "margin_map" / "place_horizontal_margin.csv", [[1, 2], [3, 4]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "margin_map" / "place_vertical_margin.csv", [[1, 2], [3, 4]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "margin_map" / "place_union_margin.csv", [[1, 2], [3, 4]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "RUDY_map" / "place_rudy_union.csv", [[1, 2], [3, 4]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_allcell_density.csv", [[10, 11], [12, 13]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_allcell_pin_density.csv", [[20, 21], [22, 23]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_allnet_density.csv", [[30, 31], [32, 33]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_global_net_density.csv", [[34, 35], [36, 37]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_local_net_density.csv", [[38, 39], [40, 41]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_macro_density.csv", [[0, 0], [0, 0]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_macro_pin_density.csv", [[0, 0], [0, 0]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_stdcell_density.csv", [[10, 11], [12, 13]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_stdcell_pin_density.csv", [[20, 21], [22, 23]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "margin_map" / "place_union_margin.csv", [[40, 41], [42, 43]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "RUDY_map" / "place_rudy_union.csv", [[50, 51], [52, 53]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "RUDY_map" / "place_lut_rudy_union.csv", [[150, 151], [152, 153]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "egr_congestion_map" / "place_egr_horizontal_overflow.csv", [[5]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "egr_congestion_map" / "place_egr_vertical_overflow.csv", [[7]])
+    _write_csv(
+        ws / "place_dreamplace" / "feature" / "density_map" / "place_allcell_density.csv",
+        [[1, 2], [3, 4]],
+    )
+    _write_csv(
+        ws / "place_dreamplace" / "feature" / "density_map" / "place_macro_density.csv",
+        [[1, 2], [3, 4]],
+    )
+    _write_csv(
+        ws / "place_dreamplace" / "feature" / "density_map" / "place_stdcell_density.csv",
+        [[1, 2], [3, 4]],
+    )
+    _write_csv(
+        ws / "place_dreamplace" / "feature" / "margin_map" / "place_horizontal_margin.csv",
+        [[1, 2], [3, 4]],
+    )
+    _write_csv(
+        ws / "place_dreamplace" / "feature" / "margin_map" / "place_vertical_margin.csv",
+        [[1, 2], [3, 4]],
+    )
+    _write_csv(
+        ws / "place_dreamplace" / "feature" / "margin_map" / "place_union_margin.csv",
+        [[1, 2], [3, 4]],
+    )
+    _write_csv(
+        ws / "place_dreamplace" / "feature" / "RUDY_map" / "place_rudy_union.csv", [[1, 2], [3, 4]]
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_allcell_density.csv",
+        [[10, 11], [12, 13]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_allcell_pin_density.csv",
+        [[20, 21], [22, 23]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_allnet_density.csv",
+        [[30, 31], [32, 33]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_global_net_density.csv",
+        [[34, 35], [36, 37]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_local_net_density.csv",
+        [[38, 39], [40, 41]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_macro_density.csv",
+        [[0, 0], [0, 0]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_macro_pin_density.csv",
+        [[0, 0], [0, 0]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_stdcell_density.csv",
+        [[10, 11], [12, 13]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_stdcell_pin_density.csv",
+        [[20, 21], [22, 23]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "margin_map"
+        / "place_union_margin.csv",
+        [[40, 41], [42, 43]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "RUDY_map"
+        / "place_rudy_union.csv",
+        [[50, 51], [52, 53]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "RUDY_map"
+        / "place_lut_rudy_union.csv",
+        [[150, 151], [152, 153]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "egr_congestion_map"
+        / "place_egr_horizontal_overflow.csv",
+        [[5]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "egr_congestion_map"
+        / "place_egr_vertical_overflow.csv",
+        [[7]],
+    )
     _write_text(
         ws / "place_dreamplace" / "output" / "gcd_place.def",
         """
@@ -326,15 +489,33 @@ END DESIGN
         {
             "Density": {"cell": {"allcell_density": "density_map/place_allcell_density.csv"}},
             "Congestion": {
-                "map": {"egr": {"horizontal": "egr_congestion_map/place_egr_horizontal_overflow.csv", "vertical": "egr_congestion_map/place_egr_vertical_overflow.csv"}},
+                "map": {
+                    "egr": {
+                        "horizontal": "egr_congestion_map/place_egr_horizontal_overflow.csv",
+                        "vertical": "egr_congestion_map/place_egr_vertical_overflow.csv",
+                    }
+                },
                 "overflow": {"top_average": {"horizontal": 5, "vertical": 7}},
             },
-            },
-        )
+        },
+    )
     if include_route_maps:
-        _write_csv(ws / "route_ecc" / "feature" / "egr_congestion_map" / "route_egr_horizontal_overflow.csv", [[1, 0], [2, 3]])
-        _write_csv(ws / "route_ecc" / "feature" / "egr_congestion_map" / "route_egr_vertical_overflow.csv", [[0, 4], [1, 1]])
-        _write_csv(ws / "route_ecc" / "feature" / "egr_congestion_map" / "route_egr_union_overflow.csv", [[1, 4], [3, 4]])
+        _write_csv(
+            ws
+            / "route_ecc"
+            / "feature"
+            / "egr_congestion_map"
+            / "route_egr_horizontal_overflow.csv",
+            [[1, 0], [2, 3]],
+        )
+        _write_csv(
+            ws / "route_ecc" / "feature" / "egr_congestion_map" / "route_egr_vertical_overflow.csv",
+            [[0, 4], [1, 1]],
+        )
+        _write_csv(
+            ws / "route_ecc" / "feature" / "egr_congestion_map" / "route_egr_union_overflow.csv",
+            [[1, 4], [3, 4]],
+        )
         _write_json(
             ws / "route_ecc" / "feature" / "route.map.json",
             {
@@ -405,7 +586,12 @@ END DESIGN
         )
         if include_native_demand_capacity:
             _write_text(
-                ws / "route_ecc" / "data" / "rt" / "space_router" / "route_native_demand_capacity_final.jsonl",
+                ws
+                / "route_ecc"
+                / "data"
+                / "rt"
+                / "space_router"
+                / "route_native_demand_capacity_final.jsonl",
                 "\n".join(
                     [
                         json.dumps(
@@ -476,21 +662,55 @@ END DESIGN
             )
         _write_json(
             ws / "route_ecc" / "feature" / "route.step.json",
-            {"route": {"DR": [{"iter": 1, "total_wire_length": 800.0, "total_violation_num": 4, "total_via_num": 1}]}},
+            {
+                "route": {
+                    "DR": [
+                        {
+                            "iter": 1,
+                            "total_wire_length": 800.0,
+                            "total_violation_num": 4,
+                            "total_via_num": 1,
+                        }
+                    ]
+                }
+            },
         )
         _write_json(
             ws / "route_ecc" / "data" / "sta" / "gcd.rpt.json",
             {
-                "summary": [{"endpoint": "U1/Y", "clock_group": "clk", "delay_type": "max", "path_delay": "1.0", "path_required": "2.0", "slack": "1.0"}],
+                "summary": [
+                    {
+                        "endpoint": "U1/Y",
+                        "clock_group": "clk",
+                        "delay_type": "max",
+                        "path_delay": "1.0",
+                        "path_required": "2.0",
+                        "slack": "1.0",
+                    }
+                ],
                 "slack": [{"clock": "clk", "delay_type": "max", "TNS": "0.0", "WNS": "1.0"}],
             },
         )
         _write_json(
             ws / "route_ecc" / "data" / "sta" / "wire_paths" / "wire_path_1.json",
             [
-                {"node_0": {"Point": "U1/A", "Capacitance": 0.1, "slew": 0.2, "trans_type": "rise"}},
+                {
+                    "node_0": {
+                        "Point": "U1/A",
+                        "Capacitance": 0.1,
+                        "slew": 0.2,
+                        "trans_type": "rise",
+                    }
+                },
                 {"net_arc_0": {"Incr": 0.3, "Resistance": 1.5}},
-                {"node_1": {"Point": "U1/Y", "Capacitance": 0.4, "slew": 0.6, "trans_type": "fall"}},
+                {
+                    "node_1": {
+                        "Point": "U1/Y",
+                        "Capacitance": 0.4,
+                        "slew": 0.6,
+                        "trans_type": "fall",
+                    }
+                },
             ],
         )
         _write_json(
@@ -535,7 +755,9 @@ def test_iccd_full_v1_extractor_writes_parquet_contract_and_no_legacy_defaults(t
     schema = json.loads((foundation_dir / "schema.json").read_text(encoding="utf-8"))
     manifest = json.loads((foundation_dir / "manifest.json").read_text(encoding="utf-8"))
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
-    migration_report = json.loads((foundation_dir / "migration_report.json").read_text(encoding="utf-8"))
+    migration_report = json.loads(
+        (foundation_dir / "migration_report.json").read_text(encoding="utf-8")
+    )
 
     assert schema["contract_name"] == "foundation_data/ecc"
     assert schema["storage_format"] == "parquet+json_views"
@@ -592,7 +814,9 @@ def test_iccd_full_v1_extractor_writes_parquet_contract_and_no_legacy_defaults(t
     assert manifest["design_id"].startswith("design_")
     assert manifest["run_id"].startswith("run_")
     assert manifest["created_at"]
-    assert manifest["generated_by"]["extractor"] == "chipcompiler.data.foundation.FoundationExtractor"
+    assert (
+        manifest["generated_by"]["extractor"] == "chipcompiler.data.foundation.FoundationExtractor"
+    )
     assert [stage["stage_name"] for stage in manifest["stages"]] == [
         "Floorplan",
         "place",
@@ -632,11 +856,21 @@ def test_iccd_full_v1_extractor_writes_parquet_contract_and_no_legacy_defaults(t
         "views_ml.md",
     ]:
         assert source_doc in migration_report["source_docs"]
-    assert migration_report["information_families"]["route_native_labels"]["status"] == "preserved_as_table"
-    assert migration_report["information_families"]["source_refs_null_reason"]["status"] == "preserved_as_semantic_block"
+    assert (
+        migration_report["information_families"]["route_native_labels"]["status"]
+        == "preserved_as_table"
+    )
+    assert (
+        migration_report["information_families"]["source_refs_null_reason"]["status"]
+        == "preserved_as_semantic_block"
+    )
 
-    dataset_index = json.loads((foundation_dir / "views" / "ml" / "dataset_index.json").read_text(encoding="utf-8"))
-    task_views = json.loads((foundation_dir / "views" / "ml" / "task_views.json").read_text(encoding="utf-8"))
+    dataset_index = json.loads(
+        (foundation_dir / "views" / "ml" / "dataset_index.json").read_text(encoding="utf-8")
+    )
+    task_views = json.loads(
+        (foundation_dir / "views" / "ml" / "task_views.json").read_text(encoding="utf-8")
+    )
     assert dataset_index["tables_dir"] == "tables"
     assert "progressive_patch_route_demand_capacity" in task_views["tasks"]
     task = task_views["tasks"]["progressive_patch_route_demand_capacity"]
@@ -649,8 +883,12 @@ def test_iccd_full_v1_extractor_writes_parquet_contract_and_no_legacy_defaults(t
     assert not (foundation_dir / "maps").exists()
     assert not (foundation_dir / "labels" / "route_native_demand_capacity.jsonl").exists()
 
-    top_patches = json.loads((foundation_dir / "views" / "agent" / "top_patches.json").read_text(encoding="utf-8"))["items"]
-    top_nets = json.loads((foundation_dir / "views" / "agent" / "top_nets.json").read_text(encoding="utf-8"))["items"]
+    top_patches = json.loads(
+        (foundation_dir / "views" / "agent" / "top_patches.json").read_text(encoding="utf-8")
+    )["items"]
+    top_nets = json.loads(
+        (foundation_dir / "views" / "agent" / "top_nets.json").read_text(encoding="utf-8")
+    )["items"]
     assert top_patches
     assert top_nets
     assert top_patches[0]["provenance"]["query"]["provenance_id"]
@@ -881,7 +1119,6 @@ def test_instance_row_refs_require_explicit_def_row_lattice_alignment():
     ]
 
 
-
 def test_iccd_fast_profile_skips_audit_and_route_detail_tables(tmp_path: Path):
     import pyarrow.parquet as pq
 
@@ -894,7 +1131,11 @@ def test_iccd_fast_profile_skips_audit_and_route_detail_tables(tmp_path: Path):
 
     foundation_dir = result.foundation_dir
     manifest = json.loads((foundation_dir / "manifest.json").read_text(encoding="utf-8"))
-    progressive = json.loads((foundation_dir / "views" / "ml" / "progressive_patch_dataset.json").read_text(encoding="utf-8"))
+    progressive = json.loads(
+        (foundation_dir / "views" / "ml" / "progressive_patch_dataset.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert manifest["options"]["materialize_audit_tables"] is False
     assert manifest["options"]["route_detail_level"] == "labels_only"
@@ -920,6 +1161,7 @@ def test_iccd_full_v1_extractor_rejects_unknown_route_detail_level(tmp_path: Pat
     with pytest.raises(ValueError, match="route_detail_level"):
         FoundationExtractor(ws, profile="iccd_full_v1").extract(route_detail_level="wire_heavy")
 
+
 def test_iccd_full_v1_extractor_records_space_router_label_completion_mode(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     result = FoundationExtractor(ws, profile="iccd_full_v1").extract(
@@ -928,12 +1170,21 @@ def test_iccd_full_v1_extractor_records_space_router_label_completion_mode(tmp_p
 
     foundation_dir = result.foundation_dir
     manifest = json.loads((foundation_dir / "manifest.json").read_text(encoding="utf-8"))
-    task_views = json.loads((foundation_dir / "views" / "ml" / "task_views.json").read_text(encoding="utf-8"))
-    progressive = json.loads((foundation_dir / "views" / "ml" / "progressive_patch_dataset.json").read_text(encoding="utf-8"))
+    task_views = json.loads(
+        (foundation_dir / "views" / "ml" / "task_views.json").read_text(encoding="utf-8")
+    )
+    progressive = json.loads(
+        (foundation_dir / "views" / "ml" / "progressive_patch_dataset.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert manifest["route_completion_mode"] == "space_router_label"
     assert manifest["options"]["route_completion_mode"] == "space_router_label"
-    assert task_views["tasks"]["progressive_patch_route_demand_capacity"]["route_completion_mode"] == "space_router_label"
+    assert (
+        task_views["tasks"]["progressive_patch_route_demand_capacity"]["route_completion_mode"]
+        == "space_router_label"
+    )
     assert progressive["route_completion_mode"] == "space_router_label"
     assert progressive["label_source"]["completion_mode"] == "space_router_label"
     assert progressive["leakage_policy"]["route_truth_as_preroute_input"] == "forbidden"
@@ -943,7 +1194,9 @@ def test_iccd_full_v1_extractor_rejects_unknown_route_completion_mode(tmp_path: 
     ws = _make_workspace(tmp_path)
 
     with pytest.raises(ValueError, match="route_completion_mode"):
-        FoundationExtractor(ws, profile="iccd_full_v1").extract(route_completion_mode="early_router")
+        FoundationExtractor(ws, profile="iccd_full_v1").extract(
+            route_completion_mode="early_router"
+        )
 
 
 def test_iccd_full_v1_extractor_emits_stage_and_table_progress_logs(tmp_path: Path, caplog):
@@ -971,7 +1224,9 @@ def test_parquet_contract_preserves_all_semantic_blocks_and_auditable_views(tmp_
     schema = json.loads((foundation_dir / "schema.json").read_text(encoding="utf-8"))
 
     def table_rows(name: str, columns: list[str] | None = None) -> list[dict]:
-        return pq.read_table(foundation_dir / schema["tables"][name]["path"], columns=columns).to_pylist()
+        return pq.read_table(
+            foundation_dir / schema["tables"][name]["path"], columns=columns
+        ).to_pylist()
 
     semantic_rows = table_rows(
         "semantic_blocks",
@@ -989,7 +1244,7 @@ def test_parquet_contract_preserves_all_semantic_blocks_and_auditable_views(tmp_
     )
     expected = 0
     for stage in ["Floorplan", "place", "CTS", "route", "drc"]:
-        for entity, folder in (
+        for _entity, folder in (
             ("patch", "patches"),
             ("instance", "instances"),
             ("pin", "pins"),
@@ -999,24 +1254,42 @@ def test_parquet_contract_preserves_all_semantic_blocks_and_auditable_views(tmp_
             ("timing_path", "timing_paths"),
         ):
             for record in _read_jsonl(foundation_dir / "vectors" / folder / f"{stage}.jsonl"):
-                expected += sum(1 for block in ("source_refs", "null_reason", "progressive_metadata") if record.get(block) is not None)
+                expected += sum(
+                    1
+                    for block in ("source_refs", "null_reason", "progressive_metadata")
+                    if record.get(block) is not None
+                )
     assert len(semantic_rows) == expected
     assert all(row["source_doc"] and row["source_field_path"] for row in semantic_rows)
-    assert all(row["preserved_reason"] and row["future_normalization_plan"] for row in semantic_rows)
-    assert not any(token in row["block_payload"] for row in semantic_rows for token in ("vectors/", "maps/", "labels/"))
+    assert all(
+        row["preserved_reason"] and row["future_normalization_plan"] for row in semantic_rows
+    )
+    assert not any(
+        token in row["block_payload"]
+        for row in semantic_rows
+        for token in ("vectors/", "maps/", "labels/")
+    )
 
     feature_columns = schema["tables"]["run_stage_patch_features"]["columns"]
     assert {"macro_count", "net_count_overlap"} <= set(feature_columns)
     feature_rows = table_rows("run_stage_patch_features")
-    place0 = next(row for row in feature_rows if row["stage_name"] == "place" and row["patch_id"] == 0)
+    place0 = next(
+        row for row in feature_rows if row["stage_name"] == "place" and row["patch_id"] == 0
+    )
     assert place0["macro_count"] == 1
     assert place0["net_count_overlap"] == 1
 
-    provenance_rows = table_rows("provenance", ["provenance_id", "artifact_id", "derived_from_artifact_ids"])
+    provenance_rows = table_rows(
+        "provenance", ["provenance_id", "artifact_id", "derived_from_artifact_ids"]
+    )
     provenance_by_id = {row["provenance_id"]: row for row in provenance_rows}
     artifact_ids = {row["artifact_id"] for row in table_rows("artifacts", ["artifact_id"])}
     for table_name in ("run_stage_patch_maps", "run_stage_patch_features", "stage_deltas"):
-        refs = {row["provenance_id"] for row in table_rows(table_name, ["provenance_id"]) if row["provenance_id"]}
+        refs = {
+            row["provenance_id"]
+            for row in table_rows(table_name, ["provenance_id"])
+            if row["provenance_id"]
+        }
         assert refs <= set(provenance_by_id)
         for ref in refs:
             derived = set(json.loads(provenance_by_id[ref]["derived_from_artifact_ids"] or "[]"))
@@ -1024,27 +1297,46 @@ def test_parquet_contract_preserves_all_semantic_blocks_and_auditable_views(tmp_
             assert direct in artifact_ids or (derived and derived <= artifact_ids), ref
 
     delta_rows = table_rows("stage_deltas", ["entity_type", "change_type", "metric_name"])
-    assert any(row["entity_type"] == "patch" and row["change_type"] == "metric_changed" for row in delta_rows)
-    assert any(row["entity_type"] == "timing_path" and row["change_type"] == "state_changed" for row in delta_rows)
+    assert any(
+        row["entity_type"] == "patch" and row["change_type"] == "metric_changed"
+        for row in delta_rows
+    )
+    assert any(
+        row["entity_type"] == "timing_path" and row["change_type"] == "state_changed"
+        for row in delta_rows
+    )
 
-    top_patches = json.loads((foundation_dir / "views" / "agent" / "top_patches.json").read_text(encoding="utf-8"))["items"]
+    top_patches = json.loads(
+        (foundation_dir / "views" / "agent" / "top_patches.json").read_text(encoding="utf-8")
+    )["items"]
     patch_scores = [item["score"] for item in top_patches]
     assert patch_scores == sorted(patch_scores, reverse=True)
     assert top_patches[0]["patch_id"] == 1
     assert all("score_source" in item and "provenance" in item for item in top_patches)
     assert all(item["provenance"].get("query", {}).get("provenance_id") for item in top_patches)
 
-    top_nets = json.loads((foundation_dir / "views" / "agent" / "top_nets.json").read_text(encoding="utf-8"))["items"]
+    top_nets = json.loads(
+        (foundation_dir / "views" / "agent" / "top_nets.json").read_text(encoding="utf-8")
+    )["items"]
     net_scores = [item["score"] for item in top_nets]
     assert net_scores == sorted(net_scores, reverse=True)
     assert all("score_source" in item and "provenance" in item for item in top_nets)
     assert all(item["provenance"].get("query", {}).get("provenance_id") for item in top_nets)
 
-    progressive = json.loads((foundation_dir / "views" / "ml" / "progressive_patch_dataset.json").read_text(encoding="utf-8"))
-    assert progressive["stage_policy"] == {"P1": ["Floorplan"], "P2": ["Floorplan", "place"], "P3": ["Floorplan", "place", "CTS"]}
+    progressive = json.loads(
+        (foundation_dir / "views" / "ml" / "progressive_patch_dataset.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert progressive["stage_policy"] == {
+        "P1": ["Floorplan"],
+        "P2": ["Floorplan", "place"],
+        "P3": ["Floorplan", "place", "CTS"],
+    }
     assert progressive["leakage_policy"]["route_truth_as_preroute_input"] == "forbidden"
     assert "route" not in progressive["allowed_input_stages"]["P3"]
     assert "run_patch_route_label_layers" in progressive["forbidden_input_tables"]
+
 
 def test_stage_table_preserves_runtime_and_peak_memory_from_flow(tmp_path: Path):
     import pyarrow.parquet as pq
@@ -1076,50 +1368,52 @@ def test_stage_table_preserves_runtime_and_peak_memory_from_flow(tmp_path: Path)
     assert by_stage["route"]["peak_memory_mb"] is None
 
 
-def test_write_tables_passes_iterables_without_eager_list_materialization(tmp_path: Path, monkeypatch):
+def test_write_tables_passes_iterables_without_eager_list_materialization(
+    tmp_path: Path, monkeypatch
+):
     import chipcompiler.data.foundation.table_contract as table_contract_module
 
     captured = {}
 
     def fake_write_parquet(path: Path, records, *, columns=None, schema=None, batch_size=2048):
         if path.name == "timing_paths.parquet":
-            captured['records_type'] = type(records)
-            captured['records_is_list'] = isinstance(records, list)
-            captured['columns'] = tuple(columns or ())
-            captured['schema'] = schema
+            captured["records_type"] = type(records)
+            captured["records_is_list"] = isinstance(records, list)
+            captured["columns"] = tuple(columns or ())
+            captured["schema"] = schema
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b'PAR1')
+        path.write_bytes(b"PAR1")
         for _ in records:
             return 1
         return 0
 
-    monkeypatch.setattr(table_contract_module, 'write_parquet', fake_write_parquet)
-    monkeypatch.setattr(table_contract_module, 'file_sha256', lambda path: 'sha256')
+    monkeypatch.setattr(table_contract_module, "write_parquet", fake_write_parquet)
+    monkeypatch.setattr(table_contract_module, "file_sha256", lambda path: "sha256")
 
     def rows():
         yield {
-            'design_id': 'design:gcd',
-            'run_id': 'run:gcd',
-            'stage_name': 'route',
-            'path_id': 'path:1',
-            'startpoint': '{}',
-            'endpoint': '{}',
-            'delay_type': 'max',
-            'slack': -0.2,
-            'arrival': 1.3,
-            'required': 1.1,
-            'path_group': 'clk',
-            'path_length_summary': '{}',
-            'criticality': 0.9,
+            "design_id": "design:gcd",
+            "run_id": "run:gcd",
+            "stage_name": "route",
+            "path_id": "path:1",
+            "startpoint": "{}",
+            "endpoint": "{}",
+            "delay_type": "max",
+            "slack": -0.2,
+            "arrival": 1.3,
+            "required": 1.1,
+            "path_group": "clk",
+            "path_length_summary": "{}",
+            "criticality": 0.9,
         }
 
-    registry = write_tables(tmp_path / 'registry', {'timing_paths': rows()})
+    registry = write_tables(tmp_path / "registry", {"timing_paths": rows()})
 
-    assert captured['records_is_list'] is False
-    assert captured['records_type'] is not list
-    assert captured['columns'] == TABLE_SPECS['timing_paths'].columns
-    assert captured['schema'] == TABLE_SPECS['timing_paths'].arrow_schema()
-    assert registry['timing_paths']['row_count'] == 1
+    assert captured["records_is_list"] is False
+    assert captured["records_type"] is not list
+    assert captured["columns"] == TABLE_SPECS["timing_paths"].columns
+    assert captured["schema"] == TABLE_SPECS["timing_paths"].arrow_schema()
+    assert registry["timing_paths"]["row_count"] == 1
 
 
 def test_write_parquet_writes_in_batches_when_batch_size_is_set(tmp_path: Path, monkeypatch):
@@ -1141,28 +1435,33 @@ def test_write_parquet_writes_in_batches_when_batch_size_is_set(tmp_path: Path, 
             close_calls.append(1)
             self._writer.close()
 
-    monkeypatch.setattr(pq, 'ParquetWriter', RecordingWriter)
+    monkeypatch.setattr(pq, "ParquetWriter", RecordingWriter)
 
     rows = (
         {
-            'design_id': 'design:gcd',
-            'run_id': 'run:gcd',
-            'stage_name': 'route',
-            'path_id': f'path:{idx}',
-            'startpoint': '{}',
-            'endpoint': '{}',
-            'delay_type': 'max',
-            'slack': float(-idx),
-            'arrival': float(idx),
-            'required': 1.1,
-            'path_group': 'clk',
-            'path_length_summary': '{}',
-            'criticality': 1.0,
+            "design_id": "design:gcd",
+            "run_id": "run:gcd",
+            "stage_name": "route",
+            "path_id": f"path:{idx}",
+            "startpoint": "{}",
+            "endpoint": "{}",
+            "delay_type": "max",
+            "slack": float(-idx),
+            "arrival": float(idx),
+            "required": 1.1,
+            "path_group": "clk",
+            "path_length_summary": "{}",
+            "criticality": 1.0,
         }
         for idx in range(5)
     )
 
-    row_count = write_parquet(tmp_path / 'batched.parquet', rows, columns=TABLE_SPECS['timing_paths'].columns, batch_size=2)
+    row_count = write_parquet(
+        tmp_path / "batched.parquet",
+        rows,
+        columns=TABLE_SPECS["timing_paths"].columns,
+        batch_size=2,
+    )
 
     assert row_count == 5
     assert close_calls == [1]
@@ -1183,11 +1482,15 @@ def test_write_parquet_same_schema_batches_do_not_read_existing_table(tmp_path: 
     assert row_count == 6
 
 
-def test_write_parquet_contract_schema_does_not_read_back_existing_table(tmp_path: Path, monkeypatch):
+def test_write_parquet_contract_schema_does_not_read_back_existing_table(
+    tmp_path: Path, monkeypatch
+):
     import pyarrow.parquet as pq
 
     def fail_read_table(*args, **kwargs):
-        raise AssertionError("fixed contract schema writes must not read back existing parquet data")
+        raise AssertionError(
+            "fixed contract schema writes must not read back existing parquet data"
+        )
 
     monkeypatch.setattr(pq, "read_table", fail_read_table)
 
@@ -1271,7 +1574,7 @@ def test_write_parquet_handles_nullable_columns_when_later_batches_introduce_val
             "target_key": "k2",
             "target_field": "*",
             "artifact_id": "artifact:2",
-            "derived_from_artifact_ids": "[\"artifact:2\"]",
+            "derived_from_artifact_ids": '["artifact:2"]',
             "source_section": "foundation_extractor",
             "source_index": None,
             "availability_code": "available",
@@ -1289,12 +1592,16 @@ def test_write_parquet_handles_nullable_columns_when_later_batches_introduce_val
     assert written[2]["artifact_id"] == "artifact:2"
 
 
-def test_write_parquet_prescans_initial_batches_to_avoid_common_schema_widening_readback(tmp_path: Path, monkeypatch):
+def test_write_parquet_prescans_initial_batches_to_avoid_common_schema_widening_readback(
+    tmp_path: Path, monkeypatch
+):
     import pyarrow as pa
     import pyarrow.parquet as pq
 
     def fail_read_table(*args, **kwargs):
-        raise AssertionError("initial prescan should avoid readback for common early schema widening")
+        raise AssertionError(
+            "initial prescan should avoid readback for common early schema widening"
+        )
 
     monkeypatch.setattr(pq, "read_table", fail_read_table)
 
@@ -1342,7 +1649,6 @@ def test_parquet_registry_preserves_schema_for_empty_tables(tmp_path: Path):
     assert table.schema.names == list(TABLE_SPECS["timing_paths"].columns)
 
 
-
 def test_write_tables_can_skip_tables_with_registry_overrides(tmp_path: Path, monkeypatch):
     written: list[str] = []
 
@@ -1384,30 +1690,45 @@ def test_write_tables_requires_registry_override_for_skipped_table(tmp_path: Pat
     with pytest.raises(ValueError, match="missing registry override for skipped table: patches"):
         table_contract_module.write_tables(tmp_path, {}, skip_tables={"patches"})
 
+
 def test_large_table_builders_return_lazy_iterables(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     extractor = FoundationExtractor(ws, profile="iccd_full_v1")
     extractor.extract(export_legacy_debug=True)
     flow = extractor._read_json(ws / "home" / "flow.json")
-    parameters = extractor._read_json(ws / "home" / "parameters.json")
     stages = extractor._stage_infos(flow)
     stage_ids = {stage.name: f"stage:{index}" for index, stage in enumerate(stages)}
-    canonical_grid = json.loads((extractor.foundation_dir / "canonical_grid.json").read_text(encoding="utf-8"))
-    canonical_maps = extractor._write_maps(extractor._collect_raw_maps(stages), canonical_grid, stages, extractor._collect_def_data(stages))
+    canonical_grid = json.loads(
+        (extractor.foundation_dir / "canonical_grid.json").read_text(encoding="utf-8")
+    )
+    canonical_maps = extractor._write_maps(
+        extractor._collect_raw_maps(stages),
+        canonical_grid,
+        stages,
+        extractor._collect_def_data(stages),
+    )
 
     lazy_tables = {
         "semantic_blocks": extractor._semantic_block_rows("design:gcd", "run:gcd", stages),
-        "run_stage_patch_maps": extractor._patch_map_rows("design:gcd", "run:gcd", stage_ids, canonical_grid, canonical_maps),
-        "run_stage_patch_features": extractor._patch_feature_rows("design:gcd", "run:gcd", stage_ids, stages),
+        "run_stage_patch_maps": extractor._patch_map_rows(
+            "design:gcd", "run:gcd", stage_ids, canonical_grid, canonical_maps
+        ),
+        "run_stage_patch_features": extractor._patch_feature_rows(
+            "design:gcd", "run:gcd", stage_ids, stages
+        ),
         "routing_vertices": extractor._routing_vertex_rows("design:gcd", "run:gcd", stages),
         "routing_edges": extractor._routing_edge_rows("design:gcd", "run:gcd", stages),
         "timing_paths": extractor._timing_path_rows("design:gcd", "run:gcd", stages),
         "patch_entity_refs": extractor._patch_entity_ref_rows("design:gcd", "run:gcd", stages),
         "wire_segments": extractor._wire_segment_rows("design:gcd", "run:gcd", stages),
-        "wire_patch_intersections": extractor._wire_patch_intersection_rows("design:gcd", "run:gcd", stages),
+        "wire_patch_intersections": extractor._wire_patch_intersection_rows(
+            "design:gcd", "run:gcd", stages
+        ),
         "timing_path_points": extractor._timing_path_point_rows("design:gcd", "run:gcd", stages),
         "timing_edges": extractor._timing_edge_rows("design:gcd", "run:gcd", stages),
-        "timing_wire_path_nodes": extractor._timing_wire_path_node_rows("design:gcd", "run:gcd", stages),
+        "timing_wire_path_nodes": extractor._timing_wire_path_node_rows(
+            "design:gcd", "run:gcd", stages
+        ),
         "stage_deltas": extractor._stage_delta_rows("design:gcd", "run:gcd", stages),
     }
 
@@ -1497,7 +1818,9 @@ def test_build_table_rows_reuses_dynamic_rows_for_provenance(tmp_path: Path, mon
     flow = extractor._read_json(ws / "home" / "flow.json")
     parameters = extractor._read_json(ws / "home" / "parameters.json")
     stages = extractor._stage_infos(flow)
-    canonical_grid = json.loads((extractor.foundation_dir / "canonical_grid.json").read_text(encoding="utf-8"))
+    canonical_grid = json.loads(
+        (extractor.foundation_dir / "canonical_grid.json").read_text(encoding="utf-8")
+    )
     canonical_maps = extractor._write_maps(
         extractor._collect_raw_maps(stages),
         canonical_grid,
@@ -1506,7 +1829,9 @@ def test_build_table_rows_reuses_dynamic_rows_for_provenance(tmp_path: Path, mon
     )
     route_stage = next((stage for stage in stages if stage.name == "route"), None)
     labels = extractor._write_labels(
-        parse_route_native_demand_capacity_artifacts(route_stage.directory, canonical_grid)["labels"],
+        parse_route_native_demand_capacity_artifacts(route_stage.directory, canonical_grid)[
+            "labels"
+        ],
         export_legacy_debug=True,
     )
     metrics = extractor._collect_metrics(stages)
@@ -1560,7 +1885,14 @@ def test_route_native_demand_capacity_jsonl_is_read_streaming(tmp_path: Path, mo
     from chipcompiler.data.foundation.parsers import route_native_demand_capacity as parser
 
     ws = _make_workspace(tmp_path)
-    path = ws / "route_ecc" / "data" / "rt" / "space_router" / "route_native_demand_capacity_final.jsonl"
+    path = (
+        ws
+        / "route_ecc"
+        / "data"
+        / "rt"
+        / "space_router"
+        / "route_native_demand_capacity_final.jsonl"
+    )
 
     original_read_text = Path.read_text
     original_iter_jsonl_records = parser._iter_jsonl_records
@@ -1568,7 +1900,9 @@ def test_route_native_demand_capacity_jsonl_is_read_streaming(tmp_path: Path, mo
 
     def fail_target_read_text(self, *args, **kwargs):
         if self == path:
-            raise AssertionError("JSONL route demand/capacity input should be streamed line by line")
+            raise AssertionError(
+                "JSONL route demand/capacity input should be streamed line by line"
+            )
         return original_read_text(self, *args, **kwargs)
 
     def one_shot_records(jsonl_path):
@@ -1582,10 +1916,30 @@ def test_route_native_demand_capacity_jsonl_is_read_streaming(tmp_path: Path, mo
 
     canonical_grid = {
         "patches": [
-            {"patch_id": 0, "row": 0, "col": 0, "bbox": {"llx": 0, "lly": 0, "urx": 100, "ury": 100}},
-            {"patch_id": 1, "row": 0, "col": 1, "bbox": {"llx": 100, "lly": 0, "urx": 200, "ury": 100}},
-            {"patch_id": 2, "row": 1, "col": 0, "bbox": {"llx": 0, "lly": 100, "urx": 100, "ury": 200}},
-            {"patch_id": 3, "row": 1, "col": 1, "bbox": {"llx": 100, "lly": 100, "urx": 200, "ury": 200}},
+            {
+                "patch_id": 0,
+                "row": 0,
+                "col": 0,
+                "bbox": {"llx": 0, "lly": 0, "urx": 100, "ury": 100},
+            },
+            {
+                "patch_id": 1,
+                "row": 0,
+                "col": 1,
+                "bbox": {"llx": 100, "lly": 0, "urx": 200, "ury": 100},
+            },
+            {
+                "patch_id": 2,
+                "row": 1,
+                "col": 0,
+                "bbox": {"llx": 0, "lly": 100, "urx": 100, "ury": 200},
+            },
+            {
+                "patch_id": 3,
+                "row": 1,
+                "col": 1,
+                "bbox": {"llx": 100, "lly": 100, "urx": 200, "ury": 200},
+            },
         ]
     }
 
@@ -1610,8 +1964,8 @@ def test_def_parser_streams_large_def_without_read_text_splitlines(tmp_path: Pat
     payload = "\n".join(
         [
             "VERSION 5.8 ;",
-            "DIVIDERCHAR \"/\" ;",
-            "BUSBITCHARS \"[]\" ;",
+            'DIVIDERCHAR "/" ;',
+            'BUSBITCHARS "[]" ;',
             "DESIGN gcd ;",
             "UNITS DISTANCE MICRONS 1000 ;",
             "DIEAREA ( 0 0 ) ( 200 200 ) ;",
@@ -1692,8 +2046,9 @@ def test_extractor_jsonl_helper_streams_records(tmp_path: Path, monkeypatch):
     assert extractor_module._read_jsonl_records(path) == [{"a": 1}, {"a": 2}]
 
 
-
-def test_extractor_fails_when_available_tech_sources_materialize_empty_tables(tmp_path: Path, monkeypatch):
+def test_extractor_fails_when_available_tech_sources_materialize_empty_tables(
+    tmp_path: Path, monkeypatch
+):
     ws = _make_workspace(tmp_path)
 
     monkeypatch.setattr(FoundationExtractor, "_tech_layer_rows", lambda self, design_id: iter(()))
@@ -1703,7 +2058,9 @@ def test_extractor_fails_when_available_tech_sources_materialize_empty_tables(tm
     with pytest.raises(RuntimeError, match="tech_layers.*source_available.*row_count=0"):
         FoundationExtractor(ws, profile="iccd_full_v1").extract()
 
-    quality = json.loads((ws / "foundation_data" / "ecc" / "quality.json").read_text(encoding="utf-8"))
+    quality = json.loads(
+        (ws / "foundation_data" / "ecc" / "quality.json").read_text(encoding="utf-8")
+    )
     assert quality["tech"]["materialization_counts"] == {
         "tech_layers": 0,
         "tech_vias": 0,
@@ -1729,7 +2086,9 @@ def test_extractor_records_tech_materialization_counts(tmp_path: Path):
     assert quality["tech"]["source_counts"]["record_cells"] > 0
 
 
-def test_default_contract_tech_tables_do_not_depend_on_legacy_vector_json(tmp_path: Path, monkeypatch):
+def test_default_contract_tech_tables_do_not_depend_on_legacy_vector_json(
+    tmp_path: Path, monkeypatch
+):
     import pyarrow.parquet as pq
 
     ws = _make_workspace(tmp_path)
@@ -1737,24 +2096,28 @@ def test_default_contract_tech_tables_do_not_depend_on_legacy_vector_json(tmp_pa
 
     def fail_if_legacy_tech_json(path: Path):
         normalized = path.as_posix()
-        if normalized.endswith('vectors/tech/layers.json') or normalized.endswith('vectors/tech/cells.json') or normalized.endswith('vectors/tech/vias.json'):
-            raise AssertionError(f'legacy tech json should not be read: {normalized}')
+        if (
+            normalized.endswith("vectors/tech/layers.json")
+            or normalized.endswith("vectors/tech/cells.json")
+            or normalized.endswith("vectors/tech/vias.json")
+        ):
+            raise AssertionError(f"legacy tech json should not be read: {normalized}")
         return original_read_json_records(path)
 
-    monkeypatch.setattr(extractor_module, '_read_json_records', fail_if_legacy_tech_json)
+    monkeypatch.setattr(extractor_module, "_read_json_records", fail_if_legacy_tech_json)
 
-    result = FoundationExtractor(ws, profile='iccd_full_v1').extract()
+    result = FoundationExtractor(ws, profile="iccd_full_v1").extract()
     foundation_dir = result.foundation_dir
-    schema = json.loads((foundation_dir / 'schema.json').read_text(encoding='utf-8'))
+    schema = json.loads((foundation_dir / "schema.json").read_text(encoding="utf-8"))
 
-    assert not (foundation_dir / 'vectors').exists()
+    assert not (foundation_dir / "vectors").exists()
 
     def read_rows(name: str) -> list[dict[str, object]]:
-        return pq.read_table(foundation_dir / schema['tables'][name]['path']).to_pylist()
+        return pq.read_table(foundation_dir / schema["tables"][name]["path"]).to_pylist()
 
-    assert read_rows('tech_layers')
-    assert read_rows('tech_vias')
-    assert read_rows('library_cells')
+    assert read_rows("tech_layers")
+    assert read_rows("tech_vias")
+    assert read_rows("library_cells")
 
 
 def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
@@ -1824,7 +2187,10 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert "route_patch_overflow_count" not in metrics["route"]
     assert "features" not in metrics["route"]
     assert "route.step.json" not in metrics["route"]
-    assert all(all("path" not in key.lower() for key in stage_metrics) for stage_metrics in metrics.values())
+    assert all(
+        all("path" not in key.lower() for key in stage_metrics)
+        for stage_metrics in metrics.values()
+    )
 
     manifest = json.loads((foundation_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["contract_name"] == "foundation_data/ecc"
@@ -1862,29 +2228,76 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert grid["patches"][0]["col"] == 0
     assert "gcell" not in grid["patches"][0]
 
-    place_congestion = json.loads((foundation_dir / "maps" / "place" / "congestion.json").read_text())
+    place_congestion = json.loads(
+        (foundation_dir / "maps" / "place" / "congestion.json").read_text()
+    )
     assert place_congestion["category"] == "congestion"
-    assert [item["value"] for item in place_congestion["maps"]["horizontal"]["values"]] == [1.0, 3.0, 3.0, -4.0]
-    assert [item["value"] for item in place_congestion["maps"]["vertical"]["values"]] == [3.0, -3.0, -1.0, 7.0]
-    assert [item["value"] for item in place_congestion["maps"]["union"]["values"]] == [3.0, 3.0, 3.0, 7.0]
+    assert [item["value"] for item in place_congestion["maps"]["horizontal"]["values"]] == [
+        1.0,
+        3.0,
+        3.0,
+        -4.0,
+    ]
+    assert [item["value"] for item in place_congestion["maps"]["vertical"]["values"]] == [
+        3.0,
+        -3.0,
+        -1.0,
+        7.0,
+    ]
+    assert [item["value"] for item in place_congestion["maps"]["union"]["values"]] == [
+        3.0,
+        3.0,
+        3.0,
+        7.0,
+    ]
 
     indexed_density = json.loads((foundation_dir / "maps" / "place" / "density.json").read_text())
     assert "place_allcell_density" not in indexed_density["maps"]
-    assert [item["value"] for item in indexed_density["maps"]["allcell_density"]["values"]] == [10.0, 11.0, 12.0, 13.0]
-    assert [item["value"] for item in indexed_density["maps"]["allcell_pin_density"]["values"]] == [20.0, 21.0, 22.0, 23.0]
-    assert [item["value"] for item in indexed_density["maps"]["allnet_density"]["values"]] == [30.0, 31.0, 32.0, 33.0]
+    assert [item["value"] for item in indexed_density["maps"]["allcell_density"]["values"]] == [
+        10.0,
+        11.0,
+        12.0,
+        13.0,
+    ]
+    assert [item["value"] for item in indexed_density["maps"]["allcell_pin_density"]["values"]] == [
+        20.0,
+        21.0,
+        22.0,
+        23.0,
+    ]
+    assert [item["value"] for item in indexed_density["maps"]["allnet_density"]["values"]] == [
+        30.0,
+        31.0,
+        32.0,
+        33.0,
+    ]
 
     indexed_margin = json.loads((foundation_dir / "maps" / "place" / "margin.json").read_text())
-    assert [item["value"] for item in indexed_margin["maps"]["union"]["values"]] == [40.0, 41.0, 42.0, 43.0]
+    assert [item["value"] for item in indexed_margin["maps"]["union"]["values"]] == [
+        40.0,
+        41.0,
+        42.0,
+        43.0,
+    ]
 
     indexed_rudy = json.loads((foundation_dir / "maps" / "place" / "rudy.json").read_text())
-    assert [item["value"] for item in indexed_rudy["maps"]["rudy_union"]["values"]] == [50.0, 51.0, 52.0, 53.0]
+    assert [item["value"] for item in indexed_rudy["maps"]["rudy_union"]["values"]] == [
+        50.0,
+        51.0,
+        52.0,
+        53.0,
+    ]
     assert all("lut" not in key for key in indexed_rudy["maps"])
     assert not (foundation_dir / "maps" / "place" / "ignored.json").exists()
     assert not (foundation_dir / "maps" / "canonical").exists()
     assert not (foundation_dir / "maps" / "raw").exists()
 
-    instances = [json.loads(line) for line in (foundation_dir / "vectors" / "instances" / "place.jsonl").read_text().splitlines()]
+    instances = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "instances" / "place.jsonl")
+        .read_text()
+        .splitlines()
+    ]
     assert {item["name"] for item in instances} == {"Instance_U1", "Macro_SRAM0"}
     assert all("availability" not in item for item in instances)
     assert all("availability" not in item for item in instances)
@@ -1899,7 +2312,9 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
 
     native_demand_capacity = [
         json.loads(line)
-        for line in (foundation_dir / "labels" / "route_native_demand_capacity.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (foundation_dir / "labels" / "route_native_demand_capacity.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
         if line.strip()
     ]
     assert {item["source"] for item in native_demand_capacity} == {"irt_space_router_native"}
@@ -1911,14 +2326,31 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert native_demand_capacity[1]["vertical_demand_capacity"] == 5.0
     assert native_demand_capacity[2]["union_demand_capacity"] == 0.0
 
-    nets = [json.loads(line) for line in (foundation_dir / "vectors" / "nets" / "route.jsonl").read_text().splitlines()]
-    pins = [json.loads(line) for line in (foundation_dir / "vectors" / "pins" / "route.jsonl").read_text().splitlines()]
-    wires = [json.loads(line) for line in (foundation_dir / "vectors" / "wires" / "route.jsonl").read_text().splitlines()]
-    timing_paths = [json.loads(line) for line in (foundation_dir / "vectors" / "timing_paths" / "route.jsonl").read_text().splitlines()]
+    nets = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "nets" / "route.jsonl").read_text().splitlines()
+    ]
+    pins = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "pins" / "route.jsonl").read_text().splitlines()
+    ]
+    wires = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "wires" / "route.jsonl").read_text().splitlines()
+    ]
+    timing_paths = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "timing_paths" / "route.jsonl")
+        .read_text()
+        .splitlines()
+    ]
     assert nets[0]["name"] == "n1"
     assert all("availability" not in item for item in [*nets, *pins, *wires, *timing_paths])
     assert any(pin["identity"]["pin_name"] == "OUT" for pin in pins)
-    assert any(wire["geometry"]["layer"] == "MET2" and wire["geometry"]["direction"] == "horizontal" for wire in wires)
+    assert any(
+        wire["geometry"]["layer"] == "MET2" and wire["geometry"]["direction"] == "horizontal"
+        for wire in wires
+    )
     assert timing_paths
     timing_path = timing_paths[0]
     assert list(timing_path) == [
@@ -1945,7 +2377,10 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert timing_path["path_timing"]["is_worst_path"] is True
     assert timing_path["path_timing"]["is_near_critical"] is True
     assert timing_path["path_timing"]["normalized_criticality"] is None
-    assert timing_path["null_reason"]["path_timing"]["normalized_criticality"] == "constant_slack_range"
+    assert (
+        timing_path["null_reason"]["path_timing"]["normalized_criticality"]
+        == "constant_slack_range"
+    )
     assert timing_path["path_points"][0]["raw_name"] == "U1/A"
     assert timing_path["path_points"][0]["pin_key"] == "U1:A"
     assert timing_path["timing_edges"][0]["edge_kind"] == "cell_arc"
@@ -1955,9 +2390,17 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert timing_path["path_electrical"]["resistance_sum"] == 1.5
     assert timing_path["wire_path_nodes"][0]["pin_key"] == "U1:A"
     assert timing_path["coverage"]["has_wire_path"] is True
-    assert timing_path["path_spatial"]["anchor_source_policy"] == "prefer_pin_geometry_fallback_parent_instance"
+    assert (
+        timing_path["path_spatial"]["anchor_source_policy"]
+        == "prefer_pin_geometry_fallback_parent_instance"
+    )
 
-    patches = [json.loads(line) for line in (foundation_dir / "vectors" / "patches" / "route.jsonl").read_text().splitlines()]
+    patches = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        .read_text()
+        .splitlines()
+    ]
     patch0 = patches[0]
     assert list(patch0) == [
         "id",
@@ -2008,7 +2451,10 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert patch0["electrical_context"]["capacitance_sum"] == 0.5
     assert patch0["electrical_context"]["max_slew"] == 0.6
 
-    drc_patches = [json.loads(line) for line in (foundation_dir / "vectors" / "patches" / "drc.jsonl").read_text().splitlines()]
+    drc_patches = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "patches" / "drc.jsonl").read_text().splitlines()
+    ]
     assert drc_patches[0]["drc_context"]["count"] == 2
     assert drc_patches[0]["drc_context"]["by_type"] == {"short": 2}
     assert drc_patches[-1]["drc_context"]["count"] == 1
@@ -2027,21 +2473,30 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert "route_reconstructed_demand_capacity_count" not in summary["labels"]
 
 
-
-
 def test_iccd_full_v1_extractor_records_base_delta_scope_sources(tmp_path: Path, monkeypatch):
     written_tables: list[str] = []
     original_write_parquet = table_contract_module.write_parquet
 
     def recording_write_parquet(path: Path, records, *, columns=None, schema=None, batch_size=2048):
         written_tables.append(path.stem)
-        return original_write_parquet(path, records, columns=columns, schema=schema, batch_size=batch_size)
+        return original_write_parquet(
+            path, records, columns=columns, schema=schema, batch_size=batch_size
+        )
 
     monkeypatch.setattr(table_contract_module, "write_parquet", recording_write_parquet)
 
-    base_manifest = tmp_path / "design_base" / "bench" / "design" / "foundation_data" / "ecc" / "manifest.json"
+    base_manifest = (
+        tmp_path / "design_base" / "bench" / "design" / "foundation_data" / "ecc" / "manifest.json"
+    )
     base_manifest.parent.mkdir(parents=True)
-    static_tables = {"designs", "tech_layers", "tech_vias", "library_cells", "patches", "patch_neighbors"}
+    static_tables = {
+        "designs",
+        "tech_layers",
+        "tech_vias",
+        "library_cells",
+        "patches",
+        "patch_neighbors",
+    }
     base_manifest.write_text(
         json.dumps(
             {
@@ -2081,9 +2536,18 @@ def test_iccd_full_v1_extractor_records_base_delta_scope_sources(tmp_path: Path,
 
 
 def test_variant_delta_does_not_construct_skipped_static_rows(tmp_path: Path, monkeypatch):
-    base_manifest = tmp_path / "design_base" / "bench" / "design" / "foundation_data" / "ecc" / "manifest.json"
+    base_manifest = (
+        tmp_path / "design_base" / "bench" / "design" / "foundation_data" / "ecc" / "manifest.json"
+    )
     base_manifest.parent.mkdir(parents=True)
-    static_tables = {"designs", "tech_layers", "tech_vias", "library_cells", "patches", "patch_neighbors"}
+    static_tables = {
+        "designs",
+        "tech_layers",
+        "tech_vias",
+        "library_cells",
+        "patches",
+        "patch_neighbors",
+    }
     base_manifest.write_text(
         json.dumps(
             {
@@ -2126,7 +2590,9 @@ def test_variant_delta_does_not_construct_skipped_static_rows(tmp_path: Path, mo
 def test_iccd_full_v1_variant_delta_requires_static_tables_in_base_manifest(tmp_path: Path):
     base_manifest = tmp_path / "design_base" / "foundation_data" / "ecc" / "manifest.json"
     base_manifest.parent.mkdir(parents=True)
-    base_manifest.write_text(json.dumps({"tables": {"designs": {"path": "tables/designs.parquet"}}}), encoding="utf-8")
+    base_manifest.write_text(
+        json.dumps({"tables": {"designs": {"path": "tables/designs.parquet"}}}), encoding="utf-8"
+    )
     ws = _make_workspace(tmp_path)
 
     with pytest.raises(ValueError, match="base manifest missing static foundation tables"):
@@ -2161,9 +2627,15 @@ def test_iccd_full_v1_design_id_is_stable_across_variant_parameters(tmp_path: Pa
 def test_iccd_full_v1_orders_instance_record_fields_like_documented_schema(tmp_path: Path):
     ws = _make_workspace(tmp_path)
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place"]
+    )
 
-    row = json.loads((ws / "foundation_data" / "ecc" / "vectors" / "instances" / "place.jsonl").read_text().splitlines()[0])
+    row = json.loads(
+        (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "place.jsonl")
+        .read_text()
+        .splitlines()[0]
+    )
     assert list(row) == [
         "id",
         "stage",
@@ -2186,16 +2658,76 @@ def test_iccd_full_v1_timing_criticality_is_scoped_by_analysis_context(tmp_path:
         ws / "route_ecc" / "data" / "sta" / "gcd.rpt.json",
         {
             "summary": [
-                {"endpoint": "U1/Y", "clock_group": "clk", "delay_type": "max", "path_delay": "1.0", "path_required": "2.0", "slack": "1.0"},
-                {"endpoint": "U1/Y", "clock_group": "clk", "delay_type": "max", "path_delay": "0.5", "path_required": "2.5", "slack": "2.0"},
-                {"endpoint": "U1/Y", "clock_group": "clk", "delay_type": "min", "path_delay": "0.4", "path_required": "0.3", "slack": "-0.1"},
-                {"endpoint": "U1/Y", "clock_group": "clk", "delay_type": "min", "path_delay": "0.2", "path_required": "0.3", "slack": "0.1"},
+                {
+                    "endpoint": "U1/Y",
+                    "clock_group": "clk",
+                    "delay_type": "max",
+                    "path_delay": "1.0",
+                    "path_required": "2.0",
+                    "slack": "1.0",
+                },
+                {
+                    "endpoint": "U1/Y",
+                    "clock_group": "clk",
+                    "delay_type": "max",
+                    "path_delay": "0.5",
+                    "path_required": "2.5",
+                    "slack": "2.0",
+                },
+                {
+                    "endpoint": "U1/Y",
+                    "clock_group": "clk",
+                    "delay_type": "min",
+                    "path_delay": "0.4",
+                    "path_required": "0.3",
+                    "slack": "-0.1",
+                },
+                {
+                    "endpoint": "U1/Y",
+                    "clock_group": "clk",
+                    "delay_type": "min",
+                    "path_delay": "0.2",
+                    "path_required": "0.3",
+                    "slack": "0.1",
+                },
             ],
             "detail": [
-                {"start_point": "U1/A", "end_point": "U1/Y", "type": "max", "detail": [{"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"}, {"name": "U1/Y", "incr_delay": "1.0", "path_delay": "1.0 r"}]},
-                {"start_point": "U1/A", "end_point": "U1/Y", "type": "max", "detail": [{"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"}, {"name": "U1/Y", "incr_delay": "0.5", "path_delay": "0.5 r"}]},
-                {"start_point": "U1/A", "end_point": "U1/Y", "type": "min", "detail": [{"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"}, {"name": "U1/Y", "incr_delay": "0.4", "path_delay": "0.4 r"}]},
-                {"start_point": "U1/A", "end_point": "U1/Y", "type": "min", "detail": [{"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"}, {"name": "U1/Y", "incr_delay": "0.2", "path_delay": "0.2 r"}]},
+                {
+                    "start_point": "U1/A",
+                    "end_point": "U1/Y",
+                    "type": "max",
+                    "detail": [
+                        {"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"},
+                        {"name": "U1/Y", "incr_delay": "1.0", "path_delay": "1.0 r"},
+                    ],
+                },
+                {
+                    "start_point": "U1/A",
+                    "end_point": "U1/Y",
+                    "type": "max",
+                    "detail": [
+                        {"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"},
+                        {"name": "U1/Y", "incr_delay": "0.5", "path_delay": "0.5 r"},
+                    ],
+                },
+                {
+                    "start_point": "U1/A",
+                    "end_point": "U1/Y",
+                    "type": "min",
+                    "detail": [
+                        {"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"},
+                        {"name": "U1/Y", "incr_delay": "0.4", "path_delay": "0.4 r"},
+                    ],
+                },
+                {
+                    "start_point": "U1/A",
+                    "end_point": "U1/Y",
+                    "type": "min",
+                    "detail": [
+                        {"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"},
+                        {"name": "U1/Y", "incr_delay": "0.2", "path_delay": "0.2 r"},
+                    ],
+                },
             ],
             "slack": [
                 {"clock": "clk", "delay_type": "max", "TNS": "0.0", "WNS": "1.0"},
@@ -2207,31 +2739,72 @@ def test_iccd_full_v1_timing_criticality_is_scoped_by_analysis_context(tmp_path:
         _write_json(
             ws / "route_ecc" / "data" / "sta" / "wire_paths" / f"wire_path_{idx}.json",
             [
-                {"node_0": {"Point": "U1/A", "Capacitance": 0.1, "slew": 0.2, "trans_type": "rise"}},
+                {
+                    "node_0": {
+                        "Point": "U1/A",
+                        "Capacitance": 0.1,
+                        "slew": 0.2,
+                        "trans_type": "rise",
+                    }
+                },
                 {"net_arc_0": {"Incr": 0.3, "Resistance": 1.5}},
-                {"node_1": {"Point": "U1/Y", "Capacitance": 0.4, "slew": 0.6, "trans_type": "fall"}},
+                {
+                    "node_1": {
+                        "Point": "U1/Y",
+                        "Capacitance": 0.4,
+                        "slew": 0.6,
+                        "trans_type": "fall",
+                    }
+                },
             ],
         )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["route"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["route"]
+    )
 
     records = [
         json.loads(line)
-        for line in (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "route.jsonl").read_text().splitlines()
+        for line in (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "route.jsonl")
+        .read_text()
+        .splitlines()
     ]
-    assert [record["path_timing"]["is_worst_path"] for record in records] == [True, False, True, False]
-    assert [record["path_timing"]["normalized_criticality"] for record in records] == [1.0, 0.0, 1.0, 0.0]
-    assert [record["path_timing"]["is_near_critical"] for record in records] == [True, False, True, False]
+    assert [record["path_timing"]["is_worst_path"] for record in records] == [
+        True,
+        False,
+        True,
+        False,
+    ]
+    assert [record["path_timing"]["normalized_criticality"] for record in records] == [
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+    ]
+    assert [record["path_timing"]["is_near_critical"] for record in records] == [
+        True,
+        False,
+        True,
+        False,
+    ]
 
 
 def test_iccd_full_v1_timing_paths_use_semantic_nulls_for_missing_spatial_maps(tmp_path: Path):
     ws = _make_workspace(tmp_path, include_route_maps=False)
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["route"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["route"]
+    )
 
-    record = json.loads((ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "route.jsonl").read_text().splitlines()[0])
+    record = json.loads(
+        (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "route.jsonl")
+        .read_text()
+        .splitlines()[0]
+    )
     assert record["path_spatial"]["patch_count"] > 0
-    assert all(summary["count"] == 0 for summary in record["path_spatial"]["stage_map_summary"].values())
+    assert all(
+        summary["count"] == 0 for summary in record["path_spatial"]["stage_map_summary"].values()
+    )
     assert record["null_reason"]["path_spatial"]["stage_map_summary"] == "missing_stage_maps"
 
 
@@ -2267,7 +2840,11 @@ END DESIGN
                     "type": "group",
                     "struct name": "Instance_U1",
                     "children": [
-                        {"type": "box", "layer": 0, "path": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]}
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+                        }
                     ],
                 }
             ],
@@ -2276,8 +2853,27 @@ END DESIGN
     _write_json(
         ws / "Floorplan_ecc" / "data" / "sta" / "gcd.rpt.json",
         {
-            "summary": [{"endpoint": "U1/Y", "clock_group": "clk", "delay_type": "max", "path_delay": "1.0", "path_required": "2.0", "slack": "1.0"}],
-            "detail": [{"start_point": "U1/A", "end_point": "U1/Y", "type": "max", "detail": [{"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"}, {"name": "U1/Y", "incr_delay": "1.0", "path_delay": "1.0 r"}]}],
+            "summary": [
+                {
+                    "endpoint": "U1/Y",
+                    "clock_group": "clk",
+                    "delay_type": "max",
+                    "path_delay": "1.0",
+                    "path_required": "2.0",
+                    "slack": "1.0",
+                }
+            ],
+            "detail": [
+                {
+                    "start_point": "U1/A",
+                    "end_point": "U1/Y",
+                    "type": "max",
+                    "detail": [
+                        {"name": "U1/A", "incr_delay": "0.0", "path_delay": "0.0 r"},
+                        {"name": "U1/Y", "incr_delay": "1.0", "path_delay": "1.0 r"},
+                    ],
+                }
+            ],
             "slack": [{"clock": "clk", "delay_type": "max", "TNS": "0.0", "WNS": "1.0"}],
         },
     )
@@ -2289,9 +2885,15 @@ END DESIGN
         ],
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["Floorplan"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["Floorplan"]
+    )
 
-    record = json.loads((ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "Floorplan.jsonl").read_text().splitlines()[0])
+    record = json.loads(
+        (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "Floorplan.jsonl")
+        .read_text()
+        .splitlines()[0]
+    )
     assert {point["spatial_anchor_source"] for point in record["path_points"]} == {"missing"}
     assert record["path_spatial"]["has_missing_spatial_anchor"] is True
     assert record["null_reason"]["path_spatial"]["spatial_anchor"] == "missing_spatial_anchor"
@@ -2330,26 +2932,38 @@ END DESIGN
                     "type": "group",
                     "struct name": "Instance_U1",
                     "children": [
-                        {"type": "box", "layer": 0, "path": [[10, 20], [30, 20], [30, 40], [10, 40], [10, 20]]}
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[10, 20], [30, 20], [30, 40], [10, 40], [10, 20]],
+                        }
                     ],
                 },
                 {
                     "type": "group",
                     "struct name": "Instance_U2",
                     "children": [
-                        {"type": "box", "layer": 0, "path": [[50, 60], [60, 60], [60, 70], [50, 70], [50, 60]]}
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[50, 60], [60, 60], [60, 70], [50, 70], [50, 60]],
+                        }
                     ],
                 },
             ],
         },
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place"]
+    )
 
     foundation_dir = ws / "foundation_data" / "ecc"
     instances = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "instances" / "place.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "instances" / "place.jsonl")
+        .read_text()
+        .splitlines()
     ]
     first = instances[0]
     assert first["identity"]["instance_key"] == "U1"
@@ -2394,16 +3008,24 @@ END DESIGN
                     "type": "group",
                     "struct name": "Instance_U1",
                     "children": [
-                        {"type": "box", "layer": 0, "path": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]}
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+                        }
                     ],
                 }
             ],
         },
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["Floorplan"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["Floorplan"]
+    )
 
-    row = json.loads((ws / "foundation_data" / "ecc" / "vectors" / "instances" / "Floorplan.jsonl").read_text())
+    row = json.loads(
+        (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "Floorplan.jsonl").read_text()
+    )
     assert row["physical_state"]["placement_status"] == "unplaced"
     assert row["physical_state"]["origin"] is None
     assert row["physical_state"]["bbox"] is None
@@ -2414,20 +3036,57 @@ END DESIGN
 
 def test_iccd_full_v1_adds_instance_patch_anchor(tmp_path: Path):
     ws = _make_workspace(tmp_path)
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_allcell_density.csv", [[0.5, 0.0], [0.0, 0.0]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map" / "place_allcell_pin_density.csv", [[2.0, 0.0], [0.0, 0.0]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "RUDY_map" / "place_rudy_union.csv", [[0.01, 0.0], [0.0, 0.0]])
-    _write_csv(ws / "place_dreamplace" / "feature" / "egr_congestion_map" / "place_egr_union_overflow.csv", [[3.0, 0.0], [0.0, 0.0]])
-    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob("place_*density.csv"):
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_allcell_density.csv",
+        [[0.5, 0.0], [0.0, 0.0]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "place_allcell_pin_density.csv",
+        [[2.0, 0.0], [0.0, 0.0]],
+    )
+    _write_csv(
+        ws
+        / "place_dreamplace"
+        / "feature"
+        / "gcell_patch_map"
+        / "RUDY_map"
+        / "place_rudy_union.csv",
+        [[0.01, 0.0], [0.0, 0.0]],
+    )
+    _write_csv(
+        ws / "place_dreamplace" / "feature" / "egr_congestion_map" / "place_egr_union_overflow.csv",
+        [[3.0, 0.0], [0.0, 0.0]],
+    )
+    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob(
+        "place_*density.csv"
+    ):
         if path.name not in {"place_allcell_density.csv", "place_allcell_pin_density.csv"}:
             path.unlink()
-    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "RUDY_map").glob("place_*rudy*.csv"):
+    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "RUDY_map").glob(
+        "place_*rudy*.csv"
+    ):
         if path.name != "place_rudy_union.csv":
             path.unlink()
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place"]
+    )
 
-    record = json.loads((ws / "foundation_data" / "ecc" / "vectors" / "instances" / "place.jsonl").read_text().splitlines()[0])
+    record = json.loads(
+        (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "place.jsonl")
+        .read_text()
+        .splitlines()[0]
+    )
     assert record["patch_anchor"]["primary_patch_id"] == 0
     assert record["patch_anchor"]["overlap_patch_ids"] == [0]
     assert record["physical_state"]["patch_id"] == 0
@@ -2439,7 +3098,9 @@ def test_iccd_full_v1_adds_instance_patch_anchor(tmp_path: Path):
 
 
 def test_patch_anchor_uses_grid_lookup_without_scanning_all_patches():
-    canonical_grid = build_patch_grid(128, 128, {"llx": 0.0, "lly": 0.0, "urx": 1280.0, "ury": 1280.0})
+    canonical_grid = build_patch_grid(
+        128, 128, {"llx": 0.0, "lly": 0.0, "urx": 1280.0, "ury": 1280.0}
+    )
     record = {
         "physical_state": {
             "bbox": {"llx": 15.0, "lly": 25.0, "urx": 35.0, "ury": 45.0},
@@ -2449,8 +3110,12 @@ def test_patch_anchor_uses_grid_lookup_without_scanning_all_patches():
     original_patch_for_point = extractor_module._patch_for_point
     original_overlap_patch_ids = extractor_module._overlap_patch_ids
     try:
-        extractor_module._patch_for_point = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("slow point scan used"))
-        extractor_module._overlap_patch_ids = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("slow overlap scan used"))
+        extractor_module._patch_for_point = lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("slow point scan used")
+        )
+        extractor_module._overlap_patch_ids = lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("slow overlap scan used")
+        )
 
         extractor_module._attach_patch_anchor(record, canonical_grid, {})
     finally:
@@ -2458,7 +3123,17 @@ def test_patch_anchor_uses_grid_lookup_without_scanning_all_patches():
         extractor_module._overlap_patch_ids = original_overlap_patch_ids
 
     assert record["patch_anchor"]["primary_patch_id"] == 386
-    assert record["patch_anchor"]["overlap_patch_ids"] == [257, 258, 259, 385, 386, 387, 513, 514, 515]
+    assert record["patch_anchor"]["overlap_patch_ids"] == [
+        257,
+        258,
+        259,
+        385,
+        386,
+        387,
+        513,
+        514,
+        515,
+    ]
     assert record["physical_state"]["patch_id"] == 386
 
 
@@ -2493,16 +3168,53 @@ END DESIGN
             "diearea": {"path": [[0, 0], [240, 0], [240, 200], [0, 200], [0, 0]]},
             "layerInfo": [{"id": 0, "layername": "cell"}],
             "data": [
-                {"type": "group", "struct name": "Instance_U1", "children": [{"type": "box", "layer": 0, "path": [[10, 20], [30, 20], [30, 40], [10, 40], [10, 20]]}]},
-                {"type": "group", "struct name": "Instance_U2", "children": [{"type": "box", "layer": 0, "path": [[180, 20], [200, 20], [200, 40], [180, 40], [180, 20]]}]},
-                {"type": "group", "struct name": "Instance_U3", "children": [{"type": "box", "layer": 0, "path": [[10, 140], [30, 140], [30, 160], [10, 160], [10, 140]]}]},
+                {
+                    "type": "group",
+                    "struct name": "Instance_U1",
+                    "children": [
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[10, 20], [30, 20], [30, 40], [10, 40], [10, 20]],
+                        }
+                    ],
+                },
+                {
+                    "type": "group",
+                    "struct name": "Instance_U2",
+                    "children": [
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[180, 20], [200, 20], [200, 40], [180, 40], [180, 20]],
+                        }
+                    ],
+                },
+                {
+                    "type": "group",
+                    "struct name": "Instance_U3",
+                    "children": [
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[10, 140], [30, 140], [30, 160], [10, 160], [10, 140]],
+                        }
+                    ],
+                },
             ],
         },
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place"]
+    )
 
-    rows = [json.loads(line) for line in (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "place.jsonl").read_text().splitlines()]
+    rows = [
+        json.loads(line)
+        for line in (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "place.jsonl")
+        .read_text()
+        .splitlines()
+    ]
     record = next(row for row in rows if row["identity"]["instance_key"] == "U1")
     summary = record["connectivity_summary"]
     assert summary["pin_count"] == 2
@@ -2545,7 +3257,17 @@ END DESIGN
             "diearea": {"path": [[0, 0], [200, 0], [200, 200], [0, 200], [0, 0]]},
             "layerInfo": [{"id": 0, "layername": "cell"}],
             "data": [
-                {"type": "group", "struct name": "Instance_U1", "children": [{"type": "box", "layer": 0, "path": [[10, 20], [30, 20], [30, 40], [10, 40], [10, 20]]}]}
+                {
+                    "type": "group",
+                    "struct name": "Instance_U1",
+                    "children": [
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[10, 20], [30, 20], [30, 40], [10, 40], [10, 20]],
+                        }
+                    ],
+                }
             ],
         },
     )
@@ -2577,22 +3299,54 @@ END DESIGN
             "diearea": {"path": [[0, 0], [200, 0], [200, 200], [0, 200], [0, 0]]},
             "layerInfo": [{"id": 0, "layername": "cell"}],
             "data": [
-                {"type": "group", "struct name": "Instance_U1", "children": [{"type": "box", "layer": 0, "path": [[12, 22], [32, 22], [32, 42], [12, 42], [12, 22]]}]},
-                {"type": "group", "struct name": "clk_leaf_0_0_buf", "children": [{"type": "box", "layer": 0, "path": [[80, 80], [90, 80], [90, 90], [80, 90], [80, 80]]}]},
+                {
+                    "type": "group",
+                    "struct name": "Instance_U1",
+                    "children": [
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[12, 22], [32, 22], [32, 42], [12, 42], [12, 22]],
+                        }
+                    ],
+                },
+                {
+                    "type": "group",
+                    "struct name": "clk_leaf_0_0_buf",
+                    "children": [
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[80, 80], [90, 80], [90, 90], [80, 90], [80, 80]],
+                        }
+                    ],
+                },
             ],
         },
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place", "CTS"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place", "CTS"]
+    )
 
-    cts_instances = [json.loads(line) for line in (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "CTS.jsonl").read_text().splitlines()]
+    cts_instances = [
+        json.loads(line)
+        for line in (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "CTS.jsonl")
+        .read_text()
+        .splitlines()
+    ]
     cts_buf = next(item for item in cts_instances if item["name"] == "clk_leaf_0_0_buf")
     assert cts_buf["progressive_metadata"]["created_stage"] == "CTS"
     assert cts_buf["progressive_metadata"]["created_stage_source"] == "first_observed"
     assert cts_buf["progressive_metadata"]["exists_in_prev_stage"] is False
     assert cts_buf["progressive_metadata"]["exists_in_place"] is False
     assert cts_buf["clock_tree"]["is_clock_tree_node"] is True
-    assert cts_buf["clock_tree"]["clock_tree_role"] in {"root_buffer", "internal_buffer", "leaf_buffer", "clock_buffer"}
+    assert cts_buf["clock_tree"]["clock_tree_role"] in {
+        "root_buffer",
+        "internal_buffer",
+        "leaf_buffer",
+        "clock_buffer",
+    }
     moved = next(item for item in cts_instances if item["identity"]["instance_key"] == "U1")
     assert moved["progressive_metadata"]["exists_in_prev_stage"] is True
     assert moved["progressive_metadata"]["moved_from_prev_stage"] is True
@@ -2626,18 +3380,78 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     ws = _make_workspace(tmp_path)
     _write_sample_gcell_info(ws / "CTS_ecc")
     _write_sample_egr_demand_capacity(ws / "CTS_ecc")
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv", [[100, 101], [102, 103]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_pin_density.csv", [[104, 105], [106, 107]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allnet_density.csv", [[108, 109], [110, 111]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_global_net_density.csv", [[112, 113], [114, 115]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_local_net_density.csv", [[116, 117], [118, 119]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv", [[0, 0], [0, 0]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_pin_density.csv", [[124, 125], [126, 127]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv", [[100, 101], [102, 103]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_pin_density.csv", [[132, 133], [134, 135]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv", [[110, 111], [112, 113]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "margin_map" / "cts_union_margin.csv", [[120, 121], [122, 123]])
-    floorplan_layout = json.loads((ws / "Floorplan_ecc" / "output" / "gcd_Floorplan.json").read_text(encoding="utf-8"))
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv",
+        [[100, 101], [102, 103]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_allcell_pin_density.csv",
+        [[104, 105], [106, 107]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allnet_density.csv",
+        [[108, 109], [110, 111]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_global_net_density.csv",
+        [[112, 113], [114, 115]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_local_net_density.csv",
+        [[116, 117], [118, 119]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv",
+        [[0, 0], [0, 0]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_macro_pin_density.csv",
+        [[124, 125], [126, 127]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv",
+        [[100, 101], [102, 103]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_stdcell_pin_density.csv",
+        [[132, 133], [134, 135]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv",
+        [[110, 111], [112, 113]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "margin_map" / "cts_union_margin.csv",
+        [[120, 121], [122, 123]],
+    )
+    floorplan_layout = json.loads(
+        (ws / "Floorplan_ecc" / "output" / "gcd_Floorplan.json").read_text(encoding="utf-8")
+    )
     floorplan_layout["data"].append(
         {
             "type": "group",
@@ -2662,7 +3476,9 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     ]:
         assert (foundation_dir / rel).exists(), rel
 
-    floorplan_density = json.loads((foundation_dir / "maps" / "Floorplan" / "density.json").read_text(encoding="utf-8"))
+    floorplan_density = json.loads(
+        (foundation_dir / "maps" / "Floorplan" / "density.json").read_text(encoding="utf-8")
+    )
     assert set(floorplan_density["maps"]) == {
         "allcell_density",
         "macro_density",
@@ -2674,13 +3490,29 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
         "local_net_density",
         "global_net_density",
     }
-    assert [item["value"] for item in floorplan_density["maps"]["allcell_density"]["values"]] == [0.0, 0.0, 0.0, 0.0]
+    assert [item["value"] for item in floorplan_density["maps"]["allcell_density"]["values"]] == [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
 
-    floorplan_specific = json.loads((foundation_dir / "maps" / "Floorplan" / "floorplan.json").read_text(encoding="utf-8"))
+    floorplan_specific = json.loads(
+        (foundation_dir / "maps" / "Floorplan" / "floorplan.json").read_text(encoding="utf-8")
+    )
     assert floorplan_specific["category"] == "floorplan"
-    assert [item["value"] for item in floorplan_specific["maps"]["io_pin_density"]["values"]] == [0.0, 1.0, 0.0, 0.0]
-    assert [item["value"] for item in floorplan_specific["maps"]["physical_only_cell_density"]["values"]] == [0.10416666666666667, 0.0, 0.0, 0.0]
-    assert [item["value"] for item in floorplan_specific["maps"]["power_grid_density"]["values"]] == [0.125, 0.125, 0.0, 0.0]
+    assert [item["value"] for item in floorplan_specific["maps"]["io_pin_density"]["values"]] == [
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+    ]
+    assert [
+        item["value"] for item in floorplan_specific["maps"]["physical_only_cell_density"]["values"]
+    ] == [0.10416666666666667, 0.0, 0.0, 0.0]
+    assert [
+        item["value"] for item in floorplan_specific["maps"]["power_grid_density"]["values"]
+    ] == [0.125, 0.125, 0.0, 0.0]
 
     import pyarrow.parquet as pq
 
@@ -2706,8 +3538,7 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
         0.0,
     ]
     assert [
-        floorplan_map_values[("physical_only_cell_density", patch_id)]
-        for patch_id in range(4)
+        floorplan_map_values[("physical_only_cell_density", patch_id)] for patch_id in range(4)
     ] == [0.10416666666666667, 0.0, 0.0, 0.0]
     assert [floorplan_map_values[("power_grid_density", patch_id)] for patch_id in range(4)] == [
         0.125,
@@ -2733,18 +3564,39 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     }
     assert floorplan_pg_counts == {0: 1, 1: 1, 2: 0, 3: 0}
 
-    place_density = json.loads((foundation_dir / "maps" / "place" / "density.json").read_text(encoding="utf-8"))
+    place_density = json.loads(
+        (foundation_dir / "maps" / "place" / "density.json").read_text(encoding="utf-8")
+    )
     assert set(place_density["maps"]) == set(floorplan_density["maps"])
-    assert place_density["maps"]["allcell_density"]["values"][0] == {"patch_id": 0, "row": 0, "col": 0, "value": 10.0}
+    assert place_density["maps"]["allcell_density"]["values"][0] == {
+        "patch_id": 0,
+        "row": 0,
+        "col": 0,
+        "value": 10.0,
+    }
 
-    place_congestion = json.loads((foundation_dir / "maps" / "place" / "congestion.json").read_text(encoding="utf-8"))
+    place_congestion = json.loads(
+        (foundation_dir / "maps" / "place" / "congestion.json").read_text(encoding="utf-8")
+    )
     assert place_congestion["grid"] == {"source": "irt_gcell_info", "rows": 2, "cols": 2}
-    assert [item["value"] for item in place_congestion["maps"]["union"]["values"]] == [3.0, 3.0, 3.0, 7.0]
+    assert [item["value"] for item in place_congestion["maps"]["union"]["values"]] == [
+        3.0,
+        3.0,
+        3.0,
+        7.0,
+    ]
     assert "strictly_aligned" not in json.dumps(place_congestion)
 
-    cts_density = json.loads((foundation_dir / "maps" / "CTS" / "density.json").read_text(encoding="utf-8"))
+    cts_density = json.loads(
+        (foundation_dir / "maps" / "CTS" / "density.json").read_text(encoding="utf-8")
+    )
     assert set(cts_density["maps"]) == set(place_density["maps"])
-    assert cts_density["maps"]["allcell_density"]["values"][3] == {"patch_id": 3, "row": 1, "col": 1, "value": 103.0}
+    assert cts_density["maps"]["allcell_density"]["values"][3] == {
+        "patch_id": 3,
+        "row": 1,
+        "col": 1,
+        "value": 103.0,
+    }
 
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
     assert quality["availability"]["maps"]["Floorplan"] == "available"
@@ -2753,14 +3605,53 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
 def test_iccd_full_v1_drops_legacy_map_dirs_lutrudy_and_filler_from_allcell_density(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_sample_gcell_info(ws / "CTS_ecc")
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv", [[0.4, 0.5], [0.6, 0.7]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv", [[0, 0.01], [0.02, 0]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv", [[0.1, 0.2], [0.3, 0.4]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_pin_density.csv", [[10, 11], [12, 13]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_pin_density.csv", [[0, 1], [2, 0]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_pin_density.csv", [[1, 2], [3, 4]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv", [[1, 2], [3, 4]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_lut_rudy_union.csv", [[5, 6], [7, 8]])
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv",
+        [[0.4, 0.5], [0.6, 0.7]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv",
+        [[0, 0.01], [0.02, 0]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv",
+        [[0.1, 0.2], [0.3, 0.4]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_allcell_pin_density.csv",
+        [[10, 11], [12, 13]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_macro_pin_density.csv",
+        [[0, 1], [2, 0]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_stdcell_pin_density.csv",
+        [[1, 2], [3, 4]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv",
+        [[1, 2], [3, 4]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_lut_rudy_union.csv",
+        [[5, 6], [7, 8]],
+    )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True)
 
@@ -2768,9 +3659,10 @@ def test_iccd_full_v1_drops_legacy_map_dirs_lutrudy_and_filler_from_allcell_dens
     assert not (foundation_dir / "maps" / "canonical").exists()
     assert not (foundation_dir / "maps" / "raw").exists()
 
-    cts_density = json.loads((foundation_dir / "maps" / "CTS" / "density.json").read_text(encoding="utf-8"))
+    cts_density = json.loads(
+        (foundation_dir / "maps" / "CTS" / "density.json").read_text(encoding="utf-8")
+    )
     allcell = [item["value"] for item in cts_density["maps"]["allcell_density"]["values"]]
-    stdcell = [item["value"] for item in cts_density["maps"]["stdcell_density"]["values"]]
     macro = [item["value"] for item in cts_density["maps"]["macro_density"]["values"]]
     assert macro == [0.0, 0.01, 0.02, 0.0]
     assert allcell == [0.1, 0.21000000000000002, 0.32, 0.4]
@@ -2781,11 +3673,16 @@ def test_iccd_full_v1_drops_legacy_map_dirs_lutrudy_and_filler_from_allcell_dens
     assert stdcell_pin == [1.0, 2.0, 3.0, 4.0]
     assert allcell_pin == [1.0, 3.0, 5.0, 4.0]
 
-    cts_rudy = json.loads((foundation_dir / "maps" / "CTS" / "rudy.json").read_text(encoding="utf-8"))
+    cts_rudy = json.loads(
+        (foundation_dir / "maps" / "CTS" / "rudy.json").read_text(encoding="utf-8")
+    )
     assert set(cts_rudy["maps"]) == {"rudy_union"}
     assert not (foundation_dir / "maps" / "CTS" / "ignored.json").exists()
-    raw_refs = json.loads((foundation_dir / "raw_refs" / "artifacts.json").read_text(encoding="utf-8"))
+    raw_refs = json.loads(
+        (foundation_dir / "raw_refs" / "artifacts.json").read_text(encoding="utf-8")
+    )
     assert "lut_rudy" not in json.dumps(raw_refs)
+
 
 def test_iccd_full_v1_marks_labels_missing_without_true_route_artifacts(tmp_path: Path):
     ws = _make_workspace(tmp_path, include_route_artifacts=False, include_route_maps=True)
@@ -2800,7 +3697,10 @@ def test_iccd_full_v1_marks_labels_missing_without_true_route_artifacts(tmp_path
     assert not (foundation_dir / "labels" / "candidate_qor_summary.json").exists()
     assert "route_patch_overflow" not in quality["availability"].get("labels", {})
     assert quality["availability"]["labels"]["route_native_demand_capacity"] == "missing"
-    assert quality["null_reason"]["labels"]["route_native_demand_capacity"] == "missing_irt_space_router_native_demand_capacity_artifact"
+    assert (
+        quality["null_reason"]["labels"]["route_native_demand_capacity"]
+        == "missing_irt_space_router_native_demand_capacity_artifact"
+    )
     assert "route_patch_overflow_count" not in summary["labels"]
     assert summary["labels"]["route_native_demand_capacity_count"] == 0
 
@@ -2812,12 +3712,19 @@ def test_iccd_full_v1_keeps_native_missing_without_reconstructed_fallback(tmp_pa
 
     foundation_dir = ws / "foundation_data" / "ecc"
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
-    patches = [json.loads(line) for line in (foundation_dir / "vectors" / "patches" / "route.jsonl").read_text().splitlines()]
+    patches = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        .read_text()
+        .splitlines()
+    ]
 
     assert not (foundation_dir / "labels" / "route_patch_overflow.jsonl").exists()
     assert not (foundation_dir / "labels" / "route_reconstructed_congestion.jsonl").exists()
     assert not (foundation_dir / "labels" / "route_reconstructed_demand_capacity.jsonl").exists()
-    native = (foundation_dir / "labels" / "route_native_demand_capacity.jsonl").read_text(encoding="utf-8")
+    native = (foundation_dir / "labels" / "route_native_demand_capacity.jsonl").read_text(
+        encoding="utf-8"
+    )
     assert "route_true_overflow" not in patches[0]
     assert "route_native_demand_capacity" not in patches[0]
     assert patches[0]["route_oracle"]["native_demand_capacity"]["union_demand_capacity"] is None
@@ -2826,11 +3733,17 @@ def test_iccd_full_v1_keeps_native_missing_without_reconstructed_fallback(tmp_pa
     assert "route_reconstructed_congestion" not in patches[0]
     assert "route_demand_capacity" not in patches[0]
     assert patches[0]["label_refs"]["label_source_status"] == "missing"
-    assert patches[0]["null_reason"]["route_oracle"] == "missing_router_native_route_demand_capacity_artifact"
+    assert (
+        patches[0]["null_reason"]["route_oracle"]
+        == "missing_router_native_route_demand_capacity_artifact"
+    )
     assert not (foundation_dir / "labels" / "candidate_qor_summary.json").exists()
     assert native == ""
     assert quality["availability"]["labels"]["route_native_demand_capacity"] == "missing"
-    assert quality["null_reason"]["labels"]["route_native_demand_capacity"] == "missing_irt_space_router_native_demand_capacity_artifact"
+    assert (
+        quality["null_reason"]["labels"]["route_native_demand_capacity"]
+        == "missing_irt_space_router_native_demand_capacity_artifact"
+    )
     assert "route_patch_overflow" not in quality["availability"].get("labels", {})
     assert "route_reconstructed_congestion" not in quality["availability"]["labels"]
     assert "route_reconstructed_demand_capacity" not in quality["availability"]["labels"]
@@ -2839,7 +3752,12 @@ def test_iccd_full_v1_keeps_native_missing_without_reconstructed_fallback(tmp_pa
 def test_iccd_full_v1_uses_json_native_route_file_under_space_router(tmp_path: Path):
     ws = _make_workspace(tmp_path, include_native_demand_capacity=False)
     _write_json(
-        ws / "route_ecc" / "data" / "rt" / "space_router" / "route_native_demand_capacity_final.json",
+        ws
+        / "route_ecc"
+        / "data"
+        / "rt"
+        / "space_router"
+        / "route_native_demand_capacity_final.json",
         {
             "records": [
                 {
@@ -2888,9 +3806,11 @@ def test_iccd_full_v1_ignores_route_native_files_outside_space_router(tmp_path: 
     summary = json.loads((foundation_dir / "summary.json").read_text(encoding="utf-8"))
 
     assert quality["availability"]["labels"]["route_native_demand_capacity"] == "missing"
-    assert quality["null_reason"]["labels"]["route_native_demand_capacity"] == "missing_irt_space_router_native_demand_capacity_artifact"
+    assert (
+        quality["null_reason"]["labels"]["route_native_demand_capacity"]
+        == "missing_irt_space_router_native_demand_capacity_artifact"
+    )
     assert summary["labels"]["route_native_demand_capacity_count"] == 0
-
 
 
 def test_source_signature_is_cached_until_reset(tmp_path: Path):
@@ -2937,7 +3857,10 @@ def test_precomputed_timing_electrical_context_matches_legacy_helpers():
     for patch_id in [0, 1, 2]:
         timing_context, electrical_context = precomputed[patch_id]
         assert timing_context == extractor_module._timing_for_patch(timing_paths, patch_id, "place")
-        assert electrical_context == extractor_module._electrical_for_patch(timing_paths, patch_id, "place")
+        assert electrical_context == extractor_module._electrical_for_patch(
+            timing_paths, patch_id, "place"
+        )
+
 
 def test_iccd_full_v1_patch_records_follow_vec_patches_schema(tmp_path: Path):
     ws = _make_workspace(tmp_path)
@@ -2947,11 +3870,15 @@ def test_iccd_full_v1_patch_records_follow_vec_patches_schema(tmp_path: Path):
     foundation_dir = ws / "foundation_data" / "ecc"
     place_patches = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "patches" / "place.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (foundation_dir / "vectors" / "patches" / "place.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     route_patches = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "patches" / "route.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     place0 = place_patches[0]
     route0 = route_patches[0]
@@ -3096,34 +4023,95 @@ def test_iccd_full_v1_patch_records_follow_vec_patches_schema(tmp_path: Path):
     assert "union_overflow" not in native
     assert native["union_utilization"] == 2.0
     assert native["tightness_class"] == "over_capacity"
-    assert route0["label_refs"]["route_native_demand_capacity"] == "labels/route_native_demand_capacity.jsonl#patch_id=0"
+    assert (
+        route0["label_refs"]["route_native_demand_capacity"]
+        == "labels/route_native_demand_capacity.jsonl#patch_id=0"
+    )
     assert route0["label_refs"]["label_source_status"] == "available"
     assert route0["progressive_metadata"]["is_progressive_input_stage"] is False
     assert route0["progressive_metadata"]["is_route_oracle_stage"] is True
     assert route0["progressive_metadata"]["oracle_blocks"] == ["route_oracle"]
-    assert route0["source_refs"]["route_label_definition"] == "route_oracle.native_demand_capacity.union_demand_capacity=max(horizontal_demand_capacity,vertical_demand_capacity); union_utilization=max(horizontal_utilization,vertical_utilization); tightness_class={over_capacity,near_capacity,relaxed,unknown}"
+    assert (
+        route0["source_refs"]["route_label_definition"]
+        == "route_oracle.native_demand_capacity.union_demand_capacity=max(horizontal_demand_capacity,vertical_demand_capacity); union_utilization=max(horizontal_utilization,vertical_utilization); tightness_class={over_capacity,near_capacity,relaxed,unknown}"
+    )
 
 
 def test_iccd_full_v1_patch_records_compute_progressive_deltas_and_quality_stats(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_sample_gcell_info(ws / "CTS_ecc")
     _write_sample_egr_demand_capacity(ws / "CTS_ecc")
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv", [[100, 101], [102, 103]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_pin_density.csv", [[104, 105], [106, 107]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allnet_density.csv", [[108, 109], [110, 111]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv", [[0, 0], [0, 0]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv", [[100, 101], [102, 103]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_pin_density.csv", [[104, 105], [106, 107]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_pin_density.csv", [[0, 0], [0, 0]])
-    _write_csv(ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv", [[110, 111], [112, 113]])
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv",
+        [[100, 101], [102, 103]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_allcell_pin_density.csv",
+        [[104, 105], [106, 107]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allnet_density.csv",
+        [[108, 109], [110, 111]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv",
+        [[0, 0], [0, 0]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv",
+        [[100, 101], [102, 103]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_stdcell_pin_density.csv",
+        [[104, 105], [106, 107]],
+    )
+    _write_csv(
+        ws
+        / "CTS_ecc"
+        / "feature"
+        / "gcell_patch_map"
+        / "density_map"
+        / "cts_macro_pin_density.csv",
+        [[0, 0], [0, 0]],
+    )
+    _write_csv(
+        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv",
+        [[110, 111], [112, 113]],
+    )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True)
 
     foundation_dir = ws / "foundation_data" / "ecc"
-    place0 = json.loads((foundation_dir / "vectors" / "patches" / "place.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    cts0 = json.loads((foundation_dir / "vectors" / "patches" / "CTS.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    route0 = json.loads((foundation_dir / "vectors" / "patches" / "route.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    drc0 = json.loads((foundation_dir / "vectors" / "patches" / "drc.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    place0 = json.loads(
+        (foundation_dir / "vectors" / "patches" / "place.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    cts0 = json.loads(
+        (foundation_dir / "vectors" / "patches" / "CTS.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    route0 = json.loads(
+        (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    drc0 = json.loads(
+        (foundation_dir / "vectors" / "patches" / "drc.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
 
     assert place0["progressive_metadata"]["density_delta_from_prev_stage"] == 10.0
@@ -3160,17 +4148,46 @@ def test_iccd_full_v1_patch_records_compute_progressive_deltas_and_quality_stats
         assert drc0[block_name]["available_for_training_input"] is False
 
     patch_quality = quality["patches"]
-    assert patch_quality["rows_by_stage"] == {"Floorplan": 4, "place": 4, "CTS": 4, "route": 4, "drc": 4}
+    assert patch_quality["rows_by_stage"] == {
+        "Floorplan": 4,
+        "place": 4,
+        "CTS": 4,
+        "route": 4,
+        "drc": 4,
+    }
     assert patch_quality["schema_coverage_by_stage"]["route"]["complete_records"] == 4
-    assert patch_quality["pre_route_estimators_availability_by_stage"]["place"] == {"available": 4, "missing": 0, "not_applicable": 0}
-    assert patch_quality["pre_route_estimators_availability_by_stage"]["route"] == {"available": 0, "missing": 0, "not_applicable": 4}
+    assert patch_quality["pre_route_estimators_availability_by_stage"]["place"] == {
+        "available": 4,
+        "missing": 0,
+        "not_applicable": 0,
+    }
+    assert patch_quality["pre_route_estimators_availability_by_stage"]["route"] == {
+        "available": 0,
+        "missing": 0,
+        "not_applicable": 4,
+    }
     assert patch_quality["route_label_availability"] == {"available": 4, "missing": 0, "partial": 0}
-    assert patch_quality["route_oracle_tightness_class_distribution"] == {"over_capacity": 2, "near_capacity": 0, "relaxed": 2, "unknown": 0}
+    assert patch_quality["route_oracle_tightness_class_distribution"] == {
+        "over_capacity": 2,
+        "near_capacity": 0,
+        "relaxed": 2,
+        "unknown": 0,
+    }
     assert patch_quality["refs_truncated_count_by_stage"]["route"] == 0
-    assert patch_quality["timing_context_availability_by_stage"]["route"] == {"available": 1, "missing": 3, "not_applicable": 0}
-    assert patch_quality["electrical_context_availability_by_stage"]["route"] == {"available": 1, "missing": 3, "not_applicable": 0}
+    assert patch_quality["timing_context_availability_by_stage"]["route"] == {
+        "available": 1,
+        "missing": 3,
+        "not_applicable": 0,
+    }
+    assert patch_quality["electrical_context_availability_by_stage"]["route"] == {
+        "available": 1,
+        "missing": 3,
+        "not_applicable": 0,
+    }
     assert patch_quality["drc_context_availability_by_stage"]["drc"]["available"] == 4
-    null_reason_counts = {item["reason"]: item["count"] for item in patch_quality["null_reason_topk"]}
+    null_reason_counts = {
+        item["reason"]: item["count"] for item in patch_quality["null_reason_topk"]
+    }
     assert null_reason_counts["route_oracle=not_route_stage"] == 16
 
 
@@ -3186,16 +4203,19 @@ def test_iccd_full_v1_cleans_stale_outputs_before_rewrite(tmp_path: Path):
     assert not stale.exists()
 
 
-
 def test_iccd_full_v1_honors_stage_filter_and_raw_refs_option(tmp_path: Path):
     ws = _make_workspace(tmp_path)
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place"], include_raw_refs=False)
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place"], include_raw_refs=False
+    )
 
     foundation_dir = ws / "foundation_data" / "ecc"
     summary = json.loads((foundation_dir / "summary.json").read_text(encoding="utf-8"))
     manifest = json.loads((foundation_dir / "manifest.json").read_text(encoding="utf-8"))
-    evidence = json.loads((foundation_dir / "views" / "agent" / "evidence_index.json").read_text(encoding="utf-8"))
+    evidence = json.loads(
+        (foundation_dir / "views" / "agent" / "evidence_index.json").read_text(encoding="utf-8")
+    )
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
 
     assert "stages" not in summary
@@ -3215,7 +4235,9 @@ def test_iccd_full_v1_rejects_unknown_stage_filter(tmp_path: Path):
     ws = _make_workspace(tmp_path)
 
     try:
-        FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["missing_stage"])
+        FoundationExtractor(ws, profile="iccd_full_v1").extract(
+            export_legacy_debug=True, stages=["missing_stage"]
+        )
     except ValueError as exc:
         assert "unknown foundation extraction stage" in str(exc)
     else:
@@ -3247,11 +4269,15 @@ END DESIGN
         + "\n",
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place"]
+    )
 
     rows = [
         json.loads(line)
-        for line in (ws / "foundation_data" / "ecc" / "vectors" / "pins" / "place.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (ws / "foundation_data" / "ecc" / "vectors" / "pins" / "place.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     io_pin = next(row for row in rows if row["pin_key"] == "PIN:OUT")
     inst_pin = next(row for row in rows if row["pin_key"] == "U1:A")
@@ -3273,7 +4299,16 @@ END DESIGN
         "source_refs",
         "null_reason",
     ]
-    assert {"instance", "net", "pin_name", "direction", "bbox", "center", "layer", "patch_id"}.isdisjoint(io_pin)
+    assert {
+        "instance",
+        "net",
+        "pin_name",
+        "direction",
+        "bbox",
+        "center",
+        "layer",
+        "patch_id",
+    }.isdisjoint(io_pin)
     assert io_pin["identity"] == {
         "pin_key": "PIN:OUT",
         "pin_kind": "io_port",
@@ -3308,7 +4343,9 @@ END DESIGN
     assert inst_pin["connectivity_context"]["same_net_pin_count"] == 2
 
 
-def test_iccd_full_v1_pins_use_lef_geometry_electrical_context_and_route_attribution(tmp_path: Path):
+def test_iccd_full_v1_pins_use_lef_geometry_electrical_context_and_route_attribution(
+    tmp_path: Path,
+):
     ws = _make_workspace(tmp_path)
     _write_json(
         ws / "home" / "parameters.json",
@@ -3402,25 +4439,71 @@ END DESIGN
     )
     _write_sample_gcell_info(ws / "route_ecc")
     _write_text(
-        ws / "route_ecc" / "data" / "rt" / "space_router" / "route_native_demand_capacity_final.jsonl",
+        ws
+        / "route_ecc"
+        / "data"
+        / "rt"
+        / "space_router"
+        / "route_native_demand_capacity_final.jsonl",
         "\n".join(
             [
-                json.dumps({"row": 0, "col": 0, "gcell": {"x": 0, "y": 0}, "layer": "MET2", "direction": "horizontal", "demand": 6, "capacity": 3, "demand_capacity": 3, "utilization": 2, "source": "irt_space_router_native"}),
-                json.dumps({"row": 0, "col": 1, "gcell": {"x": 1, "y": 0}, "layer": "MET2", "direction": "horizontal", "demand": 2, "capacity": 3, "demand_capacity": -1, "utilization": 0.67, "source": "irt_space_router_native"}),
+                json.dumps(
+                    {
+                        "row": 0,
+                        "col": 0,
+                        "gcell": {"x": 0, "y": 0},
+                        "layer": "MET2",
+                        "direction": "horizontal",
+                        "demand": 6,
+                        "capacity": 3,
+                        "demand_capacity": 3,
+                        "utilization": 2,
+                        "source": "irt_space_router_native",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "row": 0,
+                        "col": 1,
+                        "gcell": {"x": 1, "y": 0},
+                        "layer": "MET2",
+                        "direction": "horizontal",
+                        "demand": 2,
+                        "capacity": 3,
+                        "demand_capacity": -1,
+                        "utilization": 0.67,
+                        "source": "irt_space_router_native",
+                    }
+                ),
             ]
         )
         + "\n",
     )
     _write_json(
         ws / "drc_ecc" / "data" / "drc" / "violation_map.json",
-        [{"type": "short", "layer": "MET2", "bbox": {"llx": 10, "lly": 20, "urx": 20, "ury": 30}, "count": 2}],
+        [
+            {
+                "type": "short",
+                "layer": "MET2",
+                "bbox": {"llx": 10, "lly": 20, "urx": 20, "ury": 30},
+                "count": 2,
+            }
+        ],
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place", "route", "drc"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place", "route", "drc"]
+    )
 
     foundation_dir = ws / "foundation_data" / "ecc"
-    place_rows = [json.loads(line) for line in (foundation_dir / "vectors" / "pins" / "place.jsonl").read_text().splitlines()]
-    route_rows = [json.loads(line) for line in (foundation_dir / "vectors" / "pins" / "route.jsonl").read_text().splitlines()]
+    place_rows = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "pins" / "place.jsonl").read_text().splitlines()
+    ]
+    route_rows = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "pins" / "route.jsonl").read_text().splitlines()
+    ]
     u1_a = next(row for row in place_rows if row["pin_key"] == "U1:A")
     u1_y = next(row for row in place_rows if row["pin_key"] == "U1:Y")
     route_u1_a = next(row for row in route_rows if row["pin_key"] == "U1:A")
@@ -3498,8 +4581,28 @@ END DESIGN
             "diearea": {"path": [[0, 0], [200, 0], [200, 200], [0, 200], [0, 0]]},
             "layerInfo": [{"id": 0, "layername": "cell"}],
             "data": [
-                {"type": "group", "struct name": "Instance_U1", "children": [{"type": "box", "layer": 0, "path": [[12, 22], [32, 22], [32, 42], [12, 42], [12, 22]]}]},
-                {"type": "group", "struct name": "clk_leaf_0_0_buf", "children": [{"type": "box", "layer": 0, "path": [[80, 80], [90, 80], [90, 90], [80, 90], [80, 80]]}]},
+                {
+                    "type": "group",
+                    "struct name": "Instance_U1",
+                    "children": [
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[12, 22], [32, 22], [32, 42], [12, 42], [12, 22]],
+                        }
+                    ],
+                },
+                {
+                    "type": "group",
+                    "struct name": "clk_leaf_0_0_buf",
+                    "children": [
+                        {
+                            "type": "box",
+                            "layer": 0,
+                            "path": [[80, 80], [90, 80], [90, 90], [80, 90], [80, 80]],
+                        }
+                    ],
+                },
             ],
         },
     )
@@ -3530,12 +4633,28 @@ END DESIGN
         + "\n",
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place", "CTS", "route"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place", "CTS", "route"]
+    )
 
     foundation_dir = ws / "foundation_data" / "ecc"
-    place_pin = json.loads((foundation_dir / "vectors" / "pins" / "place.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    cts_rows = [json.loads(line) for line in (foundation_dir / "vectors" / "pins" / "CTS.jsonl").read_text(encoding="utf-8").splitlines()]
-    route_rows = [json.loads(line) for line in (foundation_dir / "vectors" / "pins" / "route.jsonl").read_text(encoding="utf-8").splitlines()]
+    place_pin = json.loads(
+        (foundation_dir / "vectors" / "pins" / "place.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    cts_rows = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "pins" / "CTS.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    route_rows = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "pins" / "route.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
     new_cts_pin = next(row for row in cts_rows if row["pin_key"] == "clk_leaf_0_0_buf:A")
     moved_cts_pin = next(row for row in cts_rows if row["pin_key"] == "U1:CK")
     route_pin = next(row for row in route_rows if row["pin_key"] == "clk_leaf_0_0_buf:A")
@@ -3552,7 +4671,6 @@ END DESIGN
     assert route_pin["route_context"]["route_only_oracle"] is True
     assert route_pin["progressive_metadata"]["route_only_oracle"] is True
     assert route_pin["route_context"]["net_routed_length"] == 40.0
-
 
 
 def test_iccd_full_v1_wire_primary_patch_is_in_intersections_on_grid_boundary(tmp_path: Path):
@@ -3585,7 +4703,9 @@ END DESIGN
         + "\n",
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["route"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["route"]
+    )
 
     foundation_dir = ws / "foundation_data" / "ecc"
     wire = next(
@@ -3594,10 +4714,13 @@ END DESIGN
         if line.strip()
     )
     primary_patch_id = wire["patch_anchor"]["primary_patch_id"]
-    primary_intersections = [item for item in wire["patch_intersections"] if item["is_primary_patch"]]
+    primary_intersections = [
+        item for item in wire["patch_intersections"] if item["is_primary_patch"]
+    ]
     assert any(item["patch_id"] == primary_patch_id for item in wire["patch_intersections"])
     assert len(primary_intersections) == 1
     assert primary_intersections[0]["patch_id"] == primary_patch_id
+
 
 def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_path: Path):
     ws = _make_workspace(tmp_path)
@@ -3605,7 +4728,10 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True)
 
     foundation_dir = ws / "foundation_data" / "ecc"
-    nets = [json.loads(line) for line in (foundation_dir / "vectors" / "nets" / "route.jsonl").read_text().splitlines()]
+    nets = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "nets" / "route.jsonl").read_text().splitlines()
+    ]
     n1 = next(row for row in nets if row["net_key"] == "n1")
     assert list(n1) == [
         "id",
@@ -3718,8 +4844,13 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     } <= set(n1["route_analysis"])
     assert n1["route_analysis"]["routed_wire_length"] > 0
     assert n1["route_analysis"]["routed_wire_count"] > 0
-    assert n1["route_analysis"]["routed_patch_count"] == len(n1["route_analysis"]["routed_patch_ids"])
-    assert n1["route_analysis"]["detour_ratio"] == n1["route_analysis"]["routed_wire_length"] / n1["geometry_proxy"]["hpwl"]
+    assert n1["route_analysis"]["routed_patch_count"] == len(
+        n1["route_analysis"]["routed_patch_ids"]
+    )
+    assert (
+        n1["route_analysis"]["detour_ratio"]
+        == n1["route_analysis"]["routed_wire_length"] / n1["geometry_proxy"]["hpwl"]
+    )
     assert n1["route_analysis"]["final_overflow_sum"] == 8.0
     assert n1["route_analysis"]["final_overflow_max"] == 5.0
     assert {
@@ -3754,15 +4885,27 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert n1["source_refs"]["sta"] == "route_ecc/data/sta/gcd.rpt.json"
     assert n1["source_refs"]["route"] == "route_ecc/output/gcd_route.def"
 
-    place_nets = [json.loads(line) for line in (foundation_dir / "vectors" / "nets" / "place.jsonl").read_text().splitlines()]
+    place_nets = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "nets" / "place.jsonl").read_text().splitlines()
+    ]
     place_n1 = next(row for row in place_nets if row["net_key"] == "n1")
     assert place_n1["route_analysis"] is None
-    assert place_n1["null_reason"]["route_analysis"] == "route_only_not_available_for_preroute_stage"
+    assert (
+        place_n1["null_reason"]["route_analysis"] == "route_only_not_available_for_preroute_stage"
+    )
     assert place_n1["progressive_metadata"]["route_only_oracle"] is False
     assert "final_overflow" not in json.dumps(place_n1["patch_anchor"])
 
-    wires = [json.loads(line) for line in (foundation_dir / "vectors" / "wires" / "route.jsonl").read_text().splitlines()]
-    wire = next(row for row in wires if row["identity"]["net_key"] == "n1" and row["identity"]["segment_kind"] == "wire_segment")
+    wires = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "wires" / "route.jsonl").read_text().splitlines()
+    ]
+    wire = next(
+        row
+        for row in wires
+        if row["identity"]["net_key"] == "n1" and row["identity"]["segment_kind"] == "wire_segment"
+    )
     assert list(wire) == [
         "id",
         "stage",
@@ -3799,11 +4942,18 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
         and patch["bbox"]["lly"] <= wire["geometry"]["center"]["y"] < patch["bbox"]["ury"]
     )
     assert wire["patch_anchor"]["primary_patch_id"] == primary_patch["patch_id"]
-    assert any(item["patch_id"] == primary_patch["patch_id"] for item in wire["patch_intersections"])
+    assert any(
+        item["patch_id"] == primary_patch["patch_id"] for item in wire["patch_intersections"]
+    )
     assert sum(1 for item in wire["patch_intersections"] if item["is_primary_patch"]) == 1
-    assert next(item for item in wire["patch_intersections"] if item["is_primary_patch"])["patch_id"] == primary_patch["patch_id"]
+    assert (
+        next(item for item in wire["patch_intersections"] if item["is_primary_patch"])["patch_id"]
+        == primary_patch["patch_id"]
+    )
     assert wire["patch_anchor"]["anchor_source"] == "segment_midpoint"
-    assert {"local_cell_density", "local_pin_density", "local_rudy", "local_egr_overflow"} <= set(wire["patch_anchor"])
+    assert {"local_cell_density", "local_pin_density", "local_rudy", "local_egr_overflow"} <= set(
+        wire["patch_anchor"]
+    )
     assert {
         "layer",
         "layer_index",
@@ -3814,7 +4964,15 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
         "source",
     } <= set(wire["layer_context"])
     assert wire["layer_context"]["routing_direction_preference"] == "horizontal"
-    assert {"available", "track_axis", "is_on_track", "nearest_track_distance", "track_count", "track_step", "null_reason"} <= set(wire["track_context"])
+    assert {
+        "available",
+        "track_axis",
+        "is_on_track",
+        "nearest_track_distance",
+        "track_count",
+        "track_step",
+        "null_reason",
+    } <= set(wire["track_context"])
     assert wire["track_context"]["available"] is True
     assert wire["track_context"]["is_on_track"] is True
     assert {
@@ -3854,25 +5012,46 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert via_wire["via_context"]["lower_layer"] == "MET2"
     assert via_wire["via_context"]["upper_layer"] == "MET3"
     assert via_wire["via_context"]["layer_transition"] == "MET2->MET3"
-    assert via_wire["via_context"]["via_source"] in {"def_routed_wires", "vectors_tech_vias", "heuristic_via_name_rule"}
+    assert via_wire["via_context"]["via_source"] in {
+        "def_routed_wires",
+        "vectors_tech_vias",
+        "heuristic_via_name_rule",
+    }
 
-    place_wires = [json.loads(line) for line in (foundation_dir / "vectors" / "wires" / "Floorplan.jsonl").read_text().splitlines()]
+    place_wires = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "wires" / "Floorplan.jsonl")
+        .read_text()
+        .splitlines()
+    ]
     assert place_wires[0]["route_context"] is None
     assert place_wires[0]["null_reason"]["route_context"] == "not_route_stage"
     assert place_wires[0]["progressive_metadata"]["route_only_oracle"] is False
     assert "route_context" not in json.dumps(place_wires[0]["patch_anchor"])
-    assert all(row["identity"]["wire_class"] in {"signal", "clock", "power_ground", "special"} for row in wires + place_wires)
+    assert all(
+        row["identity"]["wire_class"] in {"signal", "clock", "power_ground", "special"}
+        for row in wires + place_wires
+    )
     assert any(row["identity"]["segment_kind"] == "wire_segment" for row in wires)
 
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
     assert quality["wires"]["route"]["record_count"] == len(wires)
     assert quality["wires"]["route"]["route_context_coverage"] == 1.0
     assert quality["wires"]["route"]["patch_intersection_coverage"] == 1.0
-    assert quality["wires"]["route"]["route_context_source"] == {"routed_def_reconstruction": len(wires)}
+    assert quality["wires"]["route"]["route_context_source"] == {
+        "routed_def_reconstruction": len(wires)
+    }
 
-    pre_route_graphs = (foundation_dir / "vectors" / "routing_graphs" / "place.jsonl").read_text(encoding="utf-8")
+    pre_route_graphs = (foundation_dir / "vectors" / "routing_graphs" / "place.jsonl").read_text(
+        encoding="utf-8"
+    )
     assert pre_route_graphs == ""
-    route_graphs = [json.loads(line) for line in (foundation_dir / "vectors" / "routing_graphs" / "route.jsonl").read_text().splitlines()]
+    route_graphs = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "routing_graphs" / "route.jsonl")
+        .read_text()
+        .splitlines()
+    ]
     graph = next(row for row in route_graphs if row["net_key"] == "n1")
     assert list(graph) == [
         "id",
@@ -3906,7 +5085,10 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert graph["graph_metrics"]["terminal_vertex_count"] >= 1
     assert graph["patch_footprint"]["touched_patch_count"] >= 1
     assert graph["patch_footprint"]["touched_patch_ids"]
-    assert graph["patch_footprint"]["dominant_patch_id"] in graph["patch_footprint"]["touched_patch_ids"]
+    assert (
+        graph["patch_footprint"]["dominant_patch_id"]
+        in graph["patch_footprint"]["touched_patch_ids"]
+    )
     assert graph["patch_footprint"]["total_routed_length_by_patch"]
     assert graph["patch_footprint"]["layer_usage_by_patch"]
     assert graph["patch_footprint"]["touched_layer_ids"] == ["MET2", "MET3"]
@@ -3931,9 +5113,15 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert graph["coverage"]["has_routed_geometry"] is True
     assert graph["coverage"]["wire_ref_count"] == graph["graph_metrics"]["wire_edge_count"]
     assert graph["coverage"]["via_ref_count"] == graph["graph_metrics"]["via_edge_count"]
-    assert graph["coverage"]["terminal_match_rate"] == graph["terminal_matching"]["terminal_match_rate"]
+    assert (
+        graph["coverage"]["terminal_match_rate"]
+        == graph["terminal_matching"]["terminal_match_rate"]
+    )
     assert graph["coverage"]["edge_patch_intersection_coverage"] == 1.0
-    assert graph["coverage"]["connected_component_count"] == graph["graph_metrics"]["connected_component_count"]
+    assert (
+        graph["coverage"]["connected_component_count"]
+        == graph["graph_metrics"]["connected_component_count"]
+    )
     assert "patch_intersection_count" not in graph["coverage"]
     assert "patch_count" not in graph["patch_footprint"]
 
@@ -3964,11 +5152,19 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert all("terminal_match" in vertex for vertex in graph["vertices"])
     assert all("source_refs" in vertex for vertex in graph["vertices"])
     assert all("null_reason" in vertex for vertex in graph["vertices"])
-    assert all(len(vertex["incident_edge_ids"]) == len(set(vertex["incident_edge_ids"])) for vertex in graph["vertices"])
+    assert all(
+        len(vertex["incident_edge_ids"]) == len(set(vertex["incident_edge_ids"]))
+        for vertex in graph["vertices"]
+    )
     assert any(vertex["vertex_kind"] == "terminal_anchor" for vertex in graph["vertices"])
     assert any(vertex["vertex_kind"] == "via_point" for vertex in graph["vertices"])
 
-    patches = [json.loads(line) for line in (foundation_dir / "vectors" / "patches" / "route.jsonl").read_text().splitlines()]
+    patches = [
+        json.loads(line)
+        for line in (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        .read_text()
+        .splitlines()
+    ]
     patch = patches[0]
     assert list(patch)[:19] == [
         "id",
@@ -4000,12 +5196,23 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert patch["neighbor_context"]["window_3x3_patch_ids"]
     assert patch["entity_refs"]["wire_count"] >= 1
     assert patch["route_oracle"]["route_only_oracle"] is True
-    assert patch["label_refs"]["route_native_demand_capacity"] == "labels/route_native_demand_capacity.jsonl#patch_id=0"
+    assert (
+        patch["label_refs"]["route_native_demand_capacity"]
+        == "labels/route_native_demand_capacity.jsonl#patch_id=0"
+    )
 
-    layers = json.loads((foundation_dir / "vectors" / "tech" / "layers.json").read_text(encoding="utf-8"))
-    cells = json.loads((foundation_dir / "vectors" / "tech" / "cells.json").read_text(encoding="utf-8"))
-    vias = json.loads((foundation_dir / "vectors" / "tech" / "vias.json").read_text(encoding="utf-8"))
-    tech_summary = json.loads((foundation_dir / "vectors" / "tech" / "tech_summary.json").read_text(encoding="utf-8"))
+    layers = json.loads(
+        (foundation_dir / "vectors" / "tech" / "layers.json").read_text(encoding="utf-8")
+    )
+    cells = json.loads(
+        (foundation_dir / "vectors" / "tech" / "cells.json").read_text(encoding="utf-8")
+    )
+    vias = json.loads(
+        (foundation_dir / "vectors" / "tech" / "vias.json").read_text(encoding="utf-8")
+    )
+    tech_summary = json.loads(
+        (foundation_dir / "vectors" / "tech" / "tech_summary.json").read_text(encoding="utf-8")
+    )
     assert layers[0]["identity"]["name"] == layers[0]["name"]
     assert "routing_properties" in layers[0]
     assert cells[0]["identity"]["name"] == cells[0]["name"]
@@ -4030,7 +5237,11 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
         "via_count": len(vias),
         "stage_count": 5,
     }
-    assert tech_summary["milestones"] == {"m1": "available", "m2": "planned", "liberty": "reserved_not_parsed"}
+    assert tech_summary["milestones"] == {
+        "m1": "available",
+        "m2": "planned",
+        "liberty": "reserved_not_parsed",
+    }
 
     met2 = next(layer for layer in layers if layer["name"] == "MET2")
     assert met2["identity"]["is_routing_layer"] is True
@@ -4041,9 +5252,17 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert met2["capacity_summary"]["estimated_capacity"] == 0.01
     assert met2["capacity_summary"]["capacity_formula"] == "estimated_track_count / pitch"
     assert met2["capacity_summary"]["stage_track_variants"]
-    assert met2["capacity_summary"]["patch_capacity_ref"] == "foundation_data/ecc/vectors/patches/route.jsonl:native_demand_capacity_by_layer"
+    assert (
+        met2["capacity_summary"]["patch_capacity_ref"]
+        == "foundation_data/ecc/vectors/patches/route.jsonl:native_demand_capacity_by_layer"
+    )
     assert met2["stage_metadata"]["missing_stages"] == ["place", "CTS", "drc"]
-    assert met2["stage_metadata"]["stage_sources"]["route"] == ["def_routed_wires", "def_tracks", "def_vias", "rt_log"]
+    assert met2["stage_metadata"]["stage_sources"]["route"] == [
+        "def_routed_wires",
+        "def_tracks",
+        "def_vias",
+        "rt_log",
+    ]
     assert met2["source_refs"]["def"][0]["section"] == "TRACKS"
     assert met2["source_refs"]["rt_log"][0]["parser"] == "rt_log"
 
@@ -4086,13 +5305,19 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
 def test_routing_graph_records_follow_vec_routing_graph_schema(tmp_path: Path):
     ws = _make_workspace(tmp_path)
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["place", "route"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["place", "route"]
+    )
 
     foundation_dir = ws / "foundation_data" / "ecc"
-    assert (foundation_dir / "vectors" / "routing_graphs" / "place.jsonl").read_text(encoding="utf-8") == ""
+    assert (foundation_dir / "vectors" / "routing_graphs" / "place.jsonl").read_text(
+        encoding="utf-8"
+    ) == ""
     route_graphs = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "routing_graphs" / "route.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (foundation_dir / "vectors" / "routing_graphs" / "route.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     graph = next(row for row in route_graphs if row["net_key"] == "n1")
 
@@ -4136,8 +5361,22 @@ def test_routing_graph_records_follow_vec_routing_graph_schema(tmp_path: Path):
     assert graph["route_context"]["source"] == "route_ecc/output/gcd_route.def"
     assert graph["coverage"]["edge_patch_intersection_coverage"] == 1.0
 
-    assert all({"terminal_match", "source_refs", "null_reason"}.issubset(vertex) for vertex in graph["vertices"])
-    assert all({"edge_key", "source_vertex_id", "target_vertex_id", "wire_ref", "via_ref", "source_refs", "null_reason"}.issubset(edge) for edge in graph["edges"])
+    assert all(
+        {"terminal_match", "source_refs", "null_reason"}.issubset(vertex)
+        for vertex in graph["vertices"]
+    )
+    assert all(
+        {
+            "edge_key",
+            "source_vertex_id",
+            "target_vertex_id",
+            "wire_ref",
+            "via_ref",
+            "source_refs",
+            "null_reason",
+        }.issubset(edge)
+        for edge in graph["edges"]
+    )
     assert all(
         {"layer", "intersection_kind"}.issubset(item)
         for edge in graph["edges"]
@@ -4150,7 +5389,10 @@ def test_routing_graph_records_follow_vec_routing_graph_schema(tmp_path: Path):
     assert via_edge["geometry"]["end"]["layer"] == "MET3"
     assert via_edge["via_ref"]["from_layer"] == "MET2"
     assert via_edge["via_ref"]["to_layer"] == "MET3"
-    assert all(len(vertex["incident_edge_ids"]) == len(set(vertex["incident_edge_ids"])) for vertex in graph["vertices"])
+    assert all(
+        len(vertex["incident_edge_ids"]) == len(set(vertex["incident_edge_ids"]))
+        for vertex in graph["vertices"]
+    )
 
 
 def _append_large_route_nets(ws: Path, *, count: int = 1005) -> None:
@@ -4170,8 +5412,8 @@ def _append_large_route_nets(ws: Path, *, count: int = 1005) -> None:
         "\n".join(
             [
                 "VERSION 5.8 ;",
-                "DIVIDERCHAR \"/\" ;",
-                "BUSBITCHARS \"[]\" ;",
+                'DIVIDERCHAR "/" ;',
+                'BUSBITCHARS "[]" ;',
                 "DESIGN gcd ;",
                 "UNITS DISTANCE MICRONS 1000 ;",
                 "DIEAREA ( 0 0 ) ( 200 200 ) ;",
@@ -4211,7 +5453,13 @@ def test_large_route_design_does_not_degrade_source_backed_tables(tmp_path: Path
 
     assert "route_wire_count_exceeds_in_memory_table_threshold" not in json.dumps(quality)
     assert not quality.get("large_design_mode", {}).get("degraded_tables")
-    for table_name in ["wire_segments", "wire_patch_intersections", "patch_entity_refs", "routing_vertices", "routing_edges"]:
+    for table_name in [
+        "wire_segments",
+        "wire_patch_intersections",
+        "patch_entity_refs",
+        "routing_vertices",
+        "routing_edges",
+    ]:
         table = pq.read_table(foundation_dir / manifest["tables"][table_name]["path"])
         assert table.num_rows > 0, table_name
 
@@ -4293,12 +5541,16 @@ END DESIGN
         + "\n",
     )
 
-    FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True, stages=["route", "drc"])
+    FoundationExtractor(ws, profile="iccd_full_v1").extract(
+        export_legacy_debug=True, stages=["route", "drc"]
+    )
 
     foundation_dir = ws / "foundation_data" / "ecc"
     route_graphs = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "routing_graphs" / "route.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (foundation_dir / "vectors" / "routing_graphs" / "route.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
 
     boundary = next(row for row in route_graphs if row["net_key"] == "n_boundary")
@@ -4307,7 +5559,13 @@ END DESIGN
     edge = boundary["edges"][0]
     assert edge["geometry"]["length"] == 60.0
     assert sum(item["length"] for item in edge["patch_intersections"]) == edge["geometry"]["length"]
-    assert sum(float(value) for value in boundary["patch_footprint"]["total_routed_length_by_patch"].values()) == boundary["graph_metrics"]["total_routed_length"]
+    assert (
+        sum(
+            float(value)
+            for value in boundary["patch_footprint"]["total_routed_length_by_patch"].values()
+        )
+        == boundary["graph_metrics"]["total_routed_length"]
+    )
 
     after = next(row for row in route_graphs if row["net_key"] == "n_after")
     assert after["id"] == 1

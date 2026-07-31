@@ -28,11 +28,15 @@ def parse_sta_artifacts(stage_dir: Path) -> dict[str, Any]:
         wire = _parse_wire_path(wire_path)
         path_points = _path_points(detail.get("detail")) or _points_from_wire_nodes(wire["nodes"])
         endpoint_raw = str(item.get("endpoint") or detail.get("end_point") or "")
-        start_raw = str(detail.get("start_point") or (path_points[0]["raw_name"] if path_points else ""))
+        start_raw = str(
+            detail.get("start_point") or (path_points[0]["raw_name"] if path_points else "")
+        )
         _assign_point_roles(path_points, start_raw, endpoint_raw)
         wire_nodes = _match_wire_nodes(wire["nodes"], path_points)
         timing_edges = _timing_edges(path_points)
-        slack = _to_float(item.get("slack") if item.get("slack") is not None else detail.get("slack"))
+        slack = _to_float(
+            item.get("slack") if item.get("slack") is not None else detail.get("slack")
+        )
         analysis_key = _analysis_context_key(item, detail)
         min_slack, max_slack = slack_ranges.get(analysis_key, (None, None))
         stage_wns, stage_tns = slack_summaries.get(analysis_key, (None, None))
@@ -96,7 +100,9 @@ def parse_sta_artifacts(stage_dir: Path) -> dict[str, Any]:
                         "path": str(rpt_path),
                         "summary_index": idx,
                         "detail_index": idx if idx < len(details) else None,
-                        "slack_index": _slack_index(slack_rows, item.get("clock_group"), item.get("delay_type")),
+                        "slack_index": _slack_index(
+                            slack_rows, item.get("clock_group"), item.get("delay_type")
+                        ),
                     },
                     "wire_path": {
                         "path": str(wire_path) if wire_path else None,
@@ -223,13 +229,18 @@ def _points_from_wire_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 def _timing_edges(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
     edges = []
-    for idx, (src, dst) in enumerate(zip(points, points[1:])):
+    for idx, (src, dst) in enumerate(zip(points, points[1:], strict=False)):
         src_key = src.get("instance_key")
         dst_key = dst.get("instance_key")
         edge_kind = "unknown"
         if src.get("node_role") == "clock" or dst.get("node_role") == "clock":
             edge_kind = "clock_arc"
-        elif src_key and dst_key and src_key == dst_key and src.get("pin_name") != dst.get("pin_name"):
+        elif (
+            src_key
+            and dst_key
+            and src_key == dst_key
+            and src.get("pin_name") != dst.get("pin_name")
+        ):
             edge_kind = "cell_arc"
         elif src.get("pin_key") and dst.get("pin_key"):
             edge_kind = "net_arc"
@@ -250,7 +261,9 @@ def _timing_edges(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "net_hpwl": None,
                 "net_cross_patch": None,
                 "net_join_status": "not_applicable" if edge_kind != "net_arc" else "missing",
-                "parse_status": "parsed" if src.get("pin_key") and dst.get("pin_key") else "partial",
+                "parse_status": "parsed"
+                if src.get("pin_key") and dst.get("pin_key")
+                else "partial",
             }
         )
     return edges
@@ -271,7 +284,9 @@ def _parse_sta_point(raw: str) -> dict[str, Any]:
         instance_name, pin_name = text.rsplit("/", 1)
     elif text:
         pin_name = text
-    instance_name = instance_name.strip() if isinstance(instance_name, str) and instance_name.strip() else None
+    instance_name = (
+        instance_name.strip() if isinstance(instance_name, str) and instance_name.strip() else None
+    )
     pin_name = pin_name.strip() if isinstance(pin_name, str) and pin_name.strip() else None
     pin_key = None
     if pin_name and instance_name:
@@ -299,22 +314,37 @@ def _assign_point_roles(points: list[dict[str, Any]], start_raw: str, endpoint_r
     for idx, point in enumerate(points):
         if point.get("pin_key") == start_key or (start_raw and point.get("raw_name") == start_raw):
             point["node_role"] = "startpoint"
-        elif point.get("pin_key") == endpoint_key or (endpoint_raw and point.get("raw_name") == endpoint_raw):
+        elif point.get("pin_key") == endpoint_key or (
+            endpoint_raw and point.get("raw_name") == endpoint_raw
+        ):
             point["node_role"] = "endpoint"
         elif idx == 0 and _is_clock_pin(point.get("pin_name")):
             point["node_role"] = "clock"
 
 
-def _match_wire_nodes(nodes: list[dict[str, Any]], points: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    point_by_key = {point.get("pin_key"): point.get("point_id") for point in points if point.get("pin_key")}
+def _match_wire_nodes(
+    nodes: list[dict[str, Any]], points: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    point_by_key = {
+        point.get("pin_key"): point.get("point_id") for point in points if point.get("pin_key")
+    }
     out = []
     for node in nodes:
         matched = point_by_key.get(node.get("pin_key"))
-        out.append({**node, "matched_point_id": matched, "parse_status": node.get("parse_status") or ("parsed" if node.get("pin_key") else "unparseable")})
+        out.append(
+            {
+                **node,
+                "matched_point_id": matched,
+                "parse_status": node.get("parse_status")
+                or ("parsed" if node.get("pin_key") else "unparseable"),
+            }
+        )
     return out
 
 
-def _coverage(points: list[dict[str, Any]], edges: list[dict[str, Any]], wire_nodes: list[dict[str, Any]]) -> dict[str, Any]:
+def _coverage(
+    points: list[dict[str, Any]], edges: list[dict[str, Any]], wire_nodes: list[dict[str, Any]]
+) -> dict[str, Any]:
     return {
         "point_count": len(points),
         "parsed_point_count": sum(1 for point in points if point.get("parse_status") == "parsed"),
@@ -322,7 +352,9 @@ def _coverage(points: list[dict[str, Any]], edges: list[dict[str, Any]], wire_no
         "edge_count": len(edges),
         "net_join_count": sum(1 for edge in edges if edge.get("net_join_status") == "joined"),
         "wire_node_count": len(wire_nodes),
-        "matched_wire_node_count": sum(1 for node in wire_nodes if node.get("matched_point_id") is not None),
+        "matched_wire_node_count": sum(
+            1 for node in wire_nodes if node.get("matched_point_id") is not None
+        ),
         "spatial_anchor_count": 0,
         "missing_spatial_anchor_count": len(points),
         "has_complete_endpoint_join": False,
@@ -340,7 +372,11 @@ def _empty_path_spatial() -> dict[str, Any]:
         "patch_count": 0,
         "cross_patch_count": 0,
         "path_bbox": None,
-        "anchor_source_counts": {"exact_pin_geometry": 0, "parent_instance_anchor": 0, "missing": 0},
+        "anchor_source_counts": {
+            "exact_pin_geometry": 0,
+            "parent_instance_anchor": 0,
+            "missing": 0,
+        },
         "has_missing_spatial_anchor": True,
         "stage_map_summary": {
             "cell_density": _empty_stat(),
@@ -371,7 +407,9 @@ def _empty_null_reason() -> dict[str, dict[str, str]]:
     }
 
 
-def _normalized_criticality(slack: float | None, min_slack: float | None, max_slack: float | None) -> tuple[float | None, str | None]:
+def _normalized_criticality(
+    slack: float | None, min_slack: float | None, max_slack: float | None
+) -> tuple[float | None, str | None]:
     if slack is None or min_slack is None or max_slack is None:
         return None, "missing_slack"
     if max_slack == min_slack:
@@ -379,7 +417,9 @@ def _normalized_criticality(slack: float | None, min_slack: float | None, max_sl
     return (max_slack - slack) / (max_slack - min_slack), None
 
 
-def _stage_slack_summaries(rows: list[Any]) -> dict[tuple[str, str | None], tuple[float | None, float | None]]:
+def _stage_slack_summaries(
+    rows: list[Any],
+) -> dict[tuple[str, str | None], tuple[float | None, float | None]]:
     summaries: dict[tuple[str, str | None], tuple[float | None, float | None]] = {}
     for row in rows:
         if not isinstance(row, dict):
@@ -390,25 +430,30 @@ def _stage_slack_summaries(rows: list[Any]) -> dict[tuple[str, str | None], tupl
     return summaries
 
 
-def _slack_ranges_by_analysis_context(summaries: list[Any], details: list[Any]) -> dict[tuple[str, str | None], tuple[float | None, float | None]]:
+def _slack_ranges_by_analysis_context(
+    summaries: list[Any], details: list[Any]
+) -> dict[tuple[str, str | None], tuple[float | None, float | None]]:
     values_by_key: dict[tuple[str, str | None], list[float]] = {}
     for idx, item in enumerate(summaries):
         if not isinstance(item, dict):
             continue
         detail = details[idx] if idx < len(details) and isinstance(details[idx], dict) else {}
-        slack = _to_float(item.get("slack") if item.get("slack") is not None else detail.get("slack"))
+        slack = _to_float(
+            item.get("slack") if item.get("slack") is not None else detail.get("slack")
+        )
         if slack is None:
             continue
         values_by_key.setdefault(_analysis_context_key(item, detail), []).append(slack)
-    return {
-        key: (min(values), max(values))
-        for key, values in values_by_key.items()
-        if values
-    }
+    return {key: (min(values), max(values)) for key, values in values_by_key.items() if values}
 
 
-def _analysis_context_key(summary: dict[str, Any], detail: dict[str, Any]) -> tuple[str, str | None]:
-    return _normalize_analysis_key(summary.get("delay_type") or detail.get("type"), summary.get("clock_group") or detail.get("clock_field"))
+def _analysis_context_key(
+    summary: dict[str, Any], detail: dict[str, Any]
+) -> tuple[str, str | None]:
+    return _normalize_analysis_key(
+        summary.get("delay_type") or detail.get("type"),
+        summary.get("clock_group") or detail.get("clock_field"),
+    )
 
 
 def _normalize_analysis_key(delay_type: Any, clock_group: Any) -> tuple[str, str | None]:

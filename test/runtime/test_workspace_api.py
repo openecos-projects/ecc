@@ -278,7 +278,8 @@ def test_candidate_runtime_methods_bind_existing_workspace_artifacts(monkeypatch
 
     monkeypatch.setattr(
         "chipcompiler.data.export_candidate_capabilities",
-        lambda workspace: calls.append(("export", workspace.directory)) or {"registry_sha256": "registry"},
+        lambda workspace: calls.append(("export", workspace.directory))
+        or {"registry_sha256": "registry"},
     )
     monkeypatch.setattr(
         "chipcompiler.data.bind_candidate_input",
@@ -497,9 +498,7 @@ def test_extract_foundation_returns_manifest_receipt(monkeypatch, tmp_path):
     api = WorkspaceRuntimeApi()
     workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
 
-    result = api.extract_foundation(
-        WorkspaceExtractFoundationRequest(workspace_id=workspace_id)
-    )
+    result = api.extract_foundation(WorkspaceExtractFoundationRequest(workspace_id=workspace_id))
 
     assert result == {
         "manifestRef": "foundation_data/ecc/manifest.json",

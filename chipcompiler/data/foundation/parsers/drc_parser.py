@@ -14,7 +14,9 @@ def parse_drc_artifacts(stage_dir: Path) -> dict[str, Any]:
         "available": violation_path.exists() or metric_count is not None,
         "violations": violations,
         "metrics": metrics,
-        "count": sum(int(item.get("count") or 1) for item in violations) if violations else (metric_count or 0),
+        "count": sum(int(item.get("count") or 1) for item in violations)
+        if violations
+        else (metric_count or 0),
         "source": str(violation_path),
         "metrics_source": str(metric_path),
     }
@@ -39,7 +41,13 @@ def _parse_violation_map(path: Path) -> list[dict[str, Any]]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return []
-    raw_items = payload if isinstance(payload, list) else payload.get("violations", []) if isinstance(payload, dict) else []
+    raw_items = (
+        payload
+        if isinstance(payload, list)
+        else payload.get("violations", [])
+        if isinstance(payload, dict)
+        else []
+    )
     out: list[dict[str, Any]] = []
     for idx, item in enumerate(raw_items):
         if not isinstance(item, dict):
@@ -48,7 +56,9 @@ def _parse_violation_map(path: Path) -> list[dict[str, Any]]:
         out.append(
             {
                 "id": idx,
-                "type": str(item.get("type") or item.get("violation_type") or item.get("rule") or "unknown"),
+                "type": str(
+                    item.get("type") or item.get("violation_type") or item.get("rule") or "unknown"
+                ),
                 "rule": item.get("rule"),
                 "layer": item.get("layer"),
                 "bbox": bbox,
@@ -74,7 +84,12 @@ def _bbox(item: dict[str, Any]) -> dict[str, float] | None:
             return None
     if isinstance(raw, list | tuple) and len(raw) >= 4:
         try:
-            return {"llx": float(raw[0]), "lly": float(raw[1]), "urx": float(raw[2]), "ury": float(raw[3])}
+            return {
+                "llx": float(raw[0]),
+                "lly": float(raw[1]),
+                "urx": float(raw[2]),
+                "ury": float(raw[3]),
+            }
         except (TypeError, ValueError):
             return None
     return None

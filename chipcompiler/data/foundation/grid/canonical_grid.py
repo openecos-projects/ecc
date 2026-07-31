@@ -48,7 +48,13 @@ def build_patch_grid(rows: int, cols: int, die_bbox: dict[str, float] | None = N
                     },
                 }
             )
-    return {"rows": rows, "cols": cols, "die_bbox": bbox, "grid_source": "uniform_shape", "patches": patches}
+    return {
+        "rows": rows,
+        "cols": cols,
+        "die_bbox": bbox,
+        "grid_source": "uniform_shape",
+        "patches": patches,
+    }
 
 
 def build_gcell_patch_grid(cells: list[dict], *, source: str | None = None) -> dict:

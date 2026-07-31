@@ -144,9 +144,7 @@ def test_bound_candidate_input_rejects_backend_drift_without_patch(tmp_path):
         "legalization",
         candidate_id="cts-fixed-candidate",
     )
-    cts_flow_step = next(
-        step for step in workspace.flow.data["steps"] if step["name"] == "CTS"
-    )
+    cts_flow_step = next(step for step in workspace.flow.data["steps"] if step["name"] == "CTS")
     cts_flow_step["tool"] = "dreamplace"
 
     with pytest.raises(CandidateStepContractError, match="candidate backend is unavailable"):
