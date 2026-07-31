@@ -67,17 +67,21 @@ class TestOverwriteGuard:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "exp1")
         os.makedirs(run_dir)
-        os.chmod(run_dir, 0o000)
+        real_listdir = os.listdir
+
+        # chmod 0o000 does not make the dir unreadable for root (CI runs as
+        # root); deny the syscall itself instead.
+        def denying_listdir(path):
+            if os.path.normpath(path) == os.path.normpath(run_dir):
+                raise PermissionError(13, "Permission denied", path)
+            return real_listdir(path)
+
+        monkeypatch.setattr(os, "listdir", denying_listdir)
         mutations = _spy_mutations(monkeypatch)
 
-        try:
-            rc = cli_main.run(
-                ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
-            )
-            chmod_calls = list(mutations["chmod"])
-            rmtree_calls = list(mutations["rmtree"])
-        finally:
-            os.chmod(run_dir, 0o755)
+        rc = cli_main.run(
+            ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+        )
 
         assert rc == 1
         assert json.loads(capsys.readouterr().out)["records"] == [
@@ -89,9 +93,8 @@ class TestOverwriteGuard:
                 "reason": "target is not an ECC run directory",
             }
         ]
-        assert chmod_calls == []
-        assert rmtree_calls == []
-        assert os.path.isdir(run_dir)
+        assert mutations == {"chmod": [], "rmtree": []}
+        assert real_listdir(run_dir) == []
 
     def test_refuses_symlink_target(
         self, tmp_path, capsys, create_cli_project, create_flow_json, mock_pdk_validation
