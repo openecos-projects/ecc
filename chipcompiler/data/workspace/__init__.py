@@ -863,7 +863,7 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
 
     if step.name == StepEnum.RCX.value:
         rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
-        rcx_output_dir = path_text(step.output.dir)
+        rcx_output_dir = path_text(step.data.dir)
         spef_design_name = workspace.design.top_module or workspace.design.name
         rcx["output"] = rcx_output_dir
         for corner in rcx.get("corners", []):

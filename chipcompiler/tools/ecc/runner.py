@@ -32,6 +32,8 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.ROUTING.value,
         StepEnum.DRC.value,
         StepEnum.FILLER.value,
+        StepEnum.RCX.value,
+        StepEnum.STA.value
     }
 )
 
@@ -47,7 +49,7 @@ def temperature_token(temperature) -> str:
 
 
 def copy_rcx_spef_outputs(workspace: Workspace, step: WorkspaceStep):
-    output_dir_text = os.fspath(step.output.dir or "" or "")
+    output_dir_text = os.fspath(step.data.dir or "" or "")
     if not output_dir_text:
         return
 
