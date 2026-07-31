@@ -33,7 +33,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.DRC.value,
         StepEnum.FILLER.value,
         StepEnum.RCX.value,
-        StepEnum.STA.value
+        StepEnum.STA.value,
     }
 )
 
