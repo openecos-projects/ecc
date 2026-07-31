@@ -30,6 +30,7 @@ def test_runtime_method_registry_contains_current_methods_once():
         "candidate.export_capabilities",
         "candidate.bind_input",
         "candidate.materialize",
+        "candidate.rerun",
         "flow.run",
         "flow.run_step",
     )
