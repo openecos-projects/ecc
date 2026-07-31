@@ -70,7 +70,10 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
         name="Synthesis",
         directory=str(tmp_path / "Synthesis_yosys"),
         input=StepInput(verilog=rtl_file),
-        output=YosysOutput(verilog=tmp_path / "Synthesis_yosys" / "output" / "top.v.gz"),
+        output=YosysOutput(
+            verilog=tmp_path / "Synthesis_yosys" / "output" / "top.v.gz",
+            sim_verilog=tmp_path / "Synthesis_yosys" / "output" / "top_sim.v.gz",
+        ),
         data=YosysData(dir=tmp_path / "Synthesis_yosys" / "data"),
         feature=YosysFeature(stat=tmp_path / "Synthesis_yosys" / "feature" / "stat.json"),
         report=YosysReport(
