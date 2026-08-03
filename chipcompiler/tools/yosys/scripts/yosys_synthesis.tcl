@@ -223,7 +223,7 @@ if {$keep_hierarchy == "false"} {
 }
 synth -top $top_design {*}$flatten_flag -run :fine
 
-share -aggressive
+share
 onehot
 muxpack
 opt_demorgan
