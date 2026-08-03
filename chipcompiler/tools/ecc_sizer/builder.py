@@ -44,6 +44,10 @@ def build_step(
         step_directory=step_directory,
     )
     step.output.db = ""
+    # Sizer produces no geometry snapshot; leave the destination undeclared so
+    # it is not part of this step's success contract (see EngineFlow.check_step_result).
+    step.output.geometry = None
+    step.output.geometry_manifest = None
     script_dir = step.script.dir or step_directory / "script"
     step.script.sizer_env = script_dir / f"{workspace.design.name}.env_file"
     step.script.sizer_cmd = script_dir / f"{workspace.design.name}.cmd_file"
