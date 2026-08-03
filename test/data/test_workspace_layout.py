@@ -158,7 +158,7 @@ def test_log_projection_yosys_shape_has_no_foreign_keys(tmp_path):
     step = yosys_builder.build_step(workspace, "Synthesis", None, tmp_path / "in.v")
     keys = _shape_keys(step)
     assert keys["output"] == sorted(
-        ["dir", "def", "verilog", "fixed_verilog", "sim_verilog", "json", "report", "image"]
+        ["dir", "def", "verilog", "sim_verilog", "json", "report", "image"]
     )
     assert keys["data"] == sorted(["dir", "tmp"])
     assert keys["feature"] == sorted(["dir", "step", "generic_stat", "stat"])

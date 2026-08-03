@@ -1,56 +1,12 @@
 #!/usr/bin/env python
 import os
 import subprocess
-from pathlib import Path
 
 from chipcompiler.data import StateEnum, Workspace, YosysStep
 from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
 from chipcompiler.tools.yosys.utility import check_slang_plugin, get_yosys_runtime
-from chipcompiler.utility.gzip import read_text_maybe_gzip, write_text_maybe_gzip
-
-
-def _remove_parameter_overrides(text: str) -> str:
-    """Remove Verilog parameter override blocks of the form #( ... )."""
-    out = []
-    i = 0
-    length = len(text)
-
-    while i < length:
-        if text[i] == "#" and i + 1 < length and text[i + 1] == "(":
-            depth = 0
-            j = i + 1
-            while j < length:
-                if text[j] == "(":
-                    depth += 1
-                elif text[j] == ")":
-                    depth -= 1
-                    if depth == 0:
-                        j += 1
-                        break
-                j += 1
-
-            if depth == 0:
-                i = j
-                continue
-
-        out.append(text[i])
-        i += 1
-
-    return "".join(out)
-
-
-def _write_fixed_netlist(src_path: str | Path, dst_path: str | Path) -> bool:
-    """Write an extra netlist with parameter override blocks removed."""
-    if not src_path or not dst_path or not os.path.exists(src_path):
-        return False
-
-    text = read_text_maybe_gzip(src_path)
-    fixed = _remove_parameter_overrides(text)
-    write_text_maybe_gzip(dst_path, fixed)
-
-    return True
 
 
 def _run_ecc_synthesis_sta(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
@@ -138,10 +94,6 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
 
         if os.path.exists(step.output.verilog or ""):
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Success)
-
-            fixed_netlist = step.output.fixed_verilog or ""
-            if fixed_netlist:
-                _write_fixed_netlist(step.output.verilog or "", fixed_netlist)
 
             _run_ecc_synthesis_sta(
                 workspace=workspace,

@@ -261,7 +261,6 @@ def build_step(
                 else output_dir / f"{design}_{step_name}.v.gz"
             ),
             sim_verilog=output_dir / f"{design}_{step_name}_sim.v.gz",
-            fixed_verilog=output_dir / f"{design}_{step_name}_fixed.v.gz",
             json=output_dir / f"{design}_{step_name}.json",
             report=output_dir / f"{design}_{step_name}.rpt",
             image=output_dir / f"{design}_{step_name}.png",

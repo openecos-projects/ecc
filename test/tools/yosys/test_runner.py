@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import gzip
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -227,19 +226,3 @@ def test_run_step_marks_invalid_when_yosys_is_missing(tmp_path, monkeypatch):
     assert result is False
     assert ("run yosys", StateEnum.Invalid) in updates
     assert "yosys is not available" in log_file.read_text()
-
-
-def test_write_fixed_netlist_handles_gzip_paths(tmp_path):
-    source = tmp_path / "source.v.gz"
-    destination = tmp_path / "fixed.v.gz"
-    with gzip.open(source, "wt", encoding="utf-8") as file:
-        file.write("module top;\n  CELL #(.WIDTH(1)) u0();\nendmodule\n")
-
-    assert runner._write_fixed_netlist(str(source), str(destination)) is True
-
-    with gzip.open(destination, "rt", encoding="utf-8") as file:
-        fixed = file.read()
-
-    assert "module top" in fixed
-    assert "#(" not in fixed
-    assert "endmodule" in fixed

@@ -103,7 +103,6 @@ def test_yosys_builder_constructs_path_objects_and_creates_dirs(tmp_path):
     assert isinstance(step.directory, Path)
     assert step.input.verilog == rtl_file
     assert step.output.dir == expected_step_dir / "output"
-    assert step.output.fixed_verilog == expected_step_dir / "output" / "top_Synthesis_fixed.v.gz"
     assert step.script.main == expected_step_dir / "script" / "Synthesis_main.tcl"
 
     yosys_builder.build_step_space(step)
