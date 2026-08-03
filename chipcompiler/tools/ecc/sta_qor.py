@@ -5,20 +5,12 @@ from pathlib import Path
 from chipcompiler.data import StepEnum, Workspace
 from chipcompiler.utility import json_read
 
-STA_TEXT_REPORT_FILENAMES = (
+STA_REPORT_FILENAMES = (
     "qor_summary.rpt",
-    "timing_max_in2out.rpt",
-    "timing_max_in2reg.rpt",
-    "timing_max_reg2out.rpt",
-    "timing_max_reg2reg.rpt",
-    "timing_min_in2out.rpt",
-    "timing_min_in2reg.rpt",
-    "timing_min_reg2out.rpt",
-    "timing_min_reg2reg.rpt",
+    "timing_max.rpt",
 )
 STA_QOR_SUMMARY_FILENAME = "qor_summary.json"
 STA_TIMING_PATHS_FILENAME = "timing_paths.json"
-STA_REPORT_FILENAMES = STA_TEXT_REPORT_FILENAMES
 
 
 @dataclass(frozen=True)
@@ -83,7 +75,9 @@ def sta_artifact_directory(
 
 
 def configured_sta_artifact_directories(workspace: Workspace, root) -> list[tuple[str, Path]]:
-    sta_data = json_read(workspace.config.get(StepEnum.STA.value, ""))
+    workspace_config = getattr(workspace, "config", {})
+    workspace_config = workspace_config if isinstance(workspace_config, dict) else {}
+    sta_data = json_read(workspace_config.get(StepEnum.STA.value, ""))
     if not isinstance(sta_data, dict):
         return []
 
@@ -135,21 +129,7 @@ def configured_sta_artifact_directories(workspace: Workspace, root) -> list[tupl
 
 def _artifact_paths(workspace: Workspace, root, filename: str) -> list[tuple[str, Path]]:
     directories = configured_sta_artifact_directories(workspace, root)
-    if directories:
-        return [(corner, artifact_dir / filename) for corner, artifact_dir in directories]
-
-    artifact_root = _artifact_root(root)
-    if artifact_root is None or not artifact_root.is_dir():
-        return []
-
-    paths = []
-    for path in sorted(artifact_root.rglob(filename)):
-        try:
-            corner = path.parent.relative_to(artifact_root).as_posix()
-        except ValueError:
-            corner = path.parent.name
-        paths.append((corner, path))
-    return paths
+    return [(corner, artifact_dir / filename) for corner, artifact_dir in directories]
 
 
 def sta_qor_summary_paths(workspace: Workspace, feature_root) -> list[tuple[str, Path]]:
@@ -158,15 +138,6 @@ def sta_qor_summary_paths(workspace: Workspace, feature_root) -> list[tuple[str,
 
 def sta_timing_paths_paths(workspace: Workspace, feature_root) -> list[tuple[str, Path]]:
     return _artifact_paths(workspace, feature_root, STA_TIMING_PATHS_FILENAME)
-
-
-def sta_report_artifact_paths(workspace: Workspace, report_root) -> list[tuple[str, Path]]:
-    report_directories = configured_sta_artifact_directories(workspace, report_root)
-    return [
-        (corner, artifact_dir / report_name)
-        for corner, artifact_dir in report_directories
-        for report_name in STA_REPORT_FILENAMES
-    ]
 
 
 def _finite_number(value) -> float | None:

@@ -340,7 +340,7 @@ def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
             }
         )
     )
-    rcx_config.write_text(json.dumps({"output": str(tmp_path / "RCX_ecc" / "output")}))
+    rcx_config.write_text(json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}))
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="project_gcd_ws_0002", top_module="gcd"),
@@ -350,6 +350,29 @@ def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
     items = ecc_runner.collect_sta_signoff_items(workspace)
 
     assert items[0]["spef_file"] == str(tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef")
+
+
+def test_copy_rcx_spef_outputs_publishes_to_step_output_dir(tmp_path):
+    data_dir = tmp_path / "RCX_ecc" / "data"
+    output_dir = tmp_path / "RCX_ecc" / "output"
+    source_path = data_dir / "spef_writer" / "gcd_Cworst_125C.spef"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text("*SPEF\n", encoding="utf-8")
+    spef_outputs = [data_dir / source_path.name]
+    step = EccStep(
+        name=StepEnum.RCX.value,
+        data=EccData(dir=data_dir),
+        output=EccOutput(dir=output_dir, spef=spef_outputs),
+    )
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+
+    ecc_runner.copy_rcx_spef_outputs(workspace, step)
+
+    destination = output_dir / source_path.name
+    assert destination.read_text(encoding="utf-8") == "*SPEF\n"
+    assert not (data_dir / source_path.name).exists()
+    assert step.output.spef is spef_outputs
+    assert step.output.spef == [destination]
 
 
 def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, monkeypatch):
@@ -382,7 +405,10 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         encoding="utf-8",
     )
     rcx_config = config_dir / "rcx.json"
-    rcx_config.write_text(json.dumps({"output": str(spef_root)}), encoding="utf-8")
+    rcx_config.write_text(
+        json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}),
+        encoding="utf-8",
+    )
     logger = FakeLogger()
     workspace = Workspace(
         directory=tmp_path,

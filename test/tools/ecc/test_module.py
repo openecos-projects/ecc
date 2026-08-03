@@ -70,6 +70,7 @@ class FakeEcc:
         report_dir.mkdir(parents=True, exist_ok=True)
         if config_dict.get("-output_timing_reports") == "1":
             (report_dir / "qor_summary.rpt").write_text("report\n", encoding="utf-8")
+            (report_dir / "timing_max.rpt").write_text("report\n", encoding="utf-8")
         if config_dict.get("-output_timing_features") == "1":
             for filename in self.structured_timing_filenames:
                 (report_dir / filename).write_text("{}\n", encoding="utf-8")
@@ -426,6 +427,7 @@ def test_run_timing_splits_text_reports_and_structured_artifacts(tmp_path):
     )
 
     assert (report_dir / "qor_summary.rpt").is_file()
+    assert (report_dir / "timing_max.rpt").is_file()
     assert (feature_dir / "qor_summary.json").is_file()
     assert (feature_dir / "timing_paths.json").is_file()
     init_config = next(
@@ -1764,6 +1766,21 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
+    sta_config = tmp_path / "config" / "sta.json"
+    sta_config.parent.mkdir(parents=True, exist_ok=True)
+    sta_config.write_text(
+        json.dumps(
+            {
+                "liberty": [
+                    {"corner": "MAX", "temperature": 125},
+                    {"corner": "MIN", "temperature": -40},
+                ],
+                "signoff": [{"MAX": ["RCworst"], "MIN": ["Cbest"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace.config[StepEnum.STA.value] = sta_config
     step = build_step(
         workspace=workspace,
         step_name=StepEnum.STA.value,
@@ -1998,7 +2015,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         "loaded_corners": ["MAX_125/RCworst", "MIN_m40/Cbest"],
         "missing_corners": [],
     }
-    assert sta_feature["signoff_metrics"]["coverage"]["status"] == "unavailable"
+    assert sta_feature["signoff_metrics"]["coverage"]["status"] == "pass"
     assert "sta_path_group_metrics" not in records
     details = {
         detail["id"]: detail
@@ -2010,10 +2027,10 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     )
     assert step.analysis.qor_summary is not None
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
-    assert summary["quality_status"] == "incomplete"
+    assert summary["quality_status"] == "blocked"
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
-        "qor.sta.setup_closed": "unavailable",
-        "qor.sta.hold_closed": "unavailable",
+        "qor.sta.setup_closed": "failed",
+        "qor.sta.hold_closed": "failed",
     }
     assert step.analysis.sta_timing_issues is not None
     issues = json.loads(step.analysis.sta_timing_issues.read_text(encoding="utf-8"))

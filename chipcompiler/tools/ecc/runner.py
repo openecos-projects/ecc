@@ -48,63 +48,56 @@ def temperature_token(temperature) -> str:
     return str(temperature).replace("-", "m").replace(".", "p")
 
 
-def copy_rcx_spef_outputs(workspace: Workspace, step: WorkspaceStep):
-    output_dir_text = os.fspath(step.data.dir or "" or "")
-    if not output_dir_text:
+def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep):
+    data_dir_text = os.fspath(step.data.dir or "")
+    output_dir_text = os.fspath(step.output.dir or "")
+    workspace_dir = workspace.directory
+    if not data_dir_text or not output_dir_text or workspace_dir is None:
         return
+
+    data_dir = Path(data_dir_text)
+    if data_dir_text.startswith("/"):
+        relative_data_dir = data_dir_text[1:]
+        if relative_data_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
+            data_dir = workspace_dir / relative_data_dir
 
     output_dir = Path(output_dir_text)
     if output_dir_text.startswith("/"):
         relative_output_dir = output_dir_text[1:]
         if relative_output_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-            output_dir = Path(workspace.directory) / relative_output_dir
+            output_dir = workspace_dir / relative_output_dir
 
-    spef_writer_dir = output_dir / "spef_writer"
+    spef_writer_dir = data_dir / "spef_writer"
     if not spef_writer_dir.is_dir():
         return
 
-    spef_outputs = step.output.spef or []
-    if isinstance(spef_outputs, (str, os.PathLike)):
-        spef_outputs = [spef_outputs]
+    output_paths = [output_dir / spef_path.name for spef_path in step.output.spef if spef_path]
 
-    expected_paths = []
-    for spef_output in spef_outputs:
-        if not spef_output:
-            continue
-
-        spef_path = Path(spef_output)
-        spef_text = os.fspath(spef_output)
-        if spef_text.startswith("/"):
-            relative_spef = spef_text[1:]
-            if relative_spef.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-                spef_path = Path(workspace.directory) / relative_spef
-
-        expected_paths.append(spef_path)
-
-    if not expected_paths:
-        expected_paths = [
-            output_dir / spef_path.name for spef_path in spef_writer_dir.glob("*.spef")
+    if not output_paths:
+        output_paths = [
+            output_dir / spef_path.name for spef_path in sorted(spef_writer_dir.glob("*.spef"))
         ]
 
-    for expected_path in expected_paths:
-        source_path = spef_writer_dir / expected_path.name
+    for output_path in output_paths:
+        source_path = spef_writer_dir / output_path.name
         if not source_path.is_file():
             continue
 
-        expected_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, expected_path)
-        workspace.logger.info("Copied RCX SPEF %s to %s", source_path, expected_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, output_path)
+        workspace.logger.info("Copied RCX SPEF %s to %s", source_path, output_path)
+
+    if isinstance(step.output.spef, list):
+        step.output.spef[:] = output_paths
 
 
 def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
     sta_config = workspace.config.get(StepEnum.STA.value, "")
     sta_data = json_read(sta_config)
-    rcx_data = json_read(workspace.config.get(StepEnum.RCX.value, ""))
-    rcx_output_dir = str(rcx_data.get("output", "") or "")
-    if rcx_output_dir.startswith("/"):
-        relative_output_dir = rcx_output_dir[1:]
-        if relative_output_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-            rcx_output_dir = os.path.join(workspace.directory, relative_output_dir)
+    workspace_dir = workspace.directory
+    if workspace_dir is None:
+        return []
+    rcx_output_dir = workspace_dir / f"{StepEnum.RCX.value}_ecc" / "output"
 
     liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
     spef_design_name = workspace.design.top_module or workspace.design.name
@@ -132,7 +125,7 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
                         "temperature": temperature,
                         "rcx_corner": rcx_corner_name,
                         "liberty_files": liberty_files,
-                        "spef_file": os.path.join(rcx_output_dir, spef_name),
+                        "spef_file": str(rcx_output_dir / spef_name),
                     }
                 )
 

@@ -7,14 +7,7 @@ from chipcompiler.engine.signoff import SignoffPackageOptions
 
 STA_REPORT_NAMES = (
     "qor_summary.rpt",
-    "timing_max_in2out.rpt",
-    "timing_max_in2reg.rpt",
-    "timing_max_reg2out.rpt",
-    "timing_max_reg2reg.rpt",
-    "timing_min_in2out.rpt",
-    "timing_min_in2reg.rpt",
-    "timing_min_reg2out.rpt",
-    "timing_min_reg2reg.rpt",
+    "timing_max.rpt",
 )
 
 
@@ -259,7 +252,7 @@ def test_collect_signoff_package_requires_qor_summary_for_each_sta_corner(tmp_pa
 
 def test_collect_signoff_package_requires_each_sta_path_report(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    report_name = "timing_min_in2out.rpt"
+    report_name = "timing_max.rpt"
     (workspace_dir / "sta_ecc" / "report" / "MAX_125" / "RCworst" / report_name).unlink()
 
     result = _make_engine_flow(workspace_dir).collect_signoff_package(

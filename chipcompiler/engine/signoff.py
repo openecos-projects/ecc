@@ -314,14 +314,6 @@ class SignoffPackageCollector:
                     destination=f"{report_dest}/{report_name}",
                     required=True,
                 )
-            for report_path in sorted(report_dir.glob("*.rpt")):
-                if report_path.name in STA_REPORT_FILENAMES:
-                    continue
-                add_file(
-                    role="final.sta_report",
-                    source=report_path,
-                    destination=f"{report_dest}/{report_path.name}",
-                )
             item["report"] = f"{report_dest}/qor_summary.rpt"
             feature_dest = report_dest.removesuffix("/report") + "/feature"
             add_file(
