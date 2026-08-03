@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.data import StateEnum
+from chipcompiler.data.workspace.layout import EccOutput
 from chipcompiler.runtime.requests import (
     CandidateBindInputRequest,
     CandidateMaterializeRequest,
@@ -1294,7 +1295,7 @@ def test_candidate_rerun_rebuilds_the_requested_scope(
         {
             "name": "place",
             "tool": "dreamplace",
-            "output": {"dir": ws / "place_dreamplace/output"},
+            "output": EccOutput(dir=ws / "place_dreamplace/output"),
             "analysis": {"dir": ws / "place_dreamplace/analysis"},
         },
         {

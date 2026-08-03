@@ -940,7 +940,7 @@ class WorkspaceRuntimeApi:
         directories: list[Path] = []
         for field in ("output", "data", "feature", "analysis", "report", "log"):
             value = getattr(step, field, {})
-            directory = value.get("dir") if isinstance(value, dict) else None
+            directory = value.get("dir") if isinstance(value, dict) else getattr(value, "dir", None)
             if directory:
                 directories.append(Path(directory))
         return tuple(dict.fromkeys(directories))

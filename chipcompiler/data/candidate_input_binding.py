@@ -51,7 +51,7 @@ def bind_candidate_input(
     inputs = _source_inputs(workspace, engine_flow, source_step)
     receipt = _build_receipt(workspace, target_step, source_step, candidate_id, inputs)
     write_json_atomic(_receipt_path(workspace), receipt)
-    target.input = dict(inputs)
+    _set_target_inputs(target, inputs)
     return receipt
 
 
@@ -79,7 +79,7 @@ def reapply_candidate_input_binding(
     )
     if receipt != actual:
         raise CandidateInputBindingError("candidate input binding source artifacts are stale")
-    target.input = dict(inputs)
+    _set_target_inputs(target, inputs)
     return actual
 
 
@@ -107,9 +107,23 @@ def _source_inputs(workspace: Any, engine_flow: Any, source_step: str) -> dict[s
         }
     else:
         source = _step_or_error(engine_flow, source_step, "source").output
-    inputs = {key: _path_or_none(source.get(key)) for key in ("def", "verilog", "db")}
+    inputs = {key: _path_or_none(_group_value(source, key)) for key in ("def", "verilog", "db")}
     _validate_source_inputs(source_step, inputs)
     return inputs
+
+
+def _group_value(group: Any, key: str) -> Any:
+    if isinstance(group, dict):
+        return group.get(key)
+    return getattr(group, "def_" if key == "def" else key, None)
+
+
+def _set_target_inputs(target: Any, inputs: dict[str, Path | None]) -> None:
+    if isinstance(target.input, dict):
+        target.input = dict(inputs)
+        return
+    for key, value in inputs.items():
+        setattr(target.input, "def_" if key == "def" else key, value)
 
 
 def _path_or_none(value: Any) -> Path | None:

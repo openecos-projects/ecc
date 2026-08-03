@@ -10,6 +10,7 @@ from chipcompiler.data.candidate_input_binding import (
     bind_candidate_input,
     reapply_candidate_input_binding,
 )
+from chipcompiler.data.workspace.layout import EccOutput, EccStep, StepInput
 
 
 def _sha256(path: Path) -> str:
@@ -77,6 +78,33 @@ def test_bind_and_reapply_cts_from_legalization_uses_checkpoint_outputs(tmp_path
 
     assert applied["inputs"]["def"]["sha256"] == _sha256(legalization.output["def"])
     assert cts.input == legalization.output
+
+
+def test_bind_candidate_input_reads_typed_ecc_output_paths(tmp_path):
+    cts = EccStep(name="CTS", input=StepInput())
+    legalization_output = _step(tmp_path, "legalization").output
+    legalization = EccStep(
+        name="legalization",
+        output=EccOutput(
+            dir=legalization_output["db"],
+            def_=legalization_output["def"],
+            verilog=legalization_output["verilog"],
+            db=legalization_output["db"],
+        ),
+    )
+    workspace = SimpleNamespace(directory=str(tmp_path), design=SimpleNamespace())
+
+    bind_candidate_input(
+        workspace,
+        _Flow(cts, legalization),
+        "CTS",
+        "legalization",
+        candidate_id="cts-rerun-typed-output",
+    )
+
+    assert cts.input.def_ == legalization_output["def"]
+    assert cts.input.verilog == legalization_output["verilog"]
+    assert cts.input.db == legalization_output["db"]
 
 
 @pytest.mark.parametrize(
