@@ -6,12 +6,14 @@ from chipcompiler.data import (
     EccFeature,
     EccStep,
     OriginDesign,
+    Parameters,
     StateEnum,
     StepEnum,
+    StepMetrics,
     Workspace,
     WorkspaceStep,
 )
-from chipcompiler.tools.ecc.metrics import _quality_gates
+from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_payload
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 
 
@@ -98,6 +100,167 @@ def test_sta_quality_gates_require_all_corner_coverage_and_closure(tmp_path):
     assert gates["qor.sta.hold_closed"]["state"] == "pass"
 
 
+def test_harden_mpc_area_gates_use_the_last_pre_route_success_db(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd"),
+        parameters=Parameters(
+            data={
+                "MPC": {
+                    "core_template": {
+                        "minimum_area": 100,
+                        "maximum_area": 105,
+                    }
+                }
+            }
+        ),
+    )
+    workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Success.value},
+            {"name": StepEnum.ROUTING.value, "tool": "ecc", "state": StateEnum.Success.value},
+            {"name": StepEnum.DRC.value, "tool": "ecc", "state": StateEnum.Success.value},
+        ]
+    }
+    route_db = tmp_path / "route_ecc" / "feature" / "route.db.json"
+    route_db.parent.mkdir(parents=True)
+    route_db.write_text(
+        json.dumps({"Design Layout": {"die_area": 110}}),
+        encoding="utf-8",
+    )
+    drc_db = tmp_path / "drc_ecc" / "feature" / "drc.db.json"
+    drc_db.parent.mkdir(parents=True)
+    drc_db.write_text(
+        json.dumps({"Design Layout": {"die_area": 1}}),
+        encoding="utf-8",
+    )
+
+    gates = {
+        gate["id"]: gate
+        for gate in _quality_gates(
+            WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "Harden_ecc"),
+            [],
+            workspace,
+        )
+    }
+
+    assert gates["qor.mpc.minimum_area"]["state"] == "pass"
+    assert gates["qor.mpc.maximum_area"]["state"] == "failed"
+    for gate in gates.values():
+        assert gate["metrics"][0]["actual"] == 110
+        assert gate["evidence"] == [
+            {
+                "kind": "feature",
+                "path": "route_ecc/feature/route.db.json",
+                "selector": "/Design Layout/die_area",
+            }
+        ]
+
+
+def test_harden_mpc_area_gates_are_omitted_without_a_core_template(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        parameters=Parameters(data={"MPC": {}}),
+    )
+
+    assert (
+        _quality_gates(
+            WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "Harden_ecc"),
+            [],
+            workspace,
+        )
+        == []
+    )
+
+
+def test_harden_mpc_area_gates_are_unavailable_without_a_successful_physical_db(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        parameters=Parameters(
+            data={
+                "MPC": {
+                    "core_template": {
+                        "minimum_area": 100,
+                        "maximum_area": 200,
+                    }
+                }
+            }
+        ),
+    )
+    workspace.flow.data = {
+        "steps": [{"name": StepEnum.DRC.value, "tool": "ecc", "state": StateEnum.Success.value}]
+    }
+
+    gates = _quality_gates(
+        WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "Harden_ecc"),
+        [],
+        workspace,
+    )
+
+    assert [gate["state"] for gate in gates] == ["unavailable", "unavailable"]
+
+
+def test_harden_checklist_does_not_require_mpc_area_gates_without_mpc(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    (tmp_path / "home").mkdir()
+    workspace.home.init(tmp_path / "home" / "home.json")
+    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
+    summary_path = tmp_path / "Harden_ecc" / "analysis" / "qor_summary.json"
+    summary_path.parent.mkdir(parents=True)
+    summary_path.write_text(
+        json.dumps({"schema_version": 4, "gates": []}),
+        encoding="utf-8",
+    )
+    step = EccStep(
+        name=StepEnum.HARDEN.value,
+        directory=tmp_path / "Harden_ecc",
+        analysis=EccAnalysis(qor_summary=summary_path),
+        checklist=ChecklistState(path=tmp_path / "Harden_ecc" / "checklist.json"),
+    )
+
+    refresh_step_checklist(workspace, step)
+
+    assert not any(item["id"].startswith("quality.mpc.") for item in step.checklist.checklist)
+
+
+def test_harden_qor_summary_persists_mpc_area_gate_results(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd"),
+        parameters=Parameters(
+            data={
+                "MPC": {
+                    "core_template": {
+                        "minimum_area": 100,
+                        "maximum_area": 105,
+                    }
+                }
+            }
+        ),
+    )
+    workspace.flow.data = {
+        "steps": [{"name": StepEnum.ROUTING.value, "tool": "ecc", "state": StateEnum.Success.value}]
+    }
+    route_db = tmp_path / "route_ecc" / "feature" / "route.db.json"
+    route_db.parent.mkdir(parents=True)
+    route_db.write_text(
+        json.dumps({"Design Layout": {"die_area": 110}}),
+        encoding="utf-8",
+    )
+
+    summary = build_qor_summary_payload(
+        workspace,
+        WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "Harden_ecc"),
+        StepMetrics(),
+    )
+
+    assert summary["quality_status"] == "blocked"
+    assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
+        "qor.mpc.minimum_area": "pass",
+        "qor.mpc.maximum_area": "failed",
+    }
+
+
 def test_step_checklist_references_v4_qor_gate_without_recomputing_it(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()
@@ -155,3 +318,85 @@ def test_step_checklist_references_v4_qor_gate_without_recomputing_it(tmp_path):
         "path": "drc_ecc/analysis/qor_summary.json",
         "gate_id": "qor.drc.clean",
     }
+
+
+def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidence(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd"),
+        parameters=Parameters(data={"MPC": {"core_template": {}}}),
+    )
+    (tmp_path / "home").mkdir()
+    workspace.home.init(tmp_path / "home" / "home.json")
+    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
+    workspace.flow.data = {
+        "steps": [
+            {"name": step.value, "state": StateEnum.Success.value}
+            for step in (
+                StepEnum.ROUTING,
+                StepEnum.DRC,
+                StepEnum.FILLER,
+                StepEnum.RCX,
+                StepEnum.STA,
+                StepEnum.HARDEN,
+            )
+        ]
+    }
+    summary_path = tmp_path / "Harden_ecc" / "analysis" / "qor_summary.json"
+    summary_path.parent.mkdir(parents=True)
+    summary_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 4,
+                "gates": [
+                    {
+                        "id": "qor.mpc.minimum_area",
+                        "title": "MPC minimum die area",
+                        "state": "pass",
+                        "metrics": [
+                            {
+                                "id": "minimum_area",
+                                "actual": 110,
+                                "operator": ">=",
+                                "expected": 100,
+                            }
+                        ],
+                        "evidence": [
+                            {"kind": "feature", "path": "route_ecc/feature/route.db.json"}
+                        ],
+                    },
+                    {
+                        "id": "qor.mpc.maximum_area",
+                        "title": "MPC maximum die area",
+                        "state": "failed",
+                        "metrics": [
+                            {
+                                "id": "maximum_area",
+                                "actual": 110,
+                                "operator": "<=",
+                                "expected": 105,
+                            }
+                        ],
+                        "evidence": [
+                            {"kind": "feature", "path": "route_ecc/feature/route.db.json"}
+                        ],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    step = EccStep(
+        name=StepEnum.HARDEN.value,
+        directory=tmp_path / "Harden_ecc",
+        analysis=EccAnalysis(qor_summary=summary_path),
+        checklist=ChecklistState(path=tmp_path / "Harden_ecc" / "checklist.json"),
+    )
+
+    assert refresh_step_checklist(workspace, step) is False
+    items = {item["id"]: item for item in step.checklist.checklist}
+    assert items["quality.mpc.minimum_area"]["blocked"] is False
+    assert items["quality.mpc.maximum_area"]["blocked"] is True
+    assert items["quality.mpc.maximum_area"]["evidence"] == [
+        {"kind": "feature", "path": "route_ecc/feature/route.db.json"}
+    ]

@@ -1,8 +1,8 @@
 """Current-output signoff checklist construction.
 
-QoR owns the five chip-quality gate calculations.  This module only references
-those gate results and owns the separate flow, artifact, and provenance checks
-needed to assemble a signoff package.
+QoR owns chip-quality gate calculations. This module only references those
+gate results and owns the separate flow, artifact, and provenance checks needed
+to assemble a signoff package.
 """
 
 from __future__ import annotations
@@ -37,6 +37,10 @@ _QUALITY_GATES_BY_STEP = {
     StepEnum.STA.value: (
         "qor.sta.setup_closed",
         "qor.sta.hold_closed",
+    ),
+    StepEnum.HARDEN.value: (
+        "qor.mpc.minimum_area",
+        "qor.mpc.maximum_area",
     ),
 }
 
@@ -126,7 +130,16 @@ def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
             continue
         item = dict(entry)
         path = item.get("path")
-        if isinstance(path, str) and path and not path.startswith(step_directory + "/"):
+        is_workspace_step_path = isinstance(path, str) and any(
+            path == directory or path.startswith(directory + "/")
+            for directory in _STEP_DIRECTORIES.values()
+        )
+        if (
+            isinstance(path, str)
+            and path
+            and not is_workspace_step_path
+            and not path.startswith(step_directory + "/")
+        ):
             item["path"] = f"{step_directory}/{path}"
         result.append(item)
     return result
@@ -147,13 +160,24 @@ def _gate_summary(gate: dict) -> str:
     return "; ".join(facts) or "QoR gate has no current metric evidence."
 
 
+def _expected_quality_gate_ids(workspace: Workspace, step_name: str) -> tuple[str, ...]:
+    gate_ids = _QUALITY_GATES_BY_STEP.get(step_name, ())
+    if step_name != StepEnum.HARDEN.value:
+        return gate_ids
+
+    parameters = getattr(getattr(workspace, "parameters", None), "data", {})
+    mpc = parameters.get("MPC") if isinstance(parameters, dict) else None
+    core_template = mpc.get("core_template") if isinstance(mpc, dict) else None
+    return gate_ids if isinstance(core_template, dict) else ()
+
+
 def _quality_gate_items_from_summary(
     workspace: Workspace,
     step_name: str,
     step_directory: Path,
     summary_path: Path,
 ) -> list[dict]:
-    expected_gate_ids = _QUALITY_GATES_BY_STEP.get(step_name, ())
+    expected_gate_ids = _expected_quality_gate_ids(workspace, step_name)
     if not expected_gate_ids:
         return []
     step_directory_text = _path_text(workspace, step_directory)

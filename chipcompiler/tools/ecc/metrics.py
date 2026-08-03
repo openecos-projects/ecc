@@ -2722,16 +2722,35 @@ def _quality_gate_metric(
         "operator": operator,
         "expected": expected,
     }
-    if _is_feature_source(source):
+    if _is_quality_gate_feature_source(source):
         metric["source"] = source
     return metric
+
+
+def _is_quality_gate_feature_source(source) -> bool:
+    if _is_feature_source(source):
+        return True
+    if not isinstance(source, dict) or source.get("kind") != "feature":
+        return False
+    path = source.get("path")
+    selector = source.get("selector")
+    if not isinstance(path, str) or not isinstance(selector, str):
+        return False
+    path_parts = Path(path).parts
+    return (
+        not Path(path).is_absolute()
+        and ".." not in path_parts
+        and len(path_parts) >= 3
+        and path_parts[1] == "feature"
+        and (selector == "" or selector.startswith("/"))
+    )
 
 
 def _quality_gate_evidence(*sources: dict | None) -> list[dict]:
     evidence = []
     seen = set()
     for source in sources:
-        if not _is_feature_source(source):
+        if not isinstance(source, dict) or not _is_quality_gate_feature_source(source):
             continue
         key = (source.get("kind"), source.get("path"), source.get("selector"))
         if key in seen:
@@ -2747,7 +2766,154 @@ def _gate_state(*, available: bool, passed: bool) -> str:
     return "pass" if passed else "failed"
 
 
-def _quality_gates(step: WorkspaceStep, records: list[dict]) -> list[dict]:
+_MPC_AREA_SOURCE_STEPS = {
+    StepEnum.FLOORPLAN.value,
+    StepEnum.NETLIST_OPT.value,
+    StepEnum.PLACEMENT.value,
+    StepEnum.CTS.value,
+    StepEnum.TIMING_OPT_DRV.value,
+    StepEnum.TIMING_OPT_HOLD.value,
+    StepEnum.TIMING_OPT_SETUP.value,
+    StepEnum.LEGALIZATION.value,
+    StepEnum.ROUTING.value,
+}
+
+
+def _mpc_area_bound(value) -> float | None:
+    number = _qor_number(value)
+    return number if number is not None and number > 0 else None
+
+
+def _mpc_area_constraints(workspace: Workspace | None) -> tuple[float | None, float | None] | None:
+    parameters = getattr(getattr(workspace, "parameters", None), "data", {})
+    if not isinstance(parameters, dict):
+        return None
+    mpc = parameters.get("MPC")
+    core_template = mpc.get("core_template") if isinstance(mpc, dict) else None
+    if not isinstance(core_template, dict):
+        return None
+    return (
+        _mpc_area_bound(core_template.get("minimum_area")),
+        _mpc_area_bound(core_template.get("maximum_area")),
+    )
+
+
+def _last_successful_mpc_area_source(workspace: Workspace) -> tuple[float | None, dict | None]:
+    """Return the latest successful physical DB at or before routing.
+
+    Signoff steps intentionally never provide MPC die-area evidence: their data
+    is signoff output rather than the physical implementation checkpoint.
+    """
+    flow_data = getattr(getattr(workspace, "flow", None), "data", {})
+    flow_steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+    candidates = [
+        item
+        for item in flow_steps
+        if isinstance(item, dict)
+        and item.get("name") in _MPC_AREA_SOURCE_STEPS
+        and item.get("state") == StateEnum.Success.value
+    ]
+    if not candidates:
+        return None, None
+
+    flow_step = candidates[-1]
+    step_name = str(flow_step.get("name"))
+    tool = str(flow_step.get("tool") or "ecc")
+    workspace_directory = getattr(workspace, "directory", None)
+    if not workspace_directory:
+        return None, None
+
+    feature_path = (
+        Path(workspace_directory) / f"{step_name}_{tool}" / "feature" / (f"{step_name}.db.json")
+    )
+    relative_path = _relative_workspace_path(workspace, feature_path)
+    source = {
+        "kind": "feature",
+        "path": relative_path,
+        "selector": "/Design Layout/die_area",
+    }
+    data = json_read(feature_path)
+    layout = data.get("Design Layout") if isinstance(data, dict) else None
+    area = _qor_number(layout.get("die_area")) if isinstance(layout, dict) else None
+    return area, source
+
+
+def _relative_workspace_path(workspace: Workspace, path: Path) -> str:
+    workspace_directory = getattr(workspace, "directory", None)
+    if not workspace_directory:
+        return str(path)
+    try:
+        return path.relative_to(Path(workspace_directory)).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _mpc_area_gates(workspace: Workspace | None) -> list[dict]:
+    constraints = _mpc_area_constraints(workspace)
+    if constraints is None:
+        return []
+
+    minimum_area, maximum_area = constraints
+    actual_area, source = (
+        _last_successful_mpc_area_source(workspace) if workspace is not None else (None, None)
+    )
+    constraints_valid = (
+        minimum_area is not None and maximum_area is not None and minimum_area <= maximum_area
+    )
+    available = constraints_valid and actual_area is not None
+    minimum_area_passed = False
+    maximum_area_passed = False
+    if available:
+        assert actual_area is not None
+        assert minimum_area is not None
+        assert maximum_area is not None
+        minimum_area_passed = actual_area >= minimum_area
+        maximum_area_passed = actual_area <= maximum_area
+    return [
+        _quality_gate(
+            "qor.mpc.minimum_area",
+            "MPC minimum die area",
+            _gate_state(
+                available=available,
+                passed=minimum_area_passed,
+            ),
+            [
+                _quality_gate_metric(
+                    "minimum_area",
+                    actual_area,
+                    ">=",
+                    minimum_area,
+                    source,
+                )
+            ],
+            _quality_gate_evidence(source),
+        ),
+        _quality_gate(
+            "qor.mpc.maximum_area",
+            "MPC maximum die area",
+            _gate_state(
+                available=available,
+                passed=maximum_area_passed,
+            ),
+            [
+                _quality_gate_metric(
+                    "maximum_area",
+                    actual_area,
+                    "<=",
+                    maximum_area,
+                    source,
+                )
+            ],
+            _quality_gate_evidence(source),
+        ),
+    ]
+
+
+def _quality_gates(
+    step: WorkspaceStep,
+    records: list[dict],
+    workspace: Workspace | None = None,
+) -> list[dict]:
     records_by_id = {
         record.get("id"): record
         for record in records
@@ -2892,6 +3058,9 @@ def _quality_gates(step: WorkspaceStep, records: list[dict]) -> list[dict]:
             ),
         ]
 
+    if step.name == StepEnum.HARDEN.value:
+        return _mpc_area_gates(workspace)
+
     return []
 
 
@@ -2920,7 +3089,7 @@ def build_qor_summary_payload(
         if records and not missing_metrics and not invalid_metric_source_ids
         else "incomplete"
     )
-    gates = _quality_gates(step, records)
+    gates = _quality_gates(step, records, workspace)
     if any(gate["state"] == "failed" for gate in gates):
         quality_status = "blocked"
     elif any(gate["state"] == "unavailable" for gate in gates):
