@@ -14,7 +14,7 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_payload
-from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
+from chipcompiler.tools.ecc.signoff_checklist import _workspace_items, refresh_step_checklist
 
 
 def _record(metric_id, value, path="feature/step.json"):
@@ -400,3 +400,113 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
     assert items["quality.mpc.maximum_area"]["evidence"] == [
         {"kind": "feature", "path": "route_ecc/feature/route.db.json"}
     ]
+
+
+def _rtl_item(workspace):
+    return next(
+        item for item in _workspace_items(workspace) if item["id"] == "provenance.initial.rtl"
+    )
+
+
+def _passing_rtl_item(path):
+    return {
+        "id": "provenance.initial.rtl",
+        "step": "workspace",
+        "category": "provenance",
+        "owner": "checklist",
+        "policy": "block",
+        "state": "pass",
+        "blocked": False,
+        "title": "Initial RTL",
+        "summary": "Current output is present and non-empty.",
+        "source": {"kind": "provenance", "path": path},
+        "evidence": [{"kind": "provenance", "path": path}],
+    }
+
+
+def test_initial_rtl_prefers_configured_filelist_over_verilog_placeholder(tmp_path):
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    (origin / "gcd.f").write_text("gcd.sv\n", encoding="utf-8")
+    (origin / "gcd.sv").write_text("module gcd; endmodule\n", encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(
+            name="gcd",
+            # Workspace creation always sets origin_verilog, a placeholder
+            # that never exists for filelist inputs.
+            origin_verilog=origin / "gcd.v",
+            input_filelist=origin / "gcd.f",
+        ),
+    )
+
+    assert _rtl_item(workspace) == _passing_rtl_item("origin/gcd.f")
+
+
+def test_initial_rtl_globs_filelist_when_attributes_missing(tmp_path):
+    # load_workspace restores neither input_filelist nor .sv sources, so the
+    # checklist must rediscover the filelist ahead of any RTL sources.
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    (origin / "gcd.f").write_text("gcd.sv\n", encoding="utf-8")
+    (origin / "gcd.sv").write_text("module gcd; endmodule\n", encoding="utf-8")
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+
+    assert _rtl_item(workspace) == _passing_rtl_item("origin/gcd.f")
+
+
+def test_initial_rtl_globs_systemverilog_when_attributes_missing(tmp_path):
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    (origin / "gcd.sv").write_text("module gcd; endmodule\n", encoding="utf-8")
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+
+    assert _rtl_item(workspace) == _passing_rtl_item("origin/gcd.sv")
+
+
+def test_initial_rtl_accepts_plain_verilog(tmp_path):
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    (origin / "gcd.v").write_text("module gcd; endmodule\n", encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", origin_verilog=origin / "gcd.v"),
+    )
+
+    assert _rtl_item(workspace) == _passing_rtl_item("origin/gcd.v")
+
+
+def test_initial_rtl_accepts_gzipped_verilog(tmp_path):
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    (origin / "gcd.v.gz").write_bytes(b"\x1f\x8bfake")
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+
+    assert _rtl_item(workspace) == _passing_rtl_item("origin/gcd.v.gz")
+
+
+def test_initial_rtl_reports_configured_file_missing(tmp_path):
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(
+            name="gcd",
+            origin_verilog=origin / "gcd.v",
+            input_filelist=origin / "gcd.f",
+        ),
+    )
+
+    assert _rtl_item(workspace) == {
+        "id": "provenance.initial.rtl",
+        "step": "workspace",
+        "category": "provenance",
+        "owner": "checklist",
+        "policy": "block",
+        "state": "failed",
+        "blocked": True,
+        "title": "Initial RTL",
+        "summary": "Required file is missing.",
+        "source": {"kind": "provenance", "path": "origin/gcd.f"},
+        "evidence": [{"kind": "provenance", "path": "origin/gcd.f"}],
+    }

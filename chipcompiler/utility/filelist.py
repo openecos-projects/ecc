@@ -24,6 +24,9 @@ Example filelist content:
 
 import os
 
+FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
+RTL_SUFFIXES = {".v", ".sv", ".svh", ".vh"}
+
 UNSUPPORTED_OPTIONS = {
     "-f": "Recursive filelist files",
     "-v": "Library files",

@@ -2,9 +2,9 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 
+from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
+
 SUPPORTED_PDK_NAMES = {"ics55"}
-FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
-RTL_SUFFIXES = {".v", ".sv", ".svh", ".vh"}
 
 
 class InvalidFlowRun:
