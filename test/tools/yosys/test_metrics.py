@@ -51,6 +51,20 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         ),
         encoding="utf-8",
     )
+    power_dir = step.feature.dir / "post_synthesis"
+    power_dir.mkdir(parents=True)
+    (power_dir / "power_summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "internal_uw": 51.2062,
+                "switching_uw": 11.5906,
+                "dynamic_uw": 62.7968,
+                "leakage_uw": 1.7151,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     metrics = build_step_metrics(workspace, step)
 
@@ -79,6 +93,34 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         "path": "feature/Synthesis_stat.json",
         "selector": "/design/area",
     }
+    assert records["synthesis_power_dynamic_uw"] == {
+        "id": "synthesis_power_dynamic_uw",
+        "display_name": "Synthesis Dynamic Power",
+        "value": 62.7968,
+        "unit": "uW",
+        "category": "power",
+        "direction": "trend_only",
+        "scope": "synthesis",
+        "corner": None,
+        "project_role": "trend",
+        "step_role": "primary",
+        "analysis_group": "synthesis_metrics",
+        "rating": {"gate": False, "score": False, "trend": True},
+        "confidence": "medium",
+        "source": {
+            "kind": "feature",
+            "path": "feature/post_synthesis/power_summary.json",
+            "selector": "/dynamic_uw",
+        },
+    }
+    assert records["synthesis_power_internal_uw"]["value"] == 51.2062
+    assert records["synthesis_power_internal_uw"]["rating"] == {
+        "gate": False,
+        "score": False,
+        "trend": True,
+    }
+    assert records["synthesis_power_switching_uw"]["value"] == 11.5906
+    assert records["synthesis_power_leakage_uw"]["value"] == 1.7151
     assert records["runtime_seconds"] == {
         "id": "runtime_seconds",
         "display_name": "Step Runtime",
@@ -118,3 +160,85 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
     assert summary["quality_status"] == "pass"
     assert summary["gates"] == []
     assert summary["missing_metrics"] == []
+
+
+def test_synthesis_metrics_list_power_missing_when_sta_report_absent(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.SYNTHESIS.value,
+        input_def=None,
+        input_verilog=tmp_path / "gcd.v",
+    )
+    build_step_space(step)
+    step.feature.stat.write_text(
+        json.dumps(
+            {
+                "design": {
+                    "num_cells": 123,
+                    "area": 456.789,
+                    "num_wires": 87,
+                    "num_port_bits": 10,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = build_step_metrics(workspace, step)
+
+    assert metrics is not None
+    qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
+    records = {record["id"]: record for record in qor_metrics["metrics"]}
+    assert "synthesis_power_dynamic_uw" not in records
+    assert "synthesis_power_leakage_uw" not in records
+
+    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
+    assert summary["analysis_status"] == "incomplete"
+    assert summary["quality_status"] == "pass"
+    missing_ids = {record["metric_id"] for record in summary["missing_metrics"]}
+    assert missing_ids == {
+        "synthesis_power_internal_uw",
+        "synthesis_power_switching_uw",
+        "synthesis_power_dynamic_uw",
+        "synthesis_power_leakage_uw",
+    }
+
+
+def test_synthesis_metrics_tolerate_unset_feature_dir(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.SYNTHESIS.value,
+        input_def=None,
+        input_verilog=tmp_path / "gcd.v",
+    )
+    build_step_space(step)
+    step.feature.stat.write_text(
+        json.dumps(
+            {
+                "design": {
+                    "num_cells": 123,
+                    "area": 456.789,
+                    "num_wires": 87,
+                    "num_port_bits": 10,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    step.feature.dir = None
+
+    metrics = build_step_metrics(workspace, step)
+
+    assert metrics is not None
+    qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
+    records = {record["id"]: record for record in qor_metrics["metrics"]}
+    assert records["synthesis_cell_area"]["value"] == 456.79
+    assert "synthesis_power_dynamic_uw" not in records

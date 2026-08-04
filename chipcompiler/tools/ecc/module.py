@@ -7,7 +7,7 @@ from typing import TypeAlias
 
 from numpy import double
 
-from chipcompiler.tools.ecc.sta_artifacts import clear_published_sdf, publish_sta_artifacts
+from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
 from chipcompiler.utility.path import path_text, path_texts
 
 # Path arguments to the native-wrapper methods are normalized via path_text(),
@@ -667,8 +667,7 @@ class ECCToolsModule:
         if "structured" in modes and not feature_dir:
             raise ValueError("STA feature_dir is required when structured output is requested")
 
-        if "report" in modes:
-            clear_published_sdf(report_dir or "")
+        discard_sta_run_outputs(work_dir, report_dir, feature_dir, modes)
 
         self.ecc.lib_init(lib_paths=path_texts(lib_paths))
         self.ecc.sdc_init(path_text(sdc_path))

@@ -327,6 +327,35 @@ def test_run_sta_without_spef_warns_when_sdc_is_missing(tmp_path):
     assert logger.warnings[0][0] == "Post-synthesis STA failed; synthesis result is kept: %s"
 
 
+def test_run_sta_without_spef_removes_stale_power_report_on_failure(tmp_path):
+    netlist = tmp_path / "output" / "gcd.v"
+    liberty = tmp_path / "pdk" / "std.lib"
+    stale_reports = [
+        tmp_path / "Synthesis_yosys" / "feature" / "post_synthesis" / "power_summary.json",
+        tmp_path / "Synthesis_yosys" / "report" / "post_synthesis" / "power.rpt",
+    ]
+    for path in (netlist, liberty, *stale_reports):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+
+    logger = FakeLogger()
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(libs=[liberty], sdc=tmp_path / "missing.sdc"),
+        logger=logger,
+    )
+    step = EccStep(
+        output=EccOutput(verilog=netlist),
+        data=EccData(dir=tmp_path / "Synthesis_yosys" / "data"),
+        feature=EccFeature(dir=tmp_path / "Synthesis_yosys" / "feature"),
+        report=EccReport(dir=tmp_path / "Synthesis_yosys" / "report"),
+    )
+
+    assert ecc_runner.run_sta_without_spef(workspace, step) is False
+    assert not any(path.exists() for path in stale_reports)
+
+
 def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
     config_dir = tmp_path / "config"
     config_dir.mkdir()

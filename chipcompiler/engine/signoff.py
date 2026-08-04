@@ -10,6 +10,7 @@ from pathlib import Path
 
 from chipcompiler.data import StateEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc.sta_qor import (
+    STA_POWER_REPORT_FILENAME,
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
     STA_TIMING_PATHS_FILENAME,
@@ -314,6 +315,13 @@ class SignoffPackageCollector:
                     destination=f"{report_dest}/{report_name}",
                     required=True,
                 )
+            # Optional: workspaces whose STA ran before power collection have
+            # no per-corner power report; package it when present.
+            add_file(
+                role="final.sta_report",
+                source=report_dir / STA_POWER_REPORT_FILENAME,
+                destination=f"{report_dest}/{STA_POWER_REPORT_FILENAME}",
+            )
             item["report"] = f"{report_dest}/qor_summary.rpt"
             feature_dest = report_dest.removesuffix("/report") + "/feature"
             add_file(

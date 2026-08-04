@@ -8,6 +8,7 @@ from chipcompiler.engine.signoff import SignoffPackageOptions
 STA_REPORT_NAMES = (
     "qor_summary.rpt",
     "timing_max.rpt",
+    "power.rpt",
 )
 
 
@@ -221,6 +222,21 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
         "final/timing/sta/MAX_125/RCworst/feature/timing_paths.json",
     }.issubset(destinations)
     assert all(".tsv" not in destination for destination in destinations)
+
+
+def test_collect_signoff_package_tolerates_missing_sta_power_report(tmp_path):
+    # Workspaces completed before power collection have no per-corner power.rpt;
+    # it is packaged when present but must not be required for export.
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "sta_ecc" / "report" / "MAX_125" / "RCworst" / "power.rpt").unlink()
+    engine_flow = _make_engine_flow(workspace_dir)
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
+
+    assert result.ok is True
+    manifest = json.loads((Path(result.package_dir) / "manifest.json").read_text())
+    destinations = {item["destination"] for item in manifest["files"]}
+    assert "final/timing/sta/MAX_125/RCworst/report/power.rpt" not in destinations
 
 
 def test_collect_signoff_package_uses_top_module_for_rcx_spef(tmp_path):

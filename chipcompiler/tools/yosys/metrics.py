@@ -1,6 +1,13 @@
 #!/usr/bin/env python
+from pathlib import Path
+
 from chipcompiler.data import StepMetrics, Workspace, YosysStep
 from chipcompiler.tools.ecc.metrics import save_step_metrics
+from chipcompiler.tools.ecc.sta_qor import (
+    POST_SYNTHESIS_STA_CORNER,
+    STA_POWER_SUMMARY_FILENAME,
+    read_sta_power_summary_json,
+)
 from chipcompiler.utility import dict_to_str, json_read
 
 
@@ -30,6 +37,23 @@ def build_step_metrics(workspace: Workspace, step: YosysStep) -> StepMetrics:
         "Wire number": design_data.get("num_wires", 0),
         "Port number": design_data.get("num_port_bits", 0),
     }
+
+    power_summary = (
+        read_sta_power_summary_json(
+            Path(step.feature.dir) / POST_SYNTHESIS_STA_CORNER / STA_POWER_SUMMARY_FILENAME
+        )
+        if step.feature.dir
+        else None
+    )
+    if power_summary is not None:
+        metrics.update(
+            {
+                "Power internal [uW]": power_summary.internal_uw,
+                "Power switching [uW]": power_summary.switching_uw,
+                "Power dynamic [uW]": power_summary.dynamic_uw,
+                "Power leakage [uW]": power_summary.leakage_uw,
+            }
+        )
 
     step_metrics.data = metrics
 

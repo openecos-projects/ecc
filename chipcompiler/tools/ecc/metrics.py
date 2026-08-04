@@ -6,6 +6,8 @@ from pathlib import Path
 
 from chipcompiler.data import EccStep, StateEnum, StepEnum, StepMetrics, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.sta_qor import (
+    POST_SYNTHESIS_STA_CORNER,
+    STA_POWER_SUMMARY_FILENAME,
     STA_QOR_SUMMARY_FILENAME,
     read_sta_qor_summary,
     read_sta_timing_paths,
@@ -44,6 +46,41 @@ QOR_METRIC_MAP = {
         "unit": "count",
         "dimension": "routability_physical",
         "polarity": "trend_only",
+    },
+    # iSTA runs without VCD activity here: non-clock inputs use the default
+    # transition density and static probability, so all four values are
+    # estimates and stay trend-only until activity provenance is supplied.
+    "Power internal [uW]": {
+        "name": "synthesis_power_internal_uw",
+        "display_name": "Synthesis Internal Power",
+        "unit": "uW",
+        "dimension": "power",
+        "polarity": "trend_only",
+        "confidence": "medium",
+    },
+    "Power switching [uW]": {
+        "name": "synthesis_power_switching_uw",
+        "display_name": "Synthesis Switching Power",
+        "unit": "uW",
+        "dimension": "power",
+        "polarity": "trend_only",
+        "confidence": "medium",
+    },
+    "Power dynamic [uW]": {
+        "name": "synthesis_power_dynamic_uw",
+        "display_name": "Synthesis Dynamic Power",
+        "unit": "uW",
+        "dimension": "power",
+        "polarity": "trend_only",
+        "confidence": "medium",
+    },
+    "Power leakage [uW]": {
+        "name": "synthesis_power_leakage_uw",
+        "display_name": "Synthesis Leakage Power",
+        "unit": "uW",
+        "dimension": "power",
+        "polarity": "trend_only",
+        "confidence": "medium",
     },
     "Die area [μm^2]": {
         "name": "die_area",
@@ -518,6 +555,10 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "synthesis_cell_count",
         "synthesis_wire_count",
         "synthesis_port_count",
+        "synthesis_power_internal_uw",
+        "synthesis_power_switching_uw",
+        "synthesis_power_dynamic_uw",
+        "synthesis_power_leakage_uw",
     ],
     StepEnum.FLOORPLAN.value: [
         "die_area",
@@ -1928,7 +1969,20 @@ def _metric_feature_source(
     feature_path = None
     selector = ""
 
-    if metric_id.startswith("synthesis_"):
+    if metric_id.startswith("synthesis_power_"):
+        feature_dir = getattr(step.feature, "dir", None)
+        feature_path = (
+            Path(feature_dir) / POST_SYNTHESIS_STA_CORNER / STA_POWER_SUMMARY_FILENAME
+            if feature_dir
+            else None
+        )
+        selector = {
+            "synthesis_power_internal_uw": "/internal_uw",
+            "synthesis_power_switching_uw": "/switching_uw",
+            "synthesis_power_dynamic_uw": "/dynamic_uw",
+            "synthesis_power_leakage_uw": "/leakage_uw",
+        }.get(metric_id, "")
+    elif metric_id.startswith("synthesis_"):
         feature_path = getattr(step.feature, "stat", None)
         selector = {
             "synthesis_cell_area": "/design/area",

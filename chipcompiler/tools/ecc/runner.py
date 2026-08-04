@@ -12,7 +12,11 @@ from chipcompiler.tools.ecc.metrics import (
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.plot import ECCToolsPlot
-from chipcompiler.tools.ecc.sta_qor import sta_artifact_directory
+from chipcompiler.tools.ecc.sta_artifacts import discard_sta_outputs
+from chipcompiler.tools.ecc.sta_qor import (
+    POST_SYNTHESIS_STA_CORNER,
+    sta_artifact_directory,
+)
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.utility import json_read
@@ -272,6 +276,13 @@ def run_sta_without_spef(
     STA is supplemental to synthesis, so callers can retain a successful
     synthesis result when this function returns ``False``.
     """
+    # A rerun keeps the step directory, so drop the previously published STA
+    # artifacts first; a failed STA rerun must not leave stale reports or
+    # power summaries visible as current outputs.
+    for root in (step.feature.dir, step.report.dir):
+        if root:
+            discard_sta_outputs(Path(root) / POST_SYNTHESIS_STA_CORNER)
+
     try:
         netlist_path = step.output.verilog or ""
         liberty_paths = workspace.pdk.libs
@@ -298,7 +309,7 @@ def run_sta_without_spef(
 
         work_dir = Path(data_dir) / "sta"
         work_dir.mkdir(parents=True, exist_ok=True)
-        corner = "post_synthesis"
+        corner = POST_SYNTHESIS_STA_CORNER
         report_dir = Path(report_root) / corner
         feature_dir = Path(feature_root) / corner
 

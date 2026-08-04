@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
@@ -11,6 +12,12 @@ STA_REPORT_FILENAMES = (
 )
 STA_QOR_SUMMARY_FILENAME = "qor_summary.json"
 STA_TIMING_PATHS_FILENAME = "timing_paths.json"
+# power.rpt stays out of STA_REPORT_FILENAMES: that list drives required
+# artifacts, while signoff packaging adds the power report as an optional
+# file so workspaces completed before power collection existed still export.
+STA_POWER_REPORT_FILENAME = "power.rpt"
+STA_POWER_SUMMARY_FILENAME = "power_summary.json"
+POST_SYNTHESIS_STA_CORNER = "post_synthesis"
 
 
 @dataclass(frozen=True)
@@ -284,3 +291,100 @@ def read_sta_timing_paths(corner: str, path: Path) -> StaTimingPaths | None:
         path_limit=path_limit,
         paths=tuple(valid_paths),
     )
+
+
+@dataclass(frozen=True)
+class StaPowerSummary:
+    path: Path
+    internal_uw: float
+    switching_uw: float
+    dynamic_uw: float
+    leakage_uw: float
+
+
+# iSTA picks the unit by magnitude for each summary line (pW/nW/uW/mW/W).
+_POWER_UNIT_TO_UW = {
+    "pW": 1e-6,
+    "nW": 1e-3,
+    "uW": 1.0,
+    "mW": 1e3,
+    "W": 1e6,
+}
+
+_POWER_SUMMARY_PATTERN = re.compile(
+    r"^(Cell Internal Power|Net Switching Power|Total Dynamic Power|Cell Leakage Power)"
+    r"\s*=\s*(\S+)\s+(pW|nW|uW|mW|W)\s*$"
+)
+
+
+def _power_value_uw(number_text: str, unit: str) -> float | None:
+    try:
+        value = float(number_text)
+    except ValueError:
+        return None
+    if not isfinite(value) or value < 0:
+        return None
+    return value * _POWER_UNIT_TO_UW[unit]
+
+
+def read_sta_power_summary(path: Path) -> StaPowerSummary | None:
+    if not path.is_file() or path.stat().st_size <= 0:
+        return None
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return None
+
+    values = {}
+    for line in lines:
+        match = _POWER_SUMMARY_PATTERN.match(line.strip())
+        if match is None:
+            continue
+        label, number_text, unit = match.groups()
+        value_uw = _power_value_uw(number_text, unit)
+        if value_uw is None or label in values:
+            return None
+        values[label] = value_uw
+
+    try:
+        return StaPowerSummary(
+            path=path,
+            internal_uw=values["Cell Internal Power"],
+            switching_uw=values["Net Switching Power"],
+            dynamic_uw=values["Total Dynamic Power"],
+            leakage_uw=values["Cell Leakage Power"],
+        )
+    except KeyError:
+        return None
+
+
+_STA_POWER_SUMMARY_FIELDS = ("internal_uw", "switching_uw", "dynamic_uw", "leakage_uw")
+
+
+def sta_power_summary_payload(summary: StaPowerSummary) -> dict:
+    return {
+        "schema_version": 1,
+        "internal_uw": summary.internal_uw,
+        "switching_uw": summary.switching_uw,
+        "dynamic_uw": summary.dynamic_uw,
+        "leakage_uw": summary.leakage_uw,
+    }
+
+
+def read_sta_power_summary_json(path: Path) -> StaPowerSummary | None:
+    if not path.is_file() or path.stat().st_size <= 0:
+        return None
+
+    data = json_read(path)
+    if not isinstance(data, dict) or data.get("schema_version") != 1:
+        return None
+
+    values = {}
+    for field in _STA_POWER_SUMMARY_FIELDS:
+        value = _finite_number(data.get(field))
+        if value is None or value < 0:
+            return None
+        values[field] = value
+
+    return StaPowerSummary(path=path, **values)

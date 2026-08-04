@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import json
 import shutil
 from pathlib import Path
 
@@ -16,6 +17,7 @@ class FakeStaEcc:
             "timing_paths.json",
         )
         self.emit_sdf = True
+        self.emit_power_report = True
 
     def lib_init(self, **kwargs):
         self.calls.append(("lib_init", kwargs))
@@ -55,6 +57,16 @@ class FakeStaEcc:
             sdf_dir = Path(config_dict["-temp_directory_path"]) / "sdf_writer"
             sdf_dir.mkdir(parents=True, exist_ok=True)
             (sdf_dir / "gcd.sdf").write_text("(DELAYFILE\n)\n", encoding="utf-8")
+        if self.emit_power_report:
+            power_dir = Path(config_dict["-temp_directory_path"]) / "power_reporter"
+            power_dir.mkdir(parents=True, exist_ok=True)
+            (power_dir / "power.rpt").write_text(
+                "Cell Internal Power  =   51.2062 uW\n"
+                "Net Switching Power  =   11.5906 uW\n"
+                "Total Dynamic Power  =   62.7968 uW\n"
+                "Cell Leakage Power   =    1.7151 uW\n",
+                encoding="utf-8",
+            )
         return True
 
     def destroy_sta(self):
@@ -84,8 +96,17 @@ def test_run_timing_splits_text_reports_and_structured_artifacts(tmp_path):
 
     assert (report_dir / "qor_summary.rpt").is_file()
     assert (report_dir / "timing_max.rpt").is_file()
+    assert (report_dir / "power.rpt").is_file()
     assert (feature_dir / "qor_summary.json").is_file()
     assert (feature_dir / "timing_paths.json").is_file()
+    assert not (feature_dir / "power.rpt").exists()
+    assert json.loads((feature_dir / "power_summary.json").read_text(encoding="utf-8")) == {
+        "schema_version": 1,
+        "internal_uw": 51.2062,
+        "switching_uw": 11.5906,
+        "dynamic_uw": 62.7968,
+        "leakage_uw": 1.7151,
+    }
     init_config = next(
         call[1] for call in module.ecc.calls if len(call) == 2 and call[0] == "init_sta"
     )
@@ -112,6 +133,39 @@ def test_run_timing_accepts_qor_summary_without_timing_paths(tmp_path):
 
     assert (feature_dir / "qor_summary.json").is_file()
     assert not (feature_dir / "timing_paths.json").exists()
+    assert (feature_dir / "power_summary.json").is_file()
+
+
+def test_run_timing_publishes_nothing_when_power_report_missing(tmp_path):
+    module = make_module()
+    module.ecc.emit_power_report = False
+    report_dir = tmp_path / "report" / "post_synthesis"
+    feature_dir = tmp_path / "feature" / "post_synthesis"
+    report_dir.mkdir(parents=True)
+    feature_dir.mkdir(parents=True)
+    # Stale artifacts from a previous successful run: the failed rerun must
+    # not leave any of them visible as current outputs. timing_max.rpt is
+    # emitted when iSTA reports with start_end_type=all, and notes.txt is
+    # not owned by run_timing and must survive.
+    (report_dir / "qor_summary.rpt").write_text("stale\n", encoding="utf-8")
+    (report_dir / "timing_max.rpt").write_text("stale\n", encoding="utf-8")
+    (report_dir / "power.rpt").write_text("stale\n", encoding="utf-8")
+    (report_dir / "gcd.sdf").write_text("stale\n", encoding="utf-8")
+    (report_dir / "notes.txt").write_text("keep\n", encoding="utf-8")
+    (feature_dir / "qor_summary.json").write_text("stale\n", encoding="utf-8")
+    (feature_dir / "timing_paths.json").write_text("stale\n", encoding="utf-8")
+    (feature_dir / "power_summary.json").write_text("stale\n", encoding="utf-8")
+    (feature_dir / "power.rpt").write_text("stale\n", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="power report"):
+        module.run_timing(
+            work_dir=tmp_path / "data" / "sta",
+            report_dir=report_dir,
+            feature_dir=feature_dir,
+        )
+
+    assert [path.name for path in report_dir.iterdir()] == ["notes.txt"]
+    assert not any(feature_dir.iterdir())
 
 
 def test_run_timing_rejects_invalid_output_modes(tmp_path):
@@ -140,6 +194,7 @@ def test_run_timing_publishes_sdf_alongside_text_reports(tmp_path):
 
     assert sorted(path.name for path in report_dir.iterdir()) == [
         "gcd.sdf",
+        "power.rpt",
         "qor_summary.rpt",
         "timing_max.rpt",
     ]
