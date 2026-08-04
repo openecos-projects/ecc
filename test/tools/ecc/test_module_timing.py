@@ -198,3 +198,58 @@ def test_run_timing_removes_stale_sdf_when_rerun_fails(tmp_path):
         )
 
     assert not (report_dir / "gcd.sdf").exists()
+
+
+def test_run_timing_publishes_nothing_when_structured_artifact_missing(tmp_path):
+    module = make_module()
+    module.ecc.structured_timing_filenames = ("timing_paths.json",)
+    report_dir = tmp_path / "report" / "MAX_125" / "RCworst"
+    feature_dir = tmp_path / "feature" / "MAX_125" / "RCworst"
+
+    with pytest.raises(FileNotFoundError, match="structured"):
+        module.run_timing(
+            work_dir=tmp_path / "data" / "sta",
+            report_dir=report_dir,
+            feature_dir=feature_dir,
+            output_modes=("report", "structured"),
+            corner="MAX_125/RCworst",
+        )
+
+    assert not report_dir.exists()
+    assert not feature_dir.exists()
+
+
+def test_run_timing_stringifies_path_arguments(tmp_path):
+    module = make_module()
+
+    module.run_timing(
+        config=Path("/ws/config/sta.json"),
+        work_dir=tmp_path / "sta_work",
+        report_dir=tmp_path / "sta_report",
+        feature_dir=tmp_path / "sta_feature",
+        lib_paths=[Path("/pdk/lib.lib")],
+        sdc_path=Path("/ws/design.sdc"),
+        spef_path=Path("/ws/design.spef"),
+        corner="MAX_125/RCworst",
+    )
+
+    assert module.ecc.calls == [
+        ("lib_init", {"lib_paths": ["/pdk/lib.lib"]}),
+        ("sdc_init", "/ws/design.sdc"),
+        ("spef_init", "/ws/design.spef"),
+        (
+            "init_sta",
+            {
+                "config": "/ws/config/sta.json",
+                "config_dict": {
+                    "-temp_directory_path": str(tmp_path / "sta_work"),
+                    "-output_timing_reports": "1",
+                    "-output_timing_features": "1",
+                    "-timing_path_limit": "20",
+                    "-timing_corner": "MAX_125/RCworst",
+                },
+            },
+        ),
+        ("run_sta", (), {}),
+        ("destroy_sta", (), {}),
+    ]
