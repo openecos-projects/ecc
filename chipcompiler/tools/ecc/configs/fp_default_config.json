@@ -10,12 +10,21 @@
     },
     "die_builder": {
         "site_name": "core7",
-        "core_width_to_height_ratio": 1.0,
-        "core_utilization": 0.3,
-        "left_margin_micron": 2.0,
-        "right_margin_micron": 2.0,
-        "top_margin_micron": 2.0,
-        "bottom_margin_micron": 2.0
+        "mode": "die_util",
+        "margin": {
+            "left_micron": 2.0,
+            "right_micron": 2.0,
+            "top_micron": 2.0,
+            "bottom_micron": 2.0
+        },
+        "die_util": {
+            "aspect_ratio": 1.0,
+            "utilization": 0.5
+        },
+        "die_size": {
+            "width_micron": 100.1,
+            "height_micron": 246.6
+        }
     },
     "io_placer": {
         "io_layer_list": [
@@ -23,7 +32,7 @@
             "MET4"
         ],
         "width_micron": 0.1,
-        "depth_micron": 0.7
+        "depth_micron": 0.6
     },
     "phy_placer": {
         "well_tap": {
