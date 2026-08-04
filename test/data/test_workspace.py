@@ -684,6 +684,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     fixfanout = json_read(workspace.config["fixFanout"])
     placement = json_read(workspace.config["place"])
     db = json_read(workspace.config["db"])
+    floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
     routing = json_read(workspace.config["route"])
     dreamplace = json_read(workspace.config["dreamplace"])
 
@@ -696,6 +697,19 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert dreamplace["stop_overflow"] == 0.07
     assert dreamplace["cell_padding_x"] == 444
     assert dreamplace["routability_opt_flag"] == 0
+    assert floorplan["die_builder"] == {
+        "mode": "die_util",
+        "site_name": "core7",
+        "margin": {
+            "left_micron": 2,
+            "right_micron": 2,
+            "top_micron": 2,
+            "bottom_micron": 2,
+        },
+        "die_util": {"aspect_ratio": 1, "utilization": 0.4},
+        "die_size": {"width_micron": 100.1, "height_micron": 246.6},
+    }
+    assert floorplan["io_placer"]["depth_micron"] == 0.6
 
 
 def test_refresh_workspace_config_preserves_routability_flag_string_coercion(

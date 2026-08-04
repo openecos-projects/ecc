@@ -472,16 +472,21 @@ def _load_default_floorplan_config() -> dict:
 
 
 def _has_new_floorplan_schema(config: dict) -> bool:
-    return all(
-        key in config
-        for key in (
-            "ifp",
-            "macro_placer",
-            "die_builder",
-            "io_placer",
-            "phy_placer",
-            "pdn_generator",
+    die_builder = config.get("die_builder")
+    return (
+        all(
+            key in config
+            for key in (
+                "ifp",
+                "macro_placer",
+                "die_builder",
+                "io_placer",
+                "phy_placer",
+                "pdn_generator",
+            )
         )
+        and isinstance(die_builder, dict)
+        and all(key in die_builder for key in ("mode", "margin", "die_util", "die_size"))
     )
 
 
@@ -505,37 +510,62 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     if not config_path:
         return
 
+    default_floorplan = _load_default_floorplan_config()
     floorplan = json_read(config_path) if Path(config_path).exists() else {}
     if not _has_new_floorplan_schema(floorplan):
-        floorplan = _load_default_floorplan_config()
+        floorplan = default_floorplan
 
     ifp = floorplan.setdefault("ifp", {})
-    ifp.setdefault("thread_number", 16)
+    default_ifp = default_floorplan.get("ifp", {})
+    ifp.setdefault("thread_number", default_ifp.get("thread_number", 16))
     if step is not None:
         workdir = step.data.workdir_for(StepEnum.FLOORPLAN.value)
         if workdir:
             ifp["temp_directory_path"] = path_text(workdir)
 
+    default_die_builder = default_floorplan.get("die_builder", {})
+    die_builder = floorplan.setdefault("die_builder", {})
+    die_builder.setdefault("mode", default_die_builder.get("mode", "die_util"))
+    die_builder["site_name"] = workspace.pdk.site_core or die_builder.get(
+        "site_name", default_die_builder.get("site_name", "")
+    )
+
+    default_margin = default_die_builder.get("margin", {})
+    margin_config = die_builder.setdefault("margin", {})
     core = workspace.parameters.data.get("Core", {})
     margin = core.get("Margin", [])
     if len(margin) < 2:
         margin = [
-            floorplan.get("die_builder", {}).get("left_margin_micron", 10.0),
-            floorplan.get("die_builder", {}).get("bottom_margin_micron", 10.0),
+            margin_config.get("left_micron", default_margin.get("left_micron", 10.0)),
+            margin_config.get("bottom_micron", default_margin.get("bottom_micron", 10.0)),
         ]
+    margin_config["left_micron"] = margin[0]
+    margin_config["right_micron"] = margin[0]
+    margin_config["top_micron"] = margin[1]
+    margin_config["bottom_micron"] = margin[1]
 
-    die_builder = floorplan.setdefault("die_builder", {})
-    die_builder["site_name"] = workspace.pdk.site_core or die_builder.get("site_name", "")
-    die_builder["core_width_to_height_ratio"] = core.get(
-        "Aspect ratio", die_builder.get("core_width_to_height_ratio", 1.0)
+    default_die_util = default_die_builder.get("die_util", {})
+    die_util = die_builder.setdefault("die_util", {})
+    die_util["aspect_ratio"] = core.get(
+        "Aspect ratio", die_util.get("aspect_ratio", default_die_util.get("aspect_ratio", 1.0))
     )
-    die_builder["core_utilization"] = core.get(
-        "Utilitization", die_builder.get("core_utilization", 0.5)
+    die_util["utilization"] = core.get(
+        "Utilitization", die_util.get("utilization", default_die_util.get("utilization", 0.5))
     )
-    die_builder["left_margin_micron"] = margin[0]
-    die_builder["right_margin_micron"] = margin[0]
-    die_builder["top_margin_micron"] = margin[1]
-    die_builder["bottom_margin_micron"] = margin[1]
+
+    default_die_size = default_die_builder.get("die_size", {})
+    die_size = die_builder.setdefault("die_size", {})
+    die_size.setdefault("width_micron", default_die_size.get("width_micron", 100.1))
+    die_size.setdefault("height_micron", default_die_size.get("height_micron", 246.6))
+    for legacy_key in (
+        "core_width_to_height_ratio",
+        "core_utilization",
+        "left_margin_micron",
+        "right_margin_micron",
+        "top_margin_micron",
+        "bottom_margin_micron",
+    ):
+        die_builder.pop(legacy_key, None)
 
     phy_placer = floorplan.setdefault("phy_placer", {})
     well_tap = phy_placer.setdefault("well_tap", {})
