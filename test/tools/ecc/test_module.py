@@ -478,6 +478,58 @@ def test_run_timing_rejects_invalid_output_modes(tmp_path):
     assert module.ecc.calls == []
 
 
+def test_run_timing_publishes_sdf_alongside_text_reports(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    report_dir = tmp_path / "report" / "MAX_125" / "RCworst"
+
+    module.run_timing(
+        work_dir=tmp_path / "data" / "sta",
+        report_dir=report_dir,
+        output_modes=("report",),
+        corner="MAX_125/RCworst",
+    )
+
+    assert sorted(path.name for path in report_dir.iterdir()) == [
+        "gcd.sdf",
+        "qor_summary.rpt",
+        "timing_max.rpt",
+    ]
+
+
+def test_run_timing_raises_when_sdf_missing(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    module.ecc.emit_sdf = False
+    report_dir = tmp_path / "report" / "MAX_125" / "RCworst"
+
+    with pytest.raises(FileNotFoundError, match="SDF"):
+        module.run_timing(
+            work_dir=tmp_path / "data" / "sta",
+            report_dir=report_dir,
+            output_modes=("report",),
+            corner="MAX_125/RCworst",
+        )
+
+    assert not report_dir.exists()
+
+
+def test_run_timing_structured_only_does_not_require_sdf(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    module.ecc.emit_sdf = False
+    feature_dir = tmp_path / "feature" / "MAX_125" / "RCworst"
+
+    module.run_timing(
+        work_dir=tmp_path / "data" / "sta",
+        feature_dir=feature_dir,
+        output_modes=("structured",),
+        corner="MAX_125/RCworst",
+    )
+
+    assert (feature_dir / "qor_summary.json").is_file()
+
+
 def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
