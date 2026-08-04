@@ -7,6 +7,7 @@ from typing import TypeAlias
 
 from numpy import double
 
+from chipcompiler.tools.ecc.sta_artifacts import clear_published_sdf, publish_sta_artifacts
 from chipcompiler.utility.path import path_text, path_texts
 
 # Path arguments to the native-wrapper methods are normalized via path_text(),
@@ -15,7 +16,6 @@ PathArg: TypeAlias = str | Path | None
 
 
 STA_OUTPUT_MODES = frozenset(("report", "structured"))
-STA_REQUIRED_STRUCTURED_FILENAMES = ("qor_summary.json",)
 
 
 def _normalize_sta_output_modes(output_modes) -> tuple[str, ...]:
@@ -31,14 +31,6 @@ def _normalize_sta_output_modes(output_modes) -> tuple[str, ...]:
     if invalid_modes:
         raise ValueError(f"Unsupported STA output modes: {sorted(invalid_modes)}")
     return modes
-
-
-def _copy_sta_artifact(source_path: Path, destination_dir: Path) -> None:
-    destination_dir.mkdir(parents=True, exist_ok=True)
-    target_path = destination_dir / source_path.name
-    temporary_path = target_path.with_name(f".{target_path.name}.tmp")
-    shutil.copy2(source_path, temporary_path)
-    temporary_path.replace(target_path)
 
 
 class ECCToolsModule:
@@ -675,6 +667,9 @@ class ECCToolsModule:
         if "structured" in modes and not feature_dir:
             raise ValueError("STA feature_dir is required when structured output is requested")
 
+        if "report" in modes:
+            clear_published_sdf(report_dir or "")
+
         self.ecc.lib_init(lib_paths=path_texts(lib_paths))
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
@@ -696,37 +691,12 @@ class ECCToolsModule:
         finally:
             self.ecc.destroy_sta()
 
-        timing_report_dir = Path(work_dir) / "timing_reporter"
-        if not timing_report_dir.is_dir():
-            raise FileNotFoundError(
-                f"iSTA timing reporter output directory does not exist: {timing_report_dir}"
-            )
-
-        source_paths = [path for path in timing_report_dir.iterdir() if path.is_file()]
-        report_paths = [path for path in source_paths if path.suffix != ".json"]
-        structured_paths = [path for path in source_paths if path.suffix == ".json"]
-        if "report" in modes:
-            if not report_paths:
-                raise FileNotFoundError("iSTA did not produce requested text reports")
-            sdf_paths = sorted((Path(work_dir) / "sdf_writer").glob("*.sdf"))
-            if not sdf_paths:
-                raise FileNotFoundError(
-                    f"iSTA did not produce an SDF file in {Path(work_dir) / 'sdf_writer'}"
-                )
-            report_root = Path(report_dir)
-            for source_path in report_paths:
-                _copy_sta_artifact(source_path, report_root)
-            for sdf_path in sdf_paths:
-                _copy_sta_artifact(sdf_path, report_root)
-        if "structured" in modes:
-            names = {path.name for path in structured_paths}
-            missing = [name for name in STA_REQUIRED_STRUCTURED_FILENAMES if name not in names]
-            if missing:
-                raise FileNotFoundError(
-                    f"iSTA did not produce requested structured artifacts: {', '.join(missing)}"
-                )
-            for source_path in structured_paths:
-                _copy_sta_artifact(source_path, Path(feature_dir))
+        publish_sta_artifacts(
+            work_dir=work_dir or "",
+            report_dir=report_dir or "",
+            feature_dir=feature_dir or "",
+            modes=modes,
+        )
 
     def run_sta(self, output_dir: str):
         return None
