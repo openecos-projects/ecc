@@ -708,8 +708,16 @@ class ECCToolsModule:
         if "report" in modes:
             if not report_paths:
                 raise FileNotFoundError("iSTA did not produce requested text reports")
+            sdf_paths = sorted((Path(work_dir) / "sdf_writer").glob("*.sdf"))
+            if not sdf_paths:
+                raise FileNotFoundError(
+                    f"iSTA did not produce an SDF file in {Path(work_dir) / 'sdf_writer'}"
+                )
+            report_root = Path(report_dir)
             for source_path in report_paths:
-                _copy_sta_artifact(source_path, Path(report_dir))
+                _copy_sta_artifact(source_path, report_root)
+            for sdf_path in sdf_paths:
+                _copy_sta_artifact(sdf_path, report_root)
         if "structured" in modes:
             names = {path.name for path in structured_paths}
             missing = [name for name in STA_REQUIRED_STRUCTURED_FILENAMES if name not in names]

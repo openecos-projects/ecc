@@ -33,6 +33,7 @@ class FakeEcc:
             "qor_summary.json",
             "timing_paths.json",
         )
+        self.emit_sdf = True
 
     def flow_init(self, **kwargs):
         self.calls.append(("flow_init", kwargs))
@@ -74,6 +75,10 @@ class FakeEcc:
         if config_dict.get("-output_timing_features") == "1":
             for filename in self.structured_timing_filenames:
                 (report_dir / filename).write_text("{}\n", encoding="utf-8")
+        if self.emit_sdf:
+            sdf_dir = Path(config_dict["-temp_directory_path"]) / "sdf_writer"
+            sdf_dir.mkdir(parents=True, exist_ok=True)
+            (sdf_dir / "gcd.sdf").write_text("(DELAYFILE\n)\n", encoding="utf-8")
         return True
 
     def cts_timing_feature(self):
