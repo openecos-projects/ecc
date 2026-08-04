@@ -123,6 +123,7 @@
         pydantic
         pyjson5
         pyyaml
+        pyarrow
         rosettakit
         scipy
         torch
