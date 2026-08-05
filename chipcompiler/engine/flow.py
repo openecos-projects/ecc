@@ -18,6 +18,7 @@ from chipcompiler.utility.log import redirect_stdio_to_file
 
 logger = logging.getLogger(__name__)
 
+
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
         StepEnum.FLOORPLAN.value,
@@ -257,10 +258,15 @@ class EngineFlow:
         """
         return SignoffPackageCollector(self.workspace).collect(options)
 
-    def create_step_workspaces(self):
+    def create_step_workspaces(self, *, executable_steps: set[str] | None = None):
         """
         create all step workspaces
+
+        executable_steps: names of the steps that will actually run. Only those
+        steps verify tool dependencies; other steps are always built so the
+        input/output chaining stays intact when a non-selected tool is absent.
         """
+        self.workspace_steps = []
         pre_step = None
         for step in self.workspace.flow.data.get("steps", []):
             if pre_step is None:
@@ -285,6 +291,7 @@ class EngineFlow:
                 input_verilog=input_verilog,
                 input_db=input_db,
                 initialize_config=True,
+                check_dependency=executable_steps is None or step["name"] in executable_steps,
             )
             # save workspace step
             if eda_step is not None:
@@ -539,3 +546,12 @@ class EngineFlow:
         self.clear_db_engine_after_step(workspace_step, state)
 
         return state
+
+    def init_db_engine_for_step(self, workspace_step: WorkspaceStep) -> bool:
+        """Initialize the native DB engine from an explicitly selected step."""
+        if self.engine_db is None:
+            self.engine_db = EngineDB(workspace=self.workspace)
+        elif self.engine_db.has_init():
+            return True
+
+        return self.engine_db.create_db_engine(step=workspace_step)

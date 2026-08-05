@@ -59,12 +59,13 @@ def create_step(
     output_gds: Path | None = None,
     *,
     initialize_config: bool = False,
+    check_dependency: bool = True,
 ) -> WorkspaceStep:
     """
     Create and return an EDA tool instance based on the given step and eda tool name.
     """
     # check eda tool exist
-    eda_module = load_eda_module(eda, check_dependency=eda != "sizer")
+    eda_module = load_eda_module(eda, check_dependency=check_dependency and eda != "sizer")
     if eda_module is None or not hasattr(eda_module, "build_step"):
         return None
 
