@@ -389,7 +389,43 @@ CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk uv run ecc
 1. Check `workspace_step.logs/` for tool output.
 2. Inspect `workspace_step.config/` for configs.
 3. Verify `workspace_step.input/` files.
-4. Run individual step with `EngineFlow.run_step()`.
+4. Reproduce or continue the failure in place with `ecc run --workspace`:
+
+```bash
+workspace=/path/to/reported/workspace
+
+# Resume from the first non-successful step (default when no selector is given).
+.venv/bin/ecc run --workspace "$workspace"
+.venv/bin/ecc run --workspace "$workspace" --resume
+
+# Re-execute CTS and every following step in the persisted flow.
+.venv/bin/ecc run --workspace "$workspace" --from CTS
+
+# Run exactly one step; add --force if it already succeeded.
+.venv/bin/ecc run --workspace "$workspace" --only place
+.venv/bin/ecc run --workspace "$workspace" --only place --force
+```
+
+`--resume`, `--from`, and `--only` are mutually exclusive, and `--force` is
+only valid with `--only`. Workspace mode cannot be combined with `--project`,
+`--run-id`, `--overwrite`, or `--set`. Step names must match `home/flow.json`
+exactly.
+
+Workspace mode mutates the workspace in place: each executed step's `output/`
+is replaced, and steps downstream of a re-executed step are marked `Unstart`
+so a later resume re-runs them. Rerunning a step regenerates
+`workspace/config/*.json` from `home/parameters.json`, so adjust parameters
+instead of hand-editing generated configs; keep a copy of a reported workspace
+if it must stay immutable.
+
+For Python-level debugging, invoke the same CLI module directly:
+
+```bash
+.venv/bin/python -m chipcompiler.cli.main run \
+  --workspace "$workspace" \
+  --only place \
+  --force
+```
 
 ### Modify Flow Sequence
 

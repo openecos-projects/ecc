@@ -250,19 +250,32 @@ When omitted, the current working directory is treated as the project directory.
 
 ### Step-Level Execution
 
-Back-end flow work is iterative. Step-level execution must be first-class:
+Back-end flow work is iterative. An existing workspace can be resumed or
+re-executed in place through `ecc run --workspace`:
 
 ```bash
-ecc run --from placement
-ecc run --to routing
-ecc run --only cts
-ecc run --after floorplan
-ecc run --resume
-ecc run --force --step placement
+ecc run --workspace /path/to/workspace
+ecc run --workspace /path/to/workspace --resume
+ecc run --workspace /path/to/workspace --from CTS
+ecc run --workspace /path/to/workspace --only place
+ecc run --workspace /path/to/workspace --only place --force
 ```
 
-The current implementation does not yet expose step-range execution flags.
-`ecc run` executes the configured default RTL-to-GDS flow and supports:
+Step names and order come from the workspace's persisted `home/flow.json`.
+Omitting a selector has resume semantics: execution starts at the first step
+whose state is not `Success` and reuses the successful prefix. `--from <step>`
+re-executes the named step and its persisted suffix. `--only <step>` runs
+exactly that step; an already successful step is a no-op unless `--force` is
+given. Re-executing a step marks downstream steps `Unstart`, replaces the
+executed step's `output/`, and regenerates `workspace/config/*.json` from the
+persisted parameters.
+
+`--resume`, `--from`, and `--only` are mutually exclusive, `--force` requires
+`--only`, and workspace mode cannot be combined with `--project`, `--run-id`,
+`--overwrite`, or `--set`. Arbitrary step sequences, step ranges (`--to`,
+`--after`), and run-time parameter overlays remain planned work.
+
+Project mode creates a fresh `runs/<run_id>` workspace and supports:
 
 ```bash
 ecc run --overwrite
