@@ -276,11 +276,11 @@ def test_old_top_level_workspace_form_is_root_parser_error(capsys):
     assert "no such option" in capsys.readouterr().err.lower()
 
 
-def test_run_workspace_like_flag_is_run_parser_error(capsys):
+def test_run_workspace_flag_reaches_workspace_validation(capsys):
     rc = cli_main.run(["run", "--workspace", "gcd"])
 
     assert rc != 0
-    assert "no such option" in capsys.readouterr().err.lower()
+    assert "invalid_workspace" in capsys.readouterr().out
 
 
 def test_status_command_handler_still_returns_command_result(monkeypatch, tmp_path, capsys):

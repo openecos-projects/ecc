@@ -583,7 +583,7 @@ class TestPreserveCliStdio:
     def test_restores_fd_stdout_stderr_after_redirect(self, tmp_path, capfd):
         log_file = tmp_path / "step.log"
 
-        with progress._preserve_cli_stdio():
+        with progress.preserve_cli_stdio():
             redirected = redirect_stdio_to_file(str(log_file))
             print("inside stdout")
             sys.stderr.write("inside stderr\n")
@@ -601,7 +601,7 @@ class TestPreserveCliStdio:
     def test_restores_fd_stdout_stderr_after_exception(self, tmp_path, capfd):
         log_file = tmp_path / "step.log"
 
-        with pytest.raises(RuntimeError, match="boom"), progress._preserve_cli_stdio():
+        with pytest.raises(RuntimeError, match="boom"), progress.preserve_cli_stdio():
             redirect_stdio_to_file(str(log_file))
             raise RuntimeError("boom")
 
