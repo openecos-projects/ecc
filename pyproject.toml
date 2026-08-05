@@ -20,8 +20,8 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "ecc-dreamplace==0.1.0a5",
-  "ecc-tools-bin==0.1.0a8",
+  "ecc-dreamplace==0.1.0a6",
+  "ecc-tools-bin==0.1.0a9",
   "fastapi>=0.109",
   "jsonrpcserver>=5.0.9",
   "klayout>=0.30.2",

@@ -530,7 +530,7 @@ dev = [
 
 [[package]]
 name = "ecc-dreamplace"
-version = "0.1.0a5"
+version = "0.1.0a6"
 source = { editable = "chipcompiler/thirdparty/ecc-dreamplace" }
 dependencies = [
     { name = "cairocffi" },
@@ -589,7 +589,7 @@ dev = [
 
 [[package]]
 name = "ecc-tools-bin"
-version = "0.1.0a8"
+version = "0.1.0a9"
 source = { editable = "chipcompiler/thirdparty/ecc-tools" }
 dependencies = [
     { name = "matplotlib" },
