@@ -62,6 +62,26 @@ def run_cmd(
     project: ProjectOption = None,
     run_id: RunIdOption = None,
     overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
+    workspace: Annotated[
+        str | None,
+        typer.Option("--workspace", help="Reuse an existing workspace in place"),
+    ] = None,
+    resume: Annotated[
+        bool,
+        typer.Option("--resume", help="Continue from the first non-successful step"),
+    ] = False,
+    from_step: Annotated[
+        str | None,
+        typer.Option("--from", help="Re-execute a step and its persisted suffix"),
+    ] = None,
+    only: Annotated[
+        str | None,
+        typer.Option("--only", help="Run exactly one persisted step"),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Re-execute an already successful --only step"),
+    ] = False,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     param_set: Annotated[
@@ -78,6 +98,11 @@ def run_cmd(
         project=project_options(project, run_id),
         overwrite=overwrite,
         param_set=tuple(param_set or ()),
+        workspace=workspace,
+        resume=resume,
+        from_step=from_step,
+        only=only,
+        force=force,
     )
     execute_command("run", command_input, project_handlers.run)
 

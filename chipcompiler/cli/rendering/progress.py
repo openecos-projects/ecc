@@ -256,7 +256,7 @@ def _stable_stream_from(stream):
 
 
 @contextlib.contextmanager
-def _preserve_cli_stdio():
+def preserve_cli_stdio():
     saved_stdout = sys.stdout
     saved_stderr = sys.stderr
     saved_stdout_fd = None
@@ -447,7 +447,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
             start = time.time()
 
             try:
-                with _preserve_cli_stdio():
+                with preserve_cli_stdio():
                     if not engine_flow.check_state(
                         name=workspace_step.name,
                         tool=workspace_step.tool,

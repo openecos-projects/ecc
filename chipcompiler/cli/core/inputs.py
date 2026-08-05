@@ -35,6 +35,11 @@ class RunInput:
     project: ProjectOptions
     overwrite: bool = False
     param_set: tuple[str, ...] = ()
+    workspace: str | None = None
+    resume: bool = False
+    from_step: str | None = None
+    only: str | None = None
+    force: bool = False
 
 
 @dataclass(frozen=True)
