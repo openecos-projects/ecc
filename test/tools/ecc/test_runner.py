@@ -289,7 +289,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
         (
             "run_timing",
             {
-                "config": workspace.config[StepEnum.STA.value],
+                "config": str(workspace.config[StepEnum.STA.value]),
                 "work_dir": step.data.dir / "sta",
                 "report_dir": step.report.dir / "post_synthesis",
                 "feature_dir": step.feature.dir / "post_synthesis",
@@ -438,12 +438,15 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}),
         encoding="utf-8",
     )
+    incorrect_sta_config = tmp_path / "shared-config" / "sta.json"
+    incorrect_sta_config.parent.mkdir()
+    incorrect_sta_config.write_text("{}", encoding="utf-8")
     logger = FakeLogger()
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(libs=[max_lib, min_lib], sdc=sdc),
-        config={StepEnum.STA.value: sta_config, StepEnum.RCX.value: rcx_config},
+        config={StepEnum.STA.value: incorrect_sta_config, StepEnum.RCX.value: rcx_config},
         logger=logger,
     )
     step = EccStep(
@@ -465,7 +468,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
     assert step.report.dir is not None
     assert calls == [
         {
-            "config": sta_config,
+            "config": str(sta_config),
             "work_dir": step.data.steps[StepEnum.STA.value],
             "report_dir": step.report.dir / "MAX_125" / "RCworst",
             "feature_dir": step.feature.dir / "MAX_125" / "RCworst",
@@ -476,7 +479,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "corner": "MAX_125/RCworst",
         },
         {
-            "config": sta_config,
+            "config": str(sta_config),
             "work_dir": step.data.steps[StepEnum.STA.value],
             "report_dir": step.report.dir / "MIN_m40" / "Cbest",
             "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",

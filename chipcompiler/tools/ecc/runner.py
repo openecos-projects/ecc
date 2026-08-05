@@ -3,7 +3,14 @@ import os
 import shutil
 from pathlib import Path
 
-from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import (
+    EccStep,
+    StateEnum,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+    workspace_config_path,
+)
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.metrics import (
     build_step_metrics,
@@ -52,6 +59,13 @@ def temperature_token(temperature) -> str:
     return str(temperature).replace("-", "m").replace(".", "p")
 
 
+def _workspace_sta_config_path(workspace: Workspace) -> str | None:
+    if workspace.directory is None:
+        return None
+    config_path = workspace_config_path(workspace.directory, StepEnum.STA.value)
+    return os.fspath(config_path) if config_path is not None else None
+
+
 def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep):
     data_dir_text = os.fspath(step.data.dir or "")
     output_dir_text = os.fspath(step.output.dir or "")
@@ -96,11 +110,11 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep):
 
 
 def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
-    sta_config = workspace.config.get(StepEnum.STA.value, "")
-    sta_data = json_read(sta_config)
     workspace_dir = workspace.directory
-    if workspace_dir is None:
+    sta_config = _workspace_sta_config_path(workspace)
+    if workspace_dir is None or sta_config is None:
         return []
+    sta_data = json_read(sta_config)
     rcx_output_dir = workspace_dir / f"{StepEnum.RCX.value}_ecc" / "output"
 
     liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
@@ -333,8 +347,12 @@ def run_sta_without_spef(
             verilog=netlist_path,
             top_module=workspace.design.top_module,
         )
+        sta_config = _workspace_sta_config_path(workspace)
+        if sta_config is None:
+            raise ValueError("workspace STA config path is not configured")
+
         ecc_module.run_timing(
-            config=workspace.config.get(StepEnum.STA.value, ""),
+            config=sta_config,
             work_dir=work_dir,
             report_dir=report_dir,
             feature_dir=feature_dir,
@@ -862,11 +880,15 @@ def run_harden(
             workspace.logger.error("No signoff STA items found")
             return False
         signoff_item = signoff_items[0]
+        sta_config = _workspace_sta_config_path(workspace)
+        if sta_config is None:
+            workspace.logger.error("workspace STA config path is not configured")
+            return False
 
         ecc_module.write_abstract_lef(output_lef_path=step.output.lef or "")
         ecc_module.write_timing_model(
             output_lib_path=step.output.lib or "",
-            config=workspace.config.get(StepEnum.STA.value, ""),
+            config=sta_config,
             output_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
             lib_paths=signoff_item["liberty_files"],
             sdc_path=workspace.pdk.sdc,
@@ -943,6 +965,11 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         workspace.logger.error("No signoff STA items found")
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
         return False
+    sta_config = _workspace_sta_config_path(workspace)
+    if sta_config is None:
+        workspace.logger.error("workspace STA config path is not configured")
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
+        return False
 
     if not os.path.exists(workspace.pdk.sdc):
         workspace.logger.error("STA SDC does not exist: %s", workspace.pdk.sdc)
@@ -1004,7 +1031,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         corner = f"{report_dir.parent.name}/{report_dir.name}"
 
         ecc_module.run_timing(
-            config=workspace.config.get(StepEnum.STA.value, ""),
+            config=sta_config,
             work_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
             report_dir=report_dir,
             feature_dir=feature_dir,
