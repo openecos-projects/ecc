@@ -23,6 +23,7 @@ Example filelist content:
 """
 
 import os
+from pathlib import Path
 
 FILELIST_SUFFIXES = {".f", ".fl", ".filelist"}
 RTL_SUFFIXES = {".v", ".sv", ".svh", ".vh"}
@@ -32,6 +33,34 @@ UNSUPPORTED_OPTIONS = {
     "-v": "Library files",
     "-y": "Library search directories",
 }
+
+
+def resolve_initial_rtl(
+    input_filelist: str | Path | None,
+    origin_verilog: str | Path | None,
+    origin_directory: Path,
+) -> Path | None:
+    """Resolve the initial RTL input: filelist first, then a single RTL file.
+
+    Mirrors the synthesis input priority (input_filelist over origin_verilog).
+    Configured paths win when they exist; otherwise glob the origin directory
+    by suffix, since load_workspace drops these attributes for .sv and
+    filelist inputs. A configured path missing on disk is returned last so
+    callers can report it as failed.
+    """
+    configured = (input_filelist, origin_verilog)
+    for candidate in configured:
+        if candidate and Path(candidate).is_file():
+            return Path(candidate)
+    files = sorted(path for path in origin_directory.glob("*") if path.is_file())
+    for suffixes in (FILELIST_SUFFIXES, RTL_SUFFIXES):
+        match = next((path for path in files if path.suffix.lower() in suffixes), None)
+        if match:
+            return match
+    match = next((path for path in files if path.name.endswith(".v.gz")), None)
+    if match:
+        return match
+    return next((Path(candidate) for candidate in configured if candidate), None)
 
 
 def parse_filelist(filelist_path: str) -> list[str]:

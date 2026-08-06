@@ -20,7 +20,7 @@ from chipcompiler.tools.ecc.sta_qor import (
     read_sta_timing_paths,
 )
 from chipcompiler.utility import json_read
-from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
+from chipcompiler.utility.filelist import resolve_initial_rtl
 
 _STEP_DIRECTORIES = {
     StepEnum.SYNTHESIS.value: "Synthesis_yosys",
@@ -489,33 +489,6 @@ def _flow_items(workspace: Workspace) -> list[dict]:
     return items
 
 
-def _initial_rtl_path(design, origin_directory: Path) -> Path | None:
-    """Resolve the initial RTL input: filelist first, then a single RTL file.
-
-    Mirrors the synthesis input priority (input_filelist over origin_verilog).
-    Configured paths win when they exist; otherwise glob the origin directory
-    by suffix, since load_workspace drops these attributes for .sv and
-    filelist inputs. A configured path missing on disk is returned last so
-    the item reports it as failed.
-    """
-    configured = (
-        getattr(design, "input_filelist", None),
-        getattr(design, "origin_verilog", None),
-    )
-    for candidate in configured:
-        if candidate and Path(candidate).is_file():
-            return Path(candidate)
-    files = sorted(path for path in origin_directory.glob("*") if path.is_file())
-    for suffixes in (FILELIST_SUFFIXES, RTL_SUFFIXES):
-        match = next((path for path in files if path.suffix.lower() in suffixes), None)
-        if match:
-            return match
-    match = next((path for path in files if path.name.endswith(".v.gz")), None)
-    if match:
-        return match
-    return next((Path(candidate) for candidate in configured if candidate), None)
-
-
 def _workspace_items(workspace: Workspace) -> list[dict]:
     workspace_directory = Path(workspace.directory)
     origin_directory = workspace_directory / "origin"
@@ -528,7 +501,15 @@ def _workspace_items(workspace: Workspace) -> list[dict]:
         origin_sdc = next(iter(sorted(origin_directory.glob("*.sdc"))), None)
     config_keys = ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value)
     inputs = (
-        ("provenance.initial.rtl", "Initial RTL", _initial_rtl_path(design, origin_directory)),
+        (
+            "provenance.initial.rtl",
+            "Initial RTL",
+            resolve_initial_rtl(
+                getattr(design, "input_filelist", None),
+                getattr(design, "origin_verilog", None),
+                origin_directory,
+            ),
+        ),
         ("provenance.initial.sdc", "Initial SDC", origin_sdc),
         *(
             (
