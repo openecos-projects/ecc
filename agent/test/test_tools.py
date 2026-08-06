@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data.candidate_materialization import materialize_candidate_config
-from chipcompiler.tools import eda
+from agent import tools as eda
+from agent.data.candidate_materialization import materialize_candidate_config
 
 
 def _write_json(path: Path, data: dict) -> None:

@@ -1,6 +1,4 @@
-from types import SimpleNamespace
-
-from chipcompiler.tools.ecc import plot as ecc_plot
+from agent import plot as ecc_plot
 
 
 class _Executor:
@@ -46,11 +44,7 @@ def test_plot_array_maps_uses_bounded_spawn_process_pool(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(ecc_plot, "tqdm", lambda values, **_kwargs: values)
 
-    plotter = ecc_plot.ECCToolsPlot(
-        workspace=SimpleNamespace(logger=SimpleNamespace(warning=lambda _message: None)),
-        step=None,
-    )
-    plotter.plot_array_maps(input_paths)
+    ecc_plot.plot_array_maps(input_paths, lambda _message: None)
 
     assert calls["executor"].max_workers == ecc_plot.MAX_PLOT_WORKERS
     assert calls["executor"].mp_context.get_start_method() == "spawn"
@@ -64,10 +58,6 @@ def test_plot_array_maps_writes_png_for_each_valid_csv(tmp_path):
         path.write_text("0,1\n1,2\n3,4\n", encoding="utf-8")
         input_paths.append(str(path))
 
-    plotter = ecc_plot.ECCToolsPlot(
-        workspace=SimpleNamespace(logger=SimpleNamespace(warning=lambda _message: None)),
-        step=None,
-    )
-    plotter.plot_array_maps(input_paths)
+    ecc_plot.plot_array_maps(input_paths, lambda _message: None)
 
     assert {path.name for path in tmp_path.glob("*.png")} == {"map_0.png", "map_1.png"}

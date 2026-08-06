@@ -4724,7 +4724,7 @@ class FoundationExtractor:
             ],
             "created_at": datetime.now(UTC).isoformat(),
             "generated_by": {
-                "extractor": "chipcompiler.data.foundation.FoundationExtractor",
+                "extractor": "agent.data.foundation.FoundationExtractor",
                 "profile": self.profile,
                 "schema_version": SCHEMA_VERSION,
                 "parser_versions": {"foundation_contract": SCHEMA_VERSION},

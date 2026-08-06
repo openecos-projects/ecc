@@ -1,4 +1,4 @@
-from chipcompiler.data.foundation.extractor import _attribution_profile_inputs
+from agent.data.foundation.extractor import _attribution_profile_inputs
 
 
 def test_r3_profile_requires_placement_congestion_or_pin_access_seed():

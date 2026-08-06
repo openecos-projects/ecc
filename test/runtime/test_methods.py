@@ -26,11 +26,6 @@ def test_runtime_method_registry_contains_current_methods_once():
         "workspace.reset_flow",
         "workspace.export_signoff",
         "workspace.inspect_signoff",
-        "workspace.extract_foundation",
-        "candidate.export_capabilities",
-        "candidate.bind_input",
-        "candidate.materialize",
-        "candidate.rerun",
         "flow.run",
         "flow.run_step",
     )

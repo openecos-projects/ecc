@@ -10,14 +10,10 @@ import threading
 from collections.abc import Callable
 from copy import copy, deepcopy
 from dataclasses import replace
-from hashlib import sha256
 from pathlib import Path
 from typing import Any, TypeVar
 
 from chipcompiler.runtime.requests import (
-    CandidateBindInputRequest,
-    CandidateMaterializeRequest,
-    CandidateRerunRequest,
     DbEnsureRequest,
     DbReleaseRequest,
     FloorplanEditInspectRequest,
@@ -31,7 +27,6 @@ from chipcompiler.runtime.requests import (
     LayoutEditSaveRequest,
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
-    WorkspaceExtractFoundationRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
     WorkspaceInspectSignoffRequest,
@@ -218,119 +213,6 @@ class WorkspaceRuntimeApi:
 
         return self._with_session_mutation_lock(request.workspace_id, inspect)
 
-    def extract_foundation(self, request: WorkspaceExtractFoundationRequest) -> dict:
-        def extract(session: WorkspaceSession) -> dict:
-            from chipcompiler.data.foundation import FoundationExtractor
-
-            workspace_directory = Path(session.workspace.directory).resolve()
-            FoundationExtractor(str(workspace_directory), profile="iccd_full_v1").extract(
-                include_raw_refs=False,
-                materialize_audit_tables=True,
-                route_detail_level="full",
-            )
-            manifest = workspace_directory / "foundation_data/ecc/manifest.json"
-            try:
-                payload = json.loads(manifest.read_text(encoding="utf-8"))
-            except (OSError, ValueError) as exc:
-                raise RuntimeApiError(
-                    "command_failed",
-                    f"foundation extraction failed: {exc}",
-                ) from exc
-            if payload.get("contract_name") != "foundation_data/ecc":
-                raise RuntimeApiError(
-                    "command_failed",
-                    "foundation extractor produced an unsupported contract",
-                )
-            return {
-                "manifestRef": "foundation_data/ecc/manifest.json",
-                "manifestSha256": sha256(manifest.read_bytes()).hexdigest(),
-                "contractName": payload["contract_name"],
-                "schemaVersion": payload.get("schema_version"),
-            }
-
-        return self._with_session_mutation_lock(request.workspace_id, extract)
-
-    def export_candidate_capabilities(self, request: WorkspaceIdRequest) -> dict:
-        def export(session: WorkspaceSession) -> dict:
-            from chipcompiler.data import export_candidate_capabilities
-
-            return export_candidate_capabilities(session.workspace)
-
-        return self._with_session_mutation_lock(request.workspace_id, export)
-
-    def bind_candidate_input(self, request: CandidateBindInputRequest) -> dict:
-        def bind(session: WorkspaceSession) -> dict:
-            from chipcompiler.data import bind_candidate_input
-
-            flow = build_flow_for_workspace(session.workspace)
-            return bind_candidate_input(
-                session.workspace,
-                flow,
-                request.target_step,
-                request.source_step,
-                request.candidate_id,
-            )
-
-        return self._with_session_mutation_lock(request.workspace_id, bind)
-
-    def materialize_candidate(self, request: CandidateMaterializeRequest) -> dict:
-        def materialize(session: WorkspaceSession) -> dict:
-            from chipcompiler.data import materialize_candidate_config
-
-            return materialize_candidate_config(
-                session.workspace,
-                request.target_step,
-                request.patch,
-                request.candidate_id,
-            )
-
-        return self._with_session_mutation_lock(request.workspace_id, materialize)
-
-    def candidate_rerun(self, request: CandidateRerunRequest) -> dict:
-        def rerun(session: WorkspaceSession) -> dict:
-            should_capture = self._should_capture_session_db(session)
-            previous_db = session.db_handle if should_capture else None
-            if should_capture:
-                self._release_session_db(session)
-                previous_db = None
-            flow = self._build_flow_for_session(session, attach_session_db=False)
-            try:
-                steps = self._candidate_rerun_steps(
-                    flow, request.target_step, request.end_step, request.execution_scope
-                )
-                if request.patch:
-                    self._materialize_candidate_rerun(session.workspace, flow, request)
-                self._prepare_candidate_rerun(session.workspace, flow, steps)
-                if request.patch:
-                    self._reapply_candidate_input_for_execution(
-                        session.workspace, flow, request.target_step
-                    )
-                for workspace_step in steps:
-                    _init_db_engine_for_workspace_step(flow, workspace_step)
-                    state = flow.run_step(workspace_step, rerun=True)
-                    if _state_value(state) != "Success":
-                        raise RuntimeApiError(
-                            "command_failed",
-                            "candidate rerun step "
-                            f"{workspace_step.name} failed with state {_state_value(state)}",
-                        )
-                return {
-                    "end_step": request.end_step,
-                    "execution_scope": request.execution_scope,
-                    "target_step": request.target_step,
-                }
-            finally:
-                if should_capture:
-                    self._capture_flow_db(
-                        session,
-                        flow,
-                        previous_handle=previous_db,
-                    )
-                else:
-                    self._close_transient_flow_db(flow)
-
-        return self._with_session_mutation_lock(request.workspace_id, rerun)
-
     def close_workspace(self, request: WorkspaceIdRequest) -> dict:
         def close(session: WorkspaceSession) -> dict:
             self._discard_layout_edit_session(session)
@@ -392,11 +274,6 @@ class WorkspaceRuntimeApi:
             workspace_step = engine_flow.get_workspace_step(request.step)
             if workspace_step is None:
                 raise RuntimeApiError("command_failed", f"step not found: {request.step}")
-            self._reapply_candidate_input_for_execution(
-                session.workspace,
-                engine_flow,
-                request.step,
-            )
 
             try:
                 step_already_succeeded = not request.rerun and engine_flow.check_state(
@@ -832,143 +709,6 @@ class WorkspaceRuntimeApi:
         import chipcompiler.data as data_api
 
         data_api.prepare_workspace_for_rerun(workspace, engine_flow)
-
-    def _reapply_candidate_input_for_execution(
-        self,
-        workspace,
-        engine_flow,
-        target_step: str,
-    ) -> None:
-        import chipcompiler.data as data_api
-
-        try:
-            candidate_id = data_api.validate_candidate_step_contract(workspace, target_step)
-            if candidate_id is not None:
-                data_api.reapply_candidate_input_binding(workspace, engine_flow, target_step)
-        except ValueError as error:
-            raise RuntimeApiError(
-                "command_failed",
-                f"candidate contract is invalid for {target_step}: {error}",
-            ) from error
-
-    @staticmethod
-    def _candidate_rerun_steps(
-        engine_flow, target_step: str, end_step: str, execution_scope: str
-    ) -> list:
-        if execution_scope not in {"single_step", "full_flow"}:
-            raise RuntimeApiError("invalid_request", "candidate rerun execution scope is invalid")
-        steps = list(getattr(engine_flow, "workspace_steps", ()))
-        target_index = next(
-            (index for index, step in enumerate(steps) if step.name == target_step), None
-        )
-        end_index = next((index for index, step in enumerate(steps) if step.name == end_step), None)
-        if target_index is None or end_index is None:
-            raise RuntimeApiError(
-                "command_failed", f"rerun step not found: {target_step} or {end_step}"
-            )
-        if execution_scope == "single_step":
-            if target_step != end_step:
-                raise RuntimeApiError(
-                    "invalid_request", "single-step rerun end step must match the target step"
-                )
-            return [steps[target_index]]
-        if end_index < target_index:
-            raise RuntimeApiError("invalid_request", "rerun end step precedes the target step")
-        return steps[target_index : end_index + 1]
-
-    @staticmethod
-    def _materialize_candidate_rerun(
-        workspace,
-        engine_flow,
-        request: CandidateRerunRequest,
-    ) -> None:
-        from chipcompiler.data import bind_candidate_input, materialize_candidate_config
-
-        source_step = WorkspaceRuntimeApi._candidate_source_step(engine_flow, request.target_step)
-        bind_candidate_input(
-            workspace,
-            engine_flow,
-            request.target_step,
-            source_step,
-            request.candidate_id,
-        )
-        materialize_candidate_config(
-            workspace,
-            request.target_step,
-            request.patch,
-            request.candidate_id,
-        )
-
-    @staticmethod
-    def _candidate_source_step(engine_flow, target_step: str) -> str:
-        steps = list(getattr(engine_flow, "workspace_steps", ()))
-        for index, step in enumerate(steps):
-            if step.name == target_step and index:
-                return steps[index - 1].name
-        raise RuntimeApiError(
-            "invalid_request",
-            f"candidate target has no predecessor: {target_step}",
-        )
-
-    @staticmethod
-    def _prepare_candidate_rerun(workspace, engine_flow, steps: list) -> None:
-        workspace_root = Path(workspace.directory).resolve()
-        for step in steps:
-            directories = WorkspaceRuntimeApi._candidate_step_artifact_dirs(step)
-            if not directories:
-                raise RuntimeApiError(
-                    "command_failed",
-                    f"candidate step has no output: {step.name}",
-                )
-            for directory in directories:
-                WorkspaceRuntimeApi._clear_candidate_artifact_dir(
-                    workspace_root,
-                    directory,
-                    step.name,
-                )
-            record = engine_flow.get_step(step.name, step.tool)
-            if record is None:
-                raise RuntimeApiError(
-                    "command_failed",
-                    f"candidate flow state is missing: {step.name}",
-                )
-            record.update({"state": "Unstart", "runtime": "", "peak memory (mb)": 0})
-        engine_flow.save()
-
-    @staticmethod
-    def _candidate_step_artifact_dirs(step) -> tuple[Path, ...]:
-        directories: list[Path] = []
-        for field in ("output", "data", "feature", "analysis", "report", "log"):
-            value = getattr(step, field, {})
-            directory = value.get("dir") if isinstance(value, dict) else getattr(value, "dir", None)
-            if directory:
-                directories.append(Path(directory))
-        return tuple(dict.fromkeys(directories))
-
-    @staticmethod
-    def _clear_candidate_artifact_dir(
-        workspace_root: Path,
-        directory: Path,
-        step_name: str,
-    ) -> None:
-        resolved = directory.resolve()
-        if (
-            resolved == workspace_root
-            or not path_is_within(resolved, workspace_root)
-            or directory.is_symlink()
-        ):
-            raise RuntimeApiError(
-                "command_failed",
-                f"candidate artifact escapes workspace: {step_name}",
-            )
-        if directory.exists():
-            if not directory.is_dir():
-                raise RuntimeApiError(
-                    "command_failed",
-                    f"candidate artifact is not a directory: {step_name}",
-                )
-            shutil.rmtree(directory)
-        directory.mkdir(parents=True, exist_ok=True)
 
 
 def _layout_edit_begin_result(edit_session: LayoutEditSession, *, reused: bool) -> dict:

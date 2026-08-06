@@ -4,12 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.data.candidate_contract import (
+from agent.data.candidate_contract import (
     CandidateStepContractError,
     validate_candidate_step_contract,
 )
-from chipcompiler.data.candidate_input_binding import bind_candidate_input
-from chipcompiler.data.candidate_materialization import materialize_candidate_config
+from agent.data.candidate_input_binding import bind_candidate_input
+from agent.data.candidate_materialization import materialize_candidate_config
 
 
 class _Flow:

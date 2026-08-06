@@ -5,15 +5,15 @@ from unittest.mock import ANY
 
 import pytest
 
-from chipcompiler.data.candidate_capabilities import export_candidate_capabilities
-from chipcompiler.data.candidate_materialization import (
+from agent.data.candidate_capabilities import export_candidate_capabilities
+from agent.data.candidate_materialization import (
     CandidateMaterializationError,
     candidate_knob_registry,
     materialize_candidate_config,
     reapply_materialized_candidate_config,
     validate_materialized_candidate_config,
 )
-from chipcompiler.data.candidate_registry import candidate_capability_registry
+from agent.data.candidate_registry import candidate_capability_registry
 
 
 def _write_json(path: Path, data: dict) -> None:

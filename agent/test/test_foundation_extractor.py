@@ -10,16 +10,16 @@ from pathlib import Path
 
 import pytest
 
-import chipcompiler.data.foundation.extractor as extractor_module
-import chipcompiler.data.foundation.table_contract as table_contract_module
-from chipcompiler.data.foundation import FoundationExtractor
-from chipcompiler.data.foundation.grid.canonical_grid import build_patch_grid
-from chipcompiler.data.foundation.parsers.def_parser import parse_def
-from chipcompiler.data.foundation.parsers.route_native_demand_capacity import (
+import agent.data.foundation.extractor as extractor_module
+import agent.data.foundation.table_contract as table_contract_module
+from agent.data.foundation import FoundationExtractor
+from agent.data.foundation.grid.canonical_grid import build_patch_grid
+from agent.data.foundation.parsers.def_parser import parse_def
+from agent.data.foundation.parsers.route_native_demand_capacity import (
     parse_route_native_demand_capacity_artifacts,
 )
-from chipcompiler.data.foundation.table_contract import TABLE_SPECS, write_tables
-from chipcompiler.data.foundation.writers import write_parquet
+from agent.data.foundation.table_contract import TABLE_SPECS, write_tables
+from agent.data.foundation.writers import write_parquet
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -736,7 +736,7 @@ END DESIGN
 
 
 def test_read_numeric_csv_ignores_trailing_empty_columns(tmp_path: Path):
-    from chipcompiler.data.foundation.parsers.map_csv import read_numeric_csv, shape
+    from agent.data.foundation.parsers.map_csv import read_numeric_csv, shape
 
     csv_path = tmp_path / "trailing.csv"
     csv_path.write_text("1,2,\n3,,4,\n", encoding="utf-8")
@@ -814,9 +814,7 @@ def test_iccd_full_v1_extractor_writes_parquet_contract_and_no_legacy_defaults(t
     assert manifest["design_id"].startswith("design_")
     assert manifest["run_id"].startswith("run_")
     assert manifest["created_at"]
-    assert (
-        manifest["generated_by"]["extractor"] == "chipcompiler.data.foundation.FoundationExtractor"
-    )
+    assert manifest["generated_by"]["extractor"] == "agent.data.foundation.FoundationExtractor"
     assert [stage["stage_name"] for stage in manifest["stages"]] == [
         "Floorplan",
         "place",
@@ -1371,7 +1369,7 @@ def test_stage_table_preserves_runtime_and_peak_memory_from_flow(tmp_path: Path)
 def test_write_tables_passes_iterables_without_eager_list_materialization(
     tmp_path: Path, monkeypatch
 ):
-    import chipcompiler.data.foundation.table_contract as table_contract_module
+    import agent.data.foundation.table_contract as table_contract_module
 
     captured = {}
 
@@ -1882,7 +1880,7 @@ def test_build_table_rows_reuses_dynamic_rows_for_provenance(tmp_path: Path, mon
 
 
 def test_route_native_demand_capacity_jsonl_is_read_streaming(tmp_path: Path, monkeypatch):
-    from chipcompiler.data.foundation.parsers import route_native_demand_capacity as parser
+    from agent.data.foundation.parsers import route_native_demand_capacity as parser
 
     ws = _make_workspace(tmp_path)
     path = (

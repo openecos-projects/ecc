@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.data.candidate_input_binding import (
+from agent.data.candidate_input_binding import (
     CandidateInputBindingError,
     bind_candidate_input,
     reapply_candidate_input_binding,

@@ -4,9 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Final, Generic, TypeVar
 
 from chipcompiler.runtime.requests import (
-    CandidateBindInputRequest,
-    CandidateMaterializeRequest,
-    CandidateRerunRequest,
     DbEnsureRequest,
     DbReleaseRequest,
     FloorplanEditInspectRequest,
@@ -21,7 +18,6 @@ from chipcompiler.runtime.requests import (
     WorkspaceCloseRequest,
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
-    WorkspaceExtractFoundationRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
     WorkspaceInspectSignoffRequest,
@@ -89,31 +85,6 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="workspace.inspect_signoff",
         request_model=WorkspaceInspectSignoffRequest,
         handler_name="inspect_signoff",
-    ),
-    RuntimeMethodSpec(
-        method_name="workspace.extract_foundation",
-        request_model=WorkspaceExtractFoundationRequest,
-        handler_name="extract_foundation",
-    ),
-    RuntimeMethodSpec(
-        method_name="candidate.export_capabilities",
-        request_model=WorkspaceIdRequest,
-        handler_name="export_candidate_capabilities",
-    ),
-    RuntimeMethodSpec(
-        method_name="candidate.bind_input",
-        request_model=CandidateBindInputRequest,
-        handler_name="bind_candidate_input",
-    ),
-    RuntimeMethodSpec(
-        method_name="candidate.materialize",
-        request_model=CandidateMaterializeRequest,
-        handler_name="materialize_candidate",
-    ),
-    RuntimeMethodSpec(
-        method_name="candidate.rerun",
-        request_model=CandidateRerunRequest,
-        handler_name="candidate_rerun",
     ),
     RuntimeMethodSpec(
         method_name="flow.run",

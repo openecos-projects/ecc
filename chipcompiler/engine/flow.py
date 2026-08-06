@@ -80,7 +80,6 @@ class EngineFlow:
         # steps.append(self.init_flow_step(StepEnum.TIMING_OPT_HOLD, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.ROUTING, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.DRC, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
         # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
         # steps.append(self.init_flow_step(StepEnum.SIGNOFF, "ecc", StateEnum.Unstart))
@@ -457,7 +456,6 @@ class EngineFlow:
             daemon=True,
         )
         memory_monitor.start()
-        result = False
         try:
             from chipcompiler.tools import run_step as run_tool_step
 
@@ -479,16 +477,11 @@ class EngineFlow:
         runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
 
         # determine and save state
-        if result is StateEnum.Invalid:
-            state = StateEnum.Invalid
-        elif result is True or result is StateEnum.Success:
-            state = (
-                StateEnum.Success
-                if self.check_step_result(workspace_step=workspace_step)
-                else StateEnum.Imcomplete
-            )
-        else:
-            state = StateEnum.Imcomplete
+        state = (
+            StateEnum.Success
+            if self.check_step_result(workspace_step=workspace_step)
+            else StateEnum.Imcomplete
+        )
         self.set_state(
             name=workspace_step.name,
             tool=workspace_step.tool,
