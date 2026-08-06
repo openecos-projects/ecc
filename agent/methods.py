@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any, Final
 
 from chipcompiler.runtime.methods import RuntimeMethodSpec

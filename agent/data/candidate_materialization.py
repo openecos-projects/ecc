@@ -1,7 +1,5 @@
 """Controlled, replayable config overlays for isolated ECC candidate workspaces."""
 
-from __future__ import annotations
-
 import math
 from pathlib import Path
 from typing import Any

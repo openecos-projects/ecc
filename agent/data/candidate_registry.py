@@ -1,7 +1,5 @@
 """Static candidate knobs and runtime backend requirements."""
 
-from __future__ import annotations
-
 from dataclasses import asdict, dataclass
 from typing import Any
 

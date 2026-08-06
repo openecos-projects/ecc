@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 def resize_nearest(matrix: list[list[float]], rows: int, cols: int) -> list[list[float]]:
     if rows <= 0 or cols <= 0:
         return []

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from chipcompiler.data import Workspace, WorkspaceStep, log_workspace_step
 from chipcompiler.tools.eda import load_eda_module
 

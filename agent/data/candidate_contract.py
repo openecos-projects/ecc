@@ -1,7 +1,5 @@
 """Runtime checks shared by candidate config and checkpoint receipts."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from .candidate_input_binding import input_binding_candidate_id

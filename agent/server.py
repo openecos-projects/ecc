@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from jsonrpcserver import Error
 
 from chipcompiler.runtime.server import ERROR_CODES, RuntimeServer

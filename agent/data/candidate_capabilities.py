@@ -1,7 +1,5 @@
 """Stable capability metadata for controlled ECC candidate execution."""
 
-from __future__ import annotations
-
 from dataclasses import asdict
 from typing import Any
 
