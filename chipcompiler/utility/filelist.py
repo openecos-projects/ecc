@@ -141,6 +141,24 @@ def _remove_inline_comment(line: str) -> str:
     return line
 
 
+def rewrite_absolute_entries(content: str) -> str:
+    """Rewrite absolute filelist entries to their basenames.
+
+    Workspace creation bundles absolute-entry sources by basename, so a
+    packaged filelist must reference those basenames to stay resolvable.
+    Other lines (relative paths, comments, directives) are kept verbatim.
+    Raises ValueError for unsupported options, like parse_filelist.
+    """
+    lines = []
+    for line_num, line in enumerate(content.splitlines(keepends=True), 1):
+        entry = _parse_line(line, line_num)
+        if entry is not None and os.path.isabs(entry):
+            lines.append(line.replace(entry, os.path.basename(entry), 1))
+        else:
+            lines.append(line)
+    return "".join(lines)
+
+
 def resolve_path(path: str, base_dir: str) -> str:
     """
     Resolve a file path (relative or absolute) based on a base directory.

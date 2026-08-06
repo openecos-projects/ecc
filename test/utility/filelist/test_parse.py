@@ -6,6 +6,7 @@ from chipcompiler.utility.filelist import (
     get_filelist_info,
     parse_filelist,
     resolve_path,
+    rewrite_absolute_entries,
     validate_filelist,
 )
 
@@ -190,3 +191,26 @@ class TestParseIncdirDirectives:
         )
         dirs = parse_incdir_from_content(content)
         assert dirs == ["./include", "./rtl/common", "./quoted", "./leading", "./tab"]
+
+
+class TestRewriteAbsoluteEntries:
+    def test_rewrites_absolute_entries_to_basenames(self):
+        content = "/abs/path/gcd.sv\nrtl/relative.sv\n"
+
+        assert rewrite_absolute_entries(content) == "gcd.sv\nrtl/relative.sv\n"
+
+    def test_keeps_quotes_and_comments(self):
+        content = '"/abs/path with spaces/gcd.sv"  # top\n// comment\n+incdir+./include\n'
+
+        assert rewrite_absolute_entries(content) == (
+            '"gcd.sv"  # top\n// comment\n+incdir+./include\n'
+        )
+
+    def test_relative_only_content_is_unchanged(self):
+        content = "rtl/gcd.sv\ngcd_pkg.sv"
+
+        assert rewrite_absolute_entries(content) == content
+
+    def test_rejects_unsupported_options(self):
+        with pytest.raises(ValueError, match="Unsupported filelist option"):
+            rewrite_absolute_entries("-f nested.f\n")

@@ -17,7 +17,12 @@ from chipcompiler.tools.ecc.sta_qor import (
     STA_TIMING_PATHS_FILENAME,
     sta_artifact_directory,
 )
-from chipcompiler.utility.filelist import FILELIST_SUFFIXES, parse_filelist, resolve_initial_rtl
+from chipcompiler.utility.filelist import (
+    FILELIST_SUFFIXES,
+    parse_filelist,
+    resolve_initial_rtl,
+    rewrite_absolute_entries,
+)
 
 SIGNOFF_REQUIRED_QOR_STEPS = {
     StepEnum.HARDEN.value,
@@ -108,7 +113,12 @@ class SignoffPackageCollector:
         issues: list[SignoffPackageIssue] = []
 
         def add_file(
-            role: str, source: Path | None, destination: str, *, required: bool = False
+            role: str,
+            source: Path | None,
+            destination: str,
+            *,
+            required: bool = False,
+            content: str | None = None,
         ) -> None:
             self._add_file(
                 workspace_dir=workspace_dir,
@@ -122,6 +132,7 @@ class SignoffPackageCollector:
                 missing_optional=missing_optional,
                 issues=issues,
                 materialize=options.materialize,
+                content=content,
             )
 
         flow_path = workspace_dir / "home" / "flow.json"
@@ -265,13 +276,14 @@ class SignoffPackageCollector:
                 configured_filelist is not None and origin_rtl == Path(configured_filelist)
             )
             if is_filelist:
-                add_file("initial.filelist", origin_rtl, rtl_destination, required=True)
                 # Workspace creation copies filelist sources into origin/ keeping
                 # each entry's filelist-relative path (absolute entries land at
-                # their basename); bundle them the same way so the packaged
-                # filelist stays resolvable. +incdir header trees are not bundled.
+                # their basename); bundle them the same way and rewrite absolute
+                # entries to those basenames so the packaged filelist stays
+                # resolvable. +incdir header trees are not bundled.
                 try:
                     rtl_entries = parse_filelist(str(origin_rtl))
+                    filelist_text = rewrite_absolute_entries(origin_rtl.read_text(encoding="utf-8"))
                 except (OSError, ValueError) as error:
                     # Without the entries the packaged filelist would dangle, so
                     # block the export instead of shipping an incomplete package.
@@ -286,6 +298,14 @@ class SignoffPackageCollector:
                         )
                     )
                     rtl_entries = []
+                else:
+                    add_file(
+                        "initial.filelist",
+                        origin_rtl,
+                        rtl_destination,
+                        required=True,
+                        content=filelist_text,
+                    )
                 packaged_entries = set()
                 escaped_entries = []
                 for rtl_entry in rtl_entries:
@@ -615,8 +635,13 @@ class SignoffPackageCollector:
         missing_optional: list[str],
         issues: list[SignoffPackageIssue],
         materialize: bool,
+        content: str | None = None,
     ) -> None:
-        if source is None or not source.is_file() or source.stat().st_size <= 0:
+        if content is not None:
+            missing = not content
+        else:
+            missing = source is None or not source.is_file() or source.stat().st_size <= 0
+        if missing:
             if required:
                 missing_required.append(destination)
             else:
@@ -640,11 +665,14 @@ class SignoffPackageCollector:
         if materialize:
             target = package_dir / destination
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
+            if content is None:
+                shutil.copy2(source, target)
+            else:
+                target.write_text(content, encoding="utf-8")
             size_bytes = target.stat().st_size
             sha256 = self._sha256(target)
         else:
-            size_bytes = source.stat().st_size
+            size_bytes = len(content.encode()) if content is not None else source.stat().st_size
             sha256 = None
         copied.append(
             {

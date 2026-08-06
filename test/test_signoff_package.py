@@ -497,3 +497,24 @@ def test_collect_signoff_package_blocks_escaping_filelist_entries(tmp_path):
     assert result.ok is False
     assert any(issue.label == "Origin RTL sources" and issue.required for issue in result.issues)
     assert not (Path(result.package_dir) / "escape.sv").exists()
+
+
+def test_collect_signoff_package_rewrites_absolute_filelist_entries(tmp_path):
+    # Creation copies absolute-entry sources into origin/ by basename; the
+    # packaged filelist must reference those basenames to stay resolvable.
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "origin" / "gcd.v").unlink()
+    external = tmp_path / "external" / "gcd.sv"
+    _write(external, "module gcd; endmodule\n")
+    _write(workspace_dir / "origin" / "gcd.f", f'"{external}"  # top\n')
+    _write(workspace_dir / "origin" / "gcd.sv", "module gcd; endmodule\n")
+    engine_flow = _make_engine_flow(workspace_dir)
+    engine_flow.workspace.design.origin_verilog = None
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
+
+    assert result.ok is True
+    package_dir = Path(result.package_dir)
+    assert (package_dir / "initial" / "gcd.sv").is_file()
+    packaged_filelist = (package_dir / "initial" / "gcd.f").read_text(encoding="utf-8")
+    assert packaged_filelist == '"gcd.sv"  # top\n'
