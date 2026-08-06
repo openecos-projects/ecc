@@ -2,6 +2,7 @@ import glob
 import hashlib
 import importlib
 import json
+import os
 import shutil
 import tarfile
 import time
@@ -16,6 +17,7 @@ from chipcompiler.tools.ecc.sta_qor import (
     STA_TIMING_PATHS_FILENAME,
     sta_artifact_directory,
 )
+from chipcompiler.utility.filelist import FILELIST_SUFFIXES, parse_filelist, resolve_initial_rtl
 
 SIGNOFF_REQUIRED_QOR_STEPS = {
     StepEnum.HARDEN.value,
@@ -185,21 +187,27 @@ class SignoffPackageCollector:
                     )
 
         db_config = self._read_json(config_dir / "db_default_config.json")
-        origin_verilog, origin_verilog_reason = self._find_one(
+        configured_filelist = getattr(self.workspace.design, "input_filelist", None)
+        origin_rtl = resolve_initial_rtl(
+            configured_filelist,
+            getattr(self.workspace.design, "origin_verilog", None),
             workspace_dir / "origin",
-            preferred_name=f"{design}.v",
-            pattern="*.v",
         )
-        if origin_verilog is None:
-            missing_required.append("origin Verilog")
+        if origin_rtl is not None:
+            rtl_suffix = ".v.gz" if origin_rtl.name.endswith(".v.gz") else origin_rtl.suffix.lower()
+            rtl_destination = f"initial/{design}{rtl_suffix}"
+        else:
+            rtl_destination = f"initial/{design}.v"
+        if origin_rtl is None or not origin_rtl.is_file():
+            missing_required.append("origin RTL")
             issues.append(
                 SignoffPackageIssue(
                     kind="resource",
-                    label="Origin Verilog",
-                    location=f"origin/{design}.v",
-                    reason=origin_verilog_reason,
+                    label="Origin RTL",
+                    location=self._review_source_path(workspace_dir, origin_rtl, "origin"),
+                    reason="Required file is missing or empty",
                     required=True,
-                    destination=f"initial/{design}.v",
+                    destination=rtl_destination,
                 )
             )
         origin_sdc = self._path_from_config(
@@ -249,8 +257,73 @@ class SignoffPackageCollector:
             destination=f"harden/{design}.png",
         )
 
-        if origin_verilog is not None:
-            add_file("initial.verilog", origin_verilog, f"initial/{design}.v", required=True)
+        if origin_rtl is not None and origin_rtl.is_file():
+            # Like synthesis, a configured input_filelist is always a filelist;
+            # runtime-created ones are suffixless (origin/filelist), so the
+            # suffix check alone would miss them.
+            is_filelist = origin_rtl.suffix.lower() in FILELIST_SUFFIXES or (
+                configured_filelist is not None and origin_rtl == Path(configured_filelist)
+            )
+            if is_filelist:
+                add_file("initial.filelist", origin_rtl, rtl_destination, required=True)
+                # Workspace creation copies filelist sources into origin/ keeping
+                # each entry's filelist-relative path (absolute entries land at
+                # their basename); bundle them the same way so the packaged
+                # filelist stays resolvable. +incdir header trees are not bundled.
+                try:
+                    rtl_entries = parse_filelist(str(origin_rtl))
+                except (OSError, ValueError) as error:
+                    # Without the entries the packaged filelist would dangle, so
+                    # block the export instead of shipping an incomplete package.
+                    issues.append(
+                        SignoffPackageIssue(
+                            kind="resource",
+                            label="Origin RTL sources",
+                            location=self._review_source_path(workspace_dir, origin_rtl, "origin"),
+                            reason=f"Could not parse origin filelist for packaging: {error}",
+                            required=True,
+                            destination=rtl_destination,
+                        )
+                    )
+                    rtl_entries = []
+                packaged_entries = set()
+                escaped_entries = []
+                for rtl_entry in rtl_entries:
+                    relative = (
+                        os.path.basename(rtl_entry) if os.path.isabs(rtl_entry) else rtl_entry
+                    )
+                    # Parent-relative entries would escape initial/ (and already
+                    # escaped origin/ at creation); bundling them corrupts the
+                    # package layout, so they block the export instead.
+                    normalized = os.path.normpath(relative)
+                    if normalized == ".." or normalized.startswith(f"..{os.sep}"):
+                        escaped_entries.append(rtl_entry)
+                        continue
+                    if normalized in packaged_entries:
+                        continue
+                    packaged_entries.add(normalized)
+                    add_file(
+                        "initial.verilog",
+                        workspace_dir / "origin" / normalized,
+                        f"initial/{normalized}",
+                        required=True,
+                    )
+                if escaped_entries:
+                    issues.append(
+                        SignoffPackageIssue(
+                            kind="resource",
+                            label="Origin RTL sources",
+                            location=self._review_source_path(workspace_dir, origin_rtl, "origin"),
+                            reason=(
+                                "Filelist entries escape the package layout: "
+                                + ", ".join(escaped_entries)
+                            ),
+                            required=True,
+                            destination=rtl_destination,
+                        )
+                    )
+            else:
+                add_file("initial.verilog", origin_rtl, rtl_destination, required=True)
         if origin_sdc is not None:
             add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
         add_file(
@@ -451,7 +524,7 @@ class SignoffPackageCollector:
                 "qor_analysis_issue_count": len(analysis_issues),
             },
             "initial": {
-                "verilog": f"initial/{design}.v",
+                "verilog": rtl_destination,
                 "sdc": f"initial/{design}.sdc",
                 "parameters": "initial/parameters.json",
             },
