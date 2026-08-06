@@ -197,6 +197,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     assert not (package_dir / "final" / "final").exists()
 
     summary = json.loads((package_dir / "summary.json").read_text())
+    assert summary["initial"]["verilog"] == "initial/gcd.v"
     assert summary["final"]["verilog"] == "final/design/gcd.v.gz"
     assert summary["qor_metrics"]["schema_version"] == 3
     assert (
@@ -379,3 +380,120 @@ def test_collect_signoff_package_reports_actionable_inspection_issues(tmp_path):
         issue.location == "RCX" and issue.reason == "State is Failed" for issue in result.issues
     )
     assert all(str(workspace_dir) not in issue.location for issue in result.issues)
+
+
+def test_collect_signoff_package_accepts_systemverilog_origin(tmp_path):
+    # load_workspace restores neither input_filelist nor .sv sources, so the
+    # collector must rediscover the RTL by globbing the origin directory.
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "origin" / "gcd.v").unlink()
+    _write(workspace_dir / "origin" / "gcd.sv", "module gcd; endmodule\n")
+    engine_flow = _make_engine_flow(workspace_dir)
+    engine_flow.workspace.design.origin_verilog = None
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
+
+    assert result.ok is True
+    package_dir = Path(result.package_dir)
+    assert (package_dir / "initial" / "gcd.sv").is_file()
+    summary = json.loads((package_dir / "summary.json").read_text())
+    assert summary["initial"]["verilog"] == "initial/gcd.sv"
+
+
+def test_collect_signoff_package_bundles_filelist_sources(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "origin" / "gcd.v").unlink()
+    _write(workspace_dir / "origin" / "gcd.f", "rtl/gcd.sv\ngcd_pkg.sv\n")
+    _write(workspace_dir / "origin" / "rtl" / "gcd.sv", "module gcd; endmodule\n")
+    _write(workspace_dir / "origin" / "gcd_pkg.sv", "package gcd_pkg; endpackage\n")
+    engine_flow = _make_engine_flow(workspace_dir)
+    engine_flow.workspace.design.origin_verilog = None
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
+
+    assert result.ok is True
+    package_dir = Path(result.package_dir)
+    assert (package_dir / "initial" / "gcd.f").is_file()
+    assert (package_dir / "initial" / "rtl" / "gcd.sv").is_file()
+    assert (package_dir / "initial" / "gcd_pkg.sv").is_file()
+    summary = json.loads((package_dir / "summary.json").read_text())
+    assert summary["initial"]["verilog"] == "initial/gcd.f"
+    manifest = json.loads((package_dir / "manifest.json").read_text())
+    roles = {item["destination"]: item["role"] for item in manifest["files"]}
+    assert roles["initial/gcd.f"] == "initial.filelist"
+    assert roles["initial/rtl/gcd.sv"] == "initial.verilog"
+    assert roles["initial/gcd_pkg.sv"] == "initial.verilog"
+
+
+def test_collect_signoff_package_blocks_missing_origin_rtl(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "origin" / "gcd.v").unlink()
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert "package.initial.gcd.v" in result.missing_required
+    assert any(
+        issue.label == "Origin RTL"
+        and issue.location == "origin/gcd.v"
+        and issue.destination == "initial/gcd.v"
+        and issue.required
+        for issue in result.issues
+    )
+
+
+def test_collect_signoff_package_bundles_suffixless_filelist(tmp_path):
+    # WorkspaceRuntimeApi writes generated filelists as origin/filelist with no
+    # suffix; the configured attribute, not the suffix, marks it as a filelist.
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "origin" / "gcd.v").unlink()
+    _write(workspace_dir / "origin" / "filelist", "rtl/gcd.sv\n")
+    _write(workspace_dir / "origin" / "rtl" / "gcd.sv", "module gcd; endmodule\n")
+    engine_flow = _make_engine_flow(workspace_dir)
+    engine_flow.workspace.design.origin_verilog = None
+    engine_flow.workspace.design.input_filelist = workspace_dir / "origin" / "filelist"
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
+
+    assert result.ok is True
+    package_dir = Path(result.package_dir)
+    assert (package_dir / "initial" / "gcd").is_file()
+    assert (package_dir / "initial" / "rtl" / "gcd.sv").is_file()
+    manifest = json.loads((package_dir / "manifest.json").read_text())
+    roles = {item["destination"]: item["role"] for item in manifest["files"]}
+    assert roles["initial/gcd"] == "initial.filelist"
+    assert roles["initial/rtl/gcd.sv"] == "initial.verilog"
+
+
+def test_collect_signoff_package_blocks_unparseable_filelist(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "origin" / "gcd.v").unlink()
+    _write(workspace_dir / "origin" / "gcd.f", "-f nested.f\n")
+    engine_flow = _make_engine_flow(workspace_dir)
+    engine_flow.workspace.design.origin_verilog = None
+
+    result = engine_flow.collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert any(issue.label == "Origin RTL sources" and issue.required for issue in result.issues)
+
+
+def test_collect_signoff_package_blocks_escaping_filelist_entries(tmp_path):
+    # The source exists outside origin/, so without the containment guard the
+    # entry would be copied to an escaped destination and the export would pass.
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "origin" / "gcd.v").unlink()
+    _write(workspace_dir / "origin" / "gcd.f", "../escape.sv\n")
+    _write(workspace_dir / "escape.sv", "module escape; endmodule\n")
+    engine_flow = _make_engine_flow(workspace_dir)
+    engine_flow.workspace.design.origin_verilog = None
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
+
+    assert result.ok is False
+    assert any(issue.label == "Origin RTL sources" and issue.required for issue in result.issues)
+    assert not (Path(result.package_dir) / "escape.sv").exists()
