@@ -12,6 +12,17 @@ class TestPackaging:
         assert data["project"]["scripts"]["ecc"] == "chipcompiler.cli.main:main"
         assert set(data["project"]["scripts"]) == {"ecc"}
 
+    def test_build_backend_packages_agent_extension(self):
+        import tomllib
+
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        pyproject = os.path.join(project_root, "pyproject.toml")
+        with open(pyproject, "rb") as f:
+            data = tomllib.load(f)
+
+        assert data["tool"]["uv"]["build-backend"]["module-name"] == ["chipcompiler", "agent"]
+        assert "agent/test/**" in data["tool"]["uv"]["build-backend"]["wheel-exclude"]
+
     def test_pyinstaller_spec_collects_jsonrpcserver_data_files(self):
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         spec_path = os.path.join(project_root, "ecc.spec")
@@ -20,6 +31,16 @@ class TestPackaging:
             source = f.read()
 
         assert 'collect_data_files("jsonrpcserver")' in source
+
+    def test_pyinstaller_spec_collects_agent_extension(self):
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        spec_path = os.path.join(project_root, "ecc.spec")
+
+        with open(spec_path, encoding="utf-8") as f:
+            source = f.read()
+
+        assert 'collect_all("agent")' in source
+        assert '"agent.test"' in source
 
     def test_pyinstaller_spec_filters_payloads_before_analysis(self):
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

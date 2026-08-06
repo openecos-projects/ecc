@@ -117,6 +117,7 @@ HIDDENIMPORTS = [
 ]
 
 EXCLUDES = [
+    "agent.test",
     "tkinter",
     "test",
     "setuptools",
@@ -206,6 +207,7 @@ def collect_ecc_tools_extension_binaries():
 
 
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
+agent_datas, agent_binaries, agent_hiddenimports = collect_all("agent")
 ecc_tools_datas, ecc_tools_binaries, ecc_tools_hiddenimports = collect_all("ecc_tools_bin")
 klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all("klayout")
 dreamplace_datas, dreamplace_binaries, dreamplace_hiddenimports = collect_all("dreamplace")
@@ -213,6 +215,7 @@ torch_datas, torch_binaries, torch_hiddenimports = collect_all("torch")
 
 datas = []
 datas.extend(ecc_datas)
+datas.extend(agent_datas)
 datas.extend(ecc_tools_datas)
 datas.extend(klayout_datas)
 datas.extend(dreamplace_datas)
@@ -224,6 +227,7 @@ datas.extend(collect_dreamplace_thirdparty_files())
 
 binaries = []
 binaries.extend(ecc_binaries)
+binaries.extend(agent_binaries)
 binaries.extend(ecc_tools_binaries)
 binaries.extend(collect_ecc_tools_extension_binaries())
 binaries.extend(klayout_binaries)
@@ -235,6 +239,7 @@ binaries = filter_collected_payloads(binaries)
 hiddenimports = []
 hiddenimports.extend(HIDDENIMPORTS)
 hiddenimports.extend(ecc_hiddenimports)
+hiddenimports.extend(agent_hiddenimports)
 hiddenimports.extend(ecc_tools_hiddenimports)
 hiddenimports.extend(klayout_hiddenimports)
 hiddenimports.extend(dreamplace_hiddenimports)

@@ -24,10 +24,17 @@ def serve_cmd(
             help="Enable explicit persistent DB lifecycle RPC methods.",
         ),
     ] = False,
+    agent: Annotated[
+        bool,
+        typer.Option("--agent", help="Enable the isolated Flow Agent RPC extension."),
+    ] = False,
 ) -> None:
     if not stdio:
         raise typer.BadParameter("--stdio is required", param_hint="--stdio")
 
-    from chipcompiler.runtime.stdio_server import main
+    if agent:
+        from agent.stdio_server import main
+    else:
+        from chipcompiler.runtime.stdio_server import main
 
     raise typer.Exit(code=main(persistent_db_enabled=persistent_db))

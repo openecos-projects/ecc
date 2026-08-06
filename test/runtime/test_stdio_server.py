@@ -197,6 +197,34 @@ def test_rpc_stdio_subprocess_persistent_db_smoke():
     assert "db.release" in responses[0]["result"]["capabilities"]
 
 
+def test_rpc_stdio_subprocess_agent_runtime_advertises_agent_capabilities():
+    stdin = _request("rpc.hello", 1, {"version": 1}) + _request("rpc.shutdown", 2)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "chipcompiler.cli.main",
+            "rpc",
+            "serve",
+            "--stdio",
+            "--persistent-db",
+            "--agent",
+        ],
+        input=stdin,
+        cwd=os.getcwd(),
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace")
+    responses = _decode_output(completed.stdout)
+    assert {"workspace.extract_foundation", "candidate.rerun"}.issubset(
+        responses[0]["result"]["capabilities"]
+    )
+    assert "db.ensure" in responses[0]["result"]["capabilities"]
+
+
 def test_rpc_stdio_subprocess_workspace_open_home_smoke(tmp_path, minimal_ics55_pdk_factory):
     ws = _create_real_workspace(tmp_path, minimal_ics55_pdk_factory)
     process = subprocess.Popen(
