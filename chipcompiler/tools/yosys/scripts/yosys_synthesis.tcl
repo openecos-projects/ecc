@@ -461,6 +461,37 @@ clockgate {*}$tech_cells_args {*}$exclude_cells
 # technology mapping for flip-flops
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
+# dfflibmap intentionally handles only flip-flops.  For ics55 it selects the
+# final matching DFF library in lib_stdcell_list, so use that same H7 variant
+# for the plain D-latch mapping before ABC.
+set ics55_latch_suffix ""
+if {[llength $lib_stdcell_list] > 0} {
+  set dff_lib [lindex $lib_stdcell_list end]
+  if {[regexp {ics55_LLSC_H7C([HLR])_} [file tail $dff_lib] -> vt]} {
+    set ics55_latch_suffix "H7$vt"
+  }
+}
+if {$ics55_latch_suffix ne ""} {
+  set ics55_latch_map "${tmp_dir}/ics55_latch_map.v"
+  set latch_map_file [open $ics55_latch_map "w"]
+  puts $latch_map_file [format {
+module \$_DLATCH_N_ (E, D, Q);
+  input E, D;
+  output Q;
+  LATLX1%s _TECHMAP_REPLACE_ (.D(D), .GN(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_P_ (E, D, Q);
+  input E, D;
+  output Q;
+  LATHX1%s _TECHMAP_REPLACE_ (.D(D), .G(E), .Q(Q));
+endmodule
+} $ics55_latch_suffix $ics55_latch_suffix]
+  close $latch_map_file
+  techmap -map $ics55_latch_map
+  opt -fast -purge
+}
+
 # Optimize again after FF mapping — sometimes FFs create
 # new optimization opportunities (constant propagation, etc.)
 opt -undriven -purge
