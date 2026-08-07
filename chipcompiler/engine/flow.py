@@ -538,6 +538,9 @@ class EngineFlow:
 
         self.clear_db_engine_after_step(workspace_step, state)
 
+        if elapsed < 3:
+            time.sleep(3)
+
         return state
 
     def init_db_engine_for_step(self, workspace_step: WorkspaceStep) -> bool:

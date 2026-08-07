@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import chipcompiler.engine.flow as flow_module
 from chipcompiler import tools
 from chipcompiler.data import (
     EccFeature,
@@ -77,6 +78,22 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
     }
 
 
+def test_engine_flow_delays_short_step_before_return(monkeypatch, tmp_path):
+    workspace = Workspace()
+    workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
+    engine_flow = EngineFlow(workspace)
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+    sleep_calls = []
+
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: False)
+    monkeypatch.setattr(flow_module.time, "sleep", sleep_calls.append)
+
+    assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
+    assert sleep_calls == [3]
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
     verilog = tmp_path / "gcd.v"
     verilog.write_text("module gcd; endmodule\n")
