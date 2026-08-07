@@ -94,6 +94,8 @@ def test_engine_flow_delays_short_step_before_return(monkeypatch, tmp_path):
 
     assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
     assert sleep_calls == [3]
+
+
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
     verilog = tmp_path / "gcd.v"
     verilog.write_text("module gcd; endmodule\n")

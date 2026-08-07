@@ -269,11 +269,18 @@ class WorkspaceRuntimeApi:
                 attach_session_db=should_capture and not request.rerun,
             )
             if request.rerun:
+                if session.layout_edit_session is not None:
+                    raise RuntimeApiError(
+                        "layout_edit_active",
+                        "close the rendered layout before rerunning this step",
+                    )
                 self._refresh_workspace_config(session.workspace)
 
             workspace_step = engine_flow.get_workspace_step(request.step)
             if workspace_step is None:
                 raise RuntimeApiError("command_failed", f"step not found: {request.step}")
+            if request.rerun:
+                self._prepare_step_for_rerun(session.workspace, engine_flow, workspace_step)
 
             try:
                 step_already_succeeded = not request.rerun and engine_flow.check_state(
@@ -709,6 +716,98 @@ class WorkspaceRuntimeApi:
         import chipcompiler.data as data_api
 
         data_api.prepare_workspace_for_rerun(workspace, engine_flow)
+
+    @staticmethod
+    def _prepare_step_for_rerun(workspace, engine_flow, workspace_step) -> None:
+        workspace_root = Path(workspace.directory).resolve()
+        for directory in WorkspaceRuntimeApi._step_artifact_dirs(workspace_step):
+            WorkspaceRuntimeApi._clear_step_artifact_dir(
+                workspace_root,
+                directory,
+                workspace_step.name,
+            )
+
+        record = engine_flow.get_step(workspace_step.name, workspace_step.tool)
+        if record is not None:
+            record.update({"state": "Unstart", "runtime": "", "peak memory (mb)": 0})
+            engine_flow.save()
+
+        WorkspaceRuntimeApi._reset_step_subflow(workspace_step)
+        WorkspaceRuntimeApi._reset_step_checklist(workspace_step)
+
+    @staticmethod
+    def _reset_step_subflow(workspace_step) -> None:
+        from chipcompiler.utility import json_read, json_write
+
+        subflow = getattr(workspace_step, "subflow", None)
+        path = getattr(subflow, "path", None)
+        if not path:
+            return
+        subflow_path = Path(path)
+        data = json_read(subflow_path)
+        steps = data.get("steps", []) if isinstance(data, dict) else []
+        if not isinstance(steps, list):
+            return
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            step.update(
+                {
+                    "state": "Unstart",
+                    "runtime": "",
+                    "peak memory (mb)": 0,
+                    "info": {},
+                }
+            )
+        json_write(subflow_path, {"path": str(subflow_path), "steps": steps})
+        subflow.steps = steps
+
+    @staticmethod
+    def _reset_step_checklist(workspace_step) -> None:
+        from chipcompiler.utility import json_write
+
+        checklist = getattr(workspace_step, "checklist", None)
+        path = getattr(checklist, "path", None)
+        if not path:
+            return
+        checklist_path = Path(path)
+        json_write(checklist_path, {"path": str(checklist_path), "checklist": []})
+        checklist.checklist = []
+
+    @staticmethod
+    def _step_artifact_dirs(step) -> tuple[Path, ...]:
+        directories: list[Path] = []
+        for field in ("output", "data", "feature", "analysis", "report", "log"):
+            value = getattr(step, field, {})
+            directory = value.get("dir") if isinstance(value, dict) else getattr(value, "dir", None)
+            if directory:
+                directories.append(Path(directory))
+        return tuple(dict.fromkeys(directories))
+
+    @staticmethod
+    def _clear_step_artifact_dir(
+        workspace_root: Path,
+        directory: Path,
+        step_name: str,
+    ) -> None:
+        resolved = directory.resolve()
+        if (
+            resolved == workspace_root
+            or not path_is_within(resolved, workspace_root)
+            or directory.is_symlink()
+        ):
+            raise RuntimeApiError(
+                "command_failed",
+                f"step artifact escapes workspace: {step_name}",
+            )
+        if directory.exists():
+            if not directory.is_dir():
+                raise RuntimeApiError(
+                    "command_failed",
+                    f"step artifact is not a directory: {step_name}",
+                )
+            shutil.rmtree(directory)
+        directory.mkdir(parents=True, exist_ok=True)
 
 
 def _layout_edit_begin_result(edit_session: LayoutEditSession, *, reused: bool) -> dict:

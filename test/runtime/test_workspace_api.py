@@ -134,6 +134,15 @@ class DummyFlow:
                 return step
         return None
 
+    def get_step(self, name, tool):
+        for step in self.workspace.flow.data.get("steps", []):
+            if step.get("name") == name and step.get("tool") == tool:
+                return step
+        return None
+
+    def save(self):
+        return True
+
     def check_state(self, name, tool, state):
         return getattr(state, "value", state) == StateEnum.Success.value and name in (
             self.successful_steps
@@ -1113,6 +1122,132 @@ def test_flow_run_step_rerun_refreshes_before_db_init(monkeypatch, tmp_path):
         ("init_db_engine",),
         ("run_step", "Floorplan", True),
     ]
+
+
+def test_flow_run_step_rerun_clears_step_artifacts_and_resets_step_state(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    step_dir = ws / "Floorplan_ecc"
+    artifact_dirs = [
+        step_dir / "output",
+        step_dir / "data",
+        step_dir / "feature",
+        step_dir / "analysis",
+        step_dir / "report",
+        step_dir / "log",
+    ]
+    for directory in artifact_dirs:
+        (directory / "nested").mkdir(parents=True)
+        (directory / "nested" / "stale").write_text("stale")
+    script_dir = step_dir / "script"
+    script_dir.mkdir()
+    (script_dir / "keep.tcl").write_text("keep")
+
+    subflow_path = step_dir / "subflow.json"
+    subflow_path.write_text(
+        json.dumps(
+            {
+                "path": str(subflow_path),
+                "steps": [
+                    {
+                        "name": "load data",
+                        "state": "Success",
+                        "runtime": "0:00:03",
+                        "peak memory (mb)": 24,
+                        "info": {"instances": 12},
+                    }
+                ],
+            }
+        )
+    )
+    checklist_path = step_dir / "checklist.json"
+    checklist_path.write_text(
+        json.dumps(
+            {
+                "path": str(checklist_path),
+                "checklist": [{"item": "stale", "state": "Success"}],
+            }
+        )
+    )
+    DummyFlow.workspace_step_specs = (
+        {
+            "name": "Floorplan",
+            "tool": "ecc",
+            "output": {"dir": step_dir / "output"},
+            "data": {"dir": step_dir / "data"},
+            "feature": {"dir": step_dir / "feature"},
+            "analysis": {"dir": step_dir / "analysis"},
+            "report": {"dir": step_dir / "report"},
+            "log": {"dir": step_dir / "log"},
+            "subflow": SimpleNamespace(path=subflow_path, steps=[]),
+            "checklist": SimpleNamespace(path=checklist_path, checklist=[]),
+        },
+    )
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": "Success",
+                "runtime": "0:00:04",
+                "peak memory (mb)": 30,
+            }
+        ]
+    }
+
+    result = api.flow_run_step(
+        FlowRunStepRequest(workspace_id=workspace_id, step="Floorplan", rerun=True)
+    )
+
+    assert result == {"step": "Floorplan", "state": "Success"}
+    assert all(list(directory.iterdir()) == [] for directory in artifact_dirs)
+    assert (script_dir / "keep.tcl").read_text() == "keep"
+    flow_record = next(
+        record
+        for record in session.workspace.flow.data["steps"]
+        if record["name"] == "Floorplan" and record["tool"] == "ecc"
+    )
+    assert flow_record == {
+        "name": "Floorplan",
+        "tool": "ecc",
+        "state": "Unstart",
+        "runtime": "",
+        "peak memory (mb)": 0,
+    }
+    assert json.loads(subflow_path.read_text()) == {
+        "path": str(subflow_path),
+        "steps": [
+            {
+                "name": "load data",
+                "state": "Unstart",
+                "runtime": "",
+                "peak memory (mb)": 0,
+                "info": {},
+            }
+        ],
+    }
+    assert json.loads(checklist_path.read_text()) == {
+        "path": str(checklist_path),
+        "checklist": [],
+    }
+
+
+def test_flow_run_step_rerun_rejects_an_open_layout_edit(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    api.sessions.get_session(workspace_id).layout_edit_session = object()
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        api.flow_run_step(
+            FlowRunStepRequest(workspace_id=workspace_id, step="Floorplan", rerun=True)
+        )
+
+    assert exc_info.value.code == "layout_edit_active"
+    assert "close the rendered layout" in exc_info.value.message
+    assert DummyFlow.instances[-1].run_calls == []
 
 
 def test_flow_run_step_skips_successful_step_without_db_init(monkeypatch, tmp_path):
