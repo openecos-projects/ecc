@@ -1,6 +1,6 @@
 ## What Changed
 
--
+- 
 
 ## Scope
 
@@ -13,25 +13,6 @@ Select the areas touched by this PR:
 - [ ] CI/release - GitHub Actions, version checks, changelog, or release automation.
 - [ ] Tests/docs only
 
-
-
-## Validation
-
-List the commands you ran. Mark checks that are not applicable as N/A.
-
-- [ ] `uv run pytest test/`
-- [ ] Focused pytest:
-- [ ] `uv run ruff check chipcompiler test`
-- [ ] `uv run ruff format --check chipcompiler test`
-- [ ] PyInstaller smoke: `ecc --help`, `ecc --version`, `ecc version --json`
-- [ ] Nix smoke: `nix run .#cli -- --help`
-- [ ] Manual flow smoke:
-- [ ] Other:
-
-Skipped checks and reason:
-
--
-
 ## Runtime And Packaging Impact
 
 - [ ] No runtime or packaging impact
@@ -42,6 +23,23 @@ Skipped checks and reason:
 - [ ] PyInstaller, Nix, or release artifact changed
 
 Notes:
+
+-
+
+
+## Validation
+
+List the commands you ran. Mark checks that are not applicable as N/A.
+
+- [ ] `uv run pytest test/`
+- [ ] `uv run ruff check chipcompiler test`
+- [ ] `uv run ruff format --check chipcompiler test`
+- [ ] PyInstaller smoke: `ecc --help`, `ecc --version`, `ecc version --json`
+- [ ] Nix smoke: `nix run .#cli -- --help`
+- [ ] Manual flow smoke:
+- [ ] Other:
+
+Skipped checks and reason:
 
 -
 
