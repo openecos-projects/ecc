@@ -1,6 +1,6 @@
 name: Bug report
 description: Report errors or unexpected behavior in ECC.
-title: "[Bug]: "
+title: "bug: "
 labels:
   - bug
 body:

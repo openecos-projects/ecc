@@ -1,6 +1,6 @@
 name: Feature request
 description: Suggest an improvement or new capability for ECC.
-title: "[Feature]: "
+title: "feature: "
 labels:
   - enhancement
 body:
