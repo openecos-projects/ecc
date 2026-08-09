@@ -501,21 +501,6 @@ class EngineFlow:
             if self.check_step_result(workspace_step=workspace_step)
             else StateEnum.Imcomplete
         )
-        self.set_state(
-            name=workspace_step.name,
-            tool=workspace_step.tool,
-            state=state,
-            runtime=runtime,
-            peak_memory=peak_memory_mb,
-        )
-        self.workspace.logger.info(
-            "[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
-            step_tag,
-            state.value,
-            runtime,
-            peak_memory_mb,
-            0,
-        )
 
         # save layout snapshot on success
         if state == StateEnum.Success:
@@ -547,6 +532,21 @@ class EngineFlow:
             from chipcompiler.tools import save_layout_image
 
             save_layout_image(workspace=self.workspace, step=workspace_step)
+        self.set_state(
+            name=workspace_step.name,
+            tool=workspace_step.tool,
+            state=state,
+            runtime=runtime,
+            peak_memory=peak_memory_mb,
+        )
+        self.workspace.logger.info(
+            "[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
+            step_tag,
+            state.value,
+            runtime,
+            peak_memory_mb,
+            0,
+        )
 
         self.clear_db_engine_after_step(workspace_step, state)
         _notify_flow_observer(observer, "on_step_completed", workspace_step, state)

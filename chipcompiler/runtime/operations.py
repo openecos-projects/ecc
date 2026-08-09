@@ -10,6 +10,9 @@ from typing import Any
 _LOG_POLL_INTERVAL_SECONDS = 0.25
 _MAX_LOG_CHUNK_BYTES = 16 * 1024
 _MAX_FINAL_LOG_BYTES = 64 * 1024
+_RENDER_ACK_RETRY_SECONDS = 5.0
+_RENDER_ACK_PAUSE_SECONDS = 30.0
+_RENDER_ACK_ABORT_SECONDS = 300.0
 
 
 @dataclass
@@ -33,6 +36,10 @@ class RuntimeOperationCancelled(RuntimeError):
     """Cancellation was accepted at a safe step boundary."""
 
 
+class RuntimeOperationRenderSyncTimeout(RuntimeError):
+    """The GUI did not confirm a committed step within the recovery window."""
+
+
 @dataclass
 class RuntimeOperation:
     operation_id: str
@@ -51,6 +58,13 @@ class RuntimeOperation:
     updated_at: float = field(default_factory=time.time)
     sequence: int = 0
     awaiting_event_id: str | None = None
+    awaiting_event: dict[str, Any] | None = None
+    awaiting_step_commit_id: str | None = None
+    workspace_revision: int = 0
+    render_sync_state: str = "idle"
+    render_retry_count: int = 0
+    render_wait_started_at: float | None = None
+    last_render_ack_at: float | None = None
     acked_event_ids: set[str] = field(default_factory=set)
     cancel_requested: bool = False
     interruptibility: str = "deferred"
@@ -147,7 +161,13 @@ class RuntimeOperationManager:
                 "operations": operations,
             }
 
-    def acknowledge_step_rendered(self, operation_id: str, event_id: str) -> dict[str, Any]:
+    def acknowledge_step_rendered(
+        self,
+        operation_id: str,
+        event_id: str,
+        step_commit_id: str = "",
+        workspace_revision: int | None = None,
+    ) -> dict[str, Any]:
         with self._render_gate:
             operation = self._operations.get(operation_id)
             if operation is None:
@@ -166,8 +186,30 @@ class RuntimeOperationManager:
                     "operationId": operation_id,
                     "eventId": event_id,
                 }
+            if step_commit_id and operation.awaiting_step_commit_id != step_commit_id:
+                return {
+                    "accepted": False,
+                    "duplicate": False,
+                    "operationId": operation_id,
+                    "eventId": event_id,
+                }
+            if (
+                workspace_revision is not None
+                and workspace_revision != operation.workspace_revision
+            ):
+                return {
+                    "accepted": False,
+                    "duplicate": False,
+                    "operationId": operation_id,
+                    "eventId": event_id,
+                }
             operation.acked_event_ids.add(event_id)
             operation.awaiting_event_id = None
+            operation.awaiting_event = None
+            operation.awaiting_step_commit_id = None
+            operation.render_sync_state = "idle"
+            operation.render_wait_started_at = None
+            operation.last_render_ack_at = time.time()
             operation.updated_at = time.time()
             self._render_gate.notify_all()
             return {
@@ -229,14 +271,20 @@ class RuntimeOperationManager:
                 operation.result = result
                 operation.updated_at = time.time()
                 event = self._new_event_locked(operation, "operation.completed", {"result": result})
-        except RuntimeOperationCancelled as exc:
+        except (RuntimeOperationCancelled, RuntimeOperationRenderSyncTimeout) as exc:
             with self._lock:
                 operation = self._operations[operation_id]
-                operation.state = "cancelled"
-                operation.error = {"message": str(exc), "code": "cancelled"}
+                is_timeout = isinstance(exc, RuntimeOperationRenderSyncTimeout)
+                operation.state = "failed" if is_timeout else "cancelled"
+                operation.error = {
+                    "message": str(exc),
+                    "code": "gui_sync_timeout" if is_timeout else "cancelled",
+                }
                 operation.updated_at = time.time()
                 event = self._new_event_locked(
-                    operation, "operation.cancelled", {"error": operation.error}
+                    operation,
+                    "operation.failed" if is_timeout else "operation.cancelled",
+                    {"error": operation.error},
                 )
         except Exception as exc:
             with self._lock:
@@ -308,7 +356,19 @@ class RuntimeOperationManager:
             }
             event = self._new_event_locked(operation, "step.completed", payload)
             if state_value == "Success":
+                operation.workspace_revision += 1
+                step_commit_id = (
+                    f"{operation.operation_id}:step:{operation.workspace_revision}"
+                )
+                payload["stepCommitId"] = step_commit_id
+                payload["workspaceRevision"] = operation.workspace_revision
                 operation.awaiting_event_id = event["eventId"]
+                operation.awaiting_event = event
+                operation.awaiting_step_commit_id = step_commit_id
+                operation.render_sync_state = "waiting_for_gui_sync"
+                operation.render_retry_count = 0
+                operation.render_wait_started_at = time.monotonic()
+                operation.state = "waiting_for_gui_sync"
         self._publish(event)
 
     def step_skipped(self, operation_id: str, workspace_step: Any) -> None:
@@ -330,11 +390,68 @@ class RuntimeOperationManager:
         self._publish(event)
 
     def wait_for_step_rendered(self, operation_id: str) -> bool:
-        with self._render_gate:
-            operation = self._operations[operation_id]
-            while operation.awaiting_event_id and not operation.cancel_requested:
-                self._render_gate.wait(timeout=1.0)
-            return not operation.cancel_requested
+        while True:
+            replay_event: dict[str, Any] | None = None
+            pause_event: dict[str, Any] | None = None
+            with self._render_gate:
+                operation = self._operations[operation_id]
+                if operation.cancel_requested:
+                    return False
+                if not operation.awaiting_event_id:
+                    if operation.state in {
+                        "waiting_for_gui_sync",
+                        "paused_for_gui_recovery",
+                    }:
+                        operation.state = "running"
+                        operation.updated_at = time.time()
+                    return True
+
+                started_at = operation.render_wait_started_at or time.monotonic()
+                elapsed = time.monotonic() - started_at
+                if elapsed >= _RENDER_ACK_ABORT_SECONDS:
+                    operation.awaiting_event_id = None
+                    operation.awaiting_event = None
+                    operation.awaiting_step_commit_id = None
+                    operation.render_sync_state = "timed_out"
+                    operation.state = "failed"
+                    operation.updated_at = time.time()
+                    raise RuntimeOperationRenderSyncTimeout(
+                        "GUI did not confirm the committed step before the render-sync timeout"
+                    )
+
+                if (
+                    elapsed >= _RENDER_ACK_PAUSE_SECONDS
+                    and operation.render_sync_state != "paused_for_gui_recovery"
+                ):
+                    operation.render_sync_state = "paused_for_gui_recovery"
+                    operation.state = "paused_for_gui_recovery"
+                    operation.updated_at = time.time()
+                    pause_event = self._new_event_locked(
+                        operation,
+                        "operation.gui_sync_paused",
+                        {
+                            "eventId": operation.awaiting_event_id,
+                            "stepCommitId": operation.awaiting_step_commit_id,
+                            "workspaceRevision": operation.workspace_revision,
+                        },
+                    )
+
+                operation.render_retry_count += 1
+                if operation.awaiting_event is not None:
+                    replay_event = {
+                        **operation.awaiting_event,
+                        "payload": {
+                            **operation.awaiting_event["payload"],
+                            "replayed": True,
+                            "retryCount": operation.render_retry_count,
+                        },
+                    }
+                self._render_gate.wait(timeout=_RENDER_ACK_RETRY_SECONDS)
+
+            if pause_event is not None:
+                self._publish(pause_event)
+            if replay_event is not None:
+                self._publish(replay_event)
 
     def _tail_step_log(self, log_tail: _StepLogTail) -> None:
         while not log_tail.stopped.is_set():
@@ -424,6 +541,11 @@ class RuntimeOperationManager:
             "error": operation.error,
             "result": operation.result,
             "awaitingEventId": operation.awaiting_event_id,
+            "awaitingStepCommitId": operation.awaiting_step_commit_id,
+            "workspaceRevision": operation.workspace_revision,
+            "renderSyncState": operation.render_sync_state,
+            "renderRetryCount": operation.render_retry_count,
+            "lastRenderAckAt": operation.last_render_ack_at,
             "cancelRequested": operation.cancel_requested,
             "interruptibility": operation.interruptibility,
             "safeToStop": bool(operation.awaiting_event_id),

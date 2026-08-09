@@ -2,6 +2,7 @@ import threading
 from types import SimpleNamespace
 
 from chipcompiler.data import StateEnum
+from chipcompiler.runtime import operations
 from chipcompiler.runtime.operations import RuntimeOperationManager
 
 
@@ -30,14 +31,24 @@ def test_successful_step_waits_for_matching_render_ack_before_completing():
         runner=runner,
     )
 
-    assert started["state"] in {"queued", "running"}
+    assert started["state"] in {"queued", "running", "waiting_for_gui_sync"}
     assert entered_render_gate.wait(timeout=1)
     assert not completed.wait(timeout=0.05)
     step_completed = next(event for event in events if event["type"] == "step.completed")
+    assert step_completed["payload"]["stepCommitId"]
+    assert step_completed["payload"]["workspaceRevision"] == 1
+    assert not manager.acknowledge_step_rendered(
+        started["operationId"],
+        step_completed["eventId"],
+        "wrong-step-commit",
+        step_completed["payload"]["workspaceRevision"],
+    )["accepted"]
 
     assert manager.acknowledge_step_rendered(
         started["operationId"],
         step_completed["eventId"],
+        step_completed["payload"]["stepCommitId"],
+        step_completed["payload"]["workspaceRevision"],
     ) == {
         "accepted": True,
         "duplicate": False,
@@ -47,6 +58,56 @@ def test_successful_step_waits_for_matching_render_ack_before_completing():
     assert completed.wait(timeout=1)
     assert manager.operation_status(started["operationId"])["state"] == "succeeded"
     assert events[-1]["type"] == "operation.completed"
+
+
+def test_render_ack_replays_one_commit_then_pauses_before_a_bounded_timeout(monkeypatch):
+    monkeypatch.setattr(operations, "_RENDER_ACK_RETRY_SECONDS", 0.01)
+    monkeypatch.setattr(operations, "_RENDER_ACK_PAUSE_SECONDS", 0.02)
+    monkeypatch.setattr(operations, "_RENDER_ACK_ABORT_SECONDS", 0.5)
+    events = []
+    entered_render_gate = threading.Event()
+    manager = RuntimeOperationManager(events.append)
+    step = SimpleNamespace(name="Synthesis", tool="yosys", log=SimpleNamespace(file=""))
+
+    def runner(observer):
+        observer.on_step_started(step)
+        observer.on_step_completed(step, StateEnum.Success)
+        entered_render_gate.set()
+        assert observer.wait_for_step_rendered(step, StateEnum.Success)
+        return {"rerun": False}
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="request-replay",
+        runner=runner,
+    )
+    assert entered_render_gate.wait(timeout=1)
+    step_completed = _wait_for_event(events, "step.completed")
+    paused = _wait_for_event(events, "operation.gui_sync_paused")
+    replays = [
+        event
+        for event in events
+        if event["type"] == "step.completed" and event["payload"].get("replayed")
+    ]
+    assert paused["payload"]["stepCommitId"] == step_completed["payload"]["stepCommitId"]
+    assert replays
+    assert all(event["eventId"] == step_completed["eventId"] for event in replays)
+    assert (
+        manager.operation_status(started["operationId"])["renderSyncState"]
+        == "paused_for_gui_recovery"
+    )
+
+    assert manager.acknowledge_step_rendered(
+        started["operationId"],
+        step_completed["eventId"],
+        step_completed["payload"]["stepCommitId"],
+        step_completed["payload"]["workspaceRevision"],
+    )["accepted"]
+    assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
 
 
 def test_ack_and_start_requests_are_idempotent():

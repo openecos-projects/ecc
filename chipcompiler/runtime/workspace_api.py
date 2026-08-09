@@ -13,6 +13,10 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, TypeVar
 
+from chipcompiler.runtime.operations import (
+    RuntimeOperationConflict,
+    RuntimeOperationManager,
+)
 from chipcompiler.runtime.requests import (
     DbEnsureRequest,
     DbReleaseRequest,
@@ -36,10 +40,6 @@ from chipcompiler.runtime.requests import (
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
     WorkspaceSyncConfigRequest,
-)
-from chipcompiler.runtime.operations import (
-    RuntimeOperationConflict,
-    RuntimeOperationManager,
 )
 from chipcompiler.runtime.sessions import (
     LayoutEditSession,
@@ -402,6 +402,8 @@ class WorkspaceRuntimeApi:
             return self.operations.acknowledge_step_rendered(
                 request.operation_id,
                 request.event_id,
+                request.step_commit_id,
+                request.workspace_revision,
             )
         except KeyError as exc:
             raise RuntimeApiError(

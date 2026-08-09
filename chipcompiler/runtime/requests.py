@@ -97,6 +97,8 @@ class OperationIdRequest:
 class OperationAckStepRenderedRequest:
     operation_id: str
     event_id: str
+    step_commit_id: str = ""
+    workspace_revision: int | None = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +174,8 @@ FIELD_ALIASES = {
     "workspaceId": "workspace_id",
     "operationId": "operation_id",
     "eventId": "event_id",
+    "stepCommitId": "step_commit_id",
+    "workspaceRevision": "workspace_revision",
     "idempotencyKey": "idempotency_key",
     "configPath": "config_path",
     "outputPath": "output_path",
