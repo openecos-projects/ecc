@@ -113,6 +113,34 @@ def test_active_operation_reports_a_shutdown_barrier_and_safe_boundary():
     release.set()
 
 
+def test_cancel_at_render_ack_boundary_releases_the_waiting_flow():
+    entered_render_gate = threading.Event()
+    manager = RuntimeOperationManager()
+    step = SimpleNamespace(name="Synthesis", tool="yosys", log=SimpleNamespace(file=""))
+
+    def runner(observer):
+        observer.on_step_started(step)
+        observer.on_step_completed(step, StateEnum.Success)
+        entered_render_gate.set()
+        if not observer.wait_for_step_rendered(step, StateEnum.Success):
+            raise RuntimeError("operation cancelled at a render boundary")
+        return {"rerun": False}
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="request-cancel-at-gate",
+        runner=runner,
+    )
+    assert entered_render_gate.wait(timeout=1)
+
+    assert manager.request_cancel(started["operationId"])["accepted"] is True
+    assert _wait_for_terminal(manager, started["operationId"])["state"] == "cancelled"
+
+
 def test_step_log_events_stream_only_new_log_bytes_and_keep_final_tail(tmp_path):
     events = []
     step_started = threading.Event()
