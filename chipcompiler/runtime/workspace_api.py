@@ -25,6 +25,10 @@ from chipcompiler.runtime.requests import (
     LayoutEditBeginRequest,
     LayoutEditDiscardRequest,
     LayoutEditSaveRequest,
+    OperationAckStepRenderedRequest,
+    OperationIdRequest,
+    OperationStartFlowRequest,
+    OperationStartStepRequest,
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
     WorkspaceIdRequest,
@@ -32,6 +36,10 @@ from chipcompiler.runtime.requests import (
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
     WorkspaceSyncConfigRequest,
+)
+from chipcompiler.runtime.operations import (
+    RuntimeOperationConflict,
+    RuntimeOperationManager,
 )
 from chipcompiler.runtime.sessions import (
     LayoutEditSession,
@@ -58,6 +66,7 @@ class WorkspaceRuntimeApi:
         sessions: WorkspaceSessionRegistry | None = None,
         *,
         persistent_db_enabled: bool = False,
+        event_publisher: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.persistent_db_enabled = persistent_db_enabled
         self.sessions = sessions or WorkspaceSessionRegistry(db_releaser=_close_db_handle)
@@ -68,6 +77,10 @@ class WorkspaceRuntimeApi:
         # session is reset, so a second workspace cannot replace the store
         # underneath an active editor.
         self._layout_edit_lock = threading.RLock()
+        self.operations = RuntimeOperationManager(event_publisher)
+
+    def set_event_publisher(self, publisher: Callable[[dict[str, Any]], None] | None) -> None:
+        self.operations.set_publisher(publisher)
 
     def create_workspace(self, request: WorkspaceCreateRequest) -> dict:
         if not request.directory:
@@ -222,6 +235,9 @@ class WorkspaceRuntimeApi:
         return self._with_session_mutation_lock(request.workspace_id, close)
 
     def flow_run(self, request: FlowRunRequest) -> dict:
+        return self._flow_run(request)
+
+    def _flow_run(self, request: FlowRunRequest, *, observer=None) -> dict:
         def run(session: WorkspaceSession) -> dict:
             should_capture = self._should_capture_session_db(session)
             previous_db = session.db_handle if should_capture else None
@@ -236,7 +252,7 @@ class WorkspaceRuntimeApi:
             if request.rerun:
                 self._prepare_workspace_for_rerun(session.workspace, engine_flow)
             try:
-                ok = engine_flow.run_steps(rerun=request.rerun)
+                ok = _run_engine_flow_steps(engine_flow, rerun=request.rerun, observer=observer)
             finally:
                 if should_capture:
                     self._capture_flow_db(
@@ -257,6 +273,9 @@ class WorkspaceRuntimeApi:
         return self._with_session_mutation_lock(request.workspace_id, run)
 
     def flow_run_step(self, request: FlowRunStepRequest) -> dict:
+        return self._flow_run_step(request)
+
+    def _flow_run_step(self, request: FlowRunStepRequest, *, observer=None) -> dict:
         def run_step(session: WorkspaceSession) -> dict:
             should_capture = self._should_capture_session_db(session)
             previous_db = session.db_handle if should_capture else None
@@ -290,7 +309,12 @@ class WorkspaceRuntimeApi:
                 )
                 if not step_already_succeeded:
                     _init_db_engine_for_workspace_step(engine_flow, workspace_step)
-                state = engine_flow.run_step(workspace_step, rerun=request.rerun)
+                state = _run_engine_flow_step(
+                    engine_flow,
+                    workspace_step,
+                    rerun=request.rerun,
+                    observer=observer,
+                )
             finally:
                 if should_capture:
                     self._capture_flow_db(
@@ -312,6 +336,103 @@ class WorkspaceRuntimeApi:
             return result
 
         return self._with_session_mutation_lock(request.workspace_id, run_step)
+
+    def start_flow_operation(self, request: OperationStartFlowRequest) -> dict:
+        self._require_gui_operation_origin(request.origin)
+        self._get_session(request.workspace_id)
+        try:
+            return self.operations.start(
+                workspace_id=request.workspace_id,
+                kind="flow",
+                origin=request.origin,
+                rerun=request.rerun,
+                step="",
+                idempotency_key=request.idempotency_key,
+                runner=lambda observer: self._flow_run(
+                    FlowRunRequest(workspace_id=request.workspace_id, rerun=request.rerun),
+                    observer=observer,
+                ),
+            )
+        except RuntimeOperationConflict as exc:
+            raise RuntimeApiError("command_failed", str(exc)) from exc
+
+    def start_step_operation(self, request: OperationStartStepRequest) -> dict:
+        self._require_gui_operation_origin(request.origin)
+        self._get_session(request.workspace_id)
+        try:
+            return self.operations.start(
+                workspace_id=request.workspace_id,
+                kind="step",
+                origin=request.origin,
+                rerun=request.rerun,
+                step=request.step,
+                idempotency_key=request.idempotency_key,
+                runner=lambda observer: self._flow_run_step(
+                    FlowRunStepRequest(
+                        workspace_id=request.workspace_id,
+                        step=request.step,
+                        rerun=request.rerun,
+                    ),
+                    observer=observer,
+                ),
+            )
+        except RuntimeOperationConflict as exc:
+            raise RuntimeApiError("command_failed", str(exc)) from exc
+
+    def operation_status(self, request: OperationIdRequest) -> dict:
+        try:
+            return self.operations.operation_status(request.operation_id)
+        except KeyError as exc:
+            raise RuntimeApiError(
+                "invalid_request",
+                f"operation not found: {request.operation_id}",
+            ) from exc
+
+    def cancel_operation(self, request: OperationIdRequest) -> dict:
+        try:
+            return self.operations.request_cancel(request.operation_id)
+        except KeyError as exc:
+            raise RuntimeApiError(
+                "invalid_request",
+                f"operation not found: {request.operation_id}",
+            ) from exc
+
+    def acknowledge_step_rendered(self, request: OperationAckStepRenderedRequest) -> dict:
+        try:
+            return self.operations.acknowledge_step_rendered(
+                request.operation_id,
+                request.event_id,
+            )
+        except KeyError as exc:
+            raise RuntimeApiError(
+                "invalid_request",
+                f"operation not found: {request.operation_id}",
+            ) from exc
+
+    def workspace_snapshot(self, request: WorkspaceIdRequest) -> dict:
+        session = self._get_session(request.workspace_id)
+        flow_data = getattr(getattr(session.workspace, "flow", None), "data", {})
+        raw_steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+        steps = [
+            {
+                "name": str(step.get("name", "")),
+                "tool": str(step.get("tool", "")),
+                "state": str(step.get("state", "Unstart")),
+                "runtime": str(step.get("runtime", "")),
+                "peakMemory": step.get("peak memory (mb)", 0),
+            }
+            for step in raw_steps
+            if isinstance(step, dict)
+        ]
+        return {
+            **self.operations.workspace_snapshot(request.workspace_id),
+            "directory": str(session.directory),
+            "flow": {"steps": steps},
+            "home": stringify_paths(deepcopy(getattr(session.workspace.home, "data", {}))),
+            "parameters": stringify_paths(
+                deepcopy(getattr(session.workspace.parameters, "data", {}))
+            ),
+        }
 
     def db_ensure(self, request: DbEnsureRequest) -> dict:
         self._require_persistent_db()
@@ -623,6 +744,11 @@ class WorkspaceRuntimeApi:
     def _require_persistent_db(self) -> None:
         if not self.persistent_db_enabled:
             raise RuntimeApiError("command_failed", "persistent_db_disabled")
+
+    @staticmethod
+    def _require_gui_operation_origin(origin: str) -> None:
+        if origin != "gui":
+            raise RuntimeApiError("invalid_request", "operation origin must be gui")
 
     def _new_layout_edit_id(self) -> str:
         edit_session_id = f"layout-edit-{self._next_layout_edit_id}"
@@ -1911,3 +2037,28 @@ def _success_state():
 
 def _state_value(state: Any) -> str:
     return getattr(state, "value", str(state))
+
+
+def _run_engine_flow_steps(engine_flow, *, rerun: bool, observer) -> bool:
+    run_steps = engine_flow.run_steps
+    if observer is not None and _callable_accepts_keyword(run_steps, "observer"):
+        return run_steps(rerun=rerun, observer=observer)
+    return run_steps(rerun=rerun)
+
+
+def _run_engine_flow_step(engine_flow, workspace_step, *, rerun: bool, observer):
+    run_step = engine_flow.run_step
+    if observer is not None and _callable_accepts_keyword(run_step, "observer"):
+        return run_step(workspace_step, rerun=rerun, observer=observer)
+    return run_step(workspace_step, rerun=rerun)
+
+
+def _callable_accepts_keyword(callback, keyword: str) -> bool:
+    try:
+        parameters = inspect.signature(callback).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.name == keyword or parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )

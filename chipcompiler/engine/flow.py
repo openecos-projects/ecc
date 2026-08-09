@@ -384,7 +384,7 @@ class EngineFlow:
         payload["constraints"] = {"sdc": timing_constraints}
         return json_write(file_path=feature_path, data=payload)
 
-    def run_steps(self, *, rerun=False) -> bool:
+    def run_steps(self, *, rerun: bool = False, observer=None) -> bool:
         """
         run all flow steps
         """
@@ -394,7 +394,11 @@ class EngineFlow:
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"
             )
             self.init_db_engine()
-            state = self.run_step(workspace_step, rerun=rerun)
+            state = (
+                self.run_step(workspace_step, rerun=rerun)
+                if observer is None
+                else self.run_step(workspace_step, rerun=rerun, observer=observer)
+            )
 
             log_flow(workspace=self.workspace)
             self.workspace.logger.log_section(
@@ -417,7 +421,13 @@ class EngineFlow:
 
         return True
 
-    def run_step(self, workspace_step: WorkspaceStep | str, *, rerun: bool = False) -> StateEnum:
+    def run_step(
+        self,
+        workspace_step: WorkspaceStep | str,
+        *,
+        rerun: bool = False,
+        observer=None,
+    ) -> StateEnum:
         """
         run single step
         """
@@ -433,12 +443,14 @@ class EngineFlow:
         ):
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
+            _notify_flow_observer(observer, "on_step_skipped", workspace_step)
             return StateEnum.Success
 
         # set state ongoing
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()
         self.set_state(name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Ongoing)
+        _notify_flow_observer(observer, "on_step_started", workspace_step)
 
         # run step
         log_file = workspace_step.log.file or ""
@@ -537,12 +549,15 @@ class EngineFlow:
             save_layout_image(workspace=self.workspace, step=workspace_step)
 
         self.clear_db_engine_after_step(workspace_step, state)
-
-        if elapsed < 3:
-            time.sleep(3)
+        _notify_flow_observer(observer, "on_step_completed", workspace_step, state)
+        if state == StateEnum.Success and not _wait_for_step_rendered(
+            observer,
+            workspace_step,
+            state,
+        ):
+            return StateEnum.Invalid
 
         return state
-
     def init_db_engine_for_step(self, workspace_step: WorkspaceStep) -> bool:
         """Initialize the native DB engine from an explicitly selected step."""
         if self.engine_db is None:
@@ -551,3 +566,31 @@ class EngineFlow:
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
+
+
+def _notify_flow_observer(observer, method_name: str, *args) -> None:
+    """Keep optional GUI observers outside the flow engine's failure domain."""
+    if observer is None:
+        return
+    callback = getattr(observer, method_name, None)
+    if not callable(callback):
+        return
+    try:
+        callback(*args)
+    except Exception:
+        # Runtime observers must never turn a completed tool execution into a
+        # failed flow. The coordinator records transport failures separately.
+        logging.getLogger(__name__).exception("flow observer callback failed: %s", method_name)
+
+
+def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: StateEnum) -> bool:
+    if observer is None or state != StateEnum.Success:
+        return True
+    callback = getattr(observer, "wait_for_step_rendered", None)
+    if not callable(callback):
+        return True
+    try:
+        return bool(callback(workspace_step, state))
+    except Exception:
+        logging.getLogger(__name__).exception("flow observer render gate failed")
+        return False

@@ -72,6 +72,34 @@ class FlowRunStepRequest:
 
 
 @dataclass(frozen=True)
+class OperationStartFlowRequest:
+    workspace_id: str
+    rerun: bool = False
+    origin: str = "gui"
+    idempotency_key: str = ""
+
+
+@dataclass(frozen=True)
+class OperationStartStepRequest:
+    workspace_id: str
+    step: str
+    rerun: bool = False
+    origin: str = "gui"
+    idempotency_key: str = ""
+
+
+@dataclass(frozen=True)
+class OperationIdRequest:
+    operation_id: str
+
+
+@dataclass(frozen=True)
+class OperationAckStepRenderedRequest:
+    operation_id: str
+    event_id: str
+
+
+@dataclass(frozen=True)
 class DbEnsureRequest:
     workspace_id: str
     step: str = ""
@@ -142,6 +170,9 @@ FIELD_ALIASES = {
     "paramJson": "parameters",
     "rtlList": "rtl_list",
     "workspaceId": "workspace_id",
+    "operationId": "operation_id",
+    "eventId": "event_id",
+    "idempotencyKey": "idempotency_key",
     "configPath": "config_path",
     "outputPath": "output_path",
     "infoId": "info_id",

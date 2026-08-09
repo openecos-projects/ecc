@@ -15,6 +15,10 @@ from chipcompiler.runtime.requests import (
     LayoutEditBeginRequest,
     LayoutEditDiscardRequest,
     LayoutEditSaveRequest,
+    OperationAckStepRenderedRequest,
+    OperationIdRequest,
+    OperationStartFlowRequest,
+    OperationStartStepRequest,
     WorkspaceCloseRequest,
     WorkspaceCreateRequest,
     WorkspaceExportSignoffRequest,
@@ -95,6 +99,36 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="flow.run_step",
         request_model=FlowRunStepRequest,
         handler_name="flow_run_step",
+    ),
+    RuntimeMethodSpec(
+        method_name="operation.start_flow",
+        request_model=OperationStartFlowRequest,
+        handler_name="start_flow_operation",
+    ),
+    RuntimeMethodSpec(
+        method_name="operation.start_step",
+        request_model=OperationStartStepRequest,
+        handler_name="start_step_operation",
+    ),
+    RuntimeMethodSpec(
+        method_name="operation.status",
+        request_model=OperationIdRequest,
+        handler_name="operation_status",
+    ),
+    RuntimeMethodSpec(
+        method_name="operation.cancel",
+        request_model=OperationIdRequest,
+        handler_name="cancel_operation",
+    ),
+    RuntimeMethodSpec(
+        method_name="operation.ack_step_rendered",
+        request_model=OperationAckStepRenderedRequest,
+        handler_name="acknowledge_step_rendered",
+    ),
+    RuntimeMethodSpec(
+        method_name="workspace.snapshot",
+        request_model=WorkspaceIdRequest,
+        handler_name="workspace_snapshot",
     ),
 )
 

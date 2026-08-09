@@ -78,7 +78,7 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
     }
 
 
-def test_engine_flow_delays_short_step_before_return(monkeypatch, tmp_path):
+def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_path):
     workspace = Workspace()
     workspace.flow.data = {
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
@@ -93,7 +93,7 @@ def test_engine_flow_delays_short_step_before_return(monkeypatch, tmp_path):
     monkeypatch.setattr(flow_module.time, "sleep", sleep_calls.append)
 
     assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
-    assert sleep_calls == [3]
+    assert sleep_calls == []
 
 
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):

@@ -28,6 +28,12 @@ def test_runtime_method_registry_contains_current_methods_once():
         "workspace.inspect_signoff",
         "flow.run",
         "flow.run_step",
+        "operation.start_flow",
+        "operation.start_step",
+        "operation.status",
+        "operation.cancel",
+        "operation.ack_step_rendered",
+        "workspace.snapshot",
     )
 
     assert runtime_method_names() == expected_methods

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from jsonrpcserver import Error
 
 import chipcompiler
@@ -13,6 +15,8 @@ BASE_CAPABILITIES = (
     "rpc.hello",
     "rpc.ping",
     "rpc.shutdown",
+    "runtime.v2",
+    "operation.events",
 )
 
 ERROR_CODES = {
@@ -33,6 +37,10 @@ class RuntimeServer:
         self.dispatcher = RpcDispatcher()
         self.api = api or WorkspaceRuntimeApi(persistent_db_enabled=persistent_db_enabled)
         self.should_exit = False
+        self._notification_sink: Callable[[str, dict], None] | None = None
+        set_event_publisher = getattr(self.api, "set_event_publisher", None)
+        if callable(set_event_publisher):
+            set_event_publisher(self._publish_runtime_event)
         self._register_base_methods()
         self._register_runtime_methods()
 
@@ -47,6 +55,14 @@ class RuntimeServer:
 
     def dispatch(self, payload: bytes | str) -> str:
         return self.dispatcher.dispatch(payload)
+
+    def set_notification_sink(self, sink: Callable[[str, dict], None] | None) -> None:
+        self._notification_sink = sink
+
+    def _publish_runtime_event(self, event: dict) -> None:
+        sink = self._notification_sink
+        if sink is not None:
+            sink("runtime.event", event)
 
     def _register_base_methods(self) -> None:
         self.dispatcher.add_method("rpc.hello", self._hello)
@@ -70,6 +86,11 @@ class RuntimeServer:
         return {"ok": True}
 
     def _shutdown(self) -> dict:
+        operations = getattr(self.api, "operations", None)
+        shutdown_barrier = getattr(operations, "shutdown_barrier", None)
+        barrier = shutdown_barrier() if callable(shutdown_barrier) else None
+        if barrier is not None:
+            return {"ok": False, "deferred": True, "shutdownBarrier": barrier}
         self.should_exit = True
         sessions = getattr(self.api, "sessions", None)
         if sessions is not None and hasattr(sessions, "close_all"):

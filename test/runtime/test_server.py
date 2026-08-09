@@ -55,6 +55,24 @@ class CompleteFakeApi:
     def flow_run_step(self, _request):
         raise AssertionError("unexpected flow_run_step call")
 
+    def start_flow_operation(self, _request):
+        raise AssertionError("unexpected start_flow_operation call")
+
+    def start_step_operation(self, _request):
+        raise AssertionError("unexpected start_step_operation call")
+
+    def operation_status(self, _request):
+        raise AssertionError("unexpected operation_status call")
+
+    def cancel_operation(self, _request):
+        raise AssertionError("unexpected cancel_operation call")
+
+    def acknowledge_step_rendered(self, _request):
+        raise AssertionError("unexpected acknowledge_step_rendered call")
+
+    def workspace_snapshot(self, _request):
+        raise AssertionError("unexpected workspace_snapshot call")
+
     def db_ensure(self, _request):
         raise AssertionError("unexpected db_ensure call")
 
@@ -96,6 +114,9 @@ def test_rpc_hello_returns_version_and_capabilities():
     assert response["result"]["eccVersion"]
     assert "rpc.ping" in response["result"]["capabilities"]
     assert "rpc.shutdown" in response["result"]["capabilities"]
+    assert "runtime.v2" in response["result"]["capabilities"]
+    assert "operation.events" in response["result"]["capabilities"]
+    assert "workspace.snapshot" in response["result"]["capabilities"]
     assert "db.ensure" not in response["result"]["capabilities"]
     assert "db.release" not in response["result"]["capabilities"]
 
