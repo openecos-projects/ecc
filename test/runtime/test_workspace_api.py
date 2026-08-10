@@ -12,6 +12,7 @@ from chipcompiler.runtime.requests import (
     DbReleaseRequest,
     FlowRunRequest,
     FlowRunStepRequest,
+    OperationStartFlowRequest,
     WorkspaceCreateRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
@@ -199,7 +200,9 @@ def _install_runtime_mocks(monkeypatch, tmp_path, *, create_workspace_files=True
     monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
     monkeypatch.setattr("chipcompiler.data.load_workspace", fake_load_workspace)
     monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", lambda workspace: None)
-    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", lambda ws, flow: None)
+    monkeypatch.setattr(
+        "chipcompiler.data.prepare_workspace_for_rerun", lambda ws, flow, **_kwargs: None
+    )
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.build_rtl2gds_flow",
@@ -460,7 +463,7 @@ def test_refresh_sync_and_reset_flow_use_session(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "chipcompiler.data.prepare_workspace_for_rerun",
-        lambda workspace, flow: prepared.append((workspace.directory, flow)),
+        lambda workspace, flow, **_kwargs: prepared.append((workspace.directory, flow)),
     )
     config_dir = ws / "config"
     config_dir.mkdir()
@@ -546,7 +549,7 @@ def test_reset_flow_releases_active_session_db_before_prepare(monkeypatch, tmp_p
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     prepared = []
 
-    def prepare(workspace, flow):
+    def prepare(workspace, flow, **_kwargs):
         prepared.append((workspace.directory, flow))
         assert api.sessions.get_session(workspace_id).db_handle is None
 
@@ -622,7 +625,9 @@ def test_reset_flow_waits_for_session_mutation_lock(monkeypatch, tmp_path):
         return SimpleNamespace()
 
     monkeypatch.setattr("chipcompiler.runtime.workspace_api.build_flow_for_workspace", build_flow)
-    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", lambda _ws, _flow: None)
+    monkeypatch.setattr(
+        "chipcompiler.data.prepare_workspace_for_rerun", lambda _ws, _flow, **_kwargs: None
+    )
 
     _assert_call_waits_for_session_lock(
         api=api,
@@ -798,7 +803,7 @@ def test_flow_run_uses_run_steps_and_prepare_on_rerun(monkeypatch, tmp_path):
     prepared = []
     monkeypatch.setattr(
         "chipcompiler.data.prepare_workspace_for_rerun",
-        lambda workspace, flow: prepared.append((workspace.directory, flow)),
+        lambda workspace, flow, **kwargs: prepared.append((workspace.directory, flow, kwargs)),
     )
     api = WorkspaceRuntimeApi()
     workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
@@ -807,8 +812,44 @@ def test_flow_run_uses_run_steps_and_prepare_on_rerun(monkeypatch, tmp_path):
 
     flow = DummyFlow.instances[-1]
     assert result == {"rerun": True}
-    assert prepared == [(ws.resolve(), flow)]
+    assert prepared == [(ws.resolve(), flow, {"preserve_user_inputs": False})]
     assert flow.run_steps_calls == [True]
+
+
+def test_gui_flow_operation_rerun_preserves_current_user_inputs(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    captured = {}
+
+    def fake_flow_run(request, *, observer=None, preserve_user_inputs=False):
+        captured.update(
+            request=request,
+            observer=observer,
+            preserve_user_inputs=preserve_user_inputs,
+        )
+        return {"rerun": request.rerun}
+
+    def fake_start(**kwargs):
+        return kwargs["runner"](None)
+
+    monkeypatch.setattr(api, "_flow_run", fake_flow_run)
+    monkeypatch.setattr(api.operations, "start", fake_start)
+
+    result = api.start_flow_operation(
+        OperationStartFlowRequest(
+            workspace_id=workspace_id,
+            origin="gui",
+            rerun=True,
+            idempotency_key="gui-rerun",
+        )
+    )
+
+    assert result == {"rerun": True}
+    assert captured["request"].workspace_id == workspace_id
+    assert captured["request"].rerun is True
+    assert captured["observer"] is None
+    assert captured["preserve_user_inputs"] is True
 
 
 def test_flow_run_without_active_session_db_closes_transient_db(
@@ -851,7 +892,7 @@ def test_flow_run_rerun_releases_stale_db_and_captures_new_db(monkeypatch, tmp_p
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     prepared = []
 
-    def prepare(workspace, flow):
+    def prepare(workspace, flow, **_kwargs):
         prepared.append((workspace.directory, flow))
         assert api.sessions.get_session(workspace_id).db_handle is None
 

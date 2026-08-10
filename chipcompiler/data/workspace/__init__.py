@@ -819,8 +819,17 @@ def _reset_workspace_runtime_parameters(workspace: Workspace) -> None:
     save_parameter(workspace.parameters)
 
 
-def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
-    """Delete old run artifacts and restore runtime files before a full-flow rerun."""
+def prepare_workspace_for_rerun(
+    workspace: Workspace,
+    engine_flow,
+    *,
+    preserve_user_inputs: bool = False,
+) -> None:
+    """Delete old run artifacts and restore runtime files before a full-flow rerun.
+
+    GUI reruns retain the user's current configuration and parameter values. CLI
+    keeps the established runtime-parameter reset behavior.
+    """
     import shutil
 
     workspace_root = Path(workspace.directory).resolve()
@@ -856,9 +865,9 @@ def prepare_workspace_for_rerun(workspace: Workspace, engine_flow) -> None:
     workspace.home.set_checklist(workspace_root / "home" / "checklist.json")
     workspace.home.set_parameters(workspace.parameters.path)
     _reset_workspace_checklist(workspace)
-    _reset_workspace_runtime_parameters(workspace)
-
-    refresh_workspace_config(workspace)
+    if not preserve_user_inputs:
+        _reset_workspace_runtime_parameters(workspace)
+        refresh_workspace_config(workspace)
 
     if hasattr(engine_flow, "engine_db"):
         engine_flow.engine_db = None

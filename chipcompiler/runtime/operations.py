@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 _LOG_POLL_INTERVAL_SECONDS = 0.25
 _MAX_LOG_CHUNK_BYTES = 16 * 1024
@@ -36,13 +37,11 @@ class RuntimeOperationCancelled(RuntimeError):
     """Cancellation was accepted at a safe step boundary."""
 
 
-class RuntimeOperationRenderSyncTimeout(RuntimeError):
-    """The GUI did not confirm a committed step within the recovery window."""
-
-
 @dataclass
 class RuntimeOperation:
     operation_id: str
+    run_session_id: str
+    runtime_instance_id: str
     workspace_id: str
     kind: str
     origin: str
@@ -65,6 +64,7 @@ class RuntimeOperation:
     render_retry_count: int = 0
     render_wait_started_at: float | None = None
     last_render_ack_at: float | None = None
+    render_sync_degraded: bool = False
     acked_event_ids: set[str] = field(default_factory=set)
     cancel_requested: bool = False
     interruptibility: str = "deferred"
@@ -81,7 +81,7 @@ class RuntimeOperationManager:
         self._active_by_workspace: dict[str, str] = {}
         self._idempotency: dict[tuple[str, str], str] = {}
         self._step_log_tails: dict[str, _StepLogTail] = {}
-        self._next_operation_id = 1
+        self._runtime_instance_id = uuid4().hex
         self._workspace_sequences: dict[str, int] = {}
 
     def set_publisher(self, publisher: Callable[[dict[str, Any]], None] | None) -> None:
@@ -116,7 +116,9 @@ class RuntimeOperationManager:
                 )
 
             operation = RuntimeOperation(
-                operation_id=f"operation-{self._next_operation_id}",
+                operation_id=f"operation-{uuid4().hex}",
+                run_session_id=uuid4().hex,
+                runtime_instance_id=self._runtime_instance_id,
                 workspace_id=workspace_id,
                 kind=kind,
                 origin=origin,
@@ -124,7 +126,6 @@ class RuntimeOperationManager:
                 step=step,
                 idempotency_key=idempotency_key,
             )
-            self._next_operation_id += 1
             self._operations[operation.operation_id] = operation
             self._active_by_workspace[workspace_id] = operation.operation_id
             if idempotency_key:
@@ -157,7 +158,11 @@ class RuntimeOperationManager:
             ]
             return {
                 "workspaceId": workspace_id,
-                "lastEventId": f"{workspace_id}:{self._workspace_sequences.get(workspace_id, 0)}",
+                "runtimeInstanceId": self._runtime_instance_id,
+                "lastEventId": (
+                    f"{self._runtime_instance_id}:{workspace_id}:"
+                    f"{self._workspace_sequences.get(workspace_id, 0)}"
+                ),
                 "operations": operations,
             }
 
@@ -271,19 +276,18 @@ class RuntimeOperationManager:
                 operation.result = result
                 operation.updated_at = time.time()
                 event = self._new_event_locked(operation, "operation.completed", {"result": result})
-        except (RuntimeOperationCancelled, RuntimeOperationRenderSyncTimeout) as exc:
+        except RuntimeOperationCancelled as exc:
             with self._lock:
                 operation = self._operations[operation_id]
-                is_timeout = isinstance(exc, RuntimeOperationRenderSyncTimeout)
-                operation.state = "failed" if is_timeout else "cancelled"
+                operation.state = "cancelled"
                 operation.error = {
                     "message": str(exc),
-                    "code": "gui_sync_timeout" if is_timeout else "cancelled",
+                    "code": "cancelled",
                 }
                 operation.updated_at = time.time()
                 event = self._new_event_locked(
                     operation,
-                    "operation.failed" if is_timeout else "operation.cancelled",
+                    "operation.cancelled",
                     {"error": operation.error},
                 )
         except Exception as exc:
@@ -383,13 +387,14 @@ class RuntimeOperationManager:
                 step_commit_id = f"{operation.operation_id}:step:{operation.workspace_revision}"
                 payload["stepCommitId"] = step_commit_id
                 payload["workspaceRevision"] = operation.workspace_revision
-                operation.awaiting_event_id = event["eventId"]
-                operation.awaiting_event = event
-                operation.awaiting_step_commit_id = step_commit_id
-                operation.render_sync_state = "waiting_for_gui_sync"
-                operation.render_retry_count = 0
-                operation.render_wait_started_at = time.monotonic()
-                operation.state = "waiting_for_gui_sync"
+                if not operation.render_sync_degraded:
+                    operation.awaiting_event_id = event["eventId"]
+                    operation.awaiting_event = event
+                    operation.awaiting_step_commit_id = step_commit_id
+                    operation.render_sync_state = "waiting_for_gui_sync"
+                    operation.render_retry_count = 0
+                    operation.render_wait_started_at = time.monotonic()
+                    operation.state = "waiting_for_gui_sync"
         self._publish(event)
 
     def step_skipped(self, operation_id: str, workspace_step: Any) -> None:
@@ -412,6 +417,7 @@ class RuntimeOperationManager:
 
     def wait_for_step_rendered(self, operation_id: str) -> bool:
         while True:
+            degraded_event: dict[str, Any] | None = None
             replay_event: dict[str, Any] | None = None
             pause_event: dict[str, Any] | None = None
             with self._render_gate:
@@ -430,17 +436,25 @@ class RuntimeOperationManager:
                 started_at = operation.render_wait_started_at or time.monotonic()
                 elapsed = time.monotonic() - started_at
                 if elapsed >= _RENDER_ACK_ABORT_SECONDS:
+                    awaiting_event_id = operation.awaiting_event_id
+                    awaiting_step_commit_id = operation.awaiting_step_commit_id
                     operation.awaiting_event_id = None
                     operation.awaiting_event = None
                     operation.awaiting_step_commit_id = None
-                    operation.render_sync_state = "timed_out"
-                    operation.state = "failed"
+                    operation.render_sync_state = "gui_sync_degraded"
+                    operation.render_sync_degraded = True
+                    operation.state = "running"
                     operation.updated_at = time.time()
-                    raise RuntimeOperationRenderSyncTimeout(
-                        "GUI did not confirm the committed step before the render-sync timeout"
+                    degraded_event = self._new_event_locked(
+                        operation,
+                        "operation.gui_sync_degraded",
+                        {
+                            "eventId": awaiting_event_id,
+                            "stepCommitId": awaiting_step_commit_id,
+                            "workspaceRevision": operation.workspace_revision,
+                        },
                     )
-
-                if (
+                elif (
                     elapsed >= _RENDER_ACK_PAUSE_SECONDS
                     and operation.render_sync_state != "paused_for_gui_recovery"
                 ):
@@ -457,18 +471,22 @@ class RuntimeOperationManager:
                         },
                     )
 
-                operation.render_retry_count += 1
-                if operation.awaiting_event is not None:
-                    replay_event = {
-                        **operation.awaiting_event,
-                        "payload": {
-                            **operation.awaiting_event["payload"],
-                            "replayed": True,
-                            "retryCount": operation.render_retry_count,
-                        },
-                    }
-                self._render_gate.wait(timeout=_RENDER_ACK_RETRY_SECONDS)
+                if degraded_event is None:
+                    operation.render_retry_count += 1
+                    if operation.awaiting_event is not None:
+                        replay_event = {
+                            **operation.awaiting_event,
+                            "payload": {
+                                **operation.awaiting_event["payload"],
+                                "replayed": True,
+                                "retryCount": operation.render_retry_count,
+                            },
+                        }
+                    self._render_gate.wait(timeout=_RENDER_ACK_RETRY_SECONDS)
 
+            if degraded_event is not None:
+                self._publish(degraded_event)
+                return True
             if pause_event is not None:
                 self._publish(pause_event)
             if replay_event is not None:
@@ -535,7 +553,9 @@ class RuntimeOperationManager:
         self._workspace_sequences[operation.workspace_id] = sequence
         operation.sequence = sequence
         return {
-            "eventId": f"{operation.workspace_id}:{sequence}",
+            "eventId": f"{self._runtime_instance_id}:{operation.operation_id}:{sequence}",
+            "runtimeInstanceId": self._runtime_instance_id,
+            "runSessionId": operation.run_session_id,
             "sequence": sequence,
             "type": event_type,
             "workspaceId": operation.workspace_id,
@@ -551,6 +571,8 @@ class RuntimeOperationManager:
     def _operation_payload(operation: RuntimeOperation) -> dict[str, Any]:
         return {
             "operationId": operation.operation_id,
+            "runSessionId": operation.run_session_id,
+            "runtimeInstanceId": operation.runtime_instance_id,
             "workspaceId": operation.workspace_id,
             "kind": operation.kind,
             "origin": operation.origin,

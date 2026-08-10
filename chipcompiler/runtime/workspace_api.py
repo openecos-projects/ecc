@@ -237,7 +237,13 @@ class WorkspaceRuntimeApi:
     def flow_run(self, request: FlowRunRequest) -> dict:
         return self._flow_run(request)
 
-    def _flow_run(self, request: FlowRunRequest, *, observer=None) -> dict:
+    def _flow_run(
+        self,
+        request: FlowRunRequest,
+        *,
+        observer=None,
+        preserve_user_inputs: bool = False,
+    ) -> dict:
         def run(session: WorkspaceSession) -> dict:
             should_capture = self._should_capture_session_db(session)
             previous_db = session.db_handle if should_capture else None
@@ -251,7 +257,11 @@ class WorkspaceRuntimeApi:
             )
             if request.rerun:
                 affected_steps = list(getattr(engine_flow, "workspace_steps", []))
-                self._prepare_workspace_for_rerun(session.workspace, engine_flow)
+                self._prepare_workspace_for_rerun(
+                    session.workspace,
+                    engine_flow,
+                    preserve_user_inputs=preserve_user_inputs,
+                )
                 self._notify_rerun_prepared(
                     observer,
                     affected_steps,
@@ -378,6 +388,7 @@ class WorkspaceRuntimeApi:
                 runner=lambda observer: self._flow_run(
                     FlowRunRequest(workspace_id=request.workspace_id, rerun=request.rerun),
                     observer=observer,
+                    preserve_user_inputs=request.rerun,
                 ),
             )
         except RuntimeOperationConflict as exc:
@@ -868,10 +879,20 @@ class WorkspaceRuntimeApi:
 
         data_api.refresh_workspace_config(workspace)
 
-    def _prepare_workspace_for_rerun(self, workspace, engine_flow) -> None:
+    def _prepare_workspace_for_rerun(
+        self,
+        workspace,
+        engine_flow,
+        *,
+        preserve_user_inputs: bool = False,
+    ) -> None:
         import chipcompiler.data as data_api
 
-        data_api.prepare_workspace_for_rerun(workspace, engine_flow)
+        data_api.prepare_workspace_for_rerun(
+            workspace,
+            engine_flow,
+            preserve_user_inputs=preserve_user_inputs,
+        )
 
     @staticmethod
     def _rerun_affected_steps(engine_flow, workspace_step, *, reset_dependents: bool):

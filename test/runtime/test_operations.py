@@ -150,6 +150,40 @@ def test_ack_and_start_requests_are_idempotent():
     assert _wait_for_terminal(manager, first["operationId"])["state"] == "succeeded"
 
 
+def test_event_identity_is_unique_across_sidecar_operation_managers():
+    first_events = []
+    second_events = []
+    first = RuntimeOperationManager(first_events.append)
+    second = RuntimeOperationManager(second_events.append)
+
+    first.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="first",
+        runner=lambda _observer: {"rerun": False},
+    )
+    second.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=True,
+        step="",
+        idempotency_key="second",
+        runner=lambda _observer: {"rerun": True},
+    )
+
+    first_queued = _wait_for_event(first_events, "operation.queued")
+    second_queued = _wait_for_event(second_events, "operation.queued")
+    assert first_queued["sequence"] == second_queued["sequence"] == 1
+    assert first_queued["eventId"] != second_queued["eventId"]
+    assert first_queued["runtimeInstanceId"] != second_queued["runtimeInstanceId"]
+    assert first_queued["operationId"] != second_queued["operationId"]
+    assert first_queued["runSessionId"] != second_queued["runSessionId"]
+
+
 def test_rerun_prepared_event_carries_the_affected_steps_once():
     events = []
     manager = RuntimeOperationManager(events.append)
@@ -189,6 +223,49 @@ def test_rerun_prepared_event_carries_the_affected_steps_once():
         "targetStep": "Floorplan",
     }
     assert len([event for event in events if event["type"] == "operation.rerun_prepared"]) == 1
+
+
+def test_render_ack_timeout_degrades_and_allows_the_flow_to_continue(monkeypatch):
+    monkeypatch.setattr(operations, "_RENDER_ACK_RETRY_SECONDS", 0.01)
+    monkeypatch.setattr(operations, "_RENDER_ACK_PAUSE_SECONDS", 0.02)
+    monkeypatch.setattr(operations, "_RENDER_ACK_ABORT_SECONDS", 0.04)
+    events = []
+    manager = RuntimeOperationManager(events.append)
+    step = SimpleNamespace(name="Synthesis", tool="yosys", log=SimpleNamespace(file=""))
+
+    def runner(observer):
+        observer.on_step_started(step)
+        observer.on_step_completed(step, StateEnum.Success)
+        assert observer.wait_for_step_rendered(step, StateEnum.Success)
+        observer.on_step_started(step)
+        observer.on_step_completed(step, StateEnum.Success)
+        assert observer.wait_for_step_rendered(step, StateEnum.Success)
+        return {"rerun": False}
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="request-degraded-sync",
+        runner=runner,
+    )
+
+    degraded = _wait_for_event(events, "operation.gui_sync_degraded")
+    assert degraded["payload"]["stepCommitId"]
+    assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
+    completed_events = [
+        event
+        for event in events
+        if event["type"] == "step.completed" and not event["payload"].get("replayed")
+    ]
+    assert len(completed_events) == 2
+    assert completed_events[1]["payload"]["stepCommitId"]
+    assert (
+        manager.operation_status(started["operationId"])["renderSyncState"] == "gui_sync_degraded"
+    )
+    assert not any(event["type"] == "operation.failed" for event in events)
 
 
 def test_active_operation_reports_a_shutdown_barrier_and_safe_boundary():

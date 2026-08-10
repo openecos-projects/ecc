@@ -1003,6 +1003,28 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert engine_flow.clear_calls == 1
     assert engine_flow.create_calls == 1
 
+    parameter_path = workspace_dir / "home" / "parameters.json"
+    preserved_parameters = json_read(parameter_path)
+    preserved_parameters["Die"] = {"Size": [120.0, 80.0], "Area": 9600.0}
+    preserved_parameters["Core"] = {
+        **preserved_parameters["Core"],
+        "Size": [100.0, 60.0],
+        "Area": 6000.0,
+        "Bounding box": "0 0 100 60",
+    }
+    json_write(parameter_path, preserved_parameters)
+    workspace.parameters.data = preserved_parameters
+    preserved_parameter_text = parameter_path.read_text()
+
+    prepare_workspace_for_rerun(
+        workspace,
+        FakeEngineFlow(),
+        preserve_user_inputs=True,
+    )
+
+    assert parameter_path.read_text() == preserved_parameter_text
+    assert (workspace_dir / "config" / "flow_config.json").read_text() == config_before
+
 
 def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(
     tmp_path, minimal_sg13g2_pdk_factory, default_sg13g2_parameters
