@@ -450,7 +450,7 @@ def save_data(
                     f"({margin[0]} , {margin[1]}) "
                     f"({core_bounding_width + margin[0]} , {core_bounding_height + margin[1]})"
                 ),
-                "Utilitization": core_usage,
+                # "Utilitization": core_usage,
                 "Aspect ratio": aspect_ratio,
             },
         }
