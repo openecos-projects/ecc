@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import sys
 import os
 import queue
+import sys
 import threading
 from typing import BinaryIO
 
@@ -12,7 +12,6 @@ from chipcompiler.runtime.transport import (
     TransportError,
     encode_content_length_frame,
 )
-
 
 _STOP = object()
 
