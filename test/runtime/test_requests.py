@@ -15,6 +15,7 @@ from chipcompiler.runtime.requests import (
     LayoutEditBeginRequest,
     LayoutEditDiscardRequest,
     LayoutEditSaveRequest,
+    OperationStartStepRequest,
     RequestValidationError,
     WorkspaceCloseRequest,
     WorkspaceCreateRequest,
@@ -102,8 +103,21 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
         ("flow.run", {"workspaceId": "ws-1", "rerun": True}, FlowRunRequest),
         (
             "flow.run_step",
-            {"workspaceId": "ws-1", "step": "Synthesis", "rerun": True},
+            {
+                "workspaceId": "ws-1",
+                "step": "Synthesis",
+                "rerun": True,
+            },
             FlowRunStepRequest,
+        ),
+        (
+            "operation.start_step",
+            {
+                "workspaceId": "ws-1",
+                "step": "Synthesis",
+                "resetDependents": True,
+            },
+            OperationStartStepRequest,
         ),
     ],
 )
@@ -284,6 +298,32 @@ def test_rerun_must_be_boolean(method, params):
         _parse_runtime_request(method, params)
 
     assert exc_info.value.reason == "rerun must be a boolean"
+
+
+@pytest.mark.parametrize(
+    ("method", "params"),
+    [
+        (
+            "operation.start_step",
+            {"workspaceId": "ws-1", "step": "Synthesis", "resetDependents": 1},
+        ),
+    ],
+)
+def test_reset_dependents_must_be_boolean(method, params):
+    with pytest.raises(RequestValidationError) as exc_info:
+        _parse_runtime_request(method, params)
+
+    assert exc_info.value.reason == "reset_dependents must be a boolean"
+
+
+def test_direct_flow_run_step_rejects_gui_only_reset_dependents_field():
+    with pytest.raises(RequestValidationError) as exc_info:
+        _parse_runtime_request(
+            "flow.run_step",
+            {"workspaceId": "ws-1", "step": "Synthesis", "resetDependents": True},
+        )
+
+    assert exc_info.value.reason == "unknown field: reset_dependents"
 
 
 def test_unknown_runtime_method_has_no_request_model():

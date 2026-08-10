@@ -150,6 +150,47 @@ def test_ack_and_start_requests_are_idempotent():
     assert _wait_for_terminal(manager, first["operationId"])["state"] == "succeeded"
 
 
+def test_rerun_prepared_event_carries_the_affected_steps_once():
+    events = []
+    manager = RuntimeOperationManager(events.append)
+
+    def runner(observer):
+        observer.on_rerun_prepared(
+            scope="step",
+            target_step="Floorplan",
+            affected_steps=["Floorplan", "route"],
+        )
+        return {"rerun": True}
+
+    first = manager.start(
+        workspace_id="workspace-1",
+        kind="step",
+        origin="gui",
+        rerun=True,
+        step="Floorplan",
+        idempotency_key="rerun-prepared",
+        runner=runner,
+    )
+    duplicate = manager.start(
+        workspace_id="workspace-1",
+        kind="step",
+        origin="gui",
+        rerun=True,
+        step="Floorplan",
+        idempotency_key="rerun-prepared",
+        runner=runner,
+    )
+
+    assert duplicate["operationId"] == first["operationId"]
+    prepared = _wait_for_event(events, "operation.rerun_prepared")
+    assert prepared["payload"] == {
+        "affectedSteps": ["Floorplan", "route"],
+        "scope": "step",
+        "targetStep": "Floorplan",
+    }
+    assert len([event for event in events if event["type"] == "operation.rerun_prepared"]) == 1
+
+
 def test_active_operation_reports_a_shutdown_barrier_and_safe_boundary():
     release = threading.Event()
     manager = RuntimeOperationManager()

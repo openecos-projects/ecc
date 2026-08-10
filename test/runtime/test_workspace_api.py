@@ -1215,6 +1215,7 @@ def test_flow_run_step_rerun_clears_step_artifacts_and_resets_step_state(monkeyp
         "state": "Unstart",
         "runtime": "",
         "peak memory (mb)": 0,
+        "info": {},
     }
     assert json.loads(subflow_path.read_text()) == {
         "path": str(subflow_path),
@@ -1228,10 +1229,131 @@ def test_flow_run_step_rerun_clears_step_artifacts_and_resets_step_state(monkeyp
             }
         ],
     }
-    assert json.loads(checklist_path.read_text()) == {
-        "path": str(checklist_path),
-        "checklist": [],
+    checklist = json.loads(checklist_path.read_text())
+    assert checklist["schema_version"] == 3
+    assert checklist["kind"] == "signoff_checklist"
+    assert checklist["checker_revision"] == "signoff-v1"
+    assert checklist["status"] == "ready"
+    assert checklist["summary"] == {
+        "passed": 0,
+        "blocked": 0,
+        "attention": 0,
+        "unavailable": 0,
     }
+    assert checklist["checklist"] == []
+
+
+def test_flow_run_step_gui_rerun_resets_target_and_downstream_subflows(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    def step_spec(name, tool):
+        step_dir = ws / f"{name}_{tool}"
+        artifact_dir = step_dir / "output"
+        (artifact_dir / "nested").mkdir(parents=True)
+        (artifact_dir / "nested" / "stale").write_text(name)
+        subflow_path = step_dir / "subflow.json"
+        subflow_path.write_text(
+            json.dumps(
+                {
+                    "path": str(subflow_path),
+                    "steps": [
+                        {
+                            "name": "load data",
+                            "state": "Success",
+                            "runtime": "0:00:01",
+                            "peak memory (mb)": 10,
+                            "info": {"stale": name},
+                        },
+                        {
+                            "name": "run tool",
+                            "state": "Success",
+                            "runtime": "0:00:02",
+                            "peak memory (mb)": 20,
+                            "info": {"stale": name},
+                        },
+                    ],
+                }
+            )
+        )
+        checklist_path = step_dir / "checklist.json"
+        checklist_path.write_text(json.dumps({"checklist": [{"item": name}]}))
+        return {
+            "name": name,
+            "tool": tool,
+            "output": {"dir": artifact_dir},
+            "subflow": SimpleNamespace(path=subflow_path, steps=[]),
+            "checklist": SimpleNamespace(path=checklist_path, checklist=[]),
+        }
+
+    synthesis = step_spec("Synthesis", "yosys")
+    floorplan = step_spec("Floorplan", "ecc")
+    route = step_spec("route", "ecc")
+    DummyFlow.workspace_step_specs = (synthesis, floorplan, route)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [
+            {
+                "name": spec["name"],
+                "tool": spec["tool"],
+                "state": "Success",
+                "runtime": "0:00:04",
+                "peak memory (mb)": 30,
+                "info": {"stale": spec["name"]},
+            }
+            for spec in (synthesis, floorplan, route)
+        ]
+    }
+
+    result = api._flow_run_step(
+        FlowRunStepRequest(
+            workspace_id=workspace_id,
+            step="Floorplan",
+            rerun=True,
+        ),
+        reset_dependents=True,
+    )
+
+    assert result == {"step": "Floorplan", "state": "Success"}
+    assert (ws / "Synthesis_yosys" / "output" / "nested" / "stale").read_text() == "Synthesis"
+    for spec in (floorplan, route):
+        assert list(spec["output"]["dir"].iterdir()) == []
+        checklist = json.loads(spec["checklist"].path.read_text())
+        assert checklist["schema_version"] == 3
+        assert checklist["kind"] == "signoff_checklist"
+        assert checklist["checker_revision"] == "signoff-v1"
+        assert checklist["status"] == "ready"
+        assert checklist["summary"] == {
+            "passed": 0,
+            "blocked": 0,
+            "attention": 0,
+            "unavailable": 0,
+        }
+        assert checklist["checklist"] == []
+        reset_subflow = json.loads(spec["subflow"].path.read_text())
+        assert all(
+            step["state"] == "Unstart"
+            and step["runtime"] == ""
+            and step["peak memory (mb)"] == 0
+            and step["info"] == {}
+            for step in reset_subflow["steps"]
+        )
+
+    records = {record["name"]: record for record in session.workspace.flow.data["steps"]}
+    assert any(
+        record["name"] == "Synthesis" and record["state"] == "Success"
+        for record in session.workspace.flow.data["steps"]
+    )
+    for name in ("Floorplan", "route"):
+        assert records[name] == {
+            "name": name,
+            "tool": "ecc",
+            "state": "Unstart",
+            "runtime": "",
+            "peak memory (mb)": 0,
+            "info": {},
+        }
 
 
 def test_flow_run_step_rerun_rejects_an_open_layout_edit(monkeypatch, tmp_path):

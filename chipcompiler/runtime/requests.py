@@ -84,6 +84,7 @@ class OperationStartStepRequest:
     workspace_id: str
     step: str
     rerun: bool = False
+    reset_dependents: bool = False
     origin: str = "gui"
     idempotency_key: str = ""
 
@@ -177,6 +178,7 @@ FIELD_ALIASES = {
     "stepCommitId": "step_commit_id",
     "workspaceRevision": "workspace_revision",
     "idempotencyKey": "idempotency_key",
+    "resetDependents": "reset_dependents",
     "configPath": "config_path",
     "outputPath": "output_path",
     "infoId": "info_id",
@@ -213,8 +215,10 @@ def parse_request_model(model: type, params: object):
         if required and _is_missing(values[field.name]):
             raise RequestValidationError(f"missing required field: {field.name}")
 
-        if field.name == "rerun" and not isinstance(values[field.name], bool):
-            raise RequestValidationError("rerun must be a boolean")
+        if field.name in {"rerun", "reset_dependents"} and not isinstance(
+            values[field.name], bool
+        ):
+            raise RequestValidationError(f"{field.name} must be a boolean")
 
     return model(**values)
 

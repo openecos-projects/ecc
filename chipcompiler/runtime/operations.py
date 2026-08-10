@@ -339,6 +339,29 @@ class RuntimeOperationManager:
             log_tail.thread = thread
             thread.start()
 
+    def rerun_prepared(
+        self,
+        operation_id: str,
+        *,
+        affected_steps: list[str],
+        scope: str,
+        target_step: str = "",
+    ) -> None:
+        """Publish the idempotent GUI reset boundary before a rerun starts."""
+        with self._lock:
+            operation = self._operations[operation_id]
+            operation.updated_at = time.time()
+            event = self._new_event_locked(
+                operation,
+                "operation.rerun_prepared",
+                {
+                    "affectedSteps": affected_steps,
+                    "scope": scope,
+                    "targetStep": target_step,
+                },
+            )
+        self._publish(event)
+
     def step_completed(self, operation_id: str, workspace_step: Any, state: Any) -> None:
         self._stop_step_log_tail(operation_id)
         state_value = str(getattr(state, "value", state))
@@ -567,6 +590,20 @@ class RuntimeFlowObserver:
 
     def on_step_started(self, workspace_step: Any) -> None:
         self._manager.step_started(self._operation_id, workspace_step)
+
+    def on_rerun_prepared(
+        self,
+        *,
+        affected_steps: list[str],
+        scope: str,
+        target_step: str = "",
+    ) -> None:
+        self._manager.rerun_prepared(
+            self._operation_id,
+            affected_steps=affected_steps,
+            scope=scope,
+            target_step=target_step,
+        )
 
     def on_step_completed(self, workspace_step: Any, state: Any) -> None:
         self._manager.step_completed(self._operation_id, workspace_step, state)
