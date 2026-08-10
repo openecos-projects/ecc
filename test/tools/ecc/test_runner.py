@@ -9,6 +9,7 @@ from chipcompiler.data import (
     EccReport,
     EccStep,
     OriginDesign,
+    Parameters,
     StepEnum,
     StepInput,
     Workspace,
@@ -523,6 +524,40 @@ def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path):
     assert module.geometry_output == step.output.geometry
     assert step.output.geometry_manifest is not None
     assert step.output.geometry_manifest.is_file()
+
+
+def test_save_data_preserves_core_utilization_parameter(tmp_path, monkeypatch):
+    parameter_path = tmp_path / "home" / "parameters.json"
+    parameter_path.parent.mkdir()
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        parameters=Parameters(
+            path=parameter_path,
+            data={"Core": {"Margin": [2, 3], "Utilitization": 0.61}},
+        ),
+    )
+    step = build_step(workspace, StepEnum.ROUTING.value, None, None)
+    module = SnapshotSaveEccModule(write_snapshot=True)
+    monkeypatch.setattr(
+        ecc_runner,
+        "json_read",
+        lambda _path: {
+            "Design Layout": {
+                "die_bounding_width": 100,
+                "die_bounding_height": 50,
+                "die_area": 5000,
+                "core_bounding_width": 80,
+                "core_bounding_height": 30,
+                "core_area": 2400,
+                "core_usage": 0.42,
+            }
+        },
+    )
+
+    assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
+    assert workspace.parameters.data["Core"]["Utilitization"] == 0.61
+    assert json.loads(parameter_path.read_text(encoding="utf-8"))["Core"]["Utilitization"] == 0.61
 
 
 def test_save_data_fails_when_geometry_snapshot_cannot_be_written(tmp_path):

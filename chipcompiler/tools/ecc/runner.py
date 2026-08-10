@@ -437,8 +437,6 @@ def save_data(
 
         margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
 
-        core_usage = db_json.get("Design Layout", {}).get("core_usage", 0)
-
         aspect_ratio = die_bounding_width / die_bounding_height if die_bounding_height > 0 else 1
 
         update_param = {
@@ -450,7 +448,6 @@ def save_data(
                     f"({margin[0]} , {margin[1]}) "
                     f"({core_bounding_width + margin[0]} , {core_bounding_height + margin[1]})"
                 ),
-                # "Utilitization": core_usage,
                 "Aspect ratio": aspect_ratio,
             },
         }
