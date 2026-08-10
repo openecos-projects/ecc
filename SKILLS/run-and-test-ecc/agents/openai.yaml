@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run and Test ECC"
+  short_description: "Run ECC flows, resume workspaces, and choose tests"
+  default_prompt: "Use $run-and-test-ecc to run or test this ECC checkout."

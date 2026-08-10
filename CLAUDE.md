@@ -4,6 +4,19 @@ ECC is the EDA toolchain component of ECOS Studio, orchestrating EDA tools (Yosy
 
 For setup, testing, and code quality commands, see [docs/development.md](docs/development.md).
 
+# Repository Skills
+
+ECC-specific agent skills are versioned under `SKILLS/`. For matching work,
+read the corresponding `SKILL.md` completely before acting. The repository
+copy is authoritative for this checkout when a user-level skill has the same
+name. Resolve explicit `$run-and-test-ecc` and `$debug-ecc-in-tmux` requests
+to these repository copies as well.
+
+- `SKILLS/run-and-test-ecc/SKILL.md`: setup, builds, CLI and Workspace runs,
+  focused tests, integration flows, and native import provenance.
+- `SKILLS/debug-ecc-in-tmux/SKILL.md`: persistent GDB/cuda-gdb debugging for
+  ECC Python, C++, pybind, iDB/iRT, and CUDA failures.
+
 # Workflow
 
 If Nix is available, enter the dev shell before syncing:

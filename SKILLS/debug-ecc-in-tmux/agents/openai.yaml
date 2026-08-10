@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debug ECC in tmux"
+  short_description: "Hold ECC native breakpoints in persistent tmux"
+  default_prompt: "Use $debug-ecc-in-tmux to reproduce this ECC failure under GDB in a persistent tmux session."
