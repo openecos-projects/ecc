@@ -559,6 +559,7 @@ class EngineFlow:
             return StateEnum.Invalid
 
         return state
+
     def init_db_engine_for_step(self, workspace_step: WorkspaceStep) -> bool:
         """Initialize the native DB engine from an explicitly selected step."""
         if self.engine_db is None:

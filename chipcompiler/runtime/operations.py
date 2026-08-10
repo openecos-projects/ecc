@@ -380,9 +380,7 @@ class RuntimeOperationManager:
             event = self._new_event_locked(operation, "step.completed", payload)
             if state_value == "Success":
                 operation.workspace_revision += 1
-                step_commit_id = (
-                    f"{operation.operation_id}:step:{operation.workspace_revision}"
-                )
+                step_commit_id = f"{operation.operation_id}:step:{operation.workspace_revision}"
                 payload["stepCommitId"] = step_commit_id
                 payload["workspaceRevision"] = operation.workspace_revision
                 operation.awaiting_event_id = event["eventId"]
