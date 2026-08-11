@@ -475,6 +475,9 @@ class EngineFlow:
             daemon=True,
         )
         memory_monitor.start()
+        previous_observer = getattr(self.workspace, "_runtime_flow_observer", None)
+        if observer is not None:
+            self.workspace._runtime_flow_observer = observer
         try:
             from chipcompiler.tools import run_step as run_tool_step
 
@@ -488,6 +491,11 @@ class EngineFlow:
         finally:
             stop_memory_monitor.set()
             memory_monitor.join()
+            if observer is not None:
+                if previous_observer is None:
+                    delattr(self.workspace, "_runtime_flow_observer")
+                else:
+                    self.workspace._runtime_flow_observer = previous_observer
 
         # compute metrics
         peak_memory_mb = peak_memory[0] - start_memory_mb

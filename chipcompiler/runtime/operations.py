@@ -397,6 +397,31 @@ class RuntimeOperationManager:
                     operation.state = "waiting_for_gui_sync"
         self._publish(event)
 
+    def subflow_stage(
+        self,
+        operation_id: str,
+        workspace_step: Any,
+        subflow_step: dict[str, Any],
+    ) -> None:
+        """Publish a saved inner-flow state without waiting for a render ACK."""
+        with self._lock:
+            operation = self._operations[operation_id]
+            step = str(getattr(workspace_step, "name", ""))
+            tool = str(getattr(workspace_step, "tool", ""))
+            event = self._new_event_locked(
+                operation,
+                "subflow.stage",
+                {
+                    "peakMemory": subflow_step.get("peak memory (mb)", 0),
+                    "runtime": str(subflow_step.get("runtime", "")),
+                    "state": str(subflow_step.get("state", "Unstart")),
+                    "step": step,
+                    "subflowStep": str(subflow_step.get("name", "")),
+                    "tool": tool,
+                },
+            )
+        self._publish(event)
+
     def step_skipped(self, operation_id: str, workspace_step: Any) -> None:
         self._stop_step_log_tail(operation_id)
         with self._lock:
@@ -627,6 +652,9 @@ class RuntimeFlowObserver:
 
     def on_step_completed(self, workspace_step: Any, state: Any) -> None:
         self._manager.step_completed(self._operation_id, workspace_step, state)
+
+    def on_subflow_stage(self, workspace_step: Any, subflow_step: dict[str, Any]) -> None:
+        self._manager.subflow_stage(self._operation_id, workspace_step, subflow_step)
 
     def on_step_skipped(self, workspace_step: Any) -> None:
         self._manager.step_skipped(self._operation_id, workspace_step)

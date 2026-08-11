@@ -101,6 +101,10 @@ class SizerSubFlow:
                 step_dict["info"] = info
                 self.save()
 
+                from chipcompiler.runtime.subflow_events import publish_subflow_stage
+
+                publish_subflow_stage(self.workspace, self.workspace_step, step_dict)
+
                 self.workspace.home.update_monitor(
                     step=self.workspace_step.name,
                     sub_step=step_name,

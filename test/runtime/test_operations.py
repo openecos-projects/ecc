@@ -60,6 +60,50 @@ def test_successful_step_waits_for_matching_render_ack_before_completing():
     assert events[-1]["type"] == "operation.completed"
 
 
+def test_subflow_stage_is_emitted_for_the_active_workspace_step():
+    events = []
+    released = threading.Event()
+    manager = RuntimeOperationManager(events.append)
+    step = SimpleNamespace(name="Floorplan", tool="ecc", log=SimpleNamespace(file=""))
+
+    def runner(observer):
+        observer.on_step_started(step)
+        observer.on_subflow_stage(
+            step,
+            {
+                "name": "init floorplan",
+                "state": "Ongoing",
+                "runtime": "0:0:1",
+                "peak memory (mb)": 12.5,
+            },
+        )
+        assert released.wait(timeout=1)
+        return {"rerun": False}
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="step",
+        origin="gui",
+        rerun=True,
+        step="Floorplan",
+        idempotency_key="subflow-stage",
+        runner=runner,
+    )
+
+    event = _wait_for_event(events, "subflow.stage")
+    assert event["operationId"] == started["operationId"]
+    assert event["payload"] == {
+        "peakMemory": 12.5,
+        "runtime": "0:0:1",
+        "state": "Ongoing",
+        "step": "Floorplan",
+        "subflowStep": "init floorplan",
+        "tool": "ecc",
+    }
+    released.set()
+    assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
+
+
 def test_render_ack_replays_one_commit_then_pauses_before_a_bounded_timeout(monkeypatch):
     monkeypatch.setattr(operations, "_RENDER_ACK_RETRY_SECONDS", 0.01)
     monkeypatch.setattr(operations, "_RENDER_ACK_PAUSE_SECONDS", 0.02)
