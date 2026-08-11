@@ -2,7 +2,7 @@ import json
 import os
 import signal
 import subprocess
-import threading
+from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,8 +39,9 @@ class WorkerClient:
     def __init__(self, worker_argv: list[str]):
         self._argv = worker_argv
         self._process: subprocess.Popen | None = None
-        self._lock = threading.Lock()
+        self._pgid: int | None = None
         self._decoder = ContentLengthDecoder()
+        self._notifications: deque[dict] = deque()
 
     def start(self) -> subprocess.Popen:
         self._process = subprocess.Popen(
@@ -50,6 +51,7 @@ class WorkerClient:
             stderr=subprocess.PIPE,
             start_new_session=True,
         )
+        self._pgid = self._process.pid
         return self._process
 
     @property
@@ -76,7 +78,12 @@ class WorkerClient:
         except OSError as exc:
             raise WorkerProcessError(f"failed to send request: {exc}") from exc
 
-    def read_response(self) -> dict:
+    def read_response(self, request_id: int = 1) -> dict:
+        """Read the next RPC response matching request_id.
+
+        Notifications (messages without an 'id' field) are queued internally.
+        Malformed JSON raises WorkerProcessError.
+        """
         if self._process is None or self._process.stdout is None:
             raise WorkerProcessError("worker not started")
         while True:
@@ -88,13 +95,30 @@ class WorkerClient:
                 messages = self._decoder.feed(chunk)
             except TransportError as exc:
                 raise WorkerProcessError(f"protocol error: {exc}") from exc
-            for msg in messages:
-                return json.loads(msg)
+            for raw in messages:
+                try:
+                    msg = json.loads(raw)
+                except (json.JSONDecodeError, ValueError) as exc:
+                    raise WorkerProcessError(f"malformed JSON from worker: {exc}") from exc
+                if not isinstance(msg, dict):
+                    raise WorkerProcessError("expected JSON object from worker")
+                if "id" not in msg:
+                    self._notifications.append(msg)
+                    continue
+                if msg["id"] != request_id:
+                    self._notifications.append(msg)
+                    continue
+                return msg
+
+    def pop_notification(self) -> dict | None:
+        if self._notifications:
+            return self._notifications.popleft()
+        return None
 
     def request(self, method: str, params: dict, request_id: int = 1) -> WorkerResult:
         try:
             self.send_request(method, params, request_id)
-            response = self.read_response()
+            response = self.read_response(request_id)
         except WorkerProcessError as exc:
             return WorkerResult(success=False, error=str(exc))
         if "error" in response:
@@ -106,7 +130,7 @@ class WorkerClient:
         proc = self._process
         if proc is None:
             return None
-        return _terminate_process_group(proc)
+        return _terminate_process_group(proc, self._pgid)
 
     def is_alive(self) -> bool:
         if self._process is None:
@@ -114,36 +138,36 @@ class WorkerClient:
         return self._process.poll() is None
 
 
-def _terminate_process_group(proc: subprocess.Popen) -> int:
-    """Escalate signals to the worker process group."""
-    pid = proc.pid
-    try:
-        pgid = os.getpgid(pid)
-    except OSError:
-        return proc.wait()
+def _terminate_process_group(proc: subprocess.Popen, pgid: int | None = None) -> int:
+    """Escalate signals to the worker process group.
 
-    if proc.poll() is not None:
-        return proc.returncode
+    pgid is cached at start time (the worker pid, since start_new_session=True).
+    Signals the group even after the leader has already exited, because
+    descendants may still be running.
+    """
+    if pgid is None:
+        pgid = proc.pid
 
-    with suppress(OSError):
-        os.killpg(pgid, signal.SIGINT)
-    try:
-        proc.wait(timeout=_GRACEFUL_WAIT)
-        return proc.returncode
-    except subprocess.TimeoutExpired:
-        pass
+    def _signal_group(sig: int) -> None:
+        with suppress(OSError):
+            os.killpg(pgid, sig)
 
-    with suppress(OSError):
-        os.killpg(pgid, signal.SIGTERM)
-    try:
-        proc.wait(timeout=_FORCEFUL_WAIT)
-        return proc.returncode
-    except subprocess.TimeoutExpired:
-        pass
+    if proc.poll() is None:
+        _signal_group(signal.SIGINT)
+        try:
+            proc.wait(timeout=_GRACEFUL_WAIT)
+        except subprocess.TimeoutExpired:
+            _signal_group(signal.SIGTERM)
+            try:
+                proc.wait(timeout=_FORCEFUL_WAIT)
+            except subprocess.TimeoutExpired:
+                _signal_group(signal.SIGKILL)
+                proc.wait()
+    else:
+        _signal_group(signal.SIGTERM)
+        _signal_group(signal.SIGKILL)
 
-    with suppress(OSError):
-        os.killpg(pgid, signal.SIGKILL)
-    return proc.wait()
+    return proc.returncode
 
 
 def classify_worker_exit(proc: subprocess.Popen) -> WorkerResult:
@@ -168,10 +192,14 @@ def classify_worker_exit(proc: subprocess.Popen) -> WorkerResult:
     return WorkerResult(success=False, exit_code=code, error=f"worker exited with code {code}")
 
 
-def repair_flow_state(flow_json_path: str | Path) -> list[str]:
+def repair_flow_state(flow_json_path: str | Path, *, active_step: str | None = None) -> list[str]:
     """Repair Ongoing steps left by a crashed worker, setting them to Incomplete.
 
+    If active_step is provided, only that specific step is repaired (operation-scoped).
+    If active_step is None, all Ongoing steps are repaired (legacy fallback).
+
     Returns the list of step names that were repaired.
+    Raises OSError if the repaired state cannot be persisted.
     """
     path = Path(flow_json_path)
     data = json_read(path)
@@ -186,9 +214,13 @@ def repair_flow_state(flow_json_path: str | Path) -> list[str]:
     for step in steps:
         if not isinstance(step, dict):
             continue
-        if step.get("state") == "Ongoing":
-            step["state"] = "Incomplete"
-            repaired.append(step.get("name", "<unknown>"))
+        if step.get("state") != "Ongoing":
+            continue
+        step_name = step.get("name", "<unknown>")
+        if active_step is not None and step_name != active_step:
+            continue
+        step["state"] = "Incomplete"
+        repaired.append(step_name)
 
     if repaired:
         json_write(path, data)

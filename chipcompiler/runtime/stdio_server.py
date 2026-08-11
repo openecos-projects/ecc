@@ -113,8 +113,15 @@ def _read_chunk(input_stream: BinaryIO) -> bytes:
 
 
 def main(*, persistent_db_enabled: bool = False) -> int:
-    return run_stdio_server(
-        sys.stdin.buffer,
-        sys.stdout.buffer,
-        persistent_db_enabled=persistent_db_enabled,
-    )
+    from chipcompiler.runtime.stdio_isolation import StdioIsolation
+
+    isolation = StdioIsolation()
+    protocol_stream = isolation.install()
+    try:
+        return run_stdio_server(
+            sys.stdin.buffer,
+            protocol_stream,
+            persistent_db_enabled=persistent_db_enabled,
+        )
+    finally:
+        isolation.close()

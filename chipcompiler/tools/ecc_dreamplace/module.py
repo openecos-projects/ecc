@@ -60,7 +60,7 @@ class DreamplaceModule:
         return params
 
     @contextmanager
-    def _configure_root_logging(self, *, legalize_only: bool):
+    def _configure_root_logging(self):
         root_logger = logging.getLogger()
         original_handlers = root_logger.handlers[:]
         original_level = root_logger.level
@@ -86,7 +86,7 @@ class DreamplaceModule:
         from dreamplace.Params import Params
         from dreamplace.Placer import PlacementEngine
 
-        with self._configure_root_logging(legalize_only=legalize_only):
+        with self._configure_root_logging():
             params = self._build_params(Params, legalize_only=legalize_only)
 
             engine = PlacementEngine(params)

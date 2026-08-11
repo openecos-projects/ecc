@@ -34,7 +34,7 @@ def emit_step_marker(event: str, step: str, tool: str) -> None:
     sys.stdout.flush()
     sys.stderr.flush()
     payload = json.dumps({"event": event, "step": step, "tool": tool}, separators=(",", ":"))
-    line = b"\x1eECC-STEP " + payload.encode("utf-8") + b"\n"
+    line = MARKER_PREFIX + payload.encode("utf-8") + b"\n"
     os.write(2, line)
 
 
@@ -61,8 +61,6 @@ def parse_marker(line: bytes) -> StepMarker | None:
 class LogStreamState:
     """Mutable state maintained by the log stream reader."""
 
-    current_step: str | None = None
-    current_tool: str | None = None
     tail_bytes: bytes = b""
     archive_file: BinaryIO | None = field(default=None, repr=False)
     bytes_archived: int = 0
@@ -138,30 +136,28 @@ class LogStreamReader:
             buf = buf[nl + 1 :]
             marker = parse_marker(line)
             if marker is not None:
-                self._handle_marker(marker)
+                self._handle_marker(marker, line)
             else:
                 self._emit_data(line)
-        return buf
 
-    def _handle_marker(self, marker: StepMarker) -> None:
+    def _handle_marker(self, marker: StepMarker, raw_line: bytes) -> None:
         if marker.event == "begin":
             self._close_archive()
-            self._state.current_step = marker.step
-            self._state.current_tool = marker.tool
             self._state.steps_seen.append(marker.step)
             self._open_archive(marker.step, marker.tool)
         elif marker.event == "end":
             self._close_archive()
-            self._state.current_step = None
-            self._state.current_tool = None
+        else:
+            self._emit_data(raw_line)
 
     def _emit_data(self, data: bytes) -> None:
         if self._state.archive_file is not None:
             try:
                 self._state.archive_file.write(data)
                 self._state.bytes_archived += len(data)
-            except OSError:
-                pass
+            except OSError as exc:
+                self._state.error = exc
+                self._state.archive_file = None
         self._update_tail(data)
         if self._on_output is not None:
             self._on_output(data)
@@ -181,7 +177,8 @@ class LogStreamReader:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             self._state.archive_file = path.open("wb")  # noqa: SIM115
-        except OSError:
+        except OSError as exc:
+            self._state.error = exc
             self._state.archive_file = None
 
     def _close_archive(self) -> None:
@@ -189,6 +186,6 @@ class LogStreamReader:
             try:
                 self._state.archive_file.flush()
                 self._state.archive_file.close()
-            except OSError:
-                pass
+            except OSError as exc:
+                self._state.error = exc
             self._state.archive_file = None

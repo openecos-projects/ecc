@@ -20,7 +20,6 @@ class StdioIsolation:
     """
 
     def __init__(self):
-        self._protocol_fd: int | None = None
         self._protocol_stream: BinaryIO | None = None
         self._installed = False
 
@@ -42,11 +41,11 @@ class StdioIsolation:
         sys.stdout.flush()
         sys.stderr.flush()
 
-        self._protocol_fd = os.dup(1)
+        protocol_fd = os.dup(1)
         os.dup2(2, 1)
         sys.stdout = sys.stderr
 
-        self._protocol_stream = os.fdopen(self._protocol_fd, "wb", buffering=0)
+        self._protocol_stream = os.fdopen(protocol_fd, "wb", buffering=0)
         self._installed = True
         return self._protocol_stream
 
@@ -54,4 +53,3 @@ class StdioIsolation:
         if self._protocol_stream is not None:
             self._protocol_stream.close()
             self._protocol_stream = None
-            self._protocol_fd = None
