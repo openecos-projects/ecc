@@ -314,6 +314,98 @@ class TestWorkspaceIdInjection:
         assert result.success is True
 
 
+class TestShutdownValidation:
+    """Strict ok is True validation in _graceful_shutdown."""
+
+    @pytest.mark.parametrize(
+        "ok_value",
+        [1, "yes", "true", [], {}],
+        ids=["int", "string", "string-true", "list", "dict"],
+    )
+    def test_truthy_non_boolean_ok_fails_shutdown(self, tmp_path, ok_value):
+        """Non-True truthy values must not be accepted as successful shutdown."""
+        script = tmp_path / "bad_shutdown.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent(f"""\
+            req = read_request()  # hello
+            send_response({{"jsonrpc": "2.0", "result": {{"version": 1}}, "id": req["id"]}})
+            req = read_request()  # workspace.open
+            send_response({{"jsonrpc": "2.0", "result": {{"workspaceId": "w"}}, "id": req["id"]}})
+            req = read_request()  # flow.run
+            send_response({{"jsonrpc": "2.0", "result": {{}}, "id": req["id"]}})
+            req = read_request()  # rpc.shutdown
+            ok_val = {repr(ok_value)}
+            resp = {{"jsonrpc": "2.0", "result": {{"ok": ok_val}}, "id": req["id"]}}
+            send_response(resp)
+        """)
+        )
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text("{}")
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+        )
+        result = op.run("flow.run", {})
+        assert result.success is False
+        assert "worker did not exit cleanly" in result.error
+
+    def test_false_ok_fails_shutdown(self, tmp_path):
+        """ok: false must not be accepted."""
+        script = tmp_path / "false_shutdown.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "w"}, "id": req["id"]})
+            req = read_request()  # flow.run
+            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            req = read_request()  # rpc.shutdown
+            send_response({"jsonrpc": "2.0", "result": {"ok": False}, "id": req["id"]})
+        """)
+        )
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text("{}")
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+        )
+        result = op.run("flow.run", {})
+        assert result.success is False
+        assert "worker did not exit cleanly" in result.error
+
+    def test_missing_ok_fails_shutdown(self, tmp_path):
+        """Missing ok field must not be accepted."""
+        script = tmp_path / "no_ok_shutdown.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "w"}, "id": req["id"]})
+            req = read_request()  # flow.run
+            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            req = read_request()  # rpc.shutdown
+            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+        """)
+        )
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text("{}")
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+        )
+        result = op.run("flow.run", {})
+        assert result.success is False
+        assert "worker did not exit cleanly" in result.error
+
+
 class TestParseMarkerNonObject:
     def test_non_object_json_treated_as_raw(self):
         """Non-dict JSON markers don't crash the reader."""
@@ -352,45 +444,35 @@ class TestRealServerLifecycle:
             if proc.poll() is None:
                 client.terminate()
 
-    def test_workspace_open_with_real_workspace(self, tmp_path):
-        """workspace.open succeeds with a minimal valid workspace fixture."""
-        home = tmp_path / "home"
-        home.mkdir()
-        (home / "parameters.json").write_text(
-            json.dumps(
-                {
-                    "design_name": "test_design",
-                    "origin_verilog": "",
-                    "origin_def": "",
-                }
-            )
+    def test_run_operation_with_real_workspace(self, tmp_path, minimal_ics55_pdk_factory):
+        """RunOperation lifecycle succeeds against the real server with a valid workspace."""
+        from chipcompiler.data import create_workspace
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        rtl_path = tmp_path / "gcd.v"
+        rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+        workspace_dir = tmp_path / "workspace"
+        create_workspace(
+            directory=workspace_dir,
+            origin_def="",
+            origin_verilog=rtl_path,
+            pdk="ics55",
+            pdk_root=pdk_root,
+            parameters={
+                "PDK": "ics55",
+                "Design": "gcd",
+                "Top module": "gcd",
+                "Clock": "clk",
+                "Frequency max [MHz]": 100,
+            },
         )
-        (home / "home.json").write_text(
-            json.dumps(
-                {
-                    "path": str(tmp_path),
-                    "name": "test_design",
-                    "pdk": "",
-                    "runs": [],
-                }
-            )
+        flow_json = workspace_dir / "home" / "flow.json"
+        op = RunOperation(
+            workspace_dir=workspace_dir,
+            flow_json_path=flow_json,
+            worker_argv=[_ECC_BIN, "rpc", "serve", "--stdio", "--persistent-db"],
         )
-
-        client = WorkerClient([_ECC_BIN, "rpc", "serve", "--stdio", "--persistent-db"])
-        proc = client.start()
-        try:
-            hello = client.request("rpc.hello", {"version": 1}, request_id=0)
-            assert hello.success is True
-
-            open_result = client.request(
-                "workspace.open", {"directory": str(tmp_path)}, request_id=1
-            )
-            if open_result.success:
-                assert "workspaceId" in open_result.response["result"]
-
-            shutdown = client.request("rpc.shutdown", {}, request_id=0)
-            assert shutdown.success is True
-            proc.wait(timeout=5.0)
-        finally:
-            if proc.poll() is None:
-                client.terminate()
+        result = op.run("workspace.home", {})
+        assert result.success is True
+        assert result.exit_code == 0
+        assert "path" in result.rpc_result["result"]

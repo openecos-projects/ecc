@@ -187,6 +187,29 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
 
 
+def _run_flow_via_worker(workspace_dir: str) -> bool:
+    """Execute flow.run through an isolated worker process.
+
+    Falls back to None if the worker binary is unavailable, signaling the caller
+    to use direct in-process execution instead.
+    """
+    from pathlib import Path
+
+    from chipcompiler.runtime.worker_operation import RunOperation, _default_worker_argv
+
+    argv = _default_worker_argv()
+    if not os.path.isfile(argv[0]):
+        return None
+
+    flow_json_path = Path(workspace_dir) / "home" / "flow.json"
+    op = RunOperation(
+        workspace_dir=Path(workspace_dir),
+        flow_json_path=flow_json_path,
+    )
+    result = op.run("flow.run", {"rerun": False})
+    return result.success
+
+
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     if command_input.workspace is not None:
         return _run_workspace(command_input, ctx)
@@ -427,7 +450,8 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         if should_enable_run_progress(ctx, sys.stderr):
             flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
         else:
-            flow_ok = engine_flow.run_steps()
+            worker_result = _run_flow_via_worker(run_dir)
+            flow_ok = worker_result if worker_result is not None else engine_flow.run_steps()
 
         if not flow_ok:
             return CommandResult.err(

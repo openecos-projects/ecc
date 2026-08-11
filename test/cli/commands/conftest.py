@@ -56,6 +56,11 @@ def flow_mocks(monkeypatch):
         capture["create_kwargs"] = kwargs
         return workspace_obj
 
+    def fake_run_flow_via_worker(workspace_dir):
+        for inst in DummyFlow.instances:
+            inst.run_called = True
+        return DummyFlow.run_steps_value
+
     monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
@@ -65,6 +70,10 @@ def flow_mocks(monkeypatch):
     monkeypatch.setattr(
         "chipcompiler.cli.project.config._validate_pdk_contents",
         lambda name, root, overrides=None: None,
+    )
+    monkeypatch.setattr(
+        "chipcompiler.cli.command_handlers.project._run_flow_via_worker",
+        fake_run_flow_via_worker,
     )
 
     return SimpleNamespace(capture=capture, flow=DummyFlow)

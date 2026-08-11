@@ -198,7 +198,12 @@ class RunOperation:
             client.terminate()
             return False
 
-        if not result.success or not (result.response or {}).get("result", {}).get("ok"):
+        if not result.success:
+            client.terminate()
+            return False
+
+        ok = (result.response or {}).get("result", {}).get("ok")
+        if ok is not True:
             client.terminate()
             return False
 
