@@ -18,9 +18,6 @@ class EccSubFlowEnum(Enum):
     run_net_optimization = "run net optimization"
     run_placement = "run placement"
     run_CTS = "run CTS"
-    run_timing_opt_drv = "run timing opt drv"
-    run_timing_opt_hold = "run timing opt hold"
-    run_timing_opt_setup = "run timing opt setup"
     run_legalization = "run legalization"
     run_routing = "run routing"
     run_filler = "run filler"
@@ -93,21 +90,6 @@ class EccSubFlow:
             case StepEnum.CTS:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_CTS.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.TIMING_OPT_DRV:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_timing_opt_drv.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.TIMING_OPT_HOLD:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_timing_opt_hold.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.TIMING_OPT_SETUP:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_timing_opt_setup.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
             case StepEnum.LEGALIZATION:

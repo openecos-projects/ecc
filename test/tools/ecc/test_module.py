@@ -417,10 +417,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
         spef_path=Path("/ws/design.spef"),
         design_name="gcd",
     )
-    module.run_to(Path("/ws/config/to.json"))
-    module.run_timing_opt_drv(Path("/ws/config/drv.json"))
-    module.run_timing_opt_hold(Path("/ws/config/hold.json"))
-    module.run_timing_opt_setup(Path("/ws/config/setup.json"))
     module.layout_patchs(Path("/ws/layout/patches.json"))
     module.layout_graph(Path("/ws/layout/graph.json"))
     module.generate_vectors(Path("/ws/vectors"))

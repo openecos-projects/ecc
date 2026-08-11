@@ -754,21 +754,6 @@ class ECCToolsModule:
             )
 
     ########################################################################
-    # timing opt api
-    ########################################################################
-    def run_to(self, config: str):
-        return self.ecc.run_to(config=path_text(config))
-
-    def run_timing_opt_drv(self, config: str):
-        self.ecc.run_to_drv(path_text(config))
-
-    def run_timing_opt_hold(self, config: str):
-        self.ecc.run_to_hold(path_text(config))
-
-    def run_timing_opt_setup(self, config: str):
-        self.ecc.run_to_setup(path_text(config))
-
-    ########################################################################
     # data vectorization
     ########################################################################
     def layout_patchs(self, path: str):

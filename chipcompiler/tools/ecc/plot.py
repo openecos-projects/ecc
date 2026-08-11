@@ -29,10 +29,6 @@ class ECCToolsPlot:
                 state = state & self.default_plot() & self.plot_placement_heatmap()
             case StepEnum.CTS.value:
                 state = state & self.default_plot() & self.plot_placement_heatmap()
-            case StepEnum.TIMING_OPT_DRV.value:
-                state = state & self.default_plot()
-            case StepEnum.TIMING_OPT_HOLD.value:
-                state = state & self.default_plot()
             case StepEnum.LEGALIZATION.value:
                 state = state & self.default_plot()
             case StepEnum.ROUTING.value:

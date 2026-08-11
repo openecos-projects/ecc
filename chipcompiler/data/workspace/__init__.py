@@ -127,9 +127,6 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.PLACEMENT.value: "pl_default_config.json",
     StepEnum.PNP.value: "pnp_default_config.json",
     StepEnum.ROUTING.value: "rt_default_config.json",
-    StepEnum.TIMING_OPT_DRV.value: "to_default_config_drv.json",
-    StepEnum.TIMING_OPT_HOLD.value: "to_default_config_hold.json",
-    StepEnum.TIMING_OPT_SETUP.value: "to_default_config_setup.json",
     StepEnum.LEGALIZATION.value: "pl_default_config.json",
     StepEnum.FILLER.value: "pl_default_config.json",
     StepEnum.RCX.value: "rcx.json",
@@ -149,13 +146,6 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
     (StepEnum.LEGALIZATION, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
     (StepEnum.FILLER, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
     (StepEnum.PNP, "ecc"): ("flow", "db", StepEnum.PNP.value),
-    (StepEnum.TIMING_OPT_DRV, "ecc"): ("flow", "db", StepEnum.TIMING_OPT_DRV.value),
-    (StepEnum.TIMING_OPT_HOLD, "ecc"): ("flow", "db", StepEnum.TIMING_OPT_HOLD.value),
-    (StepEnum.TIMING_OPT_SETUP, "ecc"): (
-        "flow",
-        "db",
-        StepEnum.TIMING_OPT_SETUP.value,
-    ),
     (StepEnum.RCX, "ecc"): ("flow", "db", StepEnum.RCX.value),
     (StepEnum.STA, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
@@ -662,7 +652,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     flow["ConfigPath"]["irt_path"] = str(workspace.config[f"{StepEnum.ROUTING.value}"])
     flow["ConfigPath"]["idrc_path"] = str(workspace.config[f"{StepEnum.DRC.value}"])
     flow["ConfigPath"]["icts_path"] = str(workspace.config[f"{StepEnum.CTS.value}"])
-    flow["ConfigPath"]["ito_path"] = str(workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
     flow["ConfigPath"]["ipnp_path"] = str(workspace.config[f"{StepEnum.PNP.value}"])
     json_write(workspace.config["flow"], flow)
 
@@ -692,18 +681,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
     cts["buffer_type"] = workspace.pdk.buffers
     json_write(workspace.config[f"{StepEnum.CTS.value}"], cts)
-
-    drv = json_read(workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"])
-    drv["DRV_insert_buffers"] = workspace.pdk.buffers
-    json_write(workspace.config[f"{StepEnum.TIMING_OPT_DRV.value}"], drv)
-
-    hold = json_read(workspace.config[f"{StepEnum.TIMING_OPT_HOLD.value}"])
-    hold["hold_insert_buffers"] = workspace.pdk.buffers
-    json_write(workspace.config[f"{StepEnum.TIMING_OPT_HOLD.value}"], hold)
-
-    setup = json_read(workspace.config[f"{StepEnum.TIMING_OPT_SETUP.value}"])
-    setup["setup_insert_buffers"] = workspace.pdk.buffers
-    json_write(workspace.config[f"{StepEnum.TIMING_OPT_SETUP.value}"], setup)
 
     router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
     router["RT"]["-bottom_routing_layer"] = workspace.parameters.data.get("Bottom layer", "")
