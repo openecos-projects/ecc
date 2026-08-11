@@ -306,6 +306,42 @@ class TestWorkerClientSubprocess:
         finally:
             client.terminate()
 
+    def test_invalid_response_id_boolean_raises(self):
+        """A response with id=true (boolean) must be rejected, not confused with int 1."""
+        script = textwrap.dedent("""\
+            import sys, json
+            resp = json.dumps({"jsonrpc": "2.0", "id": True, "result": {}}).encode()
+            frame = f"Content-Length: {len(resp)}\\r\\n\\r\\n".encode() + resp
+            sys.stdout.buffer.write(frame)
+            sys.stdout.buffer.flush()
+            import time; time.sleep(1)
+        """)
+        client = WorkerClient([sys.executable, "-c", script])
+        client.start()
+        try:
+            with pytest.raises(WorkerProcessError, match="'id' must be int, str, or null"):
+                client.read_response(request_id=1)
+        finally:
+            client.terminate()
+
+    def test_invalid_response_id_array_raises(self):
+        """A response with id=[1] (array) must be rejected."""
+        script = textwrap.dedent("""\
+            import sys, json
+            resp = json.dumps({"jsonrpc": "2.0", "id": [1], "result": {}}).encode()
+            frame = f"Content-Length: {len(resp)}\\r\\n\\r\\n".encode() + resp
+            sys.stdout.buffer.write(frame)
+            sys.stdout.buffer.flush()
+            import time; time.sleep(1)
+        """)
+        client = WorkerClient([sys.executable, "-c", script])
+        client.start()
+        try:
+            with pytest.raises(WorkerProcessError, match="'id' must be int, str, or null"):
+                client.read_response(request_id=1)
+        finally:
+            client.terminate()
+
     def test_terminate_kills_orphaned_child(self):
         """After the leader exits, terminate must still signal the process group."""
         script = textwrap.dedent("""\
@@ -454,3 +490,34 @@ class TestWorkerClientSubprocess:
         assert not alive, "descendant should have exited on SIGTERM"
         assert os.path.exists(marker), "descendant SIGTERM handler should have run (not SIGKILL'd)"
         os.unlink(marker)
+
+    def test_graceful_terminate_completes_before_forceful_deadline(self):
+        """Graceful shutdown must complete well before the SIGKILL deadline (< 5s total)."""
+        script = textwrap.dedent("""\
+            import os, sys, signal, time
+            pid = os.fork()
+            if pid == 0:
+                signal.signal(signal.SIGINT, signal.SIG_IGN)
+                def handle_term(*a):
+                    os._exit(0)
+                signal.signal(signal.SIGTERM, handle_term)
+                time.sleep(60)
+                os._exit(0)
+            else:
+                sys.stdout.buffer.write(f"{pid}\\n".encode())
+                sys.stdout.buffer.flush()
+                signal.signal(signal.SIGINT, lambda *a: os._exit(0))
+                time.sleep(60)
+        """)
+        client = WorkerClient([sys.executable, "-c", script])
+        proc = client.start()
+        import time
+
+        time.sleep(0.3)
+        proc.stdout.readline()
+        t0 = time.monotonic()
+        client.terminate()
+        elapsed = time.monotonic() - t0
+        assert elapsed < 5.0, (
+            f"graceful terminate took {elapsed:.2f}s — should complete before forceful deadline"
+        )

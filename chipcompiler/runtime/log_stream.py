@@ -200,7 +200,13 @@ class LogStreamReader:
         if self._state.archive_file is not None:
             try:
                 self._state.archive_file.flush()
-                self._state.archive_file.close()
             except OSError as exc:
-                self._state.error = exc
-            self._state.archive_file = None
+                if self._state.error is None:
+                    self._state.error = exc
+            finally:
+                try:
+                    self._state.archive_file.close()
+                except OSError as exc:
+                    if self._state.error is None:
+                        self._state.error = exc
+                self._state.archive_file = None

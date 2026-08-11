@@ -152,12 +152,16 @@ def _terminate_process_group(proc: subprocess.Popen, pgid: int | None = None) ->
 
     pgid is cached at start time (the worker pid, since start_new_session=True).
     After each signal, waits for the process group to exit within a deadline
-    before escalating to the next signal.
+    before escalating to the next signal. The leader is reaped each iteration
+    so its zombie does not keep the group visible to killpg.
     """
+    import time
+
     if pgid is None:
         pgid = proc.pid
 
     def _group_alive() -> bool:
+        proc.poll()
         try:
             os.killpg(pgid, 0)
             return True
@@ -170,8 +174,6 @@ def _terminate_process_group(proc: subprocess.Popen, pgid: int | None = None) ->
 
     def _wait_group_exit(timeout: float) -> bool:
         """Poll group liveness until dead or timeout. Returns True if dead."""
-        import time
-
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if not _group_alive():
@@ -196,13 +198,19 @@ def _terminate_process_group(proc: subprocess.Popen, pgid: int | None = None) ->
 def _validate_response_envelope(msg: dict) -> None:
     """Validate a JSON-RPC 2.0 response envelope.
 
-    Requires jsonrpc=="2.0" and exactly one of "result" or "error".
+    Requires jsonrpc=="2.0", exactly one of "result" or "error",
+    and id must be int|str|None (no booleans, lists, or dicts).
     Error objects must have "code" (int) and "message" (str).
     Raises WorkerProcessError on invalid envelopes.
     """
     if msg.get("jsonrpc") != "2.0":
         raise WorkerProcessError(
             f"invalid JSON-RPC response: missing or wrong 'jsonrpc' version: {msg!r}"
+        )
+    msg_id = msg.get("id")
+    if isinstance(msg_id, bool) or not isinstance(msg_id, (int, str, type(None))):
+        raise WorkerProcessError(
+            f"invalid JSON-RPC response: 'id' must be int, str, or null: {msg!r}"
         )
     has_result = "result" in msg
     has_error = "error" in msg
