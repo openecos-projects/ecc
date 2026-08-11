@@ -249,6 +249,63 @@ class TestWorkerClientSubprocess:
         finally:
             client.terminate()
 
+    def test_invalid_envelope_missing_jsonrpc_raises(self):
+        """A response with no 'jsonrpc' field must be rejected."""
+        script = textwrap.dedent("""\
+            import sys, json
+            resp = json.dumps({"id": 1, "result": {}}).encode()
+            frame = f"Content-Length: {len(resp)}\\r\\n\\r\\n".encode() + resp
+            sys.stdout.buffer.write(frame)
+            sys.stdout.buffer.flush()
+            import time; time.sleep(1)
+        """)
+        client = WorkerClient([sys.executable, "-c", script])
+        client.start()
+        try:
+            with pytest.raises(WorkerProcessError, match="jsonrpc"):
+                client.read_response(request_id=1)
+        finally:
+            client.terminate()
+
+    def test_invalid_envelope_both_result_and_error_raises(self):
+        """A response with both 'result' and 'error' must be rejected."""
+        script = textwrap.dedent("""\
+            import sys, json
+            resp = json.dumps({
+                "jsonrpc": "2.0", "id": 1,
+                "result": {}, "error": {"code": -1, "message": "x"}
+            }).encode()
+            frame = f"Content-Length: {len(resp)}\\r\\n\\r\\n".encode() + resp
+            sys.stdout.buffer.write(frame)
+            sys.stdout.buffer.flush()
+            import time; time.sleep(1)
+        """)
+        client = WorkerClient([sys.executable, "-c", script])
+        client.start()
+        try:
+            with pytest.raises(WorkerProcessError, match="exactly one"):
+                client.read_response(request_id=1)
+        finally:
+            client.terminate()
+
+    def test_invalid_envelope_neither_result_nor_error_raises(self):
+        """A response with neither 'result' nor 'error' must be rejected."""
+        script = textwrap.dedent("""\
+            import sys, json
+            resp = json.dumps({"jsonrpc": "2.0", "id": 1}).encode()
+            frame = f"Content-Length: {len(resp)}\\r\\n\\r\\n".encode() + resp
+            sys.stdout.buffer.write(frame)
+            sys.stdout.buffer.flush()
+            import time; time.sleep(1)
+        """)
+        client = WorkerClient([sys.executable, "-c", script])
+        client.start()
+        try:
+            with pytest.raises(WorkerProcessError, match="exactly one"):
+                client.read_response(request_id=1)
+        finally:
+            client.terminate()
+
     def test_terminate_kills_orphaned_child(self):
         """After the leader exits, terminate must still signal the process group."""
         script = textwrap.dedent("""\
@@ -355,3 +412,45 @@ class TestWorkerClientSubprocess:
         except OSError:
             alive = False
         assert not alive, "descendant ignoring SIGINT should still be killed by SIGTERM/SIGKILL"
+
+    def test_descendant_graceful_sigterm_exit(self):
+        """Descendant handles SIGTERM and exits within grace window — no SIGKILL needed."""
+        script = textwrap.dedent("""\
+            import os, sys, signal, time
+            pid = os.fork()
+            if pid == 0:
+                # Child: ignore SIGINT, handle SIGTERM with brief cleanup
+                signal.signal(signal.SIGINT, signal.SIG_IGN)
+                marker = f"/tmp/ecc-test-grace-{os.getpid()}"
+                def handle_term(*a):
+                    open(marker, "w").close()
+                    os._exit(0)
+                signal.signal(signal.SIGTERM, handle_term)
+                time.sleep(60)
+                os._exit(0)
+            else:
+                sys.stdout.buffer.write(f"{pid}\\n".encode())
+                sys.stdout.buffer.flush()
+                signal.signal(signal.SIGINT, lambda *a: os._exit(0))
+                time.sleep(60)
+        """)
+        client = WorkerClient([sys.executable, "-c", script])
+        proc = client.start()
+        import time
+
+        time.sleep(0.3)
+        child_pid_line = proc.stdout.readline()
+        child_pid = int(child_pid_line.strip())
+        client.terminate()
+        time.sleep(0.5)
+        import os
+
+        marker = f"/tmp/ecc-test-grace-{child_pid}"
+        try:
+            os.kill(child_pid, 0)
+            alive = True
+        except OSError:
+            alive = False
+        assert not alive, "descendant should have exited on SIGTERM"
+        assert os.path.exists(marker), "descendant SIGTERM handler should have run (not SIGKILL'd)"
+        os.unlink(marker)

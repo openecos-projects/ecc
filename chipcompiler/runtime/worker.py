@@ -85,7 +85,7 @@ class WorkerClient:
         Checks the pending-response buffer first (for out-of-order delivery).
         Non-matching responses are stored by id for later retrieval.
         Notifications (no 'id') are queued separately.
-        Malformed JSON raises WorkerProcessError.
+        Invalid envelopes raise WorkerProcessError.
         """
         if request_id in self._pending_responses:
             return self._pending_responses.pop(request_id)
@@ -110,14 +110,12 @@ class WorkerClient:
                     raise WorkerProcessError("expected JSON object from worker")
                 if "id" not in msg:
                     self._notifications.append(msg)
-                elif msg["id"] == request_id and found is None:
-                    found = msg
                 else:
-                    msg_id = msg.get("id")
-                    if msg_id is not None:
-                        self._pending_responses[msg_id] = msg
+                    _validate_response_envelope(msg)
+                    if msg["id"] == request_id and found is None:
+                        found = msg
                     else:
-                        self._notifications.append(msg)
+                        self._pending_responses[msg["id"]] = msg
             if found is not None:
                 return found
 
@@ -153,8 +151,8 @@ def _terminate_process_group(proc: subprocess.Popen, pgid: int | None = None) ->
     """Escalate signals to the worker process group.
 
     pgid is cached at start time (the worker pid, since start_new_session=True).
-    After each signal, checks whether the process group still has live members
-    and continues escalation until the group is gone.
+    After each signal, waits for the process group to exit within a deadline
+    before escalating to the next signal.
     """
     if pgid is None:
         pgid = proc.pid
@@ -170,26 +168,58 @@ def _terminate_process_group(proc: subprocess.Popen, pgid: int | None = None) ->
         with suppress(OSError):
             os.killpg(pgid, sig)
 
-    if proc.poll() is None:
+    def _wait_group_exit(timeout: float) -> bool:
+        """Poll group liveness until dead or timeout. Returns True if dead."""
+        import time
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not _group_alive():
+                return True
+            time.sleep(0.05)
+        return not _group_alive()
+
+    if proc.poll() is None or _group_alive():
         _signal_group(signal.SIGINT)
-        with suppress(subprocess.TimeoutExpired):
-            proc.wait(timeout=_GRACEFUL_WAIT)
-        if _group_alive():
+        if not _wait_group_exit(_GRACEFUL_WAIT):
             _signal_group(signal.SIGTERM)
-            with suppress(subprocess.TimeoutExpired):
-                proc.wait(timeout=_FORCEFUL_WAIT)
-            if _group_alive():
+            if not _wait_group_exit(_FORCEFUL_WAIT):
                 _signal_group(signal.SIGKILL)
-                proc.wait()
-    else:
-        if _group_alive():
-            _signal_group(signal.SIGTERM)
-            _signal_group(signal.SIGKILL)
+                _wait_group_exit(_FORCEFUL_WAIT)
 
     if proc.poll() is None:
         proc.wait()
 
     return proc.returncode
+
+
+def _validate_response_envelope(msg: dict) -> None:
+    """Validate a JSON-RPC 2.0 response envelope.
+
+    Requires jsonrpc=="2.0" and exactly one of "result" or "error".
+    Error objects must have "code" (int) and "message" (str).
+    Raises WorkerProcessError on invalid envelopes.
+    """
+    if msg.get("jsonrpc") != "2.0":
+        raise WorkerProcessError(
+            f"invalid JSON-RPC response: missing or wrong 'jsonrpc' version: {msg!r}"
+        )
+    has_result = "result" in msg
+    has_error = "error" in msg
+    if has_result == has_error:
+        raise WorkerProcessError(
+            f"invalid JSON-RPC response: must have exactly one of 'result' or 'error': {msg!r}"
+        )
+    if has_error:
+        err = msg["error"]
+        if (
+            not isinstance(err, dict)
+            or not isinstance(err.get("code"), int)
+            or not isinstance(err.get("message"), str)
+        ):
+            raise WorkerProcessError(
+                f"invalid JSON-RPC error object: requires 'code' (int) and 'message' (str): {msg!r}"
+            )
 
 
 def classify_worker_exit(proc: subprocess.Popen) -> WorkerResult:

@@ -13,6 +13,7 @@ import json
 import os
 import threading
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
@@ -144,11 +145,13 @@ class LogStreamReader:
 
     def _handle_marker(self, marker: StepMarker, raw_line: bytes) -> None:
         if marker.event == "begin":
-            self._close_archive()
-            self._state.active_step = marker.step
-            self._state.active_tool = marker.tool
-            self._state.steps_seen.append(marker.step)
-            self._open_archive(marker.step, marker.tool)
+            if self._state.active_step is None:
+                self._state.active_step = marker.step
+                self._state.active_tool = marker.tool
+                self._state.steps_seen.append(marker.step)
+                self._open_archive(marker.step, marker.tool)
+            else:
+                self._emit_data(raw_line)
         elif marker.event == "end":
             if marker.step == self._state.active_step and marker.tool == self._state.active_tool:
                 self._close_archive()
@@ -165,7 +168,10 @@ class LogStreamReader:
                 self._state.archive_file.write(data)
                 self._state.bytes_archived += len(data)
             except OSError as exc:
-                self._state.error = exc
+                if self._state.error is None:
+                    self._state.error = exc
+                with suppress(OSError):
+                    self._state.archive_file.close()
                 self._state.archive_file = None
         self._update_tail(data)
         if self._on_output is not None:

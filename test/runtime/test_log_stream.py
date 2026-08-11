@@ -258,3 +258,28 @@ class TestLogStreamReader:
         reader.join(timeout=5)
         assert reader.state.active_step == "Synthesis"
         assert reader.state.active_tool == "yosys"
+
+    def test_duplicate_begin_does_not_switch_archive(self, tmp_path):
+        """begin A -> data -> begin B -> data -> end A: all data stays in A's archive."""
+        log_path = tmp_path / "step.log"
+
+        def resolver(step, tool):
+            return log_path
+
+        begin_b = b'\x1eECC-STEP {"event":"begin","step":"B","tool":"T"}\n'
+        stream_data = (
+            b'\x1eECC-STEP {"event":"begin","step":"A","tool":"T"}\n'
+            b"before\n"
+            + begin_b
+            + b"after\n"
+            + b'\x1eECC-STEP {"event":"end","step":"A","tool":"T"}\n'
+        )
+        reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
+        reader.start()
+        reader.join(timeout=5)
+        content = log_path.read_bytes()
+        assert b"before\n" in content
+        assert begin_b in content
+        assert b"after\n" in content
+        assert reader.state.active_step is None
+        assert reader.state.steps_seen == ["A"]
