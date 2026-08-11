@@ -6,90 +6,106 @@ import textwrap
 
 from chipcompiler.runtime.worker_operation import RunOperation
 
+# Common RPC helpers injected into subprocess scripts.
+_RPC_HELPERS = textwrap.dedent("""\
+    import sys, os, json
 
-class TestRunOperationSuccess:
-    def test_successful_rpc_returns_result(self, tmp_path):
-        script = textwrap.dedent("""\
-            import sys, json
-            data = b""
-            while True:
-                chunk = sys.stdin.buffer.read(1)
-                if not chunk:
-                    break
-                data += chunk
-                if b"\\r\\n\\r\\n" in data:
-                    header, _, body_start = data.partition(b"\\r\\n\\r\\n")
-                    length = int(header.split(b":")[1])
-                    while len(body_start) < length:
-                        body_start += sys.stdin.buffer.read(1)
-                    request = json.loads(body_start[:length])
-                    resp = {"jsonrpc": "2.0", "result": {"steps": ["syn"]}, "id": request["id"]}
-                    response = json.dumps(resp)
-                    frame = f"Content-Length: {len(response)}\\r\\n\\r\\n{response}"
-                    sys.stdout.buffer.write(frame.encode())
-                    sys.stdout.buffer.flush()
-                    break
-        """)
+    def read_request():
+        data = b""
+        while True:
+            chunk = sys.stdin.buffer.read(1)
+            if not chunk:
+                return None
+            data += chunk
+            if b"\\r\\n\\r\\n" in data:
+                header, _, body_start = data.partition(b"\\r\\n\\r\\n")
+                length = int(header.split(b":")[1])
+                while len(body_start) < length:
+                    body_start += sys.stdin.buffer.read(1)
+                return json.loads(body_start[:length])
+
+    def send_response(resp):
+        payload = json.dumps(resp)
+        frame = f"Content-Length: {len(payload)}\\r\\n\\r\\n{payload}"
+        sys.stdout.buffer.write(frame.encode())
+        sys.stdout.buffer.flush()
+
+    def make_marker(event, step, tool):
+        p = json.dumps({"event": event, "step": step, "tool": tool})
+        return chr(0x1e).encode() + b"ECC-STEP " + p.encode() + b"\\n"
+""")
+
+LIFECYCLE_SERVER = _RPC_HELPERS + textwrap.dedent("""\
+    while True:
+        req = read_request()
+        if req is None:
+            break
+        method = req.get("method", "")
+        req_id = req.get("id")
+
+        if method == "rpc.hello":
+            resp = {"jsonrpc": "2.0", "result": {"version": 1, "capabilities": []}, "id": req_id}
+            send_response(resp)
+        elif method == "workspace.open":
+            send_response({"jsonrpc": "2.0", "result": {"workspace_id": "test"}, "id": req_id})
+        elif method == "rpc.shutdown":
+            send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req_id})
+            break
+        elif method == "flow.run":
+            send_response({"jsonrpc": "2.0", "result": {"steps": ["syn"]}, "id": req_id})
+        else:
+            err = {"code": -32601, "message": "unknown method"}
+            resp = {"jsonrpc": "2.0", "error": err, "id": req_id}
+            send_response(resp)
+""")
+
+
+class TestRunOperationLifecycle:
+    def test_successful_lifecycle(self, tmp_path):
+        script = tmp_path / "server.py"
+        script.write_text(LIFECYCLE_SERVER)
         flow_json = tmp_path / "flow.json"
         flow_json.write_text("{}")
         op = RunOperation(
             workspace_dir=tmp_path,
             flow_json_path=flow_json,
-            worker_argv=[sys.executable, "-c", script],
+            worker_argv=[sys.executable, str(script)],
         )
         result = op.run("flow.run", {"workspace_id": "test"})
         assert result.success is True
         assert result.rpc_result["result"] == {"steps": ["syn"]}
+        assert result.exit_code == 0
         assert result.archive_error is None
 
     def test_rpc_error_returns_failure(self, tmp_path):
-        script = textwrap.dedent("""\
-            import sys, json
-            data = b""
-            while True:
-                chunk = sys.stdin.buffer.read(1)
-                if not chunk:
-                    break
-                data += chunk
-                if b"\\r\\n\\r\\n" in data:
-                    header, _, body_start = data.partition(b"\\r\\n\\r\\n")
-                    length = int(header.split(b":")[1])
-                    while len(body_start) < length:
-                        body_start += sys.stdin.buffer.read(1)
-                    request = json.loads(body_start[:length])
-                    resp = {
-                        "jsonrpc": "2.0",
-                        "error": {"code": -1, "message": "step failed"},
-                        "id": request["id"],
-                    }
-                    response = json.dumps(resp)
-                    frame = f"Content-Length: {len(response)}\\r\\n\\r\\n{response}"
-                    sys.stdout.buffer.write(frame.encode())
-                    sys.stdout.buffer.flush()
-                    break
-        """)
+        script = tmp_path / "server.py"
+        script.write_text(LIFECYCLE_SERVER)
         flow_json = tmp_path / "flow.json"
         flow_json.write_text("{}")
         op = RunOperation(
             workspace_dir=tmp_path,
             flow_json_path=flow_json,
-            worker_argv=[sys.executable, "-c", script],
+            worker_argv=[sys.executable, str(script)],
         )
-        result = op.run("flow.run", {"workspace_id": "test"})
+        result = op.run("unknown.method", {"workspace_id": "test"})
         assert result.success is False
-        assert "step failed" in result.error
+        assert "unknown method" in result.error
 
 
 class TestRunOperationCrash:
     def test_worker_crash_triggers_repair(self, tmp_path):
-        script_file = tmp_path / "crash_worker.py"
-        script_file.write_text(
-            "import sys, os, json\n"
-            "marker = chr(0x1e).encode() + b'ECC-STEP ' + "
-            "json.dumps({'event':'begin','step':'Synthesis','tool':'yosys'}).encode()"
-            " + b'\\n'\n"
-            "os.write(2, marker)\n"
-            "os._exit(1)\n"
+        crash_script = tmp_path / "crash_after_open.py"
+        crash_script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {"workspace_id": "x"}, "id": req["id"]})
+            # Emit begin marker on stderr, then crash
+            os.write(2, make_marker("begin", "Synthesis", "yosys"))
+            os._exit(1)
+        """)
         )
         flow_json = tmp_path / "flow.json"
         data = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Ongoing"}]}
@@ -97,7 +113,7 @@ class TestRunOperationCrash:
         op = RunOperation(
             workspace_dir=tmp_path,
             flow_json_path=flow_json,
-            worker_argv=[sys.executable, str(script_file)],
+            worker_argv=[sys.executable, str(crash_script)],
         )
         result = op.run("flow.run", {"workspace_id": "test"})
         assert result.success is False
@@ -106,7 +122,13 @@ class TestRunOperationCrash:
         assert repaired_data["steps"][0]["state"] == "Incomplete"
 
     def test_worker_crash_no_flow_json_no_repair(self, tmp_path):
-        script = "import sys; sys.exit(1)"
+        script = _RPC_HELPERS + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            sys.exit(1)
+        """)
         flow_json = tmp_path / "flow.json"
         op = RunOperation(
             workspace_dir=tmp_path,
@@ -117,37 +139,96 @@ class TestRunOperationCrash:
         assert result.success is False
         assert result.repaired_steps == []
 
+    def test_protocol_failure_routes_to_recovery(self, tmp_path):
+        """A worker that returns invalid JSON triggers crash recovery."""
+        script = _RPC_HELPERS + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            # Emit begin marker, then send garbage on stdout
+            os.write(2, make_marker("begin", "Place", "ecc"))
+            req = read_request()  # flow.run
+            # Send invalid frame (bad Content-Length header)
+            sys.stdout.buffer.write(b"Content-Length: 5\\r\\n\\r\\n{}")
+            sys.stdout.buffer.flush()
+            sys.stdout.buffer.close()
+            os._exit(1)
+        """)
+        flow_json = tmp_path / "flow.json"
+        data = {"steps": [{"name": "Place", "tool": "ecc", "state": "Ongoing"}]}
+        flow_json.write_text(json.dumps(data))
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, "-c", script],
+        )
+        result = op.run("flow.run", {"workspace_id": "test"})
+        assert result.success is False
+        assert result.repaired_steps == ["Place"]
 
-class TestRunOperationStderrArchive:
+
+class TestRunOperationArchive:
+    def test_archive_error_forces_failure(self, tmp_path):
+        """Success is False when archive path cannot be opened."""
+        script = tmp_path / "server_with_markers.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            os.write(2, make_marker("begin", "Synthesis", "yosys"))
+            os.write(2, b'Synthesizing...\\n')
+            os.write(2, make_marker("end", "Synthesis", "yosys"))
+            req = read_request()  # flow.run
+            send_response({"jsonrpc": "2.0", "result": {"steps": ["syn"]}, "id": req["id"]})
+            req = read_request()  # rpc.shutdown
+            send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req["id"]})
+        """)
+        )
+
+        readonly_dir = tmp_path / "readonly_logs"
+        readonly_dir.mkdir()
+        readonly_dir.chmod(0o444)
+
+        def bad_resolver(step: str, tool: str):
+            return readonly_dir / "sub" / f"{step}.log"
+
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text("{}")
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+            log_path_resolver=bad_resolver,
+        )
+        try:
+            result = op.run("flow.run", {"workspace_id": "test"})
+            assert result.success is False
+            assert result.archive_error is not None
+            assert "archive error" in result.error
+        finally:
+            readonly_dir.chmod(0o755)
+
     def test_stderr_archived_to_step_log(self, tmp_path):
-        script_file = tmp_path / "archive_worker.py"
-        script_file.write_text(
-            "import sys, os, json\n"
-            "def marker(event, step, tool):\n"
-            "    payload = json.dumps({'event':event,'step':step,'tool':tool})\n"
-            "    return chr(0x1e).encode() + b'ECC-STEP ' + "
-            "payload.encode() + b'\\n'\n"
-            "os.write(2, marker('begin', 'Synthesis', 'yosys'))\n"
-            "os.write(2, b'Synthesizing module top...\\n')\n"
-            "os.write(2, marker('end', 'Synthesis', 'yosys'))\n"
-            "data = b''\n"
-            "while True:\n"
-            "    chunk = sys.stdin.buffer.read(1)\n"
-            "    if not chunk:\n"
-            "        break\n"
-            "    data += chunk\n"
-            "    if b'\\r\\n\\r\\n' in data:\n"
-            "        header, _, body_start = data.partition(b'\\r\\n\\r\\n')\n"
-            "        length = int(header.split(b':')[1])\n"
-            "        while len(body_start) < length:\n"
-            "            body_start += sys.stdin.buffer.read(1)\n"
-            "        request = json.loads(body_start[:length])\n"
-            "        resp = {'jsonrpc': '2.0', 'result': {}, 'id': request['id']}\n"
-            "        response = json.dumps(resp)\n"
-            "        frame = f'Content-Length: {len(response)}\\r\\n\\r\\n{response}'\n"
-            "        sys.stdout.buffer.write(frame.encode())\n"
-            "        sys.stdout.buffer.flush()\n"
-            "        break\n"
+        script = tmp_path / "server_with_markers.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            os.write(2, make_marker("begin", "Synthesis", "yosys"))
+            os.write(2, b'Synthesizing module top...\\n')
+            os.write(2, make_marker("end", "Synthesis", "yosys"))
+            req = read_request()  # flow.run
+            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            req = read_request()  # rpc.shutdown
+            send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req["id"]})
+        """)
         )
         logs_dir = tmp_path / "logs"
 
@@ -159,7 +240,7 @@ class TestRunOperationStderrArchive:
         op = RunOperation(
             workspace_dir=tmp_path,
             flow_json_path=flow_json,
-            worker_argv=[sys.executable, str(script_file)],
+            worker_argv=[sys.executable, str(script)],
             log_path_resolver=resolver,
         )
         result = op.run("flow.run", {"workspace_id": "test"})
@@ -167,3 +248,15 @@ class TestRunOperationStderrArchive:
         log_file = logs_dir / "Synthesis.log"
         assert log_file.exists()
         assert b"Synthesizing module top..." in log_file.read_bytes()
+
+
+class TestParseMarkerNonObject:
+    def test_non_object_json_treated_as_raw(self):
+        """Non-dict JSON markers don't crash the reader."""
+        from chipcompiler.runtime.log_stream import parse_marker
+
+        assert parse_marker(b"\x1eECC-STEP []\n") is None
+        assert parse_marker(b"\x1eECC-STEP 42\n") is None
+        assert parse_marker(b'\x1eECC-STEP "hello"\n') is None
+        assert parse_marker(b"\x1eECC-STEP true\n") is None
+        assert parse_marker(b"\x1eECC-STEP null\n") is None

@@ -50,6 +50,8 @@ def parse_marker(line: bytes) -> StepMarker | None:
         data = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
+    if not isinstance(data, dict):
+        return None
     event = data.get("event")
     step = data.get("step")
     tool = data.get("tool")
@@ -106,6 +108,13 @@ class LogStreamReader:
     def join(self, timeout: float | None = None) -> None:
         if self._thread is not None:
             self._thread.join(timeout=timeout)
+
+    @property
+    def completed(self) -> bool:
+        """True if the drain thread has finished (or was never started)."""
+        if self._thread is None:
+            return True
+        return not self._thread.is_alive()
 
     def stop(self) -> None:
         self._stop.set()
