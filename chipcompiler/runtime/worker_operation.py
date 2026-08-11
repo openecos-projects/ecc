@@ -16,7 +16,6 @@ from pathlib import Path
 from chipcompiler.runtime.log_stream import LogStreamReader, LogStreamState
 from chipcompiler.runtime.worker import (
     WorkerClient,
-    WorkerProcessError,
     WorkerResult,
     classify_worker_exit,
     repair_flow_state,
@@ -97,11 +96,14 @@ class RunOperation:
 
             open_result = client.request(
                 "workspace.open",
-                {"path": str(self._workspace_dir)},
+                {"directory": str(self._workspace_dir)},
                 request_id=0,
             )
             if not open_result.success:
                 return self._handle_protocol_or_crash(client, reader, open_result)
+
+            workspace_id = open_result.response["result"]["workspaceId"]
+            params = {**params, "workspace_id": workspace_id}
 
             rpc_result = client.request(method, params, request_id)
 
@@ -191,8 +193,12 @@ class RunOperation:
     def _graceful_shutdown(self, client: WorkerClient) -> bool:
         """Send rpc.shutdown and wait for graceful EOF + zero exit."""
         try:
-            client.send_request("rpc.shutdown", {}, request_id=0)
-        except WorkerProcessError:
+            result = client.request("rpc.shutdown", {}, request_id=0)
+        except Exception:
+            client.terminate()
+            return False
+
+        if not result.success or not (result.response or {}).get("result", {}).get("ok"):
             client.terminate()
             return False
 

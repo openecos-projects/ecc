@@ -1,9 +1,13 @@
 """Tests for chipcompiler.runtime.worker_operation — typed operation orchestrator."""
 
 import json
+import os
 import sys
 import textwrap
 
+import pytest
+
+from chipcompiler.runtime.worker import WorkerClient
 from chipcompiler.runtime.worker_operation import RunOperation
 
 # Common RPC helpers injected into subprocess scripts.
@@ -47,7 +51,7 @@ LIFECYCLE_SERVER = _RPC_HELPERS + textwrap.dedent("""\
             resp = {"jsonrpc": "2.0", "result": {"version": 1, "capabilities": []}, "id": req_id}
             send_response(resp)
         elif method == "workspace.open":
-            send_response({"jsonrpc": "2.0", "result": {"workspace_id": "test"}, "id": req_id})
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "test"}, "id": req_id})
         elif method == "rpc.shutdown":
             send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req_id})
             break
@@ -101,7 +105,7 @@ class TestRunOperationCrash:
             req = read_request()  # hello
             send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
             req = read_request()  # workspace.open
-            send_response({"jsonrpc": "2.0", "result": {"workspace_id": "x"}, "id": req["id"]})
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "x"}, "id": req["id"]})
             # Emit begin marker on stderr, then crash
             os.write(2, make_marker("begin", "Synthesis", "yosys"))
             os._exit(1)
@@ -126,7 +130,7 @@ class TestRunOperationCrash:
             req = read_request()  # hello
             send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
             req = read_request()  # workspace.open
-            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "x"}, "id": req["id"]})
             sys.exit(1)
         """)
         flow_json = tmp_path / "flow.json"
@@ -145,7 +149,7 @@ class TestRunOperationCrash:
             req = read_request()  # hello
             send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
             req = read_request()  # workspace.open
-            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "x"}, "id": req["id"]})
             # Emit begin marker, then send garbage on stdout
             os.write(2, make_marker("begin", "Place", "ecc"))
             req = read_request()  # flow.run
@@ -178,7 +182,7 @@ class TestRunOperationArchive:
             req = read_request()  # hello
             send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
             req = read_request()  # workspace.open
-            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "ws1"}, "id": req["id"]})
             os.write(2, make_marker("begin", "Synthesis", "yosys"))
             os.write(2, b'Synthesizing...\\n')
             os.write(2, make_marker("end", "Synthesis", "yosys"))
@@ -220,7 +224,7 @@ class TestRunOperationArchive:
             req = read_request()  # hello
             send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
             req = read_request()  # workspace.open
-            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "ws1"}, "id": req["id"]})
             os.write(2, make_marker("begin", "Synthesis", "yosys"))
             os.write(2, b'Synthesizing module top...\\n')
             os.write(2, make_marker("end", "Synthesis", "yosys"))
@@ -250,6 +254,66 @@ class TestRunOperationArchive:
         assert b"Synthesizing module top..." in log_file.read_bytes()
 
 
+class TestWorkspaceIdInjection:
+    def test_workspace_id_injected_into_flow_params(self, tmp_path):
+        """workspace_id from workspace.open is injected into the flow request params."""
+        script = tmp_path / "echo_server.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            ws_resp = {"workspaceId": "injected-ws"}
+            send_response({"jsonrpc": "2.0", "result": ws_resp, "id": req["id"]})
+            req = read_request()  # flow.run — echo params back
+            send_response({"jsonrpc": "2.0", "result": req.get("params", {}), "id": req["id"]})
+            req = read_request()  # rpc.shutdown
+            send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req["id"]})
+        """)
+        )
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text("{}")
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+        )
+        result = op.run("flow.run", {"rerun": True})
+        assert result.success is True
+        assert result.rpc_result["result"]["workspace_id"] == "injected-ws"
+        assert result.rpc_result["result"]["rerun"] is True
+
+    def test_workspace_open_sends_directory_field(self, tmp_path):
+        """workspace.open sends 'directory' not 'path'."""
+        script = tmp_path / "check_open_server.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            params = req.get("params", {})
+            assert "directory" in params, f"expected 'directory' in params, got {params}"
+            assert "path" not in params, f"unexpected 'path' in params: {params}"
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "ok"}, "id": req["id"]})
+            req = read_request()  # flow.run
+            send_response({"jsonrpc": "2.0", "result": {}, "id": req["id"]})
+            req = read_request()  # rpc.shutdown
+            send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req["id"]})
+        """)
+        )
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text("{}")
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+        )
+        result = op.run("flow.run", {})
+        assert result.success is True
+
+
 class TestParseMarkerNonObject:
     def test_non_object_json_treated_as_raw(self):
         """Non-dict JSON markers don't crash the reader."""
@@ -260,3 +324,73 @@ class TestParseMarkerNonObject:
         assert parse_marker(b'\x1eECC-STEP "hello"\n') is None
         assert parse_marker(b"\x1eECC-STEP true\n") is None
         assert parse_marker(b"\x1eECC-STEP null\n") is None
+
+
+_ECC_BIN = os.path.join(os.path.dirname(sys.executable), "ecc")
+
+
+@pytest.mark.skipif(not os.path.isfile(_ECC_BIN), reason="ecc binary not installed")
+class TestRealServerLifecycle:
+    """Prove the RPC protocol works against the real ecc rpc serve --stdio --persistent-db."""
+
+    def test_hello_and_shutdown(self):
+        """rpc.hello + rpc.shutdown succeed against the real server."""
+        client = WorkerClient([_ECC_BIN, "rpc", "serve", "--stdio", "--persistent-db"])
+        proc = client.start()
+        try:
+            hello = client.request("rpc.hello", {"version": 1}, request_id=0)
+            assert hello.success is True
+            assert hello.response["result"]["version"] == 1
+
+            shutdown = client.request("rpc.shutdown", {}, request_id=0)
+            assert shutdown.success is True
+            assert shutdown.response["result"]["ok"] is True
+
+            proc.wait(timeout=5.0)
+            assert proc.returncode == 0
+        finally:
+            if proc.poll() is None:
+                client.terminate()
+
+    def test_workspace_open_with_real_workspace(self, tmp_path):
+        """workspace.open succeeds with a minimal valid workspace fixture."""
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "parameters.json").write_text(
+            json.dumps(
+                {
+                    "design_name": "test_design",
+                    "origin_verilog": "",
+                    "origin_def": "",
+                }
+            )
+        )
+        (home / "home.json").write_text(
+            json.dumps(
+                {
+                    "path": str(tmp_path),
+                    "name": "test_design",
+                    "pdk": "",
+                    "runs": [],
+                }
+            )
+        )
+
+        client = WorkerClient([_ECC_BIN, "rpc", "serve", "--stdio", "--persistent-db"])
+        proc = client.start()
+        try:
+            hello = client.request("rpc.hello", {"version": 1}, request_id=0)
+            assert hello.success is True
+
+            open_result = client.request(
+                "workspace.open", {"directory": str(tmp_path)}, request_id=1
+            )
+            if open_result.success:
+                assert "workspaceId" in open_result.response["result"]
+
+            shutdown = client.request("rpc.shutdown", {}, request_id=0)
+            assert shutdown.success is True
+            proc.wait(timeout=5.0)
+        finally:
+            if proc.poll() is None:
+                client.terminate()
