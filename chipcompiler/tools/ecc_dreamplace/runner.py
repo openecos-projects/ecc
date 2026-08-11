@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import annotations
-
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner

@@ -5,8 +5,6 @@ gate results and owns the separate flow, artifact, and provenance checks needed
 to assemble a signoff package.
 """
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

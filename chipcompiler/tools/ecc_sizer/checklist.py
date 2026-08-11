@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from chipcompiler.data import Checklist, CheckState, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 

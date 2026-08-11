@@ -1,7 +1,5 @@
 """Unit tests for test.formal.dump_smt2 helper."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

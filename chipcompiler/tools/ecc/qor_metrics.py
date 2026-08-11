@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from math import isfinite
 from pathlib import Path
 

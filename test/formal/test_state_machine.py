@@ -5,8 +5,6 @@ Encodes StateEnum as integer sort and transition relations as SMT constraints.
 z3 provides exhaustive proof (UNSAT = safe) or concrete counterexample (SAT = bug).
 """
 
-from __future__ import annotations
-
 import json
 import os
 from pathlib import Path

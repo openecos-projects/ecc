@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 HEADER_SEPARATOR = b"\r\n\r\n"
 DEFAULT_MAX_PAYLOAD_SIZE = 16 * 1024 * 1024
 
