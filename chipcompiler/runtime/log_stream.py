@@ -1,0 +1,194 @@
+"""Step marker protocol and log stream archive.
+
+The worker emits step markers on stderr using a Record Separator prefix:
+    \\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\\n
+    \\x1eECC-STEP {"event":"end","step":"Synthesis","tool":"yosys"}\\n
+
+The client-side LogStreamReader drains worker stderr, parses markers to
+switch between step log files, and archives raw tool bytes to the correct
+step log path.
+"""
+
+import json
+import os
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import BinaryIO
+
+MARKER_PREFIX = b"\x1eECC-STEP "
+
+
+@dataclass
+class StepMarker:
+    event: str
+    step: str
+    tool: str
+
+
+def emit_step_marker(event: str, step: str, tool: str) -> None:
+    """Write a step marker to stderr using a single os.write() call."""
+    import sys
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    payload = json.dumps({"event": event, "step": step, "tool": tool}, separators=(",", ":"))
+    line = b"\x1eECC-STEP " + payload.encode("utf-8") + b"\n"
+    os.write(2, line)
+
+
+def parse_marker(line: bytes) -> StepMarker | None:
+    """Parse a complete line as a step marker, or return None if invalid."""
+    if not line.startswith(MARKER_PREFIX):
+        return None
+    payload = line[len(MARKER_PREFIX) :]
+    if payload.endswith(b"\n"):
+        payload = payload[:-1]
+    try:
+        data = json.loads(payload)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    event = data.get("event")
+    step = data.get("step")
+    tool = data.get("tool")
+    if not isinstance(event, str) or not isinstance(step, str) or not isinstance(tool, str):
+        return None
+    return StepMarker(event=event, step=step, tool=tool)
+
+
+@dataclass
+class LogStreamState:
+    """Mutable state maintained by the log stream reader."""
+
+    current_step: str | None = None
+    current_tool: str | None = None
+    tail_bytes: bytes = b""
+    archive_file: BinaryIO | None = field(default=None, repr=False)
+    bytes_archived: int = 0
+    steps_seen: list[str] = field(default_factory=list)
+    error: Exception | None = None
+
+
+class LogStreamReader:
+    """Drains worker stderr, parses markers, and archives raw bytes to step logs.
+
+    The reader runs in a dedicated thread. Marker lines are consumed (not archived).
+    Non-marker bytes are written to the current step's log file. A callback is
+    invoked for display purposes with the decoded text.
+    """
+
+    def __init__(
+        self,
+        stderr: BinaryIO,
+        *,
+        log_path_resolver: Callable[[str, str], Path | None] | None = None,
+        on_output: Callable[[bytes], None] | None = None,
+        tail_size: int = 4096,
+    ):
+        self._stderr = stderr
+        self._resolve_path = log_path_resolver
+        self._on_output = on_output
+        self._tail_size = tail_size
+        self._state = LogStreamState()
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+
+    @property
+    def state(self) -> LogStreamState:
+        return self._state
+
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self._drain_loop, name="ecc-log-reader", daemon=True)
+        self._thread.start()
+
+    def join(self, timeout: float | None = None) -> None:
+        if self._thread is not None:
+            self._thread.join(timeout=timeout)
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _drain_loop(self) -> None:
+        buf = b""
+        try:
+            while not self._stop.is_set():
+                chunk = self._stderr.read(8192)
+                if not chunk:
+                    break
+                buf += chunk
+                buf = self._process_buffer(buf)
+            if buf:
+                self._emit_data(buf)
+        except Exception as exc:
+            self._state.error = exc
+        finally:
+            self._close_archive()
+
+    def _process_buffer(self, buf: bytes) -> bytes:
+        while True:
+            nl = buf.find(b"\n")
+            if nl < 0:
+                if buf.startswith(MARKER_PREFIX[:1]) and len(buf) < 512:
+                    return buf
+                if buf:
+                    self._emit_data(buf)
+                return b""
+            line = buf[: nl + 1]
+            buf = buf[nl + 1 :]
+            marker = parse_marker(line)
+            if marker is not None:
+                self._handle_marker(marker)
+            else:
+                self._emit_data(line)
+        return buf
+
+    def _handle_marker(self, marker: StepMarker) -> None:
+        if marker.event == "begin":
+            self._close_archive()
+            self._state.current_step = marker.step
+            self._state.current_tool = marker.tool
+            self._state.steps_seen.append(marker.step)
+            self._open_archive(marker.step, marker.tool)
+        elif marker.event == "end":
+            self._close_archive()
+            self._state.current_step = None
+            self._state.current_tool = None
+
+    def _emit_data(self, data: bytes) -> None:
+        if self._state.archive_file is not None:
+            try:
+                self._state.archive_file.write(data)
+                self._state.bytes_archived += len(data)
+            except OSError:
+                pass
+        self._update_tail(data)
+        if self._on_output is not None:
+            self._on_output(data)
+
+    def _update_tail(self, data: bytes) -> None:
+        combined = self._state.tail_bytes + data
+        if len(combined) > self._tail_size:
+            combined = combined[-self._tail_size :]
+        self._state.tail_bytes = combined
+
+    def _open_archive(self, step: str, tool: str) -> None:
+        if self._resolve_path is None:
+            return
+        path = self._resolve_path(step, tool)
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._state.archive_file = path.open("wb")  # noqa: SIM115
+        except OSError:
+            self._state.archive_file = None
+
+    def _close_archive(self) -> None:
+        if self._state.archive_file is not None:
+            try:
+                self._state.archive_file.flush()
+                self._state.archive_file.close()
+            except OSError:
+                pass
+            self._state.archive_file = None

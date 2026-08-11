@@ -109,7 +109,7 @@ def get_yosys_runtime() -> tuple[list[str], dict[str, str]]:
 
 
 def check_slang_support(
-    yosys_cmd: list[str], cwd_dir: str, yosys_env: dict[str, str], log_file, timeout: int = 60
+    yosys_cmd: list[str], cwd_dir: str, yosys_env: dict[str, str], timeout: int = 60
 ) -> bool:
     """
     Run a lightweight slang frontend availability check.
@@ -134,7 +134,6 @@ def check_slang_support(
         yosys_cmd + ["-Q", "-T", "-p", "plugin -i slang"],
         cwd=cwd_dir,
         env=yosys_env,
-        stdout=log_file,
         stderr=subprocess.STDOUT,
         timeout=timeout,
     )
@@ -146,7 +145,6 @@ def check_slang_support(
         "Neither builtin read_slang nor a loadable slang plugin was found. "
         "Please use a yosys build with slang support."
     )
-    log_file.write(error_msg + "\n")
     print(error_msg)
     return False
 

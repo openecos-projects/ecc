@@ -7,20 +7,15 @@ exactly one step. Everything here drives an ``EngineFlow`` that was loaded
 from an existing workspace; execution itself stays in ``EngineFlow.run_step``.
 """
 
-import logging
-import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, log_flow
-from chipcompiler.utility.log import redirect_stdio_to_file
 from chipcompiler.utility.path import path_is_within
 
 if TYPE_CHECKING:
     from chipcompiler.engine.flow import EngineFlow
-
-logger = logging.getLogger(__name__)
 
 
 class StepRunResult(NamedTuple):
@@ -124,7 +119,6 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
             f"{workspace_step.tool} - begin step - {workspace_step.name}"
         )
         _reset_output_dir(output_dir)
-        _redirect_to_step_log(workspace_step)
         flow.init_db_engine_for_step(workspace_step)
         state = flow.run_step(workspace_step, rerun=True)
         log_flow(workspace=flow.workspace)
@@ -164,19 +158,6 @@ def _validated_output_dirs(workspace: Workspace, steps: list[WorkspaceStep]) -> 
             )
         output_dirs.append(resolved)
     return output_dirs
-
-
-def _redirect_to_step_log(workspace_step: WorkspaceStep) -> None:
-    """Redirect stdio before DB init so its warnings land in the step log."""
-    log_file = workspace_step.log.file or ""
-    if not log_file:
-        return
-    log_file = os.path.abspath(log_file)
-    try:
-        os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-        redirect_stdio_to_file(log_file)
-    except Exception:
-        logger.exception("Failed to redirect stdio to log file: %s", log_file)
 
 
 def _reset_output_dir(output_dir: Path) -> None:

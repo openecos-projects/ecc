@@ -28,7 +28,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
 
     calls = []
 
-    def fake_run(command, cwd, stdout, stderr, check):
+    def fake_run(command, cwd, stderr, check):
         calls.append((command, cwd, stderr, check))
         os.makedirs(os.path.dirname(str(step.output.def_)), exist_ok=True)
         with open(str(step.output.def_), "w", encoding="utf-8") as file:
@@ -118,7 +118,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
+        lambda command, cwd, stderr, check: SimpleNamespace(returncode=0),
     )
 
     assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete

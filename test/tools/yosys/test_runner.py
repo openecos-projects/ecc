@@ -48,7 +48,7 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
         def check(self):
             return None
 
-    def fake_check_slang_support(yosys_cmd, cwd_dir, yosys_env, log_file):
+    def fake_check_slang_support(yosys_cmd, cwd_dir, yosys_env):
         check_calls.append(
             {
                 "yosys_cmd": list(yosys_cmd),
@@ -58,7 +58,7 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
         )
         return True
 
-    def fake_run(cmd, cwd, env, stdout, stderr):
+    def fake_run(cmd, cwd, env, stderr):
         run_calls.append(
             {
                 "cmd": list(cmd),
@@ -118,7 +118,7 @@ def test_run_step_keeps_synthesis_success_when_sta_report_fails(tmp_path, monkey
         def check(self):
             return None
 
-    def fake_run(cmd, cwd, env, stdout, stderr):
+    def fake_run(cmd, cwd, env, stderr):
         output_file.write_text("module top(); endmodule\n")
         return SimpleNamespace(returncode=0)
 
@@ -147,11 +147,10 @@ def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
         def update_step(self, step_name, state, runtime="", memory=0, info=None):
             updates.append((step_name, state))
 
-    def fake_check_slang_support(yosys_cmd, cwd_dir, yosys_env, log_file):
-        log_file.write("Error: yosys slang frontend check failed.\n")
+    def fake_check_slang_support(yosys_cmd, cwd_dir, yosys_env):
         return False
 
-    def fake_run(cmd, cwd, env, stdout, stderr):
+    def fake_run(cmd, cwd, env, stderr):
         run_calls.append(list(cmd))
         raise AssertionError("Synthesis should not run when slang check fails")
 
@@ -166,7 +165,6 @@ def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
     assert result is False
     assert run_calls == []
     assert ("run yosys", StateEnum.Invalid) in updates
-    assert "slang frontend check failed" in log_file.read_text()
 
 
 def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
@@ -191,7 +189,7 @@ def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
     def fail_slang_check(*args, **kwargs):
         raise AssertionError("native Verilog must not probe the Slang frontend")
 
-    def fake_run(cmd, cwd, env, stdout, stderr):
+    def fake_run(cmd, cwd, env, stderr):
         output_file.write_text("module top(); endmodule\n")
         return SimpleNamespace(returncode=0)
 
@@ -225,4 +223,3 @@ def test_run_step_marks_invalid_when_yosys_is_missing(tmp_path, monkeypatch):
 
     assert result is False
     assert ("run yosys", StateEnum.Invalid) in updates
-    assert "yosys is not available" in log_file.read_text()

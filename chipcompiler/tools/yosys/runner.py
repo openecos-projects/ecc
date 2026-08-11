@@ -45,17 +45,11 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
         True if synthesis succeeded, False otherwise
     """
     sub_flow = YosysSubFlow(workspace=workspace, workspace_step=step)
-    log_path = step.log.file or ""
 
     yosys_cmd, yosys_env = get_yosys_runtime()
     if not yosys_cmd:
         sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
         error_msg = "Error: yosys is not available (bundled runtime or PATH)."
-        try:
-            with open(log_path, "w") as log_file:
-                log_file.write(error_msg + "\n")
-        except Exception:
-            pass
         logger.error(error_msg)
         return False
 
@@ -76,24 +70,21 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
 
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 
-        with open(log_path, "w") as log_file:
-            step_data = getattr(step, "data", None)
-            if getattr(step_data, "requires_slang", True) and not check_slang_support(
-                yosys_cmd=yosys_cmd,
-                cwd_dir=cwd_dir,
-                yosys_env=yosys_env,
-                log_file=log_file,
-            ):
-                sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
-                return False
+        step_data = getattr(step, "data", None)
+        if getattr(step_data, "requires_slang", True) and not check_slang_support(
+            yosys_cmd=yosys_cmd,
+            cwd_dir=cwd_dir,
+            yosys_env=yosys_env,
+        ):
+            sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
+            return False
 
-            result = subprocess.run(
-                cmd,
-                cwd=cwd_dir,
-                env=yosys_env,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-            )
+        result = subprocess.run(
+            cmd,
+            cwd=cwd_dir,
+            env=yosys_env,
+            stderr=subprocess.STDOUT,
+        )
 
         if os.path.exists(step.output.verilog or ""):
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Success)
