@@ -538,6 +538,74 @@ def test_create_workspace_persists_pdk_root_in_parameters(
     assert parameters_data.get("PDK Root") == str(resolved_root)
 
 
+EXPECTED_ICS55_DEFAULT_SDC = """\
+# Auto-generated SDC file
+
+set clk_name          clk
+set clk_port_name     clk
+set clk_freq_mhz      100
+set clk_period        [expr 1000.0 / $clk_freq_mhz]
+set clk_io_pct        0.2
+
+# -------------------------------------------------
+# Clock definition
+# -------------------------------------------------
+set clk_port [get_ports $clk_port_name]
+create_clock -name $clk_name -period $clk_period $clk_port
+
+# -------------------------------------------------
+# IO Delay
+# -------------------------------------------------
+set clk_input          [get_ports $clk_port_name]
+set all_inputs_wo_clk  [remove_from_collection [all_inputs] $clk_input]
+
+set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
+set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
+
+# -------------------------------------------------
+# Output load (pF) - ics55 pdk
+# -------------------------------------------------
+set_load 0.001 [all_outputs]
+
+# -------------------------------------------------
+# Clock uncertainty & transition
+# -------------------------------------------------
+set clk_uncertainty   [expr $clk_period * 0.05]                 ;# 5% of period
+set clk_transition    [expr min(0.15, $clk_period * 0.03)]      ;# 3%, cap 0.15ns
+set input_transition  [expr min(0.20, $clk_period * 0.05)]      ;# 5%, cap 0.20ns
+
+set_clock_uncertainty $clk_uncertainty  [get_clocks $clk_name]
+set_clock_transition  $clk_transition   [get_clocks $clk_name]
+set_input_transition  $input_transition $all_inputs_wo_clk
+
+# -------------------------------------------------
+# Design-level constraints
+# -------------------------------------------------
+set_max_fanout 32 [current_design]
+"""
+
+
+def test_create_workspace_generates_default_sdc_from_parameters(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={**default_ics55_parameters, "Max fanout": 32},
+        pdk_root=str(pdk_root),
+    )
+
+    sdc_path = workspace_dir / "origin" / "gcd.sdc"
+    assert sdc_path.read_text() == EXPECTED_ICS55_DEFAULT_SDC
+
+
 def test_load_workspace_restores_pdk_root_from_parameters(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
