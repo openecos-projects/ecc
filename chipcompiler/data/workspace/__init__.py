@@ -20,6 +20,7 @@ from ..parameter import (
 from ..pdk import PDK, get_pdk
 from ..step import StateEnum, StepEnum
 from .layout import EccData, WorkspaceStepBase
+from .sdc import create_default_sdc
 
 # The shared step type used as the annotation/constructor across the codebase.
 WorkspaceStep = WorkspaceStepBase
@@ -1367,66 +1368,3 @@ def log_flow(workspace: Workspace):
             format_string(step.get("state", "")),
             format_string(step.get("runtime", "")),
         )
-
-
-def create_default_sdc(workspace: Workspace):
-    """
-    Create SDC file based on PDK and workspace parameters.
-    """
-    clock = workspace.parameters.data.get("Clock", "")
-    freq_mhz = workspace.parameters.data.get("Frequency max [MHz]", 100)
-    max_fanout = workspace.parameters.data.get("Max fanout", 20)
-
-    sdc_content = f"""\
-# Auto-generated SDC file
-
-set clk_name          {clock}
-set clk_port_name     {clock}
-set clk_freq_mhz      {freq_mhz}
-set clk_period        [expr 1000.0 / $clk_freq_mhz]
-set clk_io_pct        0.2
-
-# -------------------------------------------------
-# Clock definition
-# -------------------------------------------------
-set clk_port [get_ports $clk_port_name]
-create_clock -name $clk_name -period $clk_period $clk_port
-
-# -------------------------------------------------
-# IO Delay
-# -------------------------------------------------
-set clk_input          [get_ports $clk_port_name]
-set all_inputs_wo_clk  [remove_from_collection [all_inputs] $clk_input]
-
-set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
-set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
-"""
-
-    if workspace.pdk.sdc_load > 0:
-        sdc_content += f"""
-# -------------------------------------------------
-# Output load (pF) - {workspace.pdk.name} pdk
-# -------------------------------------------------
-set_load {workspace.pdk.sdc_load} [all_outputs]
-"""
-
-    sdc_content += f"""
-# -------------------------------------------------
-# Clock uncertainty & transition
-# -------------------------------------------------
-set clk_uncertainty   [expr $clk_period * 0.05]                 ;# 5% of period
-set clk_transition    [expr min(0.15, $clk_period * 0.03)]      ;# 3%, cap 0.15ns
-set input_transition  [expr min(0.20, $clk_period * 0.05)]      ;# 5%, cap 0.20ns
-
-set_clock_uncertainty $clk_uncertainty  [get_clocks $clk_name]
-set_clock_transition  $clk_transition   [get_clocks $clk_name]
-set_input_transition  $input_transition $all_inputs_wo_clk
-
-# -------------------------------------------------
-# Design-level constraints
-# -------------------------------------------------
-set_max_fanout {max_fanout} [current_design]
-"""
-
-    with open(workspace.pdk.sdc, "w") as file:
-        file.write(sdc_content)
