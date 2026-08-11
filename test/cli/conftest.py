@@ -200,12 +200,14 @@ def mock_pdk_validation_fixture(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _disable_worker_routing(monkeypatch):
-    """Disable worker routing in CLI tests by default.
+    """Simulate successful worker execution in CLI tests by default.
 
     Tests that need to exercise the worker path should override this by
     patching _run_flow_via_worker themselves (e.g. via flow_mocks fixture).
     """
+    from chipcompiler.runtime.worker_operation import OperationResult
+
     monkeypatch.setattr(
         "chipcompiler.cli.command_handlers.project._run_flow_via_worker",
-        lambda workspace_dir: None,
+        lambda workspace_dir: OperationResult(success=True, exit_code=0),
     )

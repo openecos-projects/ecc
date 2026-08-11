@@ -187,27 +187,45 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
 
 
-def _run_flow_via_worker(workspace_dir: str) -> bool:
+def _workspace_step_log_resolver(workspace_dir: str):
+    """Return a (step, tool) -> Path resolver for workspace step logs."""
+    from pathlib import Path
+
+    base = Path(workspace_dir)
+
+    def resolve(step: str, tool: str) -> Path:
+        return base / f"{step}_{tool}" / "log" / f"{step}.log"
+
+    return resolve
+
+
+def _run_flow_via_worker(workspace_dir: str):
     """Execute flow.run through an isolated worker process.
 
-    Falls back to None if the worker binary is unavailable, signaling the caller
-    to use direct in-process execution instead.
+    Returns an OperationResult. A missing worker binary is a structured failure.
     """
     from pathlib import Path
 
-    from chipcompiler.runtime.worker_operation import RunOperation, _default_worker_argv
+    from chipcompiler.runtime.worker_operation import (
+        OperationResult,
+        RunOperation,
+        _default_worker_argv,
+    )
 
     argv = _default_worker_argv()
     if not os.path.isfile(argv[0]):
-        return None
+        return OperationResult(
+            success=False,
+            error=f"worker binary not found: {argv[0]}",
+        )
 
     flow_json_path = Path(workspace_dir) / "home" / "flow.json"
     op = RunOperation(
         workspace_dir=Path(workspace_dir),
         flow_json_path=flow_json_path,
+        log_path_resolver=_workspace_step_log_resolver(workspace_dir),
     )
-    result = op.run("flow.run", {"rerun": False})
-    return result.success
+    return op.run("flow.run", {"rerun": False})
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
@@ -449,22 +467,27 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
         if should_enable_run_progress(ctx, sys.stderr):
             flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+            op_result = None
         else:
-            worker_result = _run_flow_via_worker(run_dir)
-            flow_ok = worker_result if worker_result is not None else engine_flow.run_steps()
+            op_result = _run_flow_via_worker(run_dir)
+            flow_ok = op_result.success
 
         if not flow_ok:
-            return CommandResult.err(
-                [
-                    {
-                        "run": run_name,
-                        "status": "failed",
-                        "workspace": run_dir,
-                        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                        "log": disclosure_cmd("ecc log", project, ctx.run_id),
-                    }
-                ]
-            )
+            error_record = {
+                "run": run_name,
+                "status": "failed",
+                "workspace": run_dir,
+                "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+                "log": disclosure_cmd("ecc log", project, ctx.run_id),
+            }
+            if op_result is not None and not op_result.success:
+                if op_result.error:
+                    error_record["error"] = op_result.error
+                if op_result.exit_code is not None:
+                    error_record["exit_code"] = op_result.exit_code
+                if op_result.repaired_steps:
+                    error_record["repaired_steps"] = op_result.repaired_steps
+            return CommandResult.err([error_record])
     except Exception as exc:
         return CommandResult.err(
             [

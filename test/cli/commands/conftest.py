@@ -57,9 +57,11 @@ def flow_mocks(monkeypatch):
         return workspace_obj
 
     def fake_run_flow_via_worker(workspace_dir):
+        from chipcompiler.runtime.worker_operation import OperationResult
+
         for inst in DummyFlow.instances:
             inst.run_called = True
-        return DummyFlow.run_steps_value
+        return OperationResult(success=DummyFlow.run_steps_value, exit_code=0)
 
     monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)

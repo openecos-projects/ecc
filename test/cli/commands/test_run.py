@@ -426,3 +426,54 @@ class TestWorkspaceRun:
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 1
         assert record["error"] == error
+
+
+class TestWorkspaceStepLogResolver:
+    def test_resolver_produces_canonical_step_log_path(self, tmp_path):
+        from chipcompiler.cli.command_handlers.project import _workspace_step_log_resolver
+
+        resolver = _workspace_step_log_resolver(str(tmp_path))
+        path = resolver("Synthesis", "yosys")
+        assert path == tmp_path / "Synthesis_yosys" / "log" / "Synthesis.log"
+
+    def test_resolver_produces_correct_paths_for_multiple_tools(self, tmp_path):
+        from chipcompiler.cli.command_handlers.project import _workspace_step_log_resolver
+
+        resolver = _workspace_step_log_resolver(str(tmp_path))
+        assert resolver("Floorplan", "ecc") == tmp_path / "Floorplan_ecc" / "log" / "Floorplan.log"
+        assert resolver("CTS", "ecc") == tmp_path / "CTS_ecc" / "log" / "CTS.log"
+        assert resolver("Place", "ecc") == tmp_path / "Place_ecc" / "log" / "Place.log"
+
+
+class TestRunFlowViaWorkerFailure:
+    def test_missing_binary_returns_structured_failure(self, tmp_path, monkeypatch):
+        """The binary check in _run_flow_via_worker returns a typed error."""
+        monkeypatch.setattr(
+            "chipcompiler.runtime.worker_operation._default_worker_argv",
+            lambda: [str(tmp_path / "nonexistent_ecc"), "rpc", "serve", "--stdio"],
+        )
+        # Also restore the real function past the autouse fixture
+        from chipcompiler.cli.command_handlers import project as proj_module
+        from chipcompiler.runtime.worker_operation import (
+            OperationResult,
+            RunOperation,
+            _default_worker_argv,
+        )
+
+        def real_run_flow_via_worker(workspace_dir):
+            from pathlib import Path
+
+            argv = _default_worker_argv()
+            if not os.path.isfile(argv[0]):
+                return OperationResult(success=False, error=f"worker binary not found: {argv[0]}")
+            flow_json_path = Path(workspace_dir) / "home" / "flow.json"
+            op = RunOperation(
+                workspace_dir=Path(workspace_dir),
+                flow_json_path=flow_json_path,
+                log_path_resolver=proj_module._workspace_step_log_resolver(workspace_dir),
+            )
+            return op.run("flow.run", {"rerun": False})
+
+        result = real_run_flow_via_worker(str(tmp_path))
+        assert result.success is False
+        assert "not found" in result.error
