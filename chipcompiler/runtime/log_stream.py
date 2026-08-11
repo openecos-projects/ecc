@@ -88,11 +88,16 @@ class LogStreamReader:
         log_path_resolver: Callable[[str, str], Path | None] | None = None,
         on_output: Callable[[bytes], None] | None = None,
         tail_size: int = 4096,
+        valid_steps: set[tuple[str, str]] | None = None,
+        workspace_dir: Path | None = None,
     ):
         self._stderr = stderr
         self._resolve_path = log_path_resolver
         self._on_output = on_output
+        self._on_output_disabled = False
         self._tail_size = tail_size
+        self._valid_steps = valid_steps
+        self._workspace_dir = workspace_dir
         self._state = LogStreamState()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -152,8 +157,16 @@ class LogStreamReader:
             else:
                 self._emit_data(line)
 
+    def _is_allowed_step(self, step: str, tool: str) -> bool:
+        if self._valid_steps is None:
+            return True
+        return (step, tool) in self._valid_steps
+
     def _handle_marker(self, marker: StepMarker, raw_line: bytes) -> None:
         if marker.event == "begin":
+            if not self._is_allowed_step(marker.step, marker.tool):
+                self._emit_data(raw_line)
+                return
             if self._state.active_step is None:
                 self._state.active_step = marker.step
                 self._state.active_tool = marker.tool
@@ -183,8 +196,13 @@ class LogStreamReader:
                     self._state.archive_file.close()
                 self._state.archive_file = None
         self._update_tail(data)
-        if self._on_output is not None:
-            self._on_output(data)
+        if self._on_output is not None and not self._on_output_disabled:
+            try:
+                self._on_output(data)
+            except Exception as exc:
+                if self._state.error is None:
+                    self._state.error = exc
+                self._on_output_disabled = True
 
     def _update_tail(self, data: bytes) -> None:
         combined = self._state.tail_bytes + data
@@ -195,9 +213,29 @@ class LogStreamReader:
     def _open_archive(self, step: str, tool: str) -> None:
         if self._resolve_path is None:
             return
-        path = self._resolve_path(step, tool)
+        try:
+            path = self._resolve_path(step, tool)
+        except Exception as exc:
+            if self._state.error is None:
+                self._state.error = exc
+            return
         if path is None:
             return
+        if self._workspace_dir is not None:
+            try:
+                resolved = path.resolve()
+                workspace_resolved = self._workspace_dir.resolve()
+                if not (
+                    resolved == workspace_resolved
+                    or str(resolved).startswith(str(workspace_resolved) + os.sep)
+                ):
+                    if self._state.error is None:
+                        self._state.error = ValueError(f"archive path escapes workspace: {path}")
+                    return
+            except (OSError, ValueError) as exc:
+                if self._state.error is None:
+                    self._state.error = exc
+                return
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             self._state.archive_file = path.open("wb")  # noqa: SIM115

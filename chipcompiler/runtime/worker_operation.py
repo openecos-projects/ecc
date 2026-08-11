@@ -65,12 +65,14 @@ class RunOperation:
         worker_argv: list[str] | None = None,
         log_path_resolver: Callable[[str, str], Path | None] | None = None,
         on_output: Callable[[bytes], None] | None = None,
+        valid_steps: set[tuple[str, str]] | None = None,
     ):
         self._workspace_dir = workspace_dir
         self._flow_json_path = flow_json_path
         self._worker_argv = worker_argv or _default_worker_argv()
         self._log_path_resolver = log_path_resolver
         self._on_output = on_output
+        self._valid_steps = valid_steps
 
     def run(self, method: str, params: dict, *, request_id: int = 1) -> OperationResult:
         """Execute one RPC method against the worker and return a typed result.
@@ -87,6 +89,8 @@ class RunOperation:
                 proc.stderr,
                 log_path_resolver=self._log_path_resolver,
                 on_output=self._on_output,
+                valid_steps=self._valid_steps,
+                workspace_dir=self._workspace_dir,
             )
             reader.start()
 

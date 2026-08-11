@@ -204,6 +204,7 @@ def _run_flow_via_worker(workspace_dir: str):
 
     Returns an OperationResult. A missing worker binary is a structured failure.
     """
+    import json as json_mod
     from pathlib import Path
 
     from chipcompiler.runtime.worker_operation import (
@@ -220,10 +221,24 @@ def _run_flow_via_worker(workspace_dir: str):
         )
 
     flow_json_path = Path(workspace_dir) / "home" / "flow.json"
+
+    valid_steps: set[tuple[str, str]] | None = None
+    try:
+        with open(flow_json_path) as f:
+            flow_data = json_mod.load(f)
+        valid_steps = {
+            (s["name"], s["tool"])
+            for s in flow_data.get("steps", [])
+            if isinstance(s, dict) and "name" in s and "tool" in s
+        }
+    except (OSError, json_mod.JSONDecodeError, KeyError):
+        pass
+
     op = RunOperation(
         workspace_dir=Path(workspace_dir),
         flow_json_path=flow_json_path,
         log_path_resolver=_workspace_step_log_resolver(workspace_dir),
+        valid_steps=valid_steps,
     )
     return op.run("flow.run", {"rerun": False})
 

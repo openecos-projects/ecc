@@ -283,3 +283,180 @@ class TestLogStreamReader:
         assert b"after\n" in content
         assert reader.state.active_step is None
         assert reader.state.steps_seen == ["A"]
+
+
+class TestLogStreamAllowlist:
+    def test_unknown_step_marker_treated_as_data(self, tmp_path):
+        """A begin marker for a pair not in valid_steps is archived as data."""
+        log_path = tmp_path / "step.log"
+
+        def resolver(step, tool):
+            return log_path
+
+        valid = {("Synthesis", "yosys")}
+        unknown_begin = b'\x1eECC-STEP {"event":"begin","step":"../../escape","tool":"evil"}\n'
+        stream_data = (
+            b'\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\n'
+            + unknown_begin
+            + b"normal data\n"
+            + b'\x1eECC-STEP {"event":"end","step":"Synthesis","tool":"yosys"}\n'
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data), log_path_resolver=resolver, valid_steps=valid
+        )
+        reader.start()
+        reader.join(timeout=5)
+        content = log_path.read_bytes()
+        assert unknown_begin in content
+        assert b"normal data\n" in content
+        assert reader.state.steps_seen == ["Synthesis"]
+
+    def test_unknown_step_before_any_active_is_data(self):
+        """An unknown begin marker with no active step is sent to callback as data."""
+        received = []
+        valid = {("Place", "ecc")}
+        stream_data = b'\x1eECC-STEP {"event":"begin","step":"Bogus","tool":"fake"}\ntrailing\n'
+        reader = LogStreamReader(
+            io.BytesIO(stream_data), on_output=received.append, valid_steps=valid
+        )
+        reader.start()
+        reader.join(timeout=5)
+        combined = b"".join(received)
+        assert b"Bogus" in combined
+        assert b"trailing\n" in combined
+        assert reader.state.active_step is None
+
+    def test_path_escape_does_not_open_archive(self, tmp_path):
+        """A resolved path outside workspace_dir must not open an archive file."""
+        escape_target = tmp_path / "outside.log"
+
+        def resolver(step, tool):
+            return escape_target
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        valid = {("Escape", "evil")}
+        stream_data = (
+            b'\x1eECC-STEP {"event":"begin","step":"Escape","tool":"evil"}\n'
+            b"should not be written\n"
+            b'\x1eECC-STEP {"event":"end","step":"Escape","tool":"evil"}\n'
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            log_path_resolver=resolver,
+            valid_steps=valid,
+            workspace_dir=workspace,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert not escape_target.exists()
+        assert reader.state.error is not None
+        assert "escapes workspace" in str(reader.state.error)
+
+    def test_contained_path_opens_normally(self, tmp_path):
+        """A path that resolves inside workspace_dir opens and archives."""
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        log_path = workspace / "Synthesis_yosys" / "log" / "Synthesis.log"
+
+        def resolver(step, tool):
+            return log_path
+
+        valid = {("Synthesis", "yosys")}
+        stream_data = (
+            b'\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\n'
+            b"tool output\n"
+            b'\x1eECC-STEP {"event":"end","step":"Synthesis","tool":"yosys"}\n'
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            log_path_resolver=resolver,
+            valid_steps=valid,
+            workspace_dir=workspace,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert log_path.read_bytes() == b"tool output\n"
+        assert reader.state.error is None
+
+
+class TestLogStreamResilience:
+    def test_resolver_exception_disables_archive_continues_drain(self):
+        """A resolver that raises must not kill the drain thread."""
+        received = []
+        call_count = [0]
+
+        def failing_resolver(step, tool):
+            call_count[0] += 1
+            raise RuntimeError("resolver failed")
+
+        stream_data = (
+            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b"output after failed resolver\n"
+            b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            b"trailing data\n"
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            log_path_resolver=failing_resolver,
+            on_output=received.append,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert reader.completed
+        assert isinstance(reader.state.error, RuntimeError)
+        assert "resolver failed" in str(reader.state.error)
+        combined = b"".join(received)
+        assert b"output after failed resolver\n" in combined
+        assert b"trailing data\n" in combined
+
+    def test_callback_exception_disables_callback_continues_drain(self, tmp_path):
+        """An on_output callback that raises must not kill archiving."""
+        log_path = tmp_path / "step.log"
+        call_count = [0]
+
+        def failing_callback(data):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise ValueError("callback exploded")
+
+        def resolver(step, tool):
+            return log_path
+
+        stream_data = (
+            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b"line 1\n"
+            b"line 2\n"
+            b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            log_path_resolver=resolver,
+            on_output=failing_callback,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert reader.completed
+        assert isinstance(reader.state.error, ValueError)
+        content = log_path.read_bytes()
+        assert b"line 1\n" in content
+        assert b"line 2\n" in content
+
+    def test_drain_completes_after_callback_disabled(self):
+        """After callback is disabled, remaining data is still drained."""
+        call_count = [0]
+
+        def failing_callback(data):
+            call_count[0] += 1
+            raise RuntimeError("always fails")
+
+        stream_data = b"line 1\nline 2\nline 3\n"
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            on_output=failing_callback,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert reader.completed
+        assert call_count[0] == 1
+        assert b"line 3\n" in reader.state.tail_bytes
