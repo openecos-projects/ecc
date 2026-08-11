@@ -353,6 +353,14 @@ class SignoffPackageCollector:
             required=True,
         )
 
+        synthesis_verilog = self._synthesis_output_verilog()
+        add_file(
+            role="synthesis.verilog",
+            source=synthesis_verilog,
+            destination=f"synthesis/{design}.v.gz",
+            required=True,
+        )
+
         add_file(
             role="final.design.verilog",
             source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz",
@@ -548,6 +556,7 @@ class SignoffPackageCollector:
                 "sdc": f"initial/{design}.sdc",
                 "parameters": "initial/parameters.json",
             },
+            "synthesis": {"verilog": f"synthesis/{design}.v.gz"},
             "config": "config/",
             "harden": {
                 "gds": f"harden/{design}.gds",
@@ -596,6 +605,7 @@ class SignoffPackageCollector:
                 f"# {design} Signoff Package\n\n"
                 f"- Workspace: {workspace_dir.resolve()}\n"
                 f"- Status: {summary['status']}\n"
+                "- Mapped synthesis netlist is under `synthesis/`.\n"
                 "- Harden outputs are under `harden/`.\n"
                 "- Final physical resources are under `final/`.\n"
             )
@@ -835,6 +845,16 @@ class SignoffPackageCollector:
                 if name.endswith(suffix):
                     return name[: -len(suffix)]
         return ""
+
+    def _synthesis_output_verilog(self) -> Path | None:
+        """Resolve the netlist from the Yosys step's declared output contract."""
+        synthesis_step = self._build_workspace_step(
+            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys"},
+            previous_step=None,
+        )
+        output = getattr(synthesis_step, "output", None)
+        verilog = getattr(output, "verilog", None)
+        return Path(verilog) if verilog else None
 
     def _required_step_states(self, flow_data: dict) -> dict:
         required = [

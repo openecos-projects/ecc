@@ -87,6 +87,7 @@ def _make_signoff_workspace(
     _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.gds")
     _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lef")
     _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lib")
+    _write(workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.def.gz")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.gds")
@@ -187,6 +188,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
 
     package_dir = Path(result.package_dir)
     assert result.ok is True
+    assert (package_dir / "synthesis" / "gcd.v.gz").is_file()
     assert (package_dir / "final" / "design" / "gcd.v.gz").is_file()
     assert (package_dir / "final" / "design" / "gcd.def.gz").is_file()
     assert (package_dir / "final" / "design" / "gcd.gds").is_file()
@@ -198,6 +200,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
 
     summary = json.loads((package_dir / "summary.json").read_text())
     assert summary["initial"]["verilog"] == "initial/gcd.v"
+    assert summary["synthesis"]["verilog"] == "synthesis/gcd.v.gz"
     assert summary["final"]["verilog"] == "final/design/gcd.v.gz"
     assert summary["qor_metrics"]["schema_version"] == 3
     assert (
@@ -213,6 +216,9 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
 
     manifest = json.loads((package_dir / "manifest.json").read_text())
     destinations = {item["destination"] for item in manifest["files"]}
+    assert "synthesis/gcd.v.gz" in destinations
+    roles = {item["destination"]: item["role"] for item in manifest["files"]}
+    assert roles["synthesis/gcd.v.gz"] == "synthesis.verilog"
     assert "final/design/gcd.def.gz" in destinations
     assert "final/reports/route/analysis/qor_metrics.json" in destinations
     assert {
@@ -223,6 +229,25 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
         "final/timing/sta/MAX_125/RCworst/feature/timing_paths.json",
     }.issubset(destinations)
     assert all(".tsv" not in destination for destination in destinations)
+
+
+def test_collect_signoff_package_requires_synthesis_verilog(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz").unlink()
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert "package.synthesis.gcd.v.gz" in result.missing_required
+    assert any(
+        issue.label == "synthesis.verilog"
+        and issue.location == "Synthesis_yosys/output/gcd_Synthesis.v.gz"
+        and issue.destination == "synthesis/gcd.v.gz"
+        and issue.required
+        for issue in result.issues
+    )
 
 
 def test_collect_signoff_package_tolerates_missing_sta_power_report(tmp_path):
