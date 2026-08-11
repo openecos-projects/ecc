@@ -63,6 +63,8 @@ class LogStreamState:
 
     tail_bytes: bytes = b""
     archive_file: BinaryIO | None = field(default=None, repr=False)
+    active_step: str | None = None
+    active_tool: str | None = None
     bytes_archived: int = 0
     steps_seen: list[str] = field(default_factory=list)
     error: Exception | None = None
@@ -143,10 +145,17 @@ class LogStreamReader:
     def _handle_marker(self, marker: StepMarker, raw_line: bytes) -> None:
         if marker.event == "begin":
             self._close_archive()
+            self._state.active_step = marker.step
+            self._state.active_tool = marker.tool
             self._state.steps_seen.append(marker.step)
             self._open_archive(marker.step, marker.tool)
         elif marker.event == "end":
-            self._close_archive()
+            if marker.step == self._state.active_step and marker.tool == self._state.active_tool:
+                self._close_archive()
+                self._state.active_step = None
+                self._state.active_tool = None
+            else:
+                self._emit_data(raw_line)
         else:
             self._emit_data(raw_line)
 

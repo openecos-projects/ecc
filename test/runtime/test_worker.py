@@ -79,7 +79,7 @@ class TestRepairFlowState:
             ]
         }
         flow_json.write_text(json.dumps(data))
-        repaired = repair_flow_state(flow_json)
+        repaired = repair_flow_state(flow_json, active_step="Placement")
         assert repaired == ["Placement"]
         result = json.loads(flow_json.read_text())
         assert result["steps"][1]["state"] == "Incomplete"
@@ -90,21 +90,21 @@ class TestRepairFlowState:
         flow_json = tmp_path / "flow.json"
         data = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Success"}]}
         flow_json.write_text(json.dumps(data))
-        repaired = repair_flow_state(flow_json)
+        repaired = repair_flow_state(flow_json, active_step="Synthesis")
         assert repaired == []
 
     def test_missing_file(self, tmp_path):
         flow_json = tmp_path / "nonexistent.json"
-        repaired = repair_flow_state(flow_json)
+        repaired = repair_flow_state(flow_json, active_step="X")
         assert repaired == []
 
     def test_empty_file(self, tmp_path):
         flow_json = tmp_path / "flow.json"
         flow_json.write_text("{}")
-        repaired = repair_flow_state(flow_json)
+        repaired = repair_flow_state(flow_json, active_step="X")
         assert repaired == []
 
-    def test_multiple_ongoing(self, tmp_path):
+    def test_scoped_repair_only_active_step(self, tmp_path):
         flow_json = tmp_path / "flow.json"
         data = {
             "steps": [
@@ -113,20 +113,8 @@ class TestRepairFlowState:
             ]
         }
         flow_json.write_text(json.dumps(data))
-        repaired = repair_flow_state(flow_json)
-        assert set(repaired) == {"A", "B"}
-
-    def test_scoped_repair_only_active_step(self, tmp_path):
-        flow_json = tmp_path / "flow.json"
-        data = {
-            "steps": [
-                {"name": "Synthesis", "tool": "yosys", "state": "Ongoing"},
-                {"name": "Placement", "tool": "ecc", "state": "Ongoing"},
-            ]
-        }
-        flow_json.write_text(json.dumps(data))
-        repaired = repair_flow_state(flow_json, active_step="Placement")
-        assert repaired == ["Placement"]
+        repaired = repair_flow_state(flow_json, active_step="B")
+        assert repaired == ["B"]
         result = json.loads(flow_json.read_text())
         assert result["steps"][0]["state"] == "Ongoing"
         assert result["steps"][1]["state"] == "Incomplete"
@@ -141,6 +129,23 @@ class TestRepairFlowState:
         flow_json.write_text(json.dumps(data))
         repaired = repair_flow_state(flow_json, active_step="Synthesis")
         assert repaired == []
+
+    def test_write_failure_raises_oserror(self, tmp_path):
+        flow_json = tmp_path / "flow.json"
+        data = {
+            "steps": [
+                {"name": "A", "tool": "t", "state": "Ongoing"},
+            ]
+        }
+        flow_json.write_text(json.dumps(data))
+        flow_json.chmod(0o444)
+        tmp_path.chmod(0o555)
+        try:
+            with pytest.raises(OSError, match="failed to persist"):
+                repair_flow_state(flow_json, active_step="A")
+        finally:
+            tmp_path.chmod(0o755)
+            flow_json.chmod(0o644)
 
 
 class TestWorkerClientSubprocess:
@@ -276,3 +281,77 @@ class TestWorkerClientSubprocess:
         except OSError:
             alive = False
         assert not alive, "orphaned child should have been killed by process-group signal"
+
+    def test_out_of_order_responses_preserved(self):
+        """Responses arriving in reverse order must all be retrievable."""
+        script = textwrap.dedent("""\
+            import sys, json
+            data = b""
+            while True:
+                chunk = sys.stdin.buffer.read(1)
+                if not chunk:
+                    break
+                data += chunk
+                if b"\\r\\n\\r\\n" in data:
+                    header, _, body_start = data.partition(b"\\r\\n\\r\\n")
+                    length = int(header.split(b":")[1])
+                    while len(body_start) < length:
+                        body_start += sys.stdin.buffer.read(1)
+                    json.loads(body_start[:length])
+                    # Send responses in reverse order: id=2 then id=1
+                    r2 = json.dumps(
+                        {"jsonrpc": "2.0", "result": {"v": 2}, "id": 2}
+                    )
+                    r1 = json.dumps(
+                        {"jsonrpc": "2.0", "result": {"v": 1}, "id": 1}
+                    )
+                    for r in [r2, r1]:
+                        frame = f"Content-Length: {len(r)}\\r\\n\\r\\n{r}"
+                        sys.stdout.buffer.write(frame.encode())
+                    sys.stdout.buffer.flush()
+                    break
+        """)
+        client = WorkerClient([sys.executable, "-c", script])
+        client.start()
+        try:
+            client.send_request("test", {}, request_id=1)
+            resp1 = client.read_response(request_id=1)
+            assert resp1["result"]["v"] == 1
+            resp2 = client.read_response(request_id=2)
+            assert resp2["result"]["v"] == 2
+        finally:
+            client.terminate()
+
+    def test_leader_exits_during_sigint_descendant_killed(self):
+        """Leader exits on SIGINT but descendant ignores it; must still be killed."""
+        script = textwrap.dedent("""\
+            import os, sys, signal, time
+            pid = os.fork()
+            if pid == 0:
+                signal.signal(signal.SIGINT, signal.SIG_IGN)
+                time.sleep(60)
+                os._exit(0)
+            else:
+                sys.stdout.buffer.write(f"{pid}\\n".encode())
+                sys.stdout.buffer.flush()
+                # Leader exits immediately on SIGINT
+                signal.signal(signal.SIGINT, lambda *a: os._exit(0))
+                time.sleep(60)
+        """)
+        client = WorkerClient([sys.executable, "-c", script])
+        proc = client.start()
+        import time
+
+        time.sleep(0.3)
+        child_pid_line = proc.stdout.readline()
+        child_pid = int(child_pid_line.strip())
+        client.terminate()
+        time.sleep(0.5)
+        import os
+
+        try:
+            os.kill(child_pid, 0)
+            alive = True
+        except OSError:
+            alive = False
+        assert not alive, "descendant ignoring SIGINT should still be killed by SIGTERM/SIGKILL"

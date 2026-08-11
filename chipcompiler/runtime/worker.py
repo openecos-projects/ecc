@@ -42,6 +42,7 @@ class WorkerClient:
         self._pgid: int | None = None
         self._decoder = ContentLengthDecoder()
         self._notifications: deque[dict] = deque()
+        self._pending_responses: dict[int, dict] = {}
 
     def start(self) -> subprocess.Popen:
         self._process = subprocess.Popen(
@@ -81,9 +82,13 @@ class WorkerClient:
     def read_response(self, request_id: int = 1) -> dict:
         """Read the next RPC response matching request_id.
 
-        Notifications (messages without an 'id' field) are queued internally.
+        Checks the pending-response buffer first (for out-of-order delivery).
+        Non-matching responses are stored by id for later retrieval.
+        Notifications (no 'id') are queued separately.
         Malformed JSON raises WorkerProcessError.
         """
+        if request_id in self._pending_responses:
+            return self._pending_responses.pop(request_id)
         if self._process is None or self._process.stdout is None:
             raise WorkerProcessError("worker not started")
         while True:
@@ -95,6 +100,7 @@ class WorkerClient:
                 messages = self._decoder.feed(chunk)
             except TransportError as exc:
                 raise WorkerProcessError(f"protocol error: {exc}") from exc
+            found: dict | None = None
             for raw in messages:
                 try:
                     msg = json.loads(raw)
@@ -104,11 +110,16 @@ class WorkerClient:
                     raise WorkerProcessError("expected JSON object from worker")
                 if "id" not in msg:
                     self._notifications.append(msg)
-                    continue
-                if msg["id"] != request_id:
-                    self._notifications.append(msg)
-                    continue
-                return msg
+                elif msg["id"] == request_id and found is None:
+                    found = msg
+                else:
+                    msg_id = msg.get("id")
+                    if msg_id is not None:
+                        self._pending_responses[msg_id] = msg
+                    else:
+                        self._notifications.append(msg)
+            if found is not None:
+                return found
 
     def pop_notification(self) -> dict | None:
         if self._notifications:
@@ -142,11 +153,18 @@ def _terminate_process_group(proc: subprocess.Popen, pgid: int | None = None) ->
     """Escalate signals to the worker process group.
 
     pgid is cached at start time (the worker pid, since start_new_session=True).
-    Signals the group even after the leader has already exited, because
-    descendants may still be running.
+    After each signal, checks whether the process group still has live members
+    and continues escalation until the group is gone.
     """
     if pgid is None:
         pgid = proc.pid
+
+    def _group_alive() -> bool:
+        try:
+            os.killpg(pgid, 0)
+            return True
+        except OSError:
+            return False
 
     def _signal_group(sig: int) -> None:
         with suppress(OSError):
@@ -154,18 +172,22 @@ def _terminate_process_group(proc: subprocess.Popen, pgid: int | None = None) ->
 
     if proc.poll() is None:
         _signal_group(signal.SIGINT)
-        try:
+        with suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=_GRACEFUL_WAIT)
-        except subprocess.TimeoutExpired:
+        if _group_alive():
             _signal_group(signal.SIGTERM)
-            try:
+            with suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=_FORCEFUL_WAIT)
-            except subprocess.TimeoutExpired:
+            if _group_alive():
                 _signal_group(signal.SIGKILL)
                 proc.wait()
     else:
-        _signal_group(signal.SIGTERM)
-        _signal_group(signal.SIGKILL)
+        if _group_alive():
+            _signal_group(signal.SIGTERM)
+            _signal_group(signal.SIGKILL)
+
+    if proc.poll() is None:
+        proc.wait()
 
     return proc.returncode
 
@@ -192,11 +214,11 @@ def classify_worker_exit(proc: subprocess.Popen) -> WorkerResult:
     return WorkerResult(success=False, exit_code=code, error=f"worker exited with code {code}")
 
 
-def repair_flow_state(flow_json_path: str | Path, *, active_step: str | None = None) -> list[str]:
-    """Repair Ongoing steps left by a crashed worker, setting them to Incomplete.
+def repair_flow_state(flow_json_path: str | Path, *, active_step: str) -> list[str]:
+    """Repair the named Ongoing step left by a crashed worker, setting it to Incomplete.
 
-    If active_step is provided, only that specific step is repaired (operation-scoped).
-    If active_step is None, all Ongoing steps are repaired (legacy fallback).
+    Operation-scoped: only the active_step is repaired. The caller must identify
+    which step was owned by the crashed operation.
 
     Returns the list of step names that were repaired.
     Raises OSError if the repaired state cannot be persisted.
@@ -217,12 +239,12 @@ def repair_flow_state(flow_json_path: str | Path, *, active_step: str | None = N
         if step.get("state") != "Ongoing":
             continue
         step_name = step.get("name", "<unknown>")
-        if active_step is not None and step_name != active_step:
+        if step_name != active_step:
             continue
         step["state"] = "Incomplete"
         repaired.append(step_name)
 
-    if repaired:
-        json_write(path, data)
+    if repaired and not json_write(path, data):
+        raise OSError(f"failed to persist repaired flow state: {path}")
 
     return repaired

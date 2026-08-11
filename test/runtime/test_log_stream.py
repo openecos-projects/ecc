@@ -221,3 +221,40 @@ class TestLogStreamReader:
         reader.join(timeout=5)
         assert reader.state.error is not None
         assert isinstance(reader.state.error, OSError)
+
+    def test_mismatched_end_marker_does_not_close_archive(self, tmp_path):
+        """begin A -> end B -> data -> end A: data must be in A's archive."""
+        log_path = tmp_path / "step.log"
+
+        def resolver(step, tool):
+            return log_path
+
+        mismatched_end = b'\x1eECC-STEP {"event":"end","step":"B","tool":"T"}\n'
+        stream_data = (
+            b'\x1eECC-STEP {"event":"begin","step":"A","tool":"T"}\n'
+            b"before\n"
+            + mismatched_end
+            + b"after\n"
+            + b'\x1eECC-STEP {"event":"end","step":"A","tool":"T"}\n'
+        )
+        reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
+        reader.start()
+        reader.join(timeout=5)
+        content = log_path.read_bytes()
+        assert b"before\n" in content
+        assert mismatched_end in content
+        assert b"after\n" in content
+
+    def test_active_step_tracked_in_state(self, tmp_path):
+        """State tracks the active step/tool during archiving."""
+        log_path = tmp_path / "step.log"
+
+        def resolver(step, tool):
+            return log_path
+
+        stream_data = b'\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\ndata\n'
+        reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
+        reader.start()
+        reader.join(timeout=5)
+        assert reader.state.active_step == "Synthesis"
+        assert reader.state.active_tool == "yosys"
