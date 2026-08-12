@@ -10,11 +10,8 @@ from .filelist import (
 from .json import JsonReadError, dict_to_str, json_read, json_read_strict, json_write
 from .log import (
     Logger,
-    build_timestamped_log_file,
     create_logger,
-    init_api_runtime_log,
     redirect_stdio_to_file,
-    rotate_log_on_start,
 )
 from .plot import plot_bar_chart, plot_csv_bar_chart, plot_csv_map, plot_csv_table, plot_metrics
 from .util import track_process_memory
@@ -28,10 +25,7 @@ __all__ = [
     "dict_to_str",
     "Logger",
     "create_logger",
-    "build_timestamped_log_file",
-    "rotate_log_on_start",
     "redirect_stdio_to_file",
-    "init_api_runtime_log",
     "track_process_memory",
     "plot_csv_map",
     "plot_metrics",
