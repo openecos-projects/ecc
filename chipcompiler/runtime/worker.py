@@ -6,7 +6,6 @@ from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
 
 from chipcompiler.runtime.transport import (
     ContentLengthDecoder,
@@ -58,12 +57,6 @@ class WorkerClient:
     @property
     def process(self) -> subprocess.Popen | None:
         return self._process
-
-    @property
-    def stderr(self) -> BinaryIO | None:
-        if self._process is None:
-            return None
-        return self._process.stderr
 
     def send_request(self, method: str, params: dict, request_id: int = 1) -> None:
         if self._process is None or self._process.stdin is None:
