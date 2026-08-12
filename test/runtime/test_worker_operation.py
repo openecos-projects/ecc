@@ -193,12 +193,13 @@ class TestRunOperationArchive:
         """)
         )
 
-        readonly_dir = tmp_path / "readonly_logs"
-        readonly_dir.mkdir()
-        readonly_dir.chmod(0o444)
+        # A regular file as path component makes mkdir fail with ENOTDIR even
+        # when tests run as root (chmod-based read-only setups are bypassed).
+        blocker = tmp_path / "not_a_dir"
+        blocker.write_text("regular file")
 
         def bad_resolver(step: str, tool: str):
-            return readonly_dir / "sub" / f"{step}.log"
+            return blocker / "sub" / f"{step}.log"
 
         flow_json = tmp_path / "flow.json"
         flow_json.write_text("{}")
@@ -208,13 +209,10 @@ class TestRunOperationArchive:
             worker_argv=[sys.executable, str(script)],
             log_path_resolver=bad_resolver,
         )
-        try:
-            result = op.run("flow.run", {"workspace_id": "test"})
-            assert result.success is False
-            assert result.archive_error is not None
-            assert "archive error" in result.error
-        finally:
-            readonly_dir.chmod(0o755)
+        result = op.run("flow.run", {"workspace_id": "test"})
+        assert result.success is False
+        assert result.archive_error is not None
+        assert "archive error" in result.error
 
     def test_stderr_archived_to_step_log(self, tmp_path):
         script = tmp_path / "server_with_markers.py"

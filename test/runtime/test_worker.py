@@ -1,9 +1,12 @@
 """Tests for chipcompiler.runtime.worker — lifecycle, signal handling, and state repair."""
 
 import json
+import os
 import signal
 import sys
 import textwrap
+import time
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,6 +18,20 @@ from chipcompiler.runtime.worker import (
     classify_worker_exit,
     repair_flow_state,
 )
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    # A container PID 1 that does not reap leaves killed children as zombies,
+    # and os.kill(pid, 0) still succeeds for zombies.
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return False
+    return stat.rpartition(")")[2].split()[0] != "Z"
 
 
 class TestWorkerResult:
@@ -130,7 +147,7 @@ class TestRepairFlowState:
         repaired = repair_flow_state(flow_json, active_step="Synthesis")
         assert repaired == []
 
-    def test_write_failure_raises_oserror(self, tmp_path):
+    def test_write_failure_raises_oserror(self, tmp_path, monkeypatch):
         flow_json = tmp_path / "flow.json"
         data = {
             "steps": [
@@ -138,14 +155,11 @@ class TestRepairFlowState:
             ]
         }
         flow_json.write_text(json.dumps(data))
-        flow_json.chmod(0o444)
-        tmp_path.chmod(0o555)
-        try:
-            with pytest.raises(OSError, match="failed to persist"):
-                repair_flow_state(flow_json, active_step="A")
-        finally:
-            tmp_path.chmod(0o755)
-            flow_json.chmod(0o644)
+        # chmod-based read-only setups are bypassed when tests run as root,
+        # so simulate the persist failure directly.
+        monkeypatch.setattr("chipcompiler.runtime.worker.json_write", lambda *a, **k: False)
+        with pytest.raises(OSError, match="failed to persist"):
+            repair_flow_state(flow_json, active_step="A")
 
 
 class TestWorkerClientSubprocess:
@@ -359,21 +373,16 @@ class TestWorkerClientSubprocess:
         """)
         client = WorkerClient([sys.executable, "-c", script])
         proc = client.start()
-        import time
 
         time.sleep(0.3)
         child_pid_line = proc.stdout.readline()
         child_pid = int(child_pid_line.strip())
         client.terminate()
         time.sleep(0.2)
-        import os
 
-        try:
-            os.kill(child_pid, 0)
-            alive = True
-        except OSError:
-            alive = False
-        assert not alive, "orphaned child should have been killed by process-group signal"
+        assert not _pid_alive(child_pid), (
+            "orphaned child should have been killed by process-group signal"
+        )
 
     def test_out_of_order_responses_preserved(self):
         """Responses arriving in reverse order must all be retrievable."""
@@ -433,21 +442,16 @@ class TestWorkerClientSubprocess:
         """)
         client = WorkerClient([sys.executable, "-c", script])
         proc = client.start()
-        import time
 
         time.sleep(0.3)
         child_pid_line = proc.stdout.readline()
         child_pid = int(child_pid_line.strip())
         client.terminate()
         time.sleep(0.5)
-        import os
 
-        try:
-            os.kill(child_pid, 0)
-            alive = True
-        except OSError:
-            alive = False
-        assert not alive, "descendant ignoring SIGINT should still be killed by SIGTERM/SIGKILL"
+        assert not _pid_alive(child_pid), (
+            "descendant ignoring SIGINT should still be killed by SIGTERM/SIGKILL"
+        )
 
     def test_descendant_graceful_sigterm_exit(self):
         """Descendant handles SIGTERM and exits within grace window — no SIGKILL needed."""
@@ -472,22 +476,15 @@ class TestWorkerClientSubprocess:
         """)
         client = WorkerClient([sys.executable, "-c", script])
         proc = client.start()
-        import time
 
         time.sleep(0.3)
         child_pid_line = proc.stdout.readline()
         child_pid = int(child_pid_line.strip())
         client.terminate()
         time.sleep(0.5)
-        import os
 
         marker = f"/tmp/ecc-test-grace-{child_pid}"
-        try:
-            os.kill(child_pid, 0)
-            alive = True
-        except OSError:
-            alive = False
-        assert not alive, "descendant should have exited on SIGTERM"
+        assert not _pid_alive(child_pid), "descendant should have exited on SIGTERM"
         assert os.path.exists(marker), "descendant SIGTERM handler should have run (not SIGKILL'd)"
         os.unlink(marker)
 
@@ -498,20 +495,23 @@ class TestWorkerClientSubprocess:
             pid = os.fork()
             if pid == 0:
                 signal.signal(signal.SIGINT, signal.SIG_IGN)
-                def handle_term(*a):
-                    os._exit(0)
-                signal.signal(signal.SIGTERM, handle_term)
+                signal.signal(signal.SIGTERM, lambda *a: os._exit(0))
                 time.sleep(60)
                 os._exit(0)
             else:
                 sys.stdout.buffer.write(f"{pid}\\n".encode())
                 sys.stdout.buffer.flush()
-                signal.signal(signal.SIGINT, lambda *a: os._exit(0))
+                signal.signal(signal.SIGINT, signal.SIG_IGN)
+                # Reap the child before exiting so no zombie keeps the process
+                # group visible to killpg under a non-reaping PID 1.
+                def handle_term(*a):
+                    os.waitpid(pid, 0)
+                    os._exit(0)
+                signal.signal(signal.SIGTERM, handle_term)
                 time.sleep(60)
         """)
         client = WorkerClient([sys.executable, "-c", script])
         proc = client.start()
-        import time
 
         time.sleep(0.3)
         proc.stdout.readline()
