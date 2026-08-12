@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
   "ecc-dreamplace==0.1.0a7",
-  "ecc-tools-bin==0.1.0a9",
+  "ecc-tools-bin==0.1.0a10",
   "fastapi>=0.109",
   "jsonrpcserver>=5.0.9",
   "klayout>=0.30.2",
