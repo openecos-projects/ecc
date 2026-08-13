@@ -200,6 +200,7 @@ class TestRunFlowPreset:
             f.write(
                 "\n[pdk.overrides]\n"
                 'sdc = "constraints/design.sdc"\n'
+                'lefs = ["IP/STD_cell/x.lef"]\n'
                 f'spef = "{tmp_path}/absolute.spef"\n'
                 'dont_use = ["ICG*"]\n'
             )
@@ -211,8 +212,29 @@ class TestRunFlowPreset:
         assert create_kwargs is not None
         assert create_kwargs["pdk_overrides"] == {
             "sdc": os.path.join(project_dir, "constraints", "design.sdc"),
+            "lefs": [os.path.join(str(tmp_path / "ics55"), "IP", "STD_cell", "x.lef")],
             "spef": str(tmp_path / "absolute.spef"),
             "dont_use": ["ICG*"],
+        }
+
+    def test_run_forwards_absolute_paths_with_relative_env_pdk_root(
+        self, tmp_path, monkeypatch, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project(pdk_root="")
+        (tmp_path / "ics55").mkdir(exist_ok=True)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\nlefs = ["IP/STD_cell/x.lef"]\n')
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", "ics55")
+
+        rc = cli_main.run(["run", "--project", project_dir])
+
+        assert rc == 0
+        create_kwargs = flow_mocks.capture["create_kwargs"]
+        assert create_kwargs is not None
+        assert create_kwargs["pdk_overrides"] == {
+            "lefs": [os.path.join(str(tmp_path / "ics55"), "IP", "STD_cell", "x.lef")],
         }
 
 

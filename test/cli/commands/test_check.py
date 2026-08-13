@@ -376,6 +376,55 @@ class TestMissingConfigErrorRecord:
         assert "PDK SDC file not found" in out
         assert os.path.join(project_dir, "constraints", "missing.sdc") in out
 
+    def test_check_pdk_overrides_relative_paths_resolve_against_pdk_root(
+        self, tmp_path, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write(
+                "\n[pdk.overrides]\n"
+                'tech = "prtech/techLEF/N551P6M_ecos.lef"\n'
+                'lefs = ["IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR'
+                '/lef/ics55_LLSC_H7CR_ecos.lef"]\n'
+                'libs = ["IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR'
+                '/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"]\n'
+            )
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        assert rc == 0
+
+    def test_check_pdk_overrides_missing_relative_lef_reports_pdk_root_resolved_path(
+        self, tmp_path, create_cli_project, minimal_ics55_pdk_factory, capsys
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=str(pdk_root))
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\nlefs = ["IP/STD_cell/missing.lef"]\n')
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "PDK LEF not found" in out
+        assert os.path.join(str(pdk_root), "IP", "STD_cell", "missing.lef") in out
+
+    def test_check_pdk_overrides_root_rejected(self, tmp_path, create_cli_project, capsys):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[pdk.overrides]\nroot = "/some/other/pdk"\n')
+
+        rc = cli_main.run(["check", "--project", project_dir])
+
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "'root'" in out
+        assert "cannot be overridden" in out
+
     @pytest.mark.parametrize("field", ["lefs", "dont_use"])
     def test_check_pdk_overrides_non_string_list_element(
         self, tmp_path, create_cli_project, capsys, field
