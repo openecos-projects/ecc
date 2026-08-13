@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 
@@ -5,6 +6,8 @@ from chipcompiler.data import EccStep, StateEnum, Workspace
 
 from .subflow import SizerSubFlow, SizerSubFlowEnum
 from .utility import get_sizer_command, is_eda_exist, is_sizer_runtime_exist
+
+logger = logging.getLogger(__name__)
 
 
 def _has_required_outputs(step: EccStep) -> bool:
@@ -22,12 +25,17 @@ def run_step(
     run_sizer_step = SizerSubFlowEnum.run_sizer.value
 
     if not is_eda_exist() or not is_sizer_runtime_exist():
+        logger.error("Sizer tools not available for step %s", step.name)
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
 
     env_path = step.script.sizer_env or ""
     cmd_path = step.script.sizer_cmd or ""
     if not os.path.exists(env_path) or not os.path.exists(cmd_path):
+        logger.error(
+            "Sizer script paths missing for step %s: env=%s cmd=%s",
+            step.name, env_path, cmd_path,
+        )
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
 
@@ -50,5 +58,9 @@ def run_step(
     if result.returncode == 0 and _has_required_outputs(step):
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
         return StateEnum.Success
+    logger.error(
+        "Sizer failed for step %s: exit code=%d, outputs present=%s",
+        step.name, result.returncode, _has_required_outputs(step),
+    )
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
     return StateEnum.Imcomplete

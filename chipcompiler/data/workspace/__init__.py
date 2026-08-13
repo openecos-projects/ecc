@@ -646,6 +646,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
         workspace.config = build_workspace_config_paths(workspace)
 
     flow = json_read(workspace.config["flow"])
+    if "ConfigPath" not in flow:
+        raise FileNotFoundError(
+            f"Flow config missing or corrupt (no 'ConfigPath' key): {workspace.config['flow']}"
+        )
     flow["ConfigPath"]["idb_path"] = str(workspace.config["db"])
     flow["ConfigPath"]["ifp_path"] = str(workspace.config[f"{StepEnum.FLOORPLAN.value}"])
     flow["ConfigPath"]["ipl_path"] = str(workspace.config[f"{StepEnum.PLACEMENT.value}"])
@@ -653,23 +657,39 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     flow["ConfigPath"]["idrc_path"] = str(workspace.config[f"{StepEnum.DRC.value}"])
     flow["ConfigPath"]["icts_path"] = str(workspace.config[f"{StepEnum.CTS.value}"])
     flow["ConfigPath"]["ipnp_path"] = str(workspace.config[f"{StepEnum.PNP.value}"])
-    json_write(workspace.config["flow"], flow)
+    if not json_write(workspace.config["flow"], flow):
+        raise OSError(f"Failed to write flow config: {workspace.config['flow']}")
 
     db = json_read(workspace.config["db"])
+    if "INPUT" not in db or "LayerSettings" not in db:
+        raise FileNotFoundError(
+            f"DB config missing or corrupt (no 'INPUT' or 'LayerSettings' key): "
+            f"{workspace.config['db']}"
+        )
     db["INPUT"]["tech_lef_path"] = str(workspace.pdk.tech or "")
     db["INPUT"]["lef_paths"] = [str(path) for path in workspace.pdk.lefs]
     db["INPUT"]["lib_path"] = [str(path) for path in workspace.pdk.libs]
     db["INPUT"]["sdc_path"] = str(workspace.pdk.sdc or "")
     db["INPUT"]["spef"] = str(workspace.pdk.spef or "")
     db["LayerSettings"]["routing_layer_1st"] = workspace.parameters.data.get("Bottom layer", "")
-    json_write(workspace.config["db"], db)
+    if not json_write(workspace.config["db"], db):
+        raise OSError(f"Failed to write DB config: {workspace.config['db']}")
 
     fixfanout = json_read(workspace.config[f"{StepEnum.NETLIST_OPT.value}"])
+    if not fixfanout:
+        raise FileNotFoundError(
+            f"Netlist opt config missing or corrupt: {workspace.config[f'{StepEnum.NETLIST_OPT.value}']}"
+        )
     fixfanout["insert_buffer"] = workspace.pdk.buffers[0] if len(workspace.pdk.buffers) > 0 else ""
     fixfanout["max_fanout"] = workspace.parameters.data.get("Max fanout", 32)
     json_write(workspace.config[f"{StepEnum.NETLIST_OPT.value}"], fixfanout)
 
     placement = json_read(workspace.config[f"{StepEnum.PLACEMENT.value}"])
+    if "PL" not in placement:
+        raise FileNotFoundError(
+            f"Placement config missing or corrupt (no 'PL' key): "
+            f"{workspace.config[f'{StepEnum.PLACEMENT.value}']}"
+        )
     placement["PL"]["BUFFER"]["buffer_type"] = workspace.pdk.buffers
     placement["PL"]["Filler"]["first_iter"] = workspace.pdk.fillers
     placement["PL"]["Filler"]["second_iter"] = workspace.pdk.fillers
@@ -679,10 +699,19 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     json_write(workspace.config[f"{StepEnum.PLACEMENT.value}"], placement)
 
     cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
+    if not cts:
+        raise FileNotFoundError(
+            f"CTS config missing or corrupt: {workspace.config[f'{StepEnum.CTS.value}']}"
+        )
     cts["buffer_type"] = workspace.pdk.buffers
     json_write(workspace.config[f"{StepEnum.CTS.value}"], cts)
 
     router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
+    if "RT" not in router:
+        raise FileNotFoundError(
+            f"Routing config missing or corrupt (no 'RT' key): "
+            f"{workspace.config[f'{StepEnum.ROUTING.value}']}"
+        )
     router["RT"]["-bottom_routing_layer"] = workspace.parameters.data.get("Bottom layer", "")
     router["RT"]["-top_routing_layer"] = workspace.parameters.data.get("Top layer", "")
     json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
@@ -711,6 +740,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     json_write(workspace.config[f"{StepEnum.STA.value}"], sta)
 
     dreamplace = json_read(workspace.config["dreamplace"])
+    if not dreamplace:
+        raise FileNotFoundError(
+            f"DreamPlace config missing or corrupt: {workspace.config['dreamplace']}"
+        )
     dreamplace["lef_input"] = [
         str(path) for path in [workspace.pdk.tech, *workspace.pdk.lefs] if path
     ]
@@ -749,7 +782,12 @@ def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path)
             changed = True
 
     if changed:
-        save_parameter(workspace.parameters)
+        if not save_parameter(workspace.parameters):
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Failed to persist parameter sync changes; changes exist only in memory"
+            )
 
     return changed
 
@@ -793,7 +831,12 @@ def _reset_workspace_runtime_parameters(workspace: Workspace) -> None:
             "Aspect ratio": current_core.get("Aspect ratio", core_template.get("Aspect ratio")),
         }
 
-    save_parameter(workspace.parameters)
+    if not save_parameter(workspace.parameters):
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to persist workspace parameters after template refresh"
+        )
 
 
 def prepare_workspace_for_rerun(
@@ -862,6 +905,11 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
         workspace.config = build_workspace_config_paths(workspace)
 
     db = json_read(workspace.config["db"])
+    if "INPUT" not in db or "OUTPUT" not in db:
+        raise FileNotFoundError(
+            f"DB config missing or corrupt (no 'INPUT' or 'OUTPUT' key): "
+            f"{workspace.config['db']}"
+        )
     db["INPUT"]["def_path"] = path_text(step.input.def_)
     db["INPUT"]["verilog_path"] = path_text(step.input.verilog)
     db["OUTPUT"]["output_dir_path"] = path_text(step.output.dir)
@@ -872,6 +920,11 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
 
     if step.name == StepEnum.ROUTING.value and isinstance(step.data, EccData):
         router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
+        if "RT" not in router:
+            raise FileNotFoundError(
+                f"Routing config missing or corrupt (no 'RT' key): "
+                f"{workspace.config[f'{StepEnum.ROUTING.value}']}"
+            )
         router["RT"]["-temp_directory_path"] = path_text(
             step.data.steps.get(StepEnum.ROUTING.value)
         )
@@ -879,6 +932,10 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
 
     if step.name == StepEnum.RCX.value:
         rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
+        if not rcx:
+            raise FileNotFoundError(
+                f"RCX config missing or corrupt: {workspace.config[f'{StepEnum.RCX.value}']}"
+            )
         rcx_output_dir = path_text(step.data.dir)
         spef_design_name = workspace.design.top_module or workspace.design.name
         rcx["output"] = rcx_output_dir
@@ -1210,7 +1267,8 @@ def create_workspace(
         from chipcompiler.utility import json_write
 
         workspace.flow.data = dynamic_flow_data
-        json_write(workspace.flow.path, workspace.flow.data)
+        if not json_write(workspace.flow.path, workspace.flow.data):
+            raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
 
     if workspace.pdk.root:
         workspace.parameters.data["PDK Root"] = str(workspace.pdk.root)
@@ -1220,7 +1278,8 @@ def create_workspace(
         workspace.parameters.data["PDK Config"] = str(pdk_config_path)
 
     # save parameter
-    save_parameter(workspace.parameters)
+    if not save_parameter(workspace.parameters):
+        raise OSError(f"Failed to save parameters: {workspace.parameters.path}")
 
     log_workspace(workspace)
     log_parameters(workspace)

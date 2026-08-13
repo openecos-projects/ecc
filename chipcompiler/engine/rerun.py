@@ -7,9 +7,9 @@ exactly one step. Everything here drives an ``EngineFlow`` that was loaded
 from an existing workspace; execution itself stays in ``EngineFlow.run_step``.
 """
 
+import logging
 import os
 import shutil
-import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -19,6 +19,8 @@ from chipcompiler.utility.path import path_is_within
 
 if TYPE_CHECKING:
     from chipcompiler.engine.flow import EngineFlow
+
+logger = logging.getLogger(__name__)
 
 
 class StepRunResult(NamedTuple):
@@ -174,7 +176,7 @@ def _redirect_to_step_log(workspace_step: WorkspaceStep) -> None:
         os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
         redirect_stdio_to_file(log_file)
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to redirect stdio to log file: %s", log_file)
 
 
 def _reset_output_dir(output_dir: Path) -> None:

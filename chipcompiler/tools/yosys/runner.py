@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import logging
 import os
 import subprocess
 
@@ -7,6 +8,8 @@ from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
 from chipcompiler.tools.yosys.utility import check_slang_plugin, get_yosys_runtime
+
+logger = logging.getLogger(__name__)
 
 
 def _run_ecc_synthesis_sta(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
@@ -53,7 +56,7 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
                 log_file.write(error_msg + "\n")
         except Exception:
             pass
-        print(error_msg)
+        logger.error(error_msg)
         return False
 
     input_verilog = step.input.verilog or ""
@@ -65,7 +68,7 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
 
     if not has_valid_verilog and not has_valid_filelist:
         sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
-        print(f"Error: Neither RTL file ({input_verilog}) nor filelist ({input_filelist}) found")
+        logger.error("Neither RTL file (%s) nor filelist (%s) found", input_verilog, input_filelist)
         return False
 
     try:
@@ -112,13 +115,14 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
         else:
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
 
-            print(
-                f"Error: Output netlist not generated at {step.output.verilog}. "
-                f"yosys exit code: {result.returncode}"
+            logger.error(
+                "Output netlist not generated at %s. yosys exit code: %s",
+                step.output.verilog,
+                result.returncode,
             )
             return False
 
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError, ValueError) as e:
         sub_flow.update_step(step_name="run yosys", state=StateEnum.Imcomplete)
-        print(f"Error running yosys: {e}")
+        logger.error("Error running yosys: %s", e, exc_info=True)
         return False

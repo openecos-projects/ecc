@@ -249,7 +249,8 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
         ecc_module = load_data()
         if ecc_module is None:
             ecc_module = load_design()
-    except Exception:
+    except Exception as e:
+        workspace.logger.warning("Failed to load ECC data; falling back to design input: %s", e)
         ecc_module = load_design()
 
     return ecc_module
@@ -360,12 +361,11 @@ def run_sta_without_spef(
     except Exception as exc:
         workspace.logger.warning("Post-synthesis STA failed; synthesis result is kept: %s", exc)
         return False
-
-        workspace.logger.info(
-            "Post-synthesis STA artifacts saved to report=%s feature=%s",
-            report_dir,
-            feature_dir,
-        )
+    workspace.logger.info(
+        "Post-synthesis STA artifacts saved to report=%s feature=%s",
+        report_dir,
+        feature_dir,
+    )
     return True
 
 
@@ -450,14 +450,15 @@ def save_data(
         }
 
         update_parameters(parameters_src=update_param, parameters_target=workspace.parameters.data)
-        save_parameter(workspace.parameters)
+        if not save_parameter(workspace.parameters):
+            workspace.logger.error("Failed to persist updated parameters after %s", step.name)
 
     return True
 
 
 def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None) -> bool:
     if not is_eda_exist():
-        return StateEnum.Invalid
+        return False
 
     state = False
     match step.name:
@@ -592,10 +593,11 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Success)
 
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
         if not save_cts_timing_feature_facts(step, ecc_module.feature_cts_timing()):
             workspace.logger.error("Failed to persist CTS timing feature facts")
             return False
+
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -675,8 +677,6 @@ def run_drc(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
     return reslut
 
@@ -850,13 +850,15 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         copy_rcx_spef_outputs(workspace, step)
         sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
 
-        save_data(
+        if not save_data(
             workspace=workspace,
             step=step,
             ecc_module=ecc_module,
             feature_step=False,
             report_timing=False,
-        )
+        ):
+            workspace.logger.error("Failed to save RCX data")
+            return False
         if not save_rcx_spef_feature_facts(workspace=workspace, step=step):
             workspace.logger.error("Failed to persist RCX SPEF feature facts")
             return False
