@@ -375,10 +375,10 @@ if {$use_slang} {
   # Check if FILELIST is set and non-empty, prioritize it over individual Verilog files
   if {[info exists filelist] && $filelist ne ""} {
     puts "Reading SystemVerilog sources from filelist: $filelist"
-    set arg "-F $filelist"
+    set arg [list -F $filelist]
   } else {
     puts "Reading SystemVerilog sources from rtl files: $rtl_file"
-    set arg "{*}$rtl_file"
+    set arg $rtl_file
   }
   yosys read_slang {*}$arg --top $top_design \
     --compat-mode --keep-hierarchy \
