@@ -114,8 +114,9 @@ def check_slang_support(
     """
     Run a lightweight slang frontend availability check.
 
-    Newer yosys builds provide slang as a builtin frontend, older builds ship
-    it as a plugin loaded via `plugin -i slang`. Accept either form.
+    Since v0.67 yosys enables the slang frontend by default
+    (https://github.com/YosysHQ/yosys/releases/tag/v0.67); older builds
+    ship it as a plugin loaded via `plugin -i slang`. Accept either form.
     """
     # `help` exits 0 even for unknown commands, so inspect the output text.
     builtin_check = subprocess.run(
