@@ -366,7 +366,11 @@ log "\[INFO\]: ABC script: $strategy_script"
 
 # Use Slang only for input forms that require its filelist/SystemVerilog support.
 if {$use_slang} {
-  yosys plugin -i slang
+  # Newer yosys builds provide slang as a builtin frontend; older builds
+  # ship it as a plugin that must be loaded explicitly.
+  if {[llength [info commands read_slang]] == 0} {
+    yosys plugin -i slang
+  }
 
   # Check if FILELIST is set and non-empty, prioritize it over individual Verilog files
   if {[info exists filelist] && $filelist ne ""} {

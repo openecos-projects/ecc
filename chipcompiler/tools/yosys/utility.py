@@ -108,27 +108,42 @@ def get_yosys_runtime() -> tuple[list[str], dict[str, str]]:
     return command, env
 
 
-def check_slang_plugin(
+def check_slang_support(
     yosys_cmd: list[str], cwd_dir: str, yosys_env: dict[str, str], log_file, timeout: int = 60
 ) -> bool:
     """
-    Run a lightweight slang plugin availability check.
+    Run a lightweight slang frontend availability check.
+
+    Newer yosys builds provide slang as a builtin frontend, older builds ship
+    it as a plugin loaded via `plugin -i slang`. Accept either form.
     """
-    slang_check_cmd = yosys_cmd + ["-p", "plugin -i slang"]
-    slang_check_result = subprocess.run(
-        slang_check_cmd,
+    # `help` exits 0 even for unknown commands, so inspect the output text.
+    builtin_check = subprocess.run(
+        yosys_cmd + ["-Q", "-T", "-p", "help read_slang"],
+        cwd=cwd_dir,
+        env=yosys_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
+    )
+    if builtin_check.returncode == 0 and b"No such command" not in builtin_check.stdout:
+        return True
+
+    plugin_check = subprocess.run(
+        yosys_cmd + ["-Q", "-T", "-p", "plugin -i slang"],
         cwd=cwd_dir,
         env=yosys_env,
         stdout=log_file,
         stderr=subprocess.STDOUT,
         timeout=timeout,
     )
-    if slang_check_result.returncode == 0:
+    if plugin_check.returncode == 0:
         return True
 
     error_msg = (
-        "Error: yosys slang plugin check failed. "
-        "Please use a yosys build with slang plugin support."
+        "Error: yosys slang frontend check failed. "
+        "Neither builtin read_slang nor a loadable slang plugin was found. "
+        "Please use a yosys build with slang support."
     )
     log_file.write(error_msg + "\n")
     print(error_msg)
