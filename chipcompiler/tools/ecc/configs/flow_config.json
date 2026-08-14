@@ -6,7 +6,6 @@
         "irt_path": "./configs/rt_default_config.json",
         "idrc_path": "./configs/drc_default_config.json",
         "icts_path": "./configs/cts_default_config.json",
-        "ito_path": "./configs/to_default_config.json",
         "ipnp_path": "./configs/pnp_default_config.json"
     }
 }
