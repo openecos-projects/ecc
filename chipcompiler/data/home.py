@@ -13,7 +13,6 @@ from .checklist import Checklist
 #    "parameters" : "",
 #     "flow" : "",
 #     "layout" : "",
-#     "GDS merge" : "",
 #     "monitor" : {
 #         "step" : [],
 #         "memory" : [],
@@ -35,7 +34,6 @@ home_json = {
     "parameters": "",
     "flow": "",
     "layout": "",
-    "GDS merge": "",
     "checklist": "",
     "metrics": {},
     "monitor": {"step": [], "memory": [], "runtime": [], "instance": [], "frequency": []},
@@ -176,9 +174,6 @@ class HomeData:
 
     def set_layout(self, path: Path):
         self._set_path_value("layout", path)
-
-    def set_gds_merge(self, path: Path):
-        self._set_path_value("GDS merge", path)
 
     def _set_metric(self, key: str, image_path: Path):
         image_path_text = str(image_path)

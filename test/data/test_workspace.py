@@ -27,7 +27,6 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.FLOORPLAN.value: "fp_default_config.json",
     StepEnum.NETLIST_OPT.value: "no_default_config_fixfanout.json",
     StepEnum.PLACEMENT.value: "pl_default_config.json",
-    StepEnum.PNP.value: "pnp_default_config.json",
     StepEnum.ROUTING.value: "rt_default_config.json",
     StepEnum.LEGALIZATION.value: "pl_default_config.json",
     StepEnum.FILLER.value: "pl_default_config.json",

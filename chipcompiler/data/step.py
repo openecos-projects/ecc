@@ -10,14 +10,11 @@ class StepEnum(Enum):
 
     RTL2GDS = "RTL2GDS"
     INIT = "Init"
-    SOC = "SOC"
-    FUNC_SIM = "Functional simulation"
     SYNTHESIS = "Synthesis"
     FLOORPLAN = "Floorplan"
     NETLIST_OPT = "fixFanout"
     PLACEMENT = "place"
     CTS = "CTS"
-    PNP = "PNP"
     TIMING_OPT = "Timing optimization"
     LEGALIZATION = "legalization"
     ROUTING = "route"
@@ -28,7 +25,6 @@ class StepEnum(Enum):
     DRC = "drc"
     RCX = "RCX"
     ABSTRACT_LEF = "Abstract lef"
-    MERGE = "GDS merge"
     HARDEN = "Harden"
 
 

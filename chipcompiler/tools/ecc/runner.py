@@ -34,7 +34,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.NETLIST_OPT.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
-        StepEnum.PNP.value,
         StepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,

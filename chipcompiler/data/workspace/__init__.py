@@ -125,7 +125,6 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.FLOORPLAN.value: "fp_default_config.json",
     StepEnum.NETLIST_OPT.value: "no_default_config_fixfanout.json",
     StepEnum.PLACEMENT.value: "pl_default_config.json",
-    StepEnum.PNP.value: "pnp_default_config.json",
     StepEnum.ROUTING.value: "rt_default_config.json",
     StepEnum.LEGALIZATION.value: "pl_default_config.json",
     StepEnum.FILLER.value: "pl_default_config.json",
@@ -145,7 +144,6 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
     (StepEnum.DRC, "ecc"): ("flow", "db", StepEnum.DRC.value),
     (StepEnum.LEGALIZATION, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
     (StepEnum.FILLER, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
-    (StepEnum.PNP, "ecc"): ("flow", "db", StepEnum.PNP.value),
     (StepEnum.RCX, "ecc"): ("flow", "db", StepEnum.RCX.value),
     (StepEnum.STA, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
@@ -656,7 +654,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     flow["ConfigPath"]["irt_path"] = str(workspace.config[f"{StepEnum.ROUTING.value}"])
     flow["ConfigPath"]["idrc_path"] = str(workspace.config[f"{StepEnum.DRC.value}"])
     flow["ConfigPath"]["icts_path"] = str(workspace.config[f"{StepEnum.CTS.value}"])
-    flow["ConfigPath"]["ipnp_path"] = str(workspace.config[f"{StepEnum.PNP.value}"])
     if not json_write(workspace.config["flow"], flow):
         raise OSError(f"Failed to write flow config: {workspace.config['flow']}")
 
