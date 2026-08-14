@@ -219,6 +219,16 @@ class EngineFlow:
                     and os.path.exists(ecc_output.lib or "")
                 ):
                     success = True
+            case StepEnum.LVS.value:
+                if (
+                    ecc_output
+                    and os.path.exists(output.def_ or "")
+                    and os.path.exists(output.verilog or "")
+                    and os.path.exists(output.gds or "")
+                    and os.path.exists(workspace_step.report.step or "")
+                    and os.path.exists(workspace_step.feature.step or "")
+                ):
+                    success = True
             case StepEnum.RCX.value:
                 for spef in ecc_output.spef if ecc_output else []:
                     if not os.path.exists(spef):

@@ -109,6 +109,26 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep):
         step.output.spef[:] = output_paths
 
 
+def copy_lvs_outputs(workspace: Workspace, step: EccStep):
+    output_dir_text = os.fspath((step.data.steps or {}).get(StepEnum.LVS.value, ""))
+    if not output_dir_text:
+        return
+
+    reporter_dir = Path(output_dir_text) / "lvs_reporter"
+    if not reporter_dir.is_dir():
+        return
+
+    for source_path, target_path in (
+        (reporter_dir / "ilvs.rpt", Path(step.report.step or "")),
+        (reporter_dir / "ilvs.json", Path(step.feature.step or "")),
+    ):
+        if not source_path.is_file():
+            continue
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
+        workspace.logger.info("Copied LVS %s to %s", source_path, target_path)
+
+
 def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
     workspace_dir = workspace.directory
     sta_config = _workspace_sta_config_path(workspace)
@@ -221,18 +241,20 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
 
         # if db def exist, read db def
         def_path = def_exist()
+        verilog_path = verilog_exist()
 
-        if def_path is not None:
-            ecc_module.read_def(def_path)
-        else:
-            # else, read step output verilog
-            verilog_path = verilog_exist()
-            if verilog_path:
-                ecc_module.read_verilog(
-                    verilog=verilog_path, top_module=workspace.design.top_module
-                )
-            else:
+        if step.name == StepEnum.LVS.value:
+            if def_path is None or verilog_path is None:
                 return None
+            ecc_module.read_def(def_path)
+            ecc_module.read_lvs_verilog(verilog_path, workspace.design.top_module)
+        elif def_path is not None:
+            ecc_module.read_def(def_path)
+        elif verilog_path:
+            # else, read step output verilog
+            ecc_module.read_verilog(verilog=verilog_path, top_module=workspace.design.top_module)
+        else:
+            return None
 
         return ecc_module
 
@@ -249,7 +271,7 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
     if not is_eda_exist() or not is_enable_setup():
         return None
     try:
-        ecc_module = load_data()
+        ecc_module = None if step.name == StepEnum.LVS.value else load_data()
         if ecc_module is None:
             ecc_module = load_design()
     except Exception:
@@ -482,6 +504,8 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_routing(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.DRC.value:
             state = run_drc(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.LVS.value:
+            state = run_lvs(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.FILLER.value:
             state = run_filler(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.HARDEN.value:
@@ -750,6 +774,44 @@ def run_drc(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
+
+    return reslut
+
+
+def run_lvs(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None) -> bool:
+    """
+    run chip lvs
+    """
+    reslut = False
+
+    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
+
+    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
+
+    if ecc_module is not None:
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+
+        ecc_module.init_lvs(output_dir=(step.data.steps or {}).get(StepEnum.LVS.value, ""))
+        ecc_module.run_lvs()
+        ecc_module.destroy_lvs()
+
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_LVS.value, state=StateEnum.Success)
+
+        reslut = save_data(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            feature_step=False,
+            report_timing=False,
+        )
+        if not reslut:
+            return False
+
+        copy_lvs_outputs(workspace=workspace, step=step)
+
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
+
+        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
 
     return reslut
 

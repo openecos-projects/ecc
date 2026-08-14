@@ -1,4 +1,5 @@
 import chipcompiler.rtl2gds.builder as builder_module
+from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.rtl2gds import get_flow_builders
 
 
@@ -42,3 +43,20 @@ def test_discovery_ignores_non_matching_names(monkeypatch):
     assert "" not in builders
     for fn in (build_flow, build_helper, helper_build_x_flow):
         assert fn not in builders.values()
+
+
+def test_build_rtl2gds_flow_includes_lvs_after_drc():
+    flow = builder_module.build_rtl2gds_flow()
+
+    assert flow == [
+        (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
+        (StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart),
+        (StepEnum.NETLIST_OPT, "ecc", StateEnum.Unstart),
+        (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
+        (StepEnum.CTS, "ecc", StateEnum.Unstart),
+        (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
+        (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
+        (StepEnum.DRC, "ecc", StateEnum.Unstart),
+        (StepEnum.LVS, "ecc", StateEnum.Unstart),
+        (StepEnum.FILLER, "ecc", StateEnum.Unstart),
+    ]

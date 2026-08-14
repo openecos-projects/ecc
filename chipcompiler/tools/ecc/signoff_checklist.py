@@ -31,6 +31,7 @@ _STEP_DIRECTORIES = {
     StepEnum.LEGALIZATION.value: "legalization_dreamplace",
     StepEnum.ROUTING.value: "route_ecc",
     StepEnum.DRC.value: "drc_ecc",
+    StepEnum.LVS.value: "lvs_ecc",
     StepEnum.FILLER.value: "filler_ecc",
     StepEnum.RCX.value: "RCX_ecc",
     StepEnum.STA.value: "sta_ecc",
@@ -39,6 +40,7 @@ _STEP_DIRECTORIES = {
 
 _QUALITY_GATES_BY_STEP = {
     StepEnum.DRC.value: ("qor.drc.clean",),
+    StepEnum.LVS.value: ("qor.lvs.clean",),
     StepEnum.RCX.value: (
         "qor.rcx.corner_coverage",
         "qor.rcx.spef_parse_health",
@@ -56,6 +58,7 @@ _QUALITY_GATES_BY_STEP = {
 _REQUIRED_FLOW_STEPS = (
     StepEnum.ROUTING.value,
     StepEnum.DRC.value,
+    StepEnum.LVS.value,
     StepEnum.FILLER.value,
     StepEnum.RCX.value,
     StepEnum.STA.value,
@@ -262,6 +265,14 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
             ("gds", "Harden GDS", getattr(step.output, "gds", None)),
             ("lef", "Harden LEF", getattr(step.output, "lef", None)),
             ("lib", "Harden LIB", getattr(step.output, "lib", None)),
+        )
+    elif step.name == StepEnum.LVS.value:
+        artifacts = (
+            ("def", "LVS DEF", getattr(step.output, "def_", None)),
+            ("verilog", "LVS Verilog", getattr(step.output, "verilog", None)),
+            ("gds", "LVS GDS", getattr(step.output, "gds", None)),
+            ("report", "LVS report", getattr(step.report, "step", None)),
+            ("json", "LVS JSON", getattr(step.feature, "step", None)),
         )
     elif step.name == StepEnum.RCX.value:
         spefs = getattr(step.output, "spef", []) or []

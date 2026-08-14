@@ -29,6 +29,7 @@ SIGNOFF_REQUIRED_QOR_STEPS = {
     StepEnum.RCX.value,
     StepEnum.STA.value,
     StepEnum.DRC.value,
+    StepEnum.LVS.value,
     StepEnum.FILLER.value,
     StepEnum.ROUTING.value,
 }
@@ -862,6 +863,7 @@ class SignoffPackageCollector:
             StepEnum.RCX.value,
             StepEnum.STA.value,
             StepEnum.DRC.value,
+            StepEnum.LVS.value,
             StepEnum.FILLER.value,
             StepEnum.ROUTING.value,
         ]
@@ -1182,6 +1184,7 @@ class SignoffPackageCollector:
             StepEnum.LEGALIZATION.value: "legalization_dreamplace",
             StepEnum.ROUTING.value: "route_ecc",
             StepEnum.DRC.value: "drc_ecc",
+            StepEnum.LVS.value: "lvs_ecc",
             StepEnum.FILLER.value: "filler_ecc",
             StepEnum.RCX.value: "RCX_ecc",
             StepEnum.STA.value: "sta_ecc",

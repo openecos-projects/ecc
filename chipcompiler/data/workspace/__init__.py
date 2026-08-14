@@ -300,6 +300,7 @@ def _normalize_flow_step_name(value) -> str:
         "route": StepEnum.ROUTING.value,
         "routing": StepEnum.ROUTING.value,
         "drc": StepEnum.DRC.value,
+        "lvs": StepEnum.LVS.value,
         "filler": StepEnum.FILLER.value,
         "rcx": StepEnum.RCX.value,
         "sta": StepEnum.STA.value,

@@ -51,6 +51,8 @@ class ECCToolsPlot:
                     & self.plot_layer_via_distribution()
                     & self.plot_layer_wire_distribution()
                 )
+            case StepEnum.LVS.value:
+                state = state & self.default_plot()
             case StepEnum.FILLER.value:
                 state = (
                     state

@@ -100,6 +100,7 @@ def build_step(
                 StepEnum.ROUTING.value: data_dir / "rt",
                 StepEnum.STA.value: sta_dir,
                 StepEnum.DRC.value: data_dir / "drc",
+                StepEnum.LVS.value: data_dir / "lvs",
                 StepEnum.RCX.value: data_dir / "rcx",
             },
         ),

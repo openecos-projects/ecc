@@ -202,6 +202,7 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "legalization",
         "route",
         "drc",
+        "lvs",
         "filler",
         "RCX",
         "sta",

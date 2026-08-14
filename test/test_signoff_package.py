@@ -65,6 +65,7 @@ def _make_signoff_workspace(
             "steps": [
                 {"name": "route", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "drc", "tool": "ecc", "state": StateEnum.Success.value},
+                {"name": "lvs", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "filler", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "RCX", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "sta", "tool": "ecc", "state": StateEnum.Success.value},
@@ -133,6 +134,10 @@ def _make_signoff_workspace(
     _write_json(
         workspace_dir / "drc_ecc" / "analysis" / "qor_summary.json",
         _qor_summary(_qor_gate("qor.drc.clean", "Final DRC clean")),
+    )
+    _write_json(
+        workspace_dir / "lvs_ecc" / "analysis" / "qor_summary.json",
+        _qor_summary(_qor_gate("qor.lvs.clean", "Final LVS clean")),
     )
     _write_json(
         workspace_dir / "RCX_ecc" / "analysis" / "qor_summary.json",

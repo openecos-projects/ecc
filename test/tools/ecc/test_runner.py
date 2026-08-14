@@ -34,6 +34,10 @@ class FakeEccModule:
         self.calls.append(("is_db_data_exists", path))
         return False
 
+    def load_data(self, path):
+        self.calls.append(("load_data", path))
+        return True
+
     def init_techlef(self, path):
         self.calls.append(("init_techlef", path))
 
@@ -42,6 +46,9 @@ class FakeEccModule:
 
     def read_def(self, path):
         self.calls.append(("read_def", path))
+
+    def read_lvs_verilog(self, path, top_module):
+        self.calls.append(("read_lvs_verilog", path, top_module))
 
 
 class FakeSynthesisStaModule:
@@ -176,6 +183,45 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
 
     assert module is FakeEccModule.instances[-1]
     assert ("read_def", str(design_def)) in module.calls
+
+
+def test_create_db_engine_uses_design_inputs_for_lvs_even_when_db_exists(tmp_path, monkeypatch):
+    design_def = tmp_path / "origin" / "gcd.def"
+    design_verilog = tmp_path / "origin" / "gcd.v"
+    design_def.parent.mkdir(parents=True)
+    design_def.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    design_verilog.write_text("module gcd; endmodule\n")
+
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
+        config={
+            "flow": tmp_path / "config" / "flow_config.json",
+            "db": tmp_path / "config" / "db_default_config.json",
+        },
+    )
+    step = EccStep(
+        name=StepEnum.LVS.value,
+        input=StepInput(
+            def_=design_def,
+            verilog=design_verilog,
+            db=tmp_path / "input_db",
+        ),
+        data=EccData(dir=tmp_path / "lvs_ecc" / "data"),
+        feature=EccFeature(dir=tmp_path / "lvs_ecc" / "feature"),
+    )
+    FakeEccModule.instances = []
+    monkeypatch.setattr(ecc_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(ecc_runner, "ECCToolsModule", FakeEccModule)
+    monkeypatch.setattr(FakeEccModule, "is_db_data_exists", lambda self, path: True)
+
+    module = ecc_runner.create_db_engine(workspace, step)
+
+    assert module is FakeEccModule.instances[-1]
+    assert not any(call[0] == "load_data" for call in module.calls)
+    assert ("read_def", str(design_def)) in module.calls
+    assert ("read_lvs_verilog", str(design_verilog), "gcd") in module.calls
 
 
 def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatch):

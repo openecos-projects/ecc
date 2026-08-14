@@ -309,6 +309,13 @@ QOR_METRIC_MAP = {
         "dimension": "clock_robustness_dfm",
         "polarity": "lower_is_better",
     },
+    "lvs_count": {
+        "name": "lvs_count",
+        "display_name": "LVS Violation Count",
+        "unit": "count",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "lower_is_better",
+    },
     "route_dr_total_violation_count": {
         "name": "route_dr_total_violation_count",
         "display_name": "Route DR Violations",
@@ -614,6 +621,9 @@ QOR_EXPECTED_METRICS_BY_STEP = {
     ],
     StepEnum.DRC.value: [
         "drc_count",
+    ],
+    StepEnum.LVS.value: [
+        "lvs_count",
     ],
     StepEnum.RCX.value: [
         "rcx_spef_file_count",
@@ -1739,6 +1749,10 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
         scope = "final_drc"
         project_role = "gate" if metric_id == "drc_count" else "final"
         step_role = "primary"
+    elif step.name == StepEnum.LVS.value:
+        scope = "final_lvs"
+        project_role = "gate" if metric_id == "lvs_count" else "final"
+        step_role = "primary"
     elif step.name == StepEnum.RCX.value:
         scope = "signoff_rcx"
         project_role = "gate" if metric_id == "rcx_missing_corner_count" else "final"
@@ -2057,6 +2071,9 @@ def _metric_feature_source(
             "route_la_total_overflow": "/route/LA",
             "route_la_total_demand": "/route/LA",
         }.get(metric_id, "")
+    elif metric_id == "lvs_count":
+        feature_path = getattr(step.feature, "step", None)
+        selector = "/violations"
     elif metric_id.startswith("rcx_") or metric_id.startswith("harden_"):
         feature_path = getattr(step.feature, "step", None)
         selector = {
@@ -2277,6 +2294,7 @@ def _is_blocking_qor_record(record: dict) -> bool:
 
     if metric_name in {
         "drc_count",
+        "lvs_count",
         "route_dr_total_violation_count",
         "route_la_total_overflow",
         "rcx_spef_parse_failure_count",
@@ -2990,6 +3008,18 @@ def _quality_gates(
             )
         ]
 
+    if step.name == StepEnum.LVS.value:
+        count, source = metric("lvs_count")
+        return [
+            _quality_gate(
+                "qor.lvs.clean",
+                "Final LVS clean",
+                _gate_state(available=count is not None, passed=count == 0),
+                [_quality_gate_metric("lvs_count", count, "==", 0, source)],
+                _quality_gate_evidence(source),
+            )
+        ]
+
     feature = json_read(getattr(step.feature, "step", "") or "")
     feature = feature if isinstance(feature, dict) else {}
 
@@ -3410,6 +3440,8 @@ def build_step_metrics(
             metrics = build_metrics_routing(workspace, step)
         case StepEnum.DRC.value:
             metrics = build_metrics_drc(workspace, step)
+        case StepEnum.LVS.value:
+            metrics = build_metrics_lvs(workspace, step)
         case StepEnum.FILLER.value:
             metrics = build_metrics_filler(workspace, step)
         case StepEnum.RCX.value:
@@ -3626,6 +3658,39 @@ def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics:
         drc = data.get("drc", {})
         if isinstance(drc, dict):
             _add_number_metric(metrics, "drc_num", drc.get("number"))
+
+    step_metrics.data = metrics
+
+    # generate report image and dscription
+    image_path = str(json_path).replace(".json", ".png")
+    report = f"{step.name} step metrics:\n"
+
+    step_metrics.report.append((image_path, report))
+
+    if save_step_metrics(workspace, step, step_metrics):
+        return step_metrics
+    else:
+        return None
+
+
+def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics:
+    """
+    Build and return LVS metrics dictionary.
+    """
+    step_metrics = StepMetrics()
+    step_metrics.path = step.analysis.metrics or ""
+
+    metrics = {}
+
+    # db summary matrics
+    metrics.update(build_metrics_db(workspace, step))
+
+    # step matrics
+    json_path = getattr(step.feature, "step", "") or ""
+    data = json_read(json_path)
+    if isinstance(data, dict):
+        violations = data.get("violations", [])
+        metrics["lvs_count"] = len(violations) if isinstance(violations, list) else 0
 
     step_metrics.data = metrics
 

@@ -25,7 +25,7 @@ def _record(metric_id, value, path="feature/step.json"):
     }
 
 
-def test_quality_gates_only_include_final_drc_rcx_and_sta(tmp_path):
+def test_quality_gates_only_include_final_drc_lvs_rcx_and_sta(tmp_path):
     drc = WorkspaceStep(name=StepEnum.DRC.value, directory=tmp_path / "drc_ecc")
     drc_gates = _quality_gates(drc, [_record("drc_count", 0)])
     assert drc_gates == [
@@ -44,6 +44,27 @@ def test_quality_gates_only_include_final_drc_rcx_and_sta(tmp_path):
                 }
             ],
             "evidence": [_record("drc_count", 0)["source"]],
+        }
+    ]
+
+    lvs = WorkspaceStep(name=StepEnum.LVS.value, directory=tmp_path / "lvs_ecc")
+    lvs_gates = _quality_gates(lvs, [_record("lvs_count", 0, "feature/lvs.step.json")])
+    assert lvs_gates == [
+        {
+            "id": "qor.lvs.clean",
+            "title": "Final LVS clean",
+            "state": "pass",
+            "blocking": True,
+            "metrics": [
+                {
+                    "id": "lvs_count",
+                    "actual": 0,
+                    "operator": "==",
+                    "expected": 0,
+                    "source": _record("lvs_count", 0, "feature/lvs.step.json")["source"],
+                }
+            ],
+            "evidence": [_record("lvs_count", 0, "feature/lvs.step.json")["source"]],
         }
     ]
 

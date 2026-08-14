@@ -25,6 +25,7 @@ class EccSubFlowEnum(Enum):
     run_routing = "run routing"
     run_filler = "run filler"
     run_DRC = "run DRC"
+    run_LVS = "run LVS"
     run_harden = "run harden"
     run_rcx = "run rcx"
     run_sta = "run sta"
@@ -128,6 +129,11 @@ class EccSubFlow:
             case StepEnum.DRC:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_DRC.value))
+                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
+            case StepEnum.LVS:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.run_LVS.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
 
