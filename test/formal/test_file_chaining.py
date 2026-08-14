@@ -5,8 +5,6 @@ Abstracts file paths to boolean flags (has_key, is_nonempty).
 z3 proves invariants over all possible step sequences exhaustively.
 """
 
-from __future__ import annotations
-
 import pytest
 from z3 import (
     And,

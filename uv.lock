@@ -445,7 +445,7 @@ wheels = [
 
 [[package]]
 name = "ecc"
-version = "0.1.0a8"
+version = "0.1.0a9"
 source = { editable = "." }
 dependencies = [
     { name = "ecc-dreamplace" },
@@ -530,7 +530,7 @@ dev = [
 
 [[package]]
 name = "ecc-dreamplace"
-version = "0.1.0a6"
+version = "0.1.0a7"
 source = { editable = "chipcompiler/thirdparty/ecc-dreamplace" }
 dependencies = [
     { name = "cairocffi" },

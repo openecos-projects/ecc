@@ -302,20 +302,23 @@ def _resolve_pdk_root(cfg: ProjectConfig) -> str:
 
 
 def resolve_pdk_overrides(cfg: ProjectConfig) -> dict[str, object]:
-    """Return pdk_overrides with path-field values resolved against the project dir.
+    """Return pdk_overrides with path-field values resolved to absolute paths.
 
-    Only fields the PDK dataclass declares as paths are rewritten; non-path
+    PDK-content paths (PDK_CONTENT_PATH_FIELDS) resolve against the PDK root;
+    design-data paths (sdc/spef) resolve against the project dir. Non-path
     values such as dont_use glob patterns pass through untouched.
     """
-    from chipcompiler.data.pdk import PATH_LIST_FIELDS, PATH_SCALAR_FIELDS
+    from chipcompiler.data.pdk import PATH_LIST_FIELDS, PATH_SCALAR_FIELDS, PDK_CONTENT_PATH_FIELDS
 
     resolved = dict(cfg.pdk_overrides)
+    pdk_root = _resolve_pdk_root(cfg)
     for key, value in resolved.items():
+        base = pdk_root if key in PDK_CONTENT_PATH_FIELDS else cfg.project_dir
         if key in PATH_SCALAR_FIELDS and isinstance(value, str):
-            resolved[key] = _resolve_path(cfg.project_dir, value)
+            resolved[key] = _resolve_path(base, value)
         elif key in PATH_LIST_FIELDS and isinstance(value, list):
             resolved[key] = [
-                _resolve_path(cfg.project_dir, element) if isinstance(element, str) else element
+                _resolve_path(base, element) if isinstance(element, str) else element
                 for element in value
             ]
     return resolved
@@ -340,7 +343,9 @@ def _pdk_root_from_env() -> str:
         val = os.environ.get(key, "").strip()
         if not val:
             continue
-        val = os.path.normpath(val)
+        # Absolute: the value becomes the join base for serialized override
+        # paths consumed from step working directories.
+        val = os.path.abspath(val)
         if os.path.isdir(val):
             return val
     return ""

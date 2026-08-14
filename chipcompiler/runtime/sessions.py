@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import shutil
 import threading
 from collections.abc import Callable
@@ -14,7 +12,7 @@ class WorkspaceSession:
     directory: Path
     workspace: Any
     db_handle: Any = None
-    layout_edit_session: LayoutEditSession | None = None
+    layout_edit_session: "LayoutEditSession | None" = None
     mutation_lock: threading.Lock = field(default_factory=threading.Lock)
 
 

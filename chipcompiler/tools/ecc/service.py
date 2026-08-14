@@ -109,10 +109,6 @@ def build_maps(workspace: Workspace, step: EccStep) -> dict:
         case StepEnum.CTS:
             info.update(build_maps_congestion(workspace, step))
             info.update(build_maps_density(workspace, step))
-        case StepEnum.TIMING_OPT_DRV:
-            pass
-        case StepEnum.TIMING_OPT_HOLD:
-            pass
         case StepEnum.LEGALIZATION:
             pass
         case StepEnum.ROUTING:

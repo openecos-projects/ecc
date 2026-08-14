@@ -27,9 +27,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.CTS.value,
         StepEnum.PNP.value,
         StepEnum.TIMING_OPT.value,
-        StepEnum.TIMING_OPT_DRV.value,
-        StepEnum.TIMING_OPT_HOLD.value,
-        StepEnum.TIMING_OPT_SETUP.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
         StepEnum.DRC.value,
@@ -77,8 +74,6 @@ class EngineFlow:
         steps.append(self.init_flow_step(StepEnum.NETLIST_OPT, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
-        # steps.append(self.init_flow_step(StepEnum.TIMING_OPT_DRV, "ecc", StateEnum.Unstart))
-        # steps.append(self.init_flow_step(StepEnum.TIMING_OPT_HOLD, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.ROUTING, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
@@ -234,12 +229,7 @@ class EngineFlow:
                     if not os.path.exists(spef):
                         break
                 success = True
-            case (
-                StepEnum.TIMING_OPT.value
-                | StepEnum.TIMING_OPT_DRV.value
-                | StepEnum.TIMING_OPT_HOLD.value
-                | StepEnum.TIMING_OPT_SETUP.value
-            ):
+            case StepEnum.TIMING_OPT.value:
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
             case _:

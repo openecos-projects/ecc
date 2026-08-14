@@ -177,6 +177,7 @@ def test_apply_pdk_overrides_unknown_key_raises(tmp_path, minimal_ics55_pdk_fact
         "version" not in error_msg
         or "version" not in error_msg.split("valid overridable fields:")[-1]
     )
+    assert "root" not in error_msg.split("valid overridable fields:")[-1]
 
 
 def test_apply_pdk_overrides_type_mismatch_list_field(tmp_path, minimal_ics55_pdk_factory):
@@ -223,6 +224,14 @@ def test_apply_pdk_overrides_version_rejected(tmp_path, minimal_ics55_pdk_factor
 
     with pytest.raises(ValueError, match="'version'.*cannot be overridden"):
         apply_pdk_overrides(base_pdk, {"version": "custom"})
+
+
+def test_apply_pdk_overrides_root_rejected(tmp_path, minimal_ics55_pdk_factory):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    base_pdk = get_pdk("ics55", pdk_root=pdk_root)
+
+    with pytest.raises(ValueError, match="'root'.*cannot be overridden"):
+        apply_pdk_overrides(base_pdk, {"root": "/other/pdk"})
 
 
 def test_get_pdk_with_overrides(tmp_path, minimal_ics55_pdk_factory):

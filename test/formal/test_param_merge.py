@@ -5,8 +5,6 @@ Models dict merge as z3 constraints over abstract (key, value, type) tuples.
 Proves override, preservation, list replacement, and nested merge properties.
 """
 
-from __future__ import annotations
-
 from copy import deepcopy
 
 import pytest

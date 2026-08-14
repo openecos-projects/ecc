@@ -5,8 +5,6 @@ import shutil
 from pathlib import Path
 from typing import TypeAlias
 
-from numpy import double
-
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
 from chipcompiler.utility.path import path_text, path_texts
 
@@ -41,18 +39,15 @@ class ECCToolsModule:
     def __init__(self):
         try:
             from ecc_tools_bin import ecc_py as ecc
-        except ImportError:
-            try:
-                from chipcompiler.tools.ecc.bin import ecc_py as ecc
-            except ImportError as exc:
-                ecc_bin_dir = Path(__file__).resolve().parent / "bin"
-                candidates = sorted(p.name for p in ecc_bin_dir.glob("ecc_py*.so"))
-                raise ImportError(
-                    "ecc-tools is not installed. Install the ecc-tools wheel or "
-                    "build from source "
-                    f"Import error: {exc}. "
-                    f"Available ecc_py binaries in {ecc_bin_dir}: {candidates}"
-                ) from exc
+        except ImportError as exc:
+            ecc_bin_dir = Path(__file__).resolve().parent / "bin"
+            candidates = sorted(p.name for p in ecc_bin_dir.glob("ecc_py*.so"))
+            raise ImportError(
+                "ecc-tools is not installed. Install the ecc-tools wheel or "
+                "build from source "
+                f"Import error: {exc}. "
+                f"Available ecc_py binaries in {ecc_bin_dir}: {candidates}"
+            ) from exc
 
         self.ecc = ecc
 
@@ -716,78 +711,6 @@ class ECCToolsModule:
             modes=modes,
         )
 
-    def run_sta(self, output_dir: str):
-        return None
-
-    def init_sta(
-        self, output_dir: PathArg, top_module: str, lib_paths: list[Path] | list[str], sdc_path: str
-    ):
-        return None
-
-    def release_sta(self):
-        return None
-
-    def report_sta(self, output=None):
-        return None
-
-    def init_log(self, log_dir: str):
-        return None
-
-    def set_design_workspace(self, design_workspace: str):
-        return None
-
-    def read_lef_def(self, lef_files: list[str], def_file: str):
-        return None
-
-    def read_netlist(self, file_name: str):
-        return None
-
-    def read_liberty(self, lib_paths: list[str]):
-        return None
-
-    def link_design(self, design: str):
-        return None
-
-    def read_spef(self, file_name: str):
-        return None
-
-    def read_sdc(self, sdc_path: str):
-        return None
-
-    def get_net_name(self, pin_port_name: str):
-        return None
-
-    def get_segment_capacitance(
-        self,
-        layer_id: int,
-        segment_length: double,
-        route_layer_id: int,
-    ):
-        return None
-
-    def get_segment_resistance(
-        self,
-        layer_id: int,
-        segment_length: double,
-        route_layer_id: int,
-    ):
-        return None
-
-    def make_rc_tree_inner_node(self, net_name: str, node_id: int, cap: float):
-        return None
-
-    def make_rc_tree_obj_node(self, pin_port_name: str, cap: float):
-        return None
-
-    def make_rc_tree_edge(self, net_name: str, node1: str, node2: str, res: float):
-        return None
-
-    def update_rc_tree_info(self, net_name: str):
-        return None
-
-    def update_timing(self):
-        return None
-
     def write_abstract_lef(self, output_lef_path: PathArg):
         return self.ecc.write_abstract_lef(path_text(output_lef_path))
 
@@ -848,63 +771,6 @@ class ECCToolsModule:
                 "}\n",
                 encoding="utf-8",
             )
-
-    def create_data_flow(self):
-        return None
-
-    def get_used_libs(self):
-        """
-        get lib files that use in the disign
-        """
-        return None
-
-    def report_timing(
-        self,
-        digits: int = 3,
-        delay_type: str = "max_min",
-        exclude_cell_names: list[str] | None = None,
-        *,
-        derate: bool = False,
-        is_clock_cap: bool = False,
-        is_not_bak_rpt: bool = True,
-        max_path: int = 3,
-        nworst: int = 1,
-        from_list: list[str] | None = None,
-        through: list[list[str]] | None = None,
-        to_list: list[str] | None = None,
-        is_json: bool = True,
-    ):
-        """
-        report timing
-        """
-        return None
-
-    def build_timing_graph(self):
-        return None
-
-    def update_clock_timing(self):
-        return None
-
-    def convert_idb_to_timing_netlist(self):
-        return None
-
-    def get_wire_timing_data(self, n_worst_path_per_clock: int):
-        return None
-
-    ########################################################################
-    # timing opt api
-    ########################################################################
-    def run_to(self, config: str):
-        return self.ecc.run_to(config=path_text(config))
-
-    def run_timing_opt_drv(self, config: str):
-        self.ecc.run_to_drv(path_text(config))
-
-    def run_timing_opt_hold(self, config: str):
-        self.ecc.run_to_hold(path_text(config))
-
-    def run_timing_opt_setup(self, config: str):
-        self.ecc.run_to_setup(path_text(config))
 
     ########################################################################
     # data vectorization

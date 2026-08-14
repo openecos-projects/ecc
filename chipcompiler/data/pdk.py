@@ -92,6 +92,11 @@ PATH_SCALAR_FIELDS = {f.name for f in fields(PDK) if f.type == Path | None}
 PATH_LIST_FIELDS = {f.name for f in fields(PDK) if f.type == list[Path]}
 STRING_LIST_FIELDS = {f.name for f in fields(PDK) if f.type == list[str]}
 
+# Path fields holding PDK content: relative override values resolve against
+# the PDK root. sdc/spef are design data and stay project-relative; root is
+# the resolution anchor itself.
+PDK_CONTENT_PATH_FIELDS = {"tech", "lefs", "libs", "mapping_file"}
+
 # Optional path fields not covered by PDK.validate() (which only checks the
 # always-required root/tech/lefs/libs). When one of these is set through an
 # override, get_pdk checks its existence so a bad configured path fails before
@@ -122,7 +127,9 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
         return pdk
 
     all_fields = {f.name for f in fields(PDK)}
-    overridable = sorted(all_fields - _PROTECTED_FIELDS)
+    # root is rejected below with its own guidance; keep it out of the
+    # advertised set so the error matches the actual contract.
+    overridable = sorted(all_fields - _PROTECTED_FIELDS - {"root"})
     unknown = sorted(set(overrides) - all_fields)
 
     if unknown:
@@ -136,6 +143,12 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
             f"PDK override fields {protected} cannot be overridden; "
             "use the appropriate built-in PDK name instead"
         )
+
+    # root names the tree every other path field is resolved against; letting
+    # an override retarget it after PDK construction would mix default content
+    # paths from one tree with a root pointing at another.
+    if "root" in overrides:
+        raise ValueError("PDK override 'root' cannot be overridden; set pdk.root in [pdk] instead")
 
     for key, value in overrides.items():
         default = getattr(_DEFAULT_PDK, key)

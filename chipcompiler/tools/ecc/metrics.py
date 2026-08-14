@@ -2843,9 +2843,6 @@ _MPC_AREA_SOURCE_STEPS = {
     StepEnum.NETLIST_OPT.value,
     StepEnum.PLACEMENT.value,
     StepEnum.CTS.value,
-    StepEnum.TIMING_OPT_DRV.value,
-    StepEnum.TIMING_OPT_HOLD.value,
-    StepEnum.TIMING_OPT_SETUP.value,
     StepEnum.LEGALIZATION.value,
     StepEnum.ROUTING.value,
 }
@@ -3430,10 +3427,6 @@ def build_step_metrics(
             metrics = build_metrics_placement(workspace, step)
         case StepEnum.CTS.value:
             metrics = build_metrics_cts(workspace, step)
-        case StepEnum.TIMING_OPT_DRV.value:
-            metrics = build_metrics_timing_opt_drv(workspace, step)
-        case StepEnum.TIMING_OPT_HOLD.value:
-            metrics = build_metrics_timing_opt_hold(workspace, step)
         case StepEnum.LEGALIZATION.value:
             metrics = build_metrics_legalization(workspace, step)
         case StepEnum.ROUTING.value:
@@ -4053,80 +4046,6 @@ def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetri
     # totals are no longer emitted by the tool, so do not synthesize a stale
     # V3 metric requirement from an absent legacy field.
     json_path = getattr(step.feature, "step", "") or ""
-
-    step_metrics.data = metrics
-
-    # generate report image and dscription
-    image_path = str(json_path).replace(".json", ".png")
-    report = f"{step.name} step metrics:\n"
-
-    step_metrics.report.append((image_path, report))
-
-    if save_step_metrics(workspace, step, step_metrics):
-        return step_metrics
-    else:
-        return None
-
-
-def build_metrics_timing_opt_hold(workspace: Workspace, step: EccStep) -> StepMetrics:
-    """
-    Build and return timing optimization (hold) metrics dictionary.
-    """
-    step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""
-
-    metrics = {}
-
-    # db summary matrics
-    metrics.update(build_metrics_db(workspace, step))
-
-    # step matrics
-    json_path = getattr(step.feature, "step", "") or ""
-    # data = json_read(json_path)
-    # if len(data) > 0:
-    #     for clk_item in data.get("optHold", {}).get("clocks_timing", []):
-    #         metrics["suggest_freq"] = clk_item.get("opt_suggest_freq", 0)
-    #         metrics["hold_wns"] = clk_item.get("opt_wns", 0)
-    #         metrics["hold_tns"] = clk_item.get("opt_tns", 0)
-
-    #         break
-
-    step_metrics.data = metrics
-
-    # generate report image and dscription
-    image_path = str(json_path).replace(".json", ".png")
-    report = f"{step.name} step metrics:\n"
-
-    step_metrics.report.append((image_path, report))
-
-    if save_step_metrics(workspace, step, step_metrics):
-        return step_metrics
-    else:
-        return None
-
-
-def build_metrics_timing_opt_drv(workspace: Workspace, step: EccStep) -> StepMetrics:
-    """
-    Build and return timing optimization (driver) metrics dictionary.
-    """
-    step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""
-
-    metrics = {}
-
-    # db summary matrics
-    metrics.update(build_metrics_db(workspace, step))
-
-    # step matrics
-    json_path = getattr(step.feature, "step", "") or ""
-    # data = json_read(json_path)
-    # if len(data) > 0:
-    #     for clk_item in data.get("optDrv", {}).get("clocks_timing", []):
-    #         metrics["suggest_freq"] = clk_item.get("opt_suggest_freq", 0)
-    #         metrics["wns"] = clk_item.get("opt_wns", 0)
-    #         metrics["tns"] = clk_item.get("opt_tns", 0)
-
-    #         break
 
     step_metrics.data = metrics
 

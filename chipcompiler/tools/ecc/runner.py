@@ -36,9 +36,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.CTS.value,
         StepEnum.PNP.value,
         StepEnum.TIMING_OPT.value,
-        StepEnum.TIMING_OPT_DRV.value,
-        StepEnum.TIMING_OPT_HOLD.value,
-        StepEnum.TIMING_OPT_SETUP.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
         StepEnum.DRC.value,
@@ -494,10 +491,6 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_placement(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.CTS.value:
             state = run_cts(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.TIMING_OPT_DRV.value:
-            state = run_timing_opt_drv(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.TIMING_OPT_HOLD.value:
-            state = run_timing_opt_hold(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.LEGALIZATION.value:
             state = run_legalization(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.ROUTING.value:
@@ -627,72 +620,6 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         if not save_cts_timing_feature_facts(step, ecc_module.feature_cts_timing()):
             workspace.logger.error("Failed to persist CTS timing feature facts")
             return False
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
-
-        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
-
-    return reslut
-
-
-def run_timing_opt_drv(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """
-    run timing optization drv
-    """
-    reslut = False
-
-    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
-
-    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
-
-    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
-
-    if ecc_module is not None:
-        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-
-        ecc_module.run_timing_opt_drv(
-            config=workspace.config.get(f"{StepEnum.TIMING_OPT_DRV.value}", "")
-        )
-
-        sub_flow.update_step(
-            step_name=EccSubFlowEnum.run_timing_opt_drv.value, state=StateEnum.Success
-        )
-
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
-
-        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
-
-    return reslut
-
-
-def run_timing_opt_hold(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """
-    run timing optization hold
-    """
-    reslut = False
-
-    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
-
-    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
-
-    if ecc_module is not None:
-        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-
-        ecc_module.run_timing_opt_hold(
-            config=workspace.config.get(f"{StepEnum.TIMING_OPT_HOLD.value}", "")
-        )
-
-        sub_flow.update_step(
-            step_name=EccSubFlowEnum.run_timing_opt_hold.value, state=StateEnum.Success
-        )
-
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 

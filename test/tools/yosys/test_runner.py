@@ -48,7 +48,7 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
         def check(self):
             return None
 
-    def fake_check_slang_plugin(yosys_cmd, cwd_dir, yosys_env, log_file):
+    def fake_check_slang_support(yosys_cmd, cwd_dir, yosys_env, log_file):
         check_calls.append(
             {
                 "yosys_cmd": list(yosys_cmd),
@@ -75,7 +75,7 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "YosysChecklist", FakeChecklist)
     monkeypatch.setattr(runner, "build_step_metrics", lambda workspace, step: None)
     monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], runtime_env))
-    monkeypatch.setattr(runner, "check_slang_plugin", fake_check_slang_plugin)
+    monkeypatch.setattr(runner, "check_slang_support", fake_check_slang_support)
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
     sta_calls = []
     monkeypatch.setattr(
@@ -126,7 +126,7 @@ def test_run_step_keeps_synthesis_success_when_sta_report_fails(tmp_path, monkey
     monkeypatch.setattr(runner, "YosysChecklist", FakeChecklist)
     monkeypatch.setattr(runner, "build_step_metrics", lambda workspace, step: None)
     monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], {"PATH": "/tmp"}))
-    monkeypatch.setattr(runner, "check_slang_plugin", lambda *args, **kwargs: True)
+    monkeypatch.setattr(runner, "check_slang_support", lambda *args, **kwargs: True)
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
     monkeypatch.setattr(runner, "_run_ecc_synthesis_sta", lambda **kwargs: False)
 
@@ -147,8 +147,8 @@ def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
         def update_step(self, step_name, state, runtime="", memory=0, info=None):
             updates.append((step_name, state))
 
-    def fake_check_slang_plugin(yosys_cmd, cwd_dir, yosys_env, log_file):
-        log_file.write("Error: yosys slang plugin check failed.\n")
+    def fake_check_slang_support(yosys_cmd, cwd_dir, yosys_env, log_file):
+        log_file.write("Error: yosys slang frontend check failed.\n")
         return False
 
     def fake_run(cmd, cwd, env, stdout, stderr):
@@ -158,7 +158,7 @@ def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "YosysSubFlow", FakeSubFlow)
     monkeypatch.setattr(runner, "build_step_metrics", lambda workspace, step: None)
     monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], {"PATH": "/tmp"}))
-    monkeypatch.setattr(runner, "check_slang_plugin", fake_check_slang_plugin)
+    monkeypatch.setattr(runner, "check_slang_support", fake_check_slang_support)
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
 
     result = runner.run_step(workspace=workspace, step=step)
@@ -166,7 +166,7 @@ def test_run_step_marks_invalid_when_slang_check_fails(tmp_path, monkeypatch):
     assert result is False
     assert run_calls == []
     assert ("run yosys", StateEnum.Invalid) in updates
-    assert "slang plugin check failed" in log_file.read_text()
+    assert "slang frontend check failed" in log_file.read_text()
 
 
 def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
@@ -189,7 +189,7 @@ def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
             return None
 
     def fail_slang_check(*args, **kwargs):
-        raise AssertionError("native Verilog must not probe the Slang plugin")
+        raise AssertionError("native Verilog must not probe the Slang frontend")
 
     def fake_run(cmd, cwd, env, stdout, stderr):
         output_file.write_text("module top(); endmodule\n")
@@ -199,7 +199,7 @@ def test_run_step_skips_slang_check_for_native_verilog(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "YosysChecklist", FakeChecklist)
     monkeypatch.setattr(runner, "build_step_metrics", lambda workspace, step: None)
     monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], {"PATH": "/tmp"}))
-    monkeypatch.setattr(runner, "check_slang_plugin", fail_slang_check)
+    monkeypatch.setattr(runner, "check_slang_support", fail_slang_check)
     monkeypatch.setattr(runner, "_run_ecc_synthesis_sta", lambda **kwargs: True)
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
 

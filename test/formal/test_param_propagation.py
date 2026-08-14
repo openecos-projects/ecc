@@ -7,8 +7,6 @@ Verifies:
 3. Dead defaults and forced overrides are documented.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

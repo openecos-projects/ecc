@@ -366,15 +366,20 @@ log "\[INFO\]: ABC script: $strategy_script"
 
 # Use Slang only for input forms that require its filelist/SystemVerilog support.
 if {$use_slang} {
-  yosys plugin -i slang
+  # yosys v0.67+ enables the slang frontend by default
+  # (https://github.com/YosysHQ/yosys/releases/tag/v0.67); older builds
+  # ship it as a plugin that must be loaded explicitly.
+  if {[llength [info commands read_slang]] == 0} {
+    yosys plugin -i slang
+  }
 
   # Check if FILELIST is set and non-empty, prioritize it over individual Verilog files
   if {[info exists filelist] && $filelist ne ""} {
     puts "Reading SystemVerilog sources from filelist: $filelist"
-    set arg "-F $filelist"
+    set arg [list -F $filelist]
   } else {
     puts "Reading SystemVerilog sources from rtl files: $rtl_file"
-    set arg "{*}$rtl_file"
+    set arg $rtl_file
   }
   yosys read_slang {*}$arg --top $top_design \
     --compat-mode --keep-hierarchy \

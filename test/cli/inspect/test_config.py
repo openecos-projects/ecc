@@ -312,9 +312,6 @@ class TestConfigStepResolved:
     ):
         cases = [
             ("PNP", "pnp", "pnp_default_config.json"),
-            ("optDrv", "optdrv", "to_default_config_drv.json"),
-            ("optHold", "opthold", "to_default_config_hold.json"),
-            ("optSetup", "optsetup", "to_default_config_setup.json"),
         ]
         for step_name, step_token, step_config in cases:
             project_dir = create_cli_project(name=f"gcd_{step_token}")
