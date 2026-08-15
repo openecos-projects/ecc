@@ -907,8 +907,7 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     db = json_read(workspace.config["db"])
     if "INPUT" not in db or "OUTPUT" not in db:
         raise FileNotFoundError(
-            f"DB config missing or corrupt (no 'INPUT' or 'OUTPUT' key): "
-            f"{workspace.config['db']}"
+            f"DB config missing or corrupt (no 'INPUT' or 'OUTPUT' key): {workspace.config['db']}"
         )
     db["INPUT"]["def_path"] = path_text(step.input.def_)
     db["INPUT"]["verilog_path"] = path_text(step.input.verilog)

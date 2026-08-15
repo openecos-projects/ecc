@@ -160,19 +160,29 @@ class TestFlowSetStatePersistence:
         from chipcompiler.data import StateEnum
 
         flow_path = tmp_path / "flow.json"
-        flow_path.write_text(json.dumps({
-            "steps": [{"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"}]
-        }))
+        flow_path.write_text(
+            json.dumps({"steps": [{"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"}]})
+        )
 
-        workspace = type("MockWorkspace", (), {
-            "flow": type("Flow", (), {"path": flow_path, "data": json.loads(flow_path.read_text())})(),
-            "logger": type("Logger", (), {
-                "error": lambda self, *a, **kw: None,
-                "info": lambda self, *a, **kw: None,
-                "warning": lambda self, *a, **kw: None,
-                "log_section": lambda self, *a: None,
-            })(),
-        })()
+        workspace = type(
+            "MockWorkspace",
+            (),
+            {
+                "flow": type(
+                    "Flow", (), {"path": flow_path, "data": json.loads(flow_path.read_text())}
+                )(),
+                "logger": type(
+                    "Logger",
+                    (),
+                    {
+                        "error": lambda self, *a, **kw: None,
+                        "info": lambda self, *a, **kw: None,
+                        "warning": lambda self, *a, **kw: None,
+                        "log_section": lambda self, *a: None,
+                    },
+                )(),
+            },
+        )()
 
         flow = EngineFlow.__new__(EngineFlow)
         flow.workspace = workspace

@@ -65,7 +65,9 @@ def run_placement(
         )
         reslut = dreamplace_module.run_placement()
         if not reslut:
-            sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Imcomplete)
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Imcomplete
+            )
             return False
 
         ecc_module.feature_placement_map(json_path=step.feature.map)

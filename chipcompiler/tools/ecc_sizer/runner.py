@@ -34,7 +34,9 @@ def run_step(
     if not os.path.exists(env_path) or not os.path.exists(cmd_path):
         logger.error(
             "Sizer script paths missing for step %s: env=%s cmd=%s",
-            step.name, env_path, cmd_path,
+            step.name,
+            env_path,
+            cmd_path,
         )
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
@@ -60,7 +62,9 @@ def run_step(
         return StateEnum.Success
     logger.error(
         "Sizer failed for step %s: exit code=%d, outputs present=%s",
-        step.name, result.returncode, _has_required_outputs(step),
+        step.name,
+        result.returncode,
+        _has_required_outputs(step),
     )
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
     return StateEnum.Imcomplete

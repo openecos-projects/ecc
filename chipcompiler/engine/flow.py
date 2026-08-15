@@ -432,8 +432,7 @@ class EngineFlow:
         total_steps = len(self.workspace.flow.data.get("steps", []))
         if len(self.workspace_steps) < total_steps:
             self.workspace.logger.error(
-                "Flow incomplete: %d of %d steps were created; "
-                "remaining steps could not be set up",
+                "Flow incomplete: %d of %d steps were created; remaining steps could not be set up",
                 len(self.workspace_steps),
                 total_steps,
             )

@@ -261,9 +261,7 @@ class TestStepExceptionForcesIncomplete:
         monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
         monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
         monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
-        monkeypatch.setattr(
-            tools, "build_step_metrics", lambda **_kwargs: StepMetrics(data={})
-        )
+        monkeypatch.setattr(tools, "build_step_metrics", lambda **_kwargs: StepMetrics(data={}))
 
         state = engine_flow.run_step(workspace_step)
         assert state == StateEnum.Success
@@ -296,6 +294,7 @@ class TestCreateStepFailureBreaksChain:
             return EccStep(name=kwargs["step"], directory=tmp_path, tool=kwargs.get("eda", ""))
 
         import chipcompiler.tools as tools_mod
+
         monkeypatch.setattr(tools_mod, "create_step", fake_create_step)
         engine_flow.create_step_workspaces()
 
@@ -305,14 +304,10 @@ class TestCreateStepFailureBreaksChain:
         assert call_count[0] == 2  # SYNTHESIS + FLOORPLAN (NETLIST_OPT skipped)
 
         # FLOORPLAN should be marked Incomplete in flow data
-        fp_step = next(
-            s for s in workspace.flow.data["steps"] if s["name"] == "FLOORPLAN"
-        )
+        fp_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "FLOORPLAN")
         assert fp_step["state"] == StateEnum.Imcomplete.value
         # NETLIST_OPT should stay Unstart (never reached)
-        no_step = next(
-            s for s in workspace.flow.data["steps"] if s["name"] == "NETLIST_OPT"
-        )
+        no_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "NETLIST_OPT")
         assert no_step["state"] == "Unstart"
 
     def test_run_steps_returns_false_when_steps_skipped(self, monkeypatch, tmp_path):
@@ -331,20 +326,24 @@ class TestCreateStepFailureBreaksChain:
         engine_flow = EngineFlow(workspace)
 
         # Only create SYNTHESIS
-        engine_flow.workspace_steps = [
-            EccStep(name="SYNTHESIS", directory=tmp_path, tool="yosys")
-        ]
+        engine_flow.workspace_steps = [EccStep(name="SYNTHESIS", directory=tmp_path, tool="yosys")]
 
         # run_steps: only 1 of 2 steps created
+        monkeypatch.setattr(engine_flow, "run_step", lambda ws, **kw: StateEnum.Success)
         monkeypatch.setattr(
-            engine_flow, "run_step", lambda ws, **kw: StateEnum.Success
+            workspace,
+            "logger",
+            type(
+                "L",
+                (),
+                {
+                    "log_section": lambda self, *a: None,
+                    "error": lambda self, *a, **kw: None,
+                    "info": lambda self, *a, **kw: None,
+                    "warning": lambda self, *a, **kw: None,
+                },
+            )(),
         )
-        monkeypatch.setattr(workspace, "logger", type("L", (), {
-            "log_section": lambda self, *a: None,
-            "error": lambda self, *a, **kw: None,
-            "info": lambda self, *a, **kw: None,
-            "warning": lambda self, *a, **kw: None,
-        })())
 
         result = engine_flow.run_steps()
         assert result is False
@@ -396,15 +395,9 @@ class TestMandatoryArtifactFailure:
         )
         engine_flow.workspace_steps = [ws_step]
 
-        monkeypatch.setattr(
-            "chipcompiler.tools.run_step", lambda **kw: True
-        )
-        monkeypatch.setattr(
-            "chipcompiler.tools.save_layout_image", lambda **kw: True
-        )
-        monkeypatch.setattr(
-            "chipcompiler.tools.build_step_metrics", lambda **kw: None
-        )
+        monkeypatch.setattr("chipcompiler.tools.run_step", lambda **kw: True)
+        monkeypatch.setattr("chipcompiler.tools.save_layout_image", lambda **kw: True)
+        monkeypatch.setattr("chipcompiler.tools.build_step_metrics", lambda **kw: None)
 
         state = engine_flow.run_step(ws_step)
         assert state == StateEnum.Imcomplete
@@ -412,9 +405,7 @@ class TestMandatoryArtifactFailure:
     def test_harden_missing_lef_gives_incomplete(self, monkeypatch, tmp_path):
         workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
-        workspace.flow.data = {
-            "steps": [{"name": "HARDEN", "tool": "ecc", "state": "Unstart"}]
-        }
+        workspace.flow.data = {"steps": [{"name": "HARDEN", "tool": "ecc", "state": "Unstart"}]}
         engine_flow = EngineFlow(workspace)
         ws_step = EccStep(
             name="HARDEN",
@@ -428,9 +419,7 @@ class TestMandatoryArtifactFailure:
         (tmp_path / "gcd.lib").write_text("")
         engine_flow.workspace_steps = [ws_step]
 
-        monkeypatch.setattr(
-            "chipcompiler.tools.run_step", lambda **kw: True
-        )
+        monkeypatch.setattr("chipcompiler.tools.run_step", lambda **kw: True)
 
         state = engine_flow.run_step(ws_step)
         assert state == StateEnum.Imcomplete
@@ -438,9 +427,7 @@ class TestMandatoryArtifactFailure:
     def test_floorplan_missing_gds_gives_incomplete(self, monkeypatch, tmp_path):
         workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
-        workspace.flow.data = {
-            "steps": [{"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"}]
-        }
+        workspace.flow.data = {"steps": [{"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"}]}
         engine_flow = EngineFlow(workspace)
         ws_step = EccStep(
             name="FLOORPLAN",
@@ -455,9 +442,7 @@ class TestMandatoryArtifactFailure:
         (tmp_path / "gcd.v").write_text("")
         engine_flow.workspace_steps = [ws_step]
 
-        monkeypatch.setattr(
-            "chipcompiler.tools.run_step", lambda **kw: True
-        )
+        monkeypatch.setattr("chipcompiler.tools.run_step", lambda **kw: True)
 
         state = engine_flow.run_step(ws_step)
         assert state == StateEnum.Imcomplete
@@ -465,9 +450,7 @@ class TestMandatoryArtifactFailure:
     def test_exception_with_partial_output_gives_incomplete(self, monkeypatch, tmp_path):
         workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
-        workspace.flow.data = {
-            "steps": [{"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"}]
-        }
+        workspace.flow.data = {"steps": [{"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"}]}
         engine_flow = EngineFlow(workspace)
         ws_step = EccStep(
             name="FLOORPLAN",
