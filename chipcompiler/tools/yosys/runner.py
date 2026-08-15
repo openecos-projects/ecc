@@ -7,7 +7,7 @@ from chipcompiler.data import StateEnum, Workspace, YosysStep
 from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
-from chipcompiler.tools.yosys.utility import check_slang_plugin, get_yosys_runtime
+from chipcompiler.tools.yosys.utility import check_slang_support, get_yosys_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
 
         with open(log_path, "w") as log_file:
             step_data = getattr(step, "data", None)
-            if getattr(step_data, "requires_slang", True) and not check_slang_plugin(
+            if getattr(step_data, "requires_slang", True) and not check_slang_support(
                 yosys_cmd=yosys_cmd,
                 cwd_dir=cwd_dir,
                 yosys_env=yosys_env,

@@ -66,7 +66,7 @@ def test_get_yosys_runtime_builds_local_env_without_mutating_global_env(tmp_path
     assert before == after
 
 
-def test_check_slang_plugin_executes_expected_command(tmp_path, monkeypatch):
+def test_check_slang_support_accepts_builtin_frontend(tmp_path, monkeypatch):
     log_path = tmp_path / "check.log"
     calls = []
 
@@ -79,11 +79,11 @@ def test_check_slang_plugin_executes_expected_command(tmp_path, monkeypatch):
                 "timeout": timeout,
             }
         )
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(returncode=0, stdout=b"read_slang [options] [filename]")
 
     monkeypatch.setattr(utility.subprocess, "run", fake_run)
     with open(log_path, "w") as log_file:
-        ok = utility.check_slang_plugin(
+        ok = utility.check_slang_support(
             yosys_cmd=["yosys"],
             cwd_dir="/tmp/test",
             yosys_env={"PATH": "/tmp/bin"},
@@ -92,21 +92,49 @@ def test_check_slang_plugin_executes_expected_command(tmp_path, monkeypatch):
 
     assert ok is True
     assert len(calls) == 1
-    assert calls[0]["cmd"] == ["yosys", "-p", "plugin -i slang"]
+    assert calls[0]["cmd"] == ["yosys", "-Q", "-T", "-p", "help read_slang"]
     assert calls[0]["cwd"] == "/tmp/test"
     assert calls[0]["env"] == {"PATH": "/tmp/bin"}
     assert calls[0]["timeout"] == 60
 
 
-def test_check_slang_plugin_writes_error_on_failure(tmp_path, monkeypatch):
-    log_path = tmp_path / "check_fail.log"
+def test_check_slang_support_falls_back_to_plugin(tmp_path, monkeypatch):
+    log_path = tmp_path / "check.log"
+    calls = []
 
     def fake_run(cmd, cwd, env, stdout, stderr, timeout):
-        return SimpleNamespace(returncode=1)
+        calls.append(list(cmd))
+        if "help read_slang" in cmd:
+            return SimpleNamespace(returncode=0, stdout=b"No such command or cell type: read_slang")
+        return SimpleNamespace(returncode=0, stdout=b"")
 
     monkeypatch.setattr(utility.subprocess, "run", fake_run)
     with open(log_path, "w") as log_file:
-        ok = utility.check_slang_plugin(
+        ok = utility.check_slang_support(
+            yosys_cmd=["yosys"],
+            cwd_dir="/tmp/test",
+            yosys_env={"PATH": "/tmp/bin"},
+            log_file=log_file,
+        )
+
+    assert ok is True
+    assert calls == [
+        ["yosys", "-Q", "-T", "-p", "help read_slang"],
+        ["yosys", "-Q", "-T", "-p", "plugin -i slang"],
+    ]
+
+
+def test_check_slang_support_writes_error_on_failure(tmp_path, monkeypatch):
+    log_path = tmp_path / "check_fail.log"
+
+    def fake_run(cmd, cwd, env, stdout, stderr, timeout):
+        if "help read_slang" in cmd:
+            return SimpleNamespace(returncode=0, stdout=b"No such command or cell type: read_slang")
+        return SimpleNamespace(returncode=1, stdout=b"")
+
+    monkeypatch.setattr(utility.subprocess, "run", fake_run)
+    with open(log_path, "w") as log_file:
+        ok = utility.check_slang_support(
             yosys_cmd=["yosys"],
             cwd_dir="/tmp/test",
             yosys_env={"PATH": "/tmp/bin"},
@@ -114,4 +142,4 @@ def test_check_slang_plugin_writes_error_on_failure(tmp_path, monkeypatch):
         )
 
     assert ok is False
-    assert "slang plugin check failed" in log_path.read_text()
+    assert "slang frontend check failed" in log_path.read_text()
