@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 import time
-import traceback
 from threading import Event, Thread
 
 from chipcompiler.data import EccOutput, StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow

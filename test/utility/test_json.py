@@ -156,8 +156,8 @@ class TestFlowSetStatePersistence:
     """Tests for EngineFlow.set_state json_write failure handling."""
 
     def test_set_state_updates_in_memory_when_save_fails(self, tmp_path, monkeypatch):
-        from chipcompiler.engine.flow import EngineFlow
         from chipcompiler.data import StateEnum
+        from chipcompiler.engine.flow import EngineFlow
 
         flow_path = tmp_path / "flow.json"
         flow_path.write_text(
@@ -197,9 +197,9 @@ class TestFlowSetStatePersistence:
 
     def test_stale_file_causes_rerun_on_resume(self, tmp_path, monkeypatch):
         """When save() fails, file stays stale; a fresh resume load sees stale state."""
-        from chipcompiler.engine.flow import EngineFlow
         from chipcompiler.data import StateEnum
         from chipcompiler.engine import rerun
+        from chipcompiler.engine.flow import EngineFlow
 
         flow_path = tmp_path / "flow.json"
         flow_data = {
@@ -234,9 +234,9 @@ class TestFlowSetStatePersistence:
 
     def test_persisted_success_skips_on_resume(self, tmp_path):
         """When save() succeeds, resume correctly skips successful steps."""
-        from chipcompiler.engine.flow import EngineFlow
         from chipcompiler.data import StateEnum
         from chipcompiler.engine import rerun
+        from chipcompiler.engine.flow import EngineFlow
 
         flow_path = tmp_path / "flow.json"
         flow_data = {

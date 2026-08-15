@@ -678,7 +678,8 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     fixfanout = json_read(workspace.config[f"{StepEnum.NETLIST_OPT.value}"])
     if not fixfanout:
         raise FileNotFoundError(
-            f"Netlist opt config missing or corrupt: {workspace.config[f'{StepEnum.NETLIST_OPT.value}']}"
+            f"Netlist opt config missing or corrupt: "
+            f"{workspace.config[f'{StepEnum.NETLIST_OPT.value}']}"
         )
     fixfanout["insert_buffer"] = workspace.pdk.buffers[0] if len(workspace.pdk.buffers) > 0 else ""
     fixfanout["max_fanout"] = workspace.parameters.data.get("Max fanout", 32)
@@ -781,13 +782,12 @@ def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path)
             workspace.parameters.data[mapping.parameter_key] = value
             changed = True
 
-    if changed:
-        if not save_parameter(workspace.parameters):
-            import logging
+    if changed and not save_parameter(workspace.parameters):
+        import logging
 
-            logging.getLogger(__name__).warning(
-                "Failed to persist parameter sync changes; changes exist only in memory"
-            )
+        logging.getLogger(__name__).warning(
+            "Failed to persist parameter sync changes; changes exist only in memory"
+        )
 
     return changed
 
