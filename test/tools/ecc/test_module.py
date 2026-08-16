@@ -28,10 +28,6 @@ class FakeEcc:
         self.generated_timing_lib_name = "gcd_max.lib"
         self.generated_timing_lib_contents = "library (gcd_max) {}\n"
 
-    def flow_init(self, **kwargs):
-        self.calls.append(("flow_init", kwargs))
-        return True
-
     def init_rcx(self, **kwargs):
         self.calls.append(kwargs)
         return True
@@ -68,10 +64,6 @@ class FakeEcc:
 
     def read_sdc(self, sdc_path):
         self.calls.append(("read_sdc", sdc_path))
-        return True
-
-    def idb_init(self, config_path):
-        self.calls.append(("idb_init", config_path))
         return True
 
     def extract_lib(self):
@@ -120,7 +112,7 @@ def _assert_no_path_values(value):
 
 def test_ecc_tools_module_imports_installed_native_extension():
     module = ECCToolsModule()
-    assert module.get_ecc() is not None
+    assert module.ecc is not None
 
 
 def test_close_resets_native_data_without_flow_exit():
@@ -308,7 +300,6 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     module.ecc = FakeEcc()
 
     module.init_config(
-        flow_config=Path("/ws/config/flow.json"),
         db_config=Path("/ws/config/db.json"),
         output_dir=Path("/ws/output"),
         feature_dir=Path("/ws/feature"),
@@ -319,16 +310,8 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     )
     module.init_techlef(Path("/pdk/tech.lef"))
     module.init_lefs([Path("/pdk/std.lef")])
-    module.idb_init(Path("/ws/config/db.json"))
-    module.update_sta_data_config(
-        db_config=Path("/ws/config/db.json"),
-        output_dir=Path("/ws/out"),
-        lib_paths=[Path("/pdk/lib.lib")],
-        sdc_path=Path("/ws/design.sdc"),
-    )
 
     assert module.ecc.calls == [
-        ("flow_init", {"flow_config": "/ws/config/flow.json"}),
         (
             "db_init",
             {
@@ -346,16 +329,6 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
         ),
         ("tech_lef_init", "/pdk/tech.lef"),
         ("lef_init", {"lef_paths": ["/pdk/std.lef"]}),
-        ("idb_init", "/ws/config/db.json"),
-        (
-            "db_init",
-            {
-                "config_path": "/ws/config/db.json",
-                "output_path": "/ws/out",
-                "lib_paths": ["/pdk/lib.lib"],
-                "sdc_path": "/ws/design.sdc",
-            },
-        ),
     ]
 
 
@@ -371,23 +344,12 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.gds_save(Path("/ws/output/gcd.gds.gz"), is_harden=True)
     module.tcl_save(Path("/ws/script/out.tcl"))
     module.verilog_save(Path("/ws/output/gcd.v.gz"))
-    module.json_save(Path("/ws/output/gcd.json"))
     module.save_data(Path("/ws/output/db"))
     module.load_data(Path("/ws/input/db"))
     module.write_soc_json(Path("/ws/output/soc.json"))
     module.feature_sammry(Path("/ws/feature/db.json"))
     module.feature_step("placement", Path("/ws/feature/step.json"))
-    module.feature_eval_map(Path("/ws/feature/eval.json"), 4, 4)
-    module.feature_eval_summary(Path("/ws/feature/eval_summary.json"), 8)
-    module.feature_timing_eval_summary(Path("/ws/feature/timing.json"))
-    module.feature_net_eval(Path("/ws/feature/net.json"))
-    module.feature_cong_map("routing", Path("/ws/feature/cong"))
-    module.report_wirelength(Path("/ws/report/wire.rpt"))
     module.report_summary(Path("/ws/report/db.rpt"))
-    module.report_congestion(Path("/ws/report/cong.rpt"))
-    module.report_dangling_net(Path("/ws/report/dangling.rpt"))
-    module.report_route(path=Path("/ws/report/route.rpt"))
-    module.report_drc(Path("/ws/report/drc.rpt"))
     module.run_cts(Path("/ws/config/cts.json"), Path("/ws/data/cts"))
     module.report_cts(Path("/ws/report/cts"))
     module.feature_cts_timing()
@@ -395,25 +357,9 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.init_drc(Path("/ws/data/drc"))
     module.run_drc(Path("/ws/config/drc.json"), Path("/ws/report/drc.rpt"))
     module.save_drc(Path("/ws/feature/drc.json"))
-    module.pnp(Path("/ws/config/pnp.json"))
-    module.run_placement(Path("/ws/config/place.json"))
-    module.init_pl(Path("/ws/config/place.json"))
     module.feature_placement_map(Path("/ws/feature/place_map.json"))
-    module.run_incremental_flow(Path("/ws/config/incremental.json"))
-    module.run_legalize(Path("/ws/config/legalize.json"))
     module.run_filler(Path("/ws/config/filler.json"))
-    module.run_macro_placement(Path("/ws/config/macro.json"), Path("/ws/script/macro.tcl"))
-    module.run_refinement(Path("/ws/script/refine.tcl"))
     module.run_routing(Path("/ws/config/route.json"))
-    module.feature_route_read(Path("/ws/feature/route_read.json"))
-    module.feature_route(Path("/ws/feature/route.json"))
-    module.run_sta(Path("/ws/data/sta"))
-    module.report_sta(Path("/ws/report/sta.rpt"))
-    module.init_log(Path("/ws/log"))
-    module.set_design_workspace(Path("/ws/design"))
-    module.read_lef_def([Path("/pdk/tech.lef")], Path("/ws/design.def"))
-    module.read_netlist(Path("/ws/design.v"))
-    module.read_spef(Path("/ws/design.spef"))
     module.write_abstract_lef(Path("/ws/output/abstract.lef"))
     module.write_timing_model(
         timing_output,
@@ -424,28 +370,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
         spef_path=Path("/ws/design.spef"),
         design_name="gcd",
     )
-    module.run_to(Path("/ws/config/to.json"))
-    module.run_timing_opt_drv(Path("/ws/config/drv.json"))
-    module.run_timing_opt_hold(Path("/ws/config/hold.json"))
-    module.run_timing_opt_setup(Path("/ws/config/setup.json"))
-    module.layout_patchs(Path("/ws/layout/patches.json"))
-    module.layout_graph(Path("/ws/layout/graph.json"))
-    module.generate_vectors(Path("/ws/vectors"))
-    module.vectors_nets_to_def(Path("/ws/vectors"))
-    module.vectors_nets_patterns_to_def(Path("/ws/vectors/patterns.json"))
-    module.get_timing_wire_graph(Path("/ws/graph/wire.json"))
-    module.get_timing_instance_graph(Path("/ws/graph/inst.json"))
-    module.cell_density(save_path=Path("/ws/eval/cell.csv"))
-    module.pin_density(save_path=Path("/ws/eval/pin.csv"))
-    module.net_density(save_path=Path("/ws/eval/net.csv"))
-    module.rudy_congestion(save_path=Path("/ws/eval/rudy.csv"))
-    module.lut_rudy_congestion(save_path=Path("/ws/eval/lutrudy.csv"))
-    module.egr_congestion(save_path=Path("/ws/eval/egr.csv"))
-    module.eval_cell_hierarchy(Path("/ws/eval/cell.png"), 1, 1)
-    module.eval_macro_hierarchy(Path("/ws/eval/macro.png"), 1, 1)
-    module.eval_macro_connection(Path("/ws/eval/macro_conn.png"), 1, 1)
-    module.eval_macro_pin_connection(Path("/ws/eval/macro_pin.png"), 1, 1)
-    module.eval_macro_io_pin_connection(Path("/ws/eval/macro_io.png"), 1, 1)
     module.run_net_opt(Path("/ws/config/fixfanout.json"))
 
     _assert_no_path_values(module.ecc.calls)

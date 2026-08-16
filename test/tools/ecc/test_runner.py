@@ -278,7 +278,6 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
         (
             "init_config",
             {
-                "flow_config": workspace.config["flow"],
                 "db_config": workspace.config["db"],
                 "output_dir": step.data.dir,
                 "feature_dir": step.feature.dir,
