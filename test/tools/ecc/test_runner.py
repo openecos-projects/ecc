@@ -46,6 +46,7 @@ class FakeEccModule:
 
     def read_def(self, path):
         self.calls.append(("read_def", path))
+        return True
 
     def read_lvs_verilog(self, path, top_module):
         self.calls.append(("read_lvs_verilog", path, top_module))
@@ -185,7 +186,7 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
     assert ("read_def", str(design_def)) in module.calls
 
 
-def test_create_db_engine_uses_design_inputs_for_lvs_even_when_db_exists(tmp_path, monkeypatch):
+def test_create_db_engine_uses_def_input_for_lvs_even_when_db_exists(tmp_path, monkeypatch):
     design_def = tmp_path / "origin" / "gcd.def"
     design_verilog = tmp_path / "origin" / "gcd.v"
     design_def.parent.mkdir(parents=True)
@@ -221,7 +222,7 @@ def test_create_db_engine_uses_design_inputs_for_lvs_even_when_db_exists(tmp_pat
     assert module is FakeEccModule.instances[-1]
     assert not any(call[0] == "load_data" for call in module.calls)
     assert ("read_def", str(design_def)) in module.calls
-    assert ("read_lvs_verilog", str(design_verilog), "gcd") in module.calls
+    assert not any(call[0] == "read_lvs_verilog" for call in module.calls)
 
 
 def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatch):

@@ -222,17 +222,17 @@ class ECCToolsModule:
         """init_lef"""
         self.ecc.lef_init(lef_paths=path_texts(lef_paths))
 
-    def read_def(self, path: str = ""):
+    def read_def(self, path: str = "") -> bool:
         """init def"""
-        self.ecc.def_init(def_path=path_text(path))
+        return self.ecc.def_init(def_path=path_text(path))
 
     def read_verilog(self, verilog: PathArg, top_module: str):
         """init verilog"""
         self.ecc.verilog_init(path_text(verilog), top_module)
 
-    def read_lvs_verilog(self, verilog: PathArg, top_module: str):
+    def read_lvs_verilog(self, verilog: PathArg, top_module: str) -> bool:
         """init verilog for iLVS"""
-        self.ecc.lvs_verilog_init(path_text(verilog), top_module)
+        return self.ecc.lvs_verilog_init(path_text(verilog), top_module)
 
     def def_save(self, def_path: PathArg):
         """save def file"""
