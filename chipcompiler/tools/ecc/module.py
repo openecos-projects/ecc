@@ -466,7 +466,7 @@ class ECCToolsModule:
         """Return post-optimization CTS FastSTA timing aggregates."""
         return self.ecc.cts_timing_feature()
 
-    def feature_cts_map(self, json_path: PathArg, map_grid_size=1):
+    def feature_cts_map(self, json_path: PathArg, map_grid_size=5):
         """
         generate cts map feature
         """
@@ -523,7 +523,7 @@ class ECCToolsModule:
     def destroy_pl(self):
         return self.ecc.destroy_pl()
 
-    def feature_placement_map(self, json_path: PathArg, map_grid_size=1):
+    def feature_placement_map(self, json_path: PathArg, map_grid_size=5):
         """
         generate placement map feature
         """
