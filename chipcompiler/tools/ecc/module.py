@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import json
 import os
 import shutil
 from pathlib import Path
@@ -60,22 +59,18 @@ class ECCToolsModule:
         """release ECC data without terminating the host process"""
         self.reset_data()
 
-    def get_dmInst_ptr(self):
-        return self.ecc.get_dmInst()
-
-    def pydb(
+    def export_place_db(
         self,
-        dm_inst_ptr,
         route_num_bins_x: int,
         route_num_bins_y: int,
-        routability_opt_flag: int,
-        with_sta: int,
+        *,
+        routability: bool = False,
+        with_sta: bool = False,
     ):
         return self.ecc.pydb(
-            dm_inst_ptr,
             route_num_bins_x,
             route_num_bins_y,
-            routability_opt_flag,
+            routability,
             with_sta,
         )
 
@@ -133,8 +128,8 @@ class ECCToolsModule:
             params["create_if_missing"] = create_if_missing
         return self.ecc.place_instance(**params)
 
-    def write_placement_back(self, dm_inst_ptr, node_x, node_y):
-        self.ecc.write_placement_back(dm_inst_ptr, node_x, node_y)
+    def apply_placement(self, node_x, node_y):
+        self.ecc.write_placement_back(node_x, node_y)
 
     ########################################################################
     # data io api
@@ -365,18 +360,6 @@ class ECCToolsModule:
         self.ecc.run_rt()
         self.ecc.destroy_rt()
 
-    def is_rt_timing_enable(self, config: str):
-        if os.path.exists(config):
-            with open(config, encoding="utf-8") as f_reader:
-                json_data = json.load(f_reader)
-                # check if time enable
-                if (
-                    json_data is not None
-                    and json_data.get("RT", {}).get("-enable_timing", "0") == "1"
-                ):
-                    return True
-        return False
-
     ########################################################################
     # RCX api
     ########################################################################
@@ -458,14 +441,6 @@ class ECCToolsModule:
             modes=modes,
         )
 
-    def init_sta(
-        self, output_dir: PathArg, top_module: str, lib_paths: list[Path] | list[str], sdc_path: str
-    ):
-        return None
-
-    def release_sta(self):
-        return None
-
     def write_abstract_lef(self, output_lef_path: PathArg):
         return self.ecc.write_abstract_lef(path_text(output_lef_path))
 
@@ -526,27 +501,6 @@ class ECCToolsModule:
                 "}\n",
                 encoding="utf-8",
             )
-
-    def report_timing(
-        self,
-        digits: int = 3,
-        delay_type: str = "max_min",
-        exclude_cell_names: list[str] | None = None,
-        *,
-        derate: bool = False,
-        is_clock_cap: bool = False,
-        is_not_bak_rpt: bool = True,
-        max_path: int = 3,
-        nworst: int = 1,
-        from_list: list[str] | None = None,
-        through: list[list[str]] | None = None,
-        to_list: list[str] | None = None,
-        is_json: bool = True,
-    ):
-        """
-        report timing
-        """
-        return None
 
     def run_net_opt(self, config: str):
         return self.ecc.fix_fanout(path_text(config))

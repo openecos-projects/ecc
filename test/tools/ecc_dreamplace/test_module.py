@@ -104,3 +104,59 @@ def test_dreamplace_step_info_stringifies_path_config(tmp_path):
     assert get_step_info(workspace, step, "config") == {
         "config": str(workspace.config["dreamplace"]),
     }
+
+
+def test_run_binds_ecc_backend_instead_of_raw_db(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    config_path = tmp_path / "dreamplace.json"
+    json_write(config_path, {"route_num_bins_x": 8, "route_num_bins_y": 8})
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    result_dir = tmp_path / "data" / "pl"
+    result_dir.mkdir(parents=True)
+    step_data = EccData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir})
+    step = EccStep(name=StepEnum.PLACEMENT.value, data=step_data)
+    backend = SimpleNamespace()
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=backend,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+        output_def=tmp_path / "output.def",
+        output_verilog=tmp_path / "output.v",
+    )
+
+    bound = {}
+
+    class FakeEngine:
+        def __init__(self, params):
+            bound["params"] = params
+
+        def bind_backend(self, ecc_backend):
+            bound["backend"] = ecc_backend
+
+        def run(self):
+            bound["ran"] = True
+            return {"hpwl": 1.0}
+
+    fake_params = types.ModuleType("dreamplace.Params")
+    fake_params.Params = FakeParams
+    fake_placer = types.ModuleType("dreamplace.Placer")
+    fake_placer.PlacementEngine = FakeEngine
+    fake_dreamplace = types.ModuleType("dreamplace")
+    fake_dreamplace.Params = fake_params
+    fake_dreamplace.Placer = fake_placer
+    monkeypatch.setitem(sys.modules, "dreamplace", fake_dreamplace)
+    monkeypatch.setitem(sys.modules, "dreamplace.Params", fake_params)
+    monkeypatch.setitem(sys.modules, "dreamplace.Placer", fake_placer)
+
+    assert module.run_placement() is True
+    assert bound["backend"] is backend
+    assert bound["ran"] is True
+    assert not hasattr(FakeEngine, "setup_rawdb")

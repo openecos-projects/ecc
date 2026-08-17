@@ -375,7 +375,6 @@ def save_data(
     ecc_module: ECCToolsModule,
     *,
     feature_step: bool = True,
-    report_timing: bool = False,
 ) -> bool:
     """
     module is ecc module from db engine,
@@ -407,17 +406,6 @@ def save_data(
         ecc_module.feature_step(step=step.name, json_path=step.feature.step or "")
 
     ecc_module.report_summary(path=step.report.db or "")
-
-    if report_timing:
-        ecc_module.release_sta()
-        ecc_module.init_sta(
-            output_dir=(step.data.steps or {}).get("sta", ""),
-            top_module=workspace.design.top_module,
-            lib_paths=workspace.pdk.libs,
-            sdc_path=workspace.pdk.sdc,
-        )
-        ecc_module.report_timing()
-        ecc_module.release_sta()
 
     # update parameters
     db_json = json_read(step.feature.db or "")
@@ -562,7 +550,7 @@ def run_placement(
         sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
 
         reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
+            workspace=workspace, step=step, ecc_module=ecc_module
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
@@ -689,23 +677,12 @@ def run_routing(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        if ecc_module.is_rt_timing_enable(
-            config=workspace.config.get(f"{StepEnum.ROUTING.value}", "")
-        ):
-            ecc_module.release_sta()
-            ecc_module.init_sta(
-                output_dir=(step.data.steps or {}).get(StepEnum.ROUTING.value, ""),
-                top_module=workspace.design.top_module,
-                lib_paths=workspace.pdk.libs,
-                sdc_path=workspace.pdk.sdc,
-            )
-
         ecc_module.run_routing(config=workspace.config.get(f"{StepEnum.ROUTING.value}", ""))
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_routing.value, state=StateEnum.Success)
 
         reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
+            workspace=workspace, step=step, ecc_module=ecc_module
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
@@ -737,7 +714,7 @@ def run_drc(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
 
         reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
+            workspace=workspace, step=step, ecc_module=ecc_module
         )
 
         ecc_module.save_drc(feature_path=step.feature.step or "")
@@ -773,7 +750,7 @@ def run_legalization(
         )
 
         reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
+            workspace=workspace, step=step, ecc_module=ecc_module
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
@@ -803,7 +780,7 @@ def run_filler(
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
         reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
+            workspace=workspace, step=step, ecc_module=ecc_module
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
@@ -844,7 +821,6 @@ def run_floorplan(
             step=step,
             ecc_module=ecc_module,
             feature_step=False,
-            report_timing=False,
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
@@ -925,7 +901,6 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             step=step,
             ecc_module=ecc_module,
             feature_step=False,
-            report_timing=False,
         )
         if not save_rcx_spef_feature_facts(workspace=workspace, step=step):
             workspace.logger.error("Failed to persist RCX SPEF feature facts")
@@ -1052,7 +1027,6 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         step=step,
         ecc_module=ecc_module,
         feature_step=False,
-        report_timing=False,
     )
 
     sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)

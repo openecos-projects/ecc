@@ -124,6 +124,28 @@ def test_close_resets_native_data_without_flow_exit():
     assert module.ecc.calls == [("reset_data", (), {})]
 
 
+def test_export_place_db_does_not_pass_raw_db_pointer():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    assert module.export_place_db(512, 256, routability=True, with_sta=False) is True
+
+    assert module.ecc.calls == [("pydb", (512, 256, True, False), {})]
+    assert not hasattr(module, "get_dmInst_ptr")
+
+
+def test_apply_placement_writes_coordinates_without_db_pointer():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    node_x = [0.0, 1.0]
+    node_y = [2.0, 3.0]
+
+    module.apply_placement(node_x, node_y)
+
+    assert module.ecc.calls == [("write_placement_back", (node_x, node_y), {})]
+    assert not hasattr(module, "write_placement_back")
+
+
 def test_init_rcx_passes_pdk_when_configured():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()

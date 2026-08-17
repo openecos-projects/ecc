@@ -103,7 +103,7 @@ class DreamplaceModule:
             params = self._build_params(Params, legalize_only=legalize_only)
 
             engine = PlacementEngine(params)
-            engine.setup_rawdb(ecc_module=self.ecc_module)
+            engine.bind_backend(self.ecc_module)
             ppa = engine.run()
 
             if ppa.get("hpwl") == float("inf"):
