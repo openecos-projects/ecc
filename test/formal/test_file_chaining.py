@@ -126,9 +126,7 @@ def test_chain_breaks_on_failure(num_steps: int) -> None:
     for k in range(num_steps):
         # If step k is not created, can any downstream step be created?
         for i in range(k + 1, num_steps):
-            is_created_after_failure.append(
-                And(Not(created[k]), created[i])
-            )
+            is_created_after_failure.append(And(Not(created[k]), created[i]))
 
     if is_created_after_failure:
         solver.add(Or(*is_created_after_failure))

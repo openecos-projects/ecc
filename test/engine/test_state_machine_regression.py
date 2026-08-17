@@ -27,14 +27,16 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
     flow_path = os.path.join(home_dir, "flow.json")
     steps = []
     for i in range(num_steps):
-        steps.append({
-            "name": f"step_{i}",
-            "tool": "mock",
-            "state": StateEnum.Unstart.value,
-            "runtime": "",
-            "peak memory (mb)": 0,
-            "info": {},
-        })
+        steps.append(
+            {
+                "name": f"step_{i}",
+                "tool": "mock",
+                "state": StateEnum.Unstart.value,
+                "runtime": "",
+                "peak memory (mb)": 0,
+                "info": {},
+            }
+        )
 
     with open(flow_path, "w") as f:
         json.dump({"steps": steps}, f)
