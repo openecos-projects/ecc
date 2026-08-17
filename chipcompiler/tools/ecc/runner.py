@@ -598,7 +598,6 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
 
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
-
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
