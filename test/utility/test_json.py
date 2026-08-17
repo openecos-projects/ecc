@@ -190,6 +190,7 @@ class TestFlowSetStatePersistence:
 
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)
 
+        flow.set_state("SYNTHESIS", "yosys", StateEnum.Ongoing)
         result = flow.set_state("SYNTHESIS", "yosys", StateEnum.Success)
         assert result is True
         # In-memory state is updated
@@ -220,6 +221,7 @@ class TestFlowSetStatePersistence:
             EccStep(name="FLOORPLAN", directory=tmp_path, tool="ecc"),
         ]
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)
+        engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Ongoing)
         engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Success)
         # File is still Unstart (save failed)
 
@@ -254,6 +256,7 @@ class TestFlowSetStatePersistence:
         engine_flow = EngineFlow(workspace)
 
         # Mark SYNTHESIS as Success — save() succeeds
+        engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Ongoing)
         engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Success)
 
         # Verify file was updated

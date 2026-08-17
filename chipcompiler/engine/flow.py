@@ -18,6 +18,45 @@ from chipcompiler.utility.log import redirect_stdio_to_file
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# State machine transition guards
+# ---------------------------------------------------------------------------
+
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    StateEnum.Unstart.value: {StateEnum.Ongoing.value, StateEnum.Imcomplete.value},
+    StateEnum.Pending.value: {StateEnum.Ongoing.value, StateEnum.Imcomplete.value},
+    StateEnum.Ongoing.value: {
+        StateEnum.Success.value,
+        StateEnum.Imcomplete.value,
+        StateEnum.Invalid.value,
+    },
+    # Terminal states — no outgoing lifecycle transitions.
+    # Batch resets (clear_states, _invalidate_suffix) bypass set_state() and
+    # can assign any state directly, including Unstart for terminal states.
+    StateEnum.Success.value: set(),
+    StateEnum.Imcomplete.value: set(),
+    StateEnum.Invalid.value: set(),
+}
+
+
+def _validate_transition(old_state: str | None, new_state: str, step_name: str, tool: str) -> None:
+    """Raise ``ValueError`` on illegal lifecycle transitions.
+
+    This guard applies only to ``set_state()`` calls.  Batch reset operations
+    (``clear_states``, ``_invalidate_suffix``, ``_prepare_steps_for_rerun``)
+    assign ``step["state"]`` directly and bypass this check by design.
+    """
+    if old_state is None or old_state == new_state:
+        return
+    allowed = _VALID_TRANSITIONS.get(old_state, set())
+    if new_state not in allowed:
+        raise ValueError(
+            f"Illegal state transition for {step_name}/{tool}: "
+            f"{old_state} → {new_state}. "
+            f"Allowed transitions from {old_state}: {sorted(allowed) or 'none'}"
+        )
+
+
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
         StepEnum.FLOORPLAN.value,
@@ -158,6 +197,8 @@ class EngineFlow:
         state_value = state.value if isinstance(state, StateEnum) else state
         for step in self.workspace.flow.data.get("steps", []):
             if step.get("name") == name and step.get("tool") == tool:
+                old_state = step.get("state")
+                _validate_transition(old_state, state_value, name, tool)
                 step["state"] = state_value
                 if runtime is not None:
                     step["runtime"] = runtime
@@ -311,14 +352,13 @@ class EngineFlow:
                 self.workspace_steps.append(eda_step)
                 pre_step = eda_step
             else:
-                step["state"] = StateEnum.Imcomplete.value
+                self.set_state(name=step["name"], tool=step["tool"], state=StateEnum.Imcomplete)
                 logger.error(
                     "Failed to create step workspace for %s (tool=%s); "
                     "step marked Incomplete, remaining steps will not be created",
                     step.get("name", step),
                     step.get("tool", "?"),
                 )
-                self.save()
                 break
 
     def init_db_engine(self) -> bool:
