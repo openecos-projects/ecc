@@ -701,7 +701,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
         "die_util": {"aspect_ratio": 1, "utilization": 0.4},
         "die_size": {"width_micron": 100.1, "height_micron": 246.6},
     }
-    assert floorplan["io_placer"]["depth_micron"] == 0.6
+    assert floorplan["io_placer"] == {"io_layer_list": ["MET3", "MET4"]}
 
 
 def test_refresh_workspace_config_preserves_routability_flag_string_coercion(

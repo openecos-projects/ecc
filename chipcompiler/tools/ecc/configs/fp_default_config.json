@@ -30,9 +30,7 @@
         "io_layer_list": [
             "MET3",
             "MET4"
-        ],
-        "width_micron": 0.1,
-        "depth_micron": 0.6
+        ]
     },
     "phy_placer": {
         "well_tap": {
