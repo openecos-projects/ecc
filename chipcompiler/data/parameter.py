@@ -27,6 +27,7 @@ ICS55_PARAMETERS_TEMPLATE = {
     "Frequency max [MHz]": 100,
     "Bottom layer": "MET2",
     "Top layer": "MET5",
+    "STA max paths": 1000,
 }
 SG13G2_PARAMETERS_TEMPLATE = {
     "PDK": "sg13g2",
@@ -51,6 +52,7 @@ SG13G2_PARAMETERS_TEMPLATE = {
     "Frequency max [MHz]": 100,
     "Bottom layer": "Metal2",
     "Top layer": "Metal5",
+    "STA max paths": 1000,
     "Floorplan": {
         "Tap distance": 0,
         "Auto place pin": {"layer": "Metal3", "width": 300, "height": 600, "sides": []},

@@ -644,6 +644,7 @@ class ECCToolsModule:
         spef_path: str = "",
         output_modes: tuple[str, ...] = ("report", "structured"),
         max_paths_per_analysis: int = 20,
+        max_paths: int = 1000,
         corner: str = "",
     ):
         if lib_paths is None:
@@ -657,6 +658,8 @@ class ECCToolsModule:
             or max_paths_per_analysis <= 0
         ):
             raise ValueError("STA max_paths_per_analysis must be a positive integer")
+        if isinstance(max_paths, bool) or not isinstance(max_paths, int) or max_paths <= 0:
+            raise ValueError("STA max_paths must be a positive integer")
         if "report" in modes and not report_dir:
             raise ValueError("STA report_dir is required when report output is requested")
         if "structured" in modes and not feature_dir:
@@ -675,6 +678,7 @@ class ECCToolsModule:
                 "-output_timing_reports": "1" if "report" in modes else "0",
                 "-output_timing_features": "1" if "structured" in modes else "0",
                 "-timing_path_limit": str(max_paths_per_analysis),
+                "-max_paths": str(max_paths),
             }
         )
         if corner:

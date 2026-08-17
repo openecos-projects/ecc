@@ -91,6 +91,7 @@ def test_run_timing_splits_text_reports_and_structured_artifacts(tmp_path):
         feature_dir=feature_dir,
         output_modes=("structured", "report"),
         max_paths_per_analysis=7,
+        max_paths=100,
         corner="MAX_125/RCworst",
     )
 
@@ -115,6 +116,7 @@ def test_run_timing_splits_text_reports_and_structured_artifacts(tmp_path):
         "-output_timing_reports": "1",
         "-output_timing_features": "1",
         "-timing_path_limit": "7",
+        "-max_paths": "100",
         "-timing_corner": "MAX_125/RCworst",
     }
 
@@ -176,6 +178,19 @@ def test_run_timing_rejects_invalid_output_modes(tmp_path):
             work_dir=tmp_path / "data" / "sta",
             feature_dir=tmp_path / "feature",
             output_modes=("structured", "raw"),
+        )
+
+    assert module.ecc.calls == []
+
+
+def test_run_timing_rejects_non_positive_max_paths(tmp_path):
+    module = make_module()
+
+    with pytest.raises(ValueError, match="STA max_paths must be a positive integer"):
+        module.run_timing(
+            work_dir=tmp_path / "data" / "sta",
+            feature_dir=tmp_path / "feature",
+            max_paths=0,
         )
 
     assert module.ecc.calls == []
@@ -301,6 +316,7 @@ def test_run_timing_stringifies_path_arguments(tmp_path):
                     "-output_timing_reports": "1",
                     "-output_timing_features": "1",
                     "-timing_path_limit": "20",
+                    "-max_paths": "1000",
                     "-timing_corner": "MAX_125/RCworst",
                 },
             },

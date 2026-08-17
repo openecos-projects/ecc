@@ -355,6 +355,7 @@ def run_sta_without_spef(
             feature_dir=feature_dir,
             lib_paths=liberty_paths,
             sdc_path=sdc_path,
+            max_paths=workspace.parameters.data.get("STA max paths", 1000),
             corner=corner,
         )
     except Exception as exc:
@@ -963,6 +964,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             sdc_path=workspace.pdk.sdc,
             spef_path=spef_file,
             output_modes=("report", "structured"),
+            max_paths=workspace.parameters.data.get("STA max paths", 1000),
             corner=corner,
         )
 

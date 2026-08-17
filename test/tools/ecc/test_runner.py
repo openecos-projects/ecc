@@ -296,6 +296,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
                 "feature_dir": step.feature.dir / "post_synthesis",
                 "lib_paths": [liberty],
                 "sdc_path": sdc,
+                "max_paths": 1000,
                 "corner": "post_synthesis",
             },
         ),
@@ -447,6 +448,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(libs=[max_lib, min_lib], sdc=sdc),
+        parameters=Parameters(data={"STA max paths": 500}),
         config={StepEnum.STA.value: incorrect_sta_config, StepEnum.RCX.value: rcx_config},
         logger=logger,
     )
@@ -477,6 +479,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "sdc_path": sdc,
             "spef_path": str(spef_root / "gcd_RCworst_125C.spef"),
             "output_modes": ("report", "structured"),
+            "max_paths": 500,
             "corner": "MAX_125/RCworst",
         },
         {
@@ -488,6 +491,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "sdc_path": sdc,
             "spef_path": str(spef_root / "gcd_Cbest_m40C.spef"),
             "output_modes": ("report", "structured"),
+            "max_paths": 500,
             "corner": "MIN_m40/Cbest",
         },
     ]

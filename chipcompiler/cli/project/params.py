@@ -165,6 +165,18 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         choices=("MET2", "MET3", "MET4", "MET5", "MET6"),
         example="MET5",
     ),
+    ParamSchema(
+        param="sta.max_paths",
+        group="sta",
+        name="max_paths",
+        type="int",
+        default=1000,
+        applies="sta",
+        maps_to="STA max paths",
+        description="Maximum number of paths in each STA timing report",
+        range=(1, 100000),
+        example="1000",
+    ),
 )
 
 _REGISTRY_INDEX: dict[str, ParamSchema] = {s.param: s for s in PARAM_REGISTRY}

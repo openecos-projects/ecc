@@ -473,6 +473,9 @@ run = "default"
 
 [params.place]
 target_density = 0.65
+
+[params.sta]
+max_paths = 1000
 ```
 
 Current validation supports the `ics55` PDK. `flow.run` selects the run
