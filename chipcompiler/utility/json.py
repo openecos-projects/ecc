@@ -1,15 +1,22 @@
 #!/usr/bin/env python
 
 import json
+import logging
 import os
 import tempfile
 from contextlib import suppress
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 
 def json_read(file_path: str | Path) -> dict:
     """
     Read a JSON file and return its content as a dictionary.
+
+    Returns {} on any error (missing file, parse error, I/O error).
+    Use json_read_strict() for mandatory configuration files where
+    failure must be distinguishable from valid empty JSON.
     """
     data = {}
     path = Path(file_path)
@@ -26,9 +33,46 @@ def json_read(file_path: str | Path) -> dict:
             with path.open() as f:
                 data = json.load(f)
     except Exception:
+        logger.warning("Failed to read JSON file: %s", path, exc_info=True)
         return data
 
     return data
+
+
+class JsonReadError(Exception):
+    """Raised by json_read_strict when a mandatory JSON file cannot be read."""
+
+
+def json_read_strict(file_path: str | Path) -> dict:
+    """
+    Read a mandatory JSON file, raising on any failure.
+
+    Unlike json_read(), this function distinguishes between:
+    - valid empty JSON object (returns {})
+    - missing file (raises FileNotFoundError)
+    - invalid/corrupt JSON (raises JsonReadError)
+    - I/O error (raises OSError)
+
+    Use this for mandatory configuration and state files where
+    an empty {} result would cause incorrect downstream behavior.
+    """
+    path = Path(file_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Required JSON file not found: {path}")
+
+    try:
+        if path.suffix == ".gz":
+            import gzip
+
+            with gzip.open(path, "rt") as f:
+                return json.load(f)
+        else:
+            with path.open() as f:
+                return json.load(f)
+    except json.JSONDecodeError as e:
+        raise JsonReadError(f"Invalid JSON in {path}: {e}") from e
+    except OSError as e:
+        raise JsonReadError(f"Failed to read {path}: {e}") from e
 
 
 def json_write(file_path: str | Path, data: dict | None = None, indent=4) -> bool:
@@ -69,6 +113,7 @@ def json_write(file_path: str | Path, data: dict | None = None, indent=4) -> boo
             tmp_path = None
         return True
     except Exception:
+        logger.error("Failed to write JSON file: %s", path, exc_info=True)
         if tmp_path is not None:
             with suppress(OSError):
                 tmp_path.unlink()

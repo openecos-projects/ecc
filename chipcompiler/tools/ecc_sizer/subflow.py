@@ -74,7 +74,7 @@ class SizerSubFlow:
                     if line.startswith("VmRSS:"):
                         peak_memory = int(line.split()[1]) / 1024
                         break
-        except Exception:
+        except (OSError, ValueError):
             pass
 
         return peak_memory

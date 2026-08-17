@@ -7,7 +7,7 @@ from .filelist import (
     resolve_path,
     validate_filelist,
 )
-from .json import dict_to_str, json_read, json_write
+from .json import JsonReadError, dict_to_str, json_read, json_read_strict, json_write
 from .log import (
     Logger,
     build_timestamped_log_file,
@@ -22,6 +22,8 @@ from .util import track_process_memory
 __all__ = [
     "chmod_folder",
     "json_read",
+    "json_read_strict",
+    "JsonReadError",
     "json_write",
     "dict_to_str",
     "Logger",

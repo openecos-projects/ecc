@@ -17,7 +17,6 @@ def test_init_writes_complete_schema_for_missing_file(tmp_path):
 
     data = _read_json(path)
     assert data["layout"] == ""
-    assert data["GDS merge"] == ""
     assert data["metrics"] == {}
     assert data["monitor"] == {
         "step": [],
@@ -48,7 +47,6 @@ def test_init_repairs_partial_home_json_preserving_existing_values(tmp_path):
     assert data["checklist"] == "/ws/home/checklist.json"
     assert data["parameters"] == "/ws/home/parameters.json"
     assert data["layout"] == ""
-    assert data["GDS merge"] == ""
     assert data["metrics"] == {}
     assert data["monitor"] == {
         "step": [],

@@ -21,7 +21,11 @@ def run_step(
     step: EccStep,
     ecc_module: ECCToolsModule | None = None,
 ) -> bool:
+    import logging
+
+    logger = logging.getLogger(__name__)
     if not is_eda_exist():
+        logger.error("DreamPlace tools not available for step %s", step.name)
         return False
 
     state = False
@@ -60,6 +64,11 @@ def run_placement(
             output_verilog=step.output.verilog,
         )
         reslut = dreamplace_module.run_placement()
+        if not reslut:
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Imcomplete
+            )
+            return False
 
         ecc_module.feature_placement_map(json_path=step.feature.map)
 
@@ -102,6 +111,11 @@ def run_legalization(
             output_verilog=step.output.verilog,
         )
         reslut = dreamplace_module.run_legalization()
+        if not reslut:
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.run_legalization.value, state=StateEnum.Imcomplete
+            )
+            return False
 
         sub_flow.update_step(
             step_name=EccSubFlowEnum.run_legalization.value, state=StateEnum.Success

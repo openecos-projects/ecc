@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import logging
 import os
 
 import matplotlib
@@ -7,6 +8,8 @@ import pandas as pd
 
 matplotlib.use("Agg")  # Use non-interactive backend for multi-threading
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
 
 if not hasattr(np, "Inf"):
     np.Inf = np.inf
@@ -249,7 +252,7 @@ def plot_metrics(metrics: dict, output_path: str = None, col=4) -> bool:
 
         return True
     except Exception as e:
-        print(f"Error plotting metrics: {e}")
+        logger.warning("Error plotting metrics: %s", e, exc_info=True)
         plt.close("all")
         return False
 
@@ -341,6 +344,6 @@ def plot_bar_chart(
 
         return True
     except Exception as e:
-        print(f"Error plotting bar chart: {e}")
+        logger.warning("Error plotting bar chart: %s", e, exc_info=True)
         plt.close("all")
         return False

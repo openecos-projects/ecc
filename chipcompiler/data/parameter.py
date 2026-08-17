@@ -121,11 +121,16 @@ class Parameters:
 
 
 def load_parameter(path: Path) -> Parameters:
-    from chipcompiler.utility import json_read
+    from chipcompiler.utility import JsonReadError, json_read_strict
 
     parameter = Parameters()
     parameter.path = Path(path)
-    parameter.data = json_read(parameter.path)
+    try:
+        parameter.data = json_read_strict(parameter.path)
+    except FileNotFoundError:
+        parameter.data = {}
+    except JsonReadError:
+        parameter.data = {}
     return parameter
 
 

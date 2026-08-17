@@ -6,7 +6,7 @@ from chipcompiler.tools.klayout_tool.utility import is_eda_exist
 
 
 def run_step():
-    pass
+    return False
 
 
 def save_gds_image(workspace: Workspace, step: WorkspaceStep) -> bool:

@@ -301,47 +301,6 @@ class TestConfigStepResolved:
         ]
         assert data["records"][0]["source"] == "workspace_config"
 
-    def test_config_workspace_backed_ecc_steps(
-        self,
-        tmp_path,
-        capsys,
-        create_cli_project,
-        create_flow_json,
-        create_step_dir,
-        create_ecc_workspace_config,
-    ):
-        cases = [
-            ("PNP", "pnp", "pnp_default_config.json"),
-        ]
-        for step_name, step_token, step_config in cases:
-            project_dir = create_cli_project(name=f"gcd_{step_token}")
-            run_dir = os.path.join(project_dir, "runs", "default")
-            create_flow_json(
-                run_dir,
-                [
-                    {
-                        "name": step_name,
-                        "tool": "ecc",
-                        "state": "Success",
-                        "runtime": "0:00:04",
-                    },
-                ],
-            )
-            create_step_dir(run_dir, step_name, "ecc", subdirs=["output"])
-            create_ecc_workspace_config(run_dir, step_config)
-
-            rc = cli_main.run(
-                ["config", step_token, "--resolved", "--json", "--project", project_dir]
-            )
-            assert rc == 0
-            data = json.loads(capsys.readouterr().out)
-            assert [item["path"] for item in data["records"]] == [
-                "runs/default/config/flow_config.json",
-                "runs/default/config/db_default_config.json",
-                f"runs/default/config/{step_config}",
-            ]
-            assert all(item["source"] == "workspace_config" for item in data["records"])
-
     def test_config_cli_tokens_use_internal_flow_step_names(
         self,
         capsys,

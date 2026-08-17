@@ -1,3 +1,4 @@
+import logging
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -278,8 +279,8 @@ def resolve_rtl(cfg: ProjectConfig) -> tuple[str, str, str]:
             _, missing = validate_filelist(rtl_path)
             if not missing:
                 return ("filelist", "", rtl_path)
-        except Exception:
-            pass
+        except (OSError, ValueError) as e:
+            logging.debug("File %s is not a valid filelist: %s", rtl_path, e)
 
     return ("rtl", rtl_path, "")
 

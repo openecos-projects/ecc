@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 import time
-import traceback
 from threading import Event, Thread
 
 from chipcompiler.data import EccOutput, StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow
@@ -25,7 +24,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.NETLIST_OPT.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
-        StepEnum.PNP.value,
         StepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
@@ -44,7 +42,7 @@ def get_process_rss_mb(pid: int) -> float:
                     rss_kb = int(line.split()[1])
                     peak_memory = rss_kb / 1024
                     break
-    except Exception:
+    except (OSError, ValueError):
         pass
     return peak_memory
 
@@ -166,7 +164,14 @@ class EngineFlow:
                 if peak_memory is not None:
                     step["peak memory (mb)"] = peak_memory
 
-                self.save()
+                if not self.save():
+                    logger.error(
+                        "Failed to persist flow state for %s/%s (state=%s); "
+                        "state change exists only in memory",
+                        name,
+                        tool,
+                        state_value,
+                    )
                 return True
 
         return False
@@ -225,10 +230,11 @@ class EngineFlow:
                 ):
                     success = True
             case StepEnum.RCX.value:
+                success = True
                 for spef in ecc_output.spef if ecc_output else []:
                     if not os.path.exists(spef):
+                        success = False
                         break
-                success = True
             case StepEnum.TIMING_OPT.value:
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
@@ -305,8 +311,15 @@ class EngineFlow:
                 self.workspace_steps.append(eda_step)
                 pre_step = eda_step
             else:
-                # error create step, TBD
-                pass
+                step["state"] = StateEnum.Imcomplete.value
+                logger.error(
+                    "Failed to create step workspace for %s (tool=%s); "
+                    "step marked Incomplete, remaining steps will not be created",
+                    step.get("name", step),
+                    step.get("tool", "?"),
+                )
+                self.save()
+                break
 
     def init_db_engine(self) -> bool:
         if len(self.workspace_steps) <= 0:
@@ -372,9 +385,12 @@ class EngineFlow:
         if feature_path is None or feature_path == "":
             return False
 
-        from chipcompiler.utility import json_read, json_write
+        from chipcompiler.utility import JsonReadError, json_read_strict, json_write
 
-        existing = json_read(feature_path)
+        try:
+            existing = json_read_strict(feature_path)
+        except (FileNotFoundError, JsonReadError):
+            existing = {}
         payload = existing if isinstance(existing, dict) else {}
         payload["run"] = {
             "state": state.value,
@@ -383,6 +399,8 @@ class EngineFlow:
         }
         payload["constraints"] = {"sdc": timing_constraints}
         return json_write(file_path=feature_path, data=payload)
+
+        return True
 
     def run_steps(self, *, rerun: bool = False, observer=None) -> bool:
         """
@@ -418,6 +436,15 @@ class EngineFlow:
                     return False
                 case StateEnum.Ongoing:
                     return False
+
+        total_steps = len(self.workspace.flow.data.get("steps", []))
+        if len(self.workspace_steps) < total_steps:
+            self.workspace.logger.error(
+                "Flow incomplete: %d of %d steps were created; remaining steps could not be set up",
+                len(self.workspace_steps),
+                total_steps,
+            )
+            return False
 
         return True
 
@@ -460,7 +487,7 @@ class EngineFlow:
                 os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
                 redirect_stdio_to_file(log_file)
             except Exception:
-                traceback.print_exc()
+                logger.exception("Failed to redirect stdio to log file: %s", log_file)
 
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
         self.workspace.logger.info(f"[STEP] {step_tag} pid={os.getpid()} started")
@@ -478,6 +505,7 @@ class EngineFlow:
         previous_observer = getattr(self.workspace, "_runtime_flow_observer", None)
         if observer is not None:
             self.workspace._runtime_flow_observer = observer
+        step_raised_exception = False
         try:
             from chipcompiler.tools import run_step as run_tool_step
 
@@ -486,8 +514,9 @@ class EngineFlow:
             )
             self.workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
         except Exception:
+            step_raised_exception = True
             self.workspace.logger.error(f"[STEP] {step_tag} failed with exception")
-            traceback.print_exc()
+            self.workspace.logger.exception(f"[STEP] {step_tag} exception details")
         finally:
             stop_memory_monitor.set()
             memory_monitor.join()
@@ -504,11 +533,14 @@ class EngineFlow:
         runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
 
         # determine and save state
-        state = (
-            StateEnum.Success
-            if self.check_step_result(workspace_step=workspace_step)
-            else StateEnum.Imcomplete
-        )
+        if step_raised_exception:
+            state = StateEnum.Imcomplete
+        else:
+            state = (
+                StateEnum.Success
+                if self.check_step_result(workspace_step=workspace_step)
+                else StateEnum.Imcomplete
+            )
 
         self.set_state(
             name=workspace_step.name,
@@ -602,5 +634,6 @@ def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: Stat
     try:
         return bool(callback(workspace_step, state))
     except Exception:
+        # Fail-open: observer bugs must not invalidate successful tool results.
         logging.getLogger(__name__).exception("flow observer render gate failed")
-        return False
+        return True

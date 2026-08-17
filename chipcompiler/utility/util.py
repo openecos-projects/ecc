@@ -15,7 +15,7 @@ def track_process_memory(pid):
                         peak_rss_kb = max(peak_rss_kb, rss_kb)
                         break
             time.sleep(0.1)
-    except Exception:
+    except (OSError, ValueError):
         # ignore errors
         pass
     return peak_rss_kb

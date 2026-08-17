@@ -176,7 +176,7 @@ class EccSubFlow:
                         # Convert to MB
                         peak_memory = rss_kb / 1024
                         break
-        except Exception:
+        except (OSError, ValueError):
             # Ignore errors, return 0 if failed
             pass
 

@@ -1436,7 +1436,12 @@ def _save_step_feature_facts(step: WorkspaceStep, key: str, facts: dict) -> bool
     feature_path = getattr(step.feature, "step", None)
     if feature_path is None:
         return False
-    existing = json_read(feature_path)
+    from chipcompiler.utility import JsonReadError, json_read_strict
+
+    try:
+        existing = json_read_strict(feature_path)
+    except (FileNotFoundError, JsonReadError):
+        existing = {}
     payload = existing if isinstance(existing, dict) else {}
     payload[key] = facts
     return json_write(file_path=feature_path, data=payload)
