@@ -4,7 +4,7 @@ requires = [ "uv-build>=0.8.5" ]
 
 [project]
 name = "ecc"
-version = "0.1.0-alpha.9"
+version = "0.1.0-alpha.10"
 readme = "README.md"
 authors = [
   { name = "Emin", email = "me@emin.chat" },
@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
   "ecc-dreamplace==0.1.0a7",
-  "ecc-tools-bin==0.1.0a10",
+  "ecc-tools-bin==0.1.0a11",
   "fastapi>=0.109",
   "jsonrpcserver>=5.0.9",
   "klayout>=0.30.2",
