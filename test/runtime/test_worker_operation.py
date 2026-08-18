@@ -96,6 +96,95 @@ class TestRunOperationLifecycle:
         assert "unknown method" in result.error
 
 
+class TestRunOperationSequence:
+    @staticmethod
+    def _write_server(tmp_path):
+        script = tmp_path / "sequence_server.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            received = []
+            fail_first = os.environ.get("SEQ_FAIL_FIRST") == "1"
+            while True:
+                req = read_request()
+                if req is None:
+                    break
+                method = req.get("method", "")
+                req_id = req.get("id")
+                received.append(method)
+                if method == "rpc.hello":
+                    send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req_id})
+                elif method == "workspace.open":
+                    result = {"workspaceId": "test"}
+                    send_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                elif method == "flow.run_step":
+                    if fail_first:
+                        err = {"code": -32000, "message": "step failed"}
+                        send_response({"jsonrpc": "2.0", "error": err, "id": req_id})
+                    else:
+                        result = {"step": "ok"}
+                        send_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                elif method == "flow.run":
+                    send_response({"jsonrpc": "2.0", "result": {"ran": True}, "id": req_id})
+                elif method == "rpc.shutdown":
+                    with open(os.environ["SEQ_LOG"], "w") as fh:
+                        fh.write("\\n".join(received))
+                    send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req_id})
+                    break
+                else:
+                    err = {"code": -32601, "message": "unknown method"}
+                    send_response({"jsonrpc": "2.0", "error": err, "id": req_id})
+        """)
+        )
+        return script
+
+    def _make_operation(self, tmp_path, monkeypatch, script, *, fail_first):
+        log_file = tmp_path / "received.txt"
+        monkeypatch.setenv("SEQ_LOG", str(log_file))
+        if fail_first:
+            monkeypatch.setenv("SEQ_FAIL_FIRST", "1")
+        else:
+            monkeypatch.delenv("SEQ_FAIL_FIRST", raising=False)
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text("{}")
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+        )
+        return op, log_file
+
+    CALLS = [
+        ("flow.run_step", {"step": "Synthesis", "rerun": True, "reset_dependents": True}),
+        ("flow.run", {"rerun": False}),
+    ]
+
+    def test_successful_sequence_returns_last_call_result(self, tmp_path, monkeypatch):
+        script = self._write_server(tmp_path)
+        op, log_file = self._make_operation(tmp_path, monkeypatch, script, fail_first=False)
+        result = op.run_sequence(self.CALLS)
+        assert result.success is True
+        assert result.rpc_result["result"] == {"ran": True}
+        received = log_file.read_text().splitlines()
+        assert received == [
+            "rpc.hello",
+            "workspace.open",
+            "flow.run_step",
+            "flow.run",
+            "rpc.shutdown",
+        ]
+
+    def test_first_failure_skips_follow_up_and_still_shuts_down(self, tmp_path, monkeypatch):
+        script = self._write_server(tmp_path)
+        op, log_file = self._make_operation(tmp_path, monkeypatch, script, fail_first=True)
+        result = op.run_sequence(self.CALLS)
+        assert result.success is False
+        assert "step failed" in result.error
+        received = log_file.read_text().splitlines()
+        assert "flow.run" not in received
+        assert received[-1] == "rpc.shutdown"
+
+
 class TestRunOperationCrash:
     def test_worker_crash_triggers_repair(self, tmp_path):
         crash_script = tmp_path / "crash_after_open.py"

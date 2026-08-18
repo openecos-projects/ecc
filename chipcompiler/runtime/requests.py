@@ -67,6 +67,7 @@ class FlowRunStepRequest:
     workspace_id: str
     step: str
     rerun: bool = False
+    reset_dependents: bool = False
 
 
 @dataclass(frozen=True)

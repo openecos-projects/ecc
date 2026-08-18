@@ -287,7 +287,7 @@ class WorkspaceRuntimeApi:
         return self._with_session_mutation_lock(request.workspace_id, run)
 
     def flow_run_step(self, request: FlowRunStepRequest) -> dict:
-        return self._flow_run_step(request)
+        return self._flow_run_step(request, reset_dependents=request.reset_dependents)
 
     def _flow_run_step(
         self,

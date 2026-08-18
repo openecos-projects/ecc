@@ -307,6 +307,10 @@ def test_rerun_must_be_boolean(method, params):
             "operation.start_step",
             {"workspaceId": "ws-1", "step": "Synthesis", "resetDependents": 1},
         ),
+        (
+            "flow.run_step",
+            {"workspaceId": "ws-1", "step": "Synthesis", "resetDependents": 1},
+        ),
     ],
 )
 def test_reset_dependents_must_be_boolean(method, params):
@@ -316,14 +320,26 @@ def test_reset_dependents_must_be_boolean(method, params):
     assert exc_info.value.reason == "reset_dependents must be a boolean"
 
 
-def test_direct_flow_run_step_rejects_gui_only_reset_dependents_field():
-    with pytest.raises(RequestValidationError) as exc_info:
-        _parse_runtime_request(
-            "flow.run_step",
-            {"workspaceId": "ws-1", "step": "Synthesis", "resetDependents": True},
-        )
+def test_flow_run_step_parses_reset_dependents():
+    request = _parse_runtime_request(
+        "flow.run_step",
+        {"workspaceId": "ws-1", "step": "Synthesis", "resetDependents": True},
+    )
 
-    assert exc_info.value.reason == "unknown field: reset_dependents"
+    assert request == FlowRunStepRequest(
+        workspace_id="ws-1",
+        step="Synthesis",
+        reset_dependents=True,
+    )
+
+
+def test_flow_run_step_reset_dependents_defaults_to_false():
+    request = _parse_runtime_request(
+        "flow.run_step",
+        {"workspaceId": "ws-1", "step": "Synthesis"},
+    )
+
+    assert request == FlowRunStepRequest(workspace_id="ws-1", step="Synthesis")
 
 
 def test_unknown_runtime_method_has_no_request_model():

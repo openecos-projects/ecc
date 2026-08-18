@@ -79,6 +79,24 @@ class RunOperation:
 
         Session sequence: hello → workspace.open → method → rpc.shutdown → EOF.
         """
+        return self.run_sequence([(method, params)], request_id=request_id)
+
+    def run_sequence(
+        self,
+        calls: list[tuple[str, dict]],
+        *,
+        request_id: int = 1,
+    ) -> OperationResult:
+        """Execute an ordered list of (method, params) calls in one session.
+
+        The calls share a single worker session:
+        hello → workspace.open → call 1 → ... → call N → rpc.shutdown → EOF.
+
+        Execution stops at the first failed RPC: remaining calls are skipped,
+        the session is still shut down gracefully and drained, and the
+        returned OperationResult describes the failing call. On success the
+        result describes the last call.
+        """
         client = WorkerClient(self._worker_argv)
         reader: LogStreamReader | None = None
 
@@ -107,11 +125,15 @@ class RunOperation:
                 return self._handle_protocol_or_crash(client, reader, open_result)
 
             workspace_id = open_result.response["result"]["workspaceId"]
-            params = {**params, "workspace_id": workspace_id}
 
-            rpc_result = client.request(method, params, request_id)
+            rpc_result: WorkerResult | None = None
+            for index, (method, params) in enumerate(calls):
+                full_params = {**params, "workspace_id": workspace_id}
+                rpc_result = client.request(method, full_params, request_id + index)
+                if not rpc_result.success:
+                    break
 
-            if not rpc_result.success:
+            if rpc_result is not None and not rpc_result.success:
                 if rpc_result.response is None or not client.is_alive():
                     error = rpc_result.error or "protocol failure"
                     return self._handle_crash(client, reader, error)
@@ -149,7 +171,7 @@ class RunOperation:
             if error_parts:
                 return OperationResult(
                     success=False,
-                    rpc_result=rpc_result.response,
+                    rpc_result=rpc_result.response if rpc_result else None,
                     exit_code=client.process.returncode if client.process else None,
                     error="; ".join(error_parts),
                     archive_error=log_state.error,
@@ -158,7 +180,7 @@ class RunOperation:
 
             return OperationResult(
                 success=True,
-                rpc_result=rpc_result.response,
+                rpc_result=rpc_result.response if rpc_result else None,
                 exit_code=0,
                 log_state=log_state,
             )

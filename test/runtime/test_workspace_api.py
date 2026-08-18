@@ -1397,6 +1397,62 @@ def test_flow_run_step_gui_rerun_resets_target_and_downstream_subflows(monkeypat
         }
 
 
+def test_flow_run_step_direct_rerun_applies_reset_dependents_from_request(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    def step_spec(name, tool):
+        step_dir = ws / f"{name}_{tool}"
+        artifact_dir = step_dir / "output"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "stale").write_text(name)
+        subflow_path = step_dir / "subflow.json"
+        subflow_path.write_text(json.dumps({"path": str(subflow_path), "steps": []}))
+        checklist_path = step_dir / "checklist.json"
+        checklist_path.write_text(json.dumps({"checklist": []}))
+        return {
+            "name": name,
+            "tool": tool,
+            "output": {"dir": artifact_dir},
+            "subflow": SimpleNamespace(path=subflow_path, steps=[]),
+            "checklist": SimpleNamespace(path=checklist_path, checklist=[]),
+        }
+
+    synthesis = step_spec("Synthesis", "yosys")
+    floorplan = step_spec("Floorplan", "ecc")
+    route = step_spec("route", "ecc")
+    DummyFlow.workspace_step_specs = (synthesis, floorplan, route)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [
+            {"name": spec["name"], "tool": spec["tool"], "state": "Success"}
+            for spec in (synthesis, floorplan, route)
+        ]
+    }
+
+    result = api.flow_run_step(
+        FlowRunStepRequest(
+            workspace_id=workspace_id,
+            step="Floorplan",
+            rerun=True,
+            reset_dependents=True,
+        )
+    )
+
+    assert result == {"step": "Floorplan", "state": "Success"}
+    assert (synthesis["output"]["dir"] / "stale").read_text() == "Synthesis"
+    for spec in (floorplan, route):
+        assert list(spec["output"]["dir"].iterdir()) == []
+    records = {record["name"]: record for record in session.workspace.flow.data["steps"]}
+    assert any(
+        record["name"] == "Synthesis" and record["state"] == "Success"
+        for record in session.workspace.flow.data["steps"]
+    )
+    assert records["Floorplan"]["state"] == "Unstart"
+    assert records["route"]["state"] == "Unstart"
+
+
 def test_flow_run_step_rerun_rejects_an_open_layout_edit(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()
