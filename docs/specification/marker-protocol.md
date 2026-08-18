@@ -29,11 +29,12 @@ to any user-visible surface, or shown to users.
 A marker frame is exactly one line on fd 2:
 
 ```
-\x1e ECC-STEP <space> <compact JSON> \n
+\x1eECC-STEP {"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\n
 ```
 
-- `\x1e` is the ASCII Record Separator control character.
-- The literal prefix `ECC-STEP ` (with one trailing space) follows.
+- `\x1e` is the ASCII Record Separator control character (one byte, `0x1e`).
+- The literal text `ECC-STEP ` (with one trailing space) follows immediately,
+  with no space between `\x1e` and `ECC-STEP`.
 - The payload is a single JSON object serialized without insignificant
   whitespace.
 - The frame is terminated by a single `\n`.
@@ -64,6 +65,15 @@ Producer rules (executor):
 
 Consumer rules (client archiver):
 
+- Consumers scan for the reserved prefix `\x1eECC-STEP ` at **arbitrary byte
+  boundaries**, not only at line starts: the producer does not insert a
+  newline before a frame, so a frame may immediately follow output that lacks
+  a trailing newline. Bytes preceding a candidate frame are ordinary stream
+  data.
+- A candidate is only consumed when it is a complete, newline-terminated,
+  valid v1 frame. An incomplete candidate at the end of the buffered stream
+  is held back (bounded: any candidate longer than 512 bytes without a
+  newline is not a frame; its bytes are data).
 - A `begin` frame while no step is active: open/activate archival for
   `(step, tool)`. An `end` frame matching the active `(step, tool)`: close
   archival. Both frames are consumed (not archived).

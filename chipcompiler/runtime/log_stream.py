@@ -173,20 +173,39 @@ class LogStreamReader:
             self._close_archive()
 
     def _process_buffer(self, buf: bytes) -> bytes:
-        lines = buf.split(b"\n")
-        for line in lines[:-1]:
-            frame = line + b"\n"
+        while True:
+            idx = buf.find(MARKER_PREFIX)
+            if idx < 0:
+                # No candidate frame: hold back only a trailing partial prefix.
+                tail = buf.rfind(MARKER_PREFIX[:1])
+                if tail >= 0 and MARKER_PREFIX.startswith(buf[tail:]):
+                    if tail:
+                        self._emit_data(buf[:tail])
+                    return buf[tail:]
+                if buf:
+                    self._emit_data(buf)
+                return b""
+            if idx > 0:
+                # Bytes before a marker candidate are ordinary stream data.
+                self._emit_data(buf[:idx])
+                buf = buf[idx:]
+                continue
+            nl = buf.find(b"\n")
+            if nl < 0:
+                if len(buf) < 512:
+                    return buf
+                # An overlong candidate without a newline is not a marker:
+                # emit the prefix's first byte and rescan the remainder.
+                self._emit_data(buf[:1])
+                buf = buf[1:]
+                continue
+            frame = buf[: nl + 1]
             marker = parse_marker(frame)
             if marker is not None:
                 self._handle_marker(marker, frame)
             else:
                 self._emit_data(frame)
-        remainder = lines[-1]
-        if remainder.startswith(MARKER_PREFIX[:1]) and len(remainder) < 512:
-            return remainder
-        if remainder:
-            self._emit_data(remainder)
-        return b""
+            buf = buf[nl + 1 :]
 
     def _is_allowed_step(self, step: str, tool: str) -> bool:
         if self._valid_steps is None:

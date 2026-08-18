@@ -12,6 +12,23 @@ from chipcompiler.runtime.log_stream import (
 )
 
 
+class _ChunkedStream:
+    """A binary stream that returns fixed-size chunks regardless of read size."""
+
+    def __init__(self, data: bytes, chunk_size: int):
+        self._data = data
+        self._chunk_size = chunk_size
+        self._pos = 0
+
+    def read(self, n: int = -1) -> bytes:
+        if self._pos >= len(self._data):
+            return b""
+        size = self._chunk_size if n < 0 else min(n, self._chunk_size)
+        part = self._data[self._pos : self._pos + size]
+        self._pos += size
+        return part
+
+
 class TestParseMarker:
     def test_valid_begin(self):
         line = b'\x1eECC-STEP {"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\n'
@@ -644,6 +661,75 @@ class TestOnStepEvent:
         # The second begin re-opened (truncated) the shared log path, so its
         # content proves archiving continued after the callback was disabled.
         assert log_path.read_bytes() == b"line 2\n"
+
+
+class TestMarkerBoundaryScanning:
+    """Markers are recognized wherever the reserved prefix appears."""
+
+    def test_end_marker_after_unterminated_output(self, tmp_path):
+        log_path = tmp_path / "step.log"
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
+            b"last line without newline"
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data), log_path_resolver=lambda step, tool: log_path
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert log_path.read_bytes() == b"last line without newline"
+        assert reader.state.active_step is None
+        assert reader.state.steps_seen == ["S"]
+
+    def test_end_marker_split_after_unterminated_output(self, tmp_path):
+        log_path = tmp_path / "step.log"
+        end_frame = b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\nunterminated' + end_frame
+        )
+        reader = LogStreamReader(
+            _ChunkedStream(stream_data, 7), log_path_resolver=lambda step, tool: log_path
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert log_path.read_bytes() == b"unterminated"
+        assert reader.state.active_step is None
+
+    def test_invalid_marker_mid_line_is_data(self, tmp_path):
+        log_path = tmp_path / "step.log"
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
+            b"glued text \x1eECC-STEP {bad json}\n"
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data), log_path_resolver=lambda step, tool: log_path
+        )
+        reader.start()
+        reader.join(timeout=5)
+        content = log_path.read_bytes()
+        assert b"glued text " in content
+        assert b"{bad json}" in content
+        assert reader.state.active_step is None
+
+    def test_overlong_candidate_recovers_following_marker(self, tmp_path):
+        log_path = tmp_path / "step.log"
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
+            b"\x1eECC-STEP "
+            + b"a" * 600
+            + b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
+        )
+        reader = LogStreamReader(
+            _ChunkedStream(stream_data, 100), log_path_resolver=lambda step, tool: log_path
+        )
+        reader.start()
+        reader.join(timeout=5)
+        content = log_path.read_bytes()
+        assert b"a" * 600 in content
+        assert b'"event":"end"' not in content
+        assert reader.state.active_step is None
 
 
 class TestLogStreamResilience:
