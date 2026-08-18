@@ -7,6 +7,7 @@ import pytest
 import chipcompiler.engine.flow as flow_module
 from chipcompiler import tools
 from chipcompiler.data import (
+    ChecklistState,
     EccFeature,
     EccOutput,
     EccStep,
@@ -18,6 +19,7 @@ from chipcompiler.data import (
     YosysStep,
 )
 from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 
 
 def test_engine_flow_missing_path_is_not_initialized():
@@ -101,6 +103,59 @@ def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
     verilog.write_text("module gcd; endmodule\n")
     step = YosysStep(name=StepEnum.SYNTHESIS.value, output=YosysOutput(verilog=verilog))
     assert EngineFlow(Workspace()).check_step_result(step) is True
+
+
+def test_engine_flow_refreshes_home_checklist_after_harden_success(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    workspace = Workspace(directory=tmp_path)
+    workspace.flow.path = home / "flow.json"
+    workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Unstart.value}
+        ]
+    }
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    workspace.home.init(home / "home.json")
+    workspace.home.set_checklist(home / "checklist.json")
+    lef = tmp_path / "gcd.lef"
+    lib = tmp_path / "gcd.lib"
+    lef.write_text("")
+    lib.write_text("")
+    workspace_step = EccStep(
+        name=StepEnum.HARDEN.value,
+        directory=tmp_path / "Harden_ecc",
+        tool="ecc",
+        output=EccOutput(lef=lef, lib=lib),
+        checklist=ChecklistState(path=tmp_path / "Harden_ecc" / "checklist.json"),
+    )
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    def run_tool_step(**_kwargs):
+        refresh_step_checklist(workspace, workspace_step)
+        items = {
+            item["id"]: item
+            for item in json.loads((home / "checklist.json").read_text(encoding="utf-8"))[
+                "checklist"
+            ]
+        }
+        assert items["flow.harden.completed"]["state"] == "failed"
+        assert "Ongoing" in items["flow.harden.completed"]["summary"]
+        return True
+
+    monkeypatch.setattr(tools, "run_step", run_tool_step)
+    monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+    monkeypatch.setattr(tools, "build_step_metrics", lambda **_kwargs: None)
+
+    assert engine_flow.run_step(workspace_step) == StateEnum.Success
+    items = {
+        item["id"]: item
+        for item in json.loads((home / "checklist.json").read_text(encoding="utf-8"))["checklist"]
+    }
+    assert items["flow.harden.completed"]["state"] == "pass"
+    assert items["flow.harden.completed"]["blocked"] is False
 
 
 def test_check_step_result_harden_reads_ecc_only_lef_lib(tmp_path):

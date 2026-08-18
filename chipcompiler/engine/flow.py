@@ -590,6 +590,8 @@ class EngineFlow:
 
             save_layout_image(workspace=self.workspace, step=workspace_step)
 
+        _refresh_signoff_checklist(self.workspace, workspace_step)
+
         self.clear_db_engine_after_step(workspace_step, state)
         _notify_flow_observer(observer, "on_step_completed", workspace_step, state)
         if state == StateEnum.Success and not _wait_for_step_rendered(
@@ -609,6 +611,20 @@ class EngineFlow:
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
+
+
+def _refresh_signoff_checklist(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
+    """Replace step/home checklists after the step's terminal flow state is saved."""
+    try:
+        from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
+
+        refresh_step_checklist(workspace, workspace_step)
+    except Exception:
+        logger.exception(
+            "Failed to refresh signoff checklist after %s/%s",
+            workspace_step.name,
+            workspace_step.tool,
+        )
 
 
 def _notify_flow_observer(observer, method_name: str, *args) -> None:
