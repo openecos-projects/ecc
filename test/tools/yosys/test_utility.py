@@ -133,4 +133,3 @@ def test_check_slang_support_prints_error_on_failure(monkeypatch, capsys):
 
     assert ok is False
     assert "slang frontend check failed" in capsys.readouterr().out
-
