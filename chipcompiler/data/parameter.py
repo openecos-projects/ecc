@@ -122,6 +122,24 @@ class Parameters:
     data: dict = field(default_factory=dict)  # parameters data
 
 
+def parameters_have_chip_identity(data: object) -> bool:
+    """Return True when parameters still carry dashboard chip identity fields."""
+    if not isinstance(data, dict):
+        return False
+    for key in ("PDK", "Design", "Top module", "Clock"):
+        if str(data.get(key, "")).strip():
+            return True
+    die = data.get("Die")
+    if isinstance(die, dict):
+        try:
+            area = float(die.get("Area") or 0)
+        except (TypeError, ValueError):
+            area = 0.0
+        if area > 0:
+            return True
+    return False
+
+
 def load_parameter(path: Path) -> Parameters:
     from chipcompiler.utility import JsonReadError, json_read_strict
 
@@ -134,6 +152,23 @@ def load_parameter(path: Path) -> Parameters:
     except JsonReadError:
         parameter.data = {}
     return parameter
+
+
+def reload_parameter(path: Path | None, current: Parameters | None = None) -> Parameters:
+    """Reload parameters.json without replacing a valid identity with an empty read."""
+    if path is None:
+        loaded = Parameters()
+    else:
+        loaded = load_parameter(path)
+    if (
+        current is not None
+        and parameters_have_chip_identity(current.data)
+        and not parameters_have_chip_identity(loaded.data)
+    ):
+        loaded.data = deepcopy(current.data)
+        if loaded.path is None and current.path is not None:
+            loaded.path = current.path
+    return loaded
 
 
 def save_parameter(parameter: Parameters) -> bool:

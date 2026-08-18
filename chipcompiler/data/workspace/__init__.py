@@ -14,6 +14,7 @@ from ..parameter import (
     Parameters,
     get_parameters,
     load_parameter,
+    reload_parameter,
     save_parameter,
     update_parameters,
 )
@@ -408,10 +409,10 @@ def _mapping_config_path(
 
 
 def _reload_workspace_parameters(workspace: Workspace) -> None:
-    if workspace.parameters.path:
-        parameter_path = Path(workspace.parameters.path)
-        if parameter_path.exists():
-            workspace.parameters = load_parameter(parameter_path)
+    parameter_path = workspace.parameters.path
+    if parameter_path is None:
+        return
+    workspace.parameters = reload_parameter(parameter_path, workspace.parameters)
 
 
 def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
@@ -871,6 +872,8 @@ def prepare_workspace_for_rerun(
     workspace.home.reset()
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(workspace_root / "home" / "checklist.json")
+    parameter_path = workspace.parameters.path or (workspace_root / "home" / "parameters.json")
+    workspace.parameters.path = Path(parameter_path)
     workspace.home.set_parameters(workspace.parameters.path)
     _reset_workspace_checklist(workspace)
     if not preserve_user_inputs:

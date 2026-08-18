@@ -463,14 +463,32 @@ class WorkspaceRuntimeApi:
             for step in raw_steps
             if isinstance(step, dict)
         ]
+        from chipcompiler.data.parameter import (
+            parameters_have_chip_identity,
+            reload_parameter,
+        )
+
+        parameters = getattr(session.workspace, "parameters", None)
+        parameters_data = getattr(parameters, "data", {}) or {}
+        if not parameters_have_chip_identity(parameters_data):
+            parameter_path = getattr(parameters, "path", None)
+            if parameter_path:
+                session.workspace.parameters = reload_parameter(parameter_path, parameters)
+                parameters_data = session.workspace.parameters.data or {}
+
+        home_data = deepcopy(getattr(session.workspace.home, "data", {}) or {})
+        if not str(home_data.get("parameters", "")).strip():
+            parameter_path = getattr(session.workspace.parameters, "path", None)
+            if parameter_path is None:
+                parameter_path = Path(session.directory) / "home" / "parameters.json"
+            home_data["parameters"] = str(parameter_path)
+
         return {
             **self.operations.workspace_snapshot(request.workspace_id),
             "directory": str(session.directory),
             "flow": {"steps": steps},
-            "home": stringify_paths(deepcopy(getattr(session.workspace.home, "data", {}))),
-            "parameters": stringify_paths(
-                deepcopy(getattr(session.workspace.parameters, "data", {}))
-            ),
+            "home": stringify_paths(home_data),
+            "parameters": stringify_paths(deepcopy(parameters_data)),
         }
 
     def db_ensure(self, request: DbEnsureRequest) -> dict:

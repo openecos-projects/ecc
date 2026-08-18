@@ -1003,6 +1003,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     workspace.parameters.data = preserved_parameters
     preserved_parameter_text = parameter_path.read_text()
 
+    workspace.parameters.path = None
     prepare_workspace_for_rerun(
         workspace,
         FakeEngineFlow(),
@@ -1010,6 +1011,8 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     )
 
     assert parameter_path.read_text() == preserved_parameter_text
+    assert workspace.parameters.path == parameter_path
+    assert json_read(home_path)["parameters"] == str(parameter_path)
     assert (workspace_dir / "config" / "flow_config.json").read_text() == config_before
 
 
