@@ -322,13 +322,22 @@ class WorkspaceRuntimeApi:
                 affected_steps = self._rerun_affected_steps(
                     engine_flow,
                     workspace_step,
-                    reset_dependents=reset_dependents,
+                    reset_dependents=reset_dependents or request.invalidate_dependents,
                 )
+                if reset_dependents:
+                    prepare_steps, invalidate_steps = affected_steps, []
+                elif request.invalidate_dependents:
+                    # Clear only the target's artifacts; downstream steps keep
+                    # their outputs but are marked Unstart for a later resume.
+                    prepare_steps, invalidate_steps = affected_steps[:1], affected_steps[1:]
+                else:
+                    prepare_steps, invalidate_steps = affected_steps, []
                 self._prepare_steps_for_rerun(
                     session.workspace,
                     engine_flow,
-                    affected_steps,
+                    prepare_steps,
                 )
+                self._invalidate_step_records(engine_flow, invalidate_steps)
                 self._notify_rerun_prepared(
                     observer,
                     affected_steps,
@@ -902,6 +911,19 @@ class WorkspaceRuntimeApi:
         except ValueError:
             return [workspace_step]
         return workspace_steps[start_index:]
+
+    @staticmethod
+    def _invalidate_step_records(engine_flow, workspace_steps) -> None:
+        """Mark steps Unstart in flow.json without touching their artifacts."""
+        updated = False
+        for workspace_step in workspace_steps:
+            record = engine_flow.get_step(workspace_step.name, workspace_step.tool)
+            if record is None:
+                continue
+            record.update({"state": "Unstart", "runtime": "", "peak memory (mb)": 0})
+            updated = True
+        if updated:
+            engine_flow.save()
 
     @staticmethod
     def _notify_rerun_prepared(

@@ -188,27 +188,28 @@ class LogStreamReader:
             return True
         return (step, tool) in self._valid_steps
 
-    def _archive_target_ok(self, step: str, tool: str) -> bool:
-        """Validate sanitization and containment before activating a step.
+    def _validated_archive_path(self, step: str, tool: str) -> Path | None:
+        """Resolve and validate the archive path for a begin marker.
 
-        A marker whose archive target is unsafe or unresolvable is degraded to
-        ordinary bytes instead of activating archival.
+        Returns the validated path, or None when archiving is not configured
+        (resolver absent) or when the marker must degrade to ordinary bytes
+        (unsafe names, resolver failure, containment violation).
         """
         if self._resolve_path is None:
-            return True
+            return None
         for value in (step, tool):
             if not value or "/" in value or "\\" in value or ".." in value:
                 if self._state.error is None:
                     self._state.error = ValueError(f"unsafe step marker name: {value!r}")
-                return False
+                return None
         try:
             path = self._resolve_path(step, tool)
         except Exception as exc:
             if self._state.error is None:
                 self._state.error = exc
-            return False
+            return None
         if path is None:
-            return False
+            return None
         if self._workspace_dir is not None:
             try:
                 resolved = path.resolve()
@@ -219,12 +220,12 @@ class LogStreamReader:
                 ):
                     if self._state.error is None:
                         self._state.error = ValueError(f"archive path escapes workspace: {path}")
-                    return False
+                    return None
             except (OSError, ValueError) as exc:
                 if self._state.error is None:
                     self._state.error = exc
-                return False
-        return True
+                return None
+        return path
 
     def _handle_marker(self, marker: StepMarker, raw_line: bytes) -> None:
         if marker.event == "begin":
@@ -234,13 +235,15 @@ class LogStreamReader:
             if self._state.active_step is not None:
                 self._emit_data(raw_line)
                 return
-            if not self._archive_target_ok(marker.step, marker.tool):
+            archive_path = self._validated_archive_path(marker.step, marker.tool)
+            if self._resolve_path is not None and archive_path is None:
                 self._emit_data(raw_line)
                 return
             self._state.active_step = marker.step
             self._state.active_tool = marker.tool
             self._state.steps_seen.append(marker.step)
-            self._open_archive(marker.step, marker.tool)
+            if archive_path is not None:
+                self._open_archive(archive_path)
             self._emit_step_event("begin", marker.step, marker.tool)
         elif marker.event == "end":
             if marker.step == self._state.active_step and marker.tool == self._state.active_tool:
@@ -289,32 +292,7 @@ class LogStreamReader:
             combined = combined[-self._tail_size :]
         self._state.tail_bytes = combined
 
-    def _open_archive(self, step: str, tool: str) -> None:
-        if self._resolve_path is None:
-            return
-        try:
-            path = self._resolve_path(step, tool)
-        except Exception as exc:
-            if self._state.error is None:
-                self._state.error = exc
-            return
-        if path is None:
-            return
-        if self._workspace_dir is not None:
-            try:
-                resolved = path.resolve()
-                workspace_resolved = self._workspace_dir.resolve()
-                if not (
-                    resolved == workspace_resolved
-                    or str(resolved).startswith(str(workspace_resolved) + os.sep)
-                ):
-                    if self._state.error is None:
-                        self._state.error = ValueError(f"archive path escapes workspace: {path}")
-                    return
-            except (OSError, ValueError) as exc:
-                if self._state.error is None:
-                    self._state.error = exc
-                return
+    def _open_archive(self, path: Path) -> None:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             self._state.archive_file = path.open("wb")  # noqa: SIM115

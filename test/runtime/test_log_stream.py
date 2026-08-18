@@ -84,17 +84,26 @@ class TestEmitStepMarker:
         import ctypes
 
         libc = ctypes.CDLL(None)
+        libc.fdopen.restype = ctypes.c_void_p
+        libc.fdopen.argtypes = [ctypes.c_int, ctypes.c_char_p]
+        libc.setvbuf.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_size_t]
         libc.fputs.argtypes = [ctypes.c_char_p, ctypes.c_void_p]
-        stderr_file = ctypes.c_void_p.in_dll(libc, "stderr")
+        libc.fclose.argtypes = [ctypes.c_void_p]
+        _IOFBF = 0
 
         sink = tmp_path / "fd2.bin"
         saved_fd = os.dup(2)
         try:
             with sink.open("wb") as handle:
                 os.dup2(handle.fileno(), 2)
-            libc.fputs(b"native-before-end\n", stderr_file)
-            # No fflush here: emit_step_marker must drain the C buffer first.
+            # A fully buffered FILE* targeting fd 2: fputs bytes stay in the C
+            # buffer until something flushes the process streams.
+            stream = libc.fdopen(os.dup(2), b"w")
+            assert stream
+            assert libc.setvbuf(stream, None, _IOFBF, 4096) == 0
+            libc.fputs(b"native-before-end\n", stream)
             emit_step_marker("end", step="S", tool="T")
+            libc.fclose(stream)
         finally:
             os.dup2(saved_fd, 2)
             os.close(saved_fd)

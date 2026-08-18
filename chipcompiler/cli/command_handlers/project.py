@@ -612,7 +612,8 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
     if command_input.only is not None:
         # An executed --only step always reruns with clean artifacts; the
         # --force distinction only gates whether a successful step qualifies.
-        calls = [("flow.run_step", {"step": target, "rerun": True})]
+        # Downstream steps keep their outputs but are marked Unstart.
+        calls = [("flow.run_step", {"step": target, "rerun": True, "invalidate_dependents": True})]
     else:
         calls = [
             ("flow.run_step", {"step": target, "rerun": True, "reset_dependents": True}),

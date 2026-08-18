@@ -311,13 +311,17 @@ def test_rerun_must_be_boolean(method, params):
             "flow.run_step",
             {"workspaceId": "ws-1", "step": "Synthesis", "resetDependents": 1},
         ),
+        (
+            "flow.run_step",
+            {"workspaceId": "ws-1", "step": "Synthesis", "invalidateDependents": 1},
+        ),
     ],
 )
 def test_reset_dependents_must_be_boolean(method, params):
     with pytest.raises(RequestValidationError) as exc_info:
         _parse_runtime_request(method, params)
 
-    assert exc_info.value.reason == "reset_dependents must be a boolean"
+    assert "must be a boolean" in exc_info.value.reason
 
 
 def test_flow_run_step_parses_reset_dependents():
@@ -330,6 +334,19 @@ def test_flow_run_step_parses_reset_dependents():
         workspace_id="ws-1",
         step="Synthesis",
         reset_dependents=True,
+    )
+
+
+def test_flow_run_step_parses_invalidate_dependents():
+    request = _parse_runtime_request(
+        "flow.run_step",
+        {"workspaceId": "ws-1", "step": "Synthesis", "invalidateDependents": True},
+    )
+
+    assert request == FlowRunStepRequest(
+        workspace_id="ws-1",
+        step="Synthesis",
+        invalidate_dependents=True,
     )
 
 

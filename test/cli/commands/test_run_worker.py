@@ -80,12 +80,24 @@ _FAKE_WORKER = textwrap.dedent("""\
             result = {"workspaceId": "fake-worker"}
             send_response({"jsonrpc": "2.0", "result": result, "id": req_id})
         elif method == "flow.run_step":
-            step = req["params"]["step"]
+            params = req["params"]
+            step = params["step"]
             tool = "ecc"
             with open(flow_json_path(ws_dir)) as handle:
-                for record in json.load(handle)["steps"]:
+                flow_data = json.load(handle)
+            for record in flow_data["steps"]:
+                if record["name"] == step:
+                    tool = record.get("tool", "ecc")
+            if params.get("invalidate_dependents"):
+                seen_target = False
+                for record in flow_data["steps"]:
                     if record["name"] == step:
-                        tool = record.get("tool", "ecc")
+                        seen_target = True
+                        continue
+                    if seen_target:
+                        record["state"] = "Unstart"
+                with open(flow_json_path(ws_dir), "w") as handle:
+                    json.dump(flow_data, handle)
             run_one_step(ws_dir, step, tool)
             result = {"step": step, "state": "Success"}
             send_response({"jsonrpc": "2.0", "result": result, "id": req_id})
@@ -204,6 +216,60 @@ class TestWorkspaceRunWithRealWorker:
             "CTS": "Unstart",
         }
         assert not os.path.exists(os.path.join(workspace, "CTS_ecc"))
+
+    def test_only_force_marks_downstream_unstart_but_keeps_outputs(
+        self, fake_worker, tmp_path, capsys, monkeypatch
+    ):
+        workspace = str(tmp_path / "workspace")
+        _write_flow_json(
+            workspace,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                {"name": "place", "tool": "ecc", "state": "Success"},
+                {"name": "CTS", "tool": "ecc", "state": "Success"},
+            ],
+        )
+        cts_output = os.path.join(workspace, "CTS_ecc", "output")
+        os.makedirs(cts_output)
+        with open(os.path.join(cts_output, "result.def"), "w") as handle:
+            handle.write("old")
+
+        class Flow:
+            def __init__(self, workspace):
+                self.workspace = workspace
+
+            def has_init(self):
+                return True
+
+        def fake_load_workspace(path):
+            return SimpleNamespace(
+                name="workspace",
+                flow=SimpleNamespace(
+                    data={
+                        "steps": [
+                            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                            {"name": "place", "tool": "ecc", "state": "Success"},
+                            {"name": "CTS", "tool": "ecc", "state": "Success"},
+                        ]
+                    }
+                ),
+            )
+
+        monkeypatch.setattr("chipcompiler.data.load_workspace", fake_load_workspace)
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--only", "place", "--force", "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 0
+        assert record["executed_steps"] == ["place"]
+        assert _read_flow_states(workspace) == {
+            "Synthesis": "Success",
+            "place": "Success",
+            "CTS": "Unstart",
+        }
+        with open(os.path.join(cts_output, "result.def")) as handle:
+            assert handle.read() == "old"
 
 
 class TestFlowRunViaWorkerArchival:
