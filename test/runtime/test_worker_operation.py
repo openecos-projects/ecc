@@ -185,6 +185,53 @@ class TestRunOperationSequence:
         assert received[-1] == "rpc.shutdown"
 
 
+class TestRunOperationRpcErrorRepair:
+    def test_rpc_error_with_unmatched_step_repairs_flow_state(self, tmp_path):
+        """A live worker's RPC error still repairs a step left Ongoing."""
+        script = tmp_path / "error_after_begin.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            while True:
+                req = read_request()
+                if req is None:
+                    break
+                method = req.get("method", "")
+                req_id = req.get("id")
+                if method == "rpc.hello":
+                    send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req_id})
+                elif method == "workspace.open":
+                    result = {"workspaceId": "x"}
+                    send_response({"jsonrpc": "2.0", "result": result, "id": req_id})
+                elif method == "flow.run_step":
+                    os.write(2, make_marker("begin", "Synthesis", "yosys"))
+                    os.write(2, b"partial output\\n")
+                    err = {"code": -32000, "message": "run step Synthesis failed"}
+                    send_response({"jsonrpc": "2.0", "error": err, "id": req_id})
+                elif method == "rpc.shutdown":
+                    send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req_id})
+                    break
+                else:
+                    err = {"code": -32601, "message": "unknown method"}
+                    send_response({"jsonrpc": "2.0", "error": err, "id": req_id})
+        """)
+        )
+        flow_json = tmp_path / "flow.json"
+        data = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Ongoing"}]}
+        flow_json.write_text(json.dumps(data))
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+        )
+        result = op.run_sequence([("flow.run_step", {"step": "Synthesis", "rerun": True})])
+        assert result.success is False
+        assert "run step Synthesis failed" in result.error
+        assert result.repaired_steps == ["Synthesis"]
+        repaired_data = json.loads(flow_json.read_text())
+        assert repaired_data["steps"][0]["state"] == "Incomplete"
+
+
 class TestRunOperationCrash:
     def test_worker_crash_triggers_repair(self, tmp_path):
         crash_script = tmp_path / "crash_after_open.py"

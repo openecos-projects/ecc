@@ -195,11 +195,20 @@ class RunOperation:
             reader.stop()
 
         log_state = reader.state if reader else None
+        # A live-worker RPC error can still leave a step unmatched: the flow
+        # raised after the begin marker, so flow.json may hold a stale Ongoing
+        # record. Repair it exactly as crash recovery does.
+        repaired: list[str] = []
+        active_step = log_state.active_step if log_state else None
+        if active_step is not None and self._flow_json_path.exists():
+            with suppress(OSError):
+                repaired = repair_flow_state(self._flow_json_path, active_step=active_step)
         return OperationResult(
             success=False,
             rpc_result=result.response,
             exit_code=client.process.returncode if client.process else None,
             error=result.error,
+            repaired_steps=repaired,
             archive_error=log_state.error if log_state else None,
             log_state=log_state,
         )
