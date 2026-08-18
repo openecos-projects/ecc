@@ -4,29 +4,12 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-_LOG_POLL_INTERVAL_SECONDS = 0.25
-_MAX_LOG_CHUNK_BYTES = 16 * 1024
-_MAX_FINAL_LOG_BYTES = 64 * 1024
 _RENDER_ACK_RETRY_SECONDS = 5.0
 _RENDER_ACK_PAUSE_SECONDS = 30.0
 _RENDER_ACK_ABORT_SECONDS = 300.0
-
-
-@dataclass
-class _StepLogTail:
-    """A bounded worker-side reader for one active step log."""
-
-    operation_id: str
-    path: Path
-    step: str
-    tool: str
-    cursor: int
-    stopped: threading.Event = field(default_factory=threading.Event)
-    thread: threading.Thread | None = None
 
 
 class RuntimeOperationConflict(RuntimeError):
@@ -80,7 +63,6 @@ class RuntimeOperationManager:
         self._operations: dict[str, RuntimeOperation] = {}
         self._active_by_workspace: dict[str, str] = {}
         self._idempotency: dict[tuple[str, str], str] = {}
-        self._step_log_tails: dict[str, _StepLogTail] = {}
         self._runtime_instance_id = uuid4().hex
         self._workspace_sequences: dict[str, int] = {}
 
@@ -304,12 +286,10 @@ class RuntimeOperationManager:
                 operation.updated_at = time.time()
                 event = self._new_event_locked(operation, event_type, {"error": operation.error})
         self._publish(event)
-        self._stop_step_log_tail(operation_id)
         with self._lock:
             self._active_by_workspace.pop(self._operations[operation_id].workspace_id, None)
 
     def step_started(self, operation_id: str, workspace_step: Any) -> None:
-        self._stop_step_log_tail(operation_id)
         with self._lock:
             operation = self._operations[operation_id]
             operation.current_step = str(getattr(workspace_step, "name", ""))
@@ -324,24 +304,7 @@ class RuntimeOperationManager:
                     "state": "Ongoing",
                 },
             )
-            log_tail = _step_log_tail_for(
-                operation_id,
-                getattr(workspace_step, "log", None),
-                operation.current_step,
-                operation.current_tool,
-            )
-            if log_tail is not None:
-                self._step_log_tails[operation_id] = log_tail
         self._publish(event)
-        if log_tail is not None:
-            thread = threading.Thread(
-                target=self._tail_step_log,
-                args=(log_tail,),
-                name=f"ecc-runtime-log-{operation_id}",
-                daemon=True,
-            )
-            log_tail.thread = thread
-            thread.start()
 
     def rerun_prepared(
         self,
@@ -367,16 +330,13 @@ class RuntimeOperationManager:
         self._publish(event)
 
     def step_completed(self, operation_id: str, workspace_step: Any, state: Any) -> None:
-        self._stop_step_log_tail(operation_id)
         state_value = str(getattr(state, "value", state))
-        final_log = _read_final_log(getattr(workspace_step, "log", None))
         with self._render_gate:
             operation = self._operations[operation_id]
             operation.current_step = str(getattr(workspace_step, "name", ""))
             operation.current_tool = str(getattr(workspace_step, "tool", ""))
             operation.updated_at = time.time()
             payload: dict[str, Any] = {
-                "finalLog": final_log,
                 "step": operation.current_step,
                 "tool": operation.current_tool,
                 "state": state_value,
@@ -423,7 +383,6 @@ class RuntimeOperationManager:
         self._publish(event)
 
     def step_skipped(self, operation_id: str, workspace_step: Any) -> None:
-        self._stop_step_log_tail(operation_id)
         with self._lock:
             operation = self._operations[operation_id]
             operation.current_step = str(getattr(workspace_step, "name", ""))
@@ -516,57 +475,6 @@ class RuntimeOperationManager:
                 self._publish(pause_event)
             if replay_event is not None:
                 self._publish(replay_event)
-
-    def _tail_step_log(self, log_tail: _StepLogTail) -> None:
-        while not log_tail.stopped.is_set():
-            self._publish_step_log_delta(log_tail)
-            log_tail.stopped.wait(_LOG_POLL_INTERVAL_SECONDS)
-
-    def _publish_step_log_delta(self, log_tail: _StepLogTail) -> None:
-        try:
-            size = log_tail.path.stat().st_size
-            if size < log_tail.cursor:
-                # A rerun may truncate or replace a log file. The renderer treats
-                # this as a new bounded stream for the same step attempt.
-                log_tail.cursor = 0
-            if size <= log_tail.cursor:
-                return
-            with log_tail.path.open("rb") as log_file:
-                log_file.seek(log_tail.cursor)
-                chunk = log_file.read(_MAX_LOG_CHUNK_BYTES)
-        except OSError:
-            return
-
-        if not chunk:
-            return
-        log_tail.cursor += len(chunk)
-        text = chunk.decode("utf-8", errors="replace")
-        with self._lock:
-            if self._step_log_tails.get(log_tail.operation_id) is not log_tail:
-                return
-            operation = self._operations.get(log_tail.operation_id)
-            if operation is None:
-                return
-            event = self._new_event_locked(
-                operation,
-                "step.log",
-                {
-                    "chunk": text,
-                    "cursor": log_tail.cursor,
-                    "step": log_tail.step,
-                    "tool": log_tail.tool,
-                },
-            )
-        self._publish(event)
-
-    def _stop_step_log_tail(self, operation_id: str) -> None:
-        with self._lock:
-            log_tail = self._step_log_tails.pop(operation_id, None)
-        if log_tail is None:
-            return
-        log_tail.stopped.set()
-        if log_tail.thread is not None and log_tail.thread is not threading.current_thread():
-            log_tail.thread.join(timeout=_LOG_POLL_INTERVAL_SECONDS + 0.25)
 
     def _new_event_locked(
         self,
@@ -661,40 +569,3 @@ class RuntimeFlowObserver:
 
     def wait_for_step_rendered(self, _workspace_step: Any, _state: Any) -> bool:
         return self._manager.wait_for_step_rendered(self._operation_id)
-
-
-def _read_final_log(log: Any) -> str:
-    path = getattr(log, "file", None)
-    if not path:
-        return ""
-    try:
-        with Path(path).open("rb") as log_file:
-            log_file.seek(0, 2)
-            size = log_file.tell()
-            log_file.seek(max(0, size - _MAX_FINAL_LOG_BYTES))
-            return log_file.read().decode("utf-8", errors="replace")
-    except OSError:
-        return ""
-
-
-def _step_log_tail_for(
-    operation_id: str,
-    log: Any,
-    step: str,
-    tool: str,
-) -> _StepLogTail | None:
-    path = getattr(log, "file", None)
-    if not path:
-        return None
-    log_path = Path(path)
-    try:
-        cursor = log_path.stat().st_size
-    except OSError:
-        cursor = 0
-    return _StepLogTail(
-        operation_id=operation_id,
-        path=log_path,
-        step=step,
-        tool=tool,
-        cursor=cursor,
-    )
