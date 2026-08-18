@@ -189,57 +189,64 @@ def _canonically_inside(path: str, anchor: str) -> bool:
 
 def _workspace_step_log_resolver(workspace_dir: str):
     """Return a (step, tool) -> Path resolver for workspace step logs."""
-    from pathlib import Path
+    from chipcompiler.runtime.log_stream import step_log_archive_resolver
 
-    base = Path(workspace_dir)
-
-    def resolve(step: str, tool: str) -> Path:
-        return base / f"{step}_{tool}" / "log" / f"{step}.log"
-
-    return resolve
+    return step_log_archive_resolver(workspace_dir)
 
 
-def _run_flow_via_worker(workspace_dir: str):
-    """Execute flow.run through an isolated worker process.
-
-    Returns an OperationResult. A missing worker binary is a structured failure.
-    """
-    import json as json_mod
-    from pathlib import Path
-
-    from chipcompiler.runtime.worker_operation import (
-        OperationResult,
-        RunOperation,
-        _default_worker_argv,
-    )
+def _worker_binary_missing_error() -> str | None:
+    from chipcompiler.runtime.worker_operation import _default_worker_argv
 
     argv = _default_worker_argv()
     if not os.path.isfile(argv[0]):
-        return OperationResult(
-            success=False,
-            error=f"worker binary not found: {argv[0]}",
-        )
+        return f"worker binary not found: {argv[0]}"
+    return None
 
-    flow_json_path = Path(workspace_dir) / "home" / "flow.json"
 
-    valid_steps: set[tuple[str, str]] | None = None
+def _load_valid_steps(flow_json_path) -> set[tuple[str, str]] | None:
+    import json as json_mod
+
     try:
         with open(flow_json_path) as f:
             flow_data = json_mod.load(f)
-        valid_steps = {
+        return {
             (s["name"], s["tool"])
             for s in flow_data.get("steps", [])
             if isinstance(s, dict) and "name" in s and "tool" in s
         }
     except (OSError, json_mod.JSONDecodeError, KeyError):
-        pass
+        return None
 
-    op = RunOperation(
+
+def _make_run_operation(workspace_dir: str, *, on_output=None, on_step_event=None):
+    """Build a RunOperation for a workspace with step-log archiving wired in."""
+    from pathlib import Path
+
+    from chipcompiler.runtime.worker_operation import RunOperation
+
+    flow_json_path = Path(workspace_dir) / "home" / "flow.json"
+    return RunOperation(
         workspace_dir=Path(workspace_dir),
         flow_json_path=flow_json_path,
         log_path_resolver=_workspace_step_log_resolver(workspace_dir),
-        valid_steps=valid_steps,
+        on_output=on_output,
+        on_step_event=on_step_event,
+        valid_steps=_load_valid_steps(flow_json_path),
     )
+
+
+def _run_flow_via_worker(workspace_dir: str, *, on_output=None, on_step_event=None):
+    """Execute flow.run through an isolated worker process.
+
+    Returns an OperationResult. A missing worker binary is a structured failure.
+    """
+    from chipcompiler.runtime.worker_operation import OperationResult
+
+    missing = _worker_binary_missing_error()
+    if missing is not None:
+        return OperationResult(success=False, error=missing)
+
+    op = _make_run_operation(workspace_dir, on_output=on_output, on_step_event=on_step_event)
     return op.run("flow.run", {"rerun": False})
 
 
@@ -481,11 +488,16 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         )
 
         if should_enable_run_progress(ctx, sys.stderr):
-            flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
-            op_result = None
+            op_result = run_flow_with_progress(
+                run_dir,
+                ctx,
+                project,
+                sys.stderr,
+                run_operation=lambda **callbacks: _run_flow_via_worker(run_dir, **callbacks),
+            )
         else:
             op_result = _run_flow_via_worker(run_dir)
-            flow_ok = op_result.success
+        flow_ok = op_result.success
 
         if not flow_ok:
             error_record = {
@@ -495,13 +507,12 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
                 "log": disclosure_cmd("ecc log", project, ctx.run_id),
             }
-            if op_result is not None and not op_result.success:
-                if op_result.error:
-                    error_record["error"] = op_result.error
-                if op_result.exit_code is not None:
-                    error_record["exit_code"] = op_result.exit_code
-                if op_result.repaired_steps:
-                    error_record["repaired_steps"] = op_result.repaired_steps
+            if op_result.error:
+                error_record["error"] = op_result.error
+            if op_result.exit_code is not None:
+                error_record["exit_code"] = op_result.exit_code
+            if op_result.repaired_steps:
+                error_record["repaired_steps"] = op_result.repaired_steps
             return CommandResult.err([error_record])
     except Exception as exc:
         return CommandResult.err(
@@ -579,32 +590,100 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
     except ValueError as exc:
         return error("unknown_step", workspace=workspace_path, reason=str(exc))
 
-    from chipcompiler.cli.rendering.progress import preserve_cli_stdio
+    def no_op_result() -> CommandResult:
+        return CommandResult.ok(
+            [
+                {
+                    "run": "workspace",
+                    "status": "success",
+                    "workspace": workspace_path,
+                    "executed_steps": [],
+                    "no_op": True,
+                }
+            ]
+        )
 
-    try:
-        with preserve_cli_stdio():
-            if selected:
-                engine_flow.create_step_workspaces(executable_steps=set(selected))
-            if command_input.only is not None:
-                result = rerun.run_only(engine_flow, command_input.only, force=command_input.force)
-            elif command_input.from_step is not None:
-                result = rerun.run_from(engine_flow, command_input.from_step)
-            else:
-                result = rerun.run_resume(engine_flow)
-    except ValueError as exc:
-        return error("step_unavailable", workspace=workspace_path, reason=str(exc))
-    except Exception as exc:
-        return error("flow_failed", workspace=workspace_path, reason=str(exc))
+    if not selected:
+        # --only on an already-successful step without --force, or --resume
+        # with every step successful: nothing to execute.
+        return no_op_result()
 
+    target = selected[0]
+    if command_input.only is not None:
+        calls = [("flow.run_step", {"step": target, "rerun": bool(command_input.force)})]
+    else:
+        calls = [
+            ("flow.run_step", {"step": target, "rerun": True, "reset_dependents": True}),
+            ("flow.run", {"rerun": False}),
+        ]
+
+    from chipcompiler.runtime.worker_operation import OperationResult
+
+    missing = _worker_binary_missing_error()
+    if missing is not None:
+        op_result = OperationResult(success=False, error=missing)
+    else:
+        op = _make_run_operation(workspace_path)
+        op_result = op.run_sequence(calls)
+
+    if op_result.success:
+        return CommandResult.ok(
+            [
+                {
+                    "run": "workspace",
+                    "status": "success",
+                    "workspace": workspace_path,
+                    "executed_steps": list(selected),
+                    "no_op": False,
+                }
+            ]
+        )
+
+    executed, failed_step = _workspace_run_outcome(workspace_path, selected)
     record = {
         "run": "workspace",
-        "status": "success" if result.ok else "failed",
+        "status": "failed",
         "workspace": workspace_path,
-        "executed_steps": list(result.executed),
-        "no_op": result.ok and not result.executed,
+        "executed_steps": executed,
+        "no_op": False,
+        "resume_cmd": f"ecc run --workspace {shlex.quote(workspace_path)} --resume",
     }
-    if result.ok:
-        return CommandResult.ok([record])
-    record["failed_step"] = result.failed
-    record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_path)} --resume"
+    if failed_step is not None:
+        record["failed_step"] = failed_step
+    if op_result.error:
+        record["error"] = op_result.error
+    if op_result.exit_code is not None:
+        record["exit_code"] = op_result.exit_code
+    if op_result.repaired_steps:
+        record["repaired_steps"] = op_result.repaired_steps
     return CommandResult.err([record])
+
+
+def _workspace_run_outcome(
+    workspace_path: str, selected: list[str]
+) -> tuple[list[str], str | None]:
+    """Derive executed steps and the failed step from post-run flow.json.
+
+    After a stopped sequence the selected suffix reads as: a Success prefix
+    that did execute, the step that failed, and an Unstart remainder that was
+    invalidated but never ran.
+    """
+    import json as json_mod
+
+    try:
+        with open(os.path.join(workspace_path, "home", "flow.json")) as f:
+            flow_data = json_mod.load(f)
+    except (OSError, json_mod.JSONDecodeError):
+        return [], None
+
+    states = {
+        record["name"]: record.get("state")
+        for record in flow_data.get("steps", [])
+        if isinstance(record, dict) and "name" in record
+    }
+    executed = []
+    for name in selected:
+        if states.get(name) != "Success":
+            return executed, name
+        executed.append(name)
+    return executed, None

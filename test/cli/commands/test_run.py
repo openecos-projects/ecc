@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.engine import StepRunResult
 
 
 def _set_flow_preset(project_dir, preset):
@@ -240,18 +239,20 @@ class TestRunFlowPreset:
 
 class TestWorkspaceRun:
     @pytest.fixture
-    def workspace_mocks(self, monkeypatch):
+    def workspace_mocks(self, monkeypatch, tmp_path):
+        from chipcompiler.runtime.worker_operation import OperationResult
+
         seen = SimpleNamespace(
             load_path=None,
             has_init=True,
-            selected_error=None,
-            selected=None,
-            create_calls=0,
-            executable=None,
-            only=None,
-            from_step=None,
-            resume=False,
-            result=StepRunResult(ok=True, executed=("place",)),
+            calls=None,
+            result=OperationResult(success=True, exit_code=0),
+            binary_error=None,
+            steps=[
+                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                {"name": "place", "tool": "ecc", "state": "Imcomplete"},
+                {"name": "CTS", "tool": "ecc", "state": "Unstart"},
+            ],
         )
 
         class Flow:
@@ -261,47 +262,39 @@ class TestWorkspaceRun:
             def has_init(self):
                 return seen.has_init
 
-            def create_step_workspaces(self, *, executable_steps=None):
-                seen.create_calls += 1
-                seen.executable = executable_steps
-
-        def selected_step_names(flow, *, from_step=None, only=None, force=False):
-            if seen.selected_error is not None:
-                raise seen.selected_error
-            seen.selected = {"from_step": from_step, "only": only, "force": force}
-            if only is not None:
-                return [] if not force else [only]
-            if from_step is not None:
-                return [from_step, "CTS"]
-            return ["place", "CTS"]
-
-        def run_only(flow, name, *, force=False):
-            seen.only = (name, force)
-            return seen.result
-
-        def run_from(flow, name):
-            seen.from_step = name
-            return seen.result
-
-        def run_resume(flow):
-            seen.resume = True
-            return seen.result
-
         def fake_load_workspace(path):
             seen.load_path = path
-            return SimpleNamespace(name="workspace")
+            return SimpleNamespace(
+                name="workspace",
+                flow=SimpleNamespace(data={"steps": [dict(step) for step in seen.steps]}),
+            )
+
+        class FakeOperation:
+            def run_sequence(self, calls):
+                seen.calls = calls
+                return seen.result
 
         monkeypatch.setattr("chipcompiler.data.load_workspace", fake_load_workspace)
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
-        monkeypatch.setattr("chipcompiler.engine.rerun.selected_step_names", selected_step_names)
-        monkeypatch.setattr("chipcompiler.engine.rerun.run_only", run_only)
-        monkeypatch.setattr("chipcompiler.engine.rerun.run_from", run_from)
-        monkeypatch.setattr("chipcompiler.engine.rerun.run_resume", run_resume)
+        monkeypatch.setattr(
+            "chipcompiler.cli.command_handlers.project._make_run_operation",
+            lambda workspace_path, **kwargs: FakeOperation(),
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.command_handlers.project._worker_binary_missing_error",
+            lambda: seen.binary_error,
+        )
         monkeypatch.setattr(
             "chipcompiler.data.create_workspace",
             lambda **_kwargs: pytest.fail("workspace mode must not create a workspace"),
         )
         return seen
+
+    def _write_post_run_flow(self, workspace, steps):
+        home = os.path.join(workspace, "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump({"steps": steps}, f)
 
     def test_only_force_wiring(self, workspace_mocks, tmp_path, capsys):
         workspace = str(tmp_path / "workspace")
@@ -311,40 +304,33 @@ class TestWorkspaceRun:
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 0
         assert workspace_mocks.load_path == workspace
-        assert workspace_mocks.selected == {"from_step": None, "only": "place", "force": True}
-        assert workspace_mocks.executable == {"place"}
-        assert workspace_mocks.only == ("place", True)
+        assert workspace_mocks.calls == [("flow.run_step", {"step": "place", "rerun": True})]
         assert record["run"] == "workspace"
         assert record["status"] == "success"
         assert record["workspace"] == workspace
         assert record["executed_steps"] == ["place"]
         assert record["no_op"] is False
 
-    def test_default_selector_is_resume(self, workspace_mocks, tmp_path):
-        rc = cli_main.run(["run", "--workspace", str(tmp_path / "workspace"), "--plain"])
+    def test_only_without_force_runs_step(self, workspace_mocks, tmp_path):
+        workspace = str(tmp_path / "workspace")
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--only", "place", "--json"])
 
         assert rc == 0
-        assert workspace_mocks.selected == {"from_step": None, "only": None, "force": False}
-        assert workspace_mocks.executable == {"place", "CTS"}
-        assert workspace_mocks.resume is True
+        assert workspace_mocks.calls == [("flow.run_step", {"step": "place", "rerun": False})]
 
-    def test_from_step_wiring(self, workspace_mocks, tmp_path):
-        rc = cli_main.run(["run", "--workspace", str(tmp_path / "workspace"), "--from", "CTS"])
-
-        assert rc == 0
-        assert workspace_mocks.from_step == "CTS"
-        assert workspace_mocks.executable == {"CTS"}
-
-    def test_noop_selection_skips_workspace_rebuild(self, workspace_mocks, tmp_path, capsys):
-        workspace_mocks.result = StepRunResult(ok=True, executed=())
+    def test_only_success_step_without_force_is_noop(self, workspace_mocks, tmp_path, capsys):
+        workspace_mocks.steps = [
+            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+            {"name": "place", "tool": "ecc", "state": "Success"},
+        ]
         workspace = str(tmp_path / "workspace")
 
         rc = cli_main.run(["run", "--workspace", workspace, "--only", "place", "--json"])
 
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 0
-        assert workspace_mocks.create_calls == 0
-        assert workspace_mocks.only == ("place", False)
+        assert workspace_mocks.calls is None
         assert record == {
             "run": "workspace",
             "status": "success",
@@ -353,23 +339,107 @@ class TestWorkspaceRun:
             "no_op": True,
         }
 
-    def test_failed_run_reports_failed_step_and_resume(self, workspace_mocks, tmp_path, capsys):
-        workspace_mocks.result = StepRunResult(ok=False, executed=(), failed="place")
+    def test_default_selector_is_resume(self, workspace_mocks, tmp_path, capsys):
         workspace = str(tmp_path / "workspace")
 
-        rc = cli_main.run(["run", "--workspace", workspace, "--only", "place", "--json"])
+        rc = cli_main.run(["run", "--workspace", workspace, "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 0
+        assert workspace_mocks.calls == [
+            ("flow.run_step", {"step": "place", "rerun": True, "reset_dependents": True}),
+            ("flow.run", {"rerun": False}),
+        ]
+        assert record["executed_steps"] == ["place", "CTS"]
+
+    def test_from_step_wiring(self, workspace_mocks, tmp_path, capsys):
+        workspace = str(tmp_path / "workspace")
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--from", "CTS", "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 0
+        assert workspace_mocks.calls == [
+            ("flow.run_step", {"step": "CTS", "rerun": True, "reset_dependents": True}),
+            ("flow.run", {"rerun": False}),
+        ]
+        assert record["executed_steps"] == ["CTS"]
+
+    def test_resume_all_success_is_noop(self, workspace_mocks, tmp_path, capsys):
+        workspace_mocks.steps = [
+            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+            {"name": "place", "tool": "ecc", "state": "Success"},
+        ]
+        workspace = str(tmp_path / "workspace")
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--resume", "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 0
+        assert workspace_mocks.calls is None
+        assert record["no_op"] is True
+        assert record["executed_steps"] == []
+
+    def test_failed_run_reports_failed_step_and_resume(self, workspace_mocks, tmp_path, capsys):
+        from chipcompiler.runtime.worker_operation import OperationResult
+
+        workspace_mocks.result = OperationResult(
+            success=False, error="run step place failed with state Imcomplete"
+        )
+        workspace = str(tmp_path / "workspace")
+        self._write_post_run_flow(
+            workspace,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                {"name": "place", "tool": "ecc", "state": "Imcomplete"},
+                {"name": "CTS", "tool": "ecc", "state": "Unstart"},
+            ],
+        )
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--only", "place", "--force", "--json"])
 
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 1
-        assert record == {
-            "run": "workspace",
-            "status": "failed",
-            "workspace": workspace,
-            "executed_steps": [],
-            "no_op": False,
-            "failed_step": "place",
-            "resume_cmd": f"ecc run --workspace {workspace} --resume",
-        }
+        assert record["status"] == "failed"
+        assert record["executed_steps"] == []
+        assert record["failed_step"] == "place"
+        assert record["resume_cmd"] == f"ecc run --workspace {workspace} --resume"
+        assert "place" in record["error"]
+
+    def test_failed_suffix_run_reports_executed_prefix(self, workspace_mocks, tmp_path, capsys):
+        from chipcompiler.runtime.worker_operation import OperationResult
+
+        workspace_mocks.result = OperationResult(success=False, error="run flow failed")
+        workspace = str(tmp_path / "workspace")
+        self._write_post_run_flow(
+            workspace,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                {"name": "place", "tool": "ecc", "state": "Success"},
+                {"name": "CTS", "tool": "ecc", "state": "Imcomplete"},
+            ],
+        )
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--resume", "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 1
+        assert record["executed_steps"] == ["place"]
+        assert record["failed_step"] == "CTS"
+
+    def test_missing_worker_binary_returns_structured_failure(
+        self, workspace_mocks, tmp_path, capsys
+    ):
+        workspace_mocks.binary_error = "worker binary not found: /missing/ecc"
+        workspace = str(tmp_path / "workspace")
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 1
+        assert record["status"] == "failed"
+        assert "not found" in record["error"]
+        assert workspace_mocks.calls is None
 
     def test_invalid_workspace(self, tmp_path, capsys):
         rc = cli_main.run(["run", "--workspace", str(tmp_path / "missing"), "--json"])
@@ -388,8 +458,6 @@ class TestWorkspaceRun:
         assert record["error"] == "missing_flow"
 
     def test_unknown_step(self, workspace_mocks, tmp_path, capsys):
-        workspace_mocks.selected_error = ValueError("unknown step 'bogus'")
-
         rc = cli_main.run(
             ["run", "--workspace", str(tmp_path / "workspace"), "--only", "bogus", "--json"]
         )

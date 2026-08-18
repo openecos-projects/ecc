@@ -43,6 +43,16 @@ def emit_step_marker(event: str, step: str, tool: str) -> None:
     os.write(2, line)
 
 
+def step_log_archive_resolver(workspace_dir) -> Callable[[str, str], Path]:
+    """Resolve the archive path for a step's tool log inside a workspace."""
+    base = Path(workspace_dir)
+
+    def resolve(step: str, tool: str) -> Path:
+        return base / f"{step}_{tool}" / "log" / f"{step}.log"
+
+    return resolve
+
+
 def parse_marker(line: bytes) -> StepMarker | None:
     """Parse a complete line as a step marker, or return None if invalid."""
     if not line.startswith(MARKER_PREFIX):
@@ -93,6 +103,7 @@ class LogStreamReader:
         *,
         log_path_resolver: Callable[[str, str], Path | None] | None = None,
         on_output: Callable[[bytes], None] | None = None,
+        on_step_event: Callable[[str, str, str], None] | None = None,
         tail_size: int = 4096,
         valid_steps: set[tuple[str, str]] | None = None,
         workspace_dir: Path | None = None,
@@ -101,6 +112,8 @@ class LogStreamReader:
         self._resolve_path = log_path_resolver
         self._on_output = on_output
         self._on_output_disabled = False
+        self._on_step_event = on_step_event
+        self._on_step_event_disabled = False
         self._tail_size = tail_size
         self._valid_steps = valid_steps
         self._workspace_dir = workspace_dir
@@ -178,6 +191,7 @@ class LogStreamReader:
                 self._state.active_tool = marker.tool
                 self._state.steps_seen.append(marker.step)
                 self._open_archive(marker.step, marker.tool)
+                self._emit_step_event("begin", marker.step, marker.tool)
             else:
                 self._emit_data(raw_line)
         elif marker.event == "end":
@@ -185,10 +199,21 @@ class LogStreamReader:
                 self._close_archive()
                 self._state.active_step = None
                 self._state.active_tool = None
+                self._emit_step_event("end", marker.step, marker.tool)
             else:
                 self._emit_data(raw_line)
         else:
             self._emit_data(raw_line)
+
+    def _emit_step_event(self, event: str, step: str, tool: str) -> None:
+        if self._on_step_event is None or self._on_step_event_disabled:
+            return
+        try:
+            self._on_step_event(event, step, tool)
+        except Exception as exc:
+            if self._state.error is None:
+                self._state.error = exc
+            self._on_step_event_disabled = True
 
     def _emit_data(self, data: bytes) -> None:
         if self._state.archive_file is not None:

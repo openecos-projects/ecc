@@ -11,7 +11,6 @@ from .json import JsonReadError, dict_to_str, json_read, json_read_strict, json_
 from .log import (
     Logger,
     create_logger,
-    redirect_stdio_to_file,
 )
 from .plot import plot_bar_chart, plot_csv_bar_chart, plot_csv_map, plot_csv_table, plot_metrics
 from .util import track_process_memory
@@ -25,7 +24,6 @@ __all__ = [
     "dict_to_str",
     "Logger",
     "create_logger",
-    "redirect_stdio_to_file",
     "track_process_memory",
     "plot_csv_map",
     "plot_metrics",

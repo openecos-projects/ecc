@@ -7,7 +7,6 @@ import sys
 import time
 from contextlib import suppress
 from logging.handlers import RotatingFileHandler
-from typing import TextIO
 
 
 # TODO: Move some functions to Logger Module
@@ -20,23 +19,6 @@ def flush_cstdio() -> None:
     """
     with suppress(Exception):
         ctypes.CDLL(None).fflush(None)
-
-
-def redirect_stdio_to_file(log_file: str) -> TextIO:
-    """Redirect process stdout/stderr to log_file at file-descriptor level."""
-    # The stream intentionally stays open: its fd is dup2'd onto stdout/stderr below.
-    log_stream = open(log_file, "a", encoding="utf-8", buffering=1)  # noqa: SIM115
-
-    for stream in (sys.stdout, sys.stderr):
-        with suppress(Exception):
-            stream.flush()
-    flush_cstdio()
-
-    os.dup2(log_stream.fileno(), 1)
-    os.dup2(log_stream.fileno(), 2)
-    sys.stdout = os.fdopen(1, "w", encoding="utf-8", buffering=1, closefd=False)
-    sys.stderr = os.fdopen(2, "w", encoding="utf-8", buffering=1, closefd=False)
-    return log_stream
 
 
 class Logger:

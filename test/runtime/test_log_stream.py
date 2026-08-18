@@ -440,6 +440,99 @@ class TestLogStreamAllowlist:
         assert reader.state.error is None
 
 
+class TestStepLogArchiveResolver:
+    def test_resolver_produces_canonical_step_log_path(self, tmp_path):
+        from chipcompiler.runtime.log_stream import step_log_archive_resolver
+
+        resolver = step_log_archive_resolver(tmp_path)
+        assert resolver("Synthesis", "yosys") == (
+            tmp_path / "Synthesis_yosys" / "log" / "Synthesis.log"
+        )
+        assert resolver("Floorplan", "ecc") == (
+            tmp_path / "Floorplan_ecc" / "log" / "Floorplan.log"
+        )
+
+
+class TestOnStepEvent:
+    def test_fires_on_matched_begin_and_end(self, tmp_path):
+        events = []
+        log_path = tmp_path / "step.log"
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
+            b"data\n"
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            log_path_resolver=lambda step, tool: log_path,
+            on_step_event=lambda event, step, tool: events.append((event, step, tool)),
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert events == [("begin", "S", "T"), ("end", "S", "T")]
+
+    def test_does_not_fire_on_unmatched_markers(self, tmp_path):
+        events = []
+        log_path = tmp_path / "step.log"
+        nested_begin = b'\x1eECC-STEP {"v":1,"event":"begin","step":"B","tool":"T"}\n'
+        mismatched_end = b'\x1eECC-STEP {"v":1,"event":"end","step":"X","tool":"T"}\n'
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"A","tool":"T"}\n'
+            + nested_begin
+            + mismatched_end
+            + b'\x1eECC-STEP {"v":1,"event":"end","step":"A","tool":"T"}\n'
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            log_path_resolver=lambda step, tool: log_path,
+            on_step_event=lambda event, step, tool: events.append((event, step, tool)),
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert events == [("begin", "A", "T"), ("end", "A", "T")]
+
+    def test_does_not_fire_on_disallowed_marker(self, tmp_path):
+        events = []
+        stream_data = b'\x1eECC-STEP {"v":1,"event":"begin","step":"Bogus","tool":"fake"}\n'
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            on_step_event=lambda event, step, tool: events.append((event, step, tool)),
+            valid_steps={("Real", "tool")},
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert events == []
+
+    def test_callback_exception_disables_callback_continues_drain(self, tmp_path):
+        log_path = tmp_path / "step.log"
+        calls = [0]
+
+        def failing_callback(event, step, tool):
+            calls[0] += 1
+            raise RuntimeError("step event exploded")
+
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
+            b"line 1\n"
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S2","tool":"T"}\n'
+            b"line 2\n"
+        )
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            log_path_resolver=lambda step, tool: log_path,
+            on_step_event=failing_callback,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert reader.completed
+        assert calls[0] == 1
+        assert isinstance(reader.state.error, RuntimeError)
+        # The second begin re-opened (truncated) the shared log path, so its
+        # content proves archiving continued after the callback was disabled.
+        assert log_path.read_bytes() == b"line 2\n"
+
+
 class TestLogStreamResilience:
     def test_resolver_exception_disables_archive_continues_drain(self):
         """A resolver that raises must not kill the drain thread."""
