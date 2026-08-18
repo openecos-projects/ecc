@@ -96,6 +96,63 @@ def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_pa
     assert sleep_calls == []
 
 
+def test_end_marker_follows_step_writes_and_precedes_completion(monkeypatch, tmp_path):
+    """The end marker fires after all step-scoped writes and before completion notify."""
+    import chipcompiler.runtime.log_stream as log_stream_module
+
+    workspace = Workspace()
+    workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    events: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        tools,
+        "save_layout_image",
+        lambda **_kwargs: events.append(("layout", None)),
+    )
+
+    original_set_state = engine_flow.set_state
+
+    def recording_set_state(**kwargs):
+        events.append(("set_state", kwargs.get("state")))
+        return original_set_state(**kwargs)
+
+    monkeypatch.setattr(engine_flow, "set_state", recording_set_state)
+    monkeypatch.setattr(
+        engine_flow,
+        "clear_db_engine_after_step",
+        lambda step, state: events.append(("db_cleanup", state)),
+    )
+    monkeypatch.setattr(
+        log_stream_module,
+        "emit_step_marker",
+        lambda event, *, step, tool: events.append(("marker", event)),
+    )
+
+    class CompletionObserver:
+        def on_step_completed(self, step, state):
+            # The end marker must already have fired when completion is notified.
+            assert ("marker", "end") in events
+            events.append(("observer", "completed"))
+
+    result = engine_flow.run_step(workspace_step, observer=CompletionObserver())
+
+    assert result == StateEnum.Success
+    end_index = events.index(("marker", "end"))
+    assert events.index(("set_state", StateEnum.Success)) < end_index
+    assert events.index(("layout", None)) < end_index
+    assert events.index(("db_cleanup", StateEnum.Success)) < end_index
+    assert end_index < events.index(("observer", "completed"))
+
+
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
     verilog = tmp_path / "gcd.v"
     verilog.write_text("module gcd; endmodule\n")

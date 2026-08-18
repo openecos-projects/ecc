@@ -517,7 +517,6 @@ class EngineFlow:
                     delattr(self.workspace, "_runtime_flow_observer")
                 else:
                     self.workspace._runtime_flow_observer = previous_observer
-            emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
 
         # compute metrics
         peak_memory_mb = peak_memory[0] - start_memory_mb
@@ -583,6 +582,10 @@ class EngineFlow:
             save_layout_image(workspace=self.workspace, step=workspace_step)
 
         self.clear_db_engine_after_step(workspace_step, state)
+        # The end marker closes the step's byte stream only after every
+        # step-scoped write (state persistence, [RESULT], QOR, layout, db
+        # cleanup) has flushed, and always before the completion notification.
+        emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
         _notify_flow_observer(observer, "on_step_completed", workspace_step, state)
         if state == StateEnum.Success and not _wait_for_step_rendered(
             observer,

@@ -1,22 +1,25 @@
 """Tests for chipcompiler.runtime.log_stream — marker parsing and archive."""
 
 import io
+import os
 
 from chipcompiler.runtime.log_stream import (
+    MARKER_PREFIX,
     LogStreamReader,
     StepMarker,
+    emit_step_marker,
     parse_marker,
 )
 
 
 class TestParseMarker:
     def test_valid_begin(self):
-        line = b'\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\n'
+        line = b'\x1eECC-STEP {"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\n'
         m = parse_marker(line)
         assert m == StepMarker(event="begin", step="Synthesis", tool="yosys")
 
     def test_valid_end(self):
-        line = b'\x1eECC-STEP {"event":"end","step":"Placement","tool":"ecc"}\n'
+        line = b'\x1eECC-STEP {"v":1,"event":"end","step":"Placement","tool":"ecc"}\n'
         m = parse_marker(line)
         assert m == StepMarker(event="end", step="Placement", tool="ecc")
 
@@ -27,18 +30,50 @@ class TestParseMarker:
         assert parse_marker(b"\x1eECC-STEP {bad json}\n") is None
 
     def test_missing_fields(self):
-        line = b'\x1eECC-STEP {"event":"begin"}\n'
+        line = b'\x1eECC-STEP {"v":1,"event":"begin"}\n'
         assert parse_marker(line) is None
 
     def test_wrong_field_types(self):
-        line = b'\x1eECC-STEP {"event":1,"step":"A","tool":"B"}\n'
+        line = b'\x1eECC-STEP {"v":1,"event":1,"step":"A","tool":"B"}\n'
         assert parse_marker(line) is None
 
     def test_no_trailing_newline(self):
-        line = b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}'
+        line = b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}'
         m = parse_marker(line)
         assert m is not None
         assert m.event == "begin"
+
+    def test_missing_version_rejected(self):
+        line = b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+        assert parse_marker(line) is None
+
+    def test_unsupported_version_rejected(self):
+        line = b'\x1eECC-STEP {"v":2,"event":"begin","step":"S","tool":"T"}\n'
+        assert parse_marker(line) is None
+
+    def test_string_version_rejected(self):
+        line = b'\x1eECC-STEP {"v":"1","event":"begin","step":"S","tool":"T"}\n'
+        assert parse_marker(line) is None
+
+
+class TestEmitStepMarker:
+    def test_payload_carries_version_and_round_trips(self, monkeypatch):
+        written = []
+        real_write = os.write
+
+        def fake_write(fd, data):
+            if fd == 2:
+                written.append(data)
+                return len(data)
+            return real_write(fd, data)
+
+        monkeypatch.setattr(os, "write", fake_write)
+        emit_step_marker("begin", step="Synthesis", tool="yosys")
+
+        assert written == [
+            MARKER_PREFIX + b'{"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\n'
+        ]
+        assert parse_marker(written[0]) == StepMarker(event="begin", step="Synthesis", tool="yosys")
 
 
 class TestLogStreamReader:
@@ -52,10 +87,10 @@ class TestLogStreamReader:
             return log_path
 
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\n'
             b"yosys output line 1\n"
             b"yosys output line 2\n"
-            b'\x1eECC-STEP {"event":"end","step":"Synthesis","tool":"yosys"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"Synthesis","tool":"yosys"}\n'
         )
         stream = io.BytesIO(stream_data)
         reader = LogStreamReader(stream, log_path_resolver=resolver)
@@ -75,9 +110,9 @@ class TestLogStreamReader:
             return log_path
 
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
             b"data\n"
-            b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
         )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
@@ -93,12 +128,12 @@ class TestLogStreamReader:
             return p
 
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"A","tool":"t"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"A","tool":"t"}\n'
             b"output A\n"
-            b'\x1eECC-STEP {"event":"end","step":"A","tool":"t"}\n'
-            b'\x1eECC-STEP {"event":"begin","step":"B","tool":"t"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"A","tool":"t"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"B","tool":"t"}\n'
             b"output B\n"
-            b'\x1eECC-STEP {"event":"end","step":"B","tool":"t"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"B","tool":"t"}\n'
         )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
@@ -115,9 +150,9 @@ class TestLogStreamReader:
 
         raw = b"\x80\x81\xff\xfe binary data\n"
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
             + raw
-            + b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            + b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
         )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
@@ -131,9 +166,9 @@ class TestLogStreamReader:
             return log_path
 
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
             b"\x1eECC-STEP {bad json}\n"
-            b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
         )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
@@ -162,16 +197,35 @@ class TestLogStreamReader:
         def resolver(step, tool):
             return log_path
 
-        unknown_line = b'\x1eECC-STEP {"event":"pause","step":"S","tool":"T"}\n'
+        unknown_line = b'\x1eECC-STEP {"v":1,"event":"pause","step":"S","tool":"T"}\n'
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
             + unknown_line
-            + b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            + b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
         )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
         reader.join(timeout=5)
         assert log_path.read_bytes() == unknown_line
+
+    def test_unversioned_marker_archived_as_data(self, tmp_path):
+        """A marker frame without a supported version is archived as raw data."""
+        log_path = tmp_path / "step.log"
+
+        def resolver(step, tool):
+            return log_path
+
+        unversioned_begin = b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
+            + unversioned_begin
+            + b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
+        )
+        reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
+        reader.start()
+        reader.join(timeout=5)
+        assert log_path.read_bytes() == unversioned_begin
+        assert reader.state.steps_seen == ["S"]
 
     def test_archive_write_error_surfaces_in_state(self, tmp_path):
         """An OSError during archive write must be captured in state.error."""
@@ -181,9 +235,9 @@ class TestLogStreamReader:
             return log_path
 
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
             b"some output\n"
-            b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
         )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
@@ -193,9 +247,9 @@ class TestLogStreamReader:
         log_path.mkdir()
 
         stream_data2 = (
-            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
             b"more output\n"
-            b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
         )
         reader2 = LogStreamReader(io.BytesIO(stream_data2), log_path_resolver=resolver)
         reader2.start()
@@ -212,9 +266,9 @@ class TestLogStreamReader:
         (tmp_path / "nonexistent_dir").write_text("not a directory")
 
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
             b"output\n"
-            b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
         )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
@@ -229,13 +283,13 @@ class TestLogStreamReader:
         def resolver(step, tool):
             return log_path
 
-        mismatched_end = b'\x1eECC-STEP {"event":"end","step":"B","tool":"T"}\n'
+        mismatched_end = b'\x1eECC-STEP {"v":1,"event":"end","step":"B","tool":"T"}\n'
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"A","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"A","tool":"T"}\n'
             b"before\n"
             + mismatched_end
             + b"after\n"
-            + b'\x1eECC-STEP {"event":"end","step":"A","tool":"T"}\n'
+            + b'\x1eECC-STEP {"v":1,"event":"end","step":"A","tool":"T"}\n'
         )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
@@ -252,7 +306,9 @@ class TestLogStreamReader:
         def resolver(step, tool):
             return log_path
 
-        stream_data = b'\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\ndata\n'
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\ndata\n'
+        )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
         reader.join(timeout=5)
@@ -266,13 +322,13 @@ class TestLogStreamReader:
         def resolver(step, tool):
             return log_path
 
-        begin_b = b'\x1eECC-STEP {"event":"begin","step":"B","tool":"T"}\n'
+        begin_b = b'\x1eECC-STEP {"v":1,"event":"begin","step":"B","tool":"T"}\n'
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"A","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"A","tool":"T"}\n'
             b"before\n"
             + begin_b
             + b"after\n"
-            + b'\x1eECC-STEP {"event":"end","step":"A","tool":"T"}\n'
+            + b'\x1eECC-STEP {"v":1,"event":"end","step":"A","tool":"T"}\n'
         )
         reader = LogStreamReader(io.BytesIO(stream_data), log_path_resolver=resolver)
         reader.start()
@@ -294,12 +350,14 @@ class TestLogStreamAllowlist:
             return log_path
 
         valid = {("Synthesis", "yosys")}
-        unknown_begin = b'\x1eECC-STEP {"event":"begin","step":"../../escape","tool":"evil"}\n'
+        unknown_begin = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"../../escape","tool":"evil"}\n'
+        )
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\n'
             + unknown_begin
             + b"normal data\n"
-            + b'\x1eECC-STEP {"event":"end","step":"Synthesis","tool":"yosys"}\n'
+            + b'\x1eECC-STEP {"v":1,"event":"end","step":"Synthesis","tool":"yosys"}\n'
         )
         reader = LogStreamReader(
             io.BytesIO(stream_data), log_path_resolver=resolver, valid_steps=valid
@@ -315,7 +373,9 @@ class TestLogStreamAllowlist:
         """An unknown begin marker with no active step is sent to callback as data."""
         received = []
         valid = {("Place", "ecc")}
-        stream_data = b'\x1eECC-STEP {"event":"begin","step":"Bogus","tool":"fake"}\ntrailing\n'
+        stream_data = (
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"Bogus","tool":"fake"}\ntrailing\n'
+        )
         reader = LogStreamReader(
             io.BytesIO(stream_data), on_output=received.append, valid_steps=valid
         )
@@ -337,9 +397,9 @@ class TestLogStreamAllowlist:
         workspace.mkdir()
         valid = {("Escape", "evil")}
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"Escape","tool":"evil"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"Escape","tool":"evil"}\n'
             b"should not be written\n"
-            b'\x1eECC-STEP {"event":"end","step":"Escape","tool":"evil"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"Escape","tool":"evil"}\n'
         )
         reader = LogStreamReader(
             io.BytesIO(stream_data),
@@ -364,9 +424,9 @@ class TestLogStreamAllowlist:
 
         valid = {("Synthesis", "yosys")}
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\n'
             b"tool output\n"
-            b'\x1eECC-STEP {"event":"end","step":"Synthesis","tool":"yosys"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"Synthesis","tool":"yosys"}\n'
         )
         reader = LogStreamReader(
             io.BytesIO(stream_data),
@@ -391,9 +451,9 @@ class TestLogStreamResilience:
             raise RuntimeError("resolver failed")
 
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
             b"output after failed resolver\n"
-            b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
             b"trailing data\n"
         )
         reader = LogStreamReader(
@@ -424,10 +484,10 @@ class TestLogStreamResilience:
             return log_path
 
         stream_data = (
-            b'\x1eECC-STEP {"event":"begin","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"begin","step":"S","tool":"T"}\n'
             b"line 1\n"
             b"line 2\n"
-            b'\x1eECC-STEP {"event":"end","step":"S","tool":"T"}\n'
+            b'\x1eECC-STEP {"v":1,"event":"end","step":"S","tool":"T"}\n'
         )
         reader = LogStreamReader(
             io.BytesIO(stream_data),

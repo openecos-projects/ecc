@@ -1,8 +1,8 @@
 """Step marker protocol and log stream archive.
 
 The worker emits step markers on stderr using a Record Separator prefix:
-    \\x1eECC-STEP {"event":"begin","step":"Synthesis","tool":"yosys"}\\n
-    \\x1eECC-STEP {"event":"end","step":"Synthesis","tool":"yosys"}\\n
+    \\x1eECC-STEP {"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\\n
+    \\x1eECC-STEP {"v":1,"event":"end","step":"Synthesis","tool":"yosys"}\\n
 
 The client-side LogStreamReader drains worker stderr, parses markers to
 switch between step log files, and archives raw tool bytes to the correct
@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 MARKER_PREFIX = b"\x1eECC-STEP "
+MARKER_VERSION = 1
 
 
 @dataclass
@@ -34,7 +35,10 @@ def emit_step_marker(event: str, step: str, tool: str) -> None:
 
     sys.stdout.flush()
     sys.stderr.flush()
-    payload = json.dumps({"event": event, "step": step, "tool": tool}, separators=(",", ":"))
+    payload = json.dumps(
+        {"v": MARKER_VERSION, "event": event, "step": step, "tool": tool},
+        separators=(",", ":"),
+    )
     line = MARKER_PREFIX + payload.encode("utf-8") + b"\n"
     os.write(2, line)
 
@@ -51,6 +55,8 @@ def parse_marker(line: bytes) -> StepMarker | None:
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
     if not isinstance(data, dict):
+        return None
+    if data.get("v") != MARKER_VERSION:
         return None
     event = data.get("event")
     step = data.get("step")

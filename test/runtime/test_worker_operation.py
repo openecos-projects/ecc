@@ -35,7 +35,7 @@ _RPC_HELPERS = textwrap.dedent("""\
         sys.stdout.buffer.flush()
 
     def make_marker(event, step, tool):
-        p = json.dumps({"event": event, "step": step, "tool": tool})
+        p = json.dumps({"v": 1, "event": event, "step": step, "tool": tool})
         return chr(0x1e).encode() + b"ECC-STEP " + p.encode() + b"\\n"
 """)
 
