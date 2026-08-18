@@ -187,13 +187,6 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
 
 
-def _workspace_step_log_resolver(workspace_dir: str):
-    """Return a (step, tool) -> Path resolver for workspace step logs."""
-    from chipcompiler.runtime.log_stream import step_log_archive_resolver
-
-    return step_log_archive_resolver(workspace_dir)
-
-
 def _worker_binary_missing_error() -> str | None:
     from chipcompiler.runtime.worker_operation import _default_worker_argv
 
@@ -203,42 +196,48 @@ def _worker_binary_missing_error() -> str | None:
     return None
 
 
-def _load_valid_steps(flow_json_path) -> set[tuple[str, str]] | None:
-    import json as json_mod
+def _read_flow_data(workspace_dir: str) -> dict | None:
+    """Read home/flow.json, tolerating a missing or corrupt file."""
+    from chipcompiler.cli.inspection.discovery import CORRUPT_FLOW_JSON, read_flow_json
 
-    try:
-        with open(flow_json_path) as f:
-            flow_data = json_mod.load(f)
-        return {
-            (s["name"], s["tool"])
-            for s in flow_data.get("steps", [])
-            if isinstance(s, dict) and "name" in s and "tool" in s
-        }
-    except (OSError, json_mod.JSONDecodeError, KeyError):
+    flow_data = read_flow_json(workspace_dir)
+    if flow_data is None or flow_data is CORRUPT_FLOW_JSON:
         return None
+    return flow_data
+
+
+def _load_valid_steps(workspace_dir: str) -> set[tuple[str, str]] | None:
+    flow_data = _read_flow_data(workspace_dir)
+    if flow_data is None:
+        return None
+    return {
+        (s["name"], s["tool"])
+        for s in flow_data.get("steps", [])
+        if isinstance(s, dict) and "name" in s and "tool" in s
+    }
 
 
 def _make_run_operation(workspace_dir: str, *, on_output=None, on_step_event=None):
     """Build a RunOperation for a workspace with step-log archiving wired in."""
     from pathlib import Path
 
+    from chipcompiler.runtime.log_stream import step_log_archive_resolver
     from chipcompiler.runtime.worker_operation import RunOperation
 
-    flow_json_path = Path(workspace_dir) / "home" / "flow.json"
     return RunOperation(
         workspace_dir=Path(workspace_dir),
-        flow_json_path=flow_json_path,
-        log_path_resolver=_workspace_step_log_resolver(workspace_dir),
+        flow_json_path=Path(workspace_dir) / "home" / "flow.json",
+        log_path_resolver=step_log_archive_resolver(workspace_dir),
         on_output=on_output,
         on_step_event=on_step_event,
-        valid_steps=_load_valid_steps(flow_json_path),
+        valid_steps=_load_valid_steps(workspace_dir),
     )
 
 
-def _run_flow_via_worker(workspace_dir: str, *, on_output=None, on_step_event=None):
-    """Execute flow.run through an isolated worker process.
+def _run_worker_calls(workspace_dir: str, calls: list[tuple[str, dict]], **callbacks):
+    """Execute an ordered RPC sequence through the workspace's worker.
 
-    Returns an OperationResult. A missing worker binary is a structured failure.
+    A missing worker binary is a structured failure, never a crash.
     """
     from chipcompiler.runtime.worker_operation import OperationResult
 
@@ -246,8 +245,18 @@ def _run_flow_via_worker(workspace_dir: str, *, on_output=None, on_step_event=No
     if missing is not None:
         return OperationResult(success=False, error=missing)
 
-    op = _make_run_operation(workspace_dir, on_output=on_output, on_step_event=on_step_event)
-    return op.run("flow.run", {"rerun": False})
+    op = _make_run_operation(workspace_dir, **callbacks)
+    return op.run_sequence(calls)
+
+
+def _run_flow_via_worker(workspace_dir: str, *, on_output=None, on_step_event=None):
+    """Execute flow.run through an isolated worker process."""
+    return _run_worker_calls(
+        workspace_dir,
+        [("flow.run", {"rerun": False})],
+        on_output=on_output,
+        on_step_event=on_step_event,
+    )
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
@@ -620,14 +629,7 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
             ("flow.run", {"rerun": False}),
         ]
 
-    from chipcompiler.runtime.worker_operation import OperationResult
-
-    missing = _worker_binary_missing_error()
-    if missing is not None:
-        op_result = OperationResult(success=False, error=missing)
-    else:
-        op = _make_run_operation(workspace_path)
-        op_result = op.run_sequence(calls)
+    op_result = _run_worker_calls(workspace_path, calls)
 
     if op_result.success:
         return CommandResult.ok(
@@ -671,12 +673,8 @@ def _workspace_run_outcome(
     that did execute, the step that failed, and an Unstart remainder that was
     invalidated but never ran.
     """
-    import json as json_mod
-
-    try:
-        with open(os.path.join(workspace_path, "home", "flow.json")) as f:
-            flow_data = json_mod.load(f)
-    except (OSError, json_mod.JSONDecodeError):
+    flow_data = _read_flow_data(workspace_path)
+    if flow_data is None:
         return [], None
 
     states = {

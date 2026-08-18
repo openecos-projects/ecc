@@ -125,6 +125,28 @@ workspace.
 The archive is opened with truncation on each accepted `begin`, so a rerun
 starts a fresh byte stream with cursor 0.
 
+## Allowlist
+
+On top of sanitization and containment, consumers should restrict archival
+to `(step, tool)` pairs read from the workspace's flow.json: a begin marker
+whose pair is not in the allowlist degrades to ordinary bytes. The allowlist
+is loaded at workspace open and refreshed when an operation starts and when
+a rerun is prepared.
+
+When flow.json cannot be read, each consumer picks its failure default and
+documents it here:
+
+- the **GUI** archiver fails closed (empty allowlist): all markers degrade
+  to unscoped bytes, which still land in the sidecar log file, so no output
+  is lost;
+- the **CLI** reader fails open (no allowlist): markers are honored after
+  sanitization and containment only, because the archived step logs are the
+  CLI's only record of the run.
+
+Both defaults are safe: containment bounds where bytes can be written, and
+the bytes always land in a visible place.
+
+
 ## Protocol Change: Live-Log Events Are Client-Synthesized
 
 As of this protocol version, ecc no longer emits `step.log` notifications or

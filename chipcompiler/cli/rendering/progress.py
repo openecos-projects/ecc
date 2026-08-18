@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import shutil
@@ -199,26 +198,25 @@ def run_flow_with_progress(workspace_dir, ctx, project, stderr, run_operation):
 
         from chipcompiler.runtime.log_stream import step_log_archive_resolver
 
-        flow_json_path = os.path.join(workspace_dir, "home", "flow.json")
         resolve_log = step_log_archive_resolver(workspace_dir)
         rendered = set()
         live = {"written_at": 0.0}
 
         def on_output(data: bytes) -> None:
-            text = sanitize_log_line(data.decode("utf-8", errors="replace"))
-            if not text:
-                return
             now = time.monotonic()
             if now - live["written_at"] < _LIVE_LINE_MIN_INTERVAL:
+                return
+            text = sanitize_log_line(data.decode("utf-8", errors="replace"))
+            if not text:
                 return
             live["written_at"] = now
             renderer.running(text)
 
         def refresh_final_states() -> None:
-            try:
-                with open(flow_json_path) as handle:
-                    flow_data = json.load(handle)
-            except (OSError, json.JSONDecodeError):
+            from chipcompiler.cli.inspection.discovery import CORRUPT_FLOW_JSON, read_flow_json
+
+            flow_data = read_flow_json(workspace_dir)
+            if flow_data is None or flow_data is CORRUPT_FLOW_JSON:
                 return
             for record in flow_data.get("steps", []):
                 if not isinstance(record, dict):

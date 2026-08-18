@@ -137,22 +137,7 @@ class RunOperation:
                     break
 
             if rpc_result is not None and not rpc_result.success:
-                if rpc_result.response is None or not client.is_alive():
-                    error = rpc_result.error or "protocol failure"
-                    return self._handle_crash(client, reader, error)
-                # Live-worker RPC error: graceful shutdown then drain
-                self._graceful_shutdown(client)
-                reader.join(timeout=5.0)
-                reader.stop()
-                log_state = reader.state
-                return OperationResult(
-                    success=False,
-                    rpc_result=rpc_result.response,
-                    exit_code=client.process.returncode if client.process else None,
-                    error=rpc_result.error,
-                    archive_error=log_state.error,
-                    log_state=log_state,
-                )
+                return self._handle_protocol_or_crash(client, reader, rpc_result)
 
             shutdown_ok = self._graceful_shutdown(client)
 

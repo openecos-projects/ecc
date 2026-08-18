@@ -324,9 +324,7 @@ class WorkspaceRuntimeApi:
                     workspace_step,
                     reset_dependents=reset_dependents or request.invalidate_dependents,
                 )
-                if reset_dependents:
-                    prepare_steps, invalidate_steps = affected_steps, []
-                elif request.invalidate_dependents:
+                if request.invalidate_dependents and not reset_dependents:
                     # Clear only the target's artifacts; downstream steps keep
                     # their outputs but are marked Unstart for a later resume.
                     prepare_steps, invalidate_steps = affected_steps[:1], affected_steps[1:]

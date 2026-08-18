@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
 
+from chipcompiler.utility.path import path_is_within
+
 MARKER_PREFIX = b"\x1eECC-STEP "
 MARKER_VERSION = 1
 
@@ -132,6 +134,10 @@ class LogStreamReader:
     def state(self) -> LogStreamState:
         return self._state
 
+    def _record_error(self, exc: Exception) -> None:
+        if self._state.error is None:
+            self._state.error = exc
+
     def start(self) -> None:
         self._thread = threading.Thread(target=self._drain_loop, name="ecc-log-reader", daemon=True)
         self._thread.start()
@@ -167,21 +173,20 @@ class LogStreamReader:
             self._close_archive()
 
     def _process_buffer(self, buf: bytes) -> bytes:
-        while True:
-            nl = buf.find(b"\n")
-            if nl < 0:
-                if buf.startswith(MARKER_PREFIX[:1]) and len(buf) < 512:
-                    return buf
-                if buf:
-                    self._emit_data(buf)
-                return b""
-            line = buf[: nl + 1]
-            buf = buf[nl + 1 :]
-            marker = parse_marker(line)
+        lines = buf.split(b"\n")
+        for line in lines[:-1]:
+            frame = line + b"\n"
+            marker = parse_marker(frame)
             if marker is not None:
-                self._handle_marker(marker, line)
+                self._handle_marker(marker, frame)
             else:
-                self._emit_data(line)
+                self._emit_data(frame)
+        remainder = lines[-1]
+        if remainder.startswith(MARKER_PREFIX[:1]) and len(remainder) < 512:
+            return remainder
+        if remainder:
+            self._emit_data(remainder)
+        return b""
 
     def _is_allowed_step(self, step: str, tool: str) -> bool:
         if self._valid_steps is None:
@@ -199,32 +204,18 @@ class LogStreamReader:
             return None
         for value in (step, tool):
             if not value or "/" in value or "\\" in value or ".." in value:
-                if self._state.error is None:
-                    self._state.error = ValueError(f"unsafe step marker name: {value!r}")
+                self._record_error(ValueError(f"unsafe step marker name: {value!r}"))
                 return None
         try:
             path = self._resolve_path(step, tool)
         except Exception as exc:
-            if self._state.error is None:
-                self._state.error = exc
+            self._record_error(exc)
             return None
         if path is None:
             return None
-        if self._workspace_dir is not None:
-            try:
-                resolved = path.resolve()
-                workspace_resolved = self._workspace_dir.resolve()
-                if not (
-                    resolved == workspace_resolved
-                    or str(resolved).startswith(str(workspace_resolved) + os.sep)
-                ):
-                    if self._state.error is None:
-                        self._state.error = ValueError(f"archive path escapes workspace: {path}")
-                    return None
-            except (OSError, ValueError) as exc:
-                if self._state.error is None:
-                    self._state.error = exc
-                return None
+        if self._workspace_dir is not None and not path_is_within(path, self._workspace_dir):
+            self._record_error(ValueError(f"archive path escapes workspace: {path}"))
+            return None
         return path
 
     def _handle_marker(self, marker: StepMarker, raw_line: bytes) -> None:
@@ -262,8 +253,7 @@ class LogStreamReader:
         try:
             self._on_step_event(event, step, tool)
         except Exception as exc:
-            if self._state.error is None:
-                self._state.error = exc
+            self._record_error(exc)
             self._on_step_event_disabled = True
 
     def _emit_data(self, data: bytes) -> None:
@@ -272,8 +262,7 @@ class LogStreamReader:
                 self._state.archive_file.write(data)
                 self._state.bytes_archived += len(data)
             except OSError as exc:
-                if self._state.error is None:
-                    self._state.error = exc
+                self._record_error(exc)
                 with suppress(OSError):
                     self._state.archive_file.close()
                 self._state.archive_file = None
@@ -282,13 +271,12 @@ class LogStreamReader:
             try:
                 self._on_output(data)
             except Exception as exc:
-                if self._state.error is None:
-                    self._state.error = exc
+                self._record_error(exc)
                 self._on_output_disabled = True
 
     def _update_tail(self, data: bytes) -> None:
         combined = self._state.tail_bytes + data
-        if len(combined) > self._tail_size:
+        if len(combined) > 2 * self._tail_size:
             combined = combined[-self._tail_size :]
         self._state.tail_bytes = combined
 
@@ -297,7 +285,7 @@ class LogStreamReader:
             path.parent.mkdir(parents=True, exist_ok=True)
             self._state.archive_file = path.open("wb")  # noqa: SIM115
         except OSError as exc:
-            self._state.error = exc
+            self._record_error(exc)
             self._state.archive_file = None
 
     def _close_archive(self) -> None:
@@ -305,12 +293,10 @@ class LogStreamReader:
             try:
                 self._state.archive_file.flush()
             except OSError as exc:
-                if self._state.error is None:
-                    self._state.error = exc
+                self._record_error(exc)
             finally:
                 try:
                     self._state.archive_file.close()
                 except OSError as exc:
-                    if self._state.error is None:
-                        self._state.error = exc
+                    self._record_error(exc)
                 self._state.archive_file = None
