@@ -45,17 +45,7 @@ def _workspace(tmp_path: Path):
     )
     _write_json(
         pl_path,
-        {
-            "PL": {
-                "GP": {"target_density": 0.8},
-                "LG": {"max_displacement": 1000000, "global_right_padding": 0},
-                "Filler": {
-                    "first_iter": ["FILL_2", "FILL_1"],
-                    "second_iter": ["FILL_1"],
-                    "min_filler_width": 1,
-                },
-            }
-        },
+        {"-min_filler_width": 1},
     )
     _write_json(
         tmp_path / "config" / "fp_default_config.json",

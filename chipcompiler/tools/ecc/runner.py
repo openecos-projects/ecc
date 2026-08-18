@@ -489,12 +489,8 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.NETLIST_OPT.value:
             state = run_net_opt(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.PLACEMENT.value:
-            state = run_placement(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.CTS.value:
             state = run_cts(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.LEGALIZATION.value:
-            state = run_legalization(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.ROUTING.value:
             state = run_routing(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.DRC.value:
@@ -555,37 +551,6 @@ def run_net_opt(
         )
 
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
-
-        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
-
-    return reslut
-
-
-def run_placement(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """
-    run placement
-    """
-    reslut = False
-
-    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
-
-    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
-
-    if ecc_module is not None:
-        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-
-        ecc_module.run_placement(config=workspace.config.get(f"{StepEnum.PLACEMENT.value}"))
-        ecc_module.feature_placement_map(json_path=step.feature.map or "")
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
-
-        reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
-        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -744,38 +709,6 @@ def run_lvs(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             return False
 
         copy_lvs_outputs(workspace=workspace, step=step)
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
-
-        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
-
-    return reslut
-
-
-def run_legalization(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """
-    run placement legalization
-    """
-    reslut = False
-
-    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
-
-    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
-
-    if ecc_module is not None:
-        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-
-        ecc_module.run_legalize(config=workspace.config.get(f"{StepEnum.LEGALIZATION.value}", ""))
-
-        sub_flow.update_step(
-            step_name=EccSubFlowEnum.run_legalization.value, state=StateEnum.Success
-        )
-
-        reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
-        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 

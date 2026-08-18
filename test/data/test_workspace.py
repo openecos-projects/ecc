@@ -26,9 +26,7 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.DRC.value: "drc_default_config.json",
     StepEnum.FLOORPLAN.value: "fp_default_config.json",
     StepEnum.NETLIST_OPT.value: "no_default_config_fixfanout.json",
-    StepEnum.PLACEMENT.value: "pl_default_config.json",
     StepEnum.ROUTING.value: "rt_default_config.json",
-    StepEnum.LEGALIZATION.value: "pl_default_config.json",
     StepEnum.FILLER.value: "pl_default_config.json",
     StepEnum.RCX.value: "rcx.json",
     StepEnum.STA.value: "sta.json",
@@ -370,9 +368,11 @@ def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
     assert data_api.workspace_config_path(str(workspace_dir), "flow") == (
         workspace_dir / "config" / "flow_config.json"
     )
-    assert data_api.workspace_config_path(workspace_dir, StepEnum.PLACEMENT.value) == (
+    assert data_api.workspace_config_path(workspace_dir, StepEnum.FILLER.value) == (
         workspace_dir / "config" / "pl_default_config.json"
     )
+    assert data_api.workspace_config_path(workspace_dir, StepEnum.PLACEMENT.value) is None
+    assert data_api.workspace_config_path(workspace_dir, StepEnum.LEGALIZATION.value) is None
     assert data_api.workspace_config_path(workspace_dir, "unknown") is None
 
 
@@ -381,22 +381,19 @@ def test_step_config_keys_return_workspace_config_keys():
     assert data_api.step_config_keys("place", "ecc") == (
         "flow",
         "db",
-        StepEnum.PLACEMENT.value,
     )
     assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == (
         "flow",
         "db",
-        StepEnum.PLACEMENT.value,
     )
     assert data_api.step_config_keys("legalization", "ecc") == (
         "flow",
         "db",
-        StepEnum.PLACEMENT.value,
     )
     assert data_api.step_config_keys("filler", "ecc") == (
         "flow",
         "db",
-        StepEnum.PLACEMENT.value,
+        StepEnum.FILLER.value,
     )
     assert data_api.step_config_keys("sta", "ecc") == (
         "flow",
@@ -414,7 +411,6 @@ def test_step_config_keys_accept_exact_internal_step_names_only():
     cases = [
         (StepEnum.FLOORPLAN.value, StepEnum.FLOORPLAN.value),
         (StepEnum.NETLIST_OPT.value, StepEnum.NETLIST_OPT.value),
-        (StepEnum.PLACEMENT.value, StepEnum.PLACEMENT.value),
         (StepEnum.ROUTING.value, StepEnum.ROUTING.value),
         (StepEnum.RCX.value, StepEnum.RCX.value),
         ("sta", StepEnum.STA.value),
@@ -635,9 +631,9 @@ def test_workspace_config_refresh_uses_updated_parameters(
     init_workspace_config(workspace)
 
     fixfanout = json_read(workspace.config["fixFanout"])
-    placement = json_read(workspace.config["place"])
+    filler = json_read(workspace.config["filler"])
     assert fixfanout["max_fanout"] == 88
-    assert placement["PL"]["GP"]["global_right_padding"] == 13
+    assert filler == {"-min_filler_width": 1}
 
 
 def test_refresh_workspace_config_updates_all_parameter_derived_fields(
@@ -673,14 +669,14 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     refresh_workspace_config(workspace)
 
     fixfanout = json_read(workspace.config["fixFanout"])
-    placement = json_read(workspace.config["place"])
+    filler = json_read(workspace.config["filler"])
     db = json_read(workspace.config["db"])
     floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
     routing = json_read(workspace.config["route"])
     dreamplace = json_read(workspace.config["dreamplace"])
 
     assert fixfanout["max_fanout"] == 91
-    assert placement["PL"]["GP"]["global_right_padding"] == 17
+    assert filler == {"-min_filler_width": 1}
     assert db["LayerSettings"]["routing_layer_1st"] == "MET3"
     assert routing["RT"]["-bottom_routing_layer"] == "MET3"
     assert routing["RT"]["-top_routing_layer"] == "MET6"

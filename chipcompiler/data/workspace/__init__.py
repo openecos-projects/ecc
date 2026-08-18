@@ -124,9 +124,7 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.DRC.value: "drc_default_config.json",
     StepEnum.FLOORPLAN.value: "fp_default_config.json",
     StepEnum.NETLIST_OPT.value: "no_default_config_fixfanout.json",
-    StepEnum.PLACEMENT.value: "pl_default_config.json",
     StepEnum.ROUTING.value: "rt_default_config.json",
-    StepEnum.LEGALIZATION.value: "pl_default_config.json",
     StepEnum.FILLER.value: "pl_default_config.json",
     StepEnum.RCX.value: "rcx.json",
     StepEnum.STA.value: "sta.json",
@@ -138,12 +136,12 @@ _STEP_BY_VALUE: Final[dict[str, StepEnum]] = {step.value: step for step in StepE
 _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
     (StepEnum.FLOORPLAN, "ecc"): ("flow", "db", StepEnum.FLOORPLAN.value),
     (StepEnum.NETLIST_OPT, "ecc"): ("flow", "db", StepEnum.NETLIST_OPT.value),
-    (StepEnum.PLACEMENT, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.PLACEMENT, "ecc"): ("flow", "db"),
     (StepEnum.CTS, "ecc"): ("flow", "db", StepEnum.CTS.value),
     (StepEnum.ROUTING, "ecc"): ("flow", "db", StepEnum.ROUTING.value),
     (StepEnum.DRC, "ecc"): ("flow", "db", StepEnum.DRC.value),
-    (StepEnum.LEGALIZATION, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
-    (StepEnum.FILLER, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.LEGALIZATION, "ecc"): ("flow", "db"),
+    (StepEnum.FILLER, "ecc"): ("flow", "db", StepEnum.FILLER.value),
     (StepEnum.RCX, "ecc"): ("flow", "db", StepEnum.RCX.value),
     (StepEnum.STA, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
@@ -336,11 +334,6 @@ PARAMETER_CONFIG_FIELD_MAPPINGS = (
         "Max fanout",
         StepEnum.NETLIST_OPT.value,
         ("max_fanout",),
-    ),
-    WorkspaceConfigParameterMapping(
-        "Global right padding",
-        StepEnum.PLACEMENT.value,
-        ("PL", "GP", "global_right_padding"),
     ),
     WorkspaceConfigParameterMapping(
         "Bottom layer",
@@ -651,7 +644,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
         )
     flow["ConfigPath"]["idb_path"] = str(workspace.config["db"])
     flow["ConfigPath"]["ifp_path"] = str(workspace.config[f"{StepEnum.FLOORPLAN.value}"])
-    flow["ConfigPath"]["ipl_path"] = str(workspace.config[f"{StepEnum.PLACEMENT.value}"])
+    flow["ConfigPath"].pop("ipl_path", None)
     flow["ConfigPath"]["irt_path"] = str(workspace.config[f"{StepEnum.ROUTING.value}"])
     flow["ConfigPath"]["idrc_path"] = str(workspace.config[f"{StepEnum.DRC.value}"])
     flow["ConfigPath"]["icts_path"] = str(workspace.config[f"{StepEnum.CTS.value}"])
@@ -683,19 +676,16 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     fixfanout["max_fanout"] = workspace.parameters.data.get("Max fanout", 32)
     json_write(workspace.config[f"{StepEnum.NETLIST_OPT.value}"], fixfanout)
 
-    placement = json_read(workspace.config[f"{StepEnum.PLACEMENT.value}"])
-    if "PL" not in placement:
-        raise FileNotFoundError(
-            f"Placement config missing or corrupt (no 'PL' key): "
-            f"{workspace.config[f'{StepEnum.PLACEMENT.value}']}"
-        )
-    placement["PL"]["BUFFER"]["buffer_type"] = workspace.pdk.buffers
-    placement["PL"]["Filler"]["first_iter"] = workspace.pdk.fillers
-    placement["PL"]["Filler"]["second_iter"] = workspace.pdk.fillers
-    placement["PL"]["GP"]["global_right_padding"] = workspace.parameters.data.get(
-        "Global right padding", 0
-    )
-    json_write(workspace.config[f"{StepEnum.PLACEMENT.value}"], placement)
+    filler_path = workspace.config[f"{StepEnum.FILLER.value}"]
+    filler = json_read(filler_path)
+    if not isinstance(filler, dict):
+        raise FileNotFoundError(f"Filler config missing or corrupt: {filler_path}")
+    min_filler_width = filler.get("-min_filler_width")
+    if min_filler_width is None:
+        nested = filler.get("PL", {})
+        nested = nested.get("Filler", {}) if isinstance(nested, dict) else {}
+        min_filler_width = nested.get("min_filler_width", 1) if isinstance(nested, dict) else 1
+    json_write(filler_path, {"-min_filler_width": min_filler_width})
 
     cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
     if not cts:

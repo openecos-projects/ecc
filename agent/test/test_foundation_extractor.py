@@ -211,7 +211,7 @@ def _make_workspace(
         )
         _write_json(
             ws / stage_dir / "config" / "pl_default_config.json",
-            {"PL": {"GP": {"global_right_padding": 0}}},
+            {"-min_filler_width": 1},
         )
         _write_json(
             ws / stage_dir / "config" / "rt_default_config.json",

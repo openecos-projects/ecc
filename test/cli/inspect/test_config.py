@@ -310,7 +310,7 @@ class TestConfigStepResolved:
         create_ecc_workspace_config,
     ):
         cases = [
-            ("place", "placement", "pl_default_config.json"),
+            ("place", "placement", None),
             ("route", "routing", "rt_default_config.json"),
         ]
         for step_name, step_token, step_config in cases:
@@ -328,18 +328,20 @@ class TestConfigStepResolved:
                 ],
             )
             create_step_dir(run_dir, step_name, "ecc", subdirs=["output"])
-            create_ecc_workspace_config(run_dir, step_config)
+            create_ecc_workspace_config(run_dir, step_config or "pl_default_config.json")
 
             rc = cli_main.run(
                 ["config", step_token, "--resolved", "--json", "--project", project_dir]
             )
             assert rc == 0
             data = json.loads(capsys.readouterr().out)
-            assert [item["path"] for item in data["records"]] == [
+            expected = [
                 "runs/default/config/flow_config.json",
                 "runs/default/config/db_default_config.json",
-                f"runs/default/config/{step_config}",
             ]
+            if step_config:
+                expected.append(f"runs/default/config/{step_config}")
+            assert [item["path"] for item in data["records"]] == expected
             assert all(item["step"] == step_token for item in data["records"])
 
     def test_config_sta_uses_rcx_and_sta_workspace_configs(

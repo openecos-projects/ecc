@@ -673,7 +673,7 @@ class EccFillerChecklist(EccChecklist):
         step = StepEnum.FILLER.value
         db = json_read(self.workspace_step.feature.db or "")
         subflow = json_read(self.workspace_step.subflow.path or "")
-        config = json_read(self.workspace.config.get(StepEnum.PLACEMENT.value, ""))
+        config = json_read(self.workspace.config.get(StepEnum.FILLER.value, ""))
 
         try:
             with open(
@@ -684,9 +684,7 @@ class EccFillerChecklist(EccChecklist):
             log_text = ""
 
         subflow_state = {item.get("name"): item.get("state") for item in subflow.get("steps", [])}
-        filler_config = config.get("PL", {}).get("Filler", {})
-        first_iter_fillers = filler_config.get("first_iter", [])
-        second_iter_fillers = filler_config.get("second_iter", [])
+        min_filler_width = config.get("-min_filler_width", 1)
         pdk_fillers = getattr(self.workspace.pdk, "fillers", []) or []
         output_success = all(
             [
@@ -706,7 +704,7 @@ class EccFillerChecklist(EccChecklist):
             (
                 "Filler",
                 "check filler cell list",
-                len(pdk_fillers) > 0 or len(first_iter_fillers) > 0 or len(second_iter_fillers) > 0,
+                len(pdk_fillers) > 0 or int(min_filler_width or 0) > 0,
             ),
             (
                 "Filler",
