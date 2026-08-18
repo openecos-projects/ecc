@@ -317,7 +317,7 @@ class TestWorkspaceRun:
         rc = cli_main.run(["run", "--workspace", workspace, "--only", "place", "--json"])
 
         assert rc == 0
-        assert workspace_mocks.calls == [("flow.run_step", {"step": "place", "rerun": False})]
+        assert workspace_mocks.calls == [("flow.run_step", {"step": "place", "rerun": True})]
 
     def test_only_success_step_without_force_is_noop(self, workspace_mocks, tmp_path, capsys):
         workspace_mocks.steps = [

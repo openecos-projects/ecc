@@ -55,6 +55,10 @@ class TestParseMarker:
         line = b'\x1eECC-STEP {"v":"1","event":"begin","step":"S","tool":"T"}\n'
         assert parse_marker(line) is None
 
+    def test_boolean_version_rejected(self):
+        line = b'\x1eECC-STEP {"v":true,"event":"begin","step":"S","tool":"T"}\n'
+        assert parse_marker(line) is None
+
 
 class TestEmitStepMarker:
     def test_payload_carries_version_and_round_trips(self, monkeypatch):
@@ -74,6 +78,33 @@ class TestEmitStepMarker:
             MARKER_PREFIX + b'{"v":1,"event":"begin","step":"Synthesis","tool":"yosys"}\n'
         ]
         assert parse_marker(written[0]) == StepMarker(event="begin", step="Synthesis", tool="yosys")
+
+    def test_c_stdio_buffer_drains_before_marker(self, tmp_path):
+        """Native buffered output must reach fd 2 ahead of the marker bytes."""
+        import ctypes
+
+        libc = ctypes.CDLL(None)
+        libc.fputs.argtypes = [ctypes.c_char_p, ctypes.c_void_p]
+        stderr_file = ctypes.c_void_p.in_dll(libc, "stderr")
+
+        sink = tmp_path / "fd2.bin"
+        saved_fd = os.dup(2)
+        try:
+            with sink.open("wb") as handle:
+                os.dup2(handle.fileno(), 2)
+            libc.fputs(b"native-before-end\n", stderr_file)
+            # No fflush here: emit_step_marker must drain the C buffer first.
+            emit_step_marker("end", step="S", tool="T")
+        finally:
+            os.dup2(saved_fd, 2)
+            os.close(saved_fd)
+
+        content = sink.read_bytes()
+        assert content == (
+            b"native-before-end\n"
+            + MARKER_PREFIX
+            + b'{"v":1,"event":"end","step":"S","tool":"T"}\n'
+        )
 
 
 class TestLogStreamReader:
@@ -438,6 +469,79 @@ class TestLogStreamAllowlist:
         reader.join(timeout=5)
         assert log_path.read_bytes() == b"tool output\n"
         assert reader.state.error is None
+
+
+class TestArchiveTargetSanitization:
+    def test_separator_in_name_degrades_to_data(self, tmp_path):
+        """An allowlisted begin with a path separator is ordinary bytes, not a marker."""
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        received = []
+
+        def resolver(step, tool):
+            base = workspace
+            return base / f"{step}_{tool}" / "log" / f"{step}.log"
+
+        unsafe_begin = b'\x1eECC-STEP {"v":1,"event":"begin","step":"foo/bar","tool":"ecc"}\n'
+        stream_data = unsafe_begin + b"body bytes\n"
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            log_path_resolver=resolver,
+            valid_steps={("foo/bar", "ecc")},
+            workspace_dir=workspace,
+            on_output=received.append,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        combined = b"".join(received)
+        assert unsafe_begin in combined
+        assert b"body bytes\n" in combined
+        assert reader.state.active_step is None
+        assert reader.state.steps_seen == []
+        assert isinstance(reader.state.error, ValueError)
+        assert not (workspace / "foo").exists()
+
+    def test_dotdot_in_name_degrades_to_data(self, tmp_path):
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        received = []
+        unsafe_begin = b'\x1eECC-STEP {"v":1,"event":"begin","step":"..","tool":".."}\n'
+        reader = LogStreamReader(
+            io.BytesIO(unsafe_begin),
+            log_path_resolver=lambda step, tool: workspace / "x" / "x.log",
+            valid_steps={("..", "..")},
+            workspace_dir=workspace,
+            on_output=received.append,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert b"".join(received) == unsafe_begin
+        assert reader.state.active_step is None
+        assert isinstance(reader.state.error, ValueError)
+
+    def test_containment_violation_degrades_begin_to_data(self, tmp_path):
+        """A begin whose archive escapes the workspace is forwarded as data."""
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        escape_target = tmp_path / "outside.log"
+        received = []
+        unsafe_begin = b'\x1eECC-STEP {"v":1,"event":"begin","step":"Escape","tool":"evil"}\n'
+        stream_data = unsafe_begin + b"not archived\n"
+        reader = LogStreamReader(
+            io.BytesIO(stream_data),
+            log_path_resolver=lambda step, tool: escape_target,
+            valid_steps={("Escape", "evil")},
+            workspace_dir=workspace,
+            on_output=received.append,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        combined = b"".join(received)
+        assert unsafe_begin in combined
+        assert b"not archived\n" in combined
+        assert reader.state.active_step is None
+        assert not escape_target.exists()
+        assert "escapes workspace" in str(reader.state.error)
 
 
 class TestStepLogArchiveResolver:

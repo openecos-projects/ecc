@@ -33,8 +33,13 @@ def emit_step_marker(event: str, step: str, tool: str) -> None:
     """Write a step marker to stderr using a single os.write() call."""
     import sys
 
+    from chipcompiler.utility.log import flush_cstdio
+
     sys.stdout.flush()
     sys.stderr.flush()
+    # C/C++ buffers must drain before the marker, or pending native output
+    # lands on the wrong side of the step boundary.
+    flush_cstdio()
     payload = json.dumps(
         {"v": MARKER_VERSION, "event": event, "step": step, "tool": tool},
         separators=(",", ":"),
@@ -66,7 +71,9 @@ def parse_marker(line: bytes) -> StepMarker | None:
         return None
     if not isinstance(data, dict):
         return None
-    if data.get("v") != MARKER_VERSION:
+    version = data.get("v")
+    # JSON true/false are bool in Python; bool == 1 is True, so exclude it.
+    if isinstance(version, bool) or version != MARKER_VERSION:
         return None
     event = data.get("event")
     step = data.get("step")
@@ -181,19 +188,60 @@ class LogStreamReader:
             return True
         return (step, tool) in self._valid_steps
 
+    def _archive_target_ok(self, step: str, tool: str) -> bool:
+        """Validate sanitization and containment before activating a step.
+
+        A marker whose archive target is unsafe or unresolvable is degraded to
+        ordinary bytes instead of activating archival.
+        """
+        if self._resolve_path is None:
+            return True
+        for value in (step, tool):
+            if not value or "/" in value or "\\" in value or ".." in value:
+                if self._state.error is None:
+                    self._state.error = ValueError(f"unsafe step marker name: {value!r}")
+                return False
+        try:
+            path = self._resolve_path(step, tool)
+        except Exception as exc:
+            if self._state.error is None:
+                self._state.error = exc
+            return False
+        if path is None:
+            return False
+        if self._workspace_dir is not None:
+            try:
+                resolved = path.resolve()
+                workspace_resolved = self._workspace_dir.resolve()
+                if not (
+                    resolved == workspace_resolved
+                    or str(resolved).startswith(str(workspace_resolved) + os.sep)
+                ):
+                    if self._state.error is None:
+                        self._state.error = ValueError(f"archive path escapes workspace: {path}")
+                    return False
+            except (OSError, ValueError) as exc:
+                if self._state.error is None:
+                    self._state.error = exc
+                return False
+        return True
+
     def _handle_marker(self, marker: StepMarker, raw_line: bytes) -> None:
         if marker.event == "begin":
             if not self._is_allowed_step(marker.step, marker.tool):
                 self._emit_data(raw_line)
                 return
-            if self._state.active_step is None:
-                self._state.active_step = marker.step
-                self._state.active_tool = marker.tool
-                self._state.steps_seen.append(marker.step)
-                self._open_archive(marker.step, marker.tool)
-                self._emit_step_event("begin", marker.step, marker.tool)
-            else:
+            if self._state.active_step is not None:
                 self._emit_data(raw_line)
+                return
+            if not self._archive_target_ok(marker.step, marker.tool):
+                self._emit_data(raw_line)
+                return
+            self._state.active_step = marker.step
+            self._state.active_tool = marker.tool
+            self._state.steps_seen.append(marker.step)
+            self._open_archive(marker.step, marker.tool)
+            self._emit_step_event("begin", marker.step, marker.tool)
         elif marker.event == "end":
             if marker.step == self._state.active_step and marker.tool == self._state.active_tool:
                 self._close_archive()

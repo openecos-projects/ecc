@@ -209,5 +209,5 @@ def _disable_worker_routing(monkeypatch):
 
     monkeypatch.setattr(
         "chipcompiler.cli.command_handlers.project._run_flow_via_worker",
-        lambda workspace_dir: OperationResult(success=True, exit_code=0),
+        lambda workspace_dir, **_kwargs: OperationResult(success=True, exit_code=0),
     )
