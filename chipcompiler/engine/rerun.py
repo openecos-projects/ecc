@@ -113,21 +113,27 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
     if flow.engine_db is not None:
         flow.engine_db.close()
 
+    # Direct in-process runs are executor and client in one process: route
+    # the own fd 1/2 stream through the archiver so step bytes land in
+    # per-step logs and markers never reach the caller's terminal.
+    from chipcompiler.runtime.log_stream import archive_own_step_logs
+
     executed = []
-    for workspace_step, output_dir in selected:
-        flow.workspace.logger.log_section(
-            f"{workspace_step.tool} - begin step - {workspace_step.name}"
-        )
-        _reset_output_dir(output_dir)
-        flow.init_db_engine_for_step(workspace_step)
-        state = flow.run_step(workspace_step, rerun=True)
-        log_flow(workspace=flow.workspace)
-        flow.workspace.logger.log_section(
-            f"{workspace_step.tool} - end step - {workspace_step.name}"
-        )
-        if state != StateEnum.Success:
-            return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
-        executed.append(workspace_step.name)
+    with archive_own_step_logs(flow.workspace.directory):
+        for workspace_step, output_dir in selected:
+            flow.workspace.logger.log_section(
+                f"{workspace_step.tool} - begin step - {workspace_step.name}"
+            )
+            _reset_output_dir(output_dir)
+            flow.init_db_engine_for_step(workspace_step)
+            state = flow.run_step(workspace_step, rerun=True)
+            log_flow(workspace=flow.workspace)
+            flow.workspace.logger.log_section(
+                f"{workspace_step.tool} - end step - {workspace_step.name}"
+            )
+            if state != StateEnum.Success:
+                return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
+            executed.append(workspace_step.name)
     return StepRunResult(ok=True, executed=tuple(executed))
 
 

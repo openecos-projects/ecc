@@ -128,6 +128,33 @@ class TestRunFrom:
         assert not stale_place.exists()
         assert not stale_cts.exists()
 
+    def test_direct_run_self_archives_step_bytes(self, monkeypatch, tmp_path, capfd):
+        """In-process rerun routes fd 1/2 through the archiver: step bytes land
+        in the step log and markers never reach the caller's terminal."""
+        import os
+
+        from chipcompiler.runtime.log_stream import emit_step_marker
+
+        flow = _make_run_flow(tmp_path, [("place", "Success"), ("CTS", "Unstart")])
+        _write_output(flow, "place")
+
+        def run_step_with_bytes(workspace_step, *, rerun=False):
+            emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+            os.write(2, f"{workspace_step.name} bytes\n".encode())
+            emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
+            flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Success)
+            return StateEnum.Success
+
+        monkeypatch.setattr(flow, "run_step", run_step_with_bytes)
+        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
+
+        result = rerun.run_from(flow, "place")
+
+        assert result.ok
+        archive = tmp_path / "place_ecc" / "log" / "place.log"
+        assert archive.read_bytes() == b"place bytes\n"
+        assert "ECC-STEP" not in capfd.readouterr().err
+
     def test_failure_stops_suffix_and_keeps_downstream_output(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
             tmp_path,
