@@ -1776,7 +1776,7 @@ def _floorplan_config_target(workspace) -> Path:
     workspace_directory = _path_or_none(getattr(workspace, "directory", None))
     if workspace_directory is None:
         raise RuntimeApiError("command_failed", "workspace directory is missing")
-    return workspace_directory / "config" / "fp_default_config.json"
+    return workspace_directory / "config" / "floorplan_ecc.json"
 
 
 def _workspace_path(workspace, owner_name: str, path_name: str) -> Path | None:

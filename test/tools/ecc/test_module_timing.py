@@ -293,7 +293,7 @@ def test_run_timing_stringifies_path_arguments(tmp_path):
     module = make_module()
 
     module.run_timing(
-        config=Path("/ws/config/sta.json"),
+        config=Path("/ws/config/sta_ecc.json"),
         work_dir=tmp_path / "sta_work",
         report_dir=tmp_path / "sta_report",
         feature_dir=tmp_path / "sta_feature",
@@ -310,7 +310,7 @@ def test_run_timing_stringifies_path_arguments(tmp_path):
         (
             "init_sta",
             {
-                "config": "/ws/config/sta.json",
+                "config": "/ws/config/sta_ecc.json",
                 "config_dict": {
                     "-temp_directory_path": str(tmp_path / "sta_work"),
                     "-output_timing_reports": "1",

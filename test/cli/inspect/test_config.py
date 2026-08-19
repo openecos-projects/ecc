@@ -164,9 +164,9 @@ class TestConfigStepResolved:
         create_workspace_config(
             run_dir,
             {
-                "flow_config.json": "{}",
-                "db_default_config.json": "{}",
-                "cts_default_config.json": "{}",
+                "flow_ecc.json": "{}",
+                "db_ecc.json": "{}",
+                "cts_ecc.json": "{}",
             },
         )
 
@@ -175,9 +175,9 @@ class TestConfigStepResolved:
         out = capsys.readouterr().out
         assert "step:" in out or "cts" in out
         assert "step:" in out or "step:" in out
-        assert "runs/default/config/flow_config.json" in out
-        assert "runs/default/config/db_default_config.json" in out
-        assert "cts_default_config.json" in out
+        assert "runs/default/config/flow_ecc.json" in out
+        assert "runs/default/config/db_ecc.json" in out
+        assert "cts_ecc.json" in out
 
     def test_config_step_json(
         self,
@@ -198,9 +198,9 @@ class TestConfigStepResolved:
         create_workspace_config(
             run_dir,
             {
-                "flow_config.json": "{}",
-                "db_default_config.json": "{}",
-                "cts_default_config.json": "{}",
+                "flow_ecc.json": "{}",
+                "db_ecc.json": "{}",
+                "cts_ecc.json": "{}",
             },
         )
 
@@ -213,9 +213,9 @@ class TestConfigStepResolved:
         assert all(item["step"] == "cts" for item in records)
         assert all(item["source"] == "workspace_config" for item in records)
         assert [item["path"] for item in records] == [
-            "runs/default/config/flow_config.json",
-            "runs/default/config/db_default_config.json",
-            "runs/default/config/cts_default_config.json",
+            "runs/default/config/flow_ecc.json",
+            "runs/default/config/db_ecc.json",
+            "runs/default/config/cts_ecc.json",
         ]
 
     def test_config_step_workspace_records_inspect_with_config_command(
@@ -297,7 +297,7 @@ class TestConfigStepResolved:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert [item["path"] for item in data["records"]] == [
-            "runs/default/config/dreamplace.json",
+            "runs/default/config/dreamplace_ecc.json",
         ]
         assert data["records"][0]["source"] == "workspace_config"
 
@@ -311,7 +311,7 @@ class TestConfigStepResolved:
     ):
         cases = [
             ("place", "placement", None),
-            ("route", "routing", "rt_default_config.json"),
+            ("route", "routing", "route_ecc.json"),
         ]
         for step_name, step_token, step_config in cases:
             project_dir = create_cli_project(name=f"gcd_{step_token}")
@@ -328,7 +328,7 @@ class TestConfigStepResolved:
                 ],
             )
             create_step_dir(run_dir, step_name, "ecc", subdirs=["output"])
-            create_ecc_workspace_config(run_dir, step_config or "pl_default_config.json")
+            create_ecc_workspace_config(run_dir, step_config or "filler_ecc.json")
 
             rc = cli_main.run(
                 ["config", step_token, "--resolved", "--json", "--project", project_dir]
@@ -336,8 +336,8 @@ class TestConfigStepResolved:
             assert rc == 0
             data = json.loads(capsys.readouterr().out)
             expected = [
-                "runs/default/config/flow_config.json",
-                "runs/default/config/db_default_config.json",
+                "runs/default/config/flow_ecc.json",
+                "runs/default/config/db_ecc.json",
             ]
             if step_config:
                 expected.append(f"runs/default/config/{step_config}")
@@ -370,10 +370,10 @@ class TestConfigStepResolved:
         create_workspace_config(
             run_dir,
             {
-                "flow_config.json": "{}",
-                "db_default_config.json": "{}",
-                "rcx.json": "{}",
-                "sta.json": "{}",
+                "flow_ecc.json": "{}",
+                "db_ecc.json": "{}",
+                "rcx_ecc.json": "{}",
+                "sta_ecc.json": "{}",
             },
         )
 
@@ -381,10 +381,10 @@ class TestConfigStepResolved:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert [item["path"] for item in data["records"]] == [
-            "runs/default/config/flow_config.json",
-            "runs/default/config/db_default_config.json",
-            "runs/default/config/rcx.json",
-            "runs/default/config/sta.json",
+            "runs/default/config/flow_ecc.json",
+            "runs/default/config/db_ecc.json",
+            "runs/default/config/rcx_ecc.json",
+            "runs/default/config/sta_ecc.json",
         ]
         assert all(item["source"] == "workspace_config" for item in data["records"])
 
@@ -411,7 +411,7 @@ class TestConfigStepResolved:
             ],
         )
         create_step_dir(run_dir, "Synthesis", "yosys", subdirs=["output"])
-        create_workspace_config(run_dir, {"flow_config.json": "{}"})
+        create_workspace_config(run_dir, {"flow_ecc.json": "{}"})
 
         rc = cli_main.run(["config", "synthesis", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
@@ -480,9 +480,9 @@ class TestDirectoryOnlyStepConfig:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert [item["path"] for item in data["records"]] == [
-            "runs/default/config/flow_config.json",
-            "runs/default/config/db_default_config.json",
-            "runs/default/config/cts_default_config.json",
+            "runs/default/config/flow_ecc.json",
+            "runs/default/config/db_ecc.json",
+            "runs/default/config/cts_ecc.json",
         ]
 
     def test_dir_only_routing_uses_internal_step_directory_prefix(
@@ -502,15 +502,15 @@ class TestDirectoryOnlyStepConfig:
             ],
         )
         create_step_dir(run_dir, "route", "ecc", subdirs=["output"])
-        create_ecc_workspace_config(run_dir, "rt_default_config.json")
+        create_ecc_workspace_config(run_dir, "route_ecc.json")
 
         rc = cli_main.run(["config", "routing", "--resolved", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert [item["path"] for item in data["records"]] == [
-            "runs/default/config/flow_config.json",
-            "runs/default/config/db_default_config.json",
-            "runs/default/config/rt_default_config.json",
+            "runs/default/config/flow_ecc.json",
+            "runs/default/config/db_ecc.json",
+            "runs/default/config/route_ecc.json",
         ]
 
 

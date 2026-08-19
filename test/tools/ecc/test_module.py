@@ -137,27 +137,27 @@ def test_init_rcx_passes_pdk_when_configured():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.init_rcx(config="/tmp/rcx.json", pdk="ics55") is True
+    assert module.init_rcx(config="/tmp/rcx_ecc.json", pdk="ics55") is True
 
-    assert module.ecc.calls == [{"config": "/tmp/rcx.json", "pdk": "ics55"}]
+    assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json", "pdk": "ics55"}]
 
 
 def test_init_rcx_defaults_to_ics55_pdk():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.init_rcx(config="/tmp/rcx.json") is True
+    assert module.init_rcx(config="/tmp/rcx_ecc.json") is True
 
-    assert module.ecc.calls == [{"config": "/tmp/rcx.json", "pdk": "ics55"}]
+    assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json", "pdk": "ics55"}]
 
 
 def test_init_rcx_omits_explicit_empty_pdk_for_backward_compatibility():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.init_rcx(config="/tmp/rcx.json", pdk="") is True
+    assert module.init_rcx(config="/tmp/rcx_ecc.json", pdk="") is True
 
-    assert module.ecc.calls == [{"config": "/tmp/rcx.json"}]
+    assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json"}]
 
 
 def test_view_json_save_passes_output_options():
@@ -406,7 +406,7 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.write_abstract_lef(Path("/ws/output/abstract.lef"))
     module.write_timing_model(
         timing_output,
-        config=Path("/ws/config/sta.json"),
+        config=Path("/ws/config/sta_ecc.json"),
         output_dir=timing_work_dir,
         lib_paths=[Path("/pdk/lib.lib")],
         sdc_path=Path("/ws/design.sdc"),
@@ -1688,7 +1688,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
-    sta_config = tmp_path / "config" / "sta.json"
+    sta_config = tmp_path / "config" / "sta_ecc.json"
     sta_config.parent.mkdir(parents=True, exist_ok=True)
     sta_config.write_text(
         json.dumps(
@@ -1996,7 +1996,7 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    sta_config = tmp_path / "config" / "sta.json"
+    sta_config = tmp_path / "config" / "sta_ecc.json"
     sta_config.parent.mkdir(parents=True, exist_ok=True)
     sta_config.write_text(
         json.dumps(
@@ -2054,7 +2054,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    sta_config = tmp_path / "config" / "sta.json"
+    sta_config = tmp_path / "config" / "sta_ecc.json"
     sta_config.parent.mkdir(parents=True, exist_ok=True)
     sta_config.write_text(
         json.dumps(

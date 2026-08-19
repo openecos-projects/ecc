@@ -1,9 +1,0 @@
-{
-    "ConfigPath": {
-        "idb_path": "./configs/db_default_config.json",
-        "ifp_path": "./configs/fp_default_config.json",
-        "irt_path": "./configs/rt_default_config.json",
-        "idrc_path": "./configs/drc_default_config.json",
-        "icts_path": "./configs/cts_default_config.json"
-    }
-}

@@ -12,7 +12,7 @@ def _write_json(path: Path, data: dict) -> None:
 
 
 def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypatch, tmp_path):
-    config_path = tmp_path / "config" / "dreamplace.json"
+    config_path = tmp_path / "config" / "dreamplace_ecc.json"
     _write_json(config_path, {"target_density": 0.8})
     workspace = SimpleNamespace(
         directory=str(tmp_path),
@@ -47,7 +47,7 @@ def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypat
 
 
 def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_path):
-    config_path = tmp_path / "config" / "dreamplace.json"
+    config_path = tmp_path / "config" / "dreamplace_ecc.json"
     _write_json(config_path, {"bndry_padding_x": 0})
     workspace = SimpleNamespace(
         directory=str(tmp_path),

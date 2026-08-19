@@ -158,10 +158,10 @@ class SignoffPackageCollector:
 
         config_dir = workspace_dir / "config"
         required_configs = {
-            "db_default_config.json",
-            "flow_config.json",
-            "rcx.json",
-            "sta.json",
+            "db_ecc.json",
+            "flow_ecc.json",
+            "rcx_ecc.json",
+            "sta_ecc.json",
         }
         if not config_dir.is_dir():
             missing_required.append("config directory")
@@ -198,7 +198,7 @@ class SignoffPackageCollector:
                         )
                     )
 
-        db_config = self._read_json(config_dir / "db_default_config.json")
+        db_config = self._read_json(config_dir / "db_ecc.json")
         configured_filelist = getattr(self.workspace.design, "input_filelist", None)
         origin_rtl = resolve_initial_rtl(
             configured_filelist,
@@ -386,7 +386,7 @@ class SignoffPackageCollector:
             destination=f"final/design/{design}.png",
         )
 
-        sta_config = self._read_json(config_dir / "sta.json")
+        sta_config = self._read_json(config_dir / "sta_ecc.json")
         sta_matrix = self._sta_matrix(sta_config)
         expected_spefs = set()
         for item in sta_matrix:

@@ -174,7 +174,7 @@ class FakeDreamplaceParams:
 
 
 def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
-    config_path = tmp_path / "dreamplace.json"
+    config_path = tmp_path / "dreamplace_ecc.json"
     json_write(
         config_path,
         {

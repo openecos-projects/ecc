@@ -2957,13 +2957,13 @@ class FoundationExtractor:
     def _collect_control_knobs(self, stages: list[StageInfo]) -> dict[str, Any]:
         knobs: dict[str, Any] = {"source": "effective_tool_flow_configs"}
         floorplan = self._first_config_values(
-            stages, "fp_default_config.json", {"tap_distance": ("Floorplan", "Tap distance")}
+            stages, "floorplan_ecc.json", {"tap_distance": ("Floorplan", "Tap distance")}
         )
         if floorplan:
             knobs["floorplan"] = floorplan
         dreamplace = self._first_config_values(
             [stage for stage in stages if stage.tool == "dreamplace"],
-            "dreamplace.json",
+            "dreamplace_ecc.json",
             {
                 "num_bins_x": ("num_bins_x",),
                 "num_bins_y": ("num_bins_y",),
@@ -2981,14 +2981,14 @@ class FoundationExtractor:
             knobs["dreamplace"] = dreamplace
         fix_fanout = self._first_config_values(
             [stage for stage in stages if stage.name == "fixFanout"],
-            "no_default_config_fixfanout.json",
+            "fixfanout_ecc.json",
             {"insert_buffer": ("insert_buffer",)},
         )
         if fix_fanout:
             knobs["fix_fanout"] = fix_fanout
         cts = self._first_config_values(
             [stage for stage in stages if stage.name == "CTS"],
-            "cts_default_config.json",
+            "cts_ecc.json",
             {
                 "router_type": ("router_type",),
                 "cluster_type": ("cluster_type",),
@@ -3005,7 +3005,7 @@ class FoundationExtractor:
             knobs["cts"] = cts
         route = self._first_config_values(
             [stage for stage in stages if stage.name == "route"],
-            "rt_default_config.json",
+            "route_ecc.json",
             {
                 "thread_number": ("RT", "-thread_number"),
                 "enable_timing": ("RT", "-enable_timing"),

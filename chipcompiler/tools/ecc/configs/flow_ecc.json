@@ -1,0 +1,9 @@
+{
+    "ConfigPath": {
+        "idb_path": "./configs/db_ecc.json",
+        "ifp_path": "./configs/floorplan_ecc.json",
+        "irt_path": "./configs/route_ecc.json",
+        "idrc_path": "./configs/drc_ecc.json",
+        "icts_path": "./configs/cts_ecc.json"
+    }
+}

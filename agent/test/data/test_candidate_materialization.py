@@ -32,8 +32,8 @@ def _sha256(path: Path) -> str:
 
 
 def _workspace(tmp_path: Path):
-    cts_path = tmp_path / "config" / "cts_default_config.json"
-    pl_path = tmp_path / "config" / "pl_default_config.json"
+    cts_path = tmp_path / "config" / "cts_ecc.json"
+    pl_path = tmp_path / "config" / "filler_ecc.json"
     _write_json(
         cts_path,
         {
@@ -48,15 +48,15 @@ def _workspace(tmp_path: Path):
         {"-min_filler_width": 1},
     )
     _write_json(
-        tmp_path / "config" / "fp_default_config.json",
+        tmp_path / "config" / "floorplan_ecc.json",
         {"Floorplan": {"Tap distance": 58}},
     )
     _write_json(
-        tmp_path / "config" / "no_default_config_fixfanout.json",
+        tmp_path / "config" / "fixfanout_ecc.json",
         {"insert_buffer": "BUF_1", "max_fanout": 32},
     )
     _write_json(
-        tmp_path / "config" / "dreamplace.json",
+        tmp_path / "config" / "dreamplace_ecc.json",
         {
             "target_density": 0.8,
             "stop_overflow": 0.1,
@@ -69,7 +69,7 @@ def _workspace(tmp_path: Path):
         },
     )
     _write_json(
-        tmp_path / "config" / "rt_default_config.json",
+        tmp_path / "config" / "route_ecc.json",
         {"RT": {"-bottom_routing_layer": "MET2", "-top_routing_layer": "MET5"}},
     )
     parameters_path = tmp_path / "home" / "parameters.json"
@@ -81,12 +81,12 @@ def _workspace(tmp_path: Path):
         directory=str(tmp_path),
         config={
             "CTS": cts_path,
-            "Floorplan": tmp_path / "config" / "fp_default_config.json",
-            "fixFanout": tmp_path / "config" / "no_default_config_fixfanout.json",
-            "dreamplace": tmp_path / "config" / "dreamplace.json",
+            "Floorplan": tmp_path / "config" / "floorplan_ecc.json",
+            "fixFanout": tmp_path / "config" / "fixfanout_ecc.json",
+            "dreamplace": tmp_path / "config" / "dreamplace_ecc.json",
             "legalization": pl_path,
             "filler": pl_path,
-            "route": tmp_path / "config" / "rt_default_config.json",
+            "route": tmp_path / "config" / "route_ecc.json",
         },
         pdk=SimpleNamespace(buffers=["BUF_1", "BUF_2"], fillers=["FILL_1", "FILL_2"]),
         parameters=SimpleNamespace(path=parameters_path),
@@ -185,7 +185,7 @@ def test_materialize_cts_overlay_preserves_base_config_and_writes_receipt(tmp_pa
     assert receipt["configs"] == [
         {
             "config_key": "CTS",
-            "ref": "config/cts_default_config.json",
+            "ref": "config/cts_ecc.json",
             "before_sha256": ANY,
             "after_sha256": _sha256(cts_path),
         }
@@ -209,7 +209,7 @@ def test_materialize_legalization_overlay_targets_real_dreamplace_config(tmp_pat
     assert config["bndry_padding_x"] == 4
     assert config["detailed_place_flag"] == 1
     assert receipt["configs"][0]["config_key"] == "dreamplace"
-    assert receipt["configs"][0]["ref"] == "config/dreamplace.json"
+    assert receipt["configs"][0]["ref"] == "config/dreamplace_ecc.json"
 
 
 @pytest.mark.parametrize(

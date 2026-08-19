@@ -32,7 +32,7 @@ def test_workspace_config_generation_leaves_config_root_writable_after_read_only
     init_workspace_config(workspace)
 
     config_mode = config_dir.stat().st_mode
-    copied_config = config_dir / "flow_config.json"
+    copied_config = config_dir / "flow_ecc.json"
     copied_mode = copied_config.stat().st_mode
     assert config_mode & stat.S_IWUSR
     assert config_mode & stat.S_IXUSR
@@ -80,7 +80,7 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
 
     dreamplace_builder.build_step_config(workspace, step)
 
-    dreamplace_config = config_dir / "dreamplace.json"
+    dreamplace_config = config_dir / "dreamplace_ecc.json"
     mode = dreamplace_config.stat().st_mode
     data = json_read(dreamplace_config)
 

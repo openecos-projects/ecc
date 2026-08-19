@@ -9,7 +9,9 @@ from chipcompiler.utility import json_read
 
 @pytest.fixture
 def dreamplace_default_config():
-    config_path = Path(dreamplace_builder.__file__).resolve().parent / "configs" / "dreamplace.json"
+    config_path = (
+        Path(dreamplace_builder.__file__).resolve().parent / "configs" / "dreamplace_ecc.json"
+    )
     return json_read(config_path)
 
 

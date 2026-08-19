@@ -12,7 +12,7 @@ class FakeParams:
 
 
 def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_path):
-    config_path = tmp_path / "dreamplace.json"
+    config_path = tmp_path / "dreamplace_ecc.json"
     json_write(
         config_path,
         {
@@ -60,7 +60,7 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
 
 
 def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
-    config_path = tmp_path / "dreamplace.json"
+    config_path = tmp_path / "dreamplace_ecc.json"
     json_write(config_path, {})
     workspace = Workspace(
         directory=str(tmp_path / "workspace"),
@@ -93,7 +93,7 @@ def test_dreamplace_step_info_stringifies_path_config(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd"),
-        config={"dreamplace": tmp_path / "config" / "dreamplace.json"},
+        config={"dreamplace": tmp_path / "config" / "dreamplace_ecc.json"},
     )
     workspace.logger = SimpleNamespace(
         log_section=lambda *args, **kwargs: None,

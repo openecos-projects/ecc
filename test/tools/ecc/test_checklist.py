@@ -36,7 +36,7 @@ def _gate(gate_id: str, title: str) -> dict:
 
 def _sta_config(tmp_path: Path) -> Path:
     return _write(
-        tmp_path / "config" / "sta.json",
+        tmp_path / "config" / "sta_ecc.json",
         {
             "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
             "signoff": [{"MAX": ["RCworst"]}],

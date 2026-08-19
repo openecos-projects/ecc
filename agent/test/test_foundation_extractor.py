@@ -206,15 +206,15 @@ def _make_workspace(
             {"Tool": "ecc", "max_WNS": "1.0"},
         )
         _write_json(
-            ws / stage_dir / "config" / "fp_default_config.json",
+            ws / stage_dir / "config" / "floorplan_ecc.json",
             {"Floorplan": {"Tap distance": 58}},
         )
         _write_json(
-            ws / stage_dir / "config" / "pl_default_config.json",
+            ws / stage_dir / "config" / "filler_ecc.json",
             {"-min_filler_width": 1},
         )
         _write_json(
-            ws / stage_dir / "config" / "rt_default_config.json",
+            ws / stage_dir / "config" / "route_ecc.json",
             {
                 "RT": {
                     "-bottom_routing_layer": "MET2",
@@ -226,7 +226,7 @@ def _make_workspace(
         )
         if "dreamplace" in stage_dir:
             _write_json(
-                ws / stage_dir / "config" / "dreamplace.json",
+                ws / stage_dir / "config" / "dreamplace_ecc.json",
                 {
                     "num_bins_x": 32,
                     "num_bins_y": 32,

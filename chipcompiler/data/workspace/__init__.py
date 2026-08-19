@@ -119,6 +119,20 @@ def log_workspace_step(step: WorkspaceStep, logger: Logger):
 
 
 _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
+    "flow": "flow_ecc.json",
+    "db": "db_ecc.json",
+    StepEnum.CTS.value: "cts_ecc.json",
+    StepEnum.DRC.value: "drc_ecc.json",
+    StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
+    StepEnum.NETLIST_OPT.value: "fixfanout_ecc.json",
+    StepEnum.ROUTING.value: "route_ecc.json",
+    StepEnum.FILLER.value: "filler_ecc.json",
+    StepEnum.RCX.value: "rcx_ecc.json",
+    StepEnum.STA.value: "sta_ecc.json",
+    "dreamplace": "dreamplace_ecc.json",
+}
+
+_LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "flow": "flow_config.json",
     "db": "db_default_config.json",
     StepEnum.CTS.value: "cts_default_config.json",
@@ -165,6 +179,52 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
             for config_key, filename in _WORKSPACE_CONFIG_FILENAMES.items()
         },
     }
+
+
+def _migrate_flow_config_paths(flow_path: Path) -> None:
+    from chipcompiler.utility import json_read, json_write
+
+    if not flow_path.is_file():
+        return
+
+    flow = json_read(flow_path)
+    config_paths = flow.get("ConfigPath") if isinstance(flow, dict) else None
+    if not isinstance(config_paths, dict):
+        return
+
+    legacy_to_canonical = {
+        legacy_filename: _WORKSPACE_CONFIG_FILENAMES[config_key]
+        for config_key, legacy_filename in _LEGACY_WORKSPACE_CONFIG_FILENAMES.items()
+    }
+    changed = False
+    for config_key, path_value in config_paths.items():
+        if not isinstance(path_value, str):
+            continue
+        canonical_filename = legacy_to_canonical.get(Path(path_value).name)
+        if canonical_filename is None:
+            continue
+        canonical_path = str(Path(path_value).with_name(canonical_filename))
+        if canonical_path != path_value:
+            config_paths[config_key] = canonical_path
+            changed = True
+
+    if changed and not json_write(flow_path, flow):
+        raise OSError(f"Failed to update migrated flow config: {flow_path}")
+
+
+def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
+    """Rename legacy workspace configs before resolving their canonical paths."""
+    config_dir = Path(workspace_dir) / "config"
+    if not config_dir.is_dir():
+        return
+
+    for config_key, legacy_filename in _LEGACY_WORKSPACE_CONFIG_FILENAMES.items():
+        legacy_path = config_dir / legacy_filename
+        canonical_path = config_dir / _WORKSPACE_CONFIG_FILENAMES[config_key]
+        if legacy_path.is_file() and not canonical_path.exists():
+            legacy_path.rename(canonical_path)
+
+    _migrate_flow_config_paths(config_dir / _WORKSPACE_CONFIG_FILENAMES["flow"])
 
 
 def workspace_config_path(workspace_dir: str | Path, config_key: str) -> Path | None:
@@ -451,7 +511,7 @@ def _load_default_floorplan_config() -> dict:
     from chipcompiler.utility import json_read
 
     root_dir = Path(__file__).resolve().parent.parent.parent
-    return json_read(root_dir / "tools" / "ecc" / "configs" / "fp_default_config.json")
+    return json_read(root_dir / "tools" / "ecc" / "configs" / "floorplan_ecc.json")
 
 
 def _has_new_floorplan_schema(config: dict) -> bool:
@@ -616,7 +676,7 @@ def init_workspace_config(workspace: Workspace) -> None:
     config_dir = workspace.config["dir"]
     root_dir = Path(__file__).resolve().parent.parent.parent
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
-    dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace.json"
+    dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
 
     _copy_missing_files(ecc_config_dir, config_dir)
     if not workspace.config["dreamplace"].exists():
@@ -1287,6 +1347,7 @@ def load_workspace(directory: str | Path) -> Workspace:
     # create workspace instance
     workspace = Workspace()
     workspace.directory = workspace_dir
+    migrate_workspace_config_filenames(workspace_dir)
     workspace.config = build_workspace_config_paths(workspace)
 
     parameters = load_parameter(home_dir / "parameters.json")

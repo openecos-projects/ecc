@@ -90,23 +90,23 @@ def create_cts_workspace_config(run_dir):
     create_workspace_config(
         run_dir,
         {
-            "flow_config.json": "{}",
-            "db_default_config.json": "{}",
-            "cts_default_config.json": "{}",
+            "flow_ecc.json": "{}",
+            "db_ecc.json": "{}",
+            "cts_ecc.json": "{}",
         },
     )
 
 
 def create_dreamplace_workspace_config(run_dir):
-    create_workspace_config(run_dir, {"dreamplace.json": "{}"})
+    create_workspace_config(run_dir, {"dreamplace_ecc.json": "{}"})
 
 
 def create_ecc_workspace_config(run_dir, step_config):
     create_workspace_config(
         run_dir,
         {
-            "flow_config.json": "{}",
-            "db_default_config.json": "{}",
+            "flow_ecc.json": "{}",
+            "db_ecc.json": "{}",
             step_config: "{}",
         },
     )
