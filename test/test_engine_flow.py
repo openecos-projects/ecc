@@ -290,6 +290,59 @@ def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path, spef_paths):
     assert sta_step.output.spef is rcx_output.spef  # same object, per legacy contract
 
 
+def test_executable_steps_filter_chains_success_predecessor(monkeypatch, tmp_path):
+    # create_step_workspaces(executable_steps=...) builds non-executing steps
+    # without a dependency check, so a Success predecessor whose tool is missing
+    # still chains its outputs to the executing successor and marks nothing
+    # Incomplete.
+    workspace = Workspace(
+        directory=tmp_path,
+        flow=Flow(path=tmp_path / "home" / "flow.json"),
+    )
+    flow = EngineFlow(workspace)
+    # EngineFlow construction loads (and resets) flow.data; set steps after.
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "syn", "tool": "missing-tool", "state": StateEnum.Success.value},
+            {"name": "floorplan", "tool": "ecc", "state": StateEnum.Unstart.value},
+        ]
+    }
+
+    predecessor_output = EccOutput(
+        def_=tmp_path / "syn.def",
+        verilog=tmp_path / "syn.v",
+        db=tmp_path / "syn.db",
+    )
+    prebuilt = {
+        "syn": EccStep(name="syn", tool="missing-tool", output=predecessor_output),
+        "floorplan": EccStep(name="floorplan", tool="ecc"),
+    }
+    calls = []
+
+    def fake_create_step(workspace, step, eda, *, check_dependency, **kwargs):
+        calls.append({"step": step, "check_dependency": check_dependency, "inputs": kwargs})
+        # Mirror the load_eda_module contract: a missing tool fails the build
+        # only when the dependency check actually runs.
+        if check_dependency and eda == "missing-tool":
+            return None
+        return prebuilt[step]
+
+    monkeypatch.setattr(tools, "create_step", fake_create_step)
+
+    flow.create_step_workspaces(executable_steps={"floorplan"})
+
+    assert [call["check_dependency"] for call in calls] == [False, True]
+    successor_inputs = calls[1]["inputs"]
+    assert successor_inputs["input_def"] == predecessor_output.def_
+    assert successor_inputs["input_verilog"] == predecessor_output.verilog
+    assert successor_inputs["input_db"] == predecessor_output.db
+    assert [step.name for step in flow.workspace_steps] == ["syn", "floorplan"]
+    assert all(
+        step.get("state") != StateEnum.Imcomplete.value
+        for step in flow.workspace.flow.data["steps"]
+    )
+
+
 # --- Phase 2: Silent failure regression tests ---
 
 
