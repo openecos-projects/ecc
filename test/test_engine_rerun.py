@@ -186,6 +186,49 @@ class TestRunFrom:
         assert _flow_states(flow) == [StateEnum.Imcomplete.value]
         assert "ECC-STEP" not in capfd.readouterr().err
 
+    def test_archive_downgrade_save_failure_does_not_pretend(self, monkeypatch, tmp_path, capfd):
+        """When the downgrade cannot persist, the disk record honestly keeps
+        Success while the operation reports failure — no fake repair."""
+        import os
+
+        from chipcompiler.runtime.log_stream import emit_step_marker
+
+        flow = _make_run_flow(tmp_path, [("place", "Success")])
+        _write_output(flow, "place")
+
+        def run_step_with_markers(workspace_step, *, rerun=False):
+            emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+            os.write(2, b"bytes\n")
+            emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
+            flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Success)
+            return StateEnum.Success
+
+        monkeypatch.setattr(flow, "run_step", run_step_with_markers)
+        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
+
+        # The archive cannot open (regular file at the log path), and the
+        # downgrade save fails too — but the invalidation save must succeed.
+        (tmp_path / "place_ecc" / "log").write_text("regular file")
+        real_save = flow.save
+
+        def save_fails_on_downgrade():
+            states = [s.get("state") for s in flow.workspace.flow.data.get("steps", [])]
+            if StateEnum.Imcomplete.value in states:
+                return False
+            return real_save()
+
+        monkeypatch.setattr(flow, "save", save_fails_on_downgrade)
+
+        result = rerun.run_from(flow, "place")
+
+        assert result.ok is False
+        assert result.failed == "place"
+        # In memory the downgrade happened; on disk the record honestly keeps
+        # Success (the failed save is logged, not hidden).
+        assert _flow_states(flow) == [StateEnum.Imcomplete.value]
+        persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
+        assert persisted["steps"][0]["state"] == "Success"
+
     def test_step_exception_reconciles_archive_before_propagating(
         self, monkeypatch, tmp_path, capfd
     ):

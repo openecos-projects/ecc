@@ -107,6 +107,9 @@ class LogStreamState:
     # The step being archived when the first error was recorded, so failure
     # paths can reconcile exactly that record even after its end marker.
     error_step: str | None = None
+    # Display-callback failures live apart from archival failures: a broken
+    # renderer must never read as a broken archive.
+    display_error: Exception | None = None
 
 
 class LogStreamReader:
@@ -288,7 +291,8 @@ class LogStreamReader:
         try:
             self._on_step_event(event, step, tool)
         except Exception as exc:
-            self._record_error(exc)
+            if self._state.display_error is None:
+                self._state.display_error = exc
             self._on_step_event_disabled = True
 
     def _emit_data(self, data: bytes) -> None:
@@ -306,7 +310,8 @@ class LogStreamReader:
             try:
                 self._on_output(data)
             except Exception as exc:
-                self._record_error(exc)
+                if self._state.display_error is None:
+                    self._state.display_error = exc
                 self._on_output_disabled = True
 
     def _update_tail(self, data: bytes) -> None:

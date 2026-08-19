@@ -163,7 +163,8 @@ def downgrade_unarchived_step(flow: "EngineFlow", reader, executed: list[str]) -
     """Downgrade the step whose archive failed or whose end marker never came.
 
     Uses set_state so the downgrade persists through the single authoritative
-    save; a failed save is logged by set_state itself.
+    save. If that save fails, the disk record still claims Success — log the
+    incomplete repair explicitly so the stale record is not silently trusted.
     """
     target = reader.state.error_step or reader.state.active_step
     if target is None and executed:
@@ -172,7 +173,12 @@ def downgrade_unarchived_step(flow: "EngineFlow", reader, executed: list[str]) -
         return None
     for record in flow.workspace.flow.data.get("steps", []):
         if record.get("name") == target:
-            flow.set_state(target, record.get("tool", ""), StateEnum.Imcomplete)
+            if not flow.set_state(target, record.get("tool", ""), StateEnum.Imcomplete):
+                flow.workspace.logger.error(
+                    "archive downgrade for step %s could not be persisted; "
+                    "flow.json may still claim Success — repair it before resuming",
+                    target,
+                )
             break
     return target
 

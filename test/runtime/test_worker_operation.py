@@ -417,6 +417,53 @@ class TestRunOperationArchive:
         assert result.archive_error is not None
         assert "archive error" in result.error
 
+    def test_display_callback_failure_is_not_an_archive_failure(self, tmp_path):
+        """A broken on_output renderer must not downgrade the step or fail
+        the operation when the archive itself is fine."""
+        script = tmp_path / "server_with_markers.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "ws1"}, "id": req["id"]})
+            os.write(2, make_marker("begin", "Synthesis", "yosys"))
+            os.write(2, b'Synthesizing...\\n')
+            os.write(2, make_marker("end", "Synthesis", "yosys"))
+            req = read_request()  # flow.run
+            send_response({"jsonrpc": "2.0", "result": {"steps": ["syn"]}, "id": req["id"]})
+            req = read_request()  # rpc.shutdown
+            send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req["id"]})
+        """)
+        )
+        logs_dir = tmp_path / "logs"
+
+        def resolver(step: str, tool: str):
+            return logs_dir / f"{step}.log"
+
+        def broken_display(data: bytes):
+            raise RuntimeError("renderer blew up")
+
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text(
+            json.dumps({"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Success"}]})
+        )
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+            log_path_resolver=resolver,
+            on_output=broken_display,
+        )
+        result = op.run("flow.run", {"workspace_id": "test"})
+        assert result.success is True
+        assert result.repaired_steps == []
+        assert result.log_state is not None
+        assert result.log_state.display_error is not None
+        assert result.log_state.error is None
+        assert json.loads(flow_json.read_text())["steps"][0]["state"] == "Success"
+
     def test_archive_error_reconciles_the_success_record(self, tmp_path):
         """An archive failure must not leave flow.json claiming Success."""
         script = tmp_path / "server_with_markers.py"
