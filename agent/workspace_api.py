@@ -272,8 +272,12 @@ def _run_candidate_step(flow, step) -> None:
     with archive_own_step_logs(flow.workspace.directory) as reader:
         state = flow.run_step(step, rerun=True)
     # An archive failure or unmatched begin must not report success while the
-    # step's log is missing; downgrade so a later rerun rebuilds it.
-    if reader.state.error is not None or reader.state.active_step is not None:
+    # step's log is missing; downgrade so a later rerun rebuilds it. A None
+    # reader means an outer client owns the stream (passthrough) — nothing to
+    # reconcile here.
+    if reader is not None and (
+        reader.state.error is not None or reader.state.active_step is not None
+    ):
         # set_state owns the authoritative save; a failed save is logged there.
         flow.set_state(step.name, step.tool, StateEnum.Imcomplete)
         raise RuntimeApiError(

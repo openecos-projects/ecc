@@ -325,6 +325,41 @@ class TestArchiveOwnStepLogs:
         assert "ECC-STEP" not in echoed
 
 
+class TestArchiveOwnStepLogsPassthrough:
+    def test_external_client_or_nesting_passes_through(self, tmp_path, capfd):
+        """A worker/sidecar process (marked) or an already-active outer context
+        must not double-wrap: markers keep flowing to the outer client."""
+        import os
+
+        import chipcompiler.runtime.log_stream as log_stream_module
+        from chipcompiler.runtime.log_stream import archive_own_step_logs, emit_step_marker
+
+        workspace = tmp_path / "ws"
+        (workspace / "home").mkdir(parents=True)
+
+        # Nested: the outer context archives; the inner one passes through.
+        with (
+            archive_own_step_logs(workspace),
+            archive_own_step_logs(workspace) as inner,
+        ):
+            assert inner is None
+            emit_step_marker("begin", step="S", tool="T")
+            os.write(2, b"bytes\n")
+            emit_step_marker("end", step="S", tool="T")
+        assert (workspace / "S_T" / "log" / "S.log").read_bytes() == b"bytes\n"
+        assert "ECC-STEP" not in capfd.readouterr().err
+
+        # Marked external client: no self-archive at all, bytes pass through.
+        log_stream_module.mark_external_log_client()
+        try:
+            with archive_own_step_logs(workspace) as reader:
+                assert reader is None
+                os.write(2, b"raw\n")
+        finally:
+            log_stream_module._EXTERNAL_LOG_CLIENT = False
+        assert "raw" in capfd.readouterr().err
+
+
 class TestLogStreamResilience:
     def test_resolver_exception_disables_archive_continues_drain(self):
         """A resolver that raises must not kill the drain thread."""

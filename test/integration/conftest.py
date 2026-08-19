@@ -48,14 +48,10 @@ def run_workspace_flow(
 
     engine_flow.create_step_workspaces()
 
-    # The engine emits step markers on fd 1/2 instead of writing step logs;
-    # route the process's own stream through the client-side archiver so the
-    # integration run still produces per-step logs without leaking markers
-    # into pytest's own output.
-    from chipcompiler.runtime.log_stream import archive_own_step_logs
-
-    with archive_own_step_logs(workspace.directory):
-        return engine_flow.run_steps()
+    # run_steps self-archives: the engine emits step markers on fd 1/2, and
+    # the built-in client-side archiver writes per-step logs without leaking
+    # markers into pytest's own output.
+    return engine_flow.run_steps()
 
 
 @pytest.fixture

@@ -113,8 +113,11 @@ def _read_chunk(input_stream: BinaryIO) -> bytes:
 
 
 def main(*, persistent_db_enabled: bool = False) -> int:
+    from chipcompiler.runtime.log_stream import mark_external_log_client
     from chipcompiler.runtime.stdio_isolation import StdioIsolation
 
+    # This process's fd stream belongs to the parent client's archiver.
+    mark_external_log_client()
     isolation = StdioIsolation()
     protocol_stream = isolation.install()
     try:

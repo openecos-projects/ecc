@@ -337,6 +337,19 @@ class LogStreamReader:
                 self._state.archive_file = None
 
 
+# Set by the stdio/RPC server entry point: in that process an outer client
+# (the CLI parent or the Electron archiver) owns the fd stream, so in-process
+# self-archiving must stay off to keep the single-producer invariant.
+_EXTERNAL_LOG_CLIENT = False
+_SELF_ARCHIVE_ACTIVE = False
+
+
+def mark_external_log_client() -> None:
+    """Mark that this process's log stream is owned by an outer client."""
+    global _EXTERNAL_LOG_CLIENT
+    _EXTERNAL_LOG_CLIENT = True
+
+
 @contextmanager
 def archive_own_step_logs(workspace_dir, *, echo: bool = True):
     """Archive this process's own fd 1+2 streams into per-step log files.
@@ -354,6 +367,15 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
 
     from chipcompiler.utility.json import json_read
     from chipcompiler.utility.log import flush_cstdio
+
+    global _SELF_ARCHIVE_ACTIVE
+    if _EXTERNAL_LOG_CLIENT or _SELF_ARCHIVE_ACTIVE:
+        # An outer client owns this stream (worker/sidecar process), or an
+        # outer archive_own_step_logs is already active (e.g. run_steps
+        # auto-archives around an explicit caller): pass through untouched.
+        yield None
+        return
+    _SELF_ARCHIVE_ACTIVE = True
 
     workspace_dir = Path(workspace_dir)
     flow_data = json_read(workspace_dir / "home" / "flow.json")
@@ -404,3 +426,4 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
             stream.close()
         os.close(real_stdout)
         os.close(real_stderr)
+        _SELF_ARCHIVE_ACTIVE = False

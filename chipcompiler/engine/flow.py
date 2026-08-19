@@ -407,36 +407,42 @@ class EngineFlow:
         """
         run all flow steps
         """
+        from chipcompiler.runtime.log_stream import archive_own_step_logs
 
-        for workspace_step in self.workspace_steps:
-            self.workspace.logger.log_section(
-                f"{workspace_step.tool} - begin step - {workspace_step.name}"
-            )
-            self.init_db_engine()
-            state = (
-                self.run_step(workspace_step, rerun=rerun)
-                if observer is None
-                else self.run_step(workspace_step, rerun=rerun, observer=observer)
-            )
+        # Direct in-process runs (documented Python API) self-archive so step
+        # logs exist and markers stay off the caller's terminal; inside a
+        # worker/sidecar process the outer client owns the stream and this
+        # context passes through.
+        with archive_own_step_logs(self.workspace.directory):
+            for workspace_step in self.workspace_steps:
+                self.workspace.logger.log_section(
+                    f"{workspace_step.tool} - begin step - {workspace_step.name}"
+                )
+                self.init_db_engine()
+                state = (
+                    self.run_step(workspace_step, rerun=rerun)
+                    if observer is None
+                    else self.run_step(workspace_step, rerun=rerun, observer=observer)
+                )
 
-            log_flow(workspace=self.workspace)
-            self.workspace.logger.log_section(
-                f"{workspace_step.tool} - end step - {workspace_step.name}"
-            )
+                log_flow(workspace=self.workspace)
+                self.workspace.logger.log_section(
+                    f"{workspace_step.tool} - end step - {workspace_step.name}"
+                )
 
-            match state:
-                case StateEnum.Success:
-                    continue
-                case StateEnum.Invalid:
-                    return False
-                case StateEnum.Unstart:
-                    return False
-                case StateEnum.Imcomplete:
-                    return False
-                case StateEnum.Pending:
-                    return False
-                case StateEnum.Ongoing:
-                    return False
+                match state:
+                    case StateEnum.Success:
+                        continue
+                    case StateEnum.Invalid:
+                        return False
+                    case StateEnum.Unstart:
+                        return False
+                    case StateEnum.Imcomplete:
+                        return False
+                    case StateEnum.Pending:
+                        return False
+                    case StateEnum.Ongoing:
+                        return False
 
         total_steps = len(self.workspace.flow.data.get("steps", []))
         if len(self.workspace_steps) < total_steps:
