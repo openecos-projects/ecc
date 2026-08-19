@@ -484,7 +484,17 @@ class EngineFlow:
 
         from chipcompiler.runtime.log_stream import emit_step_marker
 
-        emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+        try:
+            emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+        except OSError:
+            # fd 2 is closed or the reader pipe is broken: the marker never
+            # reached any client, so recovery could never identify this step
+            # from the stream. Downgrade the persisted Ongoing now instead of
+            # leaving a permanent Ongoing no repair pass can find.
+            self.set_state(
+                name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Imcomplete
+            )
+            raise
 
         pid = os.getpid()
         start_memory_mb = get_process_rss_mb(pid)

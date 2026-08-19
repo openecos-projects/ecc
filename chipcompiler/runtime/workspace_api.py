@@ -372,6 +372,12 @@ class WorkspaceRuntimeApi:
                     rerun=request.rerun,
                     observer=observer,
                 )
+                # Keep the global flow/status log entries that the in-process
+                # rerun helpers used to append after every selected step.
+                if getattr(session.workspace, "logger", None) is not None:
+                    from chipcompiler.data import log_flow
+
+                    log_flow(workspace=session.workspace)
             finally:
                 if should_capture:
                     self._capture_flow_db(

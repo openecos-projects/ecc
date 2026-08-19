@@ -228,6 +228,35 @@ def test_end_marker_suppressed_when_final_state_persistence_fails(monkeypatch, t
     assert json_read(flow_path)["steps"][0]["state"] == StateEnum.Ongoing.value
 
 
+def test_begin_marker_failure_downgrades_ongoing(monkeypatch, tmp_path):
+    """If the begin marker cannot reach fd 2, no reader ever sees the step:
+    downgrade the persisted Ongoing instead of leaving an unfindable record."""
+    import chipcompiler.runtime.log_stream as log_stream_module
+
+    (tmp_path / "home").mkdir(exist_ok=True)
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]
+    }
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    def broken_emit(event, *, step, tool):
+        raise OSError("fd 2 closed")
+
+    monkeypatch.setattr(log_stream_module, "emit_step_marker", broken_emit)
+
+    import pytest as _pytest
+
+    with _pytest.raises(OSError, match="fd 2 closed"):
+        engine_flow.run_step(workspace_step)
+
+    record = engine_flow.get_step("route", "ecc")
+    assert record["state"] == StateEnum.Imcomplete.value
+
+
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
     verilog = tmp_path / "gcd.v"
     verilog.write_text("module gcd; endmodule\n")

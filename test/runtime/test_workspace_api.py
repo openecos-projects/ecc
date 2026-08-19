@@ -1660,6 +1660,63 @@ def test_rerun_invalidate_dependents_save_failure_restores_all_records(monkeypat
     }
 
 
+def test_rerun_cleanup_failure_restores_persisted_records(monkeypatch, tmp_path):
+    """If post-save cleanup (artifact/subflow/checklist) fails midway, the
+    persisted Unstart records are restored so the workspace is not left
+    half-prepared."""
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    def step_spec(name, tool):
+        step_dir = ws / f"{name}_{tool}"
+        artifact_dir = step_dir / "output"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "stale").write_text(name)
+        subflow_path = step_dir / "subflow.json"
+        subflow_path.write_text(json.dumps({"path": str(subflow_path), "steps": []}))
+        checklist_path = step_dir / "checklist.json"
+        checklist_path.write_text(json.dumps({"checklist": []}))
+        return {
+            "name": name,
+            "tool": tool,
+            "output": {"dir": artifact_dir},
+            "subflow": SimpleNamespace(path=subflow_path, steps=[]),
+            "checklist": SimpleNamespace(path=checklist_path, checklist=[]),
+        }
+
+    synthesis = step_spec("Synthesis", "yosys")
+    floorplan = step_spec("Floorplan", "ecc")
+    route = step_spec("route", "ecc")
+    DummyFlow.workspace_step_specs = (synthesis, floorplan, route)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [
+            {"name": spec["name"], "tool": spec["tool"], "state": "Success"}
+            for spec in (synthesis, floorplan, route)
+        ]
+    }
+    original_snapshots = [dict(r) for r in session.workspace.flow.data["steps"]]
+
+    def exploding_reset(workspace_step):
+        raise OSError("checklist write failed")
+
+    monkeypatch.setattr("chipcompiler.runtime.rerun_prepare._reset_step_checklist", exploding_reset)
+
+    with pytest.raises(OSError, match="checklist write failed"):
+        api.flow_run_step(
+            FlowRunStepRequest(
+                workspace_id=workspace_id,
+                step="Floorplan",
+                rerun=True,
+                invalidate_dependents=True,
+            )
+        )
+
+    steps = session.workspace.flow.data["steps"]
+    assert steps[:3] == original_snapshots
+
+
 def test_flow_run_step_final_save_failure_leaves_no_success_record(monkeypatch, tmp_path):
     """In-process execution path: a failed final save must not leave the
     session record at Success, and the next non-rerun call must not skip the
