@@ -120,42 +120,61 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
 
     executed = []
     failed = None
-    with archive_own_step_logs(flow.workspace.directory) as reader:
-        for workspace_step, output_dir in selected:
-            flow.workspace.logger.log_section(
-                f"{workspace_step.tool} - begin step - {workspace_step.name}"
-            )
-            _reset_output_dir(output_dir)
-            flow.init_db_engine_for_step(workspace_step)
-            state = flow.run_step(workspace_step, rerun=True)
-            log_flow(workspace=flow.workspace)
-            flow.workspace.logger.log_section(
-                f"{workspace_step.tool} - end step - {workspace_step.name}"
-            )
-            if state != StateEnum.Success:
-                failed = workspace_step.name
-                break
-            executed.append(workspace_step.name)
+    reader = None
+    try:
+        with archive_own_step_logs(flow.workspace.directory) as active_reader:
+            reader = active_reader
+            for workspace_step, output_dir in selected:
+                flow.workspace.logger.log_section(
+                    f"{workspace_step.tool} - begin step - {workspace_step.name}"
+                )
+                _reset_output_dir(output_dir)
+                flow.init_db_engine_for_step(workspace_step)
+                state = flow.run_step(workspace_step, rerun=True)
+                log_flow(workspace=flow.workspace)
+                flow.workspace.logger.log_section(
+                    f"{workspace_step.tool} - end step - {workspace_step.name}"
+                )
+                if state != StateEnum.Success:
+                    failed = workspace_step.name
+                    break
+                executed.append(workspace_step.name)
+    except BaseException:
+        # A step that raised after its begin marker (post-processing, marker
+        # write) still needs archive reconciliation before propagating.
+        if reader is not None:
+            _downgrade_unarchived_step(flow, reader, executed)
+        raise
 
     # The reader drained at context exit. An archive failure or an unmatched
     # begin must not leave a Success record whose log is missing: downgrade
     # the affected step so a later resume reruns it and rebuilds the archive.
-    archive_error = reader.state.error
-    unmatched = reader.state.active_step
-    if archive_error is not None or unmatched is not None:
-        target = reader.state.error_step or unmatched
-        if target is None and executed:
-            target = executed[-1]
-        if target is not None:
-            for record in flow.workspace.flow.data.get("steps", []):
-                if record.get("name") == target:
-                    record["state"] = StateEnum.Imcomplete.value
-                    flow.save()
-                    break
+    if reader is not None and (
+        reader.state.error is not None or reader.state.active_step is not None
+    ):
+        target = _downgrade_unarchived_step(flow, reader, executed)
         return StepRunResult(ok=False, executed=tuple(executed), failed=failed or target)
     if failed is not None:
         return StepRunResult(ok=False, executed=tuple(executed), failed=failed)
     return StepRunResult(ok=True, executed=tuple(executed))
+
+
+def _downgrade_unarchived_step(flow: "EngineFlow", reader, executed: list[str]) -> str | None:
+    """Downgrade the step whose archive failed or whose end marker never came.
+
+    Uses set_state so the downgrade persists through the single authoritative
+    save; a failed save is logged by set_state itself.
+    """
+    target = reader.state.error_step or reader.state.active_step
+    if target is None and executed:
+        target = executed[-1]
+    if target is None:
+        return None
+    for record in flow.workspace.flow.data.get("steps", []):
+        if record.get("name") == target:
+            flow.set_state(target, record.get("tool", ""), StateEnum.Imcomplete)
+            break
+    return target
 
 
 def _validated_output_dirs(workspace: Workspace, steps: list[WorkspaceStep]) -> list[Path]:

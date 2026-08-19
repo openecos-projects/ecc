@@ -376,8 +376,9 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
     def _echo(data: bytes) -> None:
         os.write(real_stderr, data)
 
+    stream = os.fdopen(read_fd, "rb")
     reader = LogStreamReader(
-        os.fdopen(read_fd, "rb"),
+        stream,
         log_path_resolver=step_log_archive_resolver(workspace_dir),
         on_output=_echo if echo else None,
         valid_steps=valid_steps or None,
@@ -390,7 +391,8 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
         # Flush everything, restore both descriptors so the pipe sees EOF,
         # and only then wait for the reader to drain the tail — the echo
         # callback writes to real_stderr, so it must stay open until the
-        # drain finishes.
+        # drain finishes. The pipe's read stream closes too: nothing else
+        # owns it, and leaked pipes accumulate into EMFILE over many reruns.
         sys.stdout.flush()
         sys.stderr.flush()
         flush_cstdio()
@@ -398,5 +400,7 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
         os.dup2(real_stderr, 2)
         reader.join(timeout=5.0)
         reader.stop()
+        with suppress(OSError):
+            stream.close()
         os.close(real_stdout)
         os.close(real_stderr)

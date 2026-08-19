@@ -274,10 +274,8 @@ def _run_candidate_step(flow, step) -> None:
     # An archive failure or unmatched begin must not report success while the
     # step's log is missing; downgrade so a later rerun rebuilds it.
     if reader.state.error is not None or reader.state.active_step is not None:
-        record = flow.get_step(step.name, step.tool)
-        if record is not None:
-            record["state"] = StateEnum.Imcomplete.value
-            flow.save()
+        # set_state owns the authoritative save; a failed save is logged there.
+        flow.set_state(step.name, step.tool, StateEnum.Imcomplete)
         raise RuntimeApiError(
             "command_failed",
             f"candidate rerun step {step.name} log archival failed: "

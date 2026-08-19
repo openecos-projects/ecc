@@ -186,6 +186,34 @@ class TestRunFrom:
         assert _flow_states(flow) == [StateEnum.Imcomplete.value]
         assert "ECC-STEP" not in capfd.readouterr().err
 
+    def test_step_exception_reconciles_archive_before_propagating(
+        self, monkeypatch, tmp_path, capfd
+    ):
+        """A run_step that raises after its begin marker still reconciles the
+        reader state before the exception propagates."""
+        import os
+
+        from chipcompiler.runtime.log_stream import emit_step_marker
+
+        flow = _make_run_flow(tmp_path, [("place", "Success")])
+        _write_output(flow, "place")
+
+        def raising_run_step(workspace_step, *, rerun=False):
+            emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+            os.write(2, b"partial output\n")
+            raise RuntimeError("post-processing blew up")
+
+        monkeypatch.setattr(flow, "run_step", raising_run_step)
+        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
+
+        with pytest.raises(RuntimeError, match="post-processing"):
+            rerun.run_from(flow, "place")
+
+        # The unmatched begin downgraded the record instead of leaving a
+        # stale Success over a partial archive.
+        assert _flow_states(flow) == [StateEnum.Imcomplete.value]
+        assert "ECC-STEP" not in capfd.readouterr().err
+
     def test_failure_stops_suffix_and_keeps_downstream_output(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
             tmp_path,
