@@ -270,6 +270,35 @@ class TestLogStreamReader:
         assert reader.state.steps_seen == ["A"]
 
 
+class TestArchiveOwnStepLogs:
+    """In-process executor runs self-archive through the fd-2 pipe."""
+
+    def test_archives_step_bytes_and_echoes_without_markers(self, tmp_path, capfd):
+        import json
+        import os
+
+        from chipcompiler.runtime.log_stream import archive_own_step_logs, emit_step_marker
+
+        workspace = tmp_path / "ws"
+        (workspace / "home").mkdir(parents=True)
+        (workspace / "home" / "flow.json").write_text(
+            json.dumps({"steps": [{"name": "S", "tool": "T", "state": "Ongoing"}]})
+        )
+
+        with archive_own_step_logs(workspace) as reader:
+            emit_step_marker("begin", step="S", tool="T")
+            os.write(2, b"tool output\n")
+            emit_step_marker("end", step="S", tool="T")
+            os.write(2, b"unscoped tail\n")
+
+        assert reader.state.error is None
+        assert (workspace / "S_T" / "log" / "S.log").read_bytes() == b"tool output\n"
+        echoed = capfd.readouterr().err
+        assert "tool output" in echoed
+        assert "unscoped tail" in echoed
+        assert "ECC-STEP" not in echoed
+
+
 class TestLogStreamResilience:
     def test_resolver_exception_disables_archive_continues_drain(self):
         """A resolver that raises must not kill the drain thread."""

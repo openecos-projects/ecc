@@ -13,7 +13,7 @@ import json
 import os
 import threading
 from collections.abc import Callable
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
@@ -319,3 +319,62 @@ class LogStreamReader:
                 except OSError as exc:
                     self._record_error(exc)
                 self._state.archive_file = None
+
+
+@contextmanager
+def archive_own_step_logs(workspace_dir, *, echo: bool = True):
+    """Archive this process's own fd-2 stream into per-step log files.
+
+    In-process executor runs (no separate client process, e.g. agent
+    candidate reruns or the documented direct EngineFlow examples) still
+    must not write step log files from executor code. This context redirects
+    fd 2 through a pipe so a LogStreamReader — the client role — archives
+    step-scoped bytes and consumes markers, while echoing all bytes to the
+    original stderr. Yields the reader so callers can inspect
+    ``reader.state`` after the block.
+    """
+    import sys
+
+    from chipcompiler.utility.json import json_read
+    from chipcompiler.utility.log import flush_cstdio
+
+    workspace_dir = Path(workspace_dir)
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    valid_steps = {
+        (step["name"], step["tool"])
+        for step in flow_data.get("steps", [])
+        if isinstance(step, dict) and "name" in step and "tool" in step
+    }
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    flush_cstdio()
+    real_stderr = os.dup(2)
+    read_fd, write_fd = os.pipe()
+    os.dup2(write_fd, 2)
+    os.close(write_fd)
+
+    def _echo(data: bytes) -> None:
+        os.write(real_stderr, data)
+
+    reader = LogStreamReader(
+        os.fdopen(read_fd, "rb"),
+        log_path_resolver=step_log_archive_resolver(workspace_dir),
+        on_output=_echo if echo else None,
+        valid_steps=valid_steps or None,
+        workspace_dir=workspace_dir,
+    )
+    reader.start()
+    try:
+        yield reader
+    finally:
+        # Flush everything, restore fd 2 so the pipe sees EOF, and only then
+        # wait for the reader to drain the tail — the echo callback writes to
+        # real_stderr, so it must stay open until the drain finishes.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        flush_cstdio()
+        os.dup2(real_stderr, 2)
+        reader.join(timeout=5.0)
+        reader.stop()
+        os.close(real_stderr)
