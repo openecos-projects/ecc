@@ -177,11 +177,19 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
 
 
 def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
+    data = _read_external_pdk_config(pdk_config)
+    return _pdk_from_external_config(data, pdk_name)
+
+
+def _read_external_pdk_config(pdk_config: str | Path) -> dict:
     with open(pdk_config, encoding="utf-8") as file:
         data = json.load(file)
     if not isinstance(data, dict):
         raise ValueError("external PDK JSON must be an object")
+    return data
 
+
+def _pdk_from_external_config(data: dict, pdk_name: str = "") -> PDK:
     requested_name = (pdk_name or "").strip()
     config_name = str(data.get("name", "")).strip()
     if requested_name and config_name and requested_name.lower() != config_name.lower():
@@ -192,14 +200,14 @@ def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
     return PDK(
         name=config_name or requested_name,
         version=str(data.get("version", "")),
-        root=str(data.get("root", "")),
-        tech=str(data.get("tech", "")),
+        root=optional_path(str(data.get("root", ""))),
+        tech=optional_path(str(data.get("tech", ""))),
         lefs=data.get("lefs", []),
         libs=data.get("libs", []),
-        mapping_file=str(data.get("mapping_file", "")),
+        mapping_file=optional_path(str(data.get("mapping_file", ""))),
         corners=data.get("corners", []),
-        sdc=str(data.get("sdc", "")),
-        spef=str(data.get("spef", "")),
+        sdc=optional_path(str(data.get("sdc", ""))),
+        spef=optional_path(str(data.get("spef", ""))),
         site_core=str(data.get("site_core", "")),
         site_io=str(data.get("site_io", "")),
         site_corner=str(data.get("site_corner", "")),
@@ -217,6 +225,25 @@ def PDK_EXTERNAL(pdk_config: str | Path, pdk_name: str = "") -> PDK:
     )
 
 
+def _builtin_pdk(pdk_name: str, pdk_root: str | Path = "") -> PDK | None:
+    if pdk_name == "ics55":
+        return PDK_ICS55(pdk_root=pdk_root)
+    if pdk_name == "sg13g2":
+        return PDK_SG13G2(pdk_root=pdk_root)
+    return None
+
+
+def _merge_builtin_pdk_with_external_config(
+    builtin: PDK,
+    external: PDK,
+    data: dict,
+) -> PDK:
+    """Overlay only explicitly configured external fields on a built-in PDK."""
+    configured = {field.name for field in fields(PDK)} & set(data)
+    configured -= {"name", "root"}
+    return replace(builtin, **{field: getattr(external, field) for field in configured})
+
+
 def get_pdk(
     pdk_name: str,
     pdk_root: str | Path = "",
@@ -228,16 +255,22 @@ def get_pdk(
     """
     pdk_name_normalized = (pdk_name or "").strip().lower()
     if pdk_config:
-        pdk = PDK_EXTERNAL(
-            pdk_config=pdk_config,
+        external_data = _read_external_pdk_config(pdk_config)
+        external_pdk = _pdk_from_external_config(
+            data=external_data,
             pdk_name=pdk_name_normalized,
         )
-    elif pdk_name_normalized == "ics55":
-        pdk = PDK_ICS55(pdk_root=pdk_root)
-    elif pdk_name_normalized == "sg13g2":
-        pdk = PDK_SG13G2(pdk_root=pdk_root)
+        builtin = _builtin_pdk(
+            external_pdk.name.lower(),
+            pdk_root=external_pdk.root or pdk_root,
+        )
+        pdk = (
+            _merge_builtin_pdk_with_external_config(builtin, external_pdk, external_data)
+            if builtin is not None
+            else external_pdk
+        )
     else:
-        pdk = PDK(name=pdk_name_normalized)
+        pdk = _builtin_pdk(pdk_name_normalized, pdk_root=pdk_root) or PDK(name=pdk_name_normalized)
     overrides = overrides or {}
     pdk = apply_pdk_overrides(pdk, overrides)
     pdk.validate()
