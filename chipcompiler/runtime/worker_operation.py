@@ -6,9 +6,11 @@ execution from CLI entry points should go through RunOperation.
 """
 
 import os
+import signal
 import subprocess
 import sys
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -101,6 +103,20 @@ class RunOperation:
         client = WorkerClient(self._worker_argv)
         reader: LogStreamReader | None = None
 
+        # The worker runs in its own process group (start_new_session), so a
+        # parent SIGTERM would otherwise leave it and its EDA descendants
+        # mutating the workspace. Convert SIGTERM into a KeyboardInterrupt on
+        # the main thread, which routes through crash recovery and
+        # terminates the worker group. (Main thread only; harmless no-op
+        # elsewhere.)
+        previous_sigterm = None
+        try:
+            previous_sigterm = signal.signal(
+                signal.SIGTERM, lambda _sig, _frame: (_ for _ in ()).throw(KeyboardInterrupt())
+            )
+        except (ValueError, OSError):
+            previous_sigterm = None
+
         try:
             proc = client.start()
 
@@ -183,6 +199,10 @@ class RunOperation:
             return self._handle_crash(client, reader, "operation interrupted")
         except Exception as exc:
             return self._handle_crash(client, reader, str(exc))
+        finally:
+            if previous_sigterm is not None:
+                with suppress(OSError, ValueError):
+                    signal.signal(signal.SIGTERM, previous_sigterm)
 
     def _handle_protocol_or_crash(
         self,

@@ -297,6 +297,43 @@ class TestRunOperationCrash:
         # The record is left as it was — the failure is reported, not hidden.
         assert json.loads(flow_json.read_text())["steps"][0]["state"] == "Ongoing"
 
+    def test_parent_sigterm_terminates_the_worker_group(self, tmp_path):
+        """SIGTERM to the CLI must route through crash recovery and reap the
+        worker process group instead of leaving EDA descendants running."""
+        import signal as signal_module
+        import threading
+        import time
+
+        script = _RPC_HELPERS + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "x"}, "id": req["id"]})
+            # Hang forever, simulating a long EDA step.
+            while True:
+                time.sleep(1)
+        """)
+        script = "import time\n" + script
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text(json.dumps({"steps": []}))
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, "-c", script],
+        )
+
+        def send_sigterm():
+            time.sleep(0.5)
+            os.kill(os.getpid(), signal_module.SIGTERM)
+
+        killer = threading.Thread(target=send_sigterm, daemon=True)
+        killer.start()
+        result = op.run("flow.run", {"workspace_id": "test"})
+
+        assert result.success is False
+        assert "interrupted" in (result.error or "")
+        assert result.signal_number == -signal_module.SIGKILL or result.exit_code is not None
+
     def test_crash_before_any_marker_repairs_persisted_ongoing(self, tmp_path):
         """Killed between the Ongoing save and the begin marker: no stream
         evidence exists, so recovery falls back to the persisted Ongoing."""

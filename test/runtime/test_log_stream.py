@@ -2,6 +2,8 @@
 
 import io
 
+import pytest
+
 from chipcompiler.runtime.log_stream import LogStreamReader
 
 
@@ -358,6 +360,42 @@ class TestArchiveOwnStepLogsPassthrough:
         finally:
             log_stream_module._EXTERNAL_LOG_CLIENT = False
         assert "raw" in capfd.readouterr().err
+
+
+class TestArchiveSetupFailure:
+    def test_setup_failure_restores_fds_and_releases_the_guard(self, tmp_path, monkeypatch, capfd):
+        """A failure during setup (pipe/dup/reader start) must restore fd 1/2
+        and release the guard so later runs still archive."""
+        import os
+
+        import chipcompiler.runtime.log_stream as log_stream_module
+        from chipcompiler.runtime.log_stream import archive_own_step_logs, emit_step_marker
+
+        workspace = tmp_path / "ws"
+        (workspace / "home").mkdir(parents=True)
+        (workspace / "home" / "flow.json").write_text(
+            '{"steps": [{"name": "S", "tool": "T", "state": "Ongoing"}]}'
+        )
+
+        monkeypatch.setattr(
+            log_stream_module.os, "pipe", lambda: (_ for _ in ()).throw(OSError("no fds"))
+        )
+        with (
+            pytest.raises(OSError, match="no fds"),
+            archive_own_step_logs(workspace),
+        ):
+            pass
+        assert log_stream_module._SELF_ARCHIVE_ACTIVE is False
+        # fd 2 still reaches the terminal after the failed setup.
+        os.write(2, b"still alive\n")
+        assert "still alive" in capfd.readouterr().err
+
+        monkeypatch.undo()
+        with archive_own_step_logs(workspace):
+            emit_step_marker("begin", step="S", tool="T")
+            os.write(2, b"bytes\n")
+            emit_step_marker("end", step="S", tool="T")
+        assert (workspace / "S_T" / "log" / "S.log").read_bytes() == b"bytes\n"
 
 
 class TestLogStreamResilience:

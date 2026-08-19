@@ -395,23 +395,47 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
     flush_cstdio()
     real_stdout = os.dup(1)
     real_stderr = os.dup(2)
-    read_fd, write_fd = os.pipe()
-    os.dup2(write_fd, 1)
-    os.dup2(write_fd, 2)
-    os.close(write_fd)
+    read_fd = -1
+    write_fd = -1
+    stream = None
+    try:
+        read_fd, write_fd = os.pipe()
+        os.dup2(write_fd, 1)
+        os.dup2(write_fd, 2)
+        os.close(write_fd)
+        write_fd = -1
+        stream = os.fdopen(read_fd, "rb")
+        read_fd = -1  # the stream owns it now
 
-    def _echo(data: bytes) -> None:
-        os.write(real_stderr, data)
+        def _echo(data: bytes) -> None:
+            os.write(real_stderr, data)
 
-    stream = os.fdopen(read_fd, "rb")
-    reader = LogStreamReader(
-        stream,
-        log_path_resolver=step_log_archive_resolver(workspace_dir),
-        on_output=_echo if echo else None,
-        valid_steps=valid_steps or None,
-        workspace_dir=workspace_dir,
-    )
-    reader.start()
+        reader = LogStreamReader(
+            stream,
+            log_path_resolver=step_log_archive_resolver(workspace_dir),
+            on_output=_echo if echo else None,
+            valid_steps=valid_steps or None,
+            workspace_dir=workspace_dir,
+        )
+        reader.start()
+    except BaseException:
+        # A setup failure must not poison later runs: restore any redirected
+        # descriptors, close what was opened, and release the guard.
+        os.dup2(real_stdout, 1)
+        os.dup2(real_stderr, 2)
+        if write_fd >= 0:
+            with suppress(OSError):
+                os.close(write_fd)
+        if stream is not None:
+            with suppress(OSError):
+                stream.close()
+        elif read_fd >= 0:
+            with suppress(OSError):
+                os.close(read_fd)
+        os.close(real_stdout)
+        os.close(real_stderr)
+        _SELF_ARCHIVE_ACTIVE = False
+        raise
     try:
         yield reader
     finally:

@@ -269,8 +269,20 @@ def _run_candidate_step(flow, step) -> None:
     # In-process execution is still executor+client in one process: route the
     # own fd-2 stream through the reader so markers are consumed and the
     # step's bytes land in its archive (echoed to the real stderr).
-    with archive_own_step_logs(flow.workspace.directory) as reader:
-        state = flow.run_step(step, rerun=True)
+    reader = None
+    try:
+        with archive_own_step_logs(flow.workspace.directory) as active_reader:
+            reader = active_reader
+            state = flow.run_step(step, rerun=True)
+    except BaseException:
+        # A step raising after its begin marker (post-processing, the end
+        # write) leaves the reader holding an active step while flow.json may
+        # already say Success; reconcile before propagating.
+        if reader is not None and (
+            reader.state.error is not None or reader.state.active_step is not None
+        ):
+            flow.set_state(step.name, step.tool, StateEnum.Imcomplete)
+        raise
     # An archive failure or unmatched begin must not report success while the
     # step's log is missing; downgrade so a later rerun rebuilds it. A None
     # reader means an outer client owns the stream (passthrough) — nothing to
