@@ -169,10 +169,14 @@ class LogStreamReader:
         self._stop.set()
 
     def _drain_loop(self) -> None:
+        # read1 returns whatever the pipe currently holds; read(8192) would
+        # block until the buffer fills or EOF, stalling live progress for
+        # steps that emit less than 8 KiB while still running.
+        read_chunk = getattr(self._stderr, "read1", None) or self._stderr.read
         buf = b""
         try:
             while not self._stop.is_set():
-                chunk = self._stderr.read(8192)
+                chunk = read_chunk(8192)
                 if not chunk:
                     break
                 buf += chunk

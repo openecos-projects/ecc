@@ -270,6 +270,29 @@ class TestLogStreamReader:
         assert reader.state.steps_seen == ["A"]
 
 
+class TestLiveStreaming:
+    def test_short_output_flows_without_waiting_for_8kib(self):
+        """read1 delivers available bytes immediately; read(8192) would block
+        until the buffer fills or EOF and stall live progress."""
+        import os
+        import time
+
+        read_fd, write_fd = os.pipe()
+        received = []
+        reader = LogStreamReader(os.fdopen(read_fd, "rb"), on_output=received.append)
+        reader.start()
+        try:
+            os.write(write_fd, b"short line\n")
+            deadline = time.monotonic() + 2.0
+            while not received and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert received == [b"short line\n"]
+        finally:
+            os.close(write_fd)
+            reader.join(timeout=5)
+            reader.stop()
+
+
 class TestArchiveOwnStepLogs:
     """In-process executor runs self-archive through the fd-2 pipe."""
 
