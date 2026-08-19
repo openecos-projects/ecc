@@ -218,11 +218,12 @@ class ECCToolsPlot:
                     drc_statis[drc_type][layer] = drc_statis[drc_type][layer] + layer_data.get(
                         "number", 0
                     )
-                    drc_total_dict[layer] = drc_total_dict.get(layer, 0) + +layer_data.get(
+                    drc_total_dict[layer] = drc_total_dict.get(layer, 0) + layer_data.get(
                         "number", 0
                     )
+                drc_statis[drc_type]["total"] = sum(drc_statis[drc_type].values())
 
-        drc_total_dict["total"] = drc_json.get("drc", {}).get("number", 0)
+        drc_total_dict["total"] = sum(drc_total_dict.values())
         drc_statis["total"] = drc_total_dict
 
         # Save drc_statis to CSV file

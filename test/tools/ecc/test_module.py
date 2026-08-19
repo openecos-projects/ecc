@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import csv
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -2455,6 +2456,7 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
                     "cut_layers": [],
                     "routing_layers": [
                         {"layer_name": "M1", "layer_order": 1},
+                        {"layer_name": "M2", "layer_order": 2},
                     ],
                 }
             }
@@ -2465,9 +2467,20 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
         json.dumps(
             {
                 "drc": {
-                    "number": 2,
+                    "number": 999,
                     "distribution": {
-                        "short": {"layers": {"M1": {"number": 2}}},
+                        "short": {
+                            "layers": {
+                                "M1": {"number": 2},
+                                "M2": {"number": 3},
+                            }
+                        },
+                        "spacing": {
+                            "layers": {
+                                "M1": {"number": 5},
+                                "M2": {"number": 7},
+                            }
+                        },
                     },
                 }
             }
@@ -2494,6 +2507,12 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
     assert plot_calls[0]["input_path"] == str(step.analysis.statis_csv)
     assert plot_calls[0]["output_path"] == expected_image_path
     assert metric_calls == [expected_image_path]
+    with open(step.analysis.statis_csv, newline="") as csvfile:
+        assert list(csv.DictReader(csvfile)) == [
+            {"Type": "short", "M1": "2", "M2": "3", "total": "5"},
+            {"Type": "spacing", "M1": "5", "M2": "7", "total": "12"},
+            {"Type": "total", "M1": "7", "M2": "10", "total": "17"},
+        ]
 
 
 def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):
