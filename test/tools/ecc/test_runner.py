@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.data import (
     PDK,
     EccData,
@@ -566,9 +568,10 @@ def test_rcx_checklist_uses_top_module_for_spef_design_token(tmp_path):
     assert checklist.check_spef_file(str(spef)) is True
 
 
-def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path):
+@pytest.mark.parametrize("step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value))
+def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_name):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
-    step = build_step(workspace, StepEnum.ROUTING.value, None, None)
+    step = build_step(workspace, step_name, None, None)
     module = SnapshotSaveEccModule(write_snapshot=True)
 
     assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
@@ -626,11 +629,18 @@ def test_save_data_fails_when_geometry_snapshot_cannot_be_written(tmp_path):
     )
 
 
-def test_engine_flow_requires_geometry_manifest_for_physical_steps(tmp_path):
+@pytest.mark.parametrize("step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value))
+def test_engine_flow_requires_geometry_manifest_for_physical_steps(tmp_path, step_name):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
-    step = build_step(workspace, StepEnum.ROUTING.value, None, None)
+    step = build_step(workspace, step_name, None, None)
     build_step_space(step)
-    for output_path in (step.output.def_, step.output.verilog, step.output.gds):
+    for output_path in (
+        step.output.def_,
+        step.output.verilog,
+        step.output.gds,
+        step.report.step,
+        step.feature.step,
+    ):
         assert output_path is not None
         output_path.write_text("", encoding="utf-8")
     assert step.output.geometry_manifest is not None

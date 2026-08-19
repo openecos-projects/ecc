@@ -28,6 +28,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
         StepEnum.DRC.value,
+        StepEnum.LVS.value,
         StepEnum.FILLER.value,
     }
 )
