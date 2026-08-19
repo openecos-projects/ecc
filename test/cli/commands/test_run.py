@@ -280,11 +280,11 @@ class TestWorkspaceRun:
         monkeypatch.setattr("chipcompiler.data.load_workspace", fake_load_workspace)
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
         monkeypatch.setattr(
-            "chipcompiler.cli.command_handlers.project._make_run_operation",
+            "chipcompiler.cli.command_handlers.workspace_run._make_run_operation",
             lambda workspace_path, **kwargs: FakeOperation(),
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.command_handlers.project._worker_binary_missing_error",
+            "chipcompiler.cli.command_handlers.workspace_run._worker_binary_missing_error",
             lambda: seen.binary_error,
         )
         monkeypatch.setattr(

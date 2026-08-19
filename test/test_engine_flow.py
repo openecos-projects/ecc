@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import chipcompiler.engine.flow as flow_module
+import chipcompiler.engine.runner as runner_module
 from chipcompiler import tools
 from chipcompiler.data import (
     EccFeature,
@@ -92,7 +92,7 @@ def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_pa
     sleep_calls = []
 
     monkeypatch.setattr(tools, "run_step", lambda **_kwargs: False)
-    monkeypatch.setattr(flow_module.time, "sleep", sleep_calls.append)
+    monkeypatch.setattr(runner_module.time, "sleep", sleep_calls.append)
 
     assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
     assert sleep_calls == []
@@ -226,6 +226,34 @@ def test_end_marker_suppressed_when_final_state_persistence_fails(monkeypatch, t
     record = engine_flow.get_step("route", "ecc")
     assert record["state"] == StateEnum.Imcomplete.value
     assert json_read(flow_path)["steps"][0]["state"] == StateEnum.Ongoing.value
+
+
+def test_direct_run_step_archive_failure_downgrades(monkeypatch, tmp_path):
+    """A bare run_step (no run_steps wrapper) with a broken archive path
+    returns Imcomplete and downgrades the record after the reader drains."""
+    workspace = Workspace(
+        directory=tmp_path,
+        flow=Flow(path=tmp_path / "home" / "flow.json"),
+    )
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]
+    }
+    step_dir = tmp_path / "route_ecc"
+    step_dir.mkdir(parents=True)
+    (step_dir / "log").write_text("regular file")
+    workspace_step = EccStep(name="route", directory=step_dir, tool="ecc")
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+
+    result = engine_flow.run_step(workspace_step)
+
+    assert result == StateEnum.Imcomplete
+    record = engine_flow.get_step("route", "ecc")
+    assert record["state"] == StateEnum.Imcomplete.value
 
 
 def test_run_steps_archive_failure_returns_false_and_downgrades(monkeypatch, tmp_path):

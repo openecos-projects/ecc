@@ -197,7 +197,7 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
 
 def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monkeypatch):
     import chipcompiler.tools as tools_api
-    from chipcompiler.engine import flow as flow_module
+    from chipcompiler.engine import runner as flow_module
     from chipcompiler.engine.flow import EngineFlow
 
     workspace = _workspace(tmp_path)
