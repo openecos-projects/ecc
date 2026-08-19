@@ -417,7 +417,7 @@ class TestLogStreamResilience:
         reader.start()
         reader.join(timeout=5)
         assert reader.completed
-        assert isinstance(reader.state.error, ValueError)
+        assert isinstance(reader.state.display_error, ValueError)
         content = log_path.read_bytes()
         assert b"line 1\n" in content
         assert b"line 2\n" in content

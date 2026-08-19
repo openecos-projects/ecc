@@ -274,7 +274,7 @@ class TestOnStepEvent:
         reader.join(timeout=5)
         assert reader.completed
         assert calls[0] == 1
-        assert isinstance(reader.state.error, RuntimeError)
+        assert isinstance(reader.state.display_error, RuntimeError)
         # The second begin re-opened (truncated) the shared log path, so its
         # content proves archiving continued after the callback was disabled.
         assert log_path.read_bytes() == b"line 2\n"
