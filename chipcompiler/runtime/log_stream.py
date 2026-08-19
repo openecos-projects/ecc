@@ -323,14 +323,15 @@ class LogStreamReader:
 
 @contextmanager
 def archive_own_step_logs(workspace_dir, *, echo: bool = True):
-    """Archive this process's own fd-2 stream into per-step log files.
+    """Archive this process's own fd 1+2 streams into per-step log files.
 
     In-process executor runs (no separate client process, e.g. agent
     candidate reruns or the documented direct EngineFlow examples) still
     must not write step log files from executor code. This context redirects
-    fd 2 through a pipe so a LogStreamReader — the client role — archives
-    step-scoped bytes and consumes markers, while echoing all bytes to the
-    original stderr. Yields the reader so callers can inspect
+    fd 1 and fd 2 through one pipe — the same merged stream the CLI worker's
+    stdio isolation produces — so a LogStreamReader (the client role)
+    archives step-scoped bytes and consumes markers, while echoing all bytes
+    to the original stderr. Yields the reader so callers can inspect
     ``reader.state`` after the block.
     """
     import sys
@@ -349,8 +350,10 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
     sys.stdout.flush()
     sys.stderr.flush()
     flush_cstdio()
+    real_stdout = os.dup(1)
     real_stderr = os.dup(2)
     read_fd, write_fd = os.pipe()
+    os.dup2(write_fd, 1)
     os.dup2(write_fd, 2)
     os.close(write_fd)
 
@@ -368,13 +371,16 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
     try:
         yield reader
     finally:
-        # Flush everything, restore fd 2 so the pipe sees EOF, and only then
-        # wait for the reader to drain the tail — the echo callback writes to
-        # real_stderr, so it must stay open until the drain finishes.
+        # Flush everything, restore both descriptors so the pipe sees EOF,
+        # and only then wait for the reader to drain the tail — the echo
+        # callback writes to real_stderr, so it must stay open until the
+        # drain finishes.
         sys.stdout.flush()
         sys.stderr.flush()
         flush_cstdio()
+        os.dup2(real_stdout, 1)
         os.dup2(real_stderr, 2)
         reader.join(timeout=5.0)
         reader.stop()
+        os.close(real_stdout)
         os.close(real_stderr)

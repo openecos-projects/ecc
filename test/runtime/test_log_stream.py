@@ -288,13 +288,16 @@ class TestArchiveOwnStepLogs:
         with archive_own_step_logs(workspace) as reader:
             emit_step_marker("begin", step="S", tool="T")
             os.write(2, b"tool output\n")
+            os.write(1, b"stdout line\n")
             emit_step_marker("end", step="S", tool="T")
             os.write(2, b"unscoped tail\n")
 
         assert reader.state.error is None
-        assert (workspace / "S_T" / "log" / "S.log").read_bytes() == b"tool output\n"
+        # fd 1 and fd 2 bytes both land in the archive, markers never do.
+        assert (workspace / "S_T" / "log" / "S.log").read_bytes() == (b"tool output\nstdout line\n")
         echoed = capfd.readouterr().err
         assert "tool output" in echoed
+        assert "stdout line" in echoed
         assert "unscoped tail" in echoed
         assert "ECC-STEP" not in echoed
 
