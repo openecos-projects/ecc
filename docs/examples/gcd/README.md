@@ -114,7 +114,13 @@ if not engine_flow.has_init():
 
 # Create step workspaces and run
 engine_flow.create_step_workspaces()
-engine_flow.run_steps()
+# In-process runs still archive per-step logs client-side: the engine emits
+# step markers on fd 2, and this context routes the process's own stream
+# through the archiver (markers never reach the terminal).
+from chipcompiler.runtime.log_stream import archive_own_step_logs
+
+with archive_own_step_logs(workspace.directory):
+    engine_flow.run_steps()
 ```
 
 The flow we defined is:
