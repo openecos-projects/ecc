@@ -472,7 +472,9 @@ dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
 # dfflibmap intentionally handles only flip-flops.  For ics55 it selects the
 # final matching DFF library in lib_stdcell_list, so use that same H7 variant
-# for the plain D-latch mapping before ABC.
+# for latch mapping before ABC.  The library has separate cells for latch
+# enable polarity and asynchronous set/reset polarity; positive async
+# controls are inverted because the library controls are active low.
 set ics55_latch_suffix ""
 if {[llength $lib_stdcell_list] > 0} {
   set dff_lib [lindex $lib_stdcell_list end]
@@ -495,7 +497,68 @@ module \$_DLATCH_P_ (E, D, Q);
   output Q;
   LATHX1%s _TECHMAP_REPLACE_ (.D(D), .G(E), .Q(Q));
 endmodule
-} $ics55_latch_suffix $ics55_latch_suffix]
+
+module \$_DLATCH_NN0_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  LATLRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .GN(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_NN1_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  LATLSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .GN(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_NP0_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  wire RN;
+  INVX1%s inv_reset (.A(R), .Y(RN));
+  LATLRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .GN(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_NP1_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  wire SN;
+  INVX1%s inv_set (.A(R), .Y(SN));
+  LATLSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .GN(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_PN0_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  LATHRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .G(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_PN1_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  LATHSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .G(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_PP0_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  wire RN;
+  INVX1%s inv_reset (.A(R), .Y(RN));
+  LATHRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .G(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_PP1_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  wire SN;
+  INVX1%s inv_set (.A(R), .Y(SN));
+  LATHSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .G(E), .Q(Q));
+endmodule
+} $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix]
   close $latch_map_file
   techmap -map $ics55_latch_map
   opt -fast -purge
