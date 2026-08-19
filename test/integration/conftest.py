@@ -1,13 +1,9 @@
-import os
-import sys
-from contextlib import suppress
 from pathlib import Path
 
 import pytest
 
 from chipcompiler.data import create_workspace, get_design_parameters, get_pdk
 from chipcompiler.engine import EngineDB, EngineFlow
-from chipcompiler.utility.log import flush_cstdio
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -52,23 +48,14 @@ def run_workspace_flow(
 
     engine_flow.create_step_workspaces()
 
-    # EngineFlow.run_step dup2's fd 1/2 into each step's log file and never
-    # restores them. Save/restore around the flow so pytest's own reporting
-    # is not swallowed by the last step's log.
-    saved_fds = (os.dup(1), os.dup(2))
-    saved_streams = (sys.stdout, sys.stderr)
-    try:
+    # The engine emits step markers on fd 1/2 instead of writing step logs;
+    # route the process's own stream through the client-side archiver so the
+    # integration run still produces per-step logs without leaking markers
+    # into pytest's own output.
+    from chipcompiler.runtime.log_stream import archive_own_step_logs
+
+    with archive_own_step_logs(workspace.directory):
         return engine_flow.run_steps()
-    finally:
-        with suppress(Exception):
-            sys.stdout.flush()
-            sys.stderr.flush()
-        flush_cstdio()
-        os.dup2(saved_fds[0], 1)
-        os.dup2(saved_fds[1], 2)
-        os.close(saved_fds[0])
-        os.close(saved_fds[1])
-        sys.stdout, sys.stderr = saved_streams
 
 
 @pytest.fixture

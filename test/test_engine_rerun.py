@@ -155,6 +155,37 @@ class TestRunFrom:
         assert archive.read_bytes() == b"place bytes\n"
         assert "ECC-STEP" not in capfd.readouterr().err
 
+    def test_archive_failure_fails_and_downgrades_the_record(self, monkeypatch, tmp_path, capfd):
+        """An in-process archive failure must not leave ok=True over a Success
+        record with a missing log."""
+        import os
+
+        from chipcompiler.runtime.log_stream import emit_step_marker
+
+        flow = _make_run_flow(tmp_path, [("place", "Success")])
+        _write_output(flow, "place")
+
+        def run_step_with_markers(workspace_step, *, rerun=False):
+            emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+            os.write(2, b"bytes\n")
+            emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
+            flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Success)
+            return StateEnum.Success
+
+        monkeypatch.setattr(flow, "run_step", run_step_with_markers)
+        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
+
+        # Make the archive path unopenable: a regular file where the step's
+        # log directory must be created (the output dir stays intact).
+        (tmp_path / "place_ecc" / "log").write_text("regular file")
+
+        result = rerun.run_from(flow, "place")
+
+        assert result.ok is False
+        assert result.failed == "place"
+        assert _flow_states(flow) == [StateEnum.Imcomplete.value]
+        assert "ECC-STEP" not in capfd.readouterr().err
+
     def test_failure_stops_suffix_and_keeps_downstream_output(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
             tmp_path,

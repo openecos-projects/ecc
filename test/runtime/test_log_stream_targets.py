@@ -189,6 +189,16 @@ class TestStepLogArchiveResolver:
             tmp_path / "Floorplan_ecc" / "log" / "Floorplan.log"
         )
 
+    def test_resolver_mirrors_the_sizer_builder_layout(self, tmp_path):
+        """The sizer builder sanitizes its step directory; the archive must
+        land in the same directory the built step owns."""
+        from chipcompiler.runtime.log_stream import step_log_archive_resolver
+
+        resolver = step_log_archive_resolver(tmp_path)
+        assert resolver("Timing optimization", "sizer") == (
+            tmp_path / "timing_optimization_sizer" / "log" / "Timing optimization.log"
+        )
+
 
 class TestOnStepEvent:
     def test_fires_on_matched_begin_and_end(self, tmp_path):

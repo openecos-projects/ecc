@@ -159,15 +159,9 @@ class RunOperation:
                 # The reported failure must match the persisted state: a step
                 # left Success in flow.json would be skipped by a later resume
                 # while its archive is missing or incomplete.
-                repair_step = log_state.active_step
-                if repair_step is None and log_state.error is not None and log_state.steps_seen:
-                    repair_step = log_state.steps_seen[-1]
-                repaired: list[str] = []
-                if repair_step is not None and self._flow_json_path.exists():
-                    try:
-                        repaired = repair_flow_state(self._flow_json_path, active_step=repair_step)
-                    except OSError as exc:
-                        error_parts.append(f"state repair failed: {exc}")
+                repaired, repair_error = self._reconcile_step_state(log_state)
+                if repair_error is not None:
+                    error_parts.append(repair_error)
                 return OperationResult(
                     success=False,
                     rpc_result=rpc_result.response if rpc_result else None,
@@ -210,16 +204,13 @@ class RunOperation:
         # A live-worker RPC error can still leave a step unmatched: the flow
         # raised after the begin marker, so flow.json may hold a stale Ongoing
         # record. Repair it exactly as crash recovery does.
-        repaired: list[str] = []
+        # A live-worker RPC error can leave an unmatched Ongoing step; an
+        # archive failure on an already-ended step leaves a stale Success.
+        # Both reconcile through the same repair path.
+        repaired, repair_error = self._reconcile_step_state(log_state)
         error = result.error
-        active_step = log_state.active_step if log_state else None
-        if active_step is not None and self._flow_json_path.exists():
-            try:
-                repaired = repair_flow_state(self._flow_json_path, active_step=active_step)
-            except OSError as exc:
-                # A repair that cannot persist must be visible: swallowing it
-                # would report recovery while the record stays Ongoing.
-                error = f"{error}; state repair failed: {exc}"
+        if repair_error is not None:
+            error = f"{error}; {repair_error}"
         return OperationResult(
             success=False,
             rpc_result=result.response,
@@ -259,6 +250,29 @@ class RunOperation:
 
         return proc.returncode == 0
 
+    def _reconcile_step_state(
+        self, log_state: LogStreamState | None
+    ) -> tuple[list[str], str | None]:
+        """Repair the step whose marker/archive evidence failed, if any.
+
+        Picks the unmatched active step first, then the step being archived
+        when the first reader error fired, then the last seen step on an
+        archive error. Returns (repaired_steps, error_text): reconciling to
+        Incomplete keeps a later resume from trusting a stale Success whose
+        log is missing or incomplete.
+        """
+        if log_state is None:
+            return [], None
+        step = log_state.active_step or log_state.error_step
+        if step is None and log_state.error is not None and log_state.steps_seen:
+            step = log_state.steps_seen[-1]
+        if step is None or not self._flow_json_path.exists():
+            return [], None
+        try:
+            return repair_flow_state(self._flow_json_path, active_step=step), None
+        except OSError as exc:
+            return [], f"state repair failed: {exc}"
+
     def _handle_crash(
         self,
         client: WorkerClient,
@@ -268,9 +282,7 @@ class RunOperation:
         """Crash recovery: terminate, drain, repair, return failure."""
         exit_code: int | None = None
         signal_number: int | None = None
-        repaired: list[str] = []
         log_state: LogStreamState | None = None
-        active_step: str | None = None
 
         try:
             client.terminate()
@@ -286,15 +298,12 @@ class RunOperation:
             reader.join(timeout=2.0)
             reader.stop()
             log_state = reader.state
-            active_step = log_state.active_step
 
-        if active_step is not None and self._flow_json_path.exists():
-            try:
-                repaired = repair_flow_state(self._flow_json_path, active_step=active_step)
-            except OSError as exc:
-                # A repair that cannot persist must be visible: swallowing it
-                # would report recovery while the record stays Ongoing.
-                error = f"{error}; state repair failed: {exc}"
+        # The crashed step (still active) or a step whose archive failed
+        # before the crash both reconcile to Incomplete through one path.
+        repaired, repair_error = self._reconcile_step_state(log_state)
+        if repair_error is not None:
+            error = f"{error}; {repair_error}"
 
         return OperationResult(
             success=False,

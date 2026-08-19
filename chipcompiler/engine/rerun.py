@@ -119,7 +119,8 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
     from chipcompiler.runtime.log_stream import archive_own_step_logs
 
     executed = []
-    with archive_own_step_logs(flow.workspace.directory):
+    failed = None
+    with archive_own_step_logs(flow.workspace.directory) as reader:
         for workspace_step, output_dir in selected:
             flow.workspace.logger.log_section(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"
@@ -132,8 +133,28 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
                 f"{workspace_step.tool} - end step - {workspace_step.name}"
             )
             if state != StateEnum.Success:
-                return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
+                failed = workspace_step.name
+                break
             executed.append(workspace_step.name)
+
+    # The reader drained at context exit. An archive failure or an unmatched
+    # begin must not leave a Success record whose log is missing: downgrade
+    # the affected step so a later resume reruns it and rebuilds the archive.
+    archive_error = reader.state.error
+    unmatched = reader.state.active_step
+    if archive_error is not None or unmatched is not None:
+        target = reader.state.error_step or unmatched
+        if target is None and executed:
+            target = executed[-1]
+        if target is not None:
+            for record in flow.workspace.flow.data.get("steps", []):
+                if record.get("name") == target:
+                    record["state"] = StateEnum.Imcomplete.value
+                    flow.save()
+                    break
+        return StepRunResult(ok=False, executed=tuple(executed), failed=failed or target)
+    if failed is not None:
+        return StepRunResult(ok=False, executed=tuple(executed), failed=failed)
     return StepRunResult(ok=True, executed=tuple(executed))
 
 

@@ -55,7 +55,15 @@ def step_log_archive_resolver(workspace_dir) -> Callable[[str, str], Path]:
     base = Path(workspace_dir)
 
     def resolve(step: str, tool: str) -> Path:
-        return base / f"{step}_{tool}" / "log" / f"{step}.log"
+        # Mirror the step-directory layout the builders create: the sizer
+        # builder sanitizes its directory name (whitespace runs become
+        # underscores, lowercased) while the other builders use the raw
+        # "<step>_<tool>" form.
+        if tool == "sizer":
+            directory = f"{'_'.join(step.split()).lower()}_sizer"
+        else:
+            directory = f"{step}_{tool}"
+        return base / directory / "log" / f"{step}.log"
 
     return resolve
 
@@ -96,6 +104,9 @@ class LogStreamState:
     bytes_archived: int = 0
     steps_seen: list[str] = field(default_factory=list)
     error: Exception | None = None
+    # The step being archived when the first error was recorded, so failure
+    # paths can reconcile exactly that record even after its end marker.
+    error_step: str | None = None
 
 
 class LogStreamReader:
@@ -137,6 +148,7 @@ class LogStreamReader:
     def _record_error(self, exc: Exception) -> None:
         if self._state.error is None:
             self._state.error = exc
+            self._state.error_step = self._state.active_step
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._drain_loop, name="ecc-log-reader", daemon=True)
@@ -168,7 +180,7 @@ class LogStreamReader:
             if buf:
                 self._emit_data(buf)
         except Exception as exc:
-            self._state.error = exc
+            self._record_error(exc)
         finally:
             self._close_archive()
 

@@ -3,6 +3,7 @@ import shutil
 from hashlib import sha256
 from pathlib import Path
 
+from chipcompiler.data import StateEnum
 from chipcompiler.runtime.requests import WorkspaceIdRequest
 from chipcompiler.runtime.workspace_api import (
     RuntimeApiError,
@@ -268,8 +269,20 @@ def _run_candidate_step(flow, step) -> None:
     # In-process execution is still executor+client in one process: route the
     # own fd-2 stream through the reader so markers are consumed and the
     # step's bytes land in its archive (echoed to the real stderr).
-    with archive_own_step_logs(flow.workspace.directory):
+    with archive_own_step_logs(flow.workspace.directory) as reader:
         state = flow.run_step(step, rerun=True)
+    # An archive failure or unmatched begin must not report success while the
+    # step's log is missing; downgrade so a later rerun rebuilds it.
+    if reader.state.error is not None or reader.state.active_step is not None:
+        record = flow.get_step(step.name, step.tool)
+        if record is not None:
+            record["state"] = StateEnum.Imcomplete.value
+            flow.save()
+        raise RuntimeApiError(
+            "command_failed",
+            f"candidate rerun step {step.name} log archival failed: "
+            f"{reader.state.error or 'unmatched begin marker'}",
+        )
     if _state_value(state) != "Success":
         raise RuntimeApiError(
             "command_failed",
