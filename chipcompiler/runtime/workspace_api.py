@@ -249,9 +249,22 @@ class WorkspaceRuntimeApi:
                 self._release_session_db(session)
                 previous_db = None
 
+            if request.rerun or not session.workspace.flow.data.get("steps"):
+                # A full rerun executes every step; a fresh workspace has no
+                # persisted states yet, so every step is verified.
+                executable_steps = None
+            else:
+                executable_steps = {
+                    record["name"]
+                    for record in session.workspace.flow.data.get("steps", [])
+                    if isinstance(record, dict)
+                    and "name" in record
+                    and record.get("state") != "Success"
+                }
             engine_flow = self._build_flow_for_session(
                 session,
                 attach_session_db=should_capture and not request.rerun,
+                executable_steps=executable_steps,
             )
             if request.rerun:
                 affected_steps = list(getattr(engine_flow, "workspace_steps", []))
@@ -306,6 +319,7 @@ class WorkspaceRuntimeApi:
             engine_flow = self._build_flow_for_session(
                 session,
                 attach_session_db=should_capture and not request.rerun,
+                executable_steps={request.step},
             )
             if request.rerun:
                 if session.layout_edit_session is not None:
@@ -843,8 +857,9 @@ class WorkspaceRuntimeApi:
         session: WorkspaceSession,
         *,
         attach_session_db: bool,
+        executable_steps: set[str] | None = None,
     ):
-        engine_flow = build_flow_for_workspace(session.workspace)
+        engine_flow = build_flow_for_workspace(session.workspace, executable_steps=executable_steps)
         if attach_session_db:
             engine_flow.engine_db = session.db_handle
         return engine_flow
@@ -920,8 +935,11 @@ class WorkspaceRuntimeApi:
                 continue
             record.update({"state": "Unstart", "runtime": "", "peak memory (mb)": 0})
             updated = True
-        if updated:
-            engine_flow.save()
+        if updated and not engine_flow.save():
+            raise RuntimeApiError(
+                "command_failed",
+                "failed to persist step invalidation; refusing to modify outputs",
+            )
 
     @staticmethod
     def _notify_rerun_prepared(
@@ -977,13 +995,9 @@ class WorkspaceRuntimeApi:
                 known_directories.add(resolved)
                 artifact_directories.append((workspace_step.name, directory))
 
-        for step_name, directory in artifact_directories:
-            WorkspaceRuntimeApi._clear_step_artifact_dir(
-                workspace_root,
-                directory,
-                step_name,
-            )
-
+        # Persist the invalidation before any output is deleted: a failed
+        # save must leave the workspace untouched rather than clearing
+        # artifacts while the recorded states stay stale.
         updated_record = False
         for workspace_step in unique_steps:
             record = engine_flow.get_step(workspace_step.name, workspace_step.tool)
@@ -998,8 +1012,18 @@ class WorkspaceRuntimeApi:
                 }
             )
             updated_record = True
-        if updated_record:
-            engine_flow.save()
+        if updated_record and not engine_flow.save():
+            raise RuntimeApiError(
+                "command_failed",
+                "failed to persist step invalidation; refusing to modify outputs",
+            )
+
+        for step_name, directory in artifact_directories:
+            WorkspaceRuntimeApi._clear_step_artifact_dir(
+                workspace_root,
+                directory,
+                step_name,
+            )
 
         for workspace_step in unique_steps:
             WorkspaceRuntimeApi._reset_step_subflow(workspace_step)
@@ -2033,7 +2057,12 @@ def _artifact_fingerprint(paths: tuple[Path, ...]) -> str:
     return digest.hexdigest()
 
 
-def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
+def build_flow_for_workspace(
+    workspace,
+    *,
+    create_step_workspaces: bool = True,
+    executable_steps: set[str] | None = None,
+):
     import chipcompiler.engine as engine_api
     import chipcompiler.rtl2gds as rtl2gds_api
 
@@ -2043,7 +2072,7 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
             engine_flow.add_step(step=step, tool=tool, state=state)
 
     if create_step_workspaces:
-        engine_flow.create_step_workspaces()
+        engine_flow.create_step_workspaces(executable_steps=executable_steps)
     return engine_flow
 
 

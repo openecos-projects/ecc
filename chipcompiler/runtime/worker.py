@@ -246,10 +246,13 @@ def classify_worker_exit(proc: subprocess.Popen) -> WorkerResult:
 
 
 def repair_flow_state(flow_json_path: str | Path, *, active_step: str) -> list[str]:
-    """Repair the named Ongoing step left by a crashed worker, setting it to Incomplete.
+    """Repair the step left unfinished by a crashed worker, setting it to Incomplete.
 
     Operation-scoped: only the active_step is repaired. The caller must identify
-    which step was owned by the crashed operation.
+    which step was owned by the crashed operation. Both Ongoing and Success
+    records are repaired: a Success without a completed end marker means the
+    crash interrupted the step's post-processing, so its persisted result is
+    not trustworthy.
 
     Returns the list of step names that were repaired.
     Raises OSError if the repaired state cannot be persisted.
@@ -267,7 +270,7 @@ def repair_flow_state(flow_json_path: str | Path, *, active_step: str) -> list[s
     for step in steps:
         if not isinstance(step, dict):
             continue
-        if step.get("state") != "Ongoing":
+        if step.get("state") not in ("Ongoing", "Success"):
             continue
         step_name = step.get("name", "<unknown>")
         if step_name != active_step:

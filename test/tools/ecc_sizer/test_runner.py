@@ -202,20 +202,6 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
 
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
-    workspace.flow.data = {
-        "steps": [
-            {
-                "name": StepEnum.TIMING_OPT.value,
-                "tool": "sizer",
-                "state": StateEnum.Unstart.value,
-            },
-            {
-                "name": StepEnum.LEGALIZATION.value,
-                "tool": "ecc",
-                "state": StateEnum.Unstart.value,
-            },
-        ]
-    }
 
     sizer_step = EccStep(
         name=StepEnum.TIMING_OPT.value,
@@ -246,6 +232,21 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
             pre_sizer_db_closed.append(True)
 
     engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [
+            {
+                "name": StepEnum.TIMING_OPT.value,
+                "tool": "sizer",
+                "state": StateEnum.Unstart.value,
+            },
+            {
+                "name": StepEnum.LEGALIZATION.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+            },
+        ]
+    }
+    engine_flow.save()
     engine_flow.workspace_steps = [sizer_step, post_sizer_step]
     monkeypatch.setattr(engine_flow, "engine_db", CloseableDb())
 

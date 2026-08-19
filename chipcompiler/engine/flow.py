@@ -534,13 +534,25 @@ class EngineFlow:
                 else StateEnum.Imcomplete
             )
 
-        self.set_state(
+        persisted = self.set_state(
             name=workspace_step.name,
             tool=workspace_step.tool,
             state=state,
             runtime=runtime,
             peak_memory=peak_memory_mb,
         )
+        if persisted and not self.save():
+            persisted = False
+        if not persisted:
+            # The marker protocol guarantees the final state is persisted
+            # before the end marker; a failed save makes the run's result
+            # untrustworthy, so the step is reported incomplete and no end
+            # marker is emitted for it.
+            state = StateEnum.Imcomplete
+            self.workspace.logger.error(
+                "[RESULT] %s final state could not be persisted; marking step Imcomplete",
+                step_tag,
+            )
         self.workspace.logger.info(
             "[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
             step_tag,
@@ -585,7 +597,10 @@ class EngineFlow:
         # The end marker closes the step's byte stream only after every
         # step-scoped write (state persistence, [RESULT], QOR, layout, db
         # cleanup) has flushed, and always before the completion notification.
-        emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
+        # When the final state could not be persisted, the marker stays
+        # unwritten: consumers treat the step as crashed and repair its state.
+        if persisted:
+            emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
         _notify_flow_observer(observer, "on_step_completed", workspace_step, state)
         if state == StateEnum.Success and not _wait_for_step_rendered(
             observer,

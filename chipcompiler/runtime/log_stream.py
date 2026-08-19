@@ -192,7 +192,7 @@ class LogStreamReader:
                 continue
             nl = buf.find(b"\n")
             if nl < 0:
-                if len(buf) < 512:
+                if len(buf) <= 512:
                     return buf
                 # An overlong candidate without a newline is not a marker:
                 # emit the prefix's first byte and rescan the remainder.

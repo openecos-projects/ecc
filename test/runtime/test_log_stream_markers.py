@@ -200,3 +200,32 @@ class TestMarkerBoundaryScanning:
         assert b"a" * 600 in content
         assert b'"event":"end"' not in content
         assert reader.state.active_step is None
+
+    def test_candidate_at_exactly_512_bytes_is_held(self, tmp_path):
+        """A 512-byte candidate without its newline is held, then consumed."""
+        log_path = tmp_path / "step.log"
+        wrapper = b'{"v":1,"event":"begin","step":"%s","tool":"T"}'
+        pad = 512 - len(b"\x1eECC-STEP ") - (len(wrapper) - 2)
+        payload = wrapper % (b"S" * pad)
+        frame_head = b"\x1eECC-STEP " + payload
+        assert len(frame_head) == 512
+        reader = LogStreamReader(
+            _ChunkedStream(
+                frame_head + b"\nbody\n" + frame_head.replace(b"begin", b"end") + b"\n", 512
+            ),
+            log_path_resolver=lambda step, tool: log_path,
+        )
+        reader.start()
+        reader.join(timeout=5)
+        assert log_path.read_bytes() == b"body\n"
+        assert reader.state.active_step is None
+
+    def test_candidate_beyond_512_bytes_degrades(self, tmp_path):
+        received = []
+        overlong = b"\x1eECC-STEP " + b"a" * 503
+        assert len(overlong) > 512
+        reader = LogStreamReader(_ChunkedStream(overlong, 64), on_output=received.append)
+        reader.start()
+        reader.join(timeout=5)
+        assert b"".join(received) == overlong
+        assert reader.state.active_step is None

@@ -17,6 +17,7 @@ from chipcompiler.data import (
     YosysOutput,
     YosysStep,
 )
+from chipcompiler.data.workspace import Flow
 from chipcompiler.engine.flow import EngineFlow
 
 
@@ -30,10 +31,8 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
     monkeypatch,
     tmp_path,
 ):
-    workspace = Workspace()
-    workspace.flow.data = {
-        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
-    }
+    (tmp_path / "home").mkdir(exist_ok=True)
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
     step_feature = tmp_path / "feature" / "route.step.json"
     sdc_path = tmp_path / "gcd.sdc"
     sdc_contents = "create_clock -name clk -period 2 [get_ports clk]\n"
@@ -48,6 +47,9 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
         feature=EccFeature(step=step_feature),
     )
     engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
     refreshed = []
@@ -100,12 +102,13 @@ def test_end_marker_follows_step_writes_and_precedes_completion(monkeypatch, tmp
     """The end marker fires after all step-scoped writes and before completion notify."""
     import chipcompiler.runtime.log_stream as log_stream_module
 
-    workspace = Workspace()
-    workspace.flow.data = {
-        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
-    }
+    (tmp_path / "home").mkdir(exist_ok=True)
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
     workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
     engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
 
@@ -151,6 +154,43 @@ def test_end_marker_follows_step_writes_and_precedes_completion(monkeypatch, tmp
     assert events.index(("layout", None)) < end_index
     assert events.index(("db_cleanup", StateEnum.Success)) < end_index
     assert end_index < events.index(("observer", "completed"))
+
+
+def test_end_marker_suppressed_when_final_state_persistence_fails(monkeypatch, tmp_path):
+    """A failed final save downgrades the step and suppresses the end marker."""
+    import chipcompiler.runtime.log_stream as log_stream_module
+
+    workspace = Workspace()
+    workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    events = []
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "save", lambda: False)
+    monkeypatch.setattr(
+        log_stream_module,
+        "emit_step_marker",
+        lambda event, *, step, tool: events.append(("marker", event)),
+    )
+
+    completed_states = []
+
+    class CompletionObserver:
+        def on_step_completed(self, step, state):
+            completed_states.append(state)
+
+    result = engine_flow.run_step(workspace_step, observer=CompletionObserver())
+
+    assert result == StateEnum.Imcomplete
+    assert ("marker", "begin") in events
+    assert ("marker", "end") not in events
+    assert completed_states == [StateEnum.Imcomplete]
 
 
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
@@ -306,11 +346,12 @@ class TestStepExceptionForcesIncomplete:
         assert state == StateEnum.Imcomplete
 
     def test_no_exception_uses_file_check(self, monkeypatch, tmp_path):
-        workspace = Workspace()
-        workspace.flow.data = {
+        (tmp_path / "home").mkdir(exist_ok=True)
+        workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
+        engine_flow = EngineFlow(workspace)
+        engine_flow.workspace.flow.data = {
             "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
         }
-        engine_flow = EngineFlow(workspace)
         workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)

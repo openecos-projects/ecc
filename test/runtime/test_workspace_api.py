@@ -89,8 +89,9 @@ class DummyFlow:
             {"name": step, "tool": tool, "state": state}
         )
 
-    def create_step_workspaces(self):
+    def create_step_workspaces(self, *, executable_steps=None):
         self.created = True
+        self.executable_steps = executable_steps
 
     def run_steps(self, *, rerun=False):
         self.run_steps_calls.append(rerun)
@@ -1508,6 +1509,72 @@ def test_flow_run_step_direct_rerun_invalidate_dependents_keeps_downstream_outpu
     )
     assert records["Floorplan"]["state"] == "Unstart"
     assert records["route"]["state"] == "Unstart"
+
+
+def test_flow_run_verifies_only_steps_that_will_execute(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [
+            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+            {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
+        ]
+    }
+
+    api.flow_run(FlowRunRequest(workspace_id=workspace_id))
+
+    assert DummyFlow.instances[-1].executable_steps == {"Floorplan"}
+
+
+def test_flow_run_step_verifies_only_the_target_step(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    api.flow_run_step(FlowRunStepRequest(workspace_id=workspace_id, step="Floorplan", rerun=True))
+
+    assert DummyFlow.instances[-1].executable_steps == {"Floorplan"}
+
+
+def test_rerun_prepare_refuses_to_modify_outputs_when_invalidation_save_fails(
+    monkeypatch, tmp_path
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    step_dir = ws / "Floorplan_ecc"
+    artifact_dir = step_dir / "output"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "keep.txt").write_text("keep")
+    subflow_path = step_dir / "subflow.json"
+    subflow_path.write_text(json.dumps({"path": str(subflow_path), "steps": []}))
+    checklist_path = step_dir / "checklist.json"
+    checklist_path.write_text(json.dumps({"checklist": []}))
+    DummyFlow.workspace_step_specs = (
+        {
+            "name": "Floorplan",
+            "tool": "ecc",
+            "output": {"dir": artifact_dir},
+            "subflow": SimpleNamespace(path=subflow_path, steps=[]),
+            "checklist": SimpleNamespace(path=checklist_path, checklist=[]),
+        },
+    )
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [{"name": "Floorplan", "tool": "ecc", "state": "Success"}]
+    }
+    monkeypatch.setattr(DummyFlow, "save", lambda self: False)
+
+    with pytest.raises(RuntimeApiError, match="failed to persist step invalidation"):
+        api.flow_run_step(
+            FlowRunStepRequest(workspace_id=workspace_id, step="Floorplan", rerun=True)
+        )
+
+    # The artifact directory survived because the invalidation never persisted.
+    assert (artifact_dir / "keep.txt").read_text() == "keep"
 
 
 def test_flow_run_step_rerun_rejects_an_open_layout_edit(monkeypatch, tmp_path):

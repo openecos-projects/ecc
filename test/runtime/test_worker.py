@@ -103,12 +103,22 @@ class TestRepairFlowState:
         assert result["steps"][0]["state"] == "Success"
         assert result["steps"][2]["state"] == "Unstart"
 
-    def test_no_ongoing_steps(self, tmp_path):
+    def test_repairs_active_success_interrupted_after_persisting(self, tmp_path):
+        """A Success without a completed end marker crashed in post-processing."""
         flow_json = tmp_path / "flow.json"
-        data = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Success"}]}
+        data = {
+            "steps": [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                {"name": "Routing", "tool": "ecc", "state": "Success"},
+            ]
+        }
         flow_json.write_text(json.dumps(data))
         repaired = repair_flow_state(flow_json, active_step="Synthesis")
-        assert repaired == []
+        assert repaired == ["Synthesis"]
+        result = json.loads(flow_json.read_text())
+        assert result["steps"][0]["state"] == "Incomplete"
+        # A step that was not active when the worker died keeps its state.
+        assert result["steps"][1]["state"] == "Success"
 
     def test_missing_file(self, tmp_path):
         flow_json = tmp_path / "nonexistent.json"
@@ -136,7 +146,7 @@ class TestRepairFlowState:
         assert result["steps"][0]["state"] == "Ongoing"
         assert result["steps"][1]["state"] == "Incomplete"
 
-    def test_scoped_repair_step_not_ongoing(self, tmp_path):
+    def test_scoped_repair_ignores_terminal_steps_not_active(self, tmp_path):
         flow_json = tmp_path / "flow.json"
         data = {
             "steps": [
@@ -144,8 +154,10 @@ class TestRepairFlowState:
             ]
         }
         flow_json.write_text(json.dumps(data))
-        repaired = repair_flow_state(flow_json, active_step="Synthesis")
+        repaired = repair_flow_state(flow_json, active_step="Other")
         assert repaired == []
+        result = json.loads(flow_json.read_text())
+        assert result["steps"][0]["state"] == "Success"
 
     def test_write_failure_raises_oserror(self, tmp_path, monkeypatch):
         flow_json = tmp_path / "flow.json"
