@@ -261,6 +261,42 @@ class TestRunOperationCrash:
         repaired_data = json.loads(flow_json.read_text())
         assert repaired_data["steps"][0]["state"] == "Incomplete"
 
+    def test_crash_repair_failure_is_reported(self, tmp_path, monkeypatch):
+        """A repair that cannot persist must surface in the result error."""
+        crash_script = tmp_path / "crash_after_open.py"
+        crash_script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "x"}, "id": req["id"]})
+            os.write(2, make_marker("begin", "Synthesis", "yosys"))
+            os._exit(1)
+        """)
+        )
+        flow_json = tmp_path / "flow.json"
+        data = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Ongoing"}]}
+        flow_json.write_text(json.dumps(data))
+
+        def failing_repair(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(
+            "chipcompiler.runtime.worker_operation.repair_flow_state", failing_repair
+        )
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(crash_script)],
+        )
+        result = op.run("flow.run", {"workspace_id": "test"})
+        assert result.success is False
+        assert result.repaired_steps == []
+        assert "state repair failed" in result.error
+        # The record is left as it was — the failure is reported, not hidden.
+        assert json.loads(flow_json.read_text())["steps"][0]["state"] == "Ongoing"
+
     def test_worker_crash_no_flow_json_no_repair(self, tmp_path):
         script = _RPC_HELPERS + textwrap.dedent("""\
             req = read_request()  # hello
@@ -349,6 +385,51 @@ class TestRunOperationArchive:
         assert result.success is False
         assert result.archive_error is not None
         assert "archive error" in result.error
+
+    def test_archive_error_reconciles_the_success_record(self, tmp_path):
+        """An archive failure must not leave flow.json claiming Success."""
+        script = tmp_path / "server_with_markers.py"
+        script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "ws1"}, "id": req["id"]})
+            os.write(2, make_marker("begin", "Synthesis", "yosys"))
+            os.write(2, b'Synthesizing...\\n')
+            os.write(2, make_marker("end", "Synthesis", "yosys"))
+            req = read_request()  # flow.run
+            send_response({"jsonrpc": "2.0", "result": {"steps": ["syn"]}, "id": req["id"]})
+            req = read_request()  # rpc.shutdown
+            send_response({"jsonrpc": "2.0", "result": {"ok": True}, "id": req["id"]})
+        """)
+        )
+
+        blocker = tmp_path / "not_a_dir"
+        blocker.write_text("regular file")
+
+        def bad_resolver(step: str, tool: str):
+            return blocker / "sub" / f"{step}.log"
+
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text(
+            json.dumps({"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Success"}]})
+        )
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(script)],
+            log_path_resolver=bad_resolver,
+        )
+        result = op.run("flow.run", {"workspace_id": "test"})
+        assert result.success is False
+        assert result.archive_error is not None
+        # The persisted record is downgraded so a later resume reruns the step
+        # and recreates the missing log instead of skipping it.
+        assert result.repaired_steps == ["Synthesis"]
+        repaired = json.loads(flow_json.read_text())
+        assert repaired["steps"][0]["state"] == "Incomplete"
 
     def test_stderr_archived_to_step_log(self, tmp_path):
         script = tmp_path / "server_with_markers.py"

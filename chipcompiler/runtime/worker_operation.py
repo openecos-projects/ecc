@@ -9,7 +9,6 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -157,11 +156,24 @@ class RunOperation:
                 error_parts.append("worker did not exit cleanly after shutdown")
 
             if error_parts:
+                # The reported failure must match the persisted state: a step
+                # left Success in flow.json would be skipped by a later resume
+                # while its archive is missing or incomplete.
+                repair_step = log_state.active_step
+                if repair_step is None and log_state.error is not None and log_state.steps_seen:
+                    repair_step = log_state.steps_seen[-1]
+                repaired: list[str] = []
+                if repair_step is not None and self._flow_json_path.exists():
+                    try:
+                        repaired = repair_flow_state(self._flow_json_path, active_step=repair_step)
+                    except OSError as exc:
+                        error_parts.append(f"state repair failed: {exc}")
                 return OperationResult(
                     success=False,
                     rpc_result=rpc_result.response if rpc_result else None,
                     exit_code=client.process.returncode if client.process else None,
                     error="; ".join(error_parts),
+                    repaired_steps=repaired,
                     archive_error=log_state.error,
                     log_state=log_state,
                 )
@@ -199,15 +211,20 @@ class RunOperation:
         # raised after the begin marker, so flow.json may hold a stale Ongoing
         # record. Repair it exactly as crash recovery does.
         repaired: list[str] = []
+        error = result.error
         active_step = log_state.active_step if log_state else None
         if active_step is not None and self._flow_json_path.exists():
-            with suppress(OSError):
+            try:
                 repaired = repair_flow_state(self._flow_json_path, active_step=active_step)
+            except OSError as exc:
+                # A repair that cannot persist must be visible: swallowing it
+                # would report recovery while the record stays Ongoing.
+                error = f"{error}; state repair failed: {exc}"
         return OperationResult(
             success=False,
             rpc_result=result.response,
             exit_code=client.process.returncode if client.process else None,
-            error=result.error,
+            error=error,
             repaired_steps=repaired,
             archive_error=log_state.error if log_state else None,
             log_state=log_state,
@@ -272,8 +289,12 @@ class RunOperation:
             active_step = log_state.active_step
 
         if active_step is not None and self._flow_json_path.exists():
-            with suppress(OSError):
+            try:
                 repaired = repair_flow_state(self._flow_json_path, active_step=active_step)
+            except OSError as exc:
+                # A repair that cannot persist must be visible: swallowing it
+                # would report recovery while the record stays Ongoing.
+                error = f"{error}; state repair failed: {exc}"
 
         return OperationResult(
             success=False,
