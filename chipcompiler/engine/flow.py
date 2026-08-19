@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import time
+from contextlib import nullcontext
 from threading import Event, Thread
 
 from chipcompiler.data import EccOutput, StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow
@@ -416,7 +417,8 @@ class EngineFlow:
         # worker/sidecar process the outer client owns the stream and this
         # context passes through.
         succeeded = True
-        with archive_own_step_logs(self.workspace.directory) as reader:
+        directory = self.workspace.directory
+        with archive_own_step_logs(directory) if directory is not None else nullcontext() as reader:
             try:
                 for workspace_step in self.workspace_steps:
                     self.workspace.logger.log_section(
@@ -483,6 +485,22 @@ class EngineFlow:
         if workspace_step is None:
             return StateEnum.Invalid
 
+        from chipcompiler.runtime.log_stream import archive_own_step_logs
+
+        # Direct callers get client-side archival too; inside a worker/sidecar
+        # process or an explicit archive context this passes through.
+        if self.workspace.directory is None:
+            return self._run_step_body(workspace_step, rerun=rerun, observer=observer)
+        with archive_own_step_logs(self.workspace.directory):
+            return self._run_step_body(workspace_step, rerun=rerun, observer=observer)
+
+    def _run_step_body(
+        self,
+        workspace_step: WorkspaceStep,
+        *,
+        rerun: bool = False,
+        observer=None,
+    ) -> StateEnum:
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
 
         if not rerun and self.check_state(

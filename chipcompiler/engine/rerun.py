@@ -167,19 +167,26 @@ def downgrade_unarchived_step(flow: "EngineFlow", reader, executed: list[str]) -
     incomplete repair explicitly so the stale record is not silently trusted.
     """
     target = reader.state.error_step or reader.state.active_step
+    target_tool = reader.state.error_tool or reader.state.active_tool
     if target is None and executed:
         target = executed[-1]
+        target_tool = None
     if target is None:
         return None
     for record in flow.workspace.flow.data.get("steps", []):
-        if record.get("name") == target:
-            if not flow.set_state(target, record.get("tool", ""), StateEnum.Imcomplete):
-                flow.workspace.logger.error(
-                    "archive downgrade for step %s could not be persisted; "
-                    "flow.json may still claim Success — repair it before resuming",
-                    target,
-                )
-            break
+        if record.get("name") != target:
+            continue
+        # A flow may carry the same step name under two tools; only the
+        # evidenced (name, tool) pair may be downgraded.
+        if target_tool is not None and record.get("tool") != target_tool:
+            continue
+        if not flow.set_state(target, record.get("tool", ""), StateEnum.Imcomplete):
+            flow.workspace.logger.error(
+                "archive downgrade for step %s could not be persisted; "
+                "flow.json may still claim Success — repair it before resuming",
+                target,
+            )
+        break
     return target
 
 

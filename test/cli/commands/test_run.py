@@ -374,6 +374,30 @@ class TestWorkspaceRun:
         ]
         assert record["executed_steps"] == ["CTS"]
 
+    def test_preflight_rejects_an_unavailable_tool_before_any_mutation(
+        self, workspace_mocks, tmp_path, capsys, monkeypatch
+    ):
+        """A later step with an unavailable tool fails before the first
+        worker call — nothing is invalidated or deleted."""
+        import chipcompiler.tools.eda as eda_module
+
+        real_load = eda_module.load_eda_module
+
+        def fake_load(tool, *, check_dependency=True):
+            if tool == "ecc" and check_dependency:
+                return None  # CTS's tool is unavailable
+            return real_load(tool, check_dependency=check_dependency)
+
+        monkeypatch.setattr("chipcompiler.tools.eda.load_eda_module", fake_load)
+        workspace = str(tmp_path / "workspace")
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--from", "place", "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc != 0
+        assert record["error"] == "config_error"
+        assert workspace_mocks.calls is None or workspace_mocks.calls == []
+
     def test_from_step_never_runs_steps_before_the_boundary(
         self, workspace_mocks, tmp_path, capsys
     ):

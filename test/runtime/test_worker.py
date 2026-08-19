@@ -103,6 +103,23 @@ class TestRepairFlowState:
         assert result["steps"][0]["state"] == "Success"
         assert result["steps"][2]["state"] == "Unstart"
 
+    def test_repairs_only_the_matching_tool_for_duplicate_names(self, tmp_path):
+        """A flow may carry the same step name under two tools; repair must
+        match the (name, tool) pair and never touch the other record."""
+        flow_json = tmp_path / "flow.json"
+        data = {
+            "steps": [
+                {"name": "place", "tool": "yosys", "state": "Success"},
+                {"name": "place", "tool": "ecc", "state": "Ongoing"},
+            ]
+        }
+        flow_json.write_text(json.dumps(data))
+        repaired = repair_flow_state(flow_json, active_step="place", active_tool="ecc")
+        assert repaired == ["place"]
+        result = json.loads(flow_json.read_text())
+        assert result["steps"][0]["state"] == "Success"
+        assert result["steps"][1]["state"] == "Incomplete"
+
     def test_repairs_active_success_interrupted_after_persisting(self, tmp_path):
         """A Success without a completed end marker crashed in post-processing."""
         flow_json = tmp_path / "flow.json"

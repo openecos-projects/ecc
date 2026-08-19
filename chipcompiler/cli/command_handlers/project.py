@@ -217,6 +217,22 @@ def _load_valid_steps(workspace_dir: str) -> set[tuple[str, str]] | None:
     }
 
 
+def _preflight_selected_tools(engine_flow, selected: list[str]) -> str | None:
+    """Fail before any mutation if a selected step's tool is unavailable."""
+    from chipcompiler.tools.eda import load_eda_module
+
+    tools = {
+        step["name"]: step.get("tool")
+        for step in engine_flow.workspace.flow.data.get("steps", [])
+        if isinstance(step, dict) and "name" in step
+    }
+    for name in selected:
+        tool = tools.get(name)
+        if tool and load_eda_module(tool, check_dependency=True) is None:
+            return f"tool unavailable for step {name}: {tool}"
+    return None
+
+
 def _make_run_operation(workspace_dir: str, *, on_output=None, on_step_event=None):
     """Build a RunOperation for a workspace with step-log archiving wired in."""
     from pathlib import Path
@@ -616,6 +632,13 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
         # --only on an already-successful step without --force, or --resume
         # with every step successful: nothing to execute.
         return no_op_result()
+
+    # Preflight the whole selected suffix before anything is invalidated:
+    # the first worker call resets and clears the suffix, so discovering an
+    # unavailable tool mid-sequence would leave the workspace mutated.
+    tool_error = _preflight_selected_tools(engine_flow, selected)
+    if tool_error is not None:
+        return error("config_error", workspace=workspace_path, reason=tool_error)
 
     target = selected[0]
     if command_input.only is not None:

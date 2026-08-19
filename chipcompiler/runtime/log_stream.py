@@ -110,6 +110,7 @@ class LogStreamState:
     # Display-callback failures live apart from archival failures: a broken
     # renderer must never read as a broken archive.
     display_error: Exception | None = None
+    error_tool: str | None = None
 
 
 class LogStreamReader:
@@ -152,6 +153,7 @@ class LogStreamReader:
         if self._state.error is None:
             self._state.error = exc
             self._state.error_step = self._state.active_step
+            self._state.error_tool = self._state.active_tool
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._drain_loop, name="ecc-log-reader", daemon=True)

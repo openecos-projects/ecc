@@ -286,6 +286,7 @@ class RunOperation:
         if log_state is None:
             return [], None
         step = log_state.active_step or log_state.error_step
+        tool = log_state.active_tool or log_state.error_tool
         if step is None and log_state.error is not None and log_state.steps_seen:
             step = log_state.steps_seen[-1]
         if step is None and self._flow_json_path.exists():
@@ -299,10 +300,11 @@ class RunOperation:
             ]
             if len(ongoing) == 1:
                 step = ongoing[0].get("name")
+                tool = ongoing[0].get("tool")
         if step is None or not self._flow_json_path.exists():
             return [], None
         try:
-            return repair_flow_state(self._flow_json_path, active_step=step), None
+            return repair_flow_state(self._flow_json_path, active_step=step, active_tool=tool), None
         except OSError as exc:
             return [], f"state repair failed: {exc}"
 
