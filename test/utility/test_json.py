@@ -191,8 +191,9 @@ class TestFlowSetStatePersistence:
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)
 
         result = flow.set_state("SYNTHESIS", "yosys", StateEnum.Success)
-        assert result is True
-        # In-memory state is updated
+        # The record is mutated in memory, but the result reports the actual
+        # persistence status so callers can distrust an unpersisted state.
+        assert result is False
         assert workspace.flow.data["steps"][0]["state"] == StateEnum.Success.value
 
     def test_stale_file_causes_rerun_on_resume(self, tmp_path, monkeypatch):

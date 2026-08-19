@@ -171,6 +171,7 @@ class EngineFlow:
                         tool,
                         state_value,
                     )
+                    return False
                 return True
 
         return False
@@ -541,14 +542,16 @@ class EngineFlow:
             runtime=runtime,
             peak_memory=peak_memory_mb,
         )
-        if persisted and not self.save():
-            persisted = False
         if not persisted:
             # The marker protocol guarantees the final state is persisted
             # before the end marker; a failed save makes the run's result
-            # untrustworthy, so the step is reported incomplete and no end
-            # marker is emitted for it.
+            # untrustworthy. Downgrade the canonical in-memory record (the
+            # downgrade itself is not persisted — the save just failed),
+            # suppress the end marker, and report the step incomplete.
             state = StateEnum.Imcomplete
+            record = self.get_step(workspace_step.name, workspace_step.tool)
+            if record is not None:
+                record["state"] = StateEnum.Imcomplete.value
             self.workspace.logger.error(
                 "[RESULT] %s final state could not be persisted; marking step Imcomplete",
                 step_tag,

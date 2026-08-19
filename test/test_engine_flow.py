@@ -168,27 +168,45 @@ def test_end_marker_follows_step_writes_and_precedes_completion(monkeypatch, tmp
 
 
 def test_end_marker_suppressed_when_final_state_persistence_fails(monkeypatch, tmp_path):
-    """A failed final save downgrades the step and suppresses the end marker."""
-    import chipcompiler.runtime.log_stream as log_stream_module
+    """A failed final save downgrades the step and suppresses the end marker.
 
-    workspace = Workspace()
-    workspace.flow.data = {
-        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
-    }
+    Uses a real Flow so the failing save is the one that would have persisted
+    the record: the Ongoing save succeeds, the one final save fails, and the
+    canonical record must end Imcomplete in memory and non-Success on disk.
+    """
+    import chipcompiler.runtime.log_stream as log_stream_module
+    from chipcompiler.utility import json_read
+
+    (tmp_path / "home").mkdir(exist_ok=True)
+    flow_path = tmp_path / "home" / "flow.json"
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=flow_path))
     workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
     engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
 
     events = []
     monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
     monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
-    monkeypatch.setattr(engine_flow, "save", lambda: False)
     monkeypatch.setattr(
         log_stream_module,
         "emit_step_marker",
         lambda event, *, step, tool: events.append(("marker", event)),
     )
+
+    real_save = engine_flow.save
+    save_calls = []
+
+    def save_failing_on_final():
+        save_calls.append(len(save_calls) + 1)
+        if len(save_calls) == 1:
+            return real_save()  # the Ongoing save persists
+        return False  # the one final save fails
+
+    monkeypatch.setattr(engine_flow, "save", save_failing_on_final)
 
     completed_states = []
 
@@ -198,10 +216,16 @@ def test_end_marker_suppressed_when_final_state_persistence_fails(monkeypatch, t
 
     result = engine_flow.run_step(workspace_step, observer=CompletionObserver())
 
-    assert result == StateEnum.Imcomplete
+    assert save_calls == [1, 2]
     assert ("marker", "begin") in events
     assert ("marker", "end") not in events
+    assert result == StateEnum.Imcomplete
     assert completed_states == [StateEnum.Imcomplete]
+    # The canonical record is downgraded in memory and never reached disk as
+    # Success: the only persisted state is the Ongoing from the first save.
+    record = engine_flow.get_step("route", "ecc")
+    assert record["state"] == StateEnum.Imcomplete.value
+    assert json_read(flow_path)["steps"][0]["state"] == StateEnum.Ongoing.value
 
 
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
