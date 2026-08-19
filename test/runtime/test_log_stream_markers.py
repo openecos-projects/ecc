@@ -76,6 +76,10 @@ class TestParseMarker:
         line = b'\x1eECC-STEP {"v":true,"event":"begin","step":"S","tool":"T"}\n'
         assert parse_marker(line) is None
 
+    def test_non_utf8_payload_rejected(self):
+        line = b'\x1eECC-STEP {"v":1,"event":"begin","step":"S\xff","tool":"T"}\n'
+        assert parse_marker(line) is None
+
 
 class TestEmitStepMarker:
     def test_payload_carries_version_and_round_trips(self, monkeypatch):
