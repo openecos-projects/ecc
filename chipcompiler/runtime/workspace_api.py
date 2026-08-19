@@ -348,8 +348,8 @@ class WorkspaceRuntimeApi:
                     session.workspace,
                     engine_flow,
                     prepare_steps,
+                    invalidate_only_steps=invalidate_steps,
                 )
-                self._invalidate_step_records(engine_flow, invalidate_steps)
                 self._notify_rerun_prepared(
                     observer,
                     affected_steps,
@@ -926,22 +926,6 @@ class WorkspaceRuntimeApi:
         return workspace_steps[start_index:]
 
     @staticmethod
-    def _invalidate_step_records(engine_flow, workspace_steps) -> None:
-        """Mark steps Unstart in flow.json without touching their artifacts."""
-        updated = False
-        for workspace_step in workspace_steps:
-            record = engine_flow.get_step(workspace_step.name, workspace_step.tool)
-            if record is None:
-                continue
-            record.update({"state": "Unstart", "runtime": "", "peak memory (mb)": 0})
-            updated = True
-        if updated and not engine_flow.save():
-            raise RuntimeApiError(
-                "command_failed",
-                "failed to persist step invalidation; refusing to modify outputs",
-            )
-
-    @staticmethod
     def _notify_rerun_prepared(
         observer,
         workspace_steps,
@@ -967,7 +951,13 @@ class WorkspaceRuntimeApi:
         )
 
     @staticmethod
-    def _prepare_steps_for_rerun(workspace, engine_flow, workspace_steps) -> None:
+    def _prepare_steps_for_rerun(
+        workspace,
+        engine_flow,
+        workspace_steps,
+        *,
+        invalidate_only_steps=(),
+    ) -> None:
         workspace_root = Path(workspace.directory).resolve()
         unique_steps = []
         known_step_keys = set()
@@ -995,10 +985,16 @@ class WorkspaceRuntimeApi:
                 known_directories.add(resolved)
                 artifact_directories.append((workspace_step.name, directory))
 
-        # Persist the invalidation before any output is deleted: a failed
-        # save must leave the workspace untouched rather than clearing
-        # artifacts while the recorded states stay stale.
-        updated_record = False
+        # One all-or-nothing state transition: apply the full reset for the
+        # rerun targets and the state-only invalidation for their dependents,
+        # then persist once. A failed save restores the record snapshots so
+        # neither disk nor the live session is left half-mutated, and no
+        # artifact is deleted before the new states are durable.
+        snapshots = []
+        for workspace_step in (*unique_steps, *invalidate_only_steps):
+            record = engine_flow.get_step(workspace_step.name, workspace_step.tool)
+            if record is not None:
+                snapshots.append((record, dict(record)))
         for workspace_step in unique_steps:
             record = engine_flow.get_step(workspace_step.name, workspace_step.tool)
             if record is None:
@@ -1011,8 +1007,15 @@ class WorkspaceRuntimeApi:
                     "info": {},
                 }
             )
-            updated_record = True
-        if updated_record and not engine_flow.save():
+        for workspace_step in invalidate_only_steps:
+            record = engine_flow.get_step(workspace_step.name, workspace_step.tool)
+            if record is None:
+                continue
+            record.update({"state": "Unstart", "runtime": "", "peak memory (mb)": 0})
+        if snapshots and not engine_flow.save():
+            for record, snapshot in snapshots:
+                record.clear()
+                record.update(snapshot)
             raise RuntimeApiError(
                 "command_failed",
                 "failed to persist step invalidation; refusing to modify outputs",

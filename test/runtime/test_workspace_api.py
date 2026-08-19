@@ -1577,6 +1577,153 @@ def test_rerun_prepare_refuses_to_modify_outputs_when_invalidation_save_fails(
     assert (artifact_dir / "keep.txt").read_text() == "keep"
 
 
+def test_rerun_invalidate_dependents_save_failure_restores_all_records(monkeypatch, tmp_path):
+    """The combined target+downstream invalidation is one state transition:
+    when its single save fails, every record is restored and no artifact,
+    subflow, or checklist is touched."""
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    def step_spec(name, tool):
+        step_dir = ws / f"{name}_{tool}"
+        artifact_dir = step_dir / "output"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "stale").write_text(name)
+        subflow_path = step_dir / "subflow.json"
+        subflow_path.write_text(json.dumps({"path": str(subflow_path), "steps": []}))
+        checklist_path = step_dir / "checklist.json"
+        checklist_path.write_text(json.dumps({"checklist": []}))
+        return {
+            "name": name,
+            "tool": tool,
+            "output": {"dir": artifact_dir},
+            "subflow": SimpleNamespace(path=subflow_path, steps=[]),
+            "checklist": SimpleNamespace(path=checklist_path, checklist=[]),
+        }
+
+    synthesis = step_spec("Synthesis", "yosys")
+    floorplan = step_spec("Floorplan", "ecc")
+    route = step_spec("route", "ecc")
+    DummyFlow.workspace_step_specs = (synthesis, floorplan, route)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [
+            {"name": spec["name"], "tool": spec["tool"], "state": "Success"}
+            for spec in (synthesis, floorplan, route)
+        ]
+    }
+
+    save_calls = []
+
+    def failing_save(self):
+        save_calls.append(self)
+        return False
+
+    monkeypatch.setattr(DummyFlow, "save", failing_save)
+
+    with pytest.raises(RuntimeApiError, match="failed to persist step invalidation"):
+        api.flow_run_step(
+            FlowRunStepRequest(
+                workspace_id=workspace_id,
+                step="Floorplan",
+                rerun=True,
+                invalidate_dependents=True,
+            )
+        )
+
+    # Exactly one save attempted for the combined invalidation; its failure
+    # left both memory and disk untouched, and no output was deleted. (The
+    # session flow build may append a fresh Synthesis entry after the three
+    # original records; the originals are what the invalidation touches.)
+    assert len(save_calls) == 1
+    steps = session.workspace.flow.data["steps"]
+    assert [step["state"] for step in steps[:3]] == ["Success", "Success", "Success"]
+    assert (ws / "home" / "flow.json").read_text() == json.dumps({"steps": []})
+    assert (floorplan["output"]["dir"] / "stale").read_text() == "Floorplan"
+    assert (route["output"]["dir"] / "stale").read_text() == "route"
+    assert json.loads(floorplan["subflow"].path.read_text()) == {
+        "path": str(floorplan["subflow"].path),
+        "steps": [],
+    }
+
+
+def test_flow_run_step_final_save_failure_leaves_no_success_record(monkeypatch, tmp_path):
+    """In-process execution path: a failed final save must not leave the
+    session record at Success, and the next non-rerun call must not skip the
+    step."""
+    from chipcompiler.data import EccStep
+    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.utility import json_read
+
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+
+    class FinalSaveFailsOnceFlow(EngineFlow):
+        # Class-level so the flow rebuilt for the next call shares the budget.
+        failures_left = 1
+
+        def __init__(self, workspace, engine_db=None):
+            super().__init__(workspace, engine_db)
+            self.engine_db = SimpleNamespace(has_init=lambda: True, engine=None)
+
+        def save(self):
+            if type(self).failures_left > 0 and any(
+                step.get("state") == "Success" for step in self.workspace.flow.data.get("steps", [])
+            ):
+                type(self).failures_left -= 1
+                return False
+            return super().save()
+
+    FinalSaveFailsOnceFlow.failures_left = 1
+    monkeypatch.setattr("chipcompiler.engine.EngineFlow", FinalSaveFailsOnceFlow)
+    monkeypatch.setattr(
+        "chipcompiler.tools.create_step",
+        lambda workspace, step, eda, **kwargs: EccStep(name=step, tool=eda),
+    )
+    run_calls = []
+    monkeypatch.setattr(
+        "chipcompiler.tools.run_step", lambda **kwargs: run_calls.append(kwargs) or True
+    )
+    monkeypatch.setattr("chipcompiler.tools.save_layout_image", lambda **kwargs: True)
+    monkeypatch.setattr(EngineFlow, "check_step_result", lambda self, workspace_step: True)
+    markers = []
+    monkeypatch.setattr(
+        "chipcompiler.runtime.log_stream.emit_step_marker",
+        lambda event, *, step, tool: markers.append(event),
+    )
+
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.logger = SimpleNamespace(
+        info=lambda *a, **k: None,
+        error=lambda *a, **k: None,
+        warning=lambda *a, **k: None,
+        exception=lambda *a, **k: None,
+        log_section=lambda *a, **k: None,
+    )
+    session.workspace.pdk = SimpleNamespace(sdc=None)
+
+    with pytest.raises(RuntimeApiError, match="failed with state Incomplete"):
+        api.flow_run_step(FlowRunStepRequest(workspace_id=workspace_id, step="Synthesis"))
+
+    # The failed final save downgraded the live record; disk only ever saw
+    # the Ongoing state, and no end marker fired.
+    record = session.workspace.flow.data["steps"][0]
+    assert record["state"] == StateEnum.Imcomplete.value
+    flow_path = session.workspace.flow.path
+    assert json_read(flow_path)["steps"][0]["state"] == "Ongoing"
+    assert markers == ["begin"]
+
+    # The next non-rerun call does not skip the step: it executes again and
+    # persists Success once the save works.
+    result = api.flow_run_step(FlowRunStepRequest(workspace_id=workspace_id, step="Synthesis"))
+
+    assert result == {"step": "Synthesis", "state": "Success"}
+    assert len(run_calls) == 2
+    assert json_read(flow_path)["steps"][0]["state"] == "Success"
+
+
 def test_flow_run_step_rerun_rejects_an_open_layout_edit(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()
