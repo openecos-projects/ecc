@@ -104,7 +104,12 @@ def test_end_marker_follows_step_writes_and_precedes_completion(monkeypatch, tmp
 
     (tmp_path / "home").mkdir(exist_ok=True)
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
-    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    workspace_step = EccStep(
+        name="route",
+        directory=tmp_path,
+        tool="ecc",
+        feature=EccFeature(step=tmp_path / "route.feature.json"),
+    )
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace.flow.data = {
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
@@ -116,6 +121,11 @@ def test_end_marker_follows_step_writes_and_precedes_completion(monkeypatch, tmp
 
     monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
     monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        tools,
+        "build_step_metrics",
+        lambda **_kwargs: events.append(("qor", None)) or {},
+    )
     monkeypatch.setattr(
         tools,
         "save_layout_image",
@@ -151,6 +161,7 @@ def test_end_marker_follows_step_writes_and_precedes_completion(monkeypatch, tmp
     assert result == StateEnum.Success
     end_index = events.index(("marker", "end"))
     assert events.index(("set_state", StateEnum.Success)) < end_index
+    assert events.index(("qor", None)) < end_index
     assert events.index(("layout", None)) < end_index
     assert events.index(("db_cleanup", StateEnum.Success)) < end_index
     assert end_index < events.index(("observer", "completed"))

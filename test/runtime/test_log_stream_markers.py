@@ -3,6 +3,8 @@
 import io
 import os
 
+import pytest
+
 from chipcompiler.runtime.log_stream import (
     MARKER_PREFIX,
     LogStreamReader,
@@ -78,6 +80,11 @@ class TestParseMarker:
 
     def test_non_utf8_payload_rejected(self):
         line = b'\x1eECC-STEP {"v":1,"event":"begin","step":"S\xff","tool":"T"}\n'
+        assert parse_marker(line) is None
+
+    @pytest.mark.parametrize("payload", ["[]", "null", "42", '"hello"', "true"])
+    def test_non_object_payload_rejected(self, payload):
+        line = f"\x1eECC-STEP {payload}\n".encode()
         assert parse_marker(line) is None
 
 
