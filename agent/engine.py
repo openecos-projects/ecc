@@ -5,7 +5,6 @@ from threading import Event, Thread
 
 from chipcompiler.data import StateEnum, WorkspaceStep
 from chipcompiler.engine.flow import EngineFlow, get_process_rss_mb, track_current_process_memory
-from chipcompiler.utility.log import redirect_stdio_to_file
 
 from .tools import run_step as run_agent_step
 
@@ -36,7 +35,12 @@ class AgentEngineFlow(EngineFlow):
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()
         self.set_state(name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Ongoing)
-        self._redirect_step_stdio(workspace_step)
+        # The agent is an executor: it never writes step log files. Its bytes
+        # stay on fd 1/2 and versioned step markers frame the step's stream
+        # for the client-side archiver, exactly like EngineFlow.run_step.
+        from chipcompiler.runtime.log_stream import emit_step_marker
+
+        emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
         start_memory, peak_memory, stop_monitor, monitor = self._start_memory_monitor()
         result = False
         try:
@@ -52,25 +56,19 @@ class AgentEngineFlow(EngineFlow):
 
         elapsed = time.time() - start_time
         state = self._step_state(workspace_step, result)
-        self._finish_step(
+        state, persisted = self._finish_step(
             workspace_step,
             state,
             elapsed,
             timing_constraints,
             max(0, round(peak_memory[0] - start_memory, 3)),
         )
+        # The end marker closes the step's byte stream only after every
+        # step-scoped write has persisted; a failed final save reads as a
+        # crash to consumers, so the marker stays unwritten.
+        if persisted:
+            emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
         return state
-
-    def _redirect_step_stdio(self, workspace_step: WorkspaceStep) -> None:
-        log_file = workspace_step.log.file or ""
-        if not log_file:
-            return
-        try:
-            log_file = os.path.abspath(log_file)
-            os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-            redirect_stdio_to_file(log_file)
-        except Exception:
-            traceback.print_exc()
 
     def _start_memory_monitor(self) -> tuple[float, list[float], Event, Thread]:
         start_memory = get_process_rss_mb(os.getpid())
@@ -107,15 +105,28 @@ class AgentEngineFlow(EngineFlow):
         elapsed: float,
         timing_constraints: dict,
         peak_memory_mb: float,
-    ) -> None:
+    ) -> tuple[StateEnum, bool]:
         runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
-        self.set_state(
+        persisted = self.set_state(
             name=workspace_step.name,
             tool=workspace_step.tool,
             state=state,
             runtime=runtime,
             peak_memory=peak_memory_mb,
         )
+        if not persisted:
+            # The final state did not reach disk: the recorded result is not
+            # trustworthy. Downgrade the canonical record in memory (the
+            # downgrade itself is not persisted — the save just failed).
+            state = StateEnum.Imcomplete
+            record = self.get_step(workspace_step.name, workspace_step.tool)
+            if record is not None:
+                record["state"] = StateEnum.Imcomplete.value
+            self.workspace.logger.error(
+                "[RESULT] %s(%s) final state could not be persisted; marking step Imcomplete",
+                workspace_step.name,
+                workspace_step.tool,
+            )
         if state == StateEnum.Success:
             self._save_agent_step_facts(
                 workspace_step,
@@ -125,6 +136,7 @@ class AgentEngineFlow(EngineFlow):
                 timing_constraints,
             )
         self.clear_db_engine_after_step(workspace_step, state)
+        return state, persisted
 
     def _save_agent_step_facts(
         self,

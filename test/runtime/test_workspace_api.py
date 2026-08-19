@@ -1609,10 +1609,21 @@ def test_rerun_invalidate_dependents_save_failure_restores_all_records(monkeypat
     session = api.sessions.get_session(workspace_id)
     session.workspace.flow.data = {
         "steps": [
-            {"name": spec["name"], "tool": spec["tool"], "state": "Success"}
+            {
+                "name": spec["name"],
+                "tool": spec["tool"],
+                "state": "Success",
+                "runtime": "0:01:00",
+                "peak memory (mb)": 123.0,
+                "info": {"cached": spec["name"]},
+            }
             for spec in (synthesis, floorplan, route)
         ]
     }
+    # Capture the original record objects and their full contents: rollback
+    # must restore the same dicts in place, not substitute new ones.
+    original_records = list(session.workspace.flow.data["steps"])
+    original_snapshots = [dict(record) for record in original_records]
 
     save_calls = []
 
@@ -1638,7 +1649,8 @@ def test_rerun_invalidate_dependents_save_failure_restores_all_records(monkeypat
     # original records; the originals are what the invalidation touches.)
     assert len(save_calls) == 1
     steps = session.workspace.flow.data["steps"]
-    assert [step["state"] for step in steps[:3]] == ["Success", "Success", "Success"]
+    assert steps[:3] == original_snapshots
+    assert all(step is original for step, original in zip(steps[:3], original_records, strict=True))
     assert (ws / "home" / "flow.json").read_text() == json.dumps({"steps": []})
     assert (floorplan["output"]["dir"] / "stale").read_text() == "Floorplan"
     assert (route["output"]["dir"] / "stale").read_text() == "route"
