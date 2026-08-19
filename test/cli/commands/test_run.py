@@ -353,9 +353,12 @@ class TestWorkspaceRun:
 
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 0
+        # The persisted suffix is driven step by step: an unscoped flow.run
+        # would resume from the first non-success step, which may sit before
+        # the selected boundary.
         assert workspace_mocks.calls == [
             ("flow.run_step", {"step": "place", "rerun": True, "reset_dependents": True}),
-            ("flow.run", {"rerun": False}),
+            ("flow.run_step", {"step": "CTS", "rerun": True}),
         ]
         assert record["executed_steps"] == ["place", "CTS"]
 
@@ -368,9 +371,31 @@ class TestWorkspaceRun:
         assert rc == 0
         assert workspace_mocks.calls == [
             ("flow.run_step", {"step": "CTS", "rerun": True, "reset_dependents": True}),
-            ("flow.run", {"rerun": False}),
         ]
         assert record["executed_steps"] == ["CTS"]
+
+    def test_from_step_never_runs_steps_before_the_boundary(
+        self, workspace_mocks, tmp_path, capsys
+    ):
+        # Regression: with a failed step BEFORE the --from boundary, the
+        # previous run_step+flow.run sequence let flow.run resume from that
+        # earlier step, executing outside the requested suffix.
+        workspace_mocks.steps = [
+            {"name": "Synthesis", "tool": "yosys", "state": "Imcomplete"},
+            {"name": "place", "tool": "ecc", "state": "Imcomplete"},
+            {"name": "CTS", "tool": "ecc", "state": "Unstart"},
+        ]
+        workspace = str(tmp_path / "workspace")
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--from", "place", "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 0
+        assert workspace_mocks.calls == [
+            ("flow.run_step", {"step": "place", "rerun": True, "reset_dependents": True}),
+            ("flow.run_step", {"step": "CTS", "rerun": True}),
+        ]
+        assert record["executed_steps"] == ["place", "CTS"]
 
     def test_resume_all_success_is_noop(self, workspace_mocks, tmp_path, capsys):
         workspace_mocks.steps = [

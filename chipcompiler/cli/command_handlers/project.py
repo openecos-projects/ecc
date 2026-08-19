@@ -624,10 +624,12 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
         # Downstream steps keep their outputs but are marked Unstart.
         calls = [("flow.run_step", {"step": target, "rerun": True, "invalidate_dependents": True})]
     else:
-        calls = [
-            ("flow.run_step", {"step": target, "rerun": True, "reset_dependents": True}),
-            ("flow.run", {"rerun": False}),
-        ]
+        # --resume/--from run exactly the selected suffix, step by step. A
+        # trailing unscoped flow.run would resume from the FIRST non-success
+        # step — possibly before the --from boundary — so the suffix is
+        # driven as explicit run_step calls instead.
+        calls = [("flow.run_step", {"step": target, "rerun": True, "reset_dependents": True})]
+        calls += [("flow.run_step", {"step": name, "rerun": True}) for name in selected[1:]]
 
     op_result = _run_worker_calls(workspace_path, calls)
 
