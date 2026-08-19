@@ -297,6 +297,37 @@ class TestRunOperationCrash:
         # The record is left as it was — the failure is reported, not hidden.
         assert json.loads(flow_json.read_text())["steps"][0]["state"] == "Ongoing"
 
+    def test_crash_before_any_marker_repairs_persisted_ongoing(self, tmp_path):
+        """Killed between the Ongoing save and the begin marker: no stream
+        evidence exists, so recovery falls back to the persisted Ongoing."""
+        crash_script = tmp_path / "crash_before_marker.py"
+        crash_script.write_text(
+            _RPC_HELPERS
+            + textwrap.dedent("""\
+            req = read_request()  # hello
+            send_response({"jsonrpc": "2.0", "result": {"version": 1}, "id": req["id"]})
+            req = read_request()  # workspace.open
+            send_response({"jsonrpc": "2.0", "result": {"workspaceId": "x"}, "id": req["id"]})
+            # Die before any marker — as if killed between the Ongoing save
+            # and the begin write.
+            os._exit(1)
+        """)
+        )
+        flow_json = tmp_path / "flow.json"
+        flow_json.write_text(
+            json.dumps({"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Ongoing"}]})
+        )
+        op = RunOperation(
+            workspace_dir=tmp_path,
+            flow_json_path=flow_json,
+            worker_argv=[sys.executable, str(crash_script)],
+        )
+        result = op.run("flow.run", {"workspace_id": "test"})
+        assert result.success is False
+        assert result.repaired_steps == ["Synthesis"]
+        repaired = json.loads(flow_json.read_text())
+        assert repaired["steps"][0]["state"] == "Incomplete"
+
     def test_worker_crash_no_flow_json_no_repair(self, tmp_path):
         script = _RPC_HELPERS + textwrap.dedent("""\
             req = read_request()  # hello

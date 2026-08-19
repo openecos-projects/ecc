@@ -143,7 +143,7 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
         # A step that raised after its begin marker (post-processing, marker
         # write) still needs archive reconciliation before propagating.
         if reader is not None:
-            _downgrade_unarchived_step(flow, reader, executed)
+            downgrade_unarchived_step(flow, reader, executed)
         raise
 
     # The reader drained at context exit. An archive failure or an unmatched
@@ -152,14 +152,14 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
     if reader is not None and (
         reader.state.error is not None or reader.state.active_step is not None
     ):
-        target = _downgrade_unarchived_step(flow, reader, executed)
+        target = downgrade_unarchived_step(flow, reader, executed)
         return StepRunResult(ok=False, executed=tuple(executed), failed=failed or target)
     if failed is not None:
         return StepRunResult(ok=False, executed=tuple(executed), failed=failed)
     return StepRunResult(ok=True, executed=tuple(executed))
 
 
-def _downgrade_unarchived_step(flow: "EngineFlow", reader, executed: list[str]) -> str | None:
+def downgrade_unarchived_step(flow: "EngineFlow", reader, executed: list[str]) -> str | None:
     """Downgrade the step whose archive failed or whose end marker never came.
 
     Uses set_state so the downgrade persists through the single authoritative

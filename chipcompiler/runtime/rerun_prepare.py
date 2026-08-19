@@ -104,21 +104,31 @@ def prepare_steps_for_rerun(
         raise _runtime_api_error("failed to persist step invalidation; refusing to modify outputs")
 
     # Post-save cleanup can still fail midway (artifact delete, subflow or
-    # checklist reset): restore the persisted records so the workspace is
-    # not left with Unstart states over half-deleted outputs.
+    # checklist reset). Cleanup is irreversible for steps already cleared,
+    # so those steps keep their persisted Unstart records (their outputs are
+    # gone); only steps not yet touched roll back to their snapshots.
     try:
-        for step_name, directory in artifact_directories:
-            _clear_step_artifact_dir(
-                workspace_root,
-                directory,
-                step_name,
-            )
-
         for workspace_step in unique_steps:
+            for step_name, directory in artifact_directories:
+                if step_name != workspace_step.name:
+                    continue
+                _clear_step_artifact_dir(
+                    workspace_root,
+                    directory,
+                    step_name,
+                )
             _reset_step_subflow(workspace_step)
             _reset_step_checklist(workspace_step)
     except Exception:
+        # Steps up to and including the one mid-cleanup have lost artifacts;
+        # their persisted Unstart must stay. Later steps roll back intact.
+        cleaned = {
+            str(getattr(step, "name", ""))
+            for step in unique_steps[: unique_steps.index(workspace_step) + 1]
+        }
         for record, snapshot in snapshots:
+            if record.get("name") in cleaned:
+                continue
             record.clear()
             record.update(snapshot)
         engine_flow.save()

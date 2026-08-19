@@ -1713,8 +1713,12 @@ def test_rerun_cleanup_failure_restores_persisted_records(monkeypatch, tmp_path)
             )
         )
 
+    # The failing step was already cleaned (its artifacts are gone), so it
+    # keeps the persisted Unstart; the untouched steps roll back.
     steps = session.workspace.flow.data["steps"]
-    assert steps[:3] == original_snapshots
+    assert steps[0] == original_snapshots[0]  # Synthesis untouched
+    assert steps[1]["state"] == "Unstart"  # Floorplan cleaned before the failure
+    assert steps[2] == original_snapshots[2]  # route rolled back
 
 
 def test_flow_run_step_final_save_failure_leaves_no_success_record(monkeypatch, tmp_path):

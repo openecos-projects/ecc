@@ -257,15 +257,28 @@ class RunOperation:
 
         Picks the unmatched active step first, then the step being archived
         when the first reader error fired, then the last seen step on an
-        archive error. Returns (repaired_steps, error_text): reconciling to
-        Incomplete keeps a later resume from trusting a stale Success whose
-        log is missing or incomplete.
+        archive error. With no stream evidence at all (a crash between the
+        Ongoing save and the begin marker), falls back to the persisted
+        Ongoing record — a worker session runs at most one step at a time.
+        Returns (repaired_steps, error_text): reconciling to Incomplete keeps
+        a later resume from trusting a stale record whose run never finished.
         """
         if log_state is None:
             return [], None
         step = log_state.active_step or log_state.error_step
         if step is None and log_state.error is not None and log_state.steps_seen:
             step = log_state.steps_seen[-1]
+        if step is None and self._flow_json_path.exists():
+            from chipcompiler.utility import json_read
+
+            data = json_read(self._flow_json_path)
+            ongoing = [
+                record
+                for record in data.get("steps", [])
+                if isinstance(record, dict) and record.get("state") == "Ongoing"
+            ]
+            if len(ongoing) == 1:
+                step = ongoing[0].get("name")
         if step is None or not self._flow_json_path.exists():
             return [], None
         try:

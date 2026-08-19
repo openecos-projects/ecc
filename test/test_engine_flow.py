@@ -228,6 +228,45 @@ def test_end_marker_suppressed_when_final_state_persistence_fails(monkeypatch, t
     assert json_read(flow_path)["steps"][0]["state"] == StateEnum.Ongoing.value
 
 
+def test_run_steps_archive_failure_returns_false_and_downgrades(monkeypatch, tmp_path):
+    """A direct run_steps with a broken archive path must report failure and
+    downgrade the record instead of returning True over a missing log."""
+    import os
+
+    from chipcompiler.runtime.log_stream import emit_step_marker
+
+    workspace = Workspace(
+        directory=tmp_path,
+        flow=Flow(path=tmp_path / "home" / "flow.json"),
+    )
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]
+    }
+    step_dir = tmp_path / "route_ecc"
+    workspace_step = EccStep(name="route", directory=step_dir, tool="ecc")
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    def run_step_with_markers(ws_step, *, rerun=False, observer=None):
+        emit_step_marker("begin", step=ws_step.name, tool=ws_step.tool)
+        os.write(2, b"bytes\n")
+        emit_step_marker("end", step=ws_step.name, tool=ws_step.tool)
+        engine_flow.set_state(ws_step.name, ws_step.tool, StateEnum.Success)
+        return StateEnum.Success
+
+    monkeypatch.setattr(engine_flow, "run_step", run_step_with_markers)
+    monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
+
+    # The step's log directory is a regular file: the archive cannot open.
+    step_dir.mkdir(parents=True)
+    (step_dir / "log").write_text("regular file")
+
+    assert engine_flow.run_steps() is False
+    record = engine_flow.get_step("route", "ecc")
+    assert record["state"] == StateEnum.Imcomplete.value
+
+
 def test_begin_marker_failure_downgrades_ongoing(monkeypatch, tmp_path):
     """If the begin marker cannot reach fd 2, no reader ever sees the step:
     downgrade the persisted Ongoing instead of leaving an unfindable record."""
