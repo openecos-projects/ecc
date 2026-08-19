@@ -499,12 +499,9 @@ class EngineFlow:
         if observer is not None:
             self.workspace._runtime_flow_observer = observer
         step_raised_exception = False
+        result = None
         try:
-            from chipcompiler.tools import run_step as run_tool_step
-
-            result = run_tool_step(
-                workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine
-            )
+            result = self._invoke_step_tool(workspace_step)
             self.workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
         except Exception:
             step_raised_exception = True
@@ -526,14 +523,7 @@ class EngineFlow:
         runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
 
         # determine and save state
-        if step_raised_exception:
-            state = StateEnum.Imcomplete
-        else:
-            state = (
-                StateEnum.Success
-                if self.check_step_result(workspace_step=workspace_step)
-                else StateEnum.Imcomplete
-            )
+        state = self._derive_step_state(workspace_step, result, raised=step_raised_exception)
 
         persisted = self.set_state(
             name=workspace_step.name,
@@ -622,6 +612,27 @@ class EngineFlow:
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
+
+    def _invoke_step_tool(self, workspace_step: WorkspaceStep):
+        """Run the step's tool. Subclasses redirect to their own runner."""
+        from chipcompiler.tools import run_step as run_tool_step
+
+        return run_tool_step(
+            workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine
+        )
+
+    def _derive_step_state(
+        self, workspace_step: WorkspaceStep, result, *, raised: bool
+    ) -> StateEnum:
+        """Map the tool result to the step state. Subclasses keep their own
+        result vocabulary; the base engine trusts the artifact check."""
+        if raised:
+            return StateEnum.Imcomplete
+        return (
+            StateEnum.Success
+            if self.check_step_result(workspace_step=workspace_step)
+            else StateEnum.Imcomplete
+        )
 
 
 def _notify_flow_observer(observer, method_name: str, *args) -> None:

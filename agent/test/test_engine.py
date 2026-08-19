@@ -104,3 +104,32 @@ def test_agent_engine_suppresses_end_marker_when_final_save_fails(monkeypatch, t
     assert markers == ["begin"]
     record = flow.get_step("route", "ecc")
     assert record["state"] == StateEnum.Imcomplete.value
+
+
+def test_agent_engine_inherits_lifecycle_and_never_opens_step_logs(monkeypatch, tmp_path):
+    """The inherited base lifecycle drives the agent tool hook end to end,
+    and no step log file is opened even when the step declares a log path."""
+    flow, step = _marker_workspace(tmp_path)
+    declared_log = tmp_path / "route_ecc" / "log" / "route.log"
+    step.log.file = declared_log
+    tool_calls = []
+    monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        "agent.engine.run_agent_step",
+        lambda **kwargs: tool_calls.append(kwargs) or True,
+    )
+    monkeypatch.setattr(flow, "save_step_flow_facts", lambda **_kwargs: False)
+    monkeypatch.setattr("chipcompiler.tools.save_layout_image", lambda **_kwargs: True)
+    markers = []
+    monkeypatch.setattr(
+        "chipcompiler.runtime.log_stream.emit_step_marker",
+        lambda event, *, step, tool: markers.append(event),
+    )
+
+    assert flow.run_step(step) is StateEnum.Success
+    # The agent runner hook was invoked through the base lifecycle.
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["step"] is step
+    assert markers == ["begin", "end"]
+    assert not declared_log.exists()
+    assert flow.check_state("route", "ecc", StateEnum.Success)
