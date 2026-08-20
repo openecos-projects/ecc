@@ -475,6 +475,13 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
                 os.dup2(real_stderr, 2)
             reader.join(timeout=5.0)
             reader.stop()
+            if not reader.completed:
+                # Descriptor restore already gave the pipe EOF; a live reader
+                # now means a slow archive write. Wait once more, then surface
+                # the incomplete drain instead of silently releasing.
+                reader.join(timeout=5.0)
+                if not reader.completed and reader.state.error is None:
+                    reader.state.error = TimeoutError("log reader did not drain within teardown")
             with suppress(OSError):
                 stream.close()
             with suppress(OSError):

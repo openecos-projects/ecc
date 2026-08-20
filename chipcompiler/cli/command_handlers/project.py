@@ -11,6 +11,7 @@ from chipcompiler.cli.command_handlers.workspace_run import (  # noqa: F401
     _run_flow_via_worker,
     _run_worker_calls,
     _run_workspace,
+    _worker_binary_missing_error,
     _workspace_run_outcome,
 )
 from chipcompiler.cli.core.inputs import CheckInput, InitInput, RunInput
@@ -196,15 +197,6 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
 
 
-def _worker_binary_missing_error() -> str | None:
-    from chipcompiler.runtime.worker_operation import _default_worker_argv
-
-    argv = _default_worker_argv()
-    if not os.path.isfile(argv[0]):
-        return f"worker binary not found: {argv[0]}"
-    return None
-
-
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     if command_input.workspace is not None:
         return _run_workspace(command_input, ctx)
@@ -308,6 +300,23 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     "run": run_name,
                     "workspace": run_dir,
                     "overwrite": disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
+                }
+            ]
+        )
+
+    # Worker availability gates everything that creates run state: failing
+    # here leaves the run directory uncreated (and an --overwrite target
+    # undeleted), so a retry after fixing the worker is a clean run.
+    worker_missing = _worker_binary_missing_error()
+    if worker_missing is not None:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "worker_unavailable",
+                    "run": run_name,
+                    "workspace": run_dir,
+                    "reason": worker_missing,
                 }
             ]
         )

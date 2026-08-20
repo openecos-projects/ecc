@@ -71,6 +71,48 @@ class TestRun:
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 1
 
+    def test_missing_worker_fails_before_creating_the_run(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, flow_mocks
+    ):
+        """A missing worker binary fails before run_dir is created, so a
+        retry after fixing the worker is a clean run."""
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        monkeypatch.setattr(
+            project_module,
+            "_worker_binary_missing_error",
+            lambda: "worker binary not found: /nonexistent/ecc",
+        )
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 1
+        assert record["error"] == "worker_unavailable"
+        assert "worker binary not found" in record["reason"]
+        assert not os.path.exists(run_dir)
+
+    def test_missing_worker_preserves_an_overwrite_target(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, create_flow_json, flow_mocks
+    ):
+        """With --overwrite, the preflight fires before the old run is
+        deleted; the existing run directory survives intact."""
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(run_dir, profile="main")
+        monkeypatch.setattr(
+            project_module,
+            "_worker_binary_missing_error",
+            lambda: "worker binary not found: /nonexistent/ecc",
+        )
+
+        rc = cli_main.run(["run", "--project", project_dir, "--overwrite", "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 1
+        assert record["error"] == "worker_unavailable"
+        assert os.path.isfile(os.path.join(run_dir, "home", "flow.json"))
+
     def test_run_fails_on_config_error(self, tmp_path):
         project_dir = tmp_path / "bad"
         project_dir.mkdir()

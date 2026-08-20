@@ -124,7 +124,13 @@ class WorkerClient:
         except WorkerProcessError as exc:
             return WorkerResult(success=False, error=str(exc))
         if "error" in response:
-            err_msg = response["error"].get("message", "rpc error")
+            error = response["error"]
+            err_msg = error.get("message", "rpc error")
+            # RuntimeServer serializes RuntimeApiError's actionable text as
+            # error.data.message; the top-level message is only the code.
+            data = error.get("data")
+            if isinstance(data, dict) and isinstance(data.get("message"), str):
+                err_msg = data["message"]
             return WorkerResult(success=False, response=response, error=err_msg)
         return WorkerResult(success=True, response=response)
 

@@ -47,6 +47,53 @@ class TestWorkerResult:
         assert r.exit_code == 1
 
 
+class TestRequestErrorParsing:
+    """RuntimeServer nests RuntimeApiError's actionable text in error.data."""
+
+    @staticmethod
+    def _client_returning(response):
+        client = WorkerClient(["true"])
+        client.send_request = lambda *a, **kw: None
+        client.read_response = lambda *a, **kw: response
+        return client
+
+    def test_nested_data_message_wins(self):
+        client = self._client_returning(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32000,
+                    "message": "command_failed",
+                    "data": {"message": "run step place failed with state Incomplete"},
+                },
+            }
+        )
+        result = client.request("flow.run_step", {})
+        assert result.success is False
+        assert result.error == "run step place failed with state Incomplete"
+
+    def test_falls_back_to_top_level_message(self):
+        client = self._client_returning(
+            {"jsonrpc": "2.0", "id": 1, "error": {"code": -32000, "message": "protocol failure"}}
+        )
+        result = client.request("flow.run", {})
+        assert result.success is False
+        assert result.error == "protocol failure"
+
+    def test_non_dict_data_is_ignored(self):
+        client = self._client_returning(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {"code": -32000, "message": "rpc error", "data": "raw text"},
+            }
+        )
+        result = client.request("flow.run", {})
+        assert result.success is False
+        assert result.error == "rpc error"
+
+
 class TestClassifyWorkerExit:
     def test_normal_exit(self):
         proc = MagicMock()
