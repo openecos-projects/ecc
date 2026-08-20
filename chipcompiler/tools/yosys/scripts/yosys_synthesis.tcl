@@ -432,6 +432,11 @@ opt -fast -purge
 #===========================================================
 synth -run fine:
 
+# Preserve RTL tri-state semantics before simplemap lowers muxes to gate
+# primitives. The resulting $_TBUF_ cells are mapped to the target library
+# below; do not use -merge because it assumes mutually-exclusive enables.
+tribuf
+
 # simplemap: break complex gates into simple primitives
 # This gives ABC a simpler, more uniform input graph.
 simplemap
@@ -561,6 +566,32 @@ endmodule
   $ics55_latch_suffix]
   close $latch_map_file
   techmap -map $ics55_latch_map
+  opt -fast -purge
+
+  # Map Yosys tri-state buffers to the same ICS55 voltage-threshold variant
+  # selected for the sequential cells.
+  set ics55_tri_map "${tmp_dir}/ics55_tri_map.v"
+  set tri_map_file [open $ics55_tri_map "w"]
+  puts $tri_map_file [format {
+(* techmap_celltype = "\$_TBUF_" *)
+module _tbuf_disabled (A, E, Y);
+  input A, E;
+  output Y;
+  parameter _TECHMAP_CONSTMSK_E_ = 1'b0;
+  parameter _TECHMAP_CONSTVAL_E_ = 1'bx;
+  wire _TECHMAP_FAIL_ = !(_TECHMAP_CONSTMSK_E_ && !_TECHMAP_CONSTVAL_E_);
+  wire [1023:0] _TECHMAP_DO_ = "connect -unset Y";
+endmodule
+
+(* techmap_celltype = "\$_TBUF_" *)
+module _tbuf_enabled (A, E, Y);
+  input A, E;
+  output Y;
+  TBUFX1%s _TECHMAP_REPLACE_ (.A(A), .OE(E), .Y(Y));
+endmodule
+} $ics55_latch_suffix]
+  close $tri_map_file
+  techmap -map $ics55_tri_map
   opt -fast -purge
 }
 
