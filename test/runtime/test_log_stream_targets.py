@@ -175,6 +175,10 @@ class TestArchiveTargetSanitization:
         assert reader.state.active_step is None
         assert not escape_target.exists()
         assert "escapes workspace" in str(reader.state.error)
+        # The marker's identity survives on the error so failure-path
+        # reconciliation can find and downgrade this step.
+        assert reader.state.error_step == "Escape"
+        assert reader.state.error_tool == "evil"
 
 
 class TestStepLogArchiveResolver:

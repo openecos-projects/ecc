@@ -362,6 +362,45 @@ class TestArchiveOwnStepLogsPassthrough:
         assert "raw" in capfd.readouterr().err
 
 
+class TestArchiveTeardownFailure:
+    def test_teardown_flush_failure_still_releases_the_guard(self, tmp_path, monkeypatch, capfd):
+        """A teardown flush raising (closed stream) must not leave the guard
+        set or the fds attached to the pipe."""
+        import os
+
+        import chipcompiler.runtime.log_stream as log_stream_module
+        from chipcompiler.runtime.log_stream import archive_own_step_logs, emit_step_marker
+
+        workspace = tmp_path / "ws"
+        (workspace / "home").mkdir(parents=True)
+        (workspace / "home" / "flow.json").write_text(
+            '{"steps": [{"name": "S", "tool": "T", "state": "Ongoing"}]}'
+        )
+
+        # Fail the C-stdio flush at teardown only: armed just before the
+        # context exits, so entry and marker flushes still succeed.
+        import chipcompiler.utility.log as utility_log
+
+        armed = []
+
+        def flaky_c_flush():
+            if armed:
+                raise OSError("broken stdio buffer")
+
+        monkeypatch.setattr(utility_log, "flush_cstdio", flaky_c_flush)
+        with archive_own_step_logs(workspace):
+            emit_step_marker("begin", step="S", tool="T")
+            os.write(2, b"bytes\n")
+            emit_step_marker("end", step="S", tool="T")
+            armed.append(True)
+
+        assert log_stream_module._SELF_ARCHIVE_ACTIVE is False
+        assert (workspace / "S_T" / "log" / "S.log").read_bytes() == b"bytes\n"
+        # fd 2 is restored to the terminal.
+        os.write(2, b"restored\n")
+        assert "restored" in capfd.readouterr().err
+
+
 class TestArchiveSetupFailure:
     def test_setup_failure_restores_fds_and_releases_the_guard(self, tmp_path, monkeypatch, capfd):
         """A failure during setup (pipe/dup/reader start) must restore fd 1/2

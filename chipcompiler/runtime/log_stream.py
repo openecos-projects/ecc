@@ -268,6 +268,12 @@ class LogStreamReader:
                 return
             archive_path = self._validated_archive_path(marker.step, marker.tool)
             if self._resolve_path is not None and archive_path is None:
+                # Validation failed before activation: keep the marker's
+                # identity on the error so failure-path reconciliation can
+                # still find and downgrade this step.
+                if self._state.error_step is None:
+                    self._state.error_step = marker.step
+                    self._state.error_tool = marker.tool
                 self._emit_data(raw_line)
                 return
             self._state.active_step = marker.step
@@ -392,15 +398,15 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
         if isinstance(step, dict) and "name" in step and "tool" in step
     }
 
-    sys.stdout.flush()
-    sys.stderr.flush()
-    flush_cstdio()
     real_stdout = -1
     real_stderr = -1
     read_fd = -1
     write_fd = -1
     stream = None
     try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        flush_cstdio()
         real_stdout = os.dup(1)
         real_stderr = os.dup(2)
         read_fd, write_fd = os.pipe()
@@ -456,15 +462,24 @@ def archive_own_step_logs(workspace_dir, *, echo: bool = True):
         # callback writes to real_stderr, so it must stay open until the
         # drain finishes. The pipe's read stream closes too: nothing else
         # owns it, and leaked pipes accumulate into EMFILE over many reruns.
-        sys.stdout.flush()
-        sys.stderr.flush()
-        flush_cstdio()
-        os.dup2(real_stdout, 1)
-        os.dup2(real_stderr, 2)
-        reader.join(timeout=5.0)
-        reader.stop()
-        with suppress(OSError):
-            stream.close()
-        os.close(real_stdout)
-        os.close(real_stderr)
-        _SELF_ARCHIVE_ACTIVE = False
+        # Every step here can fail on a broken descriptor, so the guard is
+        # released in the innermost finally regardless.
+        try:
+            with suppress(Exception):
+                sys.stdout.flush()
+                sys.stderr.flush()
+                flush_cstdio()
+            with suppress(OSError):
+                os.dup2(real_stdout, 1)
+            with suppress(OSError):
+                os.dup2(real_stderr, 2)
+            reader.join(timeout=5.0)
+            reader.stop()
+            with suppress(OSError):
+                stream.close()
+            with suppress(OSError):
+                os.close(real_stdout)
+            with suppress(OSError):
+                os.close(real_stderr)
+        finally:
+            _SELF_ARCHIVE_ACTIVE = False
