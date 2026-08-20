@@ -111,9 +111,7 @@ def test_engine_flow_refreshes_home_checklist_after_harden_success(monkeypatch, 
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = home / "flow.json"
     workspace.flow.data = {
-        "steps": [
-            {"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Unstart.value}
-        ]
+        "steps": [{"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Unstart.value}]
     }
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
     workspace.home.init(home / "home.json")

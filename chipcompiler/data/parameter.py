@@ -156,10 +156,7 @@ def load_parameter(path: Path) -> Parameters:
 
 def reload_parameter(path: Path | None, current: Parameters | None = None) -> Parameters:
     """Reload parameters.json without replacing a valid identity with an empty read."""
-    if path is None:
-        loaded = Parameters()
-    else:
-        loaded = load_parameter(path)
+    loaded = Parameters() if path is None else load_parameter(path)
     if (
         current is not None
         and parameters_have_chip_identity(current.data)
