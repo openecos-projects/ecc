@@ -359,13 +359,9 @@ class WorkspaceRuntimeApi:
                 )
 
             try:
-                step_already_succeeded = not request.rerun and engine_flow.check_state(
-                    name=workspace_step.name,
-                    tool=workspace_step.tool,
-                    state=_success_state(),
-                )
-                if not step_already_succeeded:
-                    _init_db_engine_for_workspace_step(engine_flow, workspace_step)
+                # The engine initializes the DB engine inside the step's
+                # marked scope (begin precedes it), so skipped steps never
+                # initialize and initialization output reaches the archive.
                 state = _run_engine_flow_step(
                     engine_flow,
                     workspace_step,

@@ -129,7 +129,6 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
                     f"{workspace_step.tool} - begin step - {workspace_step.name}"
                 )
                 _reset_output_dir(output_dir)
-                flow.init_db_engine_for_step(workspace_step)
                 state = flow.run_step(workspace_step, rerun=True)
                 log_flow(workspace=flow.workspace)
                 flow.workspace.logger.log_section(

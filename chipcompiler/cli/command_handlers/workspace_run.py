@@ -18,6 +18,10 @@ def _worker_binary_missing_error() -> str | None:
     argv = _default_worker_argv()
     if not os.path.isfile(argv[0]):
         return f"worker binary not found: {argv[0]}"
+    # A non-executable file would pass an existence check and only blow up
+    # in Popen — after the run directory or --overwrite target is gone.
+    if not os.access(argv[0], os.X_OK):
+        return f"worker binary is not executable: {argv[0]}"
     return None
 
 
@@ -219,7 +223,7 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
             ]
         )
 
-    executed, failed_step = _workspace_run_outcome(workspace_path, selected)
+    executed, failed_step = _workspace_run_outcome(selected, op_result.completed_calls)
     record = {
         "run": "workspace",
         "status": "failed",
@@ -240,26 +244,16 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
 
 
 def _workspace_run_outcome(
-    workspace_path: str, selected: list[str]
+    selected: list[str], completed_calls: int
 ) -> tuple[list[str], str | None]:
-    """Derive executed steps and the failed step from post-run flow.json.
+    """Derive executed steps and the failed step from completed worker calls.
 
-    After a stopped sequence the selected suffix reads as: a Success prefix
-    that did execute, the step that failed, and an Unstart remainder that was
-    invalidated but never ran.
+    Final flow.json states are not execution evidence: a worker that dies
+    during startup leaves already-successful steps (`--from` on a succeeded
+    suffix, `--only --force`) looking executed. A completed flow.run_step
+    RPC implies its step succeeded, so the completed-call prefix is exactly
+    what ran; the first step after it is the one whose call failed.
     """
-    flow_data = _read_flow_data(workspace_path)
-    if flow_data is None:
-        return [], None
-
-    states = {
-        record["name"]: record.get("state")
-        for record in flow_data.get("steps", [])
-        if isinstance(record, dict) and "name" in record
-    }
-    executed = []
-    for name in selected:
-        if states.get(name) != "Success":
-            return executed, name
-        executed.append(name)
-    return executed, None
+    executed = selected[:completed_calls]
+    failed_step = selected[completed_calls] if completed_calls < len(selected) else None
+    return executed, failed_step

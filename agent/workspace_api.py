@@ -8,7 +8,6 @@ from chipcompiler.runtime.requests import WorkspaceIdRequest
 from chipcompiler.runtime.workspace_api import (
     RuntimeApiError,
     WorkspaceRuntimeApi,
-    _init_db_engine_for_workspace_step,
     _state_value,
 )
 from chipcompiler.utility.path import path_is_within
@@ -265,10 +264,10 @@ def _clear_candidate_artifact_dir(workspace_root: Path, directory: Path, step_na
 def _run_candidate_step(flow, step) -> None:
     from chipcompiler.runtime.log_stream import archive_own_step_logs
 
-    _init_db_engine_for_workspace_step(flow, step)
     # In-process execution is still executor+client in one process: route the
     # own fd-2 stream through the reader so markers are consumed and the
-    # step's bytes land in its archive (echoed to the real stderr).
+    # step's bytes land in its archive (echoed to the real stderr). The
+    # engine initializes the DB inside the step's marked scope.
     reader = None
     try:
         with archive_own_step_logs(flow.workspace.directory) as active_reader:

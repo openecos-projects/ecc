@@ -253,7 +253,8 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     init_seen = []
     run_seen = []
 
-    def fake_init_db_engine():
+    def fake_init_db_engine_for_step(workspace_step):
+        del workspace_step
         current_db = engine_flow.engine_db
         init_seen.append(None if current_db is None else current_db.engine)
         if current_db is None:
@@ -281,7 +282,7 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
                 file.write("\n")
         return StateEnum.Success
 
-    monkeypatch.setattr(engine_flow, "init_db_engine", fake_init_db_engine)
+    monkeypatch.setattr(engine_flow, "init_db_engine_for_step", fake_init_db_engine_for_step)
     monkeypatch.setattr(tools_api, "run_step", fake_tool_run)
     monkeypatch.setattr(tools_api, "save_layout_image", lambda workspace, step: True)
     monkeypatch.setattr(flow_module, "log_flow", lambda workspace: None)

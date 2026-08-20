@@ -11,7 +11,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from chipcompiler.runtime.log_stream import LogStreamReader, LogStreamState
@@ -42,6 +42,9 @@ class OperationResult:
     repaired_steps: list[str] = field(default_factory=list)
     archive_error: Exception | None = field(default=None, repr=False)
     log_state: LogStreamState | None = field(default=None, repr=False)
+    # Worker calls (hello/open excluded) that returned a successful result
+    # before the failure; callers use it as execution evidence.
+    completed_calls: int = 0
 
 
 class RunOperation:
@@ -102,6 +105,7 @@ class RunOperation:
         """
         client = WorkerClient(self._worker_argv)
         reader: LogStreamReader | None = None
+        completed_calls = 0
 
         # The worker runs in its own process group (start_new_session), so a
         # parent SIGTERM would otherwise leave it and its EDA descendants
@@ -150,9 +154,13 @@ class RunOperation:
                 rpc_result = client.request(method, full_params, request_id + index)
                 if not rpc_result.success:
                     break
+                completed_calls += 1
 
             if rpc_result is not None and not rpc_result.success:
-                return self._handle_protocol_or_crash(client, reader, rpc_result)
+                return replace(
+                    self._handle_protocol_or_crash(client, reader, rpc_result),
+                    completed_calls=completed_calls,
+                )
 
             shutdown_ok = self._graceful_shutdown(client)
 
@@ -186,6 +194,7 @@ class RunOperation:
                     repaired_steps=repaired,
                     archive_error=log_state.error,
                     log_state=log_state,
+                    completed_calls=completed_calls,
                 )
 
             return OperationResult(
@@ -193,12 +202,19 @@ class RunOperation:
                 rpc_result=rpc_result.response if rpc_result else None,
                 exit_code=0,
                 log_state=log_state,
+                completed_calls=completed_calls,
             )
 
         except KeyboardInterrupt:
-            return self._handle_crash(client, reader, "operation interrupted")
+            return replace(
+                self._handle_crash(client, reader, "operation interrupted"),
+                completed_calls=completed_calls,
+            )
         except Exception as exc:
-            return self._handle_crash(client, reader, str(exc))
+            return replace(
+                self._handle_crash(client, reader, str(exc)),
+                completed_calls=completed_calls,
+            )
         finally:
             if previous_sigterm is not None:
                 with suppress(OSError, ValueError):

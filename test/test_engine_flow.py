@@ -51,7 +51,7 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
     }
     engine_flow.workspace_steps = [workspace_step]
-    engine_flow.engine_db = SimpleNamespace(engine=None)
+    engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
     refreshed = []
 
     monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
@@ -88,7 +88,7 @@ def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_pa
     engine_flow = EngineFlow(workspace)
     workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
     engine_flow.workspace_steps = [workspace_step]
-    engine_flow.engine_db = SimpleNamespace(engine=None)
+    engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
     sleep_calls = []
 
     monkeypatch.setattr(tools, "run_step", lambda **_kwargs: False)
@@ -115,7 +115,7 @@ def test_end_marker_follows_step_writes_and_precedes_completion(monkeypatch, tmp
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
     }
     engine_flow.workspace_steps = [workspace_step]
-    engine_flow.engine_db = SimpleNamespace(engine=None)
+    engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
 
     events: list[tuple[str, object]] = []
 
@@ -186,7 +186,7 @@ def test_end_marker_suppressed_when_final_state_persistence_fails(monkeypatch, t
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
     }
     engine_flow.workspace_steps = [workspace_step]
-    engine_flow.engine_db = SimpleNamespace(engine=None)
+    engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
 
     events = []
     monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
@@ -244,7 +244,7 @@ def test_direct_run_step_archive_failure_downgrades(monkeypatch, tmp_path):
     (step_dir / "log").write_text("regular file")
     workspace_step = EccStep(name="route", directory=step_dir, tool="ecc")
     engine_flow.workspace_steps = [workspace_step]
-    engine_flow.engine_db = SimpleNamespace(engine=None)
+    engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
 
     monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
     monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
@@ -274,7 +274,7 @@ def test_run_steps_archive_failure_returns_false_and_downgrades(monkeypatch, tmp
     step_dir = tmp_path / "route_ecc"
     workspace_step = EccStep(name="route", directory=step_dir, tool="ecc")
     engine_flow.workspace_steps = [workspace_step]
-    engine_flow.engine_db = SimpleNamespace(engine=None)
+    engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
 
     def run_step_with_markers(ws_step, *, rerun=False, observer=None):
         emit_step_marker("begin", step=ws_step.name, tool=ws_step.tool)
@@ -295,6 +295,44 @@ def test_run_steps_archive_failure_returns_false_and_downgrades(monkeypatch, tmp
     assert record["state"] == StateEnum.Imcomplete.value
 
 
+def test_db_init_runs_inside_the_marked_scope(monkeypatch, tmp_path):
+    """Database initialization is step-scoped native work: begin precedes it
+    and end follows, so initialization diagnostics reach the step archive."""
+    import chipcompiler.runtime.log_stream as log_stream_module
+
+    (tmp_path / "home").mkdir(exist_ok=True)
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]
+    }
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
+
+    events: list[tuple[str, object]] = []
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: events.append(("tool", None)) or True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        engine_flow,
+        "init_db_engine_for_step",
+        lambda step: events.append(("init", None)) or True,
+    )
+    monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: None)
+    monkeypatch.setattr(tools, "build_step_metrics", lambda **_kwargs: {})
+    monkeypatch.setattr(
+        log_stream_module,
+        "emit_step_marker",
+        lambda event, *, step, tool: events.append(("marker", event)),
+    )
+
+    assert engine_flow.run_step(workspace_step) is StateEnum.Success
+    assert [e for e in events if e[0] == "marker"] == [("marker", "begin"), ("marker", "end")]
+    assert events.index(("marker", "begin")) < events.index(("init", None))
+    assert events.index(("init", None)) < events.index(("tool", None))
+    assert events.index(("tool", None)) < events.index(("marker", "end"))
+
+
 def test_begin_marker_failure_downgrades_ongoing(monkeypatch, tmp_path):
     """If the begin marker cannot reach fd 2, no reader ever sees the step:
     downgrade the persisted Ongoing instead of leaving an unfindable record."""
@@ -308,7 +346,7 @@ def test_begin_marker_failure_downgrades_ongoing(monkeypatch, tmp_path):
     }
     workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
     engine_flow.workspace_steps = [workspace_step]
-    engine_flow.engine_db = SimpleNamespace(engine=None)
+    engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
 
     def broken_emit(event, *, step, tool):
         raise OSError("fd 2 closed")
@@ -518,7 +556,7 @@ class TestStepExceptionForcesIncomplete:
         engine_flow = EngineFlow(workspace)
         workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
         engine_flow.workspace_steps = [workspace_step]
-        engine_flow.engine_db = SimpleNamespace(engine=None)
+        engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
 
         def raise_on_run(**_kwargs):
             raise RuntimeError("tool crashed")
@@ -538,7 +576,7 @@ class TestStepExceptionForcesIncomplete:
         }
         workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
         engine_flow.workspace_steps = [workspace_step]
-        engine_flow.engine_db = SimpleNamespace(engine=None)
+        engine_flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
 
         monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
         monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)

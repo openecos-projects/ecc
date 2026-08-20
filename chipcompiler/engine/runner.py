@@ -12,8 +12,9 @@ import os
 import time
 from contextlib import nullcontext
 from threading import Event, Thread
+from typing import TYPE_CHECKING, Any
 
-from chipcompiler.data import StateEnum, WorkspaceStep, log_flow
+from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, log_flow
 from chipcompiler.engine import EngineDB
 
 
@@ -39,7 +40,42 @@ def track_current_process_memory(pid: int, stop_event: Event, peak_memory: list[
 
 
 class EngineFlowRunner:
-    """Mixin: step/flow execution lifecycle; requires the EngineFlow spine."""
+    """Mixin: step/flow execution lifecycle; requires the EngineFlow spine.
+
+    Host contract — the composing class (EngineFlow) provides the state
+    spine: ``workspace``, ``workspace_steps``, ``engine_db``, and the
+    record helpers ``set_state``, ``check_state``, ``check_step_result``,
+    ``get_step``, ``get_workspace_step``, and ``save``. The annotations
+    below declare that contract for type checkers; the methods are
+    TYPE_CHECKING-only stubs of the real EngineFlow implementations.
+    """
+
+    workspace: Workspace
+    workspace_steps: list[WorkspaceStep]
+    # EngineDB | None, loosely typed: the native wrapper's attribute surface
+    # (engine, has_init, close, create_db_engine) is not fully annotated.
+    engine_db: Any
+
+    if TYPE_CHECKING:
+
+        def set_state(
+            self,
+            name: str,
+            tool: str,
+            state: StateEnum | str,
+            runtime: str = None,
+            peak_memory: float = None,
+        ) -> bool: ...
+
+        def check_state(self, name: str, tool: str, state: StateEnum | str) -> bool: ...
+
+        def check_step_result(self, workspace_step: WorkspaceStep) -> bool: ...
+
+        def get_step(self, name: str, tool: str) -> dict | None: ...
+
+        def get_workspace_step(self, name: str) -> WorkspaceStep | None: ...
+
+        def save(self) -> bool: ...
 
     def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
         if workspace_step.tool == "sizer" and state == StateEnum.Success:
@@ -120,7 +156,6 @@ class EngineFlowRunner:
                     self.workspace.logger.log_section(
                         f"{workspace_step.tool} - begin step - {workspace_step.name}"
                     )
-                    self.init_db_engine()
                     state = (
                         self.run_step(workspace_step, rerun=rerun)
                         if observer is None
@@ -246,6 +281,12 @@ class EngineFlowRunner:
                 name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Imcomplete
             )
             raise
+
+        # Database initialization is native work for this step, so it runs
+        # inside the marked scope: begin precedes every step-scoped write,
+        # and initialization diagnostics reach the step archive. Already
+        # initialized engines short-circuit inside the call.
+        self.init_db_engine_for_step(workspace_step)
 
         pid = os.getpid()
         start_memory_mb = get_process_rss_mb(pid)

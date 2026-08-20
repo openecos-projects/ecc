@@ -1033,7 +1033,10 @@ def test_flow_run_sizer_boundary_exception_captures_post_sizer_db(
     assert post_sizer_db.has_init()
 
 
-def test_flow_run_step_initializes_db_before_direct_step(monkeypatch, tmp_path):
+def test_flow_run_step_defers_db_init_into_the_step_scope(monkeypatch, tmp_path):
+    """The API layer does not pre-initialize the DB: the engine initializes
+    it inside the step's marked lifecycle, so initialization diagnostics are
+    archived with the step."""
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()
     workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
@@ -1044,14 +1047,13 @@ def test_flow_run_step_initializes_db_before_direct_step(monkeypatch, tmp_path):
 
     flow = DummyFlow.instances[-1]
     assert result == {"step": "Synthesis", "state": "Success"}
-    assert flow.init_db_engine_steps == ["Synthesis"]
+    assert flow.init_db_engine_steps == []
     assert flow.call_order == [
-        ("init_db_engine",),
         ("run_step", "Synthesis", False),
     ]
     assert flow.run_steps_calls == []
     assert not flow.engine_db.has_init()
-    assert flow.engine_db.close_calls == 1
+    assert flow.engine_db.close_calls == 0
     assert api.sessions.get_session(workspace_id).db_handle is None
 
 
@@ -1161,7 +1163,6 @@ def test_flow_run_step_rerun_refreshes_before_db_init(monkeypatch, tmp_path):
     assert refreshed == [ws.resolve()]
     assert flow.call_order == [
         ("refresh_config", ws.resolve()),
-        ("init_db_engine",),
         ("run_step", "Floorplan", True),
     ]
 

@@ -77,10 +77,6 @@ def test_candidate_rerun_uses_the_agent_flow_and_replays_its_receipts(monkeypatc
         "agent.workspace_api.reapply_candidate_input_binding",
         lambda _ws, _flow, target: calls.append(("reapply", target)),
     )
-    monkeypatch.setattr(
-        "agent.workspace_api._init_db_engine_for_workspace_step",
-        lambda _flow, step: calls.append(("init", step.name)),
-    )
 
     result = api.candidate_rerun(
         CandidateRerunRequest(
@@ -107,8 +103,6 @@ def test_candidate_rerun_uses_the_agent_flow_and_replays_its_receipts(monkeypatc
             "candidate-1",
         ),
         ("reapply", "place"),
-        ("init", "place"),
-        ("init", "CTS"),
     ]
     assert flow.run_calls == [("place", True), ("CTS", True)]
     assert not list(place_output.iterdir())
@@ -151,9 +145,6 @@ def test_candidate_step_exception_reconciles_the_record(monkeypatch, tmp_path, c
 
     api = FlowAgentRuntimeApi(_EccApi(workspace))
     monkeypatch.setattr("agent.workspace_api.build_agent_flow_for_workspace", lambda _ws: flow)
-    monkeypatch.setattr(
-        "agent.workspace_api._init_db_engine_for_workspace_step", lambda _flow, _step: None
-    )
 
     with pytest.raises(RuntimeError, match="layout save blew up"):
         api.candidate_rerun(

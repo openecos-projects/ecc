@@ -26,7 +26,7 @@ def test_agent_engine_requires_successful_tool_result(
     workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
     step = EccStep(name="route", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
-    flow.engine_db = SimpleNamespace(engine=None)
+    flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
     monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
 
     def run_step(**_kwargs):
@@ -46,7 +46,7 @@ def _marker_workspace(tmp_path):
     workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
     step = EccStep(name="route", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
-    flow.engine_db = SimpleNamespace(engine=None)
+    flow.engine_db = SimpleNamespace(engine=None, has_init=lambda: True)
     return flow, step
 
 

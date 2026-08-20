@@ -507,16 +507,11 @@ class TestWorkspaceRun:
     def test_failed_suffix_run_reports_executed_prefix(self, workspace_mocks, tmp_path, capsys):
         from chipcompiler.runtime.worker_operation import OperationResult
 
-        workspace_mocks.result = OperationResult(success=False, error="run flow failed")
-        workspace = str(tmp_path / "workspace")
-        self._write_post_run_flow(
-            workspace,
-            [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                {"name": "place", "tool": "ecc", "state": "Success"},
-                {"name": "CTS", "tool": "ecc", "state": "Imcomplete"},
-            ],
+        # place's worker call completed; CTS's failed.
+        workspace_mocks.result = OperationResult(
+            success=False, error="run flow failed", completed_calls=1
         )
+        workspace = str(tmp_path / "workspace")
 
         rc = cli_main.run(["run", "--workspace", workspace, "--resume", "--json"])
 
@@ -524,6 +519,32 @@ class TestWorkspaceRun:
         assert rc == 1
         assert record["executed_steps"] == ["place"]
         assert record["failed_step"] == "CTS"
+
+    def test_worker_startup_failure_reports_no_executed_steps(
+        self, workspace_mocks, tmp_path, capsys
+    ):
+        """A worker that dies before the first call must not report
+        already-successful selected steps as executed."""
+        from chipcompiler.runtime.worker_operation import OperationResult
+
+        # --from on an all-success suffix re-selects every step; the worker
+        # fails during startup, so zero calls completed.
+        workspace_mocks.steps = [
+            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+            {"name": "place", "tool": "ecc", "state": "Success"},
+        ]
+        workspace_mocks.result = OperationResult(
+            success=False, error="worker stdout closed before response", completed_calls=0
+        )
+        workspace = str(tmp_path / "workspace")
+
+        rc = cli_main.run(["run", "--workspace", workspace, "--from", "Synthesis", "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 1
+        assert record["executed_steps"] == []
+        assert record["failed_step"] == "Synthesis"
+        assert "worker stdout closed" in record["error"]
 
     def test_missing_worker_binary_returns_structured_failure(
         self, workspace_mocks, tmp_path, capsys
@@ -538,6 +559,21 @@ class TestWorkspaceRun:
         assert record["status"] == "failed"
         assert "not found" in record["error"]
         assert workspace_mocks.calls is None
+
+    def test_non_executable_worker_is_a_preflight_error(self, tmp_path, monkeypatch):
+        from chipcompiler.cli.command_handlers.workspace_run import _worker_binary_missing_error
+
+        fake_ecc = tmp_path / "ecc"
+        fake_ecc.write_text("#!/bin/sh\n")
+        fake_ecc.chmod(0o644)  # exists, but not executable
+        monkeypatch.setattr(
+            "chipcompiler.runtime.worker_operation._default_worker_argv",
+            lambda: [str(fake_ecc), "rpc", "serve", "--stdio"],
+        )
+
+        error = _worker_binary_missing_error()
+        assert error is not None
+        assert "not executable" in error
 
     def test_invalid_workspace(self, tmp_path, capsys):
         rc = cli_main.run(["run", "--workspace", str(tmp_path / "missing"), "--json"])

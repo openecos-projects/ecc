@@ -58,7 +58,9 @@ Fields:
 Producer rules (executor):
 
 - `begin` is emitted when a step starts executing, before any of the step's
-  tool output.
+  tool output — including native database initialization, which is part of
+  the step's scoped work and must run after the `begin` marker so its
+  diagnostics reach the step archive.
 - `end` is emitted according to the ordering guarantee below.
 - Emission is unconditional: every execution path has a consumer, so no mode
   flag exists.
