@@ -1,3 +1,4 @@
+import ctypes
 import json
 from hashlib import sha256
 from types import SimpleNamespace
@@ -11,9 +12,11 @@ from chipcompiler.data import (
     EccFeature,
     EccOutput,
     EccStep,
+    LogPaths,
     StateEnum,
     StepEnum,
     StepMetrics,
+    SubflowState,
     Workspace,
     YosysOutput,
     YosysStep,
@@ -301,6 +304,40 @@ class TestStepExceptionForcesIncomplete:
         state = engine_flow.run_step(workspace_step)
         assert state == StateEnum.Imcomplete
 
+    def test_native_output_precedes_failure_summary(self, monkeypatch, tmp_path):
+        workspace = Workspace()
+        workspace.flow.data = {
+            "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart"}],
+        }
+        log_file = tmp_path / "place.log"
+        workspace_step = EccStep(
+            name="place",
+            directory=tmp_path,
+            tool="dreamplace",
+            log=LogPaths(file=log_file),
+        )
+        engine_flow = EngineFlow(workspace)
+        engine_flow.workspace_steps = [workspace_step]
+        engine_flow.engine_db = SimpleNamespace(engine=None)
+        monkeypatch.setattr(workspace.logger, "error", print)
+        monkeypatch.setattr(workspace.logger, "exception", print)
+
+        def fail_after_native_output(**_kwargs):
+            libc = ctypes.CDLL(None)
+            libc.fputs(
+                b"[native] setup completed\n",
+                ctypes.c_void_p.in_dll(libc, "stdout"),
+            )
+            raise RuntimeError("placement failed")
+
+        monkeypatch.setattr(tools, "run_step", fail_after_native_output)
+
+        assert engine_flow.run_step(workspace_step) == StateEnum.Imcomplete
+        contents = log_file.read_text(encoding="utf-8")
+        assert contents.index("[native] setup completed") < contents.index(
+            "[STEP] place(dreamplace) failed"
+        )
+
     def test_no_exception_uses_file_check(self, monkeypatch, tmp_path):
         workspace = Workspace()
         workspace.flow.data = {
@@ -318,6 +355,169 @@ class TestStepExceptionForcesIncomplete:
 
         state = engine_flow.run_step(workspace_step)
         assert state == StateEnum.Success
+
+    def test_marker_persist_failure_does_not_start_tool(self, monkeypatch, tmp_path):
+        workspace = Workspace()
+        engine_flow = EngineFlow(workspace)
+        workspace.flow.data = {
+            "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
+        }
+        workspace_step = EccStep(name="place", directory=tmp_path, tool="dreamplace")
+        engine_flow.workspace_steps = [workspace_step]
+
+        class Observer:
+            runtime_operation = {
+                "schema": 1,
+                "operation_id": "operation-1",
+                "runtime_instance_id": "runtime-1",
+            }
+
+        monkeypatch.setattr(engine_flow, "save", lambda: False)
+        monkeypatch.setattr(
+            tools,
+            "run_step",
+            lambda **_kwargs: pytest.fail("tool must not start without a durable marker"),
+        )
+
+        with pytest.raises(RuntimeError, match="failed to persist runtime operation marker"):
+            engine_flow.run_step(workspace_step, observer=Observer())
+
+        assert workspace.flow.data["steps"][0] == {
+            "name": "place",
+            "tool": "dreamplace",
+            "state": "Unstart",
+            "info": {},
+        }
+
+    def test_terminal_persist_failure_keeps_recoverable_marker(self, monkeypatch, tmp_path):
+        workspace = Workspace()
+        workspace.flow.path = tmp_path / "flow.json"
+        flow_data = {
+            "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
+        }
+        workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
+        workspace.flow.data = flow_data
+        engine_flow = EngineFlow(workspace)
+        workspace_step = EccStep(name="place", directory=tmp_path, tool="dreamplace")
+        engine_flow.workspace_steps = [workspace_step]
+        engine_flow.engine_db = SimpleNamespace(engine=None)
+
+        class Observer:
+            runtime_operation = {
+                "schema": 1,
+                "operation_id": "operation-1",
+                "runtime_instance_id": "runtime-1",
+            }
+
+        saves = iter([True, False, False])
+        monkeypatch.setattr(engine_flow, "save", lambda: next(saves))
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+        monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+
+        with pytest.raises(RuntimeError, match="failed to persist terminal state"):
+            engine_flow.run_step(workspace_step, observer=Observer())
+
+        step = workspace.flow.data["steps"][0]
+        assert step["state"] == StateEnum.Ongoing.value
+        assert step["info"]["runtime_operation"]["operation_id"] == "operation-1"
+
+    def test_result_check_system_exit_still_finalizes_step(self, monkeypatch, tmp_path):
+        workspace = Workspace()
+        workspace.flow.path = tmp_path / "flow.json"
+        workspace.flow.data = {
+            "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
+        }
+        workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+        engine_flow = EngineFlow(workspace)
+        workspace_step = EccStep(name="place", directory=tmp_path, tool="dreamplace")
+        engine_flow.workspace_steps = [workspace_step]
+        engine_flow.engine_db = SimpleNamespace(engine=None)
+        completed = []
+
+        class Observer:
+            runtime_operation = {
+                "schema": 1,
+                "operation_id": "operation-1",
+                "runtime_instance_id": "runtime-1",
+            }
+
+            def on_step_completed(self, _step, state, error=None):
+                completed.append((state, error))
+
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+        monkeypatch.setattr(
+            engine_flow,
+            "check_step_result",
+            lambda **_kwargs: (_ for _ in ()).throw(SystemExit(0)),
+        )
+
+        assert engine_flow.run_step(workspace_step, observer=Observer()) == StateEnum.Imcomplete
+        assert completed == [
+            (
+                StateEnum.Imcomplete,
+                "place(dreamplace) exited unexpectedly (code 0).",
+            )
+        ]
+        persisted_step = json.loads(workspace.flow.path.read_text(encoding="utf-8"))["steps"][0]
+        assert persisted_step["state"] == StateEnum.Imcomplete.value
+        assert persisted_step["info"] == {}
+
+    @pytest.mark.parametrize("exit_code", [0, 1])
+    def test_system_exit_is_incomplete_and_preserves_error(self, monkeypatch, tmp_path, exit_code):
+        workspace = Workspace()
+        workspace.flow.path = tmp_path / "flow.json"
+        flow_data = {
+            "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
+        }
+        workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
+        workspace.flow.data = flow_data
+        engine_flow = EngineFlow(workspace)
+        subflow_path = tmp_path / "subflow.json"
+        workspace_step = EccStep(
+            name="place",
+            directory=tmp_path,
+            tool="dreamplace",
+            subflow=SubflowState(
+                path=subflow_path,
+                steps=[{"name": "run placement", "state": "Ongoing"}],
+            ),
+        )
+        engine_flow.workspace_steps = [workspace_step]
+        engine_flow.engine_db = SimpleNamespace(engine=None)
+        completed = []
+
+        class Observer:
+            runtime_operation = {
+                "schema": 1,
+                "operation_id": "operation-1",
+                "runtime_instance_id": "runtime-1",
+            }
+
+            def on_step_started(self, _step):
+                marker = workspace.flow.data["steps"][0]["info"]["runtime_operation"]
+                assert marker["operation_id"] == "operation-1"
+                assert marker["started_at"] > 0
+
+            def on_step_completed(self, _step, state, error=None):
+                completed.append((state, error))
+
+        monkeypatch.setattr(
+            tools, "run_step", lambda **_kwargs: (_ for _ in ()).throw(SystemExit(exit_code))
+        )
+
+        assert engine_flow.run_step(workspace_step, observer=Observer()) == StateEnum.Imcomplete
+        assert completed == [
+            (
+                StateEnum.Imcomplete,
+                f"place(dreamplace) exited unexpectedly (code {exit_code}).",
+            )
+        ]
+        assert workspace.flow.data["steps"][0]["info"] == {}
+        interrupted_step = json.loads(subflow_path.read_text(encoding="utf-8"))["steps"][0]
+        assert interrupted_step["name"] == "run placement"
+        assert interrupted_step["state"] == StateEnum.Imcomplete.value
+        assert interrupted_step["runtime"] == "0:0:0"
+        assert interrupted_step["peak memory (mb)"] >= 0
 
 
 class TestCreateStepFailureBreaksChain:

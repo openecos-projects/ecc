@@ -155,7 +155,7 @@ class TestJsonWriteFailureLogging:
 class TestFlowSetStatePersistence:
     """Tests for EngineFlow.set_state json_write failure handling."""
 
-    def test_set_state_updates_in_memory_when_save_fails(self, tmp_path, monkeypatch):
+    def test_set_state_rolls_back_when_save_fails(self, tmp_path, monkeypatch):
         from chipcompiler.data import StateEnum
         from chipcompiler.engine.flow import EngineFlow
 
@@ -191,9 +191,8 @@ class TestFlowSetStatePersistence:
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)
 
         result = flow.set_state("SYNTHESIS", "yosys", StateEnum.Success)
-        assert result is True
-        # In-memory state is updated
-        assert workspace.flow.data["steps"][0]["state"] == StateEnum.Success.value
+        assert result is False
+        assert workspace.flow.data["steps"][0]["state"] == StateEnum.Unstart.value
 
     def test_stale_file_causes_rerun_on_resume(self, tmp_path, monkeypatch):
         """When save() fails, file stays stale; a fresh resume load sees stale state."""

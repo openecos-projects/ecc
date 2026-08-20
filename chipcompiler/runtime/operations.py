@@ -14,6 +14,7 @@ _MAX_FINAL_LOG_BYTES = 64 * 1024
 _RENDER_ACK_RETRY_SECONDS = 5.0
 _RENDER_ACK_PAUSE_SECONDS = 30.0
 _RENDER_ACK_ABORT_SECONDS = 300.0
+_TERMINAL_OPERATION_STATES = frozenset({"succeeded", "failed", "cancelled"})
 
 
 @dataclass
@@ -149,6 +150,11 @@ class RuntimeOperationManager:
                 raise KeyError(operation_id)
             return self._operation_payload(operation)
 
+    def is_active(self, operation_id: str) -> bool:
+        with self._lock:
+            operation = self._operations.get(operation_id)
+            return operation is not None and operation.state not in _TERMINAL_OPERATION_STATES
+
     def workspace_snapshot(self, workspace_id: str) -> dict[str, Any]:
         with self._lock:
             operations = [
@@ -229,7 +235,7 @@ class RuntimeOperationManager:
             operation = self._operations.get(operation_id)
             if operation is None:
                 raise KeyError(operation_id)
-            if operation.state in {"succeeded", "failed", "cancelled"}:
+            if operation.state in _TERMINAL_OPERATION_STATES:
                 return {"accepted": False, "operationId": operation_id, "state": operation.state}
             operation.cancel_requested = True
             operation.updated_at = time.time()
@@ -263,50 +269,77 @@ class RuntimeOperationManager:
             operation.state = "running"
             operation.updated_at = time.time()
             started_event = self._new_event_locked(operation, "operation.started", {})
-        self._publish(started_event)
-
         observer = RuntimeFlowObserver(self, operation_id)
         try:
-            result = runner(observer)
-            with self._lock:
-                operation = self._operations[operation_id]
-                if operation.cancel_requested:
-                    raise RuntimeOperationCancelled("operation cancelled at a step boundary")
-                operation.state = "succeeded"
-                operation.result = result
-                operation.updated_at = time.time()
-                event = self._new_event_locked(operation, "operation.completed", {"result": result})
-        except RuntimeOperationCancelled as exc:
-            with self._lock:
-                operation = self._operations[operation_id]
-                operation.state = "cancelled"
-                operation.error = {
-                    "message": str(exc),
-                    "code": "cancelled",
-                }
-                operation.updated_at = time.time()
-                event = self._new_event_locked(
-                    operation,
-                    "operation.cancelled",
-                    {"error": operation.error},
-                )
-        except Exception as exc:
-            with self._lock:
-                operation = self._operations[operation_id]
-                if operation.cancel_requested:
-                    operation.state = "cancelled"
-                    operation.error = {"message": str(exc), "code": "cancelled"}
-                    event_type = "operation.cancelled"
-                else:
-                    operation.state = "failed"
-                    operation.error = {"message": str(exc), "code": "command_failed"}
-                    event_type = "operation.failed"
-                operation.updated_at = time.time()
-                event = self._new_event_locked(operation, event_type, {"error": operation.error})
-        self._publish(event)
-        self._stop_step_log_tail(operation_id)
-        with self._lock:
-            self._active_by_workspace.pop(self._operations[operation_id].workspace_id, None)
+            self._publish(started_event)
+            try:
+                result = runner(observer)
+                with self._lock:
+                    operation = self._operations[operation_id]
+                    if operation.cancel_requested:
+                        raise RuntimeOperationCancelled("operation cancelled at a step boundary")
+                    operation.state = "succeeded"
+                    operation.result = result
+                    operation.updated_at = time.time()
+                    event = self._new_event_locked(
+                        operation,
+                        "operation.completed",
+                        {"result": result},
+                    )
+            except RuntimeOperationCancelled as exc:
+                with self._lock:
+                    operation = self._operations[operation_id]
+                    if operation.error is not None:
+                        operation.state = "failed"
+                        event_type = "operation.failed"
+                    else:
+                        operation.state = "cancelled"
+                        operation.error = {
+                            "message": str(exc),
+                            "code": "cancelled",
+                        }
+                        event_type = "operation.cancelled"
+                    operation.updated_at = time.time()
+                    event = self._new_event_locked(
+                        operation,
+                        event_type,
+                        {"error": operation.error},
+                    )
+            except Exception as exc:
+                with self._lock:
+                    operation = self._operations[operation_id]
+                    if operation.cancel_requested and operation.error is None:
+                        operation.state = "cancelled"
+                        operation.error = {"message": str(exc), "code": "cancelled"}
+                        event_type = "operation.cancelled"
+                    else:
+                        operation.state = "failed"
+                        operation.error = operation.error or {
+                            "message": str(exc),
+                            "code": "command_failed",
+                        }
+                        event_type = "operation.failed"
+                    operation.updated_at = time.time()
+                    payload = {"error": operation.error}
+                    if operation.error:
+                        payload.update(
+                            {
+                                key: operation.error[key]
+                                for key in ("step", "tool", "logFile")
+                                if key in operation.error
+                            }
+                        )
+                    event = self._new_event_locked(operation, event_type, payload)
+            self._publish(event)
+        finally:
+            try:
+                self._stop_step_log_tail(operation_id)
+            finally:
+                with self._lock:
+                    self._active_by_workspace.pop(
+                        self._operations[operation_id].workspace_id,
+                        None,
+                    )
 
     def step_started(self, operation_id: str, workspace_step: Any) -> None:
         self._stop_step_log_tail(operation_id)
@@ -366,7 +399,13 @@ class RuntimeOperationManager:
             )
         self._publish(event)
 
-    def step_completed(self, operation_id: str, workspace_step: Any, state: Any) -> None:
+    def step_completed(
+        self,
+        operation_id: str,
+        workspace_step: Any,
+        state: Any,
+        error: str | None = None,
+    ) -> None:
         self._stop_step_log_tail(operation_id)
         state_value = str(getattr(state, "value", state))
         final_log = _read_final_log(getattr(workspace_step, "log", None))
@@ -381,6 +420,17 @@ class RuntimeOperationManager:
                 "tool": operation.current_tool,
                 "state": state_value,
             }
+            if error:
+                log_file = str(getattr(getattr(workspace_step, "log", None), "file", "") or "")
+                operation.error = {
+                    "code": "tool_failed",
+                    "message": error,
+                    "step": operation.current_step,
+                    "tool": operation.current_tool,
+                    "logFile": log_file,
+                }
+                payload["error"] = operation.error
+                payload["logFile"] = log_file
             event = self._new_event_locked(operation, "step.completed", payload)
             if state_value == "Success":
                 operation.workspace_revision += 1
@@ -617,7 +667,7 @@ class RuntimeOperationManager:
             "cancelRequested": operation.cancel_requested,
             "interruptibility": operation.interruptibility,
             "safeToStop": bool(operation.awaiting_event_id),
-            "shutdownBarrier": operation.state not in {"succeeded", "failed", "cancelled"},
+            "shutdownBarrier": operation.state not in _TERMINAL_OPERATION_STATES,
             "createdAt": operation.created_at,
             "updatedAt": operation.updated_at,
         }
@@ -632,6 +682,14 @@ class RuntimeFlowObserver:
     def __init__(self, manager: RuntimeOperationManager, operation_id: str):
         self._manager = manager
         self._operation_id = operation_id
+
+    @property
+    def runtime_operation(self) -> dict[str, Any]:
+        return {
+            "schema": 1,
+            "operation_id": self._operation_id,
+            "runtime_instance_id": self._manager._runtime_instance_id,
+        }
 
     def on_step_started(self, workspace_step: Any) -> None:
         self._manager.step_started(self._operation_id, workspace_step)
@@ -650,8 +708,13 @@ class RuntimeFlowObserver:
             target_step=target_step,
         )
 
-    def on_step_completed(self, workspace_step: Any, state: Any) -> None:
-        self._manager.step_completed(self._operation_id, workspace_step, state)
+    def on_step_completed(
+        self,
+        workspace_step: Any,
+        state: Any,
+        error: str | None = None,
+    ) -> None:
+        self._manager.step_completed(self._operation_id, workspace_step, state, error)
 
     def on_subflow_stage(self, workspace_step: Any, subflow_step: dict[str, Any]) -> None:
         self._manager.subflow_stage(self._operation_id, workspace_step, subflow_step)

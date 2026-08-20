@@ -4,11 +4,15 @@ import ctypes
 import logging
 import os
 import sys
+import threading
 import time
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import TextIO
+
+# ponytail: process-wide fds require one lock; move tools to subprocesses for parallel capture.
+stdio_redirect_lock = threading.RLock()
 
 
 # TODO: Move some functions to Logger Module
@@ -83,6 +87,34 @@ def redirect_stdio_to_file(log_file: str) -> TextIO:
     sys.stdout = os.fdopen(1, "w", encoding="utf-8", buffering=1, closefd=False)
     sys.stderr = os.fdopen(2, "w", encoding="utf-8", buffering=1, closefd=False)
     return log_stream
+
+
+@contextmanager
+def capture_stdio_to_file(log_file: str | None):
+    """Redirect fd 1/2 for one scope, then restore the original streams."""
+    if not log_file:
+        yield
+        return
+
+    with stdio_redirect_lock:
+        saved_fds = (os.dup(1), os.dup(2))
+        saved_streams = (sys.stdout, sys.stderr)
+        log_stream = None
+        try:
+            log_stream = redirect_stdio_to_file(log_file)
+            yield
+        finally:
+            for stream in (sys.stdout, sys.stderr):
+                with suppress(Exception):
+                    stream.flush()
+            flush_cstdio()
+            os.dup2(saved_fds[0], 1)
+            os.dup2(saved_fds[1], 2)
+            os.close(saved_fds[0])
+            os.close(saved_fds[1])
+            sys.stdout, sys.stderr = saved_streams
+            if log_stream is not None:
+                log_stream.close()
 
 
 def init_api_runtime_log(

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
+
+from chipcompiler.data import StateEnum
+from chipcompiler.utility import json_write
 
 
 def publish_subflow_stage(
@@ -21,6 +25,31 @@ def publish_subflow_stage(
         return
     try:
         callback(workspace_step, dict(subflow_step))
-    except Exception:
+    except (Exception, SystemExit):
         # GUI event delivery must not affect an EDA tool's result.
         return
+
+
+def finalize_interrupted_subflow(
+    workspace_step: Any,
+    runtime: str,
+    peak_memory_mb: float,
+) -> list[dict[str, Any]]:
+    subflow = getattr(workspace_step, "subflow", None)
+    steps = getattr(subflow, "steps", None) or []
+    previous_steps = deepcopy(steps)
+    interrupted = []
+    for step in steps:
+        if step.get("state") != "Ongoing":
+            continue
+        step["state"] = StateEnum.Imcomplete.value
+        step["runtime"] = runtime
+        step["peak memory (mb)"] = peak_memory_mb
+        interrupted.append(dict(step))
+    path = getattr(subflow, "path", None)
+    if interrupted and path and not json_write(path, {"path": str(path), "steps": steps}):
+        for step, previous_step in zip(steps, previous_steps, strict=True):
+            step.clear()
+            step.update(previous_step)
+        raise OSError(f"failed to save interrupted subflow: {path}")
+    return interrupted

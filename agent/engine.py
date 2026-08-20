@@ -4,7 +4,8 @@ import traceback
 from threading import Event, Thread
 
 from chipcompiler.data import StateEnum, WorkspaceStep
-from chipcompiler.engine.flow import EngineFlow, get_process_rss_mb, track_current_process_memory
+from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.step_execution import get_process_rss_mb, track_current_process_memory
 from chipcompiler.utility.log import redirect_stdio_to_file
 
 from .tools import run_step as run_agent_step

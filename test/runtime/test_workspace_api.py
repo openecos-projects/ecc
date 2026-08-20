@@ -17,6 +17,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
+    WorkspaceRecoverInterruptedRequest,
     WorkspaceSyncConfigRequest,
 )
 from chipcompiler.runtime.sessions import WorkspaceSessionRegistry
@@ -400,6 +401,123 @@ def test_open_workspace_loads_without_creating_step_workspaces(monkeypatch, tmp_
     }
     assert capture["loaded"] == [str(ws)]
     assert not DummyFlow.instances[0].created
+
+
+def test_recover_interrupted_is_marker_scoped_and_idempotent(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [
+            {
+                "name": "place",
+                "tool": "dreamplace",
+                "state": "Ongoing",
+                "info": {
+                    "runtime_operation": {
+                        "schema": 1,
+                        "operation_id": "operation-1",
+                        "runtime_instance_id": "runtime-old",
+                        "started_at": 1.0,
+                    }
+                },
+            },
+            {"name": "route", "tool": "ecc", "state": "Ongoing", "info": {}},
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": "Success",
+                "info": {
+                    "runtime_operation": {
+                        "schema": 1,
+                        "operation_id": "operation-2",
+                    }
+                },
+            },
+            {
+                "name": "CTS",
+                "tool": "ecc",
+                "state": "Ongoing",
+                "info": {
+                    "runtime_operation": {
+                        "schema": 1,
+                        "operation_id": "operation-partial",
+                    }
+                },
+            },
+            {
+                "name": "STA",
+                "tool": "ecc",
+                "state": "Ongoing",
+                "info": {
+                    "runtime_operation": {
+                        "schema": 1,
+                        "operation_id": "operation-active",
+                        "runtime_instance_id": "runtime-current",
+                        "started_at": 2.0,
+                    }
+                },
+            },
+            {
+                "name": "DRC",
+                "tool": "ecc",
+                "state": "Ongoing",
+                "info": {
+                    "runtime_operation": {
+                        "schema": 1,
+                        "operation_id": "operation-previous",
+                        "runtime_instance_id": "runtime-old",
+                        "started_at": 3.0,
+                    }
+                },
+            },
+        ]
+    }
+    mismatch = api.recover_interrupted(
+        WorkspaceRecoverInterruptedRequest(workspace_id, "operation-other")
+    )
+    assert mismatch == {"recovered": []}
+
+    result = api.recover_interrupted(
+        WorkspaceRecoverInterruptedRequest(workspace_id, "operation-1")
+    )
+    assert result == {
+        "recovered": [
+            {
+                "step": "place",
+                "tool": "dreamplace",
+                "operationId": "operation-1",
+                "logFile": str(ws / "place_dreamplace" / "log" / "place.log"),
+            }
+        ]
+    }
+    assert session.workspace.flow.data["steps"][0]["state"] == StateEnum.Imcomplete.value
+    assert session.workspace.flow.data["steps"][0]["info"] == {}
+    assert session.workspace.flow.data["steps"][1]["state"] == "Ongoing"
+    assert session.workspace.flow.data["steps"][2]["state"] == "Success"
+    monkeypatch.setattr(
+        api.operations,
+        "is_active",
+        lambda operation_id: operation_id == "operation-active",
+    )
+    previous = api.recover_interrupted(WorkspaceRecoverInterruptedRequest(workspace_id))
+    assert previous == {
+        "recovered": [
+            {
+                "step": "DRC",
+                "tool": "ecc",
+                "operationId": "operation-previous",
+                "logFile": str(ws / "DRC_ecc" / "log" / "DRC.log"),
+            }
+        ]
+    }
+    assert session.workspace.flow.data["steps"][3]["state"] == "Ongoing"
+    assert session.workspace.flow.data["steps"][4]["state"] == "Ongoing"
+    assert session.workspace.flow.data["steps"][5]["state"] == StateEnum.Imcomplete.value
+    assert api.recover_interrupted(
+        WorkspaceRecoverInterruptedRequest(workspace_id, "operation-1")
+    ) == {"recovered": []}
 
 
 def test_create_workspace_replaces_existing_same_directory_session(monkeypatch, tmp_path):

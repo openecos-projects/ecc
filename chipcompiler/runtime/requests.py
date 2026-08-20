@@ -28,6 +28,12 @@ class WorkspaceIdRequest:
 
 
 @dataclass(frozen=True)
+class WorkspaceRecoverInterruptedRequest:
+    workspace_id: str
+    operation_id: str = ""
+
+
+@dataclass(frozen=True)
 class WorkspaceCloseRequest:
     workspace_id: str
 

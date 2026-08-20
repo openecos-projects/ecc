@@ -411,6 +411,95 @@ def test_step_log_events_stream_only_new_log_bytes_and_keep_final_tail(tmp_path)
     assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
 
 
+def test_step_error_survives_generic_runner_error_and_releases_workspace(tmp_path):
+    events = []
+    manager = RuntimeOperationManager(events.append)
+    log_file = tmp_path / "place.log"
+    log_file.write_text("traceback\n", encoding="utf-8")
+    step = SimpleNamespace(
+        name="place",
+        tool="dreamplace",
+        log=SimpleNamespace(file=log_file),
+    )
+
+    def runner(observer):
+        observer.on_step_started(step)
+        observer.on_step_completed(step, StateEnum.Imcomplete, "movable utilization is 100.0%")
+        raise RuntimeError("run step place failed with state Imcomplete")
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="step",
+        origin="gui",
+        rerun=False,
+        step="place",
+        idempotency_key="failed-place",
+        runner=runner,
+    )
+
+    status = _wait_for_terminal(manager, started["operationId"])
+    assert status["error"] == {
+        "code": "tool_failed",
+        "message": "movable utilization is 100.0%",
+        "step": "place",
+        "tool": "dreamplace",
+        "logFile": str(log_file),
+    }
+    assert _wait_for_event(events, "operation.failed")["payload"]["error"] == status["error"]
+    second = manager.start(
+        workspace_id="workspace-1",
+        kind="step",
+        origin="gui",
+        rerun=True,
+        step="place",
+        idempotency_key="retry-place",
+        runner=lambda _observer: {"state": "Success"},
+    )
+    assert _wait_for_terminal(manager, second["operationId"])["state"] == "succeeded"
+
+
+def test_cancel_does_not_replace_a_specific_tool_error(tmp_path):
+    manager = RuntimeOperationManager()
+    log_file = tmp_path / "place.log"
+    step = SimpleNamespace(
+        name="place",
+        tool="dreamplace",
+        log=SimpleNamespace(file=log_file),
+    )
+    step_failed = threading.Event()
+    release_runner = threading.Event()
+
+    def runner(observer):
+        observer.on_step_started(step)
+        observer.on_step_completed(step, StateEnum.Imcomplete, "utilization is larger than 0.99")
+        step_failed.set()
+        assert release_runner.wait(timeout=2)
+        raise RuntimeError("run step place failed with state Incomplete")
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="step",
+        origin="gui",
+        rerun=False,
+        step="place",
+        idempotency_key="cancelled-failed-place",
+        runner=runner,
+    )
+    assert step_failed.wait(timeout=1)
+    assert manager.request_cancel(started["operationId"])["accepted"] is True
+    release_runner.set()
+
+    status = _wait_for_terminal(manager, started["operationId"])
+    assert status["state"] == "failed"
+    assert status["error"] == {
+        "code": "tool_failed",
+        "message": "utilization is larger than 0.99",
+        "step": "place",
+        "tool": "dreamplace",
+        "logFile": str(log_file),
+    }
+
+
 def _wait_for_event(events: list[dict], event_type: str) -> dict:
     for _ in range(200):
         for event in events:

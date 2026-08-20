@@ -4,7 +4,7 @@ import hashlib
 import logging
 import os
 import time
-from threading import Event, Thread
+from copy import deepcopy
 
 from chipcompiler.data import EccOutput, StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow
 from chipcompiler.engine import EngineDB
@@ -13,7 +13,7 @@ from chipcompiler.engine.signoff import (
     SignoffPackageOptions,
     SignoffPackageResult,
 )
-from chipcompiler.utility.log import redirect_stdio_to_file
+from chipcompiler.engine.step_execution import execute_tool_step, record_tool_failure
 
 logger = logging.getLogger(__name__)
 
@@ -32,27 +32,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.FILLER.value,
     }
 )
-
-
-def get_process_rss_mb(pid: int) -> float:
-    peak_memory = 0
-    try:
-        with open(f"/proc/{pid}/status") as f:
-            for line in f:
-                if line.startswith("VmRSS:"):
-                    rss_kb = int(line.split()[1])
-                    peak_memory = rss_kb / 1024
-                    break
-    except (OSError, ValueError):
-        pass
-    return peak_memory
-
-
-def track_current_process_memory(pid: int, stop_event: Event, peak_memory: list[float]):
-    while not stop_event.is_set():
-        peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
-        stop_event.wait(0.1)
-    peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
 
 
 class EngineFlow:
@@ -155,24 +134,33 @@ class EngineFlow:
         state: str | StateEnum,
         runtime: str = None,
         peak_memory: float = None,
+        *,
+        clear_runtime_operation: bool = False,
     ) -> bool:
         state_value = state.value if isinstance(state, StateEnum) else state
         for step in self.workspace.flow.data.get("steps", []):
             if step.get("name") == name and step.get("tool") == tool:
+                previous_step = deepcopy(step)
                 step["state"] = state_value
                 if runtime is not None:
                     step["runtime"] = runtime
                 if peak_memory is not None:
                     step["peak memory (mb)"] = peak_memory
+                if clear_runtime_operation:
+                    step.get("info", {}).pop("runtime_operation", None)
 
+                if self.workspace.flow.path is None:
+                    return True
                 if not self.save():
+                    step.clear()
+                    step.update(previous_step)
                     logger.error(
-                        "Failed to persist flow state for %s/%s (state=%s); "
-                        "state change exists only in memory",
+                        "Failed to persist flow state for %s/%s (state=%s)",
                         name,
                         tool,
                         state_value,
                     )
+                    return False
                 return True
 
         return False
@@ -477,123 +465,150 @@ class EngineFlow:
         # set state ongoing
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()
-        self.set_state(name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Ongoing)
+        flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+        operation_marker = getattr(observer, "runtime_operation", None)
+        if operation_marker:
+            if flow_step is None:
+                raise RuntimeError(f"cannot persist runtime operation marker for {step_tag}")
+            previous_state = flow_step.get("state")
+            previous_info = dict(flow_step.get("info", {}))
+            flow_step.setdefault("info", {})["runtime_operation"] = {
+                **operation_marker,
+                "started_at": start_time,
+            }
+            flow_step["state"] = StateEnum.Ongoing.value
+            if not self.save():
+                flow_step["state"] = previous_state
+                flow_step["info"] = previous_info
+                raise RuntimeError(f"failed to persist runtime operation marker for {step_tag}")
+        else:
+            if flow_step is not None and not self.set_state(
+                name=workspace_step.name,
+                tool=workspace_step.tool,
+                state=StateEnum.Ongoing,
+            ):
+                raise RuntimeError(f"failed to persist ongoing state for {step_tag}")
         _notify_flow_observer(observer, "on_step_started", workspace_step)
 
-        # run step
-        log_file = workspace_step.log.file or ""
-        if log_file:
-            log_file = os.path.abspath(log_file)
-            try:
-                os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-                redirect_stdio_to_file(log_file)
-            except Exception:
-                logger.exception("Failed to redirect stdio to log file: %s", log_file)
-
-        step_tag = f"{workspace_step.name}({workspace_step.tool})"
-        self.workspace.logger.info(f"[STEP] {step_tag} pid={os.getpid()} started")
-
-        pid = os.getpid()
-        start_memory_mb = get_process_rss_mb(pid)
-        peak_memory = [start_memory_mb]
-        stop_memory_monitor = Event()
-        memory_monitor = Thread(
-            target=track_current_process_memory,
-            args=(pid, stop_memory_monitor, peak_memory),
-            daemon=True,
+        execution = execute_tool_step(
+            self.workspace,
+            workspace_step,
+            self.engine_db,
+            observer=observer,
+            started_at=start_time,
         )
-        memory_monitor.start()
-        previous_observer = getattr(self.workspace, "_runtime_flow_observer", None)
-        if observer is not None:
-            self.workspace._runtime_flow_observer = observer
-        step_raised_exception = False
+        step_error = execution.error
+        elapsed = execution.elapsed_seconds
+        peak_memory_mb = execution.peak_memory_mb
+        runtime = execution.runtime
+
+        state = StateEnum.Imcomplete
+        terminal_persisted = False
         try:
-            from chipcompiler.tools import run_step as run_tool_step
+            if step_error is None:
+                state = (
+                    StateEnum.Success
+                    if self.check_step_result(workspace_step=workspace_step)
+                    else StateEnum.Imcomplete
+                )
+                if state == StateEnum.Imcomplete:
+                    step_error = f"{step_tag} did not produce the required outputs."
 
-            result = run_tool_step(
-                workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine
-            )
-            self.workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
-        except Exception:
-            step_raised_exception = True
-            self.workspace.logger.error(f"[STEP] {step_tag} failed with exception")
-            self.workspace.logger.exception(f"[STEP] {step_tag} exception details")
-        finally:
-            stop_memory_monitor.set()
-            memory_monitor.join()
-            if observer is not None:
-                if previous_observer is None:
-                    delattr(self.workspace, "_runtime_flow_observer")
+            if state == StateEnum.Imcomplete:
+                _finalize_interrupted_subflow(
+                    observer,
+                    workspace_step,
+                    runtime,
+                    peak_memory_mb,
+                )
+
+            if flow_step is not None and not self.set_state(
+                name=workspace_step.name,
+                tool=workspace_step.tool,
+                state=state,
+                runtime=runtime,
+                peak_memory=peak_memory_mb,
+                clear_runtime_operation=True,
+            ):
+                raise RuntimeError(f"failed to persist terminal state for {step_tag}")
+            terminal_persisted = True
+
+            # save layout snapshot on success
+            if state == StateEnum.Success:
+                if self.save_step_flow_facts(
+                    workspace_step=workspace_step,
+                    state=state,
+                    runtime_seconds=elapsed,
+                    peak_memory_mb=peak_memory_mb,
+                    timing_constraints=timing_constraints,
+                ):
+                    try:
+                        from chipcompiler.tools import build_step_metrics
+
+                        if (
+                            build_step_metrics(workspace=self.workspace, step=workspace_step)
+                            is None
+                        ):
+                            self.workspace.logger.warning(
+                                "[QOR] %s run facts were saved but analysis refresh is unavailable",
+                                step_tag,
+                            )
+                    except Exception:
+                        self.workspace.logger.exception(
+                            "[QOR] %s failed to refresh analysis after saving run facts",
+                            step_tag,
+                        )
                 else:
-                    self.workspace._runtime_flow_observer = previous_observer
+                    self.workspace.logger.warning(
+                        "[QOR] %s has no step feature path; run facts were not saved",
+                        step_tag,
+                    )
+                from chipcompiler.tools import save_layout_image
 
-        # compute metrics
-        peak_memory_mb = peak_memory[0] - start_memory_mb
-        peak_memory_mb = 0 if peak_memory_mb < 0 else round(peak_memory_mb, 3)
-        elapsed = time.time() - start_time
-        runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
-
-        # determine and save state
-        if step_raised_exception:
+                save_layout_image(workspace=self.workspace, step=workspace_step)
+        except (Exception, SystemExit) as exc:
+            failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)
+            step_error = step_error or failure_message
             state = StateEnum.Imcomplete
-        else:
-            state = (
-                StateEnum.Success
-                if self.check_step_result(workspace_step=workspace_step)
-                else StateEnum.Imcomplete
+            _finalize_interrupted_subflow(
+                observer,
+                workspace_step,
+                runtime,
+                peak_memory_mb,
             )
+            if flow_step is not None and not self.set_state(
+                name=workspace_step.name,
+                tool=workspace_step.tool,
+                state=state,
+                runtime=runtime,
+                peak_memory=peak_memory_mb,
+                clear_runtime_operation=True,
+            ):
+                raise RuntimeError(f"failed to persist terminal state for {step_tag}") from exc
+            terminal_persisted = True
+        finally:
+            if terminal_persisted:
+                _refresh_signoff_checklist(self.workspace, workspace_step)
+            try:
+                self.clear_db_engine_after_step(workspace_step, state)
+            except (Exception, SystemExit):
+                logger.exception("Failed to release DB engine after %s", step_tag)
+            if terminal_persisted:
+                _notify_flow_observer(
+                    observer,
+                    "on_step_completed",
+                    workspace_step,
+                    state,
+                    step_error,
+                )
 
-        self.set_state(
-            name=workspace_step.name,
-            tool=workspace_step.tool,
-            state=state,
-            runtime=runtime,
-            peak_memory=peak_memory_mb,
-        )
         self.workspace.logger.info(
-            "[RESULT] %s state=%s runtime=%s mem=%sMB exitcode=%s",
+            "[RESULT] %s state=%s runtime=%s mem=%sMB",
             step_tag,
             state.value,
             runtime,
             peak_memory_mb,
-            0,
         )
-
-        # save layout snapshot on success
-        if state == StateEnum.Success:
-            if self.save_step_flow_facts(
-                workspace_step=workspace_step,
-                state=state,
-                runtime_seconds=elapsed,
-                peak_memory_mb=peak_memory_mb,
-                timing_constraints=timing_constraints,
-            ):
-                try:
-                    from chipcompiler.tools import build_step_metrics
-
-                    if build_step_metrics(workspace=self.workspace, step=workspace_step) is None:
-                        self.workspace.logger.warning(
-                            "[QOR] %s run facts were saved but analysis refresh is unavailable",
-                            step_tag,
-                        )
-                except Exception:
-                    self.workspace.logger.exception(
-                        "[QOR] %s failed to refresh analysis after saving run facts",
-                        step_tag,
-                    )
-            else:
-                self.workspace.logger.warning(
-                    "[QOR] %s has no step feature path; run facts were not saved",
-                    step_tag,
-                )
-            from chipcompiler.tools import save_layout_image
-
-            save_layout_image(workspace=self.workspace, step=workspace_step)
-
-        _refresh_signoff_checklist(self.workspace, workspace_step)
-
-        self.clear_db_engine_after_step(workspace_step, state)
-        _notify_flow_observer(observer, "on_step_completed", workspace_step, state)
         if state == StateEnum.Success and not _wait_for_step_rendered(
             observer,
             workspace_step,
@@ -613,13 +628,37 @@ class EngineFlow:
         return self.engine_db.create_db_engine(step=workspace_step)
 
 
+def _finalize_interrupted_subflow(
+    observer,
+    workspace_step: WorkspaceStep,
+    runtime: str,
+    peak_memory_mb: float,
+) -> None:
+    try:
+        from chipcompiler.runtime.subflow_events import finalize_interrupted_subflow
+
+        for subflow_step in finalize_interrupted_subflow(
+            workspace_step,
+            runtime,
+            peak_memory_mb,
+        ):
+            _notify_flow_observer(
+                observer,
+                "on_subflow_stage",
+                workspace_step,
+                subflow_step,
+            )
+    except (Exception, SystemExit):
+        logger.exception("Failed to finalize subflow after %s", workspace_step.name)
+
+
 def _refresh_signoff_checklist(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
     """Replace step/home checklists after the step's terminal flow state is saved."""
     try:
         from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 
         refresh_step_checklist(workspace, workspace_step)
-    except Exception:
+    except (Exception, SystemExit):
         logger.exception(
             "Failed to refresh signoff checklist after %s/%s",
             workspace_step.name,
@@ -636,7 +675,7 @@ def _notify_flow_observer(observer, method_name: str, *args) -> None:
         return
     try:
         callback(*args)
-    except Exception:
+    except (Exception, SystemExit):
         # Runtime observers must never turn a completed tool execution into a
         # failed flow. The coordinator records transport failures separately.
         logging.getLogger(__name__).exception("flow observer callback failed: %s", method_name)

@@ -37,6 +37,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInfoRequest,
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
+    WorkspaceRecoverInterruptedRequest,
     WorkspaceSyncConfigRequest,
 )
 from chipcompiler.runtime.sessions import (
@@ -128,6 +129,18 @@ class WorkspaceRuntimeApi:
         build_flow_for_workspace(workspace, create_step_workspaces=False)
         session = self.sessions.open_session(workspace.directory, workspace=workspace)
         return _workspace_session_result(session)
+
+    def recover_interrupted(self, request: WorkspaceRecoverInterruptedRequest) -> dict:
+        from chipcompiler.runtime.recovery import recover_interrupted_operation
+
+        return self._with_session_mutation_lock(
+            request.workspace_id,
+            lambda session: recover_interrupted_operation(
+                session.workspace,
+                self.operations,
+                request.operation_id,
+            ),
+        )
 
     def workspace_home(self, request: WorkspaceIdRequest) -> dict:
         session = self._get_session(request.workspace_id)

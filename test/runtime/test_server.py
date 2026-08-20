@@ -73,6 +73,9 @@ class CompleteFakeApi:
     def workspace_snapshot(self, _request):
         raise AssertionError("unexpected workspace_snapshot call")
 
+    def recover_interrupted(self, _request):
+        raise AssertionError("unexpected recover_interrupted call")
+
     def db_ensure(self, _request):
         raise AssertionError("unexpected db_ensure call")
 

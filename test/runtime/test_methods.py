@@ -34,6 +34,7 @@ def test_runtime_method_registry_contains_current_methods_once():
         "operation.cancel",
         "operation.ack_step_rendered",
         "workspace.snapshot",
+        "workspace.recover_interrupted",
     )
 
     assert runtime_method_names() == expected_methods

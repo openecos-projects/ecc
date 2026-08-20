@@ -24,6 +24,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInfoRequest,
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
+    WorkspaceRecoverInterruptedRequest,
     WorkspaceSyncConfigRequest,
 )
 
@@ -127,6 +128,11 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="workspace.snapshot",
         request_model=WorkspaceIdRequest,
         handler_name="workspace_snapshot",
+    ),
+    RuntimeMethodSpec(
+        method_name="workspace.recover_interrupted",
+        request_model=WorkspaceRecoverInterruptedRequest,
+        handler_name="recover_interrupted",
     ),
 )
 
