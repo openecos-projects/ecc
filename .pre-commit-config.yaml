@@ -35,3 +35,15 @@ repos:
           - ci
           - chore
           - revert
+
+  - repo: local
+    hooks:
+      - id: no-subject-full-stop
+        name: Commit subject must not end with a full stop
+        language: system
+        stages:
+          - commit-msg
+        entry: >-
+          bash -c 'subject=$(head -n1 "$1");
+          case "$subject" in "fixup! "*|"squash! "*|"amend! "*|"Merge "*) exit 0;; esac;
+          case "$subject" in *.) echo "error: commit subject must not end with a full stop" >&2; exit 1;; esac' --
