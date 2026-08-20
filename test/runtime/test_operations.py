@@ -364,10 +364,8 @@ def test_cancel_at_render_ack_boundary_releases_the_waiting_flow():
     assert _wait_for_terminal(manager, started["operationId"])["state"] == "cancelled"
 
 
-def test_step_log_events_stream_only_new_log_bytes_and_keep_final_tail(tmp_path):
+def test_server_never_emits_step_log_and_step_completed_has_no_final_log(tmp_path):
     events = []
-    step_started = threading.Event()
-    complete_step = threading.Event()
     manager = RuntimeOperationManager(events.append)
     log_file = tmp_path / "Synthesis.log"
     log_file.write_text("previous run\n", encoding="utf-8")
@@ -379,8 +377,8 @@ def test_step_log_events_stream_only_new_log_bytes_and_keep_final_tail(tmp_path)
 
     def runner(observer):
         observer.on_step_started(step)
-        step_started.set()
-        assert complete_step.wait(timeout=2)
+        with log_file.open("a", encoding="utf-8") as handle:
+            handle.write("live line one\nlive line two\n")
         observer.on_step_completed(step, StateEnum.Success)
         assert observer.wait_for_step_rendered(step, StateEnum.Success)
         return {"rerun": False}
@@ -394,21 +392,23 @@ def test_step_log_events_stream_only_new_log_bytes_and_keep_final_tail(tmp_path)
         idempotency_key="request-log-stream",
         runner=runner,
     )
-    assert step_started.wait(timeout=1)
-    with log_file.open("a", encoding="utf-8") as handle:
-        handle.write("live line one\nlive line two\n")
 
-    step_log = _wait_for_event(events, "step.log")
-    assert step_log["payload"]["chunk"] == "live line one\nlive line two\n"
-    assert step_log["payload"]["cursor"] == log_file.stat().st_size
+    step_completed = _wait_for_event(events, "step.completed")
+    # Outlast the historical tail poll interval so a stray publisher would fire.
+    threading.Event().wait(0.3)
+    assert not any(event["type"] == "step.log" for event in events)
+    assert "finalLog" not in step_completed["payload"]
+    assert step_completed["payload"]["step"] == "Synthesis"
+    assert step_completed["payload"]["tool"] == "yosys"
+    assert step_completed["payload"]["state"] == "Success"
+    assert step_completed["payload"]["stepCommitId"]
+    assert step_completed["payload"]["workspaceRevision"] == 1
 
-    complete_step.set()
-    step_complete = _wait_for_event(events, "step.completed")
-    assert step_complete["payload"]["finalLog"] == ("previous run\nlive line one\nlive line two\n")
-    assert manager.acknowledge_step_rendered(started["operationId"], step_complete["eventId"])[
+    assert manager.acknowledge_step_rendered(started["operationId"], step_completed["eventId"])[
         "accepted"
     ]
     assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
+    assert not any(event["type"] == "step.log" for event in events)
 
 
 def _wait_for_event(events: list[dict], event_type: str) -> dict:

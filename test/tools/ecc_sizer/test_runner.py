@@ -28,7 +28,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
 
     calls = []
 
-    def fake_run(command, cwd, stdout, stderr, check):
+    def fake_run(command, cwd, stderr, check):
         calls.append((command, cwd, stderr, check))
         os.makedirs(os.path.dirname(str(step.output.def_)), exist_ok=True)
         with open(str(step.output.def_), "w", encoding="utf-8") as file:
@@ -118,7 +118,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
+        lambda command, cwd, stderr, check: SimpleNamespace(returncode=0),
     )
 
     assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
@@ -197,25 +197,11 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
 
 def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monkeypatch):
     import chipcompiler.tools as tools_api
-    from chipcompiler.engine import flow as flow_module
+    from chipcompiler.engine import runner as flow_module
     from chipcompiler.engine.flow import EngineFlow
 
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
-    workspace.flow.data = {
-        "steps": [
-            {
-                "name": StepEnum.TIMING_OPT.value,
-                "tool": "sizer",
-                "state": StateEnum.Unstart.value,
-            },
-            {
-                "name": StepEnum.LEGALIZATION.value,
-                "tool": "ecc",
-                "state": StateEnum.Unstart.value,
-            },
-        ]
-    }
 
     sizer_step = EccStep(
         name=StepEnum.TIMING_OPT.value,
@@ -246,6 +232,21 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
             pre_sizer_db_closed.append(True)
 
     engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [
+            {
+                "name": StepEnum.TIMING_OPT.value,
+                "tool": "sizer",
+                "state": StateEnum.Unstart.value,
+            },
+            {
+                "name": StepEnum.LEGALIZATION.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+            },
+        ]
+    }
+    engine_flow.save()
     engine_flow.workspace_steps = [sizer_step, post_sizer_step]
     monkeypatch.setattr(engine_flow, "engine_db", CloseableDb())
 

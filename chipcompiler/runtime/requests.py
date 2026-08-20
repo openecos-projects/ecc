@@ -67,6 +67,8 @@ class FlowRunStepRequest:
     workspace_id: str
     step: str
     rerun: bool = False
+    reset_dependents: bool = False
+    invalidate_dependents: bool = False
 
 
 @dataclass(frozen=True)
@@ -177,6 +179,7 @@ FIELD_ALIASES = {
     "workspaceRevision": "workspace_revision",
     "idempotencyKey": "idempotency_key",
     "resetDependents": "reset_dependents",
+    "invalidateDependents": "invalidate_dependents",
     "configPath": "config_path",
     "outputPath": "output_path",
     "infoId": "info_id",
@@ -213,7 +216,8 @@ def parse_request_model(model: type, params: object):
         if required and _is_missing(values[field.name]):
             raise RequestValidationError(f"missing required field: {field.name}")
 
-        if field.name in {"rerun", "reset_dependents"} and not isinstance(values[field.name], bool):
+        bool_fields = {"rerun", "reset_dependents", "invalidate_dependents"}
+        if field.name in bool_fields and not isinstance(values[field.name], bool):
             raise RequestValidationError(f"{field.name} must be a boolean")
 
     return model(**values)

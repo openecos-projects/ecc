@@ -114,7 +114,12 @@ if not engine_flow.has_init():
 
 # 创建步骤工作空间并运行
 engine_flow.create_step_workspaces()
-engine_flow.run_steps()
+# 进程内直接运行时，用 archive_own_step_logs 把本进程的 fd 1/2 交给客户端归档器，
+# 每个步骤的日志文件照常生成，marker 不会泄漏到终端。
+from chipcompiler.runtime.log_stream import archive_own_step_logs
+
+with archive_own_step_logs(workspace.directory):
+    engine_flow.run_steps()
 ```
 
 定义的流程如下：

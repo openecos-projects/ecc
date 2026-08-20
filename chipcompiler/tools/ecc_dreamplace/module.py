@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -60,25 +59,15 @@ class DreamplaceModule:
 
         return params
 
-    def _log_path(self, *, legalize_only: bool) -> str:
-        log_name = "dreamplace_legalization.log" if legalize_only else "dreamplace_placement.log"
-        return os.path.join(self.result_dir, log_name)
-
     @contextmanager
-    def _configure_root_logging(self, *, legalize_only: bool):
+    def _configure_root_logging(self):
         root_logger = logging.getLogger()
         original_handlers = root_logger.handlers[:]
         original_level = root_logger.level
 
-        log_file = self.step.log.file or self._log_path(legalize_only=legalize_only)
-        os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-
         formatter = logging.Formatter("[%(levelname)-7s] %(message)s")
-        file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
-        file_handler.setFormatter(formatter)
         stdout_handler = logging.StreamHandler(sys.stdout)
         stdout_handler.setFormatter(formatter)
-        root_logger.addHandler(file_handler)
         root_logger.addHandler(stdout_handler)
         if original_level > logging.INFO:
             root_logger.setLevel(logging.INFO)
@@ -86,9 +75,7 @@ class DreamplaceModule:
         try:
             yield
         finally:
-            root_logger.removeHandler(file_handler)
             root_logger.removeHandler(stdout_handler)
-            file_handler.close()
             stdout_handler.close()
             root_logger.setLevel(original_level)
             for handler in original_handlers:
@@ -99,7 +86,7 @@ class DreamplaceModule:
         from dreamplace.Params import Params
         from dreamplace.Placer import PlacementEngine
 
-        with self._configure_root_logging(legalize_only=legalize_only):
+        with self._configure_root_logging():
             params = self._build_params(Params, legalize_only=legalize_only)
 
             engine = PlacementEngine(params)

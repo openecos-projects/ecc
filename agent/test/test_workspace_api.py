@@ -1,5 +1,9 @@
+import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from agent.requests import CandidateRerunRequest
 from agent.workspace_api import FlowAgentRuntimeApi, _candidate_step_artifact_dirs
@@ -110,6 +114,61 @@ def test_candidate_rerun_uses_the_agent_flow_and_replays_its_receipts(monkeypatc
     assert not list(place_output.iterdir())
     assert not list(place_analysis.iterdir())
     assert not list(cts_output.iterdir())
+
+
+def test_candidate_step_exception_reconciles_the_record(monkeypatch, tmp_path, capfd):
+    """A run_step raising after its begin marker must downgrade the record
+    before the exception propagates — not leave Success over a partial log."""
+    (tmp_path / "home").mkdir()
+    steps = [{"name": "place", "tool": "dreamplace", "state": "Success"}]
+    (tmp_path / "home" / "flow.json").write_text(json.dumps({"steps": steps}))
+    workspace = SimpleNamespace(
+        directory=tmp_path,
+        flow=SimpleNamespace(data={"steps": [dict(s) for s in steps]}),
+    )
+    place_output = tmp_path / "place_dreamplace" / "output"
+    place_output.mkdir(parents=True)
+    step = SimpleNamespace(
+        name="place",
+        tool="dreamplace",
+        output=EccOutput(dir=place_output),
+        analysis={},
+    )
+    flow = _Flow(workspace, (step,))
+
+    from chipcompiler.runtime.log_stream import emit_step_marker
+
+    def raising_run_step(step, *, rerun):
+        flow.run_calls.append((step.name, rerun))
+        emit_step_marker("begin", step=step.name, tool=step.tool)
+        os.write(2, b"partial\n")
+        raise RuntimeError("layout save blew up")
+
+    flow.run_step = raising_run_step
+    flow.set_state = lambda name, tool, state: (
+        workspace.flow.data["steps"][0].update({"state": state.value})
+    )
+
+    api = FlowAgentRuntimeApi(_EccApi(workspace))
+    monkeypatch.setattr("agent.workspace_api.build_agent_flow_for_workspace", lambda _ws: flow)
+    monkeypatch.setattr(
+        "agent.workspace_api._init_db_engine_for_workspace_step", lambda _flow, _step: None
+    )
+
+    with pytest.raises(RuntimeError, match="layout save blew up"):
+        api.candidate_rerun(
+            CandidateRerunRequest(
+                workspace_id="workspace-1",
+                target_step="place",
+                end_step="place",
+                candidate_id=None,
+                patch=None,
+                execution_scope="single_step",
+            )
+        )
+
+    assert workspace.flow.data["steps"][0]["state"] == StateEnum.Imcomplete.value
+    assert "ECC-STEP" not in capfd.readouterr().err
 
 
 class _EccApi:

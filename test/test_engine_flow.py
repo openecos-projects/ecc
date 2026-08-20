@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import chipcompiler.engine.flow as flow_module
+import chipcompiler.engine.runner as runner_module
 from chipcompiler import tools
 from chipcompiler.data import (
     EccFeature,
@@ -17,6 +17,7 @@ from chipcompiler.data import (
     YosysOutput,
     YosysStep,
 )
+from chipcompiler.data.workspace import Flow
 from chipcompiler.engine.flow import EngineFlow
 
 
@@ -30,10 +31,8 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
     monkeypatch,
     tmp_path,
 ):
-    workspace = Workspace()
-    workspace.flow.data = {
-        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
-    }
+    (tmp_path / "home").mkdir(exist_ok=True)
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
     step_feature = tmp_path / "feature" / "route.step.json"
     sdc_path = tmp_path / "gcd.sdc"
     sdc_contents = "create_clock -name clk -period 2 [get_ports clk]\n"
@@ -48,6 +47,9 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
         feature=EccFeature(step=step_feature),
     )
     engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
     refreshed = []
@@ -90,10 +92,236 @@ def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_pa
     sleep_calls = []
 
     monkeypatch.setattr(tools, "run_step", lambda **_kwargs: False)
-    monkeypatch.setattr(flow_module.time, "sleep", sleep_calls.append)
+    monkeypatch.setattr(runner_module.time, "sleep", sleep_calls.append)
 
     assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
     assert sleep_calls == []
+
+
+def test_end_marker_follows_step_writes_and_precedes_completion(monkeypatch, tmp_path):
+    """The end marker fires after all step-scoped writes and before completion notify."""
+    import chipcompiler.runtime.log_stream as log_stream_module
+
+    (tmp_path / "home").mkdir(exist_ok=True)
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
+    workspace_step = EccStep(
+        name="route",
+        directory=tmp_path,
+        tool="ecc",
+        feature=EccFeature(step=tmp_path / "route.feature.json"),
+    )
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    events: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        tools,
+        "build_step_metrics",
+        lambda **_kwargs: events.append(("qor", None)) or {},
+    )
+    monkeypatch.setattr(
+        tools,
+        "save_layout_image",
+        lambda **_kwargs: events.append(("layout", None)),
+    )
+
+    original_set_state = engine_flow.set_state
+
+    def recording_set_state(**kwargs):
+        events.append(("set_state", kwargs.get("state")))
+        return original_set_state(**kwargs)
+
+    monkeypatch.setattr(engine_flow, "set_state", recording_set_state)
+    monkeypatch.setattr(
+        engine_flow,
+        "clear_db_engine_after_step",
+        lambda step, state: events.append(("db_cleanup", state)),
+    )
+    monkeypatch.setattr(
+        log_stream_module,
+        "emit_step_marker",
+        lambda event, *, step, tool: events.append(("marker", event)),
+    )
+
+    class CompletionObserver:
+        def on_step_completed(self, step, state):
+            # The end marker must already have fired when completion is notified.
+            assert ("marker", "end") in events
+            events.append(("observer", "completed"))
+
+    result = engine_flow.run_step(workspace_step, observer=CompletionObserver())
+
+    assert result == StateEnum.Success
+    end_index = events.index(("marker", "end"))
+    assert events.index(("set_state", StateEnum.Success)) < end_index
+    assert events.index(("qor", None)) < end_index
+    assert events.index(("layout", None)) < end_index
+    assert events.index(("db_cleanup", StateEnum.Success)) < end_index
+    assert end_index < events.index(("observer", "completed"))
+
+
+def test_end_marker_suppressed_when_final_state_persistence_fails(monkeypatch, tmp_path):
+    """A failed final save downgrades the step and suppresses the end marker.
+
+    Uses a real Flow so the failing save is the one that would have persisted
+    the record: the Ongoing save succeeds, the one final save fails, and the
+    canonical record must end Imcomplete in memory and non-Success on disk.
+    """
+    import chipcompiler.runtime.log_stream as log_stream_module
+    from chipcompiler.utility import json_read
+
+    (tmp_path / "home").mkdir(exist_ok=True)
+    flow_path = tmp_path / "home" / "flow.json"
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=flow_path))
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    events = []
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        log_stream_module,
+        "emit_step_marker",
+        lambda event, *, step, tool: events.append(("marker", event)),
+    )
+
+    real_save = engine_flow.save
+    save_calls = []
+
+    def save_failing_on_final():
+        save_calls.append(len(save_calls) + 1)
+        if len(save_calls) == 1:
+            return real_save()  # the Ongoing save persists
+        return False  # the one final save fails
+
+    monkeypatch.setattr(engine_flow, "save", save_failing_on_final)
+
+    completed_states = []
+
+    class CompletionObserver:
+        def on_step_completed(self, step, state):
+            completed_states.append(state)
+
+    result = engine_flow.run_step(workspace_step, observer=CompletionObserver())
+
+    assert save_calls == [1, 2]
+    assert ("marker", "begin") in events
+    assert ("marker", "end") not in events
+    assert result == StateEnum.Imcomplete
+    assert completed_states == [StateEnum.Imcomplete]
+    # The canonical record is downgraded in memory and never reached disk as
+    # Success: the only persisted state is the Ongoing from the first save.
+    record = engine_flow.get_step("route", "ecc")
+    assert record["state"] == StateEnum.Imcomplete.value
+    assert json_read(flow_path)["steps"][0]["state"] == StateEnum.Ongoing.value
+
+
+def test_direct_run_step_archive_failure_downgrades(monkeypatch, tmp_path):
+    """A bare run_step (no run_steps wrapper) with a broken archive path
+    returns Imcomplete and downgrades the record after the reader drains."""
+    workspace = Workspace(
+        directory=tmp_path,
+        flow=Flow(path=tmp_path / "home" / "flow.json"),
+    )
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]
+    }
+    step_dir = tmp_path / "route_ecc"
+    step_dir.mkdir(parents=True)
+    (step_dir / "log").write_text("regular file")
+    workspace_step = EccStep(name="route", directory=step_dir, tool="ecc")
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+
+    result = engine_flow.run_step(workspace_step)
+
+    assert result == StateEnum.Imcomplete
+    record = engine_flow.get_step("route", "ecc")
+    assert record["state"] == StateEnum.Imcomplete.value
+
+
+def test_run_steps_archive_failure_returns_false_and_downgrades(monkeypatch, tmp_path):
+    """A direct run_steps with a broken archive path must report failure and
+    downgrade the record instead of returning True over a missing log."""
+    import os
+
+    from chipcompiler.runtime.log_stream import emit_step_marker
+
+    workspace = Workspace(
+        directory=tmp_path,
+        flow=Flow(path=tmp_path / "home" / "flow.json"),
+    )
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]
+    }
+    step_dir = tmp_path / "route_ecc"
+    workspace_step = EccStep(name="route", directory=step_dir, tool="ecc")
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    def run_step_with_markers(ws_step, *, rerun=False, observer=None):
+        emit_step_marker("begin", step=ws_step.name, tool=ws_step.tool)
+        os.write(2, b"bytes\n")
+        emit_step_marker("end", step=ws_step.name, tool=ws_step.tool)
+        engine_flow.set_state(ws_step.name, ws_step.tool, StateEnum.Success)
+        return StateEnum.Success
+
+    monkeypatch.setattr(engine_flow, "run_step", run_step_with_markers)
+    monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
+
+    # The step's log directory is a regular file: the archive cannot open.
+    step_dir.mkdir(parents=True)
+    (step_dir / "log").write_text("regular file")
+
+    assert engine_flow.run_steps() is False
+    record = engine_flow.get_step("route", "ecc")
+    assert record["state"] == StateEnum.Imcomplete.value
+
+
+def test_begin_marker_failure_downgrades_ongoing(monkeypatch, tmp_path):
+    """If the begin marker cannot reach fd 2, no reader ever sees the step:
+    downgrade the persisted Ongoing instead of leaving an unfindable record."""
+    import chipcompiler.runtime.log_stream as log_stream_module
+
+    (tmp_path / "home").mkdir(exist_ok=True)
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]
+    }
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    def broken_emit(event, *, step, tool):
+        raise OSError("fd 2 closed")
+
+    monkeypatch.setattr(log_stream_module, "emit_step_marker", broken_emit)
+
+    import pytest as _pytest
+
+    with _pytest.raises(OSError, match="fd 2 closed"):
+        engine_flow.run_step(workspace_step)
+
+    record = engine_flow.get_step("route", "ecc")
+    assert record["state"] == StateEnum.Imcomplete.value
 
 
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
@@ -193,6 +421,59 @@ def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path, spef_paths):
     assert sta_step.output.spef is rcx_output.spef  # same object, per legacy contract
 
 
+def test_executable_steps_filter_chains_success_predecessor(monkeypatch, tmp_path):
+    # create_step_workspaces(executable_steps=...) builds non-executing steps
+    # without a dependency check, so a Success predecessor whose tool is missing
+    # still chains its outputs to the executing successor and marks nothing
+    # Incomplete.
+    workspace = Workspace(
+        directory=tmp_path,
+        flow=Flow(path=tmp_path / "home" / "flow.json"),
+    )
+    flow = EngineFlow(workspace)
+    # EngineFlow construction loads (and resets) flow.data; set steps after.
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "syn", "tool": "missing-tool", "state": StateEnum.Success.value},
+            {"name": "floorplan", "tool": "ecc", "state": StateEnum.Unstart.value},
+        ]
+    }
+
+    predecessor_output = EccOutput(
+        def_=tmp_path / "syn.def",
+        verilog=tmp_path / "syn.v",
+        db=tmp_path / "syn.db",
+    )
+    prebuilt = {
+        "syn": EccStep(name="syn", tool="missing-tool", output=predecessor_output),
+        "floorplan": EccStep(name="floorplan", tool="ecc"),
+    }
+    calls = []
+
+    def fake_create_step(workspace, step, eda, *, check_dependency, **kwargs):
+        calls.append({"step": step, "check_dependency": check_dependency, "inputs": kwargs})
+        # Mirror the load_eda_module contract: a missing tool fails the build
+        # only when the dependency check actually runs.
+        if check_dependency and eda == "missing-tool":
+            return None
+        return prebuilt[step]
+
+    monkeypatch.setattr(tools, "create_step", fake_create_step)
+
+    flow.create_step_workspaces(executable_steps={"floorplan"})
+
+    assert [call["check_dependency"] for call in calls] == [False, True]
+    successor_inputs = calls[1]["inputs"]
+    assert successor_inputs["input_def"] == predecessor_output.def_
+    assert successor_inputs["input_verilog"] == predecessor_output.verilog
+    assert successor_inputs["input_db"] == predecessor_output.db
+    assert [step.name for step in flow.workspace_steps] == ["syn", "floorplan"]
+    assert all(
+        step.get("state") != StateEnum.Imcomplete.value
+        for step in flow.workspace.flow.data["steps"]
+    )
+
+
 # --- Phase 2: Silent failure regression tests ---
 
 
@@ -249,11 +530,12 @@ class TestStepExceptionForcesIncomplete:
         assert state == StateEnum.Imcomplete
 
     def test_no_exception_uses_file_check(self, monkeypatch, tmp_path):
-        workspace = Workspace()
-        workspace.flow.data = {
+        (tmp_path / "home").mkdir(exist_ok=True)
+        workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "home" / "flow.json"))
+        engine_flow = EngineFlow(workspace)
+        engine_flow.workspace.flow.data = {
             "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
         }
-        engine_flow = EngineFlow(workspace)
         workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)

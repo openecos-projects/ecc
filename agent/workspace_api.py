@@ -3,6 +3,7 @@ import shutil
 from hashlib import sha256
 from pathlib import Path
 
+from chipcompiler.data import StateEnum
 from chipcompiler.runtime.requests import WorkspaceIdRequest
 from chipcompiler.runtime.workspace_api import (
     RuntimeApiError,
@@ -262,8 +263,40 @@ def _clear_candidate_artifact_dir(workspace_root: Path, directory: Path, step_na
 
 
 def _run_candidate_step(flow, step) -> None:
+    from chipcompiler.runtime.log_stream import archive_own_step_logs
+
     _init_db_engine_for_workspace_step(flow, step)
-    state = flow.run_step(step, rerun=True)
+    # In-process execution is still executor+client in one process: route the
+    # own fd-2 stream through the reader so markers are consumed and the
+    # step's bytes land in its archive (echoed to the real stderr).
+    reader = None
+    try:
+        with archive_own_step_logs(flow.workspace.directory) as active_reader:
+            reader = active_reader
+            state = flow.run_step(step, rerun=True)
+    except BaseException:
+        # A step raising after its begin marker (post-processing, the end
+        # write) leaves the reader holding an active step while flow.json may
+        # already say Success; reconcile before propagating.
+        if reader is not None and (
+            reader.state.error is not None or reader.state.active_step is not None
+        ):
+            flow.set_state(step.name, step.tool, StateEnum.Imcomplete)
+        raise
+    # An archive failure or unmatched begin must not report success while the
+    # step's log is missing; downgrade so a later rerun rebuilds it. A None
+    # reader means an outer client owns the stream (passthrough) — nothing to
+    # reconcile here.
+    if reader is not None and (
+        reader.state.error is not None or reader.state.active_step is not None
+    ):
+        # set_state owns the authoritative save; a failed save is logged there.
+        flow.set_state(step.name, step.tool, StateEnum.Imcomplete)
+        raise RuntimeApiError(
+            "command_failed",
+            f"candidate rerun step {step.name} log archival failed: "
+            f"{reader.state.error or 'unmatched begin marker'}",
+        )
     if _state_value(state) != "Success":
         raise RuntimeApiError(
             "command_failed",

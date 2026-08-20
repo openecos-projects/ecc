@@ -1,9 +1,18 @@
 import contextlib
 import os
-import shlex
 import shutil
 import sys
 
+from chipcompiler.cli.command_handlers.workspace_run import (  # noqa: F401
+    _load_valid_steps,
+    _make_run_operation,
+    _preflight_selected_tools,
+    _read_flow_data,
+    _run_flow_via_worker,
+    _run_worker_calls,
+    _run_workspace,
+    _workspace_run_outcome,
+)
 from chipcompiler.cli.core.inputs import CheckInput, InitInput, RunInput
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
@@ -185,6 +194,15 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     real_base = os.path.realpath(anchor)
     real = os.path.realpath(path)
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
+
+
+def _worker_binary_missing_error() -> str | None:
+    from chipcompiler.runtime.worker_operation import _default_worker_argv
+
+    argv = _default_worker_argv()
+    if not os.path.isfile(argv[0]):
+        return f"worker binary not found: {argv[0]}"
+    return None
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
@@ -425,22 +443,32 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         )
 
         if should_enable_run_progress(ctx, sys.stderr):
-            flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+            op_result = run_flow_with_progress(
+                run_dir,
+                ctx,
+                project,
+                sys.stderr,
+                run_operation=lambda **callbacks: _run_flow_via_worker(run_dir, **callbacks),
+            )
         else:
-            flow_ok = engine_flow.run_steps()
+            op_result = _run_flow_via_worker(run_dir)
+        flow_ok = op_result.success
 
         if not flow_ok:
-            return CommandResult.err(
-                [
-                    {
-                        "run": run_name,
-                        "status": "failed",
-                        "workspace": run_dir,
-                        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                        "log": disclosure_cmd("ecc log", project, ctx.run_id),
-                    }
-                ]
-            )
+            error_record = {
+                "run": run_name,
+                "status": "failed",
+                "workspace": run_dir,
+                "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+                "log": disclosure_cmd("ecc log", project, ctx.run_id),
+            }
+            if op_result.error:
+                error_record["error"] = op_result.error
+            if op_result.exit_code is not None:
+                error_record["exit_code"] = op_result.exit_code
+            if op_result.repaired_steps:
+                error_record["repaired_steps"] = op_result.repaired_steps
+            return CommandResult.err([error_record])
     except Exception as exc:
         return CommandResult.err(
             [
@@ -465,84 +493,3 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             }
         ]
     )
-
-
-def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResult:
-    def error(kind: str, **fields) -> CommandResult:
-        return CommandResult.err([{"kind": "error", "error": kind, **fields}])
-
-    if ctx.project is not None or command_input.project.run_id is not None:
-        return error("project_workspace_conflict")
-    if command_input.overwrite:
-        return error("overwrite_requires_project")
-    if command_input.param_set:
-        return error("set_requires_project")
-    selectors = sum(
-        (
-            command_input.resume,
-            command_input.from_step is not None,
-            command_input.only is not None,
-        )
-    )
-    if selectors > 1:
-        return error("selector_conflict")
-    if command_input.force and command_input.only is None:
-        return error("force_requires_only")
-
-    from chipcompiler.data import load_workspace
-    from chipcompiler.engine import EngineFlow, rerun
-
-    workspace_path = os.path.abspath(os.path.expanduser(command_input.workspace))
-    try:
-        workspace = load_workspace(workspace_path)
-    except Exception as exc:
-        return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
-    if workspace is None:
-        return error("invalid_workspace", workspace=workspace_path)
-
-    try:
-        engine_flow = EngineFlow(workspace=workspace)
-    except Exception as exc:
-        return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
-    if not engine_flow.has_init():
-        return error("missing_flow", workspace=workspace_path)
-
-    try:
-        selected = rerun.selected_step_names(
-            engine_flow,
-            from_step=command_input.from_step,
-            only=command_input.only,
-            force=command_input.force,
-        )
-    except ValueError as exc:
-        return error("unknown_step", workspace=workspace_path, reason=str(exc))
-
-    from chipcompiler.cli.rendering.progress import preserve_cli_stdio
-
-    try:
-        with preserve_cli_stdio():
-            if selected:
-                engine_flow.create_step_workspaces(executable_steps=set(selected))
-            if command_input.only is not None:
-                result = rerun.run_only(engine_flow, command_input.only, force=command_input.force)
-            elif command_input.from_step is not None:
-                result = rerun.run_from(engine_flow, command_input.from_step)
-            else:
-                result = rerun.run_resume(engine_flow)
-    except ValueError as exc:
-        return error("step_unavailable", workspace=workspace_path, reason=str(exc))
-    except Exception as exc:
-        return error("flow_failed", workspace=workspace_path, reason=str(exc))
-
-    record = {
-        "run": "workspace",
-        "status": "success" if result.ok else "failed",
-        "workspace": workspace_path,
-        "executed_steps": list(result.executed),
-        "no_op": result.ok and not result.executed,
-    }
-    if result.ok:
-        return CommandResult.ok([record])
-    record["failed_step"] = result.failed
-    record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_path)} --resume"
-    return CommandResult.err([record])

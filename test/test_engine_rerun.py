@@ -128,6 +128,135 @@ class TestRunFrom:
         assert not stale_place.exists()
         assert not stale_cts.exists()
 
+    def test_direct_run_self_archives_step_bytes(self, monkeypatch, tmp_path, capfd):
+        """In-process rerun routes fd 1/2 through the archiver: step bytes land
+        in the step log and markers never reach the caller's terminal."""
+        import os
+
+        from chipcompiler.runtime.log_stream import emit_step_marker
+
+        flow = _make_run_flow(tmp_path, [("place", "Success"), ("CTS", "Unstart")])
+        _write_output(flow, "place")
+
+        def run_step_with_bytes(workspace_step, *, rerun=False):
+            emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+            os.write(2, f"{workspace_step.name} bytes\n".encode())
+            emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
+            flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Success)
+            return StateEnum.Success
+
+        monkeypatch.setattr(flow, "run_step", run_step_with_bytes)
+        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
+
+        result = rerun.run_from(flow, "place")
+
+        assert result.ok
+        archive = tmp_path / "place_ecc" / "log" / "place.log"
+        assert archive.read_bytes() == b"place bytes\n"
+        assert "ECC-STEP" not in capfd.readouterr().err
+
+    def test_archive_failure_fails_and_downgrades_the_record(self, monkeypatch, tmp_path, capfd):
+        """An in-process archive failure must not leave ok=True over a Success
+        record with a missing log."""
+        import os
+
+        from chipcompiler.runtime.log_stream import emit_step_marker
+
+        flow = _make_run_flow(tmp_path, [("place", "Success")])
+        _write_output(flow, "place")
+
+        def run_step_with_markers(workspace_step, *, rerun=False):
+            emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+            os.write(2, b"bytes\n")
+            emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
+            flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Success)
+            return StateEnum.Success
+
+        monkeypatch.setattr(flow, "run_step", run_step_with_markers)
+        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
+
+        # Make the archive path unopenable: a regular file where the step's
+        # log directory must be created (the output dir stays intact).
+        (tmp_path / "place_ecc" / "log").write_text("regular file")
+
+        result = rerun.run_from(flow, "place")
+
+        assert result.ok is False
+        assert result.failed == "place"
+        assert _flow_states(flow) == [StateEnum.Imcomplete.value]
+        assert "ECC-STEP" not in capfd.readouterr().err
+
+    def test_archive_downgrade_save_failure_does_not_pretend(self, monkeypatch, tmp_path, capfd):
+        """When the downgrade cannot persist, the disk record honestly keeps
+        Success while the operation reports failure — no fake repair."""
+        import os
+
+        from chipcompiler.runtime.log_stream import emit_step_marker
+
+        flow = _make_run_flow(tmp_path, [("place", "Success")])
+        _write_output(flow, "place")
+
+        def run_step_with_markers(workspace_step, *, rerun=False):
+            emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+            os.write(2, b"bytes\n")
+            emit_step_marker("end", step=workspace_step.name, tool=workspace_step.tool)
+            flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Success)
+            return StateEnum.Success
+
+        monkeypatch.setattr(flow, "run_step", run_step_with_markers)
+        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
+
+        # The archive cannot open (regular file at the log path), and the
+        # downgrade save fails too — but the invalidation save must succeed.
+        (tmp_path / "place_ecc" / "log").write_text("regular file")
+        real_save = flow.save
+
+        def save_fails_on_downgrade():
+            states = [s.get("state") for s in flow.workspace.flow.data.get("steps", [])]
+            if StateEnum.Imcomplete.value in states:
+                return False
+            return real_save()
+
+        monkeypatch.setattr(flow, "save", save_fails_on_downgrade)
+
+        result = rerun.run_from(flow, "place")
+
+        assert result.ok is False
+        assert result.failed == "place"
+        # In memory the downgrade happened; on disk the record honestly keeps
+        # Success (the failed save is logged, not hidden).
+        assert _flow_states(flow) == [StateEnum.Imcomplete.value]
+        persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
+        assert persisted["steps"][0]["state"] == "Success"
+
+    def test_step_exception_reconciles_archive_before_propagating(
+        self, monkeypatch, tmp_path, capfd
+    ):
+        """A run_step that raises after its begin marker still reconciles the
+        reader state before the exception propagates."""
+        import os
+
+        from chipcompiler.runtime.log_stream import emit_step_marker
+
+        flow = _make_run_flow(tmp_path, [("place", "Success")])
+        _write_output(flow, "place")
+
+        def raising_run_step(workspace_step, *, rerun=False):
+            emit_step_marker("begin", step=workspace_step.name, tool=workspace_step.tool)
+            os.write(2, b"partial output\n")
+            raise RuntimeError("post-processing blew up")
+
+        monkeypatch.setattr(flow, "run_step", raising_run_step)
+        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
+
+        with pytest.raises(RuntimeError, match="post-processing"):
+            rerun.run_from(flow, "place")
+
+        # The unmatched begin downgraded the record instead of leaving a
+        # stale Success over a partial archive.
+        assert _flow_states(flow) == [StateEnum.Imcomplete.value]
+        assert "ECC-STEP" not in capfd.readouterr().err
+
     def test_failure_stops_suffix_and_keeps_downstream_output(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
             tmp_path,

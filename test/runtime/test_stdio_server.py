@@ -112,39 +112,34 @@ def test_stdio_server_stops_after_shutdown_notification_in_buffer():
     assert stdout.getvalue() == b""
 
 
-def test_stdio_server_redirects_print_noise_away_from_protocol_stdout(capfd):
-    server = RuntimeServer()
-    server.dispatcher.add_method("test.noisyPrint", lambda: print("tool output") or {"ok": True})
-    stdin = io.BytesIO(_request("test.noisyPrint", 1))
-    stdout = io.BytesIO()
+def test_rpc_stdio_subprocess_print_noise_stays_on_stderr():
+    """Production path (main) installs StdioIsolation; handler print() goes to stderr."""
+    stdin_data = _request("test.noisy", 1) + _request("rpc.shutdown", 2)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys;"
+            "from chipcompiler.runtime.stdio_isolation import StdioIsolation;"
+            "iso = StdioIsolation(); ps = iso.install();"
+            "from chipcompiler.runtime.server import RuntimeServer;"
+            "from chipcompiler.runtime.stdio_server import run_stdio_server;"
+            "s = RuntimeServer();"
+            "s.dispatcher.add_method('test.noisy', lambda: print('tool output') or {'ok': True});"
+            "rc = run_stdio_server(sys.stdin.buffer, ps, server=s);"
+            "iso.close(); sys.exit(rc)",
+        ],
+        input=stdin_data,
+        capture_output=True,
+        check=False,
+    )
 
-    rc = run_stdio_server(stdin, stdout, server=server)
-
-    captured = capfd.readouterr()
-    assert rc == 0
-    assert captured.out == ""
-    assert "tool output" in captured.err
-    assert _decode_output(stdout.getvalue())[0]["result"] == {"ok": True}
-
-
-def test_stdio_server_redirects_fd_stdout_noise_away_from_protocol_stdout(capfd):
-    server = RuntimeServer()
-
-    def noisy_fd():
-        os.write(1, b"tool output\n")
-        return {"ok": True}
-
-    server.dispatcher.add_method("test.noisyFd", noisy_fd)
-    stdin = io.BytesIO(_request("test.noisyFd", 1))
-    stdout = io.BytesIO()
-
-    rc = run_stdio_server(stdin, stdout, server=server)
-
-    captured = capfd.readouterr()
-    assert rc == 0
-    assert captured.out == ""
-    assert "tool output" in captured.err
-    assert _decode_output(stdout.getvalue())[0]["result"] == {"ok": True}
+    assert completed.returncode == 0
+    responses = _decode_output(completed.stdout)
+    assert len(responses) == 2
+    assert responses[0]["result"] == {"ok": True}
+    assert b"tool output" not in completed.stdout
+    assert b"tool output" in completed.stderr
 
 
 def test_rpc_stdio_subprocess_smoke():

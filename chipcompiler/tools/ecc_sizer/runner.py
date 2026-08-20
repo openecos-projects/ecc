@@ -43,19 +43,15 @@ def run_step(
 
     output_dir = step.data.workdir_for(step.name) or ""
     os.makedirs(output_dir, exist_ok=True)
-    log_path = step.log.file or ""
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
     os.makedirs(os.path.dirname(step.output.def_ or ""), exist_ok=True)
 
     command = get_sizer_command() + ["-env", str(env_path), "-f", str(cmd_path)]
-    with open(log_path, "w", encoding="utf-8") as log_file:
-        result = subprocess.run(
-            command,
-            cwd=str(output_dir),
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            check=False,
-        )
+    result = subprocess.run(
+        command,
+        cwd=str(output_dir),
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
 
     if result.returncode == 0 and _has_required_outputs(step):
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)

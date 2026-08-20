@@ -6,6 +6,7 @@ from chipcompiler.data import (
     get_pdk,
 )
 from chipcompiler.engine import EngineFlow
+from chipcompiler.runtime.log_stream import archive_own_step_logs
 
 # Setup paths
 workspace_dir = "./gcd_workspace"
@@ -85,4 +86,7 @@ if not engine_flow.has_init():
 
 # Create step workspaces and run
 engine_flow.create_step_workspaces()
-engine_flow.run_steps()
+# archive_own_step_logs routes this process's fd 1/2 through the client-side
+# archiver so each step's log file is written and markers stay off the terminal.
+with archive_own_step_logs(workspace_dir):
+    engine_flow.run_steps()
