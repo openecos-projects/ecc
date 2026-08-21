@@ -151,3 +151,26 @@ def test_path_setters_accept_path_and_persist_strings(tmp_path):
     assert data["flow"] == str(flow_path)
     assert data["parameters"] == str(parameters_path)
     assert data["checklist"] == str(checklist_path)
+
+
+def test_reset_clears_run_state_but_preserves_workspace_paths(tmp_path):
+    path = tmp_path / "home.json"
+    home = HomeData()
+    home.init(path)
+    home.set_flow(tmp_path / "flow.json")
+    home.set_parameters(tmp_path / "parameters.json")
+    home.set_checklist(tmp_path / "checklist.json")
+    home.set_layout(tmp_path / "layout.png")
+    home.set_metrics_pin_dist(tmp_path / "pin.png")
+
+    home.reset()
+
+    expected = {
+        "parameters": str(tmp_path / "parameters.json"),
+        "flow": str(tmp_path / "flow.json"),
+        "layout": "",
+        "checklist": str(tmp_path / "checklist.json"),
+        "metrics": {},
+    }
+    assert _read_json(path) == expected
+    assert home.data == expected

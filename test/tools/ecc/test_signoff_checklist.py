@@ -723,3 +723,28 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
     home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
     assert home_items["artifact.postroutelec.result"]["state"] == "pass"
     assert home_items["artifact.postroutelec.result"]["blocked"] is False
+
+
+def test_rebuild_home_checklist_heals_empty_home_checklist_path(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    (tmp_path / "home").mkdir()
+    workspace.home.init(tmp_path / "home" / "home.json")
+    assert workspace.home.data["checklist"] == ""
+
+    data = rebuild_home_checklist(workspace)
+
+    checklist_file = tmp_path / "home" / "checklist.json"
+    assert checklist_file.is_file()
+    persisted = json.loads(checklist_file.read_text(encoding="utf-8"))
+    assert persisted["checklist"] == data["checklist"]
+
+    home_data = json.loads((tmp_path / "home" / "home.json").read_text(encoding="utf-8"))
+    assert home_data["checklist"] == str(checklist_file)
+
+    workspace.home.update_checklist(
+        step="STA", type="Timing", item="check setup timing", state="Passed"
+    )
+    healed = json.loads(checklist_file.read_text(encoding="utf-8"))
+    assert [item["id"] for item in healed["checklist"] if item["step"] == "STA"] == [
+        "sta.check.setup.timing"
+    ]
