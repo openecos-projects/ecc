@@ -5,7 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from agent.requests import CandidateRerunRequest
-from agent.workspace_api import FlowAgentRuntimeApi, _candidate_step_artifact_dirs
+from agent.workspace_api import (
+    FlowAgentRuntimeApi,
+    _candidate_step_artifact_dirs,
+    build_agent_flow_for_workspace,
+)
 from chipcompiler.data import StateEnum
 from chipcompiler.data.workspace.layout import EccOutput
 from chipcompiler.runtime.operations import RuntimeOperationManager
@@ -21,6 +25,36 @@ def test_candidate_artifact_dirs_support_typed_step_outputs(tmp_path):
     )
 
     assert _candidate_step_artifact_dirs(step) == (Path(output_dir), Path(analysis_dir))
+
+
+def test_agent_flow_defaults_to_harden_flow(monkeypatch):
+    class RecordingFlow:
+        def __init__(self, workspace):
+            self.workspace = workspace
+            self.added_steps = []
+
+        def has_init(self):
+            return False
+
+        def add_step(self, step, tool, state):
+            self.added_steps.append((step, tool, state))
+
+        def create_step_workspaces(self):
+            return None
+
+    monkeypatch.setattr("agent.workspace_api.AgentEngineFlow", RecordingFlow)
+    monkeypatch.setattr(
+        "chipcompiler.rtl2gds.build_rtl2gds_flow",
+        lambda: [("rtl2gds", "ecc", "Unstart")],
+    )
+    monkeypatch.setattr(
+        "chipcompiler.rtl2gds.build_harden_flow",
+        lambda: [("Harden", "ecc", "Unstart")],
+    )
+
+    flow = build_agent_flow_for_workspace(SimpleNamespace())
+
+    assert flow.added_steps == [("Harden", "ecc", "Unstart")]
 
 
 def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(

@@ -36,7 +36,7 @@ def build_agent_flow_for_workspace(workspace, *, create_step_workspaces: bool = 
 
     flow = AgentEngineFlow(workspace=workspace)
     if not flow.has_init():
-        for step, tool, state in rtl2gds_api.build_rtl2gds_flow():
+        for step, tool, state in rtl2gds_api.build_harden_flow():
             flow.add_step(step=step, tool=tool, state=state)
     if create_step_workspaces:
         flow.create_step_workspaces()
