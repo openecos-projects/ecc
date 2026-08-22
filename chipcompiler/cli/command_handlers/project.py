@@ -308,6 +308,29 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
+    # Stage declared snapshot params before --overwrite may delete the old run
+    # directory; the workspace parameters point at the staged copies.
+    from chipcompiler.cli.project.snapshots import plan_snapshots
+
+    snapshot_plan, snapshot_errors = plan_snapshots(
+        {**cfg.params_overrides, **cli_overrides}, run_dir
+    )
+    if snapshot_errors:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "invalid_parameter",
+                    "reason": err,
+                }
+                for err in snapshot_errors
+            ]
+        )
+    for key, relative in snapshot_plan.overrides.items():
+        if key in cli_overrides:
+            # Provenance records the effective snapshot used by the run.
+            cli_overrides[key] = relative
+
     if command_input.overwrite and os.path.lexists(run_dir):
         if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
             return CommandResult.err(
@@ -368,8 +391,8 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         )
 
         resolved, _ = resolve_parameters(
-            toml_overrides=cfg.params_overrides,
-            cli_overrides=cli_overrides,
+            toml_overrides={**cfg.params_overrides, **snapshot_plan.overrides},
+            cli_overrides={**cli_overrides, **snapshot_plan.overrides},
         )
         backend_overrides = build_backend_overrides(resolved)
         from chipcompiler.data.parameter import update_parameters
@@ -412,6 +435,25 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     "error": "workspace_failed",
                     "run": run_name,
                     "workspace": run_dir,
+                }
+            ]
+        )
+
+    from chipcompiler.cli.project.snapshots import write_snapshots
+
+    try:
+        write_snapshots(snapshot_plan)
+    except OSError as exc:
+        if owns_target:
+            shutil.rmtree(run_dir, ignore_errors=True)
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "workspace_failed",
+                    "run": run_name,
+                    "workspace": run_dir,
+                    "reason": str(exc),
                 }
             ]
         )

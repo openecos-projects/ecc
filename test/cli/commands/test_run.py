@@ -256,9 +256,12 @@ class TestRunFlowPreset:
         rc = cli_main.run(["run", "--project", project_dir])
 
         assert rc == 0
+        run_dir = os.path.join(project_dir, "runs", "default")
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
-        assert parameters["Synthesis script"] == synth_script
-        assert parameters["Init tech script"] == init_tech_script
+        assert parameters["Synthesis script"] == os.path.join("scripts", "synth_script.tcl")
+        assert parameters["Init tech script"] == os.path.join("scripts", "synth_init_tech.tcl")
+        with open(os.path.join(run_dir, parameters["Synthesis script"])) as f:
+            assert f.read() == "# custom\n"
 
     def test_run_forwards_cli_synth_script_override(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
@@ -269,8 +272,15 @@ class TestRunFlowPreset:
         rc = cli_main.run(["run", "--project", project_dir, "--set", "synth.script=my_synth.tcl"])
 
         assert rc == 0
+        relative = os.path.join("scripts", "synth_script.tcl")
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
-        assert parameters["Synthesis script"] == synth_script
+        assert parameters["Synthesis script"] == relative
+        run_dir = os.path.join(project_dir, "runs", "default")
+        with open(os.path.join(run_dir, relative)) as f:
+            assert f.read() == "# custom\n"
+        provenance = os.path.join(run_dir, "home", "cli-param-overrides.json")
+        with open(provenance) as f:
+            assert json.load(f)["synth.script"] == relative
 
     def test_run_fails_when_cli_synth_script_missing(
         self, tmp_path, capsys, create_cli_project, flow_mocks
@@ -301,7 +311,94 @@ class TestRunFlowPreset:
 
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
-        assert parameters["Synthesis script"] == synth_script
+        assert parameters["Synthesis script"] == os.path.join("scripts", "synth_script.tcl")
+
+    def test_run_overwrite_snapshots_script_inside_run_dir(
+        self, tmp_path, create_cli_project, create_flow_json, flow_mocks
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(run_dir, profile="main")
+        script = os.path.join(run_dir, "custom.tcl")
+        with open(script, "w") as f:
+            f.write("# iteration draft\n")
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--overwrite",
+                "--set",
+                "synth.script=runs/default/custom.tcl",
+            ]
+        )
+
+        assert rc == 0
+        relative = os.path.join("scripts", "synth_script.tcl")
+        with open(os.path.join(run_dir, relative)) as f:
+            assert f.read() == "# iteration draft\n"
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["Synthesis script"] == relative
+
+    def test_run_script_snapshot_does_not_clobber_origin_filelist(
+        self, tmp_path, monkeypatch, create_cli_project
+    ):
+        from chipcompiler.data.pdk import PDK
+
+        project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "scripts"), exist_ok=True)
+        with open(os.path.join(project_dir, "scripts", "synth_script.tcl"), "w") as f:
+            f.write("# rtl-adjacent tcl\n")
+        filelist = os.path.join(project_dir, "synth_script.f")
+        with open(filelist, "w") as f:
+            f.write("rtl/gcd.v\nscripts/synth_script.tcl\n")
+        override = os.path.join(project_dir, "custom.f")
+        with open(override, "w") as f:
+            f.write("# custom synth tcl\n")
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content = content.replace('rtl = ["rtl/gcd.v"]', 'rtl = ["synth_script.f"]')
+        content += '\n[params.synth]\nscript = "custom.f"\n'
+        with open(toml_path, "w") as f:
+            f.write(content)
+
+        class _Flow:
+            def __init__(self, workspace):
+                pass
+
+            def has_init(self):
+                return True
+
+            def create_step_workspaces(self):
+                pass
+
+            def run_steps(self):
+                return True
+
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", _Flow)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        monkeypatch.setattr(
+            "chipcompiler.data.workspace.get_pdk", lambda *args, **kwargs: PDK(name="ics55")
+        )
+
+        rc = cli_main.run(["run", "--project", project_dir])
+
+        assert rc == 0
+        run_dir = os.path.join(project_dir, "runs", "default")
+        with open(os.path.join(run_dir, "origin", "synth_script.f")) as f:
+            assert f.read() == "rtl/gcd.v\nscripts/synth_script.tcl\n"
+        with open(os.path.join(run_dir, "origin", "scripts", "synth_script.tcl")) as f:
+            assert f.read() == "# rtl-adjacent tcl\n"
+        relative = os.path.join("scripts", "synth_script.tcl")
+        with open(os.path.join(run_dir, relative)) as f:
+            assert f.read() == "# custom synth tcl\n"
+        with open(os.path.join(run_dir, "home", "parameters.json")) as f:
+            assert json.load(f)["Synthesis script"] == relative
 
 
 class TestWorkspaceRun:
