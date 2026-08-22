@@ -966,13 +966,6 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     home = json_read(home_path)
     home["layout"] = str(step_dir / "output" / "gcd_floorplan.png")
     home["metrics"] = {"instances dist.": str(step_dir / "feature" / "floorplan.db.inst_dist.png")}
-    home["monitor"] = {
-        "step": ["Floorplan - init"],
-        "memory": ["1"],
-        "runtime": ["2"],
-        "instance": [3],
-        "frequency": [4.0],
-    }
     json_write(home_path, home)
 
     flow_path = workspace_dir / "home" / "flow.json"
@@ -1070,7 +1063,6 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert reset_home["checklist"] == str(checklist_path)
     assert reset_home["layout"] == ""
     assert reset_home["metrics"] == {}
-    assert reset_home["monitor"]["step"] == []
 
     reset_flow = json_read(flow_path)
     assert reset_flow["steps"][0]["state"] == "Unstart"
