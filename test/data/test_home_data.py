@@ -15,12 +15,15 @@ def test_init_writes_complete_schema_for_missing_file(tmp_path):
     home = HomeData()
     home.init(path)
 
-    assert _read_json(path) == {
-        "parameters": "",
-        "flow": "",
-        "layout": "",
-        "checklist": "",
-        "metrics": {},
+    data = _read_json(path)
+    assert data["layout"] == ""
+    assert data["metrics"] == {}
+    assert data["monitor"] == {
+        "step": [],
+        "memory": [],
+        "runtime": [],
+        "instance": [],
+        "frequency": [],
     }
 
 
@@ -39,18 +42,104 @@ def test_init_repairs_partial_home_json_preserving_existing_values(tmp_path):
     home = HomeData()
     home.init(path)
 
-    assert _read_json(path) == {
-        "parameters": "/ws/home/parameters.json",
-        "flow": "/ws/home/flow.json",
-        "layout": "",
-        "checklist": "/ws/home/checklist.json",
-        "metrics": {},
+    data = _read_json(path)
+    assert data["flow"] == "/ws/home/flow.json"
+    assert data["checklist"] == "/ws/home/checklist.json"
+    assert data["parameters"] == "/ws/home/parameters.json"
+    assert data["layout"] == ""
+    assert data["metrics"] == {}
+    assert data["monitor"] == {
+        "step": [],
+        "memory": [],
+        "runtime": [],
+        "instance": [],
+        "frequency": [],
     }
+
+
+def test_update_monitor_repairs_partial_home_json(tmp_path):
+    path = tmp_path / "home.json"
+    path.write_text(json.dumps({"metrics": {}}))
+
+    home = HomeData()
+    home.init(path)
+    home.update_monitor(
+        step="Floorplan",
+        sub_step="place",
+        memory="12M",
+        runtime="3s",
+        instance=42,
+        frequency=100.0,
+    )
+
+    data = _read_json(path)
+    assert data["monitor"]["step"] == ["Floorplan - place"]
+    assert data["monitor"]["memory"] == ["12M"]
+    assert data["monitor"]["runtime"] == ["3s"]
+    assert data["monitor"]["instance"] == [42]
+    assert data["monitor"]["frequency"] == [100.0]
+
+
+def test_update_monitor_repairs_short_monitor_columns_preserving_history(tmp_path):
+    path = tmp_path / "home.json"
+    path.write_text(
+        json.dumps(
+            {
+                "monitor": {
+                    "step": ["Floorplan - place"],
+                    "memory": [],
+                    "runtime": [],
+                    "instance": [],
+                    "frequency": [],
+                }
+            }
+        )
+    )
+
+    home = HomeData()
+    home.init(path)
+    data = _read_json(path)
+    assert data["monitor"]["step"] == ["Floorplan - place"]
+    assert data["monitor"]["memory"] == [""]
+    assert data["monitor"]["runtime"] == [""]
+    assert data["monitor"]["instance"] == [0]
+    assert data["monitor"]["frequency"] == [0.0]
+
+    home.update_monitor(
+        step="Floorplan",
+        sub_step="place",
+        memory="12M",
+        runtime="3s",
+        instance=42,
+        frequency=100.0,
+    )
+
+    data = _read_json(path)
+    assert data["monitor"]["step"] == ["Floorplan - place"]
+    assert data["monitor"]["memory"] == ["12M"]
+    assert data["monitor"]["runtime"] == ["3s"]
+    assert data["monitor"]["instance"] == [42]
+    assert data["monitor"]["frequency"] == [100.0]
+
+
+def test_instances_do_not_share_nested_monitor_lists(tmp_path):
+    first_path = tmp_path / "first.json"
+    second_path = tmp_path / "second.json"
+
+    first = HomeData()
+    first.init(first_path)
+    second = HomeData()
+    second.init(second_path)
+
+    first.update_monitor("Synthesis", "yosys", "10M", "1s")
+
+    assert _read_json(first_path)["monitor"]["step"] == ["Synthesis - yosys"]
+    assert _read_json(second_path)["monitor"]["step"] == []
 
 
 def test_set_metrics_repairs_missing_metrics(tmp_path):
     path = tmp_path / "home.json"
-    path.write_text(json.dumps({}))
+    path.write_text(json.dumps({"monitor": {"step": []}}))
 
     home = HomeData()
     home.init(path)
@@ -58,6 +147,7 @@ def test_set_metrics_repairs_missing_metrics(tmp_path):
 
     data = _read_json(path)
     assert data["metrics"]["pin dist."] == "/tmp/pin.png"
+    assert data["monitor"]["step"] == []
 
 
 def test_setters_do_not_rewrite_healthy_current_values(tmp_path):
@@ -97,16 +187,25 @@ def _set_parameters(path, value):
     home.set_parameters(value)
 
 
-def test_concurrent_home_updates_preserve_schema(tmp_path):
+def _update_monitor(path):
+    home = HomeData()
+    home.init(path)
+    home.update_monitor("Floorplan", "place", "12M", "3s", instance=42, frequency=100.0)
+
+
+def test_concurrent_home_updates_preserve_schema_and_monitor_rows(tmp_path):
     path = tmp_path / "home.json"
     home = HomeData()
     home.init(path)
     home.set_layout(Path("/ws/Floorplan_ecc/output/layout.png"))
     home.set_metrics_pin_dist(Path("/ws/Floorplan_ecc/output/pin.png"))
+    home.update_monitor("Synthesis", "yosys", "10M", "1s", instance=10, frequency=50.0)
+
     processes = [
         Process(target=_set_flow, args=(path, Path("/ws/home/flow.json"))),
         Process(target=_set_checklist, args=(path, Path("/ws/home/checklist.json"))),
         Process(target=_set_parameters, args=(path, Path("/ws/home/parameters.json"))),
+        Process(target=_update_monitor, args=(path,)),
     ]
 
     for process in processes:
@@ -114,10 +213,12 @@ def test_concurrent_home_updates_preserve_schema(tmp_path):
     for process in processes:
         process.join(timeout=10)
 
-    assert [process.exitcode for process in processes] == [0, 0, 0]
+    assert [process.exitcode for process in processes] == [0, 0, 0, 0]
     data = _read_json(path)
     assert data["layout"] == "/ws/Floorplan_ecc/output/layout.png"
     assert data["metrics"]["pin dist."] == "/ws/Floorplan_ecc/output/pin.png"
+    assert data["monitor"]["step"] == ["Synthesis - yosys", "Floorplan - place"]
+    assert data["monitor"]["memory"] == ["10M", "12M"]
     assert data["flow"] == "/ws/home/flow.json"
     assert data["checklist"] == "/ws/home/checklist.json"
     assert data["parameters"] == "/ws/home/parameters.json"

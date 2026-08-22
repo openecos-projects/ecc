@@ -86,7 +86,7 @@ jobs:
           {
             echo '## Coverage Report'
             echo '```'
-            uv run --no-sync coverage report 2>&1 || echo 'Coverage report is unavailable.'
+            uv run --no-sync coverage report
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

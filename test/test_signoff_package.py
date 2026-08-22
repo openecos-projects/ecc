@@ -255,37 +255,6 @@ def test_collect_signoff_package_requires_synthesis_verilog(tmp_path):
     )
 
 
-def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
-    workspace_dir = _make_signoff_workspace(tmp_path)
-    (workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz").unlink()
-    _write(
-        workspace_dir / "origin" / "gcd.v",
-        "module gcd; // original imported RTL\nendmodule\n",
-    )
-    flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
-    flow["steps"].insert(
-        0,
-        {"name": "Floorplan", "tool": "ecc", "state": StateEnum.Success.value},
-    )
-    _write_json(workspace_dir / "home" / "flow.json", flow)
-    engine_flow = _make_engine_flow(workspace_dir)
-    external_rtl = tmp_path / "external" / "gcd.v"
-    _write(external_rtl, "module gcd; // outside the workspace\nendmodule\n")
-    engine_flow.workspace.design.origin_verilog = external_rtl
-
-    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
-
-    assert result.ok is True
-    package_dir = Path(result.package_dir)
-    assert (package_dir / "initial" / "gcd.v").read_text() == (
-        "module gcd; // original imported RTL\nendmodule\n"
-    )
-    assert not (package_dir / "synthesis" / "gcd.v.gz").exists()
-    summary = json.loads((package_dir / "summary.json").read_text())
-    assert summary["initial"]["verilog"] == "initial/gcd.v"
-    assert "synthesis" not in summary
-
-
 def test_collect_signoff_package_tolerates_missing_sta_power_report(tmp_path):
     # Workspaces completed before power collection have no per-corner power.rpt;
     # it is packaged when present but must not be required for export.

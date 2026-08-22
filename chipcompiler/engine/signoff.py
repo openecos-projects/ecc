@@ -199,19 +199,10 @@ class SignoffPackageCollector:
                     )
 
         db_config = self._read_json(config_dir / "db_ecc.json")
-        flow_starts_at_floorplan = self._flow_starts_at_floorplan(flow_data)
-        configured_filelist = (
-            None
-            if flow_starts_at_floorplan
-            else getattr(self.workspace.design, "input_filelist", None)
-        )
+        configured_filelist = getattr(self.workspace.design, "input_filelist", None)
         origin_rtl = resolve_initial_rtl(
             configured_filelist,
-            (
-                None
-                if flow_starts_at_floorplan
-                else getattr(self.workspace.design, "origin_verilog", None)
-            ),
+            getattr(self.workspace.design, "origin_verilog", None),
             workspace_dir / "origin",
         )
         if origin_rtl is not None:
@@ -282,10 +273,8 @@ class SignoffPackageCollector:
             # Like synthesis, a configured input_filelist is always a filelist;
             # runtime-created ones are suffixless (origin/filelist), so the
             # suffix check alone would miss them.
-            is_filelist = (
-                origin_rtl.suffix.lower() in FILELIST_SUFFIXES
-                or origin_rtl.name == "filelist"
-                or (configured_filelist is not None and origin_rtl == Path(configured_filelist))
+            is_filelist = origin_rtl.suffix.lower() in FILELIST_SUFFIXES or (
+                configured_filelist is not None and origin_rtl == Path(configured_filelist)
             )
             if is_filelist:
                 # Workspace creation copies filelist sources into origin/ keeping
@@ -365,14 +354,13 @@ class SignoffPackageCollector:
             required=True,
         )
 
-        if not flow_starts_at_floorplan:
-            synthesis_verilog = self._synthesis_output_verilog()
-            add_file(
-                role="synthesis.verilog",
-                source=synthesis_verilog,
-                destination=f"synthesis/{design}.v.gz",
-                required=True,
-            )
+        synthesis_verilog = self._synthesis_output_verilog()
+        add_file(
+            role="synthesis.verilog",
+            source=synthesis_verilog,
+            destination=f"synthesis/{design}.v.gz",
+            required=True,
+        )
 
         add_file(
             role="final.design.verilog",
@@ -569,6 +557,7 @@ class SignoffPackageCollector:
                 "sdc": f"initial/{design}.sdc",
                 "parameters": "initial/parameters.json",
             },
+            "synthesis": {"verilog": f"synthesis/{design}.v.gz"},
             "config": "config/",
             "harden": {
                 "gds": f"harden/{design}.gds",
@@ -587,8 +576,6 @@ class SignoffPackageCollector:
             "missing_optional": missing_optional,
             "warnings": warnings,
         }
-        if not flow_starts_at_floorplan:
-            summary["synthesis"] = {"verilog": f"synthesis/{design}.v.gz"}
         summary_path = package_dir / "summary.json"
 
         manifest = {
@@ -615,19 +602,13 @@ class SignoffPackageCollector:
             manifest_path.write_text(json.dumps(manifest, indent=2))
 
             readme_path = package_dir / "README.md"
-            input_verilog_description = "- Mapped synthesis netlist is under `synthesis/`.\n"
-            if flow_starts_at_floorplan:
-                input_verilog_description = (
-                    "- Original imported RTL is under `initial/` because this flow "
-                    "starts at Floorplan.\n"
-                )
             readme_path.write_text(
                 f"# {design} Signoff Package\n\n"
-                + f"- Workspace: {workspace_dir.resolve()}\n"
-                + f"- Status: {summary['status']}\n"
-                + input_verilog_description
-                + "- Harden outputs are under `harden/`.\n"
-                + "- Final physical resources are under `final/`.\n"
+                f"- Workspace: {workspace_dir.resolve()}\n"
+                f"- Status: {summary['status']}\n"
+                "- Mapped synthesis netlist is under `synthesis/`.\n"
+                "- Harden outputs are under `harden/`.\n"
+                "- Final physical resources are under `final/`.\n"
             )
 
             if options.archive and (ok or options.allow_incomplete):
@@ -892,20 +873,6 @@ class SignoffPackageCollector:
             if isinstance(step, dict)
         }
         return {step: state_by_step.get(step, "") for step in required}
-
-    def _flow_starts_at_floorplan(self, flow_data: dict) -> bool:
-        """Whether this workspace intentionally omits synthesis before Floorplan."""
-        steps = flow_data.get("steps", [])
-        if not isinstance(steps, list):
-            return False
-        first_step = next(
-            (step for step in steps if isinstance(step, dict) and step.get("name")),
-            None,
-        )
-        return bool(
-            first_step
-            and str(first_step.get("name", "")).strip().lower() == StepEnum.FLOORPLAN.value.lower()
-        )
 
     def _refresh_workspace_analysis(self, workspace_dir: Path) -> list[SignoffPackageIssue]:
         """Rebuild current V3 analysis and checklist snapshots for completed steps."""
