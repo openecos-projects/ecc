@@ -123,7 +123,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         from chipcompiler.cli.project.params import parse_toml_params
 
         flat, param_errors = parse_toml_params(params_raw)
-        cfg.params_overrides = flat
+        cfg.params_overrides = resolve_path_params(flat, project_dir)
         if param_errors:
             cfg._param_errors = param_errors
 
@@ -179,7 +179,10 @@ def _supported_flow_presets() -> set[str]:
     return set(rtl2gds_api.get_flow_builders())
 
 
-def validate_project_config(cfg: ProjectConfig) -> list[str]:
+def validate_project_config(
+    cfg: ProjectConfig, skip_path_params: set[str] | None = None
+) -> list[str]:
+    """Validate ecc.toml; skip_path_params names CLI-replaced params exempt from path checks."""
     if cfg._toml_error:
         return [f"malformed ecc.toml: {cfg._toml_error}"]
 
@@ -190,6 +193,10 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
 
     for pe in cfg._param_errors:
         errors.append(f"invalid params: {pe}")
+
+    skipped = skip_path_params or set()
+    effective_paths = {k: v for k, v in cfg.params_overrides.items() if k not in skipped}
+    errors.extend(path_param_errors(effective_paths))
 
     if not cfg.design_name:
         errors.append("design.name is required")
@@ -290,6 +297,36 @@ def _resolve_path(project_dir: str, path: str) -> str:
     if os.path.isabs(path):
         return path
     return os.path.join(project_dir, path)
+
+
+def resolve_path_params(flat: dict[str, object], base_dir: str) -> dict[str, object]:
+    """Resolve relative values of path-type params against base_dir."""
+    from chipcompiler.cli.project.params import lookup_schema
+
+    resolved = dict(flat)
+    for key, value in resolved.items():
+        schema = lookup_schema(key)
+        if schema and schema.type == "path" and isinstance(value, str) and value:
+            resolved[key] = _resolve_path(base_dir, value)
+    return resolved
+
+
+def path_param_errors(flat: dict[str, object]) -> list[str]:
+    """Return an error for each path-type param value that is not an existing file."""
+    from chipcompiler.cli.project.params import lookup_schema
+
+    errors = []
+    for key, value in flat.items():
+        schema = lookup_schema(key)
+        if (
+            schema
+            and schema.type == "path"
+            and isinstance(value, str)
+            and value
+            and not os.path.isfile(value)
+        ):
+            errors.append(f"{key} path does not exist: {value}")
+    return errors
 
 
 def resolve_pdk_root(cfg: ProjectConfig) -> str:

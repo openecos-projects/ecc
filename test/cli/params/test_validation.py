@@ -177,3 +177,47 @@ class TestMalformedTomlRejected:
         self._write_malformed_toml(project_dir)
         rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
         assert rc == 1
+
+
+class TestSynthScriptPathParam:
+    """[params.synth] script/init_tech are path params resolved against the project dir."""
+
+    def _append_synth_script(self, project_dir, key, value):
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write(f'\n[params.synth]\n{key} = "{value}"\n')
+
+    def test_toml_relative_path_resolved_against_project_dir(self, tmp_path, create_cli_project):
+        project_dir = create_cli_project()
+        script = os.path.join(project_dir, "scripts", "my_synth.tcl")
+        os.makedirs(os.path.dirname(script))
+        with open(script, "w") as f:
+            f.write("# custom synthesis\n")
+        self._append_synth_script(project_dir, "script", "scripts/my_synth.tcl")
+
+        from chipcompiler.cli.project.config import load_project_config
+
+        cfg = load_project_config(os.path.join(project_dir, "ecc.toml"))
+        assert cfg.params_overrides["synth.script"] == script
+
+    def test_check_fails_when_script_missing(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
+        self._append_synth_script(project_dir, "script", "scripts/missing.tcl")
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        reasons = [r.get("reason", "") for r in data["records"]]
+        assert any("synth.script" in r for r in reasons)
+
+    def test_check_accepts_existing_script(self, tmp_path, capsys, monkeypatch, create_cli_project):
+        project_dir = create_cli_project()
+        script = os.path.join(project_dir, "my_synth.tcl")
+        with open(script, "w") as f:
+            f.write("# custom synthesis\n")
+        self._append_synth_script(project_dir, "script", "my_synth.tcl")
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: [],
+        )
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 0
