@@ -1,8 +1,10 @@
 import json
+import re
 import shutil
 from hashlib import sha256
 from pathlib import Path
 
+from chipcompiler.runtime.operations import RuntimeOperationConflict
 from chipcompiler.runtime.requests import WorkspaceIdRequest
 from chipcompiler.runtime.workspace_api import (
     RuntimeApiError,
@@ -90,12 +92,25 @@ class FlowAgentRuntimeApi:
         )
 
     def candidate_rerun(self, request: CandidateRerunRequest) -> dict:
-        return self._with_workspace_lock(
-            request.workspace_id,
-            lambda session: self._candidate_rerun(session, request),
-        )
+        _validate_candidate_rerun_request(request)
+        self.ecc_api._get_session(request.workspace_id)
+        try:
+            return self.ecc_api.operations.start(
+                workspace_id=request.workspace_id,
+                kind="candidate_rerun",
+                origin="agent",
+                rerun=True,
+                step=request.target_step,
+                idempotency_key=request.idempotency_key,
+                runner=lambda observer: self._with_workspace_lock(
+                    request.workspace_id,
+                    lambda session: self._candidate_rerun(session, request, observer),
+                ),
+            )
+        except RuntimeOperationConflict as exc:
+            raise RuntimeApiError("command_failed", str(exc)) from exc
 
-    def _candidate_rerun(self, session, request: CandidateRerunRequest) -> dict:
+    def _candidate_rerun(self, session, request: CandidateRerunRequest, observer) -> dict:
         should_capture = self.ecc_api._should_capture_session_db(session)
         previous_db = session.db_handle if should_capture else None
         if should_capture:
@@ -112,14 +127,16 @@ class FlowAgentRuntimeApi:
             if request.patch:
                 _materialize_candidate_rerun(session.workspace, flow, request)
             _prepare_candidate_rerun(session.workspace, flow, steps)
+            _notify_candidate_rerun_prepared(observer, steps, request)
             if request.patch:
                 _reapply_candidate_input(session.workspace, flow, request.target_step)
             for step in steps:
-                _run_candidate_step(flow, step)
+                _run_candidate_step(flow, step, observer=observer)
             return {
-                "end_step": request.end_step,
-                "execution_scope": request.execution_scope,
-                "target_step": request.target_step,
+                "candidateId": request.candidate_id,
+                "endStep": request.end_step,
+                "executionScope": request.execution_scope,
+                "targetStep": request.target_step,
             }
         finally:
             self._finish_flow(
@@ -182,6 +199,47 @@ def _candidate_rerun_steps(flow, target_step: str, end_step: str, execution_scop
     if end_index < target_index:
         raise RuntimeApiError("invalid_request", "rerun end step precedes the target step")
     return steps[target_index : end_index + 1]
+
+
+_IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+
+
+def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
+    for name in ("workspace_id", "target_step", "end_step", "candidate_id"):
+        value = getattr(request, name)
+        if not isinstance(value, str) or not value.strip():
+            raise RuntimeApiError("invalid_request", f"candidate rerun {name} is invalid")
+    if request.execution_scope != "full_flow":
+        raise RuntimeApiError(
+            "invalid_request", "candidate rerun execution scope must be full_flow"
+        )
+    if not isinstance(request.patch, list) or len(request.patch) != 1:
+        raise RuntimeApiError("invalid_request", "candidate rerun requires exactly one patch item")
+    patch_item = request.patch[0]
+    if not isinstance(patch_item, dict) or set(patch_item) != {"knob_id", "value"}:
+        raise RuntimeApiError(
+            "invalid_request", "candidate rerun patch item must contain only knob_id and value"
+        )
+    if not isinstance(patch_item["knob_id"], str) or not patch_item["knob_id"]:
+        raise RuntimeApiError("invalid_request", "candidate rerun knob_id is invalid")
+    try:
+        json.dumps(patch_item["value"], allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeApiError("invalid_request", "candidate rerun value is not JSON") from exc
+    if not isinstance(request.idempotency_key, str) or not _IDEMPOTENCY_KEY.fullmatch(
+        request.idempotency_key
+    ):
+        raise RuntimeApiError("invalid_request", "candidate rerun idempotency key is invalid")
+
+
+def _notify_candidate_rerun_prepared(observer, steps: list, request: CandidateRerunRequest) -> None:
+    callback = getattr(observer, "on_rerun_prepared", None)
+    if callable(callback):
+        callback(
+            affected_steps=[str(step.name) for step in steps],
+            scope=request.execution_scope,
+            target_step=request.target_step,
+        )
 
 
 def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest) -> None:
@@ -261,9 +319,9 @@ def _clear_candidate_artifact_dir(workspace_root: Path, directory: Path, step_na
     directory.mkdir(parents=True, exist_ok=True)
 
 
-def _run_candidate_step(flow, step) -> None:
+def _run_candidate_step(flow, step, *, observer) -> None:
     _init_db_engine_for_workspace_step(flow, step)
-    state = flow.run_step(step, rerun=True)
+    state = flow.run_step(step, rerun=True, observer=observer)
     if _state_value(state) != "Success":
         raise RuntimeApiError(
             "command_failed",

@@ -33,6 +33,7 @@ class CandidateRerunRequest:
     candidate_id: str
     patch: list[dict[str, Any]]
     execution_scope: str
+    idempotency_key: str
 
 
 _FIELD_ALIASES = {
@@ -42,6 +43,7 @@ _FIELD_ALIASES = {
     "sourceStep": "source_step",
     "candidateId": "candidate_id",
     "executionScope": "execution_scope",
+    "idempotencyKey": "idempotency_key",
 }
 
 

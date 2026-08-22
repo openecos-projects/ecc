@@ -1,10 +1,15 @@
+import threading
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from agent.requests import CandidateRerunRequest
 from agent.workspace_api import FlowAgentRuntimeApi, _candidate_step_artifact_dirs
 from chipcompiler.data import StateEnum
 from chipcompiler.data.workspace.layout import EccOutput
+from chipcompiler.runtime.operations import RuntimeOperationManager
+from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 
 def test_candidate_artifact_dirs_support_typed_step_outputs(tmp_path):
@@ -18,7 +23,9 @@ def test_candidate_artifact_dirs_support_typed_step_outputs(tmp_path):
     assert _candidate_step_artifact_dirs(step) == (Path(output_dir), Path(analysis_dir))
 
 
-def test_candidate_rerun_uses_the_agent_flow_and_replays_its_receipts(monkeypatch, tmp_path):
+def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
+    monkeypatch, tmp_path
+):
     workspace = SimpleNamespace(
         directory=tmp_path,
         flow=SimpleNamespace(
@@ -86,14 +93,29 @@ def test_candidate_rerun_uses_the_agent_flow_and_replays_its_receipts(monkeypatc
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
+            idempotency_key="episode-1.intervention-1",
         )
     )
 
-    assert result == {
-        "target_step": "place",
-        "end_step": "CTS",
-        "execution_scope": "full_flow",
-    }
+    assert result["operationId"].startswith("operation-")
+    assert result["kind"] == "candidate_rerun"
+    assert result["origin"] == "agent"
+    assert result["rerun"] is True
+    assert result["step"] == "place"
+    duplicate = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id="workspace-1",
+            target_step="place",
+            end_step="CTS",
+            candidate_id="candidate-1",
+            patch=[{"knob_id": "place.target_density", "value": 0.6}],
+            execution_scope="full_flow",
+            idempotency_key="episode-1.intervention-1",
+        )
+    )
+    assert duplicate["operationId"] == result["operationId"]
+    assert duplicate["deduplicated"] is True
+    _wait_for_terminal(api.ecc_api.operations, result["operationId"])
     assert calls == [
         ("bind", "place", "Floorplan", "candidate-1"),
         (
@@ -112,9 +134,39 @@ def test_candidate_rerun_uses_the_agent_flow_and_replays_its_receipts(monkeypatc
     assert not list(cts_output.iterdir())
 
 
+def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(tmp_path):
+    workspace = SimpleNamespace(directory=tmp_path)
+    ecc_api = _EccApi(workspace)
+    api = FlowAgentRuntimeApi(ecc_api)
+
+    with pytest.raises(RuntimeApiError, match="exactly one patch item"):
+        api.candidate_rerun(
+            CandidateRerunRequest(
+                workspace_id="workspace-1",
+                target_step="place",
+                end_step="CTS",
+                candidate_id="candidate-1",
+                patch=[
+                    {"knob_id": "place.target_density", "value": 0.6},
+                    {"knob_id": "place.routability_opt", "value": True},
+                ],
+                execution_scope="full_flow",
+                idempotency_key="episode-1.intervention-1",
+            )
+        )
+
+    assert ecc_api.operations.workspace_snapshot("workspace-1")["operations"] == []
+
+
 class _EccApi:
     def __init__(self, workspace):
         self.session = SimpleNamespace(workspace=workspace, db_handle=None)
+        self.events = []
+        self.operations = RuntimeOperationManager(self.events.append)
+
+    def _get_session(self, workspace_id):
+        assert workspace_id == "workspace-1"
+        return self.session
 
     def _with_session_mutation_lock(self, workspace_id, operation):
         assert workspace_id == "workspace-1"
@@ -146,6 +198,20 @@ class _Flow:
     def save(self):
         return True
 
-    def run_step(self, step, *, rerun):
+    def run_step(self, step, *, rerun, observer=None):
         self.run_calls.append((step.name, rerun))
+        if observer is not None:
+            observer.on_step_started(step)
+            observer.on_step_completed(step, StateEnum.Success)
         return StateEnum.Success
+
+
+def _wait_for_terminal(operations, operation_id):
+    deadline = threading.Event()
+    for _ in range(100):
+        status = operations.operation_status(operation_id)
+        if status["state"] in {"succeeded", "failed", "cancelled"}:
+            assert status["state"] == "succeeded"
+            return status
+        deadline.wait(0.01)
+    raise AssertionError("candidate operation did not reach a terminal state")

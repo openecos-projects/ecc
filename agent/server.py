@@ -1,5 +1,6 @@
 from jsonrpcserver import Error
 
+from chipcompiler.runtime.requests import RequestValidationError
 from chipcompiler.runtime.server import ERROR_CODES, RuntimeServer
 from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
 
@@ -34,6 +35,12 @@ class AgentRuntimeServer(RuntimeServer):
             try:
                 request = parse_agent_request_model(spec.request_model, params)
                 return handler(request)
+            except RequestValidationError as exc:
+                return Error(
+                    ERROR_CODES["invalid_request"],
+                    "invalid_request",
+                    {"message": exc.reason},
+                )
             except RuntimeApiError as exc:
                 return Error(
                     ERROR_CODES.get(exc.code, -32000),
