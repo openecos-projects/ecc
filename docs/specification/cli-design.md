@@ -476,6 +476,9 @@ target_density = 0.65
 
 [params.sta]
 max_paths = 1000
+
+[params.synth]
+script = "scripts/my_synthesis.tcl" # optional
 ```
 
 Current validation supports the `ics55` PDK. `flow.run` selects the run
@@ -497,6 +500,19 @@ workspace.
 filelist (`.f`, `.fl`, or `.filelist`) for multi-source RTL designs. If
 `pdk.root` is empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
 `ICS55_PDK_ROOT`.
+
+`[params.synth] script` and `[params.synth] init_tech` are path params that
+replace the bundled yosys scripts: `script` overrides `yosys_synthesis.tcl`,
+`init_tech` overrides `init_tech.tcl`. Relative values resolve against the
+project directory and must name existing files. At run creation the file is
+snapshotted into the run's `scripts/` directory — outside the
+filelist-controlled `origin/` namespace — and the workspace parameters record
+the workspace-relative snapshot path, so later `ecc run --workspace` resumes
+depend neither on the original file nor on the run directory's location. The
+override is then copied into the synthesis step's `script/` directory under
+the canonical name, keeping the bundled script's relative-path contract
+(sourcing `../data/global_var.tcl` and sibling `init_tech.tcl`). `ecc run
+--set synth.script=...` overrides ecc.toml.
 
 ### PDK Field Overrides
 
