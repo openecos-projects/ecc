@@ -8,6 +8,10 @@ from typing import TypeAlias
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
 from chipcompiler.utility.path import path_text, path_texts
 
+# ecc-tools loggers terminate the host process on error by default; embedded in
+# Python they must raise instead so failures surface as Python exceptions.
+os.environ.setdefault("ECC_LOGGER_THROW_ON_ERROR", "1")
+
 # Path arguments to the native-wrapper methods are normalized via path_text(),
 # so they accept a Path, a str, or None (a step group field is Path | None).
 PathArg: TypeAlias = str | Path | None
