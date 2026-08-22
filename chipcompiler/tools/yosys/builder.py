@@ -333,8 +333,24 @@ def build_step_config(workspace: Workspace, step: YosysStep):
     scripts_dir = current_dir / "scripts"
     script_dir = Path(step.script.dir) if step.script.dir else Path(step.directory or "")
 
-    for file in ["yosys_synthesis.tcl", "init_tech.tcl"]:
-        src = scripts_dir / file
+    script_overrides = {
+        "yosys_synthesis.tcl": workspace.parameters.data.get("Synthesis script", ""),
+        "init_tech.tcl": workspace.parameters.data.get("Init tech script", ""),
+    }
+    script_sources = {}
+    for file, override in script_overrides.items():
+        if override:
+            # Run snapshots are persisted workspace-relative; external paths stay absolute.
+            if not os.path.isabs(override):
+                override = os.path.join(str(workspace.directory), override)
+            src = Path(override)
+            if not src.is_file():
+                raise ValueError(f"script override for {file} does not exist: {override}")
+        else:
+            src = scripts_dir / file
+        script_sources[file] = src
+
+    for file, src in script_sources.items():
         if src.exists():
             _copy_writable(src, script_dir / file)
 
