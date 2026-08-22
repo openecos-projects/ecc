@@ -237,6 +237,72 @@ class TestRunFlowPreset:
             "lefs": [os.path.join(str(tmp_path / "ics55"), "IP", "STD_cell", "x.lef")],
         }
 
+    def test_run_forwards_synth_script_overrides(self, tmp_path, create_cli_project, flow_mocks):
+        project_dir = create_cli_project()
+        scripts_dir = os.path.join(project_dir, "scripts")
+        os.makedirs(scripts_dir)
+        synth_script = os.path.join(scripts_dir, "my_synth.tcl")
+        init_tech_script = os.path.join(scripts_dir, "my_init_tech.tcl")
+        for path in (synth_script, init_tech_script):
+            with open(path, "w") as f:
+                f.write("# custom\n")
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write(
+                '\n[params.synth]\nscript = "scripts/my_synth.tcl"\n'
+                'init_tech = "scripts/my_init_tech.tcl"\n'
+            )
+
+        rc = cli_main.run(["run", "--project", project_dir])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["Synthesis script"] == synth_script
+        assert parameters["Init tech script"] == init_tech_script
+
+    def test_run_forwards_cli_synth_script_override(self, tmp_path, create_cli_project, flow_mocks):
+        project_dir = create_cli_project()
+        synth_script = os.path.join(project_dir, "my_synth.tcl")
+        with open(synth_script, "w") as f:
+            f.write("# custom\n")
+
+        rc = cli_main.run(["run", "--project", project_dir, "--set", "synth.script=my_synth.tcl"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["Synthesis script"] == synth_script
+
+    def test_run_fails_when_cli_synth_script_missing(
+        self, tmp_path, capsys, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+
+        rc = cli_main.run(
+            ["run", "--project", project_dir, "--set", "synth.script=nope.tcl", "--json"]
+        )
+
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        reasons = [r.get("reason", "") for r in data["records"]]
+        assert any("synth.script" in r for r in reasons)
+
+    def test_run_cli_synth_script_replaces_missing_toml_path(
+        self, tmp_path, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+        synth_script = os.path.join(project_dir, "my_synth.tcl")
+        with open(synth_script, "w") as f:
+            f.write("# custom\n")
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path, "a") as f:
+            f.write('\n[params.synth]\nscript = "missing.tcl"\n')
+
+        rc = cli_main.run(["run", "--project", project_dir, "--set", "synth.script=my_synth.tcl"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["Synthesis script"] == synth_script
+
 
 class TestWorkspaceRun:
     @pytest.fixture

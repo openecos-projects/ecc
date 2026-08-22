@@ -227,22 +227,10 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    errors = validate_project_config(cfg)
-    if errors:
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "config_error",
-                    "reason": err,
-                }
-                for err in errors
-            ]
-        )
-
     cli_overrides = {}
     raw_sets = command_input.param_set
     if raw_sets:
+        from chipcompiler.cli.project.config import path_param_errors, resolve_path_params
         from chipcompiler.cli.project.params import parse_cli_overrides
 
         cli_overrides, set_errors = parse_cli_overrides(raw_sets)
@@ -257,6 +245,32 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     for err in set_errors
                 ]
             )
+        cli_overrides = resolve_path_params(cli_overrides, project_dir)
+        path_errors = path_param_errors(cli_overrides)
+        if path_errors:
+            return CommandResult.err(
+                [
+                    {
+                        "kind": "error",
+                        "error": "invalid_parameter",
+                        "reason": err,
+                    }
+                    for err in path_errors
+                ]
+            )
+
+    errors = validate_project_config(cfg, skip_path_params=set(cli_overrides))
+    if errors:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "config_error",
+                    "reason": err,
+                }
+                for err in errors
+            ]
+        )
 
     # TODO: Move non-interactive project run preparation/execution into
     # chipcompiler.runtime.project_runner.run_project or
