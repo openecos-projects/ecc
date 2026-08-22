@@ -39,22 +39,8 @@ class TestSchemaRegistry:
             assert key in params, f"Missing key: {key}"
 
     def test_every_record_has_required_metadata(self):
-        required = (
-            "param",
-            "group",
-            "name",
-            "type",
-            "default",
-            "applies",
-            "maps_to",
-            "description",
-        )
         for schema in PARAM_REGISTRY:
-            for field_name in required:
-                val = getattr(schema, field_name, None)
-                assert val is not None and val != "", (
-                    f"{schema.param} missing required field: {field_name}"
-                )
+            assert validate_schema_record(schema) == []
 
     def test_optional_fields_present_when_relevant(self):
         for schema in PARAM_REGISTRY:
@@ -92,6 +78,19 @@ class TestSchemaRegistry:
         )
         errors = validate_schema_record(bad)
         assert len(errors) > 0
+
+    def test_schema_record_empty_maps_to_rejected(self):
+        bad = ParamSchema(
+            param="x",
+            group="x",
+            name="x",
+            type="int",
+            default=0,
+            applies="x",
+            maps_to={},
+            description="x",
+        )
+        assert validate_schema_record(bad) == ["missing required field: maps_to"]
 
     def test_lookup_schema_returns_none_for_unknown(self):
         assert lookup_schema("nonexistent.key") is None

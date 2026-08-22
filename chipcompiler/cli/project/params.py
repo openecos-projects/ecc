@@ -18,6 +18,9 @@ class ParamSchema:
     choices: tuple[str, ...] | None = None
     unit: str | None = None
     example: str | None = None
+    # When set, ecc run snapshots the referenced file into <run>/scripts/ under
+    # this name and the workspace parameters record the workspace-relative path.
+    snapshot: str | None = None
 
 
 PARAM_REGISTRY: tuple[ParamSchema, ...] = (
@@ -80,6 +83,30 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         description="Maximum fanout for netlist optimization",
         range=(1, 200),
         example="16",
+    ),
+    ParamSchema(
+        param="synth.script",
+        group="synth",
+        name="script",
+        type="path",
+        default="",
+        applies="synthesis",
+        maps_to="Synthesis script",
+        description="External yosys synthesis TCL script overriding the bundled one",
+        example="scripts/my_synthesis.tcl",
+        snapshot="synth_script.tcl",
+    ),
+    ParamSchema(
+        param="synth.init_tech",
+        group="synth",
+        name="init_tech",
+        type="path",
+        default="",
+        applies="synthesis",
+        maps_to="Init tech script",
+        description="External tech-init TCL script overriding the bundled init_tech.tcl",
+        example="scripts/my_init_tech.tcl",
+        snapshot="synth_init_tech.tcl",
     ),
     ParamSchema(
         param="place.target_density",
@@ -213,8 +240,12 @@ def is_known_key(key: str) -> bool:
 
 
 def validate_schema_record(schema: ParamSchema) -> list[str]:
+    # A default only needs to be present: 0, "" or False are legitimate defaults.
+    # Other fields must be non-empty.
     return [
-        f"missing required field: {f}" for f in _REQUIRED_FIELDS if not getattr(schema, f, None)
+        f"missing required field: {f}"
+        for f in _REQUIRED_FIELDS
+        if (val := getattr(schema, f, None)) is None or (f != "default" and not val)
     ]
 
 
@@ -246,7 +277,7 @@ def parse_value(raw: str, schema: ParamSchema) -> object:
             return False
         raise ValueError(f"expected bool for {schema.param}, got '{raw}'")
 
-    if ptype == "str":
+    if ptype in ("str", "path"):
         return raw
 
     if ptype in ("list[int]", "list[float]", "list[str]"):
@@ -328,10 +359,10 @@ def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str
                 return False, None
         return value, f"expected bool for {key}, got {type(value).__name__}"
 
-    if ptype == "str":
+    if ptype in ("str", "path"):
         if isinstance(value, str):
             return value, None
-        return value, f"expected str for {key}, got {type(value).__name__}"
+        return value, f"expected {ptype} for {key}, got {type(value).__name__}"
 
     if ptype == "list[int]":
         if not isinstance(value, list):
