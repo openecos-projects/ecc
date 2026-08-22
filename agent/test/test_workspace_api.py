@@ -1,13 +1,16 @@
+import json
 import threading
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from agent.data.candidate_artifacts import sha256_path
 from agent.requests import CandidateRerunRequest
 from agent.workspace_api import (
     FlowAgentRuntimeApi,
     _candidate_step_artifact_dirs,
+    _reject_workspace_symlinks,
     build_agent_flow_for_workspace,
 )
 from chipcompiler.data import StateEnum
@@ -60,40 +63,58 @@ def test_agent_flow_defaults_to_harden_flow(monkeypatch):
 def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     monkeypatch, tmp_path
 ):
+    flow_data = {
+        "steps": [
+            {"name": "Floorplan", "tool": "ecc", "state": "Success"},
+            {"name": "place", "tool": "dreamplace", "state": "Success"},
+            {"name": "CTS", "tool": "ecc", "state": "Success"},
+        ]
+    }
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
+    parent_flow_bytes = flow_path.read_bytes()
+    config_path = tmp_path / "config" / "dreamplace.json"
+    config_path.parent.mkdir()
+    config_path.write_text('{"target_density": 0.5}\n', encoding="utf-8")
     workspace = SimpleNamespace(
         directory=tmp_path,
-        flow=SimpleNamespace(
-            data={
-                "steps": [
-                    {"name": "Floorplan", "tool": "ecc", "state": "Success"},
-                    {"name": "place", "tool": "dreamplace", "state": "Success"},
-                    {"name": "CTS", "tool": "ecc", "state": "Success"},
-                ]
-            }
-        ),
+        flow=SimpleNamespace(data=flow_data, path=flow_path),
     )
-    place_output = tmp_path / "place_dreamplace" / "output"
-    place_analysis = tmp_path / "place_dreamplace" / "analysis"
-    cts_output = tmp_path / "CTS_ecc" / "output"
-    for directory in (place_output, place_analysis, cts_output):
+    for directory in (
+        tmp_path / "place_dreamplace" / "output",
+        tmp_path / "place_dreamplace" / "analysis",
+        tmp_path / "CTS_ecc" / "output",
+    ):
         directory.mkdir(parents=True)
         (directory / "stale").write_text("stale", encoding="utf-8")
-    flow = _Flow(
-        workspace,
-        (
-            SimpleNamespace(name="Floorplan", tool="ecc", output={}),
-            SimpleNamespace(
-                name="place",
-                tool="dreamplace",
-                output=EccOutput(dir=place_output),
-                analysis={"dir": place_analysis},
-            ),
-            SimpleNamespace(name="CTS", tool="ecc", output={"dir": cts_output}),
-        ),
-    )
     api = FlowAgentRuntimeApi(_EccApi(workspace))
     calls = []
-    monkeypatch.setattr("agent.workspace_api.build_agent_flow_for_workspace", lambda _ws: flow)
+    flows = []
+
+    def build_flow(candidate_workspace):
+        root = Path(candidate_workspace.directory)
+        flow = _Flow(
+            candidate_workspace,
+            (
+                SimpleNamespace(name="Floorplan", tool="ecc", output={}),
+                SimpleNamespace(
+                    name="place",
+                    tool="dreamplace",
+                    output=EccOutput(dir=root / "place_dreamplace" / "output"),
+                    analysis={"dir": root / "place_dreamplace" / "analysis"},
+                ),
+                SimpleNamespace(
+                    name="CTS",
+                    tool="ecc",
+                    output={"dir": root / "CTS_ecc" / "output"},
+                ),
+            ),
+        )
+        flows.append(flow)
+        return flow
+
+    monkeypatch.setattr("agent.workspace_api.build_agent_flow_for_workspace", build_flow)
     monkeypatch.setattr(
         "agent.workspace_api.bind_candidate_input",
         lambda _ws, _flow, target, source, candidate: calls.append(
@@ -102,8 +123,11 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     )
     monkeypatch.setattr(
         "agent.workspace_api.materialize_candidate_config",
-        lambda _ws, target, patch, candidate: calls.append(
-            ("materialize", target, patch, candidate)
+        lambda candidate_workspace, target, patch, candidate: (
+            (Path(candidate_workspace.directory) / "config" / "dreamplace.json").write_text(
+                '{"target_density": 0.6}\n', encoding="utf-8"
+            ),
+            calls.append(("materialize", target, patch, candidate)),
         ),
     )
     monkeypatch.setattr(
@@ -149,7 +173,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     )
     assert duplicate["operationId"] == result["operationId"]
     assert duplicate["deduplicated"] is True
-    _wait_for_terminal(api.ecc_api.operations, result["operationId"])
+    terminal = _wait_for_terminal(api.ecc_api.operations, result["operationId"])
     assert calls == [
         ("bind", "place", "Floorplan", "candidate-1"),
         (
@@ -162,10 +186,36 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         ("init", "place"),
         ("init", "CTS"),
     ]
-    assert flow.run_calls == [("place", True), ("CTS", True)]
-    assert not list(place_output.iterdir())
-    assert not list(place_analysis.iterdir())
-    assert not list(cts_output.iterdir())
+    candidate_root = tmp_path / ".agent" / "candidates" / "candidate-1"
+    candidate_root_ref = ".agent/candidates/candidate-1"
+    candidate_manifest_ref = f"{candidate_root_ref}/analysis/candidate_workspace.v1.json"
+    assert flows[0].run_calls == [("place", True), ("CTS", True)]
+    assert flow_path.read_bytes() == parent_flow_bytes
+    assert config_path.read_text(encoding="utf-8") == '{"target_density": 0.5}\n'
+    assert (tmp_path / "place_dreamplace" / "output" / "stale").is_file()
+    assert (tmp_path / "place_dreamplace" / "analysis" / "stale").is_file()
+    assert (tmp_path / "CTS_ecc" / "output" / "stale").is_file()
+    assert (candidate_root / "config" / "dreamplace.json").read_text(encoding="utf-8") == (
+        '{"target_density": 0.6}\n'
+    )
+    assert not list((candidate_root / "place_dreamplace" / "output").iterdir())
+    assert not list((candidate_root / "place_dreamplace" / "analysis").iterdir())
+    assert not list((candidate_root / "CTS_ecc" / "output").iterdir())
+    candidate_manifest = candidate_root / "analysis" / "candidate_workspace.v1.json"
+    result = terminal["result"]
+    assert {key: value for key, value in result.items() if key != "candidateManifestSha256"} == {
+        "candidateId": "candidate-1",
+        "candidateManifestRef": candidate_manifest_ref,
+        "candidateRootRef": candidate_root_ref,
+        "endStep": "CTS",
+        "executionScope": "full_flow",
+        "targetStep": "place",
+    }
+    assert candidate_manifest.is_file()
+    assert result["candidateManifestSha256"] == sha256_path(candidate_manifest)
+    assert (
+        json.loads(candidate_manifest.read_text(encoding="utf-8"))["candidate_id"] == "candidate-1"
+    )
 
 
 def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(tmp_path):
@@ -192,6 +242,86 @@ def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(t
     assert ecc_api.operations.workspace_snapshot("workspace-1")["operations"] == []
 
 
+def test_candidate_rerun_rejects_unsafe_candidate_id_before_starting_an_operation(tmp_path):
+    ecc_api = _EccApi(SimpleNamespace(directory=tmp_path))
+    api = FlowAgentRuntimeApi(ecc_api)
+
+    with pytest.raises(RuntimeApiError, match="candidate_id"):
+        api.candidate_rerun(
+            CandidateRerunRequest(
+                workspace_id="workspace-1",
+                target_step="place",
+                end_step="CTS",
+                candidate_id="../escape",
+                patch=[{"knob_id": "place.target_density", "value": 0.6}],
+                execution_scope="full_flow",
+                idempotency_key="episode-1.intervention-1",
+            )
+        )
+
+    assert ecc_api.operations.workspace_snapshot("workspace-1")["operations"] == []
+
+
+def test_candidate_rerun_rejects_parent_workspace_symlinks(tmp_path):
+    target = tmp_path / "outside"
+    target.mkdir()
+    (tmp_path / "unsafe-link").symlink_to(target, target_is_directory=True)
+    ecc_api = _EccApi(SimpleNamespace(directory=tmp_path))
+    api = FlowAgentRuntimeApi(ecc_api)
+
+    operation = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id="workspace-1",
+            target_step="place",
+            end_step="CTS",
+            candidate_id="candidate-1",
+            patch=[{"knob_id": "place.target_density", "value": 0.6}],
+            execution_scope="full_flow",
+            idempotency_key="episode-1.intervention-1",
+        )
+    )
+
+    terminal = _wait_for_terminal(api.ecc_api.operations, operation["operationId"], "failed")
+    assert "symbolic link" in terminal["error"]["message"]
+    assert not (tmp_path / ".agent").exists()
+
+
+def test_candidate_snapshot_ignores_prior_candidate_symlinks(tmp_path):
+    candidate_dir = tmp_path / ".agent" / "candidates" / "old-candidate"
+    candidate_dir.mkdir(parents=True)
+    (candidate_dir / "tool-link").symlink_to(tmp_path, target_is_directory=True)
+
+    _reject_workspace_symlinks(tmp_path)
+
+
+def test_candidate_rerun_removes_partial_clone_on_copy_failure(monkeypatch, tmp_path):
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / "flow.json").write_text('{"steps": []}', encoding="utf-8")
+    ecc_api = _EccApi(SimpleNamespace(directory=tmp_path))
+    api = FlowAgentRuntimeApi(ecc_api)
+
+    def fail_copy(*_args, **_kwargs):
+        raise OSError("copy failed")
+
+    monkeypatch.setattr("agent.workspace_api.shutil.copytree", fail_copy)
+
+    operation = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id="workspace-1",
+            target_step="place",
+            end_step="CTS",
+            candidate_id="candidate-1",
+            patch=[{"knob_id": "place.target_density", "value": 0.6}],
+            execution_scope="full_flow",
+            idempotency_key="episode-1.intervention-1",
+        )
+    )
+
+    terminal = _wait_for_terminal(api.ecc_api.operations, operation["operationId"], "failed")
+    assert "candidate workspace clone failed" in terminal["error"]["message"]
+    assert not (tmp_path / ".agent" / "candidates" / "candidate-1").exists()
+
+
 class _EccApi:
     def __init__(self, workspace):
         self.session = SimpleNamespace(workspace=workspace, db_handle=None)
@@ -201,6 +331,16 @@ class _EccApi:
     def _get_session(self, workspace_id):
         assert workspace_id == "workspace-1"
         return self.session
+
+    def _load_workspace(self, directory):
+        root = Path(directory)
+        flow_path = root / "home" / "flow.json"
+        return SimpleNamespace(
+            directory=root,
+            flow=SimpleNamespace(
+                data=json.loads(flow_path.read_text(encoding="utf-8")), path=flow_path
+            ),
+        )
 
     def _with_session_mutation_lock(self, workspace_id, operation):
         assert workspace_id == "workspace-1"
@@ -230,6 +370,7 @@ class _Flow:
         )
 
     def save(self):
+        self.workspace.flow.path.write_text(json.dumps(self.workspace.flow.data), encoding="utf-8")
         return True
 
     def run_step(self, step, *, rerun, observer=None):
@@ -240,12 +381,12 @@ class _Flow:
         return StateEnum.Success
 
 
-def _wait_for_terminal(operations, operation_id):
+def _wait_for_terminal(operations, operation_id, expected_state="succeeded"):
     deadline = threading.Event()
     for _ in range(100):
         status = operations.operation_status(operation_id)
         if status["state"] in {"succeeded", "failed", "cancelled"}:
-            assert status["state"] == "succeeded"
+            assert status["state"] == expected_state
             return status
         deadline.wait(0.01)
     raise AssertionError("candidate operation did not reach a terminal state")

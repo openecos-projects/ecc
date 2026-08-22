@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import shutil
 from hashlib import sha256
@@ -22,6 +23,7 @@ from .data import (
     reapply_candidate_input_binding,
     validate_candidate_step_contract,
 )
+from .data.candidate_artifacts import sha256_path, validate_candidate_id, write_json_atomic
 from .engine import AgentEngineFlow
 from .requests import (
     CandidateBindInputRequest,
@@ -111,12 +113,10 @@ class FlowAgentRuntimeApi:
             raise RuntimeApiError("command_failed", str(exc)) from exc
 
     def _candidate_rerun(self, session, request: CandidateRerunRequest, observer) -> dict:
-        should_capture = self.ecc_api._should_capture_session_db(session)
-        previous_db = session.db_handle if should_capture else None
-        if should_capture:
-            self.ecc_api._release_session_db(session)
-            previous_db = None
-        flow = self._build_flow(session)
+        candidate_workspace, candidate_root_ref, parent_flow_sha256 = _create_candidate_workspace(
+            self.ecc_api, session.workspace, request.candidate_id
+        )
+        flow = self._build_flow(candidate_workspace)
         try:
             steps = _candidate_rerun_steps(
                 flow,
@@ -125,36 +125,31 @@ class FlowAgentRuntimeApi:
                 request.execution_scope,
             )
             if request.patch:
-                _materialize_candidate_rerun(session.workspace, flow, request)
-            _prepare_candidate_rerun(session.workspace, flow, steps)
+                _materialize_candidate_rerun(candidate_workspace, flow, request)
+            _prepare_candidate_rerun(candidate_workspace, flow, steps)
             _notify_candidate_rerun_prepared(observer, steps, request)
             if request.patch:
-                _reapply_candidate_input(session.workspace, flow, request.target_step)
+                _reapply_candidate_input(candidate_workspace, flow, request.target_step)
             for step in steps:
                 _run_candidate_step(flow, step, observer=observer)
             return {
                 "candidateId": request.candidate_id,
+                **_candidate_workspace_receipt(
+                    candidate_workspace,
+                    candidate_root_ref,
+                    request.candidate_id,
+                    parent_flow_sha256,
+                ),
                 "endStep": request.end_step,
                 "executionScope": request.execution_scope,
                 "targetStep": request.target_step,
             }
         finally:
-            self._finish_flow(
-                session,
-                flow,
-                should_capture=should_capture,
-                previous_db=previous_db,
-            )
-
-    def _build_flow(self, session):
-        flow = build_agent_flow_for_workspace(session.workspace)
-        return flow
-
-    def _finish_flow(self, session, flow, *, should_capture: bool, previous_db) -> None:
-        if should_capture:
-            self.ecc_api._capture_flow_db(session, flow, previous_handle=previous_db)
-        else:
             self.ecc_api._close_transient_flow_db(flow)
+
+    def _build_flow(self, workspace):
+        flow = build_agent_flow_for_workspace(workspace)
+        return flow
 
     def _with_workspace_lock(self, workspace_id: str, operation):
         return self.ecc_api._with_session_mutation_lock(workspace_id, operation)
@@ -209,6 +204,10 @@ def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
         value = getattr(request, name)
         if not isinstance(value, str) or not value.strip():
             raise RuntimeApiError("invalid_request", f"candidate rerun {name} is invalid")
+    try:
+        validate_candidate_id(request.candidate_id)
+    except ValueError as exc:
+        raise RuntimeApiError("invalid_request", "candidate rerun candidate_id is invalid") from exc
     if request.execution_scope != "full_flow":
         raise RuntimeApiError(
             "invalid_request", "candidate rerun execution scope must be full_flow"
@@ -240,6 +239,107 @@ def _notify_candidate_rerun_prepared(observer, steps: list, request: CandidateRe
             scope=request.execution_scope,
             target_step=request.target_step,
         )
+
+
+_CANDIDATE_WORKSPACE_SCHEMA = "ecc.workspace.candidate_workspace.v1"
+_CANDIDATE_WORKSPACE_MANIFEST = "candidate_workspace.v1.json"
+
+
+def _create_candidate_workspace(ecc_api, workspace, candidate_id: str):
+    parent_root = _parent_workspace_root(workspace)
+    _reject_workspace_symlinks(parent_root)
+    candidate_root = _candidate_workspace_root(parent_root, candidate_id)
+    parent_flow_sha256 = _required_file_sha256(parent_root / "home" / "flow.json", "flow")
+    candidate_root.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        candidate_root.parent.resolve().relative_to(parent_root)
+    except ValueError as exc:
+        raise RuntimeApiError(
+            "command_failed", "candidate workspace root escaped its parent"
+        ) from exc
+    if candidate_root.exists() or candidate_root.is_symlink():
+        raise RuntimeApiError("command_failed", "candidate workspace already exists")
+    try:
+        shutil.copytree(parent_root, candidate_root, ignore=shutil.ignore_patterns(".agent"))
+    except OSError as exc:
+        _remove_failed_candidate_workspace(candidate_root)
+        raise RuntimeApiError("command_failed", f"candidate workspace clone failed: {exc}") from exc
+    candidate_workspace = ecc_api._load_workspace(str(candidate_root))
+    if Path(candidate_workspace.directory).resolve() != candidate_root:
+        raise RuntimeApiError("command_failed", "candidate workspace load escaped its root")
+    return (
+        candidate_workspace,
+        candidate_root.relative_to(parent_root).as_posix(),
+        parent_flow_sha256,
+    )
+
+
+def _parent_workspace_root(workspace) -> Path:
+    directory = Path(workspace.directory).expanduser()
+    if directory.is_symlink() or not directory.is_dir():
+        raise RuntimeApiError("command_failed", "candidate parent workspace is invalid")
+    return directory.resolve()
+
+
+def _reject_workspace_symlinks(workspace_root: Path) -> None:
+    for directory, directories, files in os.walk(workspace_root, followlinks=False):
+        for name in directories + files:
+            if (Path(directory) / name).is_symlink():
+                raise RuntimeApiError(
+                    "command_failed", "candidate parent workspace has a symbolic link"
+                )
+        if Path(directory) == workspace_root:
+            directories[:] = [name for name in directories if name != ".agent"]
+
+
+def _candidate_workspace_root(parent_root: Path, candidate_id: str) -> Path:
+    try:
+        validate_candidate_id(candidate_id)
+    except ValueError as exc:
+        raise RuntimeApiError("invalid_request", "candidate rerun candidate_id is invalid") from exc
+    root = parent_root / ".agent" / "candidates" / candidate_id
+    if root.exists() or root.is_symlink():
+        raise RuntimeApiError("command_failed", "candidate workspace already exists")
+    return root
+
+
+def _required_file_sha256(path: Path, label: str) -> str:
+    if path.is_symlink() or not path.is_file() or (digest := sha256_path(path)) is None:
+        raise RuntimeApiError("command_failed", f"candidate {label} is missing or unsafe")
+    return digest
+
+
+def _remove_failed_candidate_workspace(candidate_root: Path) -> None:
+    if candidate_root.is_dir() and not candidate_root.is_symlink():
+        shutil.rmtree(candidate_root)
+
+
+def _candidate_workspace_receipt(
+    workspace, candidate_root_ref: str, candidate_id: str, parent_flow_sha256: str
+) -> dict:
+    candidate_root = Path(workspace.directory).resolve()
+    manifest_path = candidate_root / "analysis" / _CANDIDATE_WORKSPACE_MANIFEST
+    if manifest_path.parent.is_symlink():
+        raise RuntimeApiError("command_failed", "candidate manifest path is unsafe")
+    candidate_flow_sha256 = _required_file_sha256(candidate_root / "home" / "flow.json", "flow")
+    manifest = {
+        "schema": _CANDIDATE_WORKSPACE_SCHEMA,
+        "schema_version": 1,
+        "candidate_id": candidate_id,
+        "candidate_root_ref": candidate_root_ref,
+        "parent_flow_sha256": parent_flow_sha256,
+        "candidate_flow_sha256": candidate_flow_sha256,
+    }
+    try:
+        write_json_atomic(manifest_path, manifest)
+    except OSError as exc:
+        raise RuntimeApiError("command_failed", f"candidate manifest write failed: {exc}") from exc
+    manifest_sha256 = _required_file_sha256(manifest_path, "manifest")
+    return {
+        "candidateRootRef": candidate_root_ref,
+        "candidateManifestRef": f"{candidate_root_ref}/analysis/{_CANDIDATE_WORKSPACE_MANIFEST}",
+        "candidateManifestSha256": manifest_sha256,
+    }
 
 
 def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest) -> None:
