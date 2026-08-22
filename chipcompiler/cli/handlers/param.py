@@ -137,6 +137,22 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
             exit_code=1,
         )
 
+    if schema.type == "path" and isinstance(value, str) and value:
+        from chipcompiler.cli.project.config import path_param_errors, resolve_path_params
+
+        path_errors = path_param_errors(resolve_path_params({key: value}, ctx.project_dir))
+        if path_errors:
+            return CommandResult.err(
+                [
+                    error_record(
+                        "invalid_value",
+                        param=key,
+                        reason=path_errors[0],
+                    )
+                ],
+                exit_code=1,
+            )
+
     config_path = _find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err(

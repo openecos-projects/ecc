@@ -98,6 +98,34 @@ class TestParamSet:
         rc = cli_main.run(["param", "set", "bogus.key", "5", "--project", project_dir])
         assert rc == 1
 
+    def test_param_set_rejects_missing_path(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
+        rc = cli_main.run(
+            ["param", "set", "synth.script", "nope.tcl", "--project", project_dir, "--json"]
+        )
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert "synth.script" in data["records"][0].get("reason", "")
+
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            assert "synth" not in f.read()
+
+    def test_param_set_writes_existing_path_as_spelled(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
+        script = os.path.join(project_dir, "my_synth.tcl")
+        with open(script, "w") as f:
+            f.write("# custom\n")
+
+        rc = cli_main.run(
+            ["param", "set", "synth.script", "my_synth.tcl", "--project", project_dir]
+        )
+        assert rc == 0
+
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            assert 'script = "my_synth.tcl"' in f.read()
+
     def test_param_set_rejects_invalid_value(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         rc = cli_main.run(["param", "set", "place.target_density", "1.5", "--project", project_dir])
