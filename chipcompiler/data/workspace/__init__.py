@@ -397,6 +397,11 @@ PARAMETER_CONFIG_FIELD_MAPPINGS = (
         ("max_fanout",),
     ),
     WorkspaceConfigParameterMapping(
+        "Max fanout",
+        StepEnum.CTS.value,
+        ("max_fanout",),
+    ),
+    WorkspaceConfigParameterMapping(
         "Bottom layer",
         "db",
         ("LayerSettings", "routing_layer_1st"),
@@ -733,8 +738,9 @@ def refresh_workspace_config(workspace: Workspace) -> None:
             f"Netlist opt config missing or corrupt: "
             f"{workspace.config[f'{StepEnum.NETLIST_OPT.value}']}"
         )
+    max_fanout = workspace.parameters.data.get("Max fanout", 32)
     fixfanout["insert_buffer"] = workspace.pdk.buffers[0] if len(workspace.pdk.buffers) > 0 else ""
-    fixfanout["max_fanout"] = workspace.parameters.data.get("Max fanout", 32)
+    fixfanout["max_fanout"] = max_fanout
     json_write(workspace.config[f"{StepEnum.NETLIST_OPT.value}"], fixfanout)
 
     filler_path = workspace.config[f"{StepEnum.FILLER.value}"]
@@ -754,6 +760,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
             f"CTS config missing or corrupt: {workspace.config[f'{StepEnum.CTS.value}']}"
         )
     cts["buffer_type"] = workspace.pdk.buffers
+    cts["max_fanout"] = max_fanout
     json_write(workspace.config[f"{StepEnum.CTS.value}"], cts)
 
     router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])

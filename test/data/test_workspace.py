@@ -77,7 +77,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
         origin_def="",
         origin_verilog=rtl_path,
         pdk="ics55",
-        parameters=default_ics55_parameters,
+        parameters={**default_ics55_parameters, "Max fanout": 37},
         pdk_root=pdk_root,
     )
 
@@ -100,6 +100,10 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     flow_config = json_read(workspace.config["flow"])
     assert flow_config["ConfigPath"]["idb_path"] == str(workspace.config["db"])
     assert isinstance(flow_config["ConfigPath"]["idb_path"], str)
+
+    cts = json_read(workspace.config[StepEnum.CTS.value])
+    assert cts["max_fanout"] == 37
+    assert cts["buffer_type"] == workspace.pdk.buffers
 
 
 def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
@@ -724,6 +728,10 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     params["Routability opt flag"] = 0
     json_write(parameter_path, params)
 
+    cts = json_read(workspace.config[StepEnum.CTS.value])
+    cts["skew_bound"] = "0.13"
+    json_write(workspace.config[StepEnum.CTS.value], cts)
+
     refresh_workspace_config(workspace)
 
     fixfanout = json_read(workspace.config["fixFanout"])
@@ -731,9 +739,13 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     db = json_read(workspace.config["db"])
     floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
     routing = json_read(workspace.config["route"])
+    cts = json_read(workspace.config[StepEnum.CTS.value])
     dreamplace = json_read(workspace.config["dreamplace"])
 
     assert fixfanout["max_fanout"] == 91
+    assert cts["max_fanout"] == 91
+    assert cts["buffer_type"] == workspace.pdk.buffers
+    assert cts["skew_bound"] == "0.13"
     assert filler == {"-min_filler_width": 1}
     assert db["LayerSettings"]["routing_layer_1st"] == "MET3"
     assert routing["RT"]["-bottom_routing_layer"] == "MET3"
@@ -835,6 +847,31 @@ def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshe
     assert params["Bottom layer"] == "MET4"
     assert params["Top layer"] == "MET7"
     assert db["LayerSettings"]["routing_layer_1st"] == "MET4"
+
+
+def test_sync_workspace_config_to_parameters_propagates_cts_max_fanout(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_cts_max_fanout",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    cts_path = workspace.config[StepEnum.CTS.value]
+    cts = json_read(cts_path)
+    cts["max_fanout"] = 48
+    json_write(cts_path, cts)
+
+    assert sync_workspace_config_to_parameters(workspace, cts_path) is True
+    refresh_workspace_config(workspace)
+
+    parameters = json_read(workspace_dir / "home" / "parameters.json")
+    fixfanout = json_read(workspace.config[StepEnum.NETLIST_OPT.value])
+    cts = json_read(cts_path)
+    assert parameters["Max fanout"] == 48
+    assert fixfanout["max_fanout"] == 48
+    assert cts["max_fanout"] == 48
 
 
 def test_sync_workspace_config_to_parameters_preserves_routability_flag_string_coercion(
