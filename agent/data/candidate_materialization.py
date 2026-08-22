@@ -1,6 +1,7 @@
 """Controlled, replayable config overlays for isolated ECC candidate workspaces."""
 
 import math
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -40,8 +41,10 @@ def materialize_candidate_config(
     normalized_patch = _normalize_patch(patch)
     knobs = _resolve_knobs(target_step, normalized_patch, workspace)
     configs, config_paths, before_hashes = _load_configs(workspace, knobs)
+    before_configs = deepcopy(configs)
     _apply_patch(configs, knobs, normalized_patch)
     after_hashes = _write_configs(workspace, configs, config_paths)
+    snapshots = _write_config_snapshots(workspace, candidate_id, before_configs, configs)
     receipt = _build_receipt(
         workspace,
         target_step,
@@ -51,6 +54,7 @@ def materialize_candidate_config(
         config_paths,
         before_hashes,
         after_hashes,
+        snapshots,
     )
     write_json_atomic(_receipt_path(workspace), receipt)
     return receipt
@@ -69,8 +73,15 @@ def reapply_materialized_candidate_config(
     normalized_patch = receipt["patch"]
     knobs = _resolve_knobs(target_step, normalized_patch, workspace)
     configs, config_paths, before_hashes = _load_configs(workspace, knobs)
+    before_configs = deepcopy(configs)
     _apply_patch(configs, knobs, normalized_patch)
     after_hashes = _write_configs(workspace, configs, config_paths)
+    snapshots = _write_config_snapshots(
+        workspace,
+        receipt["candidate_id"],
+        before_configs,
+        configs,
+    )
     updated = _build_receipt(
         workspace,
         target_step,
@@ -80,6 +91,7 @@ def reapply_materialized_candidate_config(
         config_paths,
         before_hashes,
         after_hashes,
+        snapshots,
     )
     write_json_atomic(receipt_path, updated)
     return updated
@@ -311,6 +323,41 @@ def _write_configs(
     return hashes
 
 
+def _write_config_snapshots(
+    workspace: Any,
+    candidate_id: str,
+    before_configs: dict[str, dict[str, Any]],
+    after_configs: dict[str, dict[str, Any]],
+) -> list[dict[str, str]]:
+    snapshots: list[dict[str, str]] = []
+    for config_key in sorted(after_configs):
+        before_path = _snapshot_path(workspace, candidate_id, config_key, "before")
+        after_path = _snapshot_path(workspace, candidate_id, config_key, "after")
+        write_json_atomic(before_path, before_configs[config_key])
+        write_json_atomic(after_path, after_configs[config_key])
+        before_sha256 = sha256_path(before_path)
+        after_sha256 = sha256_path(after_path)
+        if before_sha256 is None or after_sha256 is None:
+            raise CandidateMaterializationError("failed to write candidate config snapshots")
+        snapshots.append(
+            {
+                "config_key": config_key,
+                "before_ref": workspace_relative_ref(workspace.directory, before_path),
+                "before_sha256": before_sha256,
+                "after_ref": workspace_relative_ref(workspace.directory, after_path),
+                "after_sha256": after_sha256,
+            }
+        )
+    return snapshots
+
+
+def _snapshot_path(workspace: Any, candidate_id: str, config_key: str, state: str) -> Path:
+    return workspace_analysis_path(
+        workspace.directory,
+        f"candidate_config_snapshots.v1/{candidate_id}/{config_key}.{state}.json",
+    )
+
+
 def _build_receipt(
     workspace: Any,
     target_step: str,
@@ -320,6 +367,7 @@ def _build_receipt(
     config_paths: dict[str, Path],
     before_hashes: dict[str, str],
     after_hashes: dict[str, str],
+    snapshots: list[dict[str, str]],
 ) -> dict[str, Any]:
     configs = [
         {
@@ -340,6 +388,7 @@ def _build_receipt(
         "patch": patch,
         "patch_sha256": sha256_bytes(canonical_json_bytes(patch)),
         "configs": configs,
+        "snapshots": snapshots,
     }
     receipt["receipt_sha256"] = _receipt_digest(receipt)
     return receipt
@@ -367,6 +416,8 @@ def validate_materialized_candidate_config(workspace: Any, target_step: str) -> 
         return None
     _require_candidate_target_backend(workspace, target_step)
     _verify_materialized_config_hashes(workspace, receipt["configs"])
+    if snapshots := receipt.get("snapshots"):
+        _verify_config_snapshot_hashes(workspace, snapshots)
     return receipt["candidate_id"]
 
 
@@ -407,6 +458,9 @@ def _read_receipt(path: Path) -> dict[str, Any]:
     if receipt.get("receipt_sha256") != _receipt_digest(receipt):
         raise CandidateMaterializationError("candidate materialization receipt hash is invalid")
     _validate_config_receipts(receipt.get("configs"))
+    snapshots = receipt.get("snapshots")
+    if snapshots is not None:
+        _validate_snapshot_receipts(snapshots)
     receipt["candidate_id"] = candidate_id
     return receipt
 
@@ -435,6 +489,31 @@ def _validate_config_receipts(configs: Any) -> None:
             raise CandidateMaterializationError("candidate materialization config hash is invalid")
 
 
+def _validate_snapshot_receipts(snapshots: Any) -> None:
+    if not isinstance(snapshots, list) or not snapshots:
+        raise CandidateMaterializationError("candidate config snapshots are invalid")
+    for entry in snapshots:
+        if not isinstance(entry, dict) or set(entry) != {
+            "config_key",
+            "before_ref",
+            "before_sha256",
+            "after_ref",
+            "after_sha256",
+        }:
+            raise CandidateMaterializationError("candidate config snapshot receipt is invalid")
+        if not isinstance(entry["config_key"], str) or not entry["config_key"]:
+            raise CandidateMaterializationError("candidate config snapshot key is invalid")
+        if not all(
+            isinstance(entry[key], str) and entry[key] for key in ("before_ref", "after_ref")
+        ):
+            raise CandidateMaterializationError("candidate config snapshot ref is invalid")
+        if not all(
+            isinstance(entry[key], str) and entry[key].startswith("sha256:")
+            for key in ("before_sha256", "after_sha256")
+        ):
+            raise CandidateMaterializationError("candidate config snapshot hash is invalid")
+
+
 def _verify_materialized_config_hashes(workspace: Any, configs: list[dict[str, Any]]) -> None:
     root = Path(workspace.directory).expanduser().resolve()
     for entry in configs:
@@ -447,6 +526,22 @@ def _verify_materialized_config_hashes(workspace: Any, configs: list[dict[str, A
             ) from error
         if relative != entry["ref"] or sha256_path(path) != entry["after_sha256"]:
             raise CandidateMaterializationError("materialized candidate config drift")
+
+
+def _verify_config_snapshot_hashes(workspace: Any, snapshots: list[dict[str, str]]) -> None:
+    root = Path(workspace.directory).expanduser().resolve()
+    for entry in snapshots:
+        for state in ("before", "after"):
+            ref = entry[f"{state}_ref"]
+            path = (root / ref).resolve()
+            try:
+                relative = workspace_relative_ref(root, path)
+            except ValueError as error:
+                raise CandidateMaterializationError(
+                    "candidate config snapshot ref escapes workspace"
+                ) from error
+            if relative != ref or sha256_path(path) != entry[f"{state}_sha256"]:
+                raise CandidateMaterializationError("candidate config snapshot drift")
 
 
 def _receipt_digest(receipt: dict[str, Any]) -> str:

@@ -205,6 +205,40 @@ def test_materialize_legalization_overlay_targets_real_dreamplace_config(tmp_pat
     assert receipt["configs"][0]["ref"] == "config/dreamplace_ecc.json"
 
 
+def test_materialization_preserves_complete_before_and_after_config_snapshots(tmp_path):
+    workspace = _workspace(tmp_path)
+
+    receipt = materialize_candidate_config(
+        workspace,
+        "place",
+        [{"knob_id": "place.target_density", "value": 0.7}],
+        candidate_id="place-candidate",
+    )
+
+    snapshot = receipt["snapshots"][0]
+    before = _read_json(tmp_path / snapshot["before_ref"])
+    after = _read_json(tmp_path / snapshot["after_ref"])
+
+    assert snapshot["config_key"] == "dreamplace"
+    assert before["target_density"] == 0.8
+    assert after["target_density"] == 0.7
+    assert snapshot["after_sha256"] == _sha256(workspace.config["dreamplace"])
+
+
+def test_materialized_candidate_rejects_tampered_config_snapshot(tmp_path):
+    workspace = _workspace(tmp_path)
+    receipt = materialize_candidate_config(
+        workspace,
+        "place",
+        [{"knob_id": "place.target_density", "value": 0.7}],
+        candidate_id="place-candidate",
+    )
+    (tmp_path / receipt["snapshots"][0]["after_ref"]).write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(CandidateMaterializationError, match="config snapshot drift"):
+        validate_materialized_candidate_config(workspace, "place")
+
+
 @pytest.mark.parametrize(
     ("target_step", "patch", "config_key", "path", "reset_value", "expected"),
     [
