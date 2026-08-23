@@ -636,6 +636,7 @@ splitnets -format __v -ports
 opt_clean -purge
 
 # reports
+stat -top $top_design {*}$liberty_args
 tee -q -o "${synth_stat_json}" stat -json -top $top_design {*}$liberty_args
 tee -q -o "${synth_check_rpt}" check -mapped
 
