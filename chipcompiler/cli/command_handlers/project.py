@@ -44,7 +44,6 @@ def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
     os.makedirs(project_dir, exist_ok=True)
     os.makedirs(os.path.join(project_dir, "rtl"), exist_ok=True)
     os.makedirs(os.path.join(project_dir, "constraints"), exist_ok=True)
-    os.makedirs(os.path.join(project_dir, "runs"), exist_ok=True)
 
     default_toml = """[design]
 name = "{name}"

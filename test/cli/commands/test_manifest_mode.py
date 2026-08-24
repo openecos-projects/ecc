@@ -191,3 +191,32 @@ class TestLegacyHint:
         records = _records(capsys)
         hint = [r for r in records if r.get("warning") == "legacy_layout_detected"]
         assert len(hint) == 1
+
+
+class TestParamManifestMode:
+    def _manifest_project(self, tmp_path):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        return project_dir
+
+    def test_param_list_requires_ecc_toml(self, tmp_path, capsys):
+        project_dir = self._manifest_project(tmp_path)
+
+        rc = cli_main.run(["param", "list", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "param_requires_ecc_toml"
+
+    def test_param_set_requires_ecc_toml(self, tmp_path, capsys):
+        project_dir = self._manifest_project(tmp_path)
+
+        rc = cli_main.run(
+            ["param", "set", "synth.max_fanout", "16", "--project", str(project_dir), "--json"]
+        )
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "param_requires_ecc_toml"
+        assert not (project_dir / "ecc.toml").exists()

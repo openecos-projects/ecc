@@ -13,7 +13,25 @@ from chipcompiler.cli.project.params import (
 )
 
 
+def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
+    """ecc param operates on ecc.toml; manifest projects have none (yet)."""
+    if ctx.config is None and ctx.project_state == "manifest":
+        return CommandResult.err(
+            [
+                error_record(
+                    "param_requires_ecc_toml",
+                    reason="ecc param requires ecc.toml; project.json projects not supported yet",
+                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                )
+            ]
+        )
+    return None
+
+
 def param_list(args, ctx: CommandContext) -> CommandResult:
+    manifest_error = _manifest_mode_error(ctx)
+    if manifest_error is not None:
+        return manifest_error
     toml_overrides, param_errors = _load_toml_overrides(ctx.project_dir)
     if param_errors:
         return CommandResult.err(
@@ -50,6 +68,9 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
 
 
 def param_show(args, ctx: CommandContext) -> CommandResult:
+    manifest_error = _manifest_mode_error(ctx)
+    if manifest_error is not None:
+        return manifest_error
     key = args.key
     schema = lookup_schema(key)
     if schema is None:
@@ -95,6 +116,9 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
 
 
 def param_set(args, ctx: CommandContext) -> CommandResult:
+    manifest_error = _manifest_mode_error(ctx)
+    if manifest_error is not None:
+        return manifest_error
     key = args.key
     raw_value = args.value
 
@@ -163,6 +187,9 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
 
 
 def param_unset(args, ctx: CommandContext) -> CommandResult:
+    manifest_error = _manifest_mode_error(ctx)
+    if manifest_error is not None:
+        return manifest_error
     key = args.key
 
     schema = lookup_schema(key)
@@ -214,6 +241,9 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
 
 
 def param_diff(args, ctx: CommandContext) -> CommandResult:
+    manifest_error = _manifest_mode_error(ctx)
+    if manifest_error is not None:
+        return manifest_error
     toml_overrides, param_errors = _load_toml_overrides(ctx.project_dir)
     if param_errors:
         return CommandResult.err(
