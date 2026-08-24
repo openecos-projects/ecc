@@ -138,6 +138,8 @@ def reconcile_workspace(
 
         try:
             config = load_workspace_config(workspace_dir)
+        except FileNotFoundError:
+            config = {"_flow": {}}
         except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
             return ReconcileResult(outcome="mismatch", error=f"workspace_config_invalid: {exc}")
         params = {key: value for key, value in config.items() if key != "_flow"}

@@ -490,16 +490,15 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     flow_json = os.path.join(run_dir, "home", "flow.json")
 
     if os.path.exists(flow_json) and not command_input.overwrite:
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "run_exists",
-                    "run": run_name,
-                    "workspace": run_dir,
-                    "overwrite": disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                }
-            ]
+        return _run_existing_workspace(
+            command_input,
+            ctx,
+            cfg,
+            run_dir,
+            run_name,
+            cli_overrides,
+            warning_records,
+            workspace_registered=workspace_registered,
         )
 
     if command_input.overwrite and os.path.lexists(run_dir):
@@ -741,6 +740,158 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(warning_records + success_records)
 
 
+def _run_existing_workspace(
+    command_input,
+    ctx: CommandContext,
+    cfg,
+    run_dir: str,
+    run_name: str,
+    cli_overrides: dict,
+    warning_records: list[dict],
+    *,
+    workspace_registered: bool,
+) -> CommandResult:
+    """Run against an existing workspace: reconcile target vs persisted flow.
+
+    Extends a proper-prefix target, resumes from the first non-Success step,
+    no-ops when everything already succeeded, and fails divergent flows with
+    flow_mismatch before any mutation.
+    """
+    from chipcompiler.cli.core.records import error_record, warning_record
+
+    project = ctx.project
+    project_dir = ctx.project_dir
+
+    if cli_overrides:
+        return CommandResult.err(
+            [
+                error_record(
+                    "set_requires_fresh_run",
+                    run=run_name,
+                    workspace=run_dir,
+                    reason="--set applies only to fresh runs; use --overwrite or a new --run-id",
+                )
+            ]
+        )
+
+    warnings = list(warning_records)
+    if cfg.params_overrides:
+        warnings.append(
+            warning_record(
+                "params_ignored_on_existing_run",
+                reason="[params] in ecc.toml apply only to fresh runs; "
+                "the workspace reuses its persisted home/ecc.toml",
+            )
+        )
+
+    from chipcompiler.data import load_workspace
+
+    workspace = load_workspace(run_dir)
+    if workspace is None:
+        return CommandResult.err(
+            [
+                error_record(
+                    "invalid_workspace",
+                    run=run_name,
+                    workspace=run_dir,
+                )
+            ]
+        )
+
+    from chipcompiler.engine.reconcile import reconcile_workspace
+
+    if getattr(cfg, "_manifest_parameters", None) is not None:
+        # Manifest mode: the workspace's own [flow] is the target; the
+        # manifest's start/end seeded it at creation and is not consulted.
+        target_section = None
+    else:
+        target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
+
+    result = reconcile_workspace(run_dir, target_section)
+    if result.outcome == "mismatch":
+        reason = result.error or "flow_mismatch"
+        if reason.startswith("workspace_config_invalid"):
+            return CommandResult.err(
+                [error_record("workspace_config_invalid", run=run_name, reason=reason)]
+            )
+        return CommandResult.err(
+            [
+                error_record(
+                    "flow_mismatch",
+                    run=run_name,
+                    workspace=run_dir,
+                    reason="the configured flow diverges from the persisted one",
+                    overwrite=disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
+                    hint="use --overwrite to wipe the run, or a new --run-id",
+                )
+            ]
+        )
+
+    from chipcompiler.engine import EngineFlow
+
+    try:
+        engine_flow = EngineFlow(workspace=workspace)
+        flow_ok = True
+        if result.outcome != "no_op":
+            # Re-read the ledger: reconcile may have appended suffix steps
+            # after load_workspace populated the in-memory copy.
+            from chipcompiler.utility import json_read
+
+            flow_data = json_read(workspace.flow.path)
+            executable = {
+                step.get("name")
+                for step in flow_data.get("steps", [])
+                if isinstance(step, dict) and step.get("state") != "Success"
+            }
+            engine_flow.create_step_workspaces(executable_steps=executable)
+
+            from chipcompiler.cli.rendering.progress import (
+                run_flow_with_progress,
+                should_enable_run_progress,
+            )
+
+            if should_enable_run_progress(ctx, sys.stderr):
+                flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+            else:
+                flow_ok = engine_flow.run_steps()
+    except Exception as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "flow_failed",
+                    run=run_name,
+                    workspace=run_dir,
+                    reason=str(exc),
+                )
+            ]
+        )
+
+    if workspace_registered:
+        from chipcompiler.cli.project.manifest import write_back_workspace_status
+
+        write_back_workspace_status(project_dir, run_name, "success" if flow_ok else "failed")
+
+    record = {
+        "run": run_name,
+        "status": "success" if flow_ok else "failed",
+        "workspace": run_dir,
+        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+        "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
+    }
+    if result.outcome == "no_op":
+        record["no_op"] = True
+    if result.appended:
+        record["appended_steps"] = list(result.appended)
+    records = warnings + [record]
+    if ctx.project_state == "legacy":
+        from chipcompiler.cli.core.records import legacy_layout_hint_record
+
+        records.append(legacy_layout_hint_record(project))
+    if not flow_ok:
+        return CommandResult.err(records)
+    return CommandResult.ok(records)
+
+
 def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
@@ -773,6 +924,18 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
         return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
     if workspace is None:
         return error("invalid_workspace", workspace=workspace_path)
+
+    # Extend/resume against the workspace's own persisted flow target before
+    # building the engine flow, so appended steps are visible below.
+    from chipcompiler.engine.reconcile import reconcile_workspace
+
+    reconcile_result = reconcile_workspace(workspace_path)
+    if not reconcile_result.ok:
+        return error(
+            "flow_mismatch",
+            workspace=workspace_path,
+            reason="the workspace flow target diverges from the persisted flow",
+        )
 
     try:
         engine_flow = EngineFlow(workspace=workspace)
