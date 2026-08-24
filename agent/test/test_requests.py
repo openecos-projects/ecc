@@ -38,6 +38,7 @@ def test_agent_request_normalizes_camel_case_fields():
             "patch": [],
             "executionScope": "full_flow",
             "idempotencyKey": "episode-1.intervention-1",
+            "parentCandidateRootRef": ".agent/candidates/candidate-0",
         },
     )
 
@@ -49,6 +50,7 @@ def test_agent_request_normalizes_camel_case_fields():
         patch=[],
         execution_scope="full_flow",
         idempotency_key="episode-1.intervention-1",
+        parent_candidate_root_ref=".agent/candidates/candidate-0",
     )
 
 

@@ -114,7 +114,10 @@ class FlowAgentRuntimeApi:
 
     def _candidate_rerun(self, session, request: CandidateRerunRequest, observer) -> dict:
         candidate_workspace, candidate_root_ref, parent_flow_sha256 = _create_candidate_workspace(
-            self.ecc_api, session.workspace, request.candidate_id
+            self.ecc_api,
+            session.workspace,
+            request.candidate_id,
+            request.parent_candidate_root_ref,
         )
         flow = self._build_flow(candidate_workspace)
         try:
@@ -139,6 +142,7 @@ class FlowAgentRuntimeApi:
                     candidate_root_ref,
                     request.candidate_id,
                     parent_flow_sha256,
+                    request.parent_candidate_root_ref,
                 ),
                 "endStep": request.end_step,
                 "executionScope": request.execution_scope,
@@ -229,6 +233,8 @@ def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
         request.idempotency_key
     ):
         raise RuntimeApiError("invalid_request", "candidate rerun idempotency key is invalid")
+    if request.parent_candidate_root_ref is not None:
+        _validate_parent_candidate_root_ref(request.parent_candidate_root_ref)
 
 
 def _notify_candidate_rerun_prepared(observer, steps: list, request: CandidateRerunRequest) -> None:
@@ -245,14 +251,17 @@ _CANDIDATE_WORKSPACE_SCHEMA = "ecc.workspace.candidate_workspace.v1"
 _CANDIDATE_WORKSPACE_MANIFEST = "candidate_workspace.v1.json"
 
 
-def _create_candidate_workspace(ecc_api, workspace, candidate_id: str):
-    parent_root = _parent_workspace_root(workspace)
-    _reject_workspace_symlinks(parent_root)
-    candidate_root = _candidate_workspace_root(parent_root, candidate_id)
-    parent_flow_sha256 = _required_file_sha256(parent_root / "home" / "flow.json", "flow")
+def _create_candidate_workspace(
+    ecc_api, workspace, candidate_id: str, parent_candidate_root_ref: str | None = None
+):
+    workspace_root = _parent_workspace_root(workspace)
+    source_root = _candidate_parent_root(workspace_root, parent_candidate_root_ref)
+    _reject_workspace_symlinks(source_root)
+    candidate_root = _candidate_workspace_root(workspace_root, candidate_id)
+    parent_flow_sha256 = _required_file_sha256(source_root / "home" / "flow.json", "flow")
     candidate_root.parent.mkdir(parents=True, exist_ok=True)
     try:
-        candidate_root.parent.resolve().relative_to(parent_root)
+        candidate_root.parent.resolve().relative_to(workspace_root)
     except ValueError as exc:
         raise RuntimeApiError(
             "command_failed", "candidate workspace root escaped its parent"
@@ -260,7 +269,7 @@ def _create_candidate_workspace(ecc_api, workspace, candidate_id: str):
     if candidate_root.exists() or candidate_root.is_symlink():
         raise RuntimeApiError("command_failed", "candidate workspace already exists")
     try:
-        shutil.copytree(parent_root, candidate_root, ignore=shutil.ignore_patterns(".agent"))
+        shutil.copytree(source_root, candidate_root, ignore=shutil.ignore_patterns(".agent"))
     except OSError as exc:
         _remove_failed_candidate_workspace(candidate_root)
         raise RuntimeApiError("command_failed", f"candidate workspace clone failed: {exc}") from exc
@@ -269,7 +278,7 @@ def _create_candidate_workspace(ecc_api, workspace, candidate_id: str):
         raise RuntimeApiError("command_failed", "candidate workspace load escaped its root")
     return (
         candidate_workspace,
-        candidate_root.relative_to(parent_root).as_posix(),
+        candidate_root.relative_to(workspace_root).as_posix(),
         parent_flow_sha256,
     )
 
@@ -279,6 +288,35 @@ def _parent_workspace_root(workspace) -> Path:
     if directory.is_symlink() or not directory.is_dir():
         raise RuntimeApiError("command_failed", "candidate parent workspace is invalid")
     return directory.resolve()
+
+
+def _validate_parent_candidate_root_ref(value: object) -> str:
+    if not isinstance(value, str):
+        raise RuntimeApiError(
+            "invalid_request", "candidate rerun parent_candidate_root_ref is invalid"
+        )
+    parts = Path(value).parts
+    if len(parts) != 3 or parts[:2] != (".agent", "candidates"):
+        raise RuntimeApiError(
+            "invalid_request", "candidate rerun parent_candidate_root_ref is invalid"
+        )
+    try:
+        validate_candidate_id(parts[2])
+    except ValueError as exc:
+        raise RuntimeApiError(
+            "invalid_request", "candidate rerun parent_candidate_root_ref is invalid"
+        ) from exc
+    return value
+
+
+def _candidate_parent_root(workspace_root: Path, candidate_root_ref: str | None) -> Path:
+    if candidate_root_ref is None:
+        return workspace_root
+    source = workspace_root / _validate_parent_candidate_root_ref(candidate_root_ref)
+    resolved = source.resolve()
+    if source.is_symlink() or not source.is_dir() or resolved != source.absolute():
+        raise RuntimeApiError("command_failed", "candidate parent workspace is invalid")
+    return resolved
 
 
 def _reject_workspace_symlinks(workspace_root: Path) -> None:
@@ -315,7 +353,11 @@ def _remove_failed_candidate_workspace(candidate_root: Path) -> None:
 
 
 def _candidate_workspace_receipt(
-    workspace, candidate_root_ref: str, candidate_id: str, parent_flow_sha256: str
+    workspace,
+    candidate_root_ref: str,
+    candidate_id: str,
+    parent_flow_sha256: str,
+    parent_candidate_root_ref: str | None,
 ) -> dict:
     candidate_root = Path(workspace.directory).resolve()
     manifest_path = candidate_root / "analysis" / _CANDIDATE_WORKSPACE_MANIFEST
@@ -327,6 +369,7 @@ def _candidate_workspace_receipt(
         "schema_version": 1,
         "candidate_id": candidate_id,
         "candidate_root_ref": candidate_root_ref,
+        "parent_candidate_root_ref": parent_candidate_root_ref,
         "parent_flow_sha256": parent_flow_sha256,
         "candidate_flow_sha256": candidate_flow_sha256,
     }

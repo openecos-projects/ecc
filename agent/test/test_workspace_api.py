@@ -121,15 +121,15 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             ("bind", target, source, candidate)
         ),
     )
-    monkeypatch.setattr(
-        "agent.workspace_api.materialize_candidate_config",
-        lambda candidate_workspace, target, patch, candidate: (
-            (Path(candidate_workspace.directory) / "config" / "dreamplace.json").write_text(
-                '{"target_density": 0.6}\n', encoding="utf-8"
-            ),
-            calls.append(("materialize", target, patch, candidate)),
-        ),
-    )
+
+    def materialize(candidate_workspace, target, patch, candidate):
+        path = Path(candidate_workspace.directory) / "config" / "dreamplace.json"
+        config = json.loads(path.read_text(encoding="utf-8"))
+        config[patch[0]["knob_id"].removeprefix("place.")] = patch[0]["value"]
+        path.write_text(json.dumps(config, sort_keys=True) + "\n", encoding="utf-8")
+        calls.append(("materialize", target, patch, candidate))
+
+    monkeypatch.setattr("agent.workspace_api.materialize_candidate_config", materialize)
     monkeypatch.setattr(
         "agent.workspace_api.validate_candidate_step_contract",
         lambda _ws, _target: "candidate-1",
@@ -217,6 +217,37 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         json.loads(candidate_manifest.read_text(encoding="utf-8"))["candidate_id"] == "candidate-1"
     )
 
+    second = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id="workspace-1",
+            target_step="place",
+            end_step="CTS",
+            candidate_id="candidate-2",
+            patch=[{"knob_id": "place.routability_opt", "value": True}],
+            execution_scope="full_flow",
+            idempotency_key="episode-1.intervention-2",
+            parent_candidate_root_ref=candidate_root_ref,
+        )
+    )
+    _wait_for_terminal(api.ecc_api.operations, second["operationId"])
+    second_config = json.loads(
+        (
+            tmp_path / ".agent" / "candidates" / "candidate-2" / "config" / "dreamplace.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert second_config == {"routability_opt": True, "target_density": 0.6}
+    second_manifest = json.loads(
+        (
+            tmp_path
+            / ".agent"
+            / "candidates"
+            / "candidate-2"
+            / "analysis"
+            / "candidate_workspace.v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert second_manifest["parent_candidate_root_ref"] == candidate_root_ref
+
 
 def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(tmp_path):
     workspace = SimpleNamespace(directory=tmp_path)
@@ -256,6 +287,29 @@ def test_candidate_rerun_rejects_unsafe_candidate_id_before_starting_an_operatio
                 patch=[{"knob_id": "place.target_density", "value": 0.6}],
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
+            )
+        )
+
+    assert ecc_api.operations.workspace_snapshot("workspace-1")["operations"] == []
+
+
+def test_candidate_rerun_rejects_unsafe_parent_candidate_ref_before_starting_an_operation(
+    tmp_path,
+):
+    ecc_api = _EccApi(SimpleNamespace(directory=tmp_path))
+    api = FlowAgentRuntimeApi(ecc_api)
+
+    with pytest.raises(RuntimeApiError, match="parent_candidate_root_ref"):
+        api.candidate_rerun(
+            CandidateRerunRequest(
+                workspace_id="workspace-1",
+                target_step="place",
+                end_step="CTS",
+                candidate_id="candidate-1",
+                patch=[{"knob_id": "place.target_density", "value": 0.6}],
+                execution_scope="full_flow",
+                idempotency_key="episode-1.intervention-1",
+                parent_candidate_root_ref="../outside",
             )
         )
 
