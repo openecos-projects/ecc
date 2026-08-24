@@ -35,7 +35,7 @@ parameters = get_design_parameters("ics55", "gcd")
 # The workspace will be created from scratch, the structure is as follows:
 # gcd_workspace_with_filelist/
 # ├── flow.json       # Flow state file tracking step states and runtime
-# ├── parameters.json # Design parameters file (die size, clock freq, cell names)
+# ├── ecc.toml        # Workspace configuration (die size, clock freq, flow target)
 # ├── CTS_ecc         # Clock Tree Synthesis step workspace
 # │   ├── analysis    # Analysis files extracted from metrics
 # │   ├── config      # Configuration files (JSON configs for ecc)
