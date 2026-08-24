@@ -80,6 +80,63 @@ run = "default"
     )
 
 
+def _check_manifest_project(ctx: CommandContext) -> CommandResult:
+    """`ecc check` for a project.json project (no ecc.toml)."""
+    project = ctx.project
+    if ctx.manifest_error and ctx.manifest_error.startswith("manifest_invalid"):
+        return CommandResult.err(
+            [
+                error_record(
+                    "manifest_invalid",
+                    reason=ctx.manifest_error,
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
+
+    from chipcompiler.cli.project.manifest import load_manifest
+
+    try:
+        manifest = load_manifest(ctx.project_dir)
+    except Exception as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "manifest_invalid",
+                    reason=str(exc),
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
+
+    run_dir_display = ctx.run_dir
+    if _canonically_inside(ctx.run_dir, ctx.project_dir):
+        with contextlib.suppress(ValueError):
+            run_dir_display = os.path.relpath(
+                os.path.realpath(ctx.run_dir), os.path.realpath(ctx.project_dir)
+            )
+
+    records = [
+        {
+            "project": manifest.design_name,
+            "status": "checked",
+            "config": "project.json",
+            "run_dir": run_dir_display,
+            "run": disclosure_cmd("ecc run", project),
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+        }
+    ]
+    if ctx.manifest_error:
+        records.append(
+            {
+                "kind": "warning",
+                "warning": "workspace_not_declared",
+                "reason": ctx.manifest_error,
+            }
+        )
+    return CommandResult.ok(records)
+
+
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project.config import validate_project_config
 
@@ -87,6 +144,8 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 
     cfg = ctx.config
     if cfg is None:
+        if ctx.project_state == "manifest":
+            return _check_manifest_project(ctx)
         return CommandResult.err(
             [
                 error_record(
@@ -142,6 +201,11 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
                 "inspect": disclosure_cmd("ecc check --json", project),
             }
         )
+
+    if ctx.project_state == "legacy":
+        from chipcompiler.cli.core.records import legacy_layout_hint_record
+
+        records.append(legacy_layout_hint_record(project))
 
     return CommandResult.ok(records)
 
@@ -430,17 +494,20 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             flow_ok = engine_flow.run_steps()
 
         if not flow_ok:
-            return CommandResult.err(
-                [
-                    {
-                        "run": run_name,
-                        "status": "failed",
-                        "workspace": run_dir,
-                        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                        "log": disclosure_cmd("ecc log", project, ctx.run_id),
-                    }
-                ]
-            )
+            failure_records = [
+                {
+                    "run": run_name,
+                    "status": "failed",
+                    "workspace": run_dir,
+                    "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+                    "log": disclosure_cmd("ecc log", project, ctx.run_id),
+                }
+            ]
+            if ctx.project_state == "legacy":
+                from chipcompiler.cli.core.records import legacy_layout_hint_record
+
+                failure_records.append(legacy_layout_hint_record(project))
+            return CommandResult.err(failure_records)
     except Exception as exc:
         return CommandResult.err(
             [
@@ -454,17 +521,20 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    return CommandResult.ok(
-        [
-            {
-                "run": run_name,
-                "status": "success",
-                "workspace": run_dir,
-                "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
-            }
-        ]
-    )
+    success_records = [
+        {
+            "run": run_name,
+            "status": "success",
+            "workspace": run_dir,
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+            "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
+        }
+    ]
+    if ctx.project_state == "legacy":
+        from chipcompiler.cli.core.records import legacy_layout_hint_record
+
+        success_records.append(legacy_layout_hint_record(project))
+    return CommandResult.ok(success_records)
 
 
 def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResult:

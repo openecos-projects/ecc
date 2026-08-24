@@ -1,3 +1,4 @@
+import os
 import sys
 from collections.abc import Callable
 from typing import Protocol, TypeVar
@@ -34,22 +35,77 @@ def output_mode(*, json_output: bool, jsonl: bool, plain: bool) -> OutputMode:
     return OutputMode.TEXT
 
 
+def _resolve_manifest_run(
+    project_dir: str, cli_run_id: str | None
+) -> tuple[str, str | None, str | None]:
+    """Resolve the run directory from a project.json manifest.
+
+    Returns (run_dir, run_id, error): exactly one non-archived workspace
+    auto-selects; otherwise --run-id selects by workspace_id or declared
+    path tail. Unknown ids fail with workspace_not_declared (the error text
+    lists the declared ids).
+    """
+    from chipcompiler.cli.project.manifest import load_manifest
+
+    manifest = load_manifest(project_dir)
+    active = manifest.active_workspaces()
+
+    if cli_run_id is None:
+        if len(active) == 1:
+            return active[0].workspace_path, active[0].workspace_id, None
+        ids = ", ".join(w.workspace_id for w in active) or "(none)"
+        return (
+            os.path.join(project_dir, "default"),
+            None,
+            f"workspace_not_declared: --run-id required; declared workspaces: {ids}",
+        )
+
+    match = manifest.find_workspace(cli_run_id)
+    if match is not None:
+        return match.workspace_path, match.workspace_id, None
+    ids = ", ".join(w.workspace_id for w in active) or "(none)"
+    return (
+        os.path.join(project_dir, cli_run_id),
+        cli_run_id,
+        f"workspace_not_declared: unknown workspace {cli_run_id!r}; declared workspaces: {ids}",
+    )
+
+
 def build_context(command_input: CommandInput) -> CommandContext:
     project = command_input.project.project
     project_dir = resolve_project_dir(project)
 
     cli_run_id = command_input.project.run_id
     cfg = load_run_config(project_dir)
-    configured = config_run_id_from(cfg)
-    config_error = None
-    if isinstance(configured, InvalidFlowRun):
-        if cli_run_id is None:
-            config_error = configured.problem
-        configured = None
 
-    run_dir, run_id = resolve_run_dir(
-        project_dir, cli_run_id if cli_run_id is not None else configured
+    from chipcompiler.cli.project.manifest import (
+        ManifestError,
+        classify_project,
     )
+
+    project_state = classify_project(project_dir)
+    config_error = None
+    manifest_error = None
+
+    if project_state == "manifest":
+        # Manifest projects use the manifest workspaces table for discovery
+        # even when an ecc.toml also exists (config values still layer the
+        # ecc.toml above the manifest base).
+        try:
+            run_dir, run_id, manifest_error = _resolve_manifest_run(project_dir, cli_run_id)
+        except ManifestError as exc:
+            run_dir, run_id = os.path.join(project_dir, "default"), cli_run_id
+            manifest_error = f"manifest_invalid: {exc}"
+    else:
+        configured = config_run_id_from(cfg)
+        if isinstance(configured, InvalidFlowRun):
+            if cli_run_id is None:
+                config_error = configured.problem
+            configured = None
+
+        run_dir, run_id = resolve_run_dir(
+            project_dir, cli_run_id if cli_run_id is not None else configured
+        )
 
     mode = output_mode(
         json_output=command_input.output.json,
@@ -65,6 +121,8 @@ def build_context(command_input: CommandInput) -> CommandContext:
         output_mode=mode,
         config_error=config_error,
         config=cfg,
+        project_state=project_state,
+        manifest_error=manifest_error,
     )
 
 

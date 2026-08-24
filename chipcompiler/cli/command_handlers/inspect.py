@@ -27,9 +27,25 @@ def _config_error_result(ctx: CommandContext, reason: str) -> CommandResult:
     )
 
 
+def _manifest_error_result(ctx: CommandContext) -> CommandResult:
+    reason = ctx.manifest_error or ""
+    kind = "manifest_invalid" if reason.startswith("manifest_invalid") else "workspace_not_declared"
+    return CommandResult.err(
+        [
+            error_record(
+                kind,
+                reason=reason,
+                inspect=disclosure_cmd("ecc status", ctx.project, ctx.run_id),
+            )
+        ]
+    )
+
+
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
     if ctx.config_error:
         return _config_error_result(ctx, ctx.config_error)
+    if ctx.manifest_error:
+        return _manifest_error_result(ctx)
 
     from chipcompiler.cli.inspection.discovery import (
         CORRUPT_FLOW_JSON,
@@ -90,12 +106,19 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
             }
         )
 
+    if ctx.project_state == "legacy":
+        from chipcompiler.cli.core.records import legacy_layout_hint_record
+
+        records.append(legacy_layout_hint_record(project))
+
     return CommandResult.ok(records)
 
 
 def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
     if ctx.config_error:
         return _config_error_result(ctx, ctx.config_error)
+    if ctx.manifest_error:
+        return _manifest_error_result(ctx)
 
     from chipcompiler.cli.inspection.discovery import (
         discover_logs,

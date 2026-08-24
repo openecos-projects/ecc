@@ -20,6 +20,9 @@ class CommandContext:
     output_mode: OutputMode
     config_error: str | None = None
     config: ProjectConfig | None = None
+    # project.json manifest state: "manifest" | "legacy" | "virgin" | None
+    project_state: str | None = None
+    manifest_error: str | None = None
 
 
 @dataclass(frozen=True)

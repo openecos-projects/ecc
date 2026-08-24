@@ -218,7 +218,13 @@ class TestRunDirectory:
                 "workspace": run_dir,
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id exp1",
                 "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
-            }
+            },
+            {
+                "kind": "warning",
+                "warning": "legacy_layout_detected",
+                "reason": "this project uses the legacy runs/ layout; run 'ecc migrate' to upgrade",
+                "migrate": f"ecc migrate --project {project_dir} --yes",
+            },
         ]
 
     def test_run_then_status_reads_persisted_named_run(
@@ -276,6 +282,12 @@ class TestRunDirectory:
                 "status": "unstart",
                 "runtime": None,
                 "log_cmd": f"ecc log synthesis --project {project_dir} --run-id exp1",
+            },
+            {
+                "kind": "warning",
+                "warning": "legacy_layout_detected",
+                "reason": "this project uses the legacy runs/ layout; run 'ecc migrate' to upgrade",
+                "migrate": f"ecc migrate --project {project_dir} --yes",
             },
         ]
 
