@@ -9,6 +9,7 @@ from chipcompiler.cli.core.inputs import (
     ConfigInput,
     InitInput,
     LogInput,
+    MigrateInput,
     RunInput,
     StatusInput,
     output_options,
@@ -31,6 +32,9 @@ def register_project_commands(app: typer.Typer) -> None:
     app.command("status", help="Show run and step status")(status_cmd)
     app.command("log", help="Show available logs or step log content")(log_cmd)
     app.command("config", help="Show resolved project or step configuration")(config_cmd)
+    app.command("migrate", help="Migrate a legacy runs/ project to the manifest layout")(
+        migrate_cmd
+    )
 
 
 def init_cmd(
@@ -139,6 +143,25 @@ def log_cmd(
         errors=errors,
     )
     execute_command("log", command_input, inspect_handlers.log)
+
+
+def migrate_cmd(
+    *,
+    project: ProjectOption = None,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", help="Migrate without interactive confirmation"),
+    ] = False,
+    json_output: JsonOption = False,
+    jsonl: JsonlOption = False,
+    plain: PlainOption = False,
+) -> None:
+    command_input = MigrateInput(
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        project=project_options(project),
+        yes=yes,
+    )
+    execute_command("migrate", command_input, project_handlers.migrate)
 
 
 def config_cmd(

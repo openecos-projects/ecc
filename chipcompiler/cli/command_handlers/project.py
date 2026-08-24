@@ -4,7 +4,7 @@ import shlex
 import shutil
 import sys
 
-from chipcompiler.cli.core.inputs import CheckInput, InitInput, RunInput
+from chipcompiler.cli.core.inputs import CheckInput, InitInput, MigrateInput, RunInput
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -376,6 +376,88 @@ def _invalid_single_segment_id(run_id: str) -> bool:
         or "/" in run_id
         or run_id in (".", "..")
     )
+
+
+def migrate(command_input: MigrateInput, ctx: CommandContext) -> CommandResult:
+    """Upgrade a legacy runs/ project to the manifest layout (D7)."""
+    from chipcompiler.cli.project.manifest import find_manifest, has_legacy_runs_layout
+    from chipcompiler.cli.project.migrate import execute_migration, plan_migration
+
+    project_dir = ctx.project_dir
+    has_manifest = find_manifest(project_dir) is not None
+    has_legacy = has_legacy_runs_layout(project_dir)
+
+    if has_manifest and not has_legacy:
+        return CommandResult.ok(
+            [
+                {
+                    "status": "already_migrated",
+                    "project": project_dir,
+                    "reason": "project.json exists and runs/ has no workspaces left",
+                }
+            ]
+        )
+    if not has_legacy:
+        return CommandResult.ok(
+            [
+                {
+                    "status": "nothing_to_migrate",
+                    "project": project_dir,
+                    "reason": "no runs/ workspaces found",
+                }
+            ]
+        )
+
+    cfg = ctx.config
+    if cfg is None and not has_manifest:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "missing_config",
+                    "path": os.path.join(project_dir, "ecc.toml"),
+                }
+            ]
+        )
+
+    if not command_input.yes:
+        plan = plan_migration(project_dir)
+        planned = [
+            {
+                "kind": "plan",
+                "run": entry.run_id,
+                "from": entry.source,
+                "to": entry.target,
+            }
+            for entry in plan.entries
+        ]
+        if not sys.stdin.isatty():
+            return CommandResult.err(
+                planned
+                + [
+                    {
+                        "kind": "error",
+                        "error": "confirmation_required",
+                        "reason": "re-run with --yes to migrate",
+                    }
+                ]
+            )
+        for entry in plan.entries:
+            print(f"  {entry.source} -> {entry.target}", file=sys.stderr)
+        answer = input("Migrate these workspaces? [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            return CommandResult.err(
+                [
+                    {
+                        "kind": "error",
+                        "error": "migration_aborted",
+                        "reason": "declined by user",
+                    }
+                ]
+            )
+
+    records, exit_code = execute_migration(project_dir, cfg)
+    return CommandResult(records=tuple(records), exit_code=exit_code)
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
