@@ -250,214 +250,11 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
 
 
-def _resolve_manifest_run_target(command_input, ctx, cfg):
-    """Resolve (run_dir, run_name, registered, warnings) for virgin/manifest projects.
-
-    Returns a CommandResult error instead when the run cannot start:
-    manifest_invalid, workspace_not_declared, or invalid_run_id.
-    """
-    from chipcompiler.cli.core.records import error_record, warning_record
-    from chipcompiler.cli.project.manifest import load_manifest
-
-    project_dir = ctx.project_dir
-    cli_run_id = command_input.project.run_id
-
-    if ctx.project_state == "virgin":
-        run_name = cli_run_id or "default"
-        if _invalid_single_segment_id(run_name):
-            return CommandResult.err(
-                [
-                    error_record(
-                        "invalid_run_id",
-                        run=run_name,
-                        reason="run id must be a single path segment inside the project",
-                    )
-                ]
-            )
-        return (os.path.join(project_dir, run_name), run_name, False, [])
-
-    if ctx.manifest_error and ctx.manifest_error.startswith("manifest_invalid"):
-        return CommandResult.err([error_record("manifest_invalid", reason=ctx.manifest_error)])
-
-    manifest = load_manifest(project_dir)
-    match = manifest.find_workspace(cli_run_id) if cli_run_id is not None else None
-    if cli_run_id is None:
-        active = manifest.active_workspaces()
-        if len(active) != 1:
-            ids = ", ".join(w.workspace_id for w in active) or "(none)"
-            return CommandResult.err(
-                [
-                    error_record(
-                        "workspace_not_declared",
-                        reason=f"--run-id required; declared workspaces: {ids}",
-                    )
-                ]
-            )
-        match = active[0]
-
-    if match is not None:
-        return (match.workspace_path, match.workspace_id, True, [])
-
-    if _invalid_single_segment_id(cli_run_id):
-        return CommandResult.err(
-            [
-                error_record(
-                    "invalid_run_id",
-                    run=cli_run_id,
-                    reason="run id must be a single path segment inside the project",
-                )
-            ]
-        )
-    warnings = [
-        warning_record(
-            "workspace_not_registered",
-            reason=f"workspace {cli_run_id!r} is not declared in project.json; "
-            "the GUI will not show it until it is registered",
-        )
-    ]
-    return (os.path.join(project_dir, cli_run_id), cli_run_id, False, warnings)
-
-
-def _manifest_project_config(command_input, ctx):
-    """Assemble a ProjectConfig from the manifest for a manifest-mode run.
-
-    Returns (cfg, flow_config) or a CommandResult error. base_design +
-    parameter_patch form the base layer; the workspace entry's
-    start_step/end_step seed the flow range at creation.
-    """
-    from chipcompiler.cli.project.config import ProjectConfig
-    from chipcompiler.cli.project.manifest import assemble_config, load_manifest
-
-    try:
-        manifest = load_manifest(ctx.project_dir)
-    except Exception as exc:
-        return CommandResult.err(
-            [{"kind": "error", "error": "manifest_invalid", "reason": str(exc)}]
-        )
-
-    cli_run_id = command_input.project.run_id
-    entry = manifest.find_workspace(cli_run_id) if cli_run_id is not None else None
-    if entry is None and cli_run_id is None:
-        active = manifest.active_workspaces()
-        entry = active[0] if len(active) == 1 else None
-
-    assembled = assemble_config(manifest, entry)
-    parameters = assembled["parameters"]
-    try:
-        frequency = float(parameters.get("frequency_max") or 0)
-    except (TypeError, ValueError):
-        frequency = 0.0
-
-    cfg = ProjectConfig(
-        design_name=assembled["design_name"],
-        design_top=assembled["top_module"],
-        design_rtl=assembled["rtl_list"],
-        design_clock_port=assembled["clock"],
-        design_frequency_mhz=frequency,
-        pdk_name=assembled["pdk"],
-        pdk_root=assembled["pdk_root"],
-        flow_preset="rtl2gds",  # inert: flow_config drives the created range
-        project_dir=ctx.project_dir,
-    )
-    cfg.params_overrides = {}
-    cfg._manifest_parameters = parameters
-
-    flow_config = None
-    if entry is not None:
-        flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
-    return (cfg, flow_config)
-
-
-def _invalid_single_segment_id(run_id: str) -> bool:
-    return (
-        not run_id
-        or os.path.isabs(run_id)
-        or os.sep in run_id
-        or "/" in run_id
-        or run_id in (".", "..")
-    )
-
-
 def migrate(command_input: MigrateInput, ctx: CommandContext) -> CommandResult:
-    """Upgrade a legacy runs/ project to the manifest layout (D7)."""
-    from chipcompiler.cli.project.manifest import find_manifest, has_legacy_runs_layout
-    from chipcompiler.cli.project.migrate import execute_migration, plan_migration
+    """Upgrade a legacy runs/ project to the manifest layout."""
+    from chipcompiler.cli.project.migrate import migrate_project
 
-    project_dir = ctx.project_dir
-    has_manifest = find_manifest(project_dir) is not None
-    has_legacy = has_legacy_runs_layout(project_dir)
-
-    if has_manifest and not has_legacy:
-        return CommandResult.ok(
-            [
-                {
-                    "status": "already_migrated",
-                    "project": project_dir,
-                    "reason": "project.json exists and runs/ has no workspaces left",
-                }
-            ]
-        )
-    if not has_legacy:
-        return CommandResult.ok(
-            [
-                {
-                    "status": "nothing_to_migrate",
-                    "project": project_dir,
-                    "reason": "no runs/ workspaces found",
-                }
-            ]
-        )
-
-    cfg = ctx.config
-    if cfg is None and not has_manifest:
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "missing_config",
-                    "path": os.path.join(project_dir, "ecc.toml"),
-                }
-            ]
-        )
-
-    if not command_input.yes:
-        plan = plan_migration(project_dir)
-        planned = [
-            {
-                "kind": "plan",
-                "run": entry.run_id,
-                "from": entry.source,
-                "to": entry.target,
-            }
-            for entry in plan.entries
-        ]
-        if not sys.stdin.isatty():
-            return CommandResult.err(
-                planned
-                + [
-                    {
-                        "kind": "error",
-                        "error": "confirmation_required",
-                        "reason": "re-run with --yes to migrate",
-                    }
-                ]
-            )
-        for entry in plan.entries:
-            print(f"  {entry.source} -> {entry.target}", file=sys.stderr)
-        answer = input("Migrate these workspaces? [y/N] ")
-        if answer.strip().lower() not in ("y", "yes"):
-            return CommandResult.err(
-                [
-                    {
-                        "kind": "error",
-                        "error": "migration_aborted",
-                        "reason": "declined by user",
-                    }
-                ]
-            )
-
-    records, exit_code = execute_migration(project_dir, cfg)
-    return CommandResult(records=tuple(records), exit_code=exit_code)
+    return migrate_project(command_input, ctx)
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
@@ -475,6 +272,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": "selector_requires_workspace"}])
 
     from chipcompiler import rtl2gds as rtl2gds_api
+    from chipcompiler.cli.project import run_prepare
     from chipcompiler.cli.project.config import (
         resolve_pdk_overrides,
         resolve_pdk_root,
@@ -492,7 +290,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     flow_config = None
     if cfg is None:
         if ctx.project_state == "manifest":
-            assembled = _manifest_project_config(command_input, ctx)
+            assembled = run_prepare.manifest_project_config(command_input, ctx)
             if isinstance(assembled, CommandResult):
                 return assembled
             cfg, flow_config = assembled
@@ -506,6 +304,17 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     }
                 ]
             )
+    elif ctx.project_state == "manifest":
+        # Hybrid project (both ecc.toml and project.json): the manifest base
+        # layers beneath the ecc.toml values; a declared entry seeds the
+        # creation-time flow range.
+        manifest_parameters, entry_flow_config = run_prepare.manifest_base_layer(
+            ctx, command_input.project.run_id or "default"
+        )
+        if manifest_parameters:
+            cfg._manifest_parameters = manifest_parameters
+        if entry_flow_config is not None:
+            flow_config = entry_flow_config
 
     errors = validate_project_config(cfg)
     if errors:
@@ -549,7 +358,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     workspace_registered = False
 
     if project_state in ("virgin", "manifest"):
-        resolved = _resolve_manifest_run_target(command_input, ctx, cfg)
+        resolved = run_prepare.resolve_manifest_run_target(command_input, ctx)
         if isinstance(resolved, CommandResult):
             return resolved
         run_dir, run_name, workspace_registered, warning_records = resolved
@@ -572,7 +381,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     flow_json = os.path.join(run_dir, "home", "flow.json")
 
     if os.path.exists(flow_json) and not command_input.overwrite:
-        return _run_existing_workspace(
+        return run_prepare.run_existing_workspace(
             command_input,
             ctx,
             cfg,
@@ -641,7 +450,11 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         from chipcompiler.data.parameter import update_parameters
         from chipcompiler.data.parameter_keys import geometry_to_parameters
 
-        update_parameters(geometry_to_parameters(manifest_parameters), parameters)
+        # Manifest base layer: ecc.toml/--set values overlay it, not the
+        # other way around.
+        base = geometry_to_parameters(manifest_parameters)
+        update_parameters(parameters, base)
+        parameters = base
 
     if cfg.params_overrides or cli_overrides:
         from chipcompiler.cli.project.params import (
@@ -661,7 +474,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     try:
         workspace = create_workspace(
             directory=run_dir,
-            origin_def="",
+            origin_def=getattr(cfg, "_manifest_origin_def", "") or "",
             origin_verilog=origin_verilog,
             pdk=cfg.pdk_name,
             parameters=parameters,
@@ -747,8 +560,19 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             start_step=start_step,
             end_step=end_step,
         )
-        write_manifest_if_absent(project_dir, document)
-        workspace_registered = True
+        if write_manifest_if_absent(project_dir, document):
+            workspace_registered = True
+        else:
+            # Lost the generation race: discard ours, reload the winner, and
+            # continue read-only — write-back applies only when the winning
+            # manifest actually declares this workspace.
+            from chipcompiler.cli.project.manifest import load_manifest
+
+            try:
+                winner = load_manifest(project_dir)
+                workspace_registered = winner.find_workspace(run_name) is not None
+            except Exception:
+                workspace_registered = False
 
     try:
         engine_flow = EngineFlow(workspace=workspace)
@@ -820,158 +644,6 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
         success_records.append(legacy_layout_hint_record(project))
     return CommandResult.ok(warning_records + success_records)
-
-
-def _run_existing_workspace(
-    command_input,
-    ctx: CommandContext,
-    cfg,
-    run_dir: str,
-    run_name: str,
-    cli_overrides: dict,
-    warning_records: list[dict],
-    *,
-    workspace_registered: bool,
-) -> CommandResult:
-    """Run against an existing workspace: reconcile target vs persisted flow.
-
-    Extends a proper-prefix target, resumes from the first non-Success step,
-    no-ops when everything already succeeded, and fails divergent flows with
-    flow_mismatch before any mutation.
-    """
-    from chipcompiler.cli.core.records import error_record, warning_record
-
-    project = ctx.project
-    project_dir = ctx.project_dir
-
-    if cli_overrides:
-        return CommandResult.err(
-            [
-                error_record(
-                    "set_requires_fresh_run",
-                    run=run_name,
-                    workspace=run_dir,
-                    reason="--set applies only to fresh runs; use --overwrite or a new --run-id",
-                )
-            ]
-        )
-
-    warnings = list(warning_records)
-    if cfg.params_overrides:
-        warnings.append(
-            warning_record(
-                "params_ignored_on_existing_run",
-                reason="[params] in ecc.toml apply only to fresh runs; "
-                "the workspace reuses its persisted home/ecc.toml",
-            )
-        )
-
-    from chipcompiler.data import load_workspace
-
-    workspace = load_workspace(run_dir)
-    if workspace is None:
-        return CommandResult.err(
-            [
-                error_record(
-                    "invalid_workspace",
-                    run=run_name,
-                    workspace=run_dir,
-                )
-            ]
-        )
-
-    from chipcompiler.engine.reconcile import reconcile_workspace
-
-    if getattr(cfg, "_manifest_parameters", None) is not None:
-        # Manifest mode: the workspace's own [flow] is the target; the
-        # manifest's start/end seeded it at creation and is not consulted.
-        target_section = None
-    else:
-        target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
-
-    result = reconcile_workspace(run_dir, target_section)
-    if result.outcome == "mismatch":
-        reason = result.error or "flow_mismatch"
-        if reason.startswith("workspace_config_invalid"):
-            return CommandResult.err(
-                [error_record("workspace_config_invalid", run=run_name, reason=reason)]
-            )
-        return CommandResult.err(
-            [
-                error_record(
-                    "flow_mismatch",
-                    run=run_name,
-                    workspace=run_dir,
-                    reason="the configured flow diverges from the persisted one",
-                    overwrite=disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                    hint="use --overwrite to wipe the run, or a new --run-id",
-                )
-            ]
-        )
-
-    from chipcompiler.engine import EngineFlow
-
-    try:
-        engine_flow = EngineFlow(workspace=workspace)
-        flow_ok = True
-        if result.outcome != "no_op":
-            # Re-read the ledger: reconcile may have appended suffix steps
-            # after load_workspace populated the in-memory copy.
-            from chipcompiler.utility import json_read
-
-            flow_data = json_read(workspace.flow.path)
-            executable = {
-                step.get("name")
-                for step in flow_data.get("steps", [])
-                if isinstance(step, dict) and step.get("state") != "Success"
-            }
-            engine_flow.create_step_workspaces(executable_steps=executable)
-
-            from chipcompiler.cli.rendering.progress import (
-                run_flow_with_progress,
-                should_enable_run_progress,
-            )
-
-            if should_enable_run_progress(ctx, sys.stderr):
-                flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
-            else:
-                flow_ok = engine_flow.run_steps()
-    except Exception as exc:
-        return CommandResult.err(
-            [
-                error_record(
-                    "flow_failed",
-                    run=run_name,
-                    workspace=run_dir,
-                    reason=str(exc),
-                )
-            ]
-        )
-
-    if workspace_registered:
-        from chipcompiler.cli.project.manifest import write_back_workspace_status
-
-        write_back_workspace_status(project_dir, run_name, "success" if flow_ok else "failed")
-
-    record = {
-        "run": run_name,
-        "status": "success" if flow_ok else "failed",
-        "workspace": run_dir,
-        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-        "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
-    }
-    if result.outcome == "no_op":
-        record["no_op"] = True
-    if result.appended:
-        record["appended_steps"] = list(result.appended)
-    records = warnings + [record]
-    if ctx.project_state == "legacy":
-        from chipcompiler.cli.core.records import legacy_layout_hint_record
-
-        records.append(legacy_layout_hint_record(project))
-    if not flow_ok:
-        return CommandResult.err(records)
-    return CommandResult.ok(records)
 
 
 def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResult:

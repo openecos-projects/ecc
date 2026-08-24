@@ -146,6 +146,38 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
     )
 
 
+def _validate_mpc(value: Any) -> None:
+    """Mirror the GUI parser's mpc rules: null or a well-formed MPC record."""
+    if value is None:
+        return
+    source = _record(value)
+    if not source:
+        raise ManifestError("invalid project manifest: mpc must be an object or null")
+    resource_id = _optional_str(source.get("resource_id"))
+    if not resource_id.startswith("mpc:") or len(resource_id) == 4:
+        raise ManifestError("invalid project manifest: mpc.resource_id must be an MPC id")
+    for field_name in ("display_name", "installed_version", "path", "spec_path"):
+        if not _optional_str(source.get(field_name)):
+            raise ManifestError(f"invalid project manifest: mpc.{field_name} is required")
+    mpc_path = source["path"].rstrip("/")
+    if source["spec_path"] != f"{mpc_path}/spec/spec.json.in":
+        raise ManifestError(
+            "invalid project manifest: mpc.spec_path must reference spec/spec.json.in"
+        )
+    design = _record(source.get("design"))
+    if (
+        not design
+        or not isinstance(design.get("index"), int)
+        or design["index"] < 0
+        or not _optional_str(design.get("design_name"))
+    ):
+        raise ManifestError(
+            "invalid project manifest: mpc.design requires a non-negative index and design_name"
+        )
+    if not isinstance(source.get("core_template"), dict):
+        raise ManifestError("invalid project manifest: mpc.core_template must be an object")
+
+
 def load_manifest(project_dir: str) -> ProjectManifest:
     """Load and tolerantly normalize ``<project_dir>/project.json``.
 
@@ -199,6 +231,8 @@ def load_manifest(project_dir: str) -> ProjectManifest:
             "workspace_id": qor_baseline_raw["workspace_id"],
             "reason": _optional_str(qor_baseline_raw.get("reason")) or "Project QoR baseline",
         }
+
+    _validate_mpc(source.get("mpc"))
 
     return ProjectManifest(
         project_dir=project_dir,

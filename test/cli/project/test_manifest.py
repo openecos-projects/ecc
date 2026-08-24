@@ -261,3 +261,14 @@ def test_write_back_workspace_status(tmp_path):
 
     # Unknown workspace ids degrade to a no-op, not an error.
     assert write_back_workspace_status(str(tmp_path), "unknown", "failed") is True
+
+
+def test_load_manifest_rejects_malformed_mpc(tmp_path):
+    _write_manifest(tmp_path, _minimal_document(tmp_path, mpc={"resource_id": "bogus"}))
+    with pytest.raises(ManifestError):
+        load_manifest(str(tmp_path))
+
+
+def test_load_manifest_accepts_null_mpc(tmp_path):
+    _write_manifest(tmp_path, _minimal_document(tmp_path, mpc=None))
+    assert load_manifest(str(tmp_path)).design_name == "gcd"

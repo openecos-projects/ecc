@@ -203,7 +203,11 @@ class TestMigrate:
         records = _records(capsys)
         failures = [r for r in records if r.get("error") == "migration_failed"]
         assert len(failures) == 1
-        # Rolled back: the workspace is back under runs/, no manifest.
+        # Rolled back: the workspace is back under runs/, no manifest, and
+        # the rebased home.json pointers were restored to the source path.
         assert os.path.isfile(os.path.join(run_dir, "home", "flow.json"))
         assert not os.path.exists(os.path.join(project_dir, "exp1"))
         assert not os.path.exists(os.path.join(project_dir, "project.json"))
+        with open(os.path.join(run_dir, "home", "home.json")) as f:
+            home = json.load(f)
+        assert home["flow"] == os.path.join(run_dir, "home", "flow.json")

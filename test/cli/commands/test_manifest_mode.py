@@ -337,3 +337,97 @@ class TestManifestRunCommand:
         assert flow_mocks.capture["create_kwargs"]["directory"] == str(project_dir / "ws_0001")
         manifest = json.loads((project_dir / "project.json").read_text())
         assert manifest["workspaces"][0]["status"] == "success"
+
+
+class TestHybridLayering:
+    def test_ecc_toml_overlays_manifest_base(self, tmp_path, capsys, flow_mocks):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(
+            project_dir,
+            [_workspace_entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"frequency_max": 50, "max_fanout": 12},
+            },
+        )
+        # Partial ecc.toml: only the frequency is overridden.
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "gcd"\n'
+            'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 200.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "'
+            + str(project_dir / "pdk")
+            + '"\n\n[flow]\npreset = "rtl2gds"\n'
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["frequency_max"] == 200.0  # ecc.toml wins
+        assert parameters["max_fanout"] == 12  # manifest base survives
+        assert flow_mocks.capture["create_kwargs"]["directory"] == str(project_dir / "ws_0001")
+
+    def test_manifest_origin_verilog_fallback(self, tmp_path, capsys, flow_mocks):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / "pdk").mkdir()
+        (project_dir / "src").mkdir()
+        (project_dir / "src" / "gcd.v").write_text("module gcd; endmodule\n")
+        document = {
+            "schema_version": 1,
+            "design_name": "gcd",
+            "root_path": str(project_dir),
+            "base_design": {
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": [],
+                "origin_verilog": "src/gcd.v",
+                "parameters": {"design": "gcd", "frequency_max": 100},
+            },
+            "workspaces": [
+                {
+                    "workspace_id": "ws_0001",
+                    "workspace_path": str(project_dir / "ws_0001"),
+                }
+            ],
+        }
+        (project_dir / "project.json").write_text(json.dumps(document))
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert flow_mocks.capture["create_kwargs"]["origin_verilog"].endswith("src/gcd.v")
+
+
+class TestExistingRunGuards:
+    def test_empty_flow_ledger_is_an_error(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump({"steps": []}, f)
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        assert save_workspace_config(
+            run_dir,
+            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {"preset": "rtl2gds"},
+        )
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "invalid_flow_json"

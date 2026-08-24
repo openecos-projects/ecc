@@ -12,6 +12,7 @@ already migrated one is a no-op report.
 import json
 import logging
 import os
+import sys
 from dataclasses import dataclass, field
 
 from chipcompiler.cli.project.manifest import (
@@ -149,11 +150,34 @@ def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) 
         raise OSError(f"failed to write rebased home.json: {home_path}")
 
 
+def _rollback_workspace(entry: MigrationEntry) -> None:
+    """Undo a failed move: rename back, then restore content at the source.
+
+    The rename alone is not enough — the rebase already rewrote home.json
+    pointers (and possibly tool configs) to the target location. Reverse the
+    pointer rewrite and regenerate configs from the workspace parameters at
+    the original location, best-effort.
+    """
+    os.rename(entry.target, entry.source)
+    try:
+        _rebase_home_pointers(entry.source, entry.target, entry.source)
+    except (OSError, json.JSONDecodeError):
+        logger.warning("rollback: home.json reverse rebase failed for %s", entry.run_id)
+    try:
+        from chipcompiler.data import load_workspace, refresh_workspace_config
+
+        workspace = load_workspace(entry.source)
+        if workspace is not None:
+            refresh_workspace_config(workspace)
+    except Exception:
+        logger.warning("rollback: config regeneration failed for %s", entry.run_id)
+
+
 def _move_workspace(entry: MigrationEntry) -> str | None:
     """Move one workspace and rebase it; returns an error string or None.
 
-    A rebase failure rolls the move back (rename back), all-or-nothing per
-    workspace.
+    A rebase failure rolls the move back and restores the workspace content
+    at its original location, all-or-nothing per workspace.
     """
     os.rename(entry.source, entry.target)
     try:
@@ -166,7 +190,7 @@ def _move_workspace(entry: MigrationEntry) -> str | None:
         workspace = load_workspace(entry.target)
         refresh_workspace_config(workspace)
     except Exception as exc:
-        os.rename(entry.target, entry.source)
+        _rollback_workspace(entry)
         return str(exc)
     return None
 
@@ -260,8 +284,8 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
             if not _append_manifest_entries(project_dir, migrated):
                 records.append(
                     {
-                        "kind": "warning",
-                        "warning": "manifest_update_failed",
+                        "kind": "error",
+                        "error": "manifest_update_failed",
                         "reason": "moved workspaces were not registered in project.json",
                     }
                 )
@@ -303,11 +327,15 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
                         "status": extra.status,
                     }
                 )
-            if not write_manifest_if_absent(project_dir, document):
+            written = write_manifest_if_absent(project_dir, document)
+            if not written and find_manifest(project_dir) is not None:
+                # Lost the creation race: append to the winning manifest.
+                written = _append_manifest_entries(project_dir, migrated)
+            if not written:
                 records.append(
                     {
-                        "kind": "warning",
-                        "warning": "manifest_update_failed",
+                        "kind": "error",
+                        "error": "manifest_update_failed",
                         "reason": "project.json was not written",
                     }
                 )
@@ -321,3 +349,85 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
 
     failures = [r for r in records if r.get("kind") == "error"]
     return records, 1 if failures else 0
+
+
+def migrate_project(command_input, ctx):
+    """The ``ecc migrate`` handler: plan, confirm, execute."""
+    from chipcompiler.cli.core.types import CommandResult
+    from chipcompiler.cli.project.manifest import find_manifest, has_legacy_runs_layout
+
+    project_dir = ctx.project_dir
+    has_manifest = find_manifest(project_dir) is not None
+    has_legacy = has_legacy_runs_layout(project_dir)
+
+    if has_manifest and not has_legacy:
+        return CommandResult.ok(
+            [
+                {
+                    "status": "already_migrated",
+                    "project": project_dir,
+                    "reason": "project.json exists and runs/ has no workspaces left",
+                }
+            ]
+        )
+    if not has_legacy:
+        return CommandResult.ok(
+            [
+                {
+                    "status": "nothing_to_migrate",
+                    "project": project_dir,
+                    "reason": "no runs/ workspaces found",
+                }
+            ]
+        )
+
+    cfg = ctx.config
+    if cfg is None and not has_manifest:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "missing_config",
+                    "path": os.path.join(project_dir, "ecc.toml"),
+                }
+            ]
+        )
+
+    if not command_input.yes:
+        plan = plan_migration(project_dir)
+        planned = [
+            {
+                "kind": "plan",
+                "run": entry.run_id,
+                "from": entry.source,
+                "to": entry.target,
+            }
+            for entry in plan.entries
+        ]
+        if not sys.stdin.isatty():
+            return CommandResult.err(
+                planned
+                + [
+                    {
+                        "kind": "error",
+                        "error": "confirmation_required",
+                        "reason": "re-run with --yes to migrate",
+                    }
+                ]
+            )
+        for entry in plan.entries:
+            print(f"  {entry.source} -> {entry.target}", file=sys.stderr)
+        answer = input("Migrate these workspaces? [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            return CommandResult.err(
+                [
+                    {
+                        "kind": "error",
+                        "error": "migration_aborted",
+                        "reason": "declined by user",
+                    }
+                ]
+            )
+
+    records, exit_code = execute_migration(project_dir, cfg)
+    return CommandResult(records=tuple(records), exit_code=exit_code)
