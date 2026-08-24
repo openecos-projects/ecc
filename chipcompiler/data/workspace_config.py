@@ -117,6 +117,83 @@ def validate_flow_config(flow: object) -> dict[str, str]:
     return normalized
 
 
+def canonical_flow_chain() -> list[str]:
+    """The canonical harden chain's step names, in order."""
+    from chipcompiler.data.workspace import _canonical_harden_flow_entries
+
+    return [name for name, _tool, _state in _canonical_harden_flow_entries()]
+
+
+def flow_range_for_preset(preset: str) -> tuple[str, str]:
+    """(first, last) canonical step names of a named preset."""
+    from chipcompiler import rtl2gds as rtl2gds_api
+
+    builder = rtl2gds_api.get_flow_builders().get(preset)
+    if builder is None:
+        raise WorkspaceFlowTargetError(f"unknown flow preset: {preset}")
+    steps = builder()
+    if not steps:
+        raise WorkspaceFlowTargetError(f"flow preset has no steps: {preset}")
+    first, last = steps[0][0], steps[-1][0]
+    return (
+        first.value if hasattr(first, "value") else str(first),
+        last.value if hasattr(last, "value") else str(last),
+    )
+
+
+def flow_range_of(flow: dict) -> tuple[str, str] | None:
+    """(start, end) canonical names for a validated [flow] section."""
+    flow = validate_flow_config(flow)
+    if not flow:
+        return None
+    if "preset" in flow:
+        return flow_range_for_preset(flow["preset"])
+    return (flow["start"], flow["end"])
+
+
+def flow_steps_in_range(start: str, end: str) -> list[str]:
+    """Canonical step names from *start* to *end* inclusive."""
+    chain = canonical_flow_chain()
+    try:
+        return chain[chain.index(start) : chain.index(end) + 1]
+    except ValueError as exc:
+        raise WorkspaceFlowTargetError(f"flow range outside the canonical chain: {exc}") from exc
+
+
+def flow_section_from_flow_config(flow_config: dict | None) -> dict[str, str]:
+    """Derive the [flow] section (start/end canonical form) from a flow_config.
+
+    A non-contiguous explicit steps selection degrades to the contiguous
+    first..last range with a log note. Returns {} when the flow_config does
+    not select steps.
+    """
+    if not isinstance(flow_config, dict) or not flow_config:
+        return {}
+
+    from chipcompiler.data.workspace import (
+        _canonical_harden_flow_entries,
+        _selected_dynamic_flow_step_names,
+    )
+
+    canonical_entries = _canonical_harden_flow_entries()
+    selected = _selected_dynamic_flow_step_names(flow_config, canonical_entries)
+    if not selected:
+        return {}
+
+    chain = [name for name, _tool, _state in canonical_entries]
+    start, end = selected[0], selected[-1]
+    contiguous = chain[chain.index(start) : chain.index(end) + 1]
+    if selected != contiguous:
+        logger.warning(
+            "non-contiguous flow steps %s degraded to contiguous range %s..%s",
+            selected,
+            start,
+            end,
+        )
+    # Names are already canonical here; validate to keep the contract explicit.
+    return validate_flow_config({"start": start, "end": end})
+
+
 def _split_payload(data: dict) -> dict[str, Any]:
     """Split a canonical flat parameter payload into the TOML section shape."""
     params = dict(data)

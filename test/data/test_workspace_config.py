@@ -10,6 +10,11 @@ from chipcompiler.data.parameter_keys import normalize_keys
 from chipcompiler.data.workspace_config import (
     WorkspaceConfigError,
     WorkspaceFlowTargetError,
+    canonical_flow_chain,
+    flow_range_for_preset,
+    flow_range_of,
+    flow_section_from_flow_config,
+    flow_steps_in_range,
     load_workspace_config,
     parameters_have_chip_identity,
     save_workspace_config,
@@ -179,3 +184,43 @@ def test_chip_identity_flat_payload():
 def test_chip_identity_rejects_legacy_long_keys():
     legacy = {"PDK": "ics55", "Design": "gcd", "Top module": "gcd", "Clock": "clk"}
     assert not parameters_have_chip_identity(legacy)
+
+
+def test_canonical_chain_and_preset_ranges():
+    chain = canonical_flow_chain()
+    assert chain[0] == "Synthesis"
+    assert chain[-1] == "Harden"
+    assert "RCX" in chain and "sta" in chain
+
+    assert flow_range_for_preset("rtl2gds") == ("Synthesis", "filler")
+    assert flow_range_for_preset("rcx") == ("Synthesis", "sta")
+    assert flow_range_for_preset("harden") == ("Synthesis", "Harden")
+
+
+def test_flow_range_of_section_forms():
+    assert flow_range_of({}) is None
+    assert flow_range_of({"preset": "rcx"}) == ("Synthesis", "sta")
+    assert flow_range_of({"start": "place", "end": "route"}) == ("place", "route")
+
+
+def test_flow_steps_in_range():
+    assert flow_steps_in_range("RCX", "sta") == ["RCX", "sta"]
+    with pytest.raises(WorkspaceFlowTargetError):
+        flow_steps_in_range("nope", "sta")
+
+
+def test_flow_section_from_flow_config_range():
+    section = flow_section_from_flow_config({"start_step": "Place", "end_step": "Route"})
+    assert section == {"start": "place", "end": "route"}
+
+
+def test_flow_section_from_flow_config_non_contiguous_degrades(caplog):
+    with caplog.at_level("WARNING"):
+        section = flow_section_from_flow_config({"steps": ["Synth", "Place", "CTS"]})
+    assert section == {"start": "Synthesis", "end": "CTS"}
+    assert any("non-contiguous" in record.message for record in caplog.records)
+
+
+def test_flow_section_from_flow_config_empty():
+    assert flow_section_from_flow_config(None) == {}
+    assert flow_section_from_flow_config({}) == {}

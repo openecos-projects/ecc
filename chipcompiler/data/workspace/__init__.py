@@ -1307,6 +1307,12 @@ def create_workspace(
         if not json_write(workspace.flow.path, workspace.flow.data):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
 
+        from ..workspace_config import flow_section_from_flow_config
+
+        flow_section = flow_section_from_flow_config(flow_config)
+        if flow_section:
+            workspace.parameters.data["_flow"] = flow_section
+
     if workspace.pdk.root:
         workspace.parameters.data["pdk_root"] = str(workspace.pdk.root)
     if pdk_json:

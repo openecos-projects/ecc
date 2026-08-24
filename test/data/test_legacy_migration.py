@@ -202,3 +202,24 @@ def test_legacy_null_values_do_not_abort_migration(
     assert loaded is not None
     assert loaded.parameters.data["frequency_max"] == 250
     assert legacy_path.is_file()
+
+
+def test_create_workspace_seeds_flow_range_from_flow_config(tmp_path, minimal_ics55_pdk_factory):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    workspace_dir = tmp_path / "workspace"
+
+    create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+        pdk_root=str(pdk_root),
+        flow_config={"start_step": "Place", "end_step": "Route"},
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
+    assert loaded.parameters.data["_flow"] == {"start": "place", "end": "route"}

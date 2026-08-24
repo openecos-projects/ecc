@@ -626,6 +626,15 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         with open(provenance_path, "w") as _f:
             json.dump(cli_overrides, _f)
 
+    if flow_config is None:
+        # CLI-born workspaces persist the named prefix chain as their target.
+        from chipcompiler.data.parameter import save_parameter
+
+        workspace_parameters = getattr(workspace, "parameters", None)
+        if workspace_parameters is not None:
+            workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
+            save_parameter(workspace_parameters)
+
     if project_state == "virgin":
         from chipcompiler.cli.project.manifest import (
             PRESET_MANIFEST_RANGE,
