@@ -5,10 +5,22 @@ from chipcompiler.cli import main as cli_main
 
 
 def _write_manifest(project_dir, workspaces, **overrides):
+    rtl = project_dir / "rtl" / "gcd.v"
+    rtl.parent.mkdir(parents=True, exist_ok=True)
+    rtl.write_text("module gcd(input clk); endmodule\n")
+    (project_dir / "pdk").mkdir(exist_ok=True)
     document = {
         "schema_version": 1,
         "design_name": "gcd",
         "root_path": str(project_dir),
+        "base_design": {
+            "pdk": "ics55",
+            "pdk_root": str(project_dir / "pdk"),
+            "top_module": "gcd",
+            "clock": "clk",
+            "rtl_list": ["rtl/gcd.v"],
+            "parameters": {"design": "gcd", "frequency_max": 100},
+        },
         "workspaces": workspaces,
     }
     document.update(overrides)
@@ -220,3 +232,108 @@ class TestParamManifestMode:
         (record,) = _records(capsys)
         assert record["error"] == "param_requires_ecc_toml"
         assert not (project_dir / "ecc.toml").exists()
+
+
+class TestVirginFirstRun:
+    def test_virgin_run_generates_manifest_at_root_layout(
+        self, tmp_path, capsys, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        run_dir = os.path.join(project_dir, "default")
+        assert flow_mocks.capture["create_kwargs"]["directory"] == run_dir
+        records = _records(capsys)
+        assert records[0]["status"] == "success"
+        assert all(r.get("warning") != "legacy_layout_detected" for r in records)
+
+        manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
+        assert manifest["schema_version"] == 1
+        assert manifest["design_name"] == "gcd"
+        assert manifest["root_path"] == project_dir
+        assert manifest["project_id"].startswith("proj_")
+        assert manifest["objectives"]["primary"] == "timing"
+        assert manifest["mpc"] is None
+        assert manifest["best_workspace"] is None
+        assert manifest["qor_baseline"]["workspace_id"] == "default"
+        (entry,) = manifest["workspaces"]
+        assert entry["workspace_id"] == "default"
+        assert entry["workspace_path"] == run_dir
+        assert entry["start_step"] == "Synth"
+        assert entry["end_step"] == "Filler"
+        # The DummyFlow run succeeds, so the D4 write-back finalizes the
+        # initial "running" status.
+        assert entry["status"] == "success"
+        assert entry["parameter_patch"] == {}
+        assert manifest["base_design"]["pdk"] == "ics55"
+        assert manifest["base_design"]["top_module"] == "gcd"
+        assert manifest["base_design"]["clock"] == "clk"
+
+    def test_virgin_run_set_values_stay_out_of_manifest(
+        self, tmp_path, capsys, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+
+        rc = cli_main.run(
+            ["run", "--project", project_dir, "--set", "synth.max_fanout=16", "--json"]
+        )
+
+        assert rc == 0
+        manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
+        assert "max_fanout" not in manifest["base_design"]["parameters"]
+        assert manifest["base_design"]["parameters"]["frequency_max"] == 100.0
+
+    def test_virgin_run_failed_writes_back_failed(
+        self, tmp_path, capsys, create_cli_project, flow_mocks
+    ):
+        flow_mocks.flow.run_steps_value = False
+        project_dir = create_cli_project()
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
+        assert manifest["workspaces"][0]["status"] == "failed"
+
+    def test_virgin_run_rejects_nested_run_id(
+        self, tmp_path, capsys, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+
+        rc = cli_main.run(["run", "--project", project_dir, "--run-id", "sweeps/s1", "--json"])
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "invalid_run_id"
+
+
+class TestManifestRunCommand:
+    def test_undeclared_run_id_creates_at_root_with_warning(self, tmp_path, capsys, flow_mocks):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--run-id", "exp2", "--json"])
+
+        assert rc == 0
+        assert flow_mocks.capture["create_kwargs"]["directory"] == str(project_dir / "exp2")
+        records = _records(capsys)
+        warning = [r for r in records if r.get("warning") == "workspace_not_registered"]
+        assert len(warning) == 1
+        # No manifest entry is added for undeclared runs.
+        manifest = json.loads((project_dir / "project.json").read_text())
+        assert [w["workspace_id"] for w in manifest["workspaces"]] == ["ws_0001"]
+
+    def test_declared_workspace_run_writes_back_status(self, tmp_path, capsys, flow_mocks):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert flow_mocks.capture["create_kwargs"]["directory"] == str(project_dir / "ws_0001")
+        manifest = json.loads((project_dir / "project.json").read_text())
+        assert manifest["workspaces"][0]["status"] == "success"

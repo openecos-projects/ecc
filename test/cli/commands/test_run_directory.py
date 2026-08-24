@@ -4,11 +4,26 @@ import os
 from chipcompiler.cli import main as cli_main
 
 
+def _make_legacy(project_dir):
+    """Pin the fixture project to the legacy runs/ layout."""
+    os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+
+
+def _legacy_hint(project_dir):
+    return {
+        "kind": "warning",
+        "warning": "legacy_layout_detected",
+        "reason": "this project uses the legacy runs/ layout; run 'ecc migrate' to upgrade",
+        "migrate": f"ecc migrate --project {project_dir} --yes",
+    }
+
+
 class TestRunDirectory:
     def test_run_id_bare_name_writes_under_runs(
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
 
         rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
 
@@ -22,13 +37,15 @@ class TestRunDirectory:
                 "workspace": run_dir,
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id exp1",
                 "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_run_id_relative_path_writes_project_relative(
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
 
         rc = cli_main.run(["run", "--project", project_dir, "--run-id", "sweeps/s1/r4", "--json"])
 
@@ -42,13 +59,15 @@ class TestRunDirectory:
                 "workspace": run_dir,
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id sweeps/s1/r4",
                 "log_cmd": f"ecc log --project {project_dir} --run-id sweeps/s1/r4",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_run_id_absolute_path_writes_verbatim(
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
         abs_run = str(tmp_path / "abs_run")
 
         rc = cli_main.run(["run", "--project", project_dir, "--run-id", abs_run, "--json"])
@@ -62,13 +81,15 @@ class TestRunDirectory:
                 "workspace": abs_run,
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id {abs_run}",
                 "log_cmd": f"ecc log --project {project_dir} --run-id {abs_run}",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_configured_flow_run_writes_there(
         self, tmp_path, capsys, create_cli_project, set_flow_run, flow_mocks
     ):
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
         set_flow_run(project_dir, 'run = "exp1"')
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
@@ -83,13 +104,15 @@ class TestRunDirectory:
                 "workspace": run_dir,
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id exp1",
                 "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_run_id_overrides_configured_flow_run(
         self, tmp_path, capsys, create_cli_project, set_flow_run, flow_mocks
     ):
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
         set_flow_run(project_dir, 'run = "exp1"')
 
         rc = cli_main.run(["run", "--project", project_dir, "--run-id", "other", "--json"])
@@ -104,13 +127,15 @@ class TestRunDirectory:
                 "workspace": run_dir,
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id other",
                 "log_cmd": f"ecc log --project {project_dir} --run-id other",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_absent_flow_run_key_matches_default_records(
         self, tmp_path, capsys, create_cli_project, set_flow_run, flow_mocks
     ):
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
         set_flow_run(project_dir, None)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
@@ -125,7 +150,8 @@ class TestRunDirectory:
                 "workspace": run_dir,
                 "inspect_cmd": f"ecc status --project {project_dir}",
                 "log_cmd": f"ecc log --project {project_dir}",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_run_exists_for_named_run(
@@ -133,6 +159,7 @@ class TestRunDirectory:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         create_flow_json(run_dir)
 
@@ -153,6 +180,7 @@ class TestRunDirectory:
         self, tmp_path, capsys, create_cli_project, set_flow_run, flow_mocks
     ):
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
         set_flow_run(project_dir, 'run = "exp1"')
 
         rc = cli_main.run(["run", "--project", project_dir, "--run-id", "", "--json"])
@@ -167,7 +195,8 @@ class TestRunDirectory:
                 "workspace": run_dir,
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id ''",
                 "log_cmd": f"ecc log --project {project_dir} --run-id ''",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_empty_run_id_run_exists_preserves_selector(
@@ -181,6 +210,7 @@ class TestRunDirectory:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
         set_flow_run(project_dir, 'run = "exp1"')
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir)
@@ -202,6 +232,7 @@ class TestRunDirectory:
         self, tmp_path, capsys, create_cli_project, create_flow_json, flow_mocks
     ):
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         create_flow_json(run_dir, profile="main")
 
@@ -219,12 +250,7 @@ class TestRunDirectory:
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id exp1",
                 "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
             },
-            {
-                "kind": "warning",
-                "warning": "legacy_layout_detected",
-                "reason": "this project uses the legacy runs/ layout; run 'ecc migrate' to upgrade",
-                "migrate": f"ecc migrate --project {project_dir} --yes",
-            },
+            _legacy_hint(project_dir),
         ]
 
     def test_run_then_status_reads_persisted_named_run(
@@ -238,6 +264,7 @@ class TestRunDirectory:
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
+        _make_legacy(project_dir)
         set_flow_run(project_dir, 'run = "exp1"')
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
@@ -261,7 +288,8 @@ class TestRunDirectory:
                 "workspace": run_dir,
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id exp1",
                 "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert os.path.isfile(os.path.join(run_dir, "home", "flow.json"))
 
@@ -283,18 +311,14 @@ class TestRunDirectory:
                 "runtime": None,
                 "log_cmd": f"ecc log synthesis --project {project_dir} --run-id exp1",
             },
-            {
-                "kind": "warning",
-                "warning": "legacy_layout_detected",
-                "reason": "this project uses the legacy runs/ layout; run 'ecc migrate' to upgrade",
-                "migrate": f"ecc migrate --project {project_dir} --yes",
-            },
+            _legacy_hint(project_dir),
         ]
 
     def test_run_parses_config_once(
         self, tmp_path, capsys, create_cli_project, set_flow_run, flow_mocks, monkeypatch
     ):
         project_dir = create_cli_project()
+        _make_legacy(project_dir)
         set_flow_run(project_dir, 'run = "exp1"')
         from chipcompiler.cli.project import config as config_module
 
@@ -319,5 +343,6 @@ class TestRunDirectory:
                 "workspace": run_dir,
                 "inspect_cmd": f"ecc status --project {project_dir} --run-id exp1",
                 "log_cmd": f"ecc log --project {project_dir} --run-id exp1",
-            }
+            },
+            _legacy_hint(project_dir),
         ]

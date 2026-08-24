@@ -32,6 +32,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         os.makedirs(run_dir)
         keep = os.path.join(run_dir, "keep.txt")
@@ -65,6 +66,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         os.makedirs(run_dir)
         real_listdir = os.listdir
@@ -101,6 +103,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         real_run = str(tmp_path / "real_run")
         create_flow_json(real_run)
         link = os.path.join(project_dir, "runs", "exp1")
@@ -128,6 +131,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         target = os.path.join(project_dir, "runs", "exp1")
         with open(target, "w") as f:
             f.write("not a directory\n")
@@ -151,6 +155,7 @@ class TestOverwriteGuard:
 
     def test_allows_empty_dir(self, tmp_path, capsys, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         os.makedirs(run_dir)
 
@@ -165,6 +170,7 @@ class TestOverwriteGuard:
         self, tmp_path, capsys, create_cli_project, create_flow_json, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         link = str(tmp_path / "project_link")
         os.symlink(project_dir, link)
         run_dir = os.path.join(link, "runs", "default")
@@ -180,6 +186,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         real_run = str(tmp_path / "real_run")
         create_flow_json(real_run)
         run_dir = os.path.join(project_dir, "runs", "exp1")
@@ -212,6 +219,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         real_run = str(tmp_path / "real_run")
         create_flow_json(real_run)
         run_dir = os.path.join(project_dir, "runs", "exp1")
@@ -247,6 +255,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         victim = tmp_path / "external" / "victim"
         victim.mkdir(parents=True)
         os.symlink(str(tmp_path / "external"), os.path.join(project_dir, "sweeps"))
@@ -288,6 +297,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         victim = tmp_path / "external" / "victim"
         create_flow_json(str(victim))
         keep = victim / "keep.txt"
@@ -335,6 +345,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         child = tmp_path / "outside" / "child"
         child.mkdir(parents=True)
         victim = tmp_path / "outside" / "victim"
@@ -378,6 +389,7 @@ class TestOverwriteGuard:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         link_dir = tmp_path / "link_dir"
         link_dir.mkdir()
         link = str(link_dir / "project_link")
@@ -433,6 +445,7 @@ class TestRunDirAliasRefusal:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         marker = os.path.join(project_dir, "runs", "other_run")
         os.makedirs(marker)
 
@@ -457,6 +470,7 @@ class TestRunDirAliasRefusal:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir, "--run-id", project_dir, "--json"])
 
@@ -476,6 +490,7 @@ class TestRunDirAliasRefusal:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         set_flow_run(project_dir, 'run = ".."')
 
         rc = cli_main.run(["run", "--project", project_dir, "--overwrite", "--json"])
@@ -496,6 +511,7 @@ class TestRunDirAliasRefusal:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         os.symlink(os.path.join(project_dir, "runs"), os.path.join(project_dir, "runs", "sneaky"))
         marker = os.path.join(project_dir, "runs", "other_run")
         os.makedirs(marker)
@@ -521,6 +537,7 @@ class TestRunDirAliasRefusal:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         link = str(tmp_path / "project_link")
         os.symlink(project_dir, link)
 
@@ -549,6 +566,7 @@ class TestPartialWorkspaceRecovery:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         monkeypatch.setattr("chipcompiler.data.create_workspace", _failing_create_workspace)
 
@@ -571,6 +589,7 @@ class TestPartialWorkspaceRecovery:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         os.makedirs(run_dir)
         keep = os.path.join(run_dir, "keep.txt")
@@ -605,6 +624,7 @@ class TestPartialWorkspaceRecovery:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         create_flow_json(run_dir)
         monkeypatch.setattr("chipcompiler.data.create_workspace", _failing_create_workspace)
@@ -630,6 +650,7 @@ class TestPartialWorkspaceRecovery:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         # A concurrent run won the target and is mid-population: this
         # process loses the atomic create and must stop before writing.
@@ -656,6 +677,7 @@ class TestPartialWorkspaceRecovery:
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "exp1")
         os.makedirs(run_dir)
 

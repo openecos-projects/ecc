@@ -29,6 +29,7 @@ def _patch_all_flow_builders(monkeypatch):
 class TestRun:
     def test_run_calls_create_workspace(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
@@ -38,6 +39,7 @@ class TestRun:
 
     def test_run_adds_flow_steps_when_no_init(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
@@ -45,6 +47,7 @@ class TestRun:
 
     def test_run_calls_create_and_run(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
@@ -55,6 +58,7 @@ class TestRun:
         self, tmp_path, create_cli_project, create_flow_json, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir, profile="main")
 
@@ -63,6 +67,7 @@ class TestRun:
 
     def test_run_fails_if_flow_json_exists(self, tmp_path, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir, profile="main")
 
@@ -80,6 +85,7 @@ class TestRun:
         self, tmp_path, monkeypatch, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         def fake_create(**kwargs):
             return None
@@ -90,6 +96,7 @@ class TestRun:
 
     def test_run_fails_when_run_steps_false(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         flow_mocks.flow.run_steps_value = False
 
         rc = cli_main.run(["run", "--project", project_dir])
@@ -99,6 +106,7 @@ class TestRun:
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
         assert rc == 0
@@ -112,6 +120,7 @@ class TestRun:
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir, "--jsonl"])
         assert rc == 0
@@ -122,6 +131,7 @@ class TestRun:
 
     def test_run_json_no_progress_on_stderr(self, tmp_path, capsys, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
         assert rc == 0
@@ -130,6 +140,7 @@ class TestRun:
 
     def test_run_preserves_final_records(self, tmp_path, capsys, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
         assert rc == 0
@@ -157,6 +168,7 @@ class TestRunFlowPreset:
         self, tmp_path, monkeypatch, create_cli_project, flow_mocks, preset, builder_attr
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         _set_flow_preset(project_dir, preset)
         markers = _patch_all_flow_builders(monkeypatch)
 
@@ -169,6 +181,7 @@ class TestRunFlowPreset:
         self, tmp_path, monkeypatch, create_cli_project, create_flow_json, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir, profile="main")
         _set_flow_preset(project_dir, "harden")
@@ -181,6 +194,7 @@ class TestRunFlowPreset:
 
     def test_run_forwards_pdk_overrides(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path, "a") as f:
             f.write('\n[pdk.overrides]\ndont_use = ["ICG*"]\n')
@@ -195,6 +209,7 @@ class TestRunFlowPreset:
         self, tmp_path, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path, "a") as f:
             f.write(
