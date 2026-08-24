@@ -245,8 +245,8 @@ def test_merge_against_real_template_scalar() -> None:
         "Design": "test_design",
         "Top module": "test_top",
         "Clock": "test_clk",
-        "Frequency max [MHz]": 200,
-        "Max fanout": 50,
+        "frequency_max": 200,
+        "max_fanout": 50,
         "Target density": 0.6,
         "Bottom layer": "MET3",
         "Top layer": "MET4",
@@ -267,7 +267,7 @@ def test_merge_against_real_template_preserves_untouched() -> None:
 
     update_parameters(source, target)
 
-    for key in ["PDK", "Core", "Die", "Cell padding x"]:
+    for key in ["pdk", "core", "die", "cell_padding_x"]:
         assert target[key] == original[key], f"Key '{key}' was modified but should be preserved"
 
 
@@ -275,15 +275,15 @@ def test_merge_against_real_template_list_replace() -> None:
     """Concrete: list override replaces entirely, not appends."""
     template = get_parameters("ics55")
     target: dict[str, object] = deepcopy(template.data)
-    original_core_size_len: int = len(target["Core"]["Size"])  # type: ignore[index]
+    original_core_size_len: int = len(target["core"]["size"])  # type: ignore[index]
 
     new_core_size: list[int] = [100, 200]
-    source: dict[str, object] = {"Core": {"Size": new_core_size}}
+    source: dict[str, object] = {"core": {"size": new_core_size}}
 
     update_parameters(source, target)
 
-    assert target["Core"]["Size"] == new_core_size, "List should be replaced entirely"  # type: ignore[index]
-    assert len(target["Core"]["Size"]) == 2, (  # type: ignore[index]
+    assert target["core"]["size"] == new_core_size, "List should be replaced entirely"  # type: ignore[index]
+    assert len(target["core"]["size"]) == 2, (  # type: ignore[index]
         f"Expected 2 elements, got {len(target['Core']['Size'])} "  # type: ignore[index]
         f"(original had {original_core_size_len})"
     )
@@ -294,12 +294,12 @@ def test_merge_against_real_template_nested_dict_preserves() -> None:
     template = get_parameters("ics55")
     target: dict[str, object] = deepcopy(template.data)
 
-    source: dict[str, object] = {"Core": {"Utilitization": 0.7}}
+    source: dict[str, object] = {"core": {"utilitization": 0.7}}
     update_parameters(source, target)
 
-    assert target["Core"]["Utilitization"] == 0.7, "Nested override should apply"  # type: ignore[index]
-    assert target["Core"]["Margin"] == [2, 2], "Nested untouched key should be preserved"  # type: ignore[index]
-    assert target["Core"]["Aspect ratio"] == 1, "Nested untouched key should be preserved"  # type: ignore[index]
+    assert target["core"]["utilitization"] == 0.7, "Nested override should apply"  # type: ignore[index]
+    assert target["core"]["margin"] == [2, 2], "Nested untouched key should be preserved"  # type: ignore[index]
+    assert target["core"]["aspect_ratio"] == 1, "Nested untouched key should be preserved"  # type: ignore[index]
 
 
 def test_merge_adds_new_key() -> None:

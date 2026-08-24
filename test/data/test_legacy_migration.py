@@ -1,0 +1,169 @@
+#!/usr/bin/env python
+
+import json
+
+from chipcompiler.data import create_workspace, load_workspace
+from chipcompiler.data.parameter import (
+    ICS55_PARAMETERS_TEMPLATE,
+    SG13G2_PARAMETERS_TEMPLATE,
+    load_parameter,
+)
+from chipcompiler.data.parameter_keys import normalize_keys
+
+LEGACY_LONG_KEYS = (
+    "PDK",
+    "Design",
+    "Top module",
+    "Clock",
+    "Frequency max [MHz]",
+    "Max fanout",
+    "Target density",
+    "Target overflow",
+    "Bottom layer",
+    "Top layer",
+    "STA max paths",
+    "Cell padding x",
+    "Global right padding",
+    "Routability opt flag",
+    "Die",
+    "Core",
+    "Floorplan",
+    "PDN",
+    "DreamPlace",
+)
+
+
+def _walk_keys(data):
+    if isinstance(data, dict):
+        for key, value in data.items():
+            yield key
+            yield from _walk_keys(value)
+    elif isinstance(data, list):
+        for item in data:
+            yield from _walk_keys(item)
+
+
+def test_templates_contain_only_canonical_keys():
+    for template in (ICS55_PARAMETERS_TEMPLATE, SG13G2_PARAMETERS_TEMPLATE):
+        keys = set(_walk_keys(template))
+        assert keys.isdisjoint(LEGACY_LONG_KEYS)
+        for key in keys:
+            assert key == normalize_keys({key: 0}).popitem()[0]
+
+
+def test_loaded_parameters_contain_only_canonical_keys(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=str(pdk_root),
+    )
+
+    for source in (
+        load_workspace(str(workspace_dir)).parameters.data,
+        load_parameter(workspace_dir / "home" / "ecc.toml").data,
+    ):
+        keys = set(_walk_keys(source))
+        assert keys.isdisjoint(LEGACY_LONG_KEYS)
+
+
+def _write_legacy_workspace(tmp_path, minimal_ics55_pdk_factory, monkeypatch):
+    """Create a workspace, then downgrade its config to the legacy JSON form."""
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+        pdk_root=str(pdk_root),
+    )
+    # Downgrade: long-key parameters.json replaces the TOML config.
+    legacy = {
+        "PDK": "ics55",
+        "Design": "gcd",
+        "Top module": "gcd",
+        "Clock": "clk",
+        "Frequency max [MHz]": 250,
+        "PDK Root": str(pdk_root.resolve()),
+        "Core": {"Utilitization": 0.55, "Margin": [3, 3]},
+    }
+    (workspace_dir / "home" / "ecc.toml").unlink()
+    (workspace_dir / "home" / "parameters.json").write_text(json.dumps(legacy))
+    return workspace_dir, pdk_root
+
+
+def test_legacy_parameters_migrate_on_open(tmp_path, minimal_ics55_pdk_factory, monkeypatch):
+    workspace_dir, pdk_root = _write_legacy_workspace(
+        tmp_path, minimal_ics55_pdk_factory, monkeypatch
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+
+    assert loaded is not None
+    config_path = workspace_dir / "home" / "ecc.toml"
+    assert config_path.is_file()
+    assert not (workspace_dir / "home" / "parameters.json").exists()
+    assert loaded.parameters.data["frequency_max"] == 250
+    assert loaded.parameters.data["core"]["utilitization"] == 0.55
+    assert loaded.parameters.data["pdk_root"] == str(pdk_root.resolve())
+    home_data = json.loads((workspace_dir / "home" / "home.json").read_text())
+    assert home_data["parameters"] == str(config_path)
+
+
+def test_both_files_present_toml_wins_json_untouched(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch, caplog
+):
+    workspace_dir, pdk_root = _write_legacy_workspace(
+        tmp_path, minimal_ics55_pdk_factory, monkeypatch
+    )
+    # Recreate the TOML alongside the legacy JSON: TOML must win.
+    loaded_once = load_workspace(str(workspace_dir))
+    assert loaded_once is not None
+    legacy_path = workspace_dir / "home" / "parameters.json"
+    legacy_path.write_text(json.dumps({"Design": "stale"}))
+
+    with caplog.at_level("WARNING"):
+        loaded = load_workspace(str(workspace_dir))
+
+    assert loaded is not None
+    assert loaded.parameters.data["design"] == "gcd"
+    assert legacy_path.is_file()
+    assert json.loads(legacy_path.read_text()) == {"Design": "stale"}
+    assert any("workspace_config_shadowed" in record.message for record in caplog.records)
+
+
+def test_rewrite_failure_falls_back_to_in_memory_copy(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch, caplog
+):
+    workspace_dir, _pdk_root = _write_legacy_workspace(
+        tmp_path, minimal_ics55_pdk_factory, monkeypatch
+    )
+
+    import chipcompiler.data.workspace as workspace_module
+
+    monkeypatch.setattr(
+        "chipcompiler.data.workspace_config.save_workspace_config", lambda *a, **k: False
+    )
+
+    with caplog.at_level("WARNING"):
+        loaded = load_workspace(str(workspace_dir))
+
+    assert loaded is not None
+    assert loaded.parameters.data["frequency_max"] == 250
+    assert loaded.parameters.data["core"]["utilitization"] == 0.55
+    # Nothing rewritten; the legacy file stays for the next open to retry.
+    assert (workspace_dir / "home" / "parameters.json").is_file()
+    assert not (workspace_dir / "home" / "ecc.toml").exists()
+    assert workspace_module is not None  # silence unused import lint

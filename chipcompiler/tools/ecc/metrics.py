@@ -3460,7 +3460,7 @@ def build_metrics_timing(workspace: Workspace, step: EccStep) -> dict:
                 max_WNS = float(slack_item.get("WNS", 0))
 
     # frequency
-    frequency = workspace.parameters.data.get("Frequency max [MHz]", 0)
+    frequency = workspace.parameters.data.get("frequency_max", 0)
     if frequency > 0 and max_WNS is not None:
         clk_period = 1000.0 / frequency
 
@@ -3528,6 +3528,40 @@ def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics:
     if len(data) > 0:
         # Add floorplan specific metrics here
         pass
+
+    step_metrics.data = metrics
+
+    # generate report image and dscription
+    image_path = str(json_path).replace(".json", ".png")
+    report = f"{step.name} step metrics:\n"
+
+    step_metrics.report.append((image_path, report))
+
+    if save_step_metrics(workspace, step, step_metrics):
+        return step_metrics
+    else:
+        return None
+
+
+def build_metrics_net_opt(workspace: Workspace, step: EccStep) -> StepMetrics:
+    """
+    Build and return net operation metrics dictionary.
+    """
+    step_metrics = StepMetrics()
+    step_metrics.path = step.analysis.metrics or ""
+
+    metrics = {}
+
+    # db summary matrics
+    metrics.update(build_metrics_db(workspace, step))
+
+    json_path = getattr(step.feature, "step", "") or ""
+    db_data = json_read(getattr(step.feature, "db", "") or "")
+    pins = db_data.get("Pins", {}) if isinstance(db_data, dict) else {}
+    fanout = pins.get("max_fanout") if isinstance(pins, dict) else None
+    if fanout is None:
+        fanout = workspace.parameters.data.get("max_fanout")
+    _add_number_metric(metrics, "Max fanout", fanout)
 
     step_metrics.data = metrics
 

@@ -387,7 +387,7 @@ def run_sta_without_spef(
             feature_dir=feature_dir,
             lib_paths=liberty_paths,
             sdc_path=sdc_path,
-            max_paths=workspace.parameters.data.get("STA max paths", 1000),
+            max_paths=workspace.parameters.data.get("sta_max_paths", 1000),
             corner=corner,
         )
     except Exception as exc:
@@ -464,20 +464,20 @@ def save_data(
         core_bounding_height = db_json.get("Design Layout", {}).get("core_bounding_height", 0)
         core_area = db_json.get("Design Layout", {}).get("core_area", 0)
 
-        margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
+        margin = workspace.parameters.data.get("core", {}).get("margin", [0, 0])
 
         aspect_ratio = die_bounding_width / die_bounding_height if die_bounding_height > 0 else 1
 
         update_param = {
-            "Die": {"Size": [die_bounding_width, die_bounding_height], "Area": die_area},
-            "Core": {
-                "Size": [core_bounding_width, core_bounding_height],
-                "Area": core_area,
-                "Bounding box": (
+            "die": {"size": [die_bounding_width, die_bounding_height], "area": die_area},
+            "core": {
+                "size": [core_bounding_width, core_bounding_height],
+                "area": core_area,
+                "bounding_box": (
                     f"({margin[0]} , {margin[1]}) "
                     f"({core_bounding_width + margin[0]} , {core_bounding_height + margin[1]})"
                 ),
-                "Aspect ratio": aspect_ratio,
+                "aspect_ratio": aspect_ratio,
             },
         }
 
@@ -528,6 +528,42 @@ def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     # do checklist
     checklist = EccChecklist(workspace=workspace, workspace_step=step)
     checklist.check()
+
+
+def run_net_opt(
+    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
+) -> bool:
+    """
+    run net optimization
+    """
+    reslut = False
+
+    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
+
+    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
+    if ecc_module is not None:
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+
+        clock_name = workspace.parameters.data.get("clock", "")
+        if clock_name:
+            ecc_module.set_net(net_name=clock_name, net_type="CLOCK")
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.set_clock_net.value, state=StateEnum.Success
+            )
+
+        ecc_module.run_net_opt(config=workspace.config.get(f"{StepEnum.NETLIST_OPT.value}"))
+
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_net_optimization.value, state=StateEnum.Success
+        )
+
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
+
+        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
+
+    return reslut
 
 
 def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None) -> bool:
@@ -940,7 +976,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             sdc_path=workspace.pdk.sdc,
             spef_path=spef_file,
             output_modes=("report", "structured"),
-            max_paths=workspace.parameters.data.get("STA max paths", 1000),
+            max_paths=workspace.parameters.data.get("sta_max_paths", 1000),
             corner=corner,
         )
 

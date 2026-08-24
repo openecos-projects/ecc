@@ -20,21 +20,21 @@ def create_minimal_sg13g2_pdk(root: Path) -> Path:
 
 def ics55_parameters() -> dict:
     return {
-        "PDK": "ics55",
-        "Design": "gcd",
-        "Top module": "gcd",
-        "Clock": "clk",
-        "Frequency max [MHz]": 100,
+        "pdk": "ics55",
+        "design": "gcd",
+        "top_module": "gcd",
+        "clock": "clk",
+        "frequency_max": 100,
     }
 
 
 def sg13g2_parameters() -> dict:
     return {
-        "PDK": "sg13g2",
-        "Design": "gcd",
-        "Top module": "gcd",
-        "Clock": "clk",
-        "Frequency max [MHz]": 100,
+        "pdk": "sg13g2",
+        "design": "gcd",
+        "top_module": "gcd",
+        "clock": "clk",
+        "frequency_max": 100,
     }
 
 

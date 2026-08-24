@@ -684,6 +684,33 @@ class TestRunFlowWithProgress:
         assert "✓ synthesis (yosys)" in output
         assert "status=success" not in output
 
+    def test_run_start_reestablishes_home_pointers_after_reset(self, tmp_path):
+        from chipcompiler.data.home import HomeData
+
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        home = HomeData()
+        home.init(path=home_dir / "home.json")
+
+        ws = _make_ws(str(tmp_path))
+        ws.home = home
+        ws.flow.path = home_dir / "flow.json"
+        ws.parameters = type("P", (), {"path": home_dir / "ecc.toml"})()
+
+        flow = _make_flow(
+            ws,
+            [_make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(isatty_value=True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        assert result is True
+        assert home.data["parameters"] == str(home_dir / "ecc.toml")
+        assert home.data["flow"] == str(home_dir / "flow.json")
+        assert home.data["checklist"] == str(home_dir / "checklist.json")
+
     def test_stops_on_failure(self):
         call_count = [0]
 

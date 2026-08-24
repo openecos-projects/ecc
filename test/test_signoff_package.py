@@ -56,9 +56,13 @@ def _make_signoff_workspace(
         workspace_dir / "origin" / f"{top_module}.sdc",
         "create_clock -period 10 clk\n",
     )
-    _write_json(
-        workspace_dir / "home" / "parameters.json",
-        {"Design": design, "Top module": top_module, "PDK": "ics55"},
+    from chipcompiler.data.parameter import Parameters, save_parameter
+
+    save_parameter(
+        Parameters(
+            path=workspace_dir / "home" / "ecc.toml",
+            data={"design": design, "top_module": top_module, "pdk": "ics55"},
+        )
     )
     _write_json(
         workspace_dir / "home" / "flow.json",
@@ -211,8 +215,8 @@ def _make_engine_flow(
     workspace.flow.path = workspace_dir / "home" / "flow.json"
     workspace.flow.data = json.loads(workspace.flow.path.read_text(encoding="utf-8"))
     workspace.parameters = Parameters(
-        path=str(workspace_dir / "home" / "parameters.json"),
-        data={"Design": design, "Top module": top_module, "PDK": "ics55"},
+        path=str(workspace_dir / "home" / "ecc.toml"),
+        data={"design": design, "top_module": top_module, "pdk": "ics55"},
     )
     return EngineFlow(workspace=workspace)
 

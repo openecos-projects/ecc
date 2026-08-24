@@ -11,10 +11,10 @@ from chipcompiler.data.parameter import Parameters
 def test_parameters():
     parameters = Parameters()
     parameters.data = {
-        "Design": "test",
-        "Top module": "top",
-        "Clock": "clk",
-        "Frequency max [MHz]": 100,
+        "design": "test",
+        "top_module": "top",
+        "clock": "clk",
+        "frequency_max": 100,
     }
     return parameters
 

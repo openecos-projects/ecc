@@ -89,14 +89,14 @@ class SignoffPackageCollector:
             self._refresh_workspace_analysis(workspace_dir) if options.refresh_analysis else []
         )
 
-        parameters = self._read_json(workspace_dir / "home" / "parameters.json")
+        parameters = self._read_parameters(workspace_dir / "home" / "ecc.toml")
         design = (
             self.workspace.design.name
-            or parameters.get("Design", "")
+            or parameters.get("design", "")
             or self._design_from_outputs(workspace_dir)
         )
-        top_module = self.workspace.design.top_module or parameters.get("Top module", "") or design
-        pdk_name = getattr(self.workspace.pdk, "name", "") or parameters.get("PDK", "")
+        top_module = self.workspace.design.top_module or parameters.get("top_module", "") or design
+        pdk_name = getattr(self.workspace.pdk, "name", "") or parameters.get("pdk", "")
         if not design:
             raise ValueError("cannot determine design name for signoff package")
 
@@ -358,8 +358,8 @@ class SignoffPackageCollector:
             add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
         add_file(
             "initial.parameters",
-            workspace_dir / "home" / "parameters.json",
-            "initial/parameters.json",
+            workspace_dir / "home" / "ecc.toml",
+            "initial/ecc.toml",
             required=True,
         )
 
@@ -625,7 +625,7 @@ class SignoffPackageCollector:
             "initial": {
                 "verilog": rtl_destination,
                 "sdc": f"initial/{design}.sdc",
-                "parameters": "initial/parameters.json",
+                "parameters": "initial/ecc.toml",
             },
             "config": "config/",
             "harden": {

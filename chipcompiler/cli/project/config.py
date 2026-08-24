@@ -251,11 +251,11 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
 
 def to_parameters(cfg: ProjectConfig) -> dict:
     return {
-        "PDK": cfg.pdk_name,
-        "Design": cfg.design_name,
-        "Top module": cfg.design_top,
-        "Clock": cfg.design_clock_port,
-        "Frequency max [MHz]": cfg.design_frequency_mhz,
+        "pdk": cfg.pdk_name,
+        "design": cfg.design_name,
+        "top_module": cfg.design_top,
+        "clock": cfg.design_clock_port,
+        "frequency_max": cfg.design_frequency_mhz,
     }
 
 

@@ -183,7 +183,7 @@ def _make_layout_workspace(tmp_path, *, with_db=False, with_editor_workspace=Fal
         config_path.parent.mkdir()
         config_path.write_text('{"legacy": true}\n', encoding="utf-8")
         parameters_path = workspace_dir / "parameters.json"
-        parameters_path.write_text('{"Floorplan": {"edited": false}}\n', encoding="utf-8")
+        parameters_path.write_text('{"floorplan": {"edited": false}}\n', encoding="utf-8")
         flow_path = workspace_dir / "flow.json"
         flow_data = {
             "steps": [
@@ -196,7 +196,7 @@ def _make_layout_workspace(tmp_path, *, with_db=False, with_editor_workspace=Fal
         workspace.config = {"Floorplan": config_path}
         workspace.parameters = SimpleNamespace(
             path=parameters_path,
-            data={"Floorplan": {"edited": False}},
+            data={"floorplan": {"edited": False}},
         )
         workspace.flow = SimpleNamespace(path=flow_path, data=flow_data)
     return workspace, step
@@ -558,8 +558,8 @@ def test_floorplan_editor_apply_inspect_validate_and_save_publish_editor_artifac
     assert saved_config["PdnPlan"]["manual_vias"] == [{"id": "via-1"}]
     assert saved_config["editor"] == {"enabled": True}
     saved_parameters = json.loads(session.workspace.parameters.path.read_text(encoding="utf-8"))
-    assert saved_parameters["Floorplan"]["edited"] is True
-    assert saved_parameters["PDN"] == {"edited": True}
+    assert saved_parameters["floorplan"]["edited"] is True
+    assert saved_parameters["pdn"] == {"edited": True}
     assert step.output["verilog"].is_file()
     stale_steps = session.workspace.flow.data["steps"][1:]
     assert [item["state"] for item in stale_steps] == ["Unstart", "Unstart"]
