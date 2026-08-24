@@ -10,6 +10,7 @@ imports here must stay cheap (no chipcompiler.data at module level).
 
 import os
 import sys
+from pathlib import Path
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
@@ -139,8 +140,8 @@ def manifest_project_config(command_input, ctx):
         project_dir=ctx.project_dir,
     )
     cfg.params_overrides = {}
-    cfg._manifest_parameters = parameters
-    cfg._manifest_origin_def = manifest.base_design.get("origin_def") or ""
+    cfg.manifest_parameters = parameters
+    cfg.manifest_origin_def = str(manifest.base_design.get("origin_def") or "")
 
     flow_config = None
     if entry is not None:
@@ -232,7 +233,7 @@ def run_existing_workspace(
 
     from chipcompiler.engine.reconcile import reconcile_workspace
 
-    if getattr(cfg, "_manifest_parameters", None) is not None:
+    if cfg.manifest_parameters:
         # Manifest mode: the workspace's own [flow] is the target; the
         # manifest's start/end seeded it at creation and is not consulted.
         target_section = None
@@ -284,11 +285,16 @@ def run_existing_workspace(
             # after load_workspace populated the in-memory copy.
             from chipcompiler.utility import json_read
 
-            flow_data = json_read(workspace.flow.path)
+            flow_path = workspace.flow.path
+            if flow_path is None:
+                flow_path = Path(run_dir) / "home" / "flow.json"
+            flow_data = json_read(flow_path)
             executable = {
-                step.get("name")
+                step["name"]
                 for step in flow_data.get("steps", [])
-                if isinstance(step, dict) and step.get("state") != "Success"
+                if isinstance(step, dict)
+                and isinstance(step.get("name"), str)
+                and step.get("state") != "Success"
             }
             engine_flow.create_step_workspaces(executable_steps=executable)
 
@@ -318,7 +324,7 @@ def run_existing_workspace(
 
         write_back_workspace_status(project_dir, run_name, "success" if flow_ok else "failed")
 
-    record = {
+    record: dict = {
         "run": run_name,
         "status": "success" if flow_ok else "failed",
         "workspace": run_dir,

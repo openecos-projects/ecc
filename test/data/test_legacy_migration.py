@@ -8,7 +8,7 @@ from chipcompiler.data.parameter import (
     SG13G2_PARAMETERS_TEMPLATE,
     load_parameter,
 )
-from chipcompiler.data.parameter_keys import normalize_keys
+from chipcompiler.data.parameter_keys import normalize_key
 
 LEGACY_LONG_KEYS = (
     "PDK",
@@ -48,7 +48,7 @@ def test_templates_contain_only_canonical_keys():
         keys = set(_walk_keys(template))
         assert keys.isdisjoint(LEGACY_LONG_KEYS)
         for key in keys:
-            assert key == normalize_keys({key: 0}).popitem()[0]
+            assert key == normalize_key(key)
 
 
 def test_loaded_parameters_contain_only_canonical_keys(

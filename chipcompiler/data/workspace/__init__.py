@@ -1338,7 +1338,7 @@ def _migrate_legacy_parameters_file(workspace_dir: Path) -> None:
     failed rewrite (permissions, read-only fs) leaves the workspace loadable
     via the normalized in-memory copy; the next open retries.
     """
-    from ..parameter_keys import normalize_keys
+    from ..parameter_keys import normalize_parameter_dict
     from ..workspace_config import (
         legacy_parameters_path,
         load_workspace_config,
@@ -1369,9 +1369,7 @@ def _migrate_legacy_parameters_file(workspace_dir: Path) -> None:
         )
         return
 
-    normalized = normalize_keys(legacy_data)
-    if not isinstance(normalized, dict):
-        normalized = {}
+    normalized = normalize_parameter_dict(legacy_data)
     if not save_workspace_config(workspace_dir, normalized):
         logging.getLogger(__name__).warning(
             "legacy parameters migration deferred (rewrite failed): %s", legacy_path
@@ -1412,10 +1410,10 @@ def load_workspace(directory: str | Path) -> Workspace:
         # silently falls back to stale JSON.
         from chipcompiler.utility import json_read
 
-        from ..parameter_keys import normalize_keys
+        from ..parameter_keys import normalize_parameter_dict
 
-        fallback = normalize_keys(json_read(legacy_path))
-        if isinstance(fallback, dict) and fallback:
+        fallback = normalize_parameter_dict(json_read(legacy_path))
+        if fallback:
             parameters.data = fallback
     if len(parameters.data) <= 0:
         return None

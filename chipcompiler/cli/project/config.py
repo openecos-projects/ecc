@@ -47,6 +47,11 @@ class ProjectConfig:
 
     params_overrides: dict[str, object] = field(default_factory=dict)
 
+    # Manifest-backed layers (project.json projects): the base parameter
+    # payload beneath ecc.toml/--set, and the manifest's origin DEF.
+    manifest_parameters: dict[str, object] = field(default_factory=dict)
+    manifest_origin_def: str = ""
+
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)

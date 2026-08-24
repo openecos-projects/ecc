@@ -53,16 +53,18 @@ _WORKSPACE_STATUSES = frozenset(
     {"success", "failed", "running", "in_progress", "not_started", "archived"}
 )
 
+_DEFAULT_DIRECTIONS: dict[str, str] = {
+    "wns": "maximize",
+    "tns": "maximize",
+    "area": "minimize",
+    "drc_count": "minimize",
+    "lvs_count": "minimize",
+    "power": "minimize",
+}
+
 DEFAULT_OBJECTIVES = {
     "primary": "timing",
-    "directions": {
-        "wns": "maximize",
-        "tns": "maximize",
-        "area": "minimize",
-        "drc_count": "minimize",
-        "lvs_count": "minimize",
-        "power": "minimize",
-    },
+    "directions": _DEFAULT_DIRECTIONS,
 }
 
 
@@ -215,15 +217,17 @@ def load_manifest(project_dir: str) -> ProjectManifest:
     name = _optional_str(source.get("name")) or os.path.basename(project_dir) or "project"
     base_design = _record(source.get("base_design"))
     base_design = {**base_design, "parameters": _record(base_design.get("parameters"))}
-    objectives = _record(source.get("objectives"))
-    objectives = {
-        **DEFAULT_OBJECTIVES,
-        **objectives,
-        "directions": {
-            **DEFAULT_OBJECTIVES["directions"],
-            **_record(objectives.get("directions")),
-        },
+    # Mirror the GUI parser: primary defaults to "timing", directions keep
+    # only maximize/minimize entries from the source (no default fill).
+    objectives_raw = _record(source.get("objectives"))
+    directions = {
+        key: value
+        for key, value in _record(objectives_raw.get("directions")).items()
+        if value in ("maximize", "minimize")
     }
+    objectives = dict(objectives_raw)
+    objectives["primary"] = _optional_str(objectives_raw.get("primary")) or "timing"
+    objectives["directions"] = directions
     qor_baseline_raw = _record(source.get("qor_baseline"))
     qor_baseline = None
     if _optional_str(qor_baseline_raw.get("workspace_id")):

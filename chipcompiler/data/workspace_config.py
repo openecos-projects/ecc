@@ -56,10 +56,11 @@ def parameters_have_chip_identity(data: object) -> bool:
     """Return True when parameters still carry chip identity fields."""
     if not isinstance(data, dict):
         return False
+    payload: dict = dict(data)
     for key in _IDENTITY_FIELDS:
-        if str(data.get(key, "")).strip():
+        if str(payload.get(key, "")).strip():
             return True
-    die = data.get("die")
+    die = payload.get("die")
     if isinstance(die, dict):
         try:
             area = float(die.get("area") or 0)
@@ -81,9 +82,10 @@ def validate_flow_config(flow: object) -> dict[str, str]:
         return {}
     if not isinstance(flow, dict):
         raise WorkspaceFlowTargetError(f"[flow] must be a table, not {type(flow).__name__}")
-    preset = flow.get("preset")
-    start = flow.get("start")
-    end = flow.get("end")
+    section: dict = dict(flow)
+    preset = section.get("preset")
+    start = section.get("start")
+    end = section.get("end")
     if preset is not None and (start is not None or end is not None):
         raise WorkspaceFlowTargetError("[flow] preset cannot be combined with start/end")
     if (start is None) != (end is None):

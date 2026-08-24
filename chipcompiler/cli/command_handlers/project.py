@@ -312,7 +312,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ctx, command_input.project.run_id or "default"
         )
         if manifest_parameters:
-            cfg._manifest_parameters = manifest_parameters
+            cfg.manifest_parameters = manifest_parameters
         if entry_flow_config is not None:
             flow_config = entry_flow_config
 
@@ -445,7 +445,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     parameters = to_parameters(cfg)
     pdk_root = resolve_pdk_root(cfg)
 
-    manifest_parameters = getattr(cfg, "_manifest_parameters", None)
+    manifest_parameters = cfg.manifest_parameters
     if manifest_parameters:
         from chipcompiler.data.parameter import update_parameters
         from chipcompiler.data.parameter_keys import geometry_to_parameters
@@ -474,7 +474,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     try:
         workspace = create_workspace(
             directory=run_dir,
-            origin_def=getattr(cfg, "_manifest_origin_def", "") or "",
+            origin_def=cfg.manifest_origin_def,
             origin_verilog=origin_verilog,
             pdk=cfg.pdk_name,
             parameters=parameters,

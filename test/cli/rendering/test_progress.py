@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -692,10 +693,18 @@ class TestRunFlowWithProgress:
         home = HomeData()
         home.init(path=home_dir / "home.json")
 
-        ws = _make_ws(str(tmp_path))
-        ws.home = home
-        ws.flow.path = home_dir / "flow.json"
-        ws.parameters = type("P", (), {"path": home_dir / "ecc.toml"})()
+        logger = SimpleNamespace(
+            info=lambda *a, **k: None,
+            log_section=lambda *a, **k: None,
+            log_separator=lambda *a, **k: None,
+        )
+        ws = SimpleNamespace(
+            home=home,
+            logger=logger,
+            flow=SimpleNamespace(data={"steps": []}, path=home_dir / "flow.json"),
+            parameters=SimpleNamespace(path=home_dir / "ecc.toml"),
+            directory=str(tmp_path),
+        )
 
         flow = _make_flow(
             ws,

@@ -17,8 +17,11 @@ from chipcompiler.cli.project.config import (
 
 
 class CommandInput(Protocol):
-    output: OutputOptions
-    project: ProjectOptions
+    # Read-only members: the frozen input dataclasses satisfy these.
+    @property
+    def output(self) -> OutputOptions: ...
+    @property
+    def project(self) -> ProjectOptions: ...
 
 
 CommandInputT = TypeVar("CommandInputT", bound=CommandInput)

@@ -5,7 +5,6 @@ import json
 import pytest
 
 from chipcompiler.cli.project.manifest import (
-    DEFAULT_OBJECTIVES,
     ManifestError,
     assemble_config,
     build_manifest_document,
@@ -43,7 +42,8 @@ def test_load_manifest_tolerant_defaults(tmp_path):
     assert manifest.name == tmp_path.name
     assert manifest.project_id.startswith("proj_")
     assert manifest.objectives["primary"] == "timing"
-    assert manifest.objectives["directions"] == DEFAULT_OBJECTIVES["directions"]
+    # The GUI parser keeps only maximize/minimize entries from the source.
+    assert manifest.objectives["directions"] == {}
     assert manifest.base_design["parameters"] == {}
     assert manifest.qor_baseline is None
     assert manifest.workspaces == ()

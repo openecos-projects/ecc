@@ -36,7 +36,7 @@ def normalize_key(key: object) -> str:
     return normalized.strip("_")
 
 
-def normalize_keys(data: object, _path: str = "") -> object:
+def normalize_keys(data, _path: str = "") -> object:
     """Recursively normalize every dict key in *data*.
 
     Returns a new structure; the input is not mutated. When a long key and
@@ -45,27 +45,36 @@ def normalize_keys(data: object, _path: str = "") -> object:
     is logged.
     """
     if isinstance(data, dict):
-        result = {}
-        collisions = []
-        for key, value in data.items():
-            canonical = normalize_key(key)
-            normalized_value = normalize_keys(value, f"{_path}{canonical}.")
-            if canonical in result:
-                collisions.append(canonical)
-                if str(key) == canonical:
-                    # Inert flat duplicate of a long key already seen: the
-                    # long-key value wins, the flat one is dropped.
-                    continue
-            result[canonical] = normalized_value
-        for canonical in collisions:
-            logger.warning(
-                "parameter key collision at %s: keeping long-key value, dropping flat duplicate",
-                f"{_path}{canonical}",
-            )
-        return result
+        return _normalize_dict(data, _path)
     if isinstance(data, list):
         return [normalize_keys(item, _path) for item in data]
     return data
+
+
+def normalize_parameter_dict(data: dict) -> dict:
+    """Normalize a parameter payload, preserving the plain ``dict`` type."""
+    return _normalize_dict(data, "")
+
+
+def _normalize_dict(data: dict, path: str) -> dict:
+    result: dict = {}
+    collisions = []
+    for key, value in data.items():
+        canonical = normalize_key(key)
+        normalized_value = normalize_keys(value, f"{path}{canonical}.")
+        if canonical in result:
+            collisions.append(canonical)
+            if str(key) == canonical:
+                # Inert flat duplicate of a long key already seen: the
+                # long-key value wins, the flat one is dropped.
+                continue
+        result[canonical] = normalized_value
+    for canonical in collisions:
+        logger.warning(
+            "parameter key collision at %s: keeping long-key value, dropping flat duplicate",
+            f"{path}{canonical}",
+        )
+    return result
 
 
 def geometry_to_parameters(flat: dict) -> dict:
@@ -75,8 +84,7 @@ def geometry_to_parameters(flat: dict) -> dict:
     aliases folded into the ``die``/``core`` subtrees, and the GUI-only
     ``die_area_mode`` dropped. Unknown flat keys are kept as-is.
     """
-    normalized = normalize_keys(flat)
-    assert isinstance(normalized, dict)
+    normalized = normalize_parameter_dict(flat)
     normalized.pop("die_area_mode", None)
     for alias, (subtree, key, index) in _GEOMETRY_TO_PARAMETERS.items():
         if alias not in normalized:

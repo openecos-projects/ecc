@@ -1751,11 +1751,9 @@ def _layout_edit_workspace_staging(
         parameter_data = deepcopy(getattr(getattr(workspace, "parameters", None), "data", {}) or {})
         if not isinstance(parameter_data, dict):
             raise RuntimeApiError("command_failed", "workspace parameters are invalid")
-        from chipcompiler.data.parameter_keys import normalize_keys
+        from chipcompiler.data.parameter_keys import normalize_parameter_dict
 
-        normalized_patch = normalize_keys(edit_session.parameters_patch)
-        if isinstance(normalized_patch, dict):
-            _deep_merge(parameter_data, normalized_patch)
+        _deep_merge(parameter_data, normalize_parameter_dict(edit_session.parameters_patch))
         targets["parameters"] = parameter_target
         json_data["parameters"] = parameter_data
         artifacts["parametersPath"] = str(parameter_target)
@@ -2172,8 +2170,7 @@ def _canonical_request_parameters(parameters: dict[str, Any] | None) -> dict[str
         return {}
     from chipcompiler.data.parameter_keys import geometry_to_parameters
 
-    converted = geometry_to_parameters(parameters)
-    return converted if isinstance(converted, dict) else {}
+    return geometry_to_parameters(parameters)
 
 
 def _looks_like_old_workspace(directory: str) -> bool:
