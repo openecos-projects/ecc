@@ -167,3 +167,38 @@ def test_rewrite_failure_falls_back_to_in_memory_copy(
     assert (workspace_dir / "home" / "parameters.json").is_file()
     assert not (workspace_dir / "home" / "ecc.toml").exists()
     assert workspace_module is not None  # silence unused import lint
+
+
+def test_malformed_toml_never_falls_back_to_legacy_json(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch
+):
+    workspace_dir, _pdk_root = _write_legacy_workspace(
+        tmp_path, minimal_ics55_pdk_factory, monkeypatch
+    )
+    # Both files present, TOML malformed: the workspace must not silently
+    # load the stale JSON values.
+    (workspace_dir / "home" / "ecc.toml").write_text("[params\nbroken =")
+
+    loaded = load_workspace(str(workspace_dir))
+
+    assert loaded is None
+
+
+def test_legacy_null_values_do_not_abort_migration(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch
+):
+    workspace_dir, _pdk_root = _write_legacy_workspace(
+        tmp_path, minimal_ics55_pdk_factory, monkeypatch
+    )
+    legacy_path = workspace_dir / "home" / "parameters.json"
+    legacy = json.loads(legacy_path.read_text())
+    legacy["notes"] = None
+    legacy_path.write_text(json.dumps(legacy))
+
+    loaded = load_workspace(str(workspace_dir))
+
+    # The rewrite cannot serialize null; the workspace still opens from the
+    # normalized in-memory copy and the legacy file stays for a later retry.
+    assert loaded is not None
+    assert loaded.parameters.data["frequency_max"] == 250
+    assert legacy_path.is_file()

@@ -593,6 +593,12 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     die_size = die_builder.setdefault("die_size", {})
     die_size.setdefault("width_micron", default_die_size.get("width_micron", 100.1))
     die_size.setdefault("height_micron", default_die_size.get("height_micron", 246.6))
+    die = workspace.parameters.data.get("die", {})
+    die_dimensions = die.get("size") if isinstance(die, dict) else None
+    if isinstance(die_dimensions, list) and len(die_dimensions) >= 2:
+        die_size["width_micron"] = die_dimensions[0]
+        die_size["height_micron"] = die_dimensions[1]
+        die_builder["mode"] = "die_size"
     for legacy_key in (
         "core_width_to_height_ratio",
         "core_utilization",
@@ -1391,18 +1397,20 @@ def load_workspace(directory: str | Path) -> Workspace:
     workspace.config = build_workspace_config_paths(workspace)
 
     parameters = load_parameter(home_dir / "ecc.toml")
-    if len(parameters.data) <= 0:
-        legacy_path = home_dir / "parameters.json"
-        if legacy_path.exists():
-            # Migration was deferred (e.g. read-only dir): fall back to the
-            # normalized in-memory copy so the workspace still opens.
-            from chipcompiler.utility import json_read
+    config_path = home_dir / "ecc.toml"
+    legacy_path = home_dir / "parameters.json"
+    if len(parameters.data) <= 0 and not config_path.exists() and legacy_path.exists():
+        # Migration was deferred (e.g. read-only dir): fall back to the
+        # normalized in-memory copy so the workspace still opens. When the
+        # TOML exists it wins unconditionally — a malformed config never
+        # silently falls back to stale JSON.
+        from chipcompiler.utility import json_read
 
-            from ..parameter_keys import normalize_keys
+        from ..parameter_keys import normalize_keys
 
-            fallback = normalize_keys(json_read(legacy_path))
-            if isinstance(fallback, dict) and fallback:
-                parameters.data = fallback
+        fallback = normalize_keys(json_read(legacy_path))
+        if isinstance(fallback, dict) and fallback:
+            parameters.data = fallback
     if len(parameters.data) <= 0:
         return None
 

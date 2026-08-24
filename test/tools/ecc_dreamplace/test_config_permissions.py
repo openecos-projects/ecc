@@ -4,7 +4,7 @@ import stat
 from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
 from chipcompiler.data.workspace import init_workspace_config
 from chipcompiler.tools.ecc_dreamplace import builder as dreamplace_builder
-from chipcompiler.utility import json_read, json_write
+from chipcompiler.utility import json_read
 
 
 def test_workspace_config_generation_leaves_config_root_writable_after_read_only_copy(
@@ -204,10 +204,10 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
         },
     }
     updated_parameters = make_ics55_parameters(updated_overrides)
-    json_write(
-        workspace.parameters.path,
-        updated_parameters.data,
-    )
+    updated_parameters.path = workspace.parameters.path
+    from chipcompiler.data.parameter import save_parameter
+
+    assert save_parameter(updated_parameters)
     monkeypatch.setattr(
         dreamplace_builder.ecc_builder,
         "build_step_config",

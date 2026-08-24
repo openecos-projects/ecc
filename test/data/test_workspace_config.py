@@ -108,11 +108,32 @@ def test_flow_validation_start_after_end_rejected():
         validate_flow_config({"start": "Harden", "end": "Synthesis"})
 
 
-def test_flow_validation_accepts_display_name_aliases():
-    assert validate_flow_config({"start": "Synth", "end": "Filler"}) == {
+def test_flow_validation_accepts_canonical_names():
+    assert validate_flow_config({"start": "Synthesis", "end": "filler"}) == {
         "start": "Synthesis",
         "end": "filler",
     }
+
+
+def test_flow_validation_rejects_display_name_aliases():
+    # Workspace files carry canonical names only; aliases translate at the
+    # manifest/RPC boundary.
+    with pytest.raises(WorkspaceFlowTargetError):
+        validate_flow_config({"start": "Synth", "end": "Filler"})
+
+
+def test_save_rejects_invalid_flow_target(tmp_path):
+    payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
+    with pytest.raises(WorkspaceFlowTargetError):
+        save_workspace_config(tmp_path, payload, {"start": "Harden", "end": "Synthesis"})
+    assert not workspace_config_path(tmp_path).exists()
+
+
+def test_save_unserializable_payload_returns_false(tmp_path):
+    payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
+    payload["broken"] = None
+    assert save_workspace_config(tmp_path, payload) is False
+    assert not workspace_config_path(tmp_path).exists()
 
 
 def test_flow_validation_none_and_empty_pass():

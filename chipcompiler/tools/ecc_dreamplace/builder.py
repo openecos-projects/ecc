@@ -25,6 +25,10 @@ def apply_parameter_overrides(
 def _current_parameter_data(workspace: Workspace) -> dict:
     parameter_path = workspace.parameters.path
     if parameter_path and os.path.exists(parameter_path):
+        if str(parameter_path).endswith(".toml"):
+            from chipcompiler.data.parameter import load_parameter
+
+            return load_parameter(Path(parameter_path)).data
         return json_read(parameter_path)
 
     return workspace.parameters.data

@@ -82,7 +82,7 @@ def test_gui_geometry_aliases_fold_into_subtrees(monkeypatch, tmp_path):
     persisted = load_parameter(workspace_dir / "home" / "ecc.toml").data
     assert persisted["die"]["size"] == [150, 160]
     assert persisted["core"]["utilitization"] == 0.5
-    assert persisted["core"]["margin"] == [3]
+    assert persisted["core"]["margin"] == [3, 3]
     # The GUI-only mode key never lands in the persisted configuration.
     assert "die_area_mode" not in persisted
     assert "die_width" not in persisted
@@ -102,3 +102,35 @@ def test_legacy_long_keys_in_rpc_payload_are_normalized(monkeypatch, tmp_path):
     persisted = load_parameter(workspace_dir / "home" / "ecc.toml").data
     assert persisted["frequency_max"] == 300
     assert "Frequency max [MHz]" not in persisted
+
+
+def test_gui_geometry_reaches_floorplan_config(monkeypatch, tmp_path):
+    import json
+
+    api = _make_api(monkeypatch)
+    workspace_dir = tmp_path / "workspace"
+
+    _create(
+        api,
+        workspace_dir,
+        tmp_path / "pdk",
+        {
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+            "die_width": 150,
+            "die_height": 160,
+            "utilitization": 0.5,
+            "margin": 3,
+            "die_area_mode": "width_height",
+        },
+    )
+
+    floorplan = json.loads((workspace_dir / "config" / "floorplan_ecc.json").read_text())
+    die_builder = floorplan["die_builder"]
+    assert die_builder["mode"] == "die_size"
+    assert die_builder["die_size"]["width_micron"] == 150
+    assert die_builder["die_size"]["height_micron"] == 160
+    assert die_builder["margin"]["left_micron"] == 3
+    assert die_builder["margin"]["top_micron"] == 3
+    assert die_builder["die_util"]["utilization"] == 0.5

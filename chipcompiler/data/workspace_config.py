@@ -98,20 +98,18 @@ def validate_flow_config(flow: object) -> dict[str, str]:
         result["preset"] = preset
         return result
 
-    from chipcompiler.data.workspace import (
-        _canonical_harden_flow_entries,
-        _normalize_flow_step_name,
-    )
+    from chipcompiler.data.workspace import _canonical_harden_flow_entries
 
     canonical_names = [name for name, _tool, _state in _canonical_harden_flow_entries()]
     normalized: dict[str, str] = {}
     for key, value in (("start", start), ("end", end)):
         if not isinstance(value, str):
             raise WorkspaceFlowTargetError(f"[flow] {key} must be a string: {value!r}")
-        name = _normalize_flow_step_name(value)
-        if name not in canonical_names:
+        # Workspace files carry canonical step names only; display-name
+        # aliases are translated at the manifest/RPC boundary, never here.
+        if value not in canonical_names:
             raise WorkspaceFlowTargetError(f"[flow] unknown step name: {value!r}")
-        normalized[key] = name
+        normalized[key] = value
     if canonical_names.index(normalized["start"]) > canonical_names.index(normalized["end"]):
         raise WorkspaceFlowTargetError(
             f"[flow] start {normalized['start']!r} is after end {normalized['end']!r}"
@@ -212,6 +210,8 @@ def save_workspace_config(
     section (preset or start/end form). ``pdk_config`` values inside the
     workspace are stored workspace-relative.
     """
+    if flow:
+        validate_flow_config(flow)
     path = workspace_config_path(workspace_dir)
     workspace_root = Path(workspace_dir).resolve()
 
@@ -250,7 +250,10 @@ def save_workspace_config(
             os.fsync(f.fileno())
         os.replace(tmp_path, target)
         return True
-    except OSError:
+    except (OSError, TypeError, ValueError):
+        # OSError: filesystem failure; TypeError/ValueError: payload values
+        # tomli_w cannot serialize (e.g. a legacy null) — never leave a
+        # half-written config or abort the caller's fallback path.
         logger.warning("failed to write workspace config: %s", target)
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)

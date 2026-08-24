@@ -92,6 +92,9 @@ def geometry_to_parameters(flat: dict) -> dict:
         entries = subtree_data.get(key)
         if not isinstance(entries, list):
             entries = []
+        if alias == "margin" and not entries:
+            # The GUI margin alias is a single scalar applied to both axes.
+            entries = [value, value]
         while len(entries) <= index:
             entries.append(0)
         entries[index] = value

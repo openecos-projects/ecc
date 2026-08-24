@@ -79,7 +79,7 @@ def test_geometry_to_parameters_folds_aliases_into_subtrees():
         "frequency_max": 200,
         "top_module": "gcd",
         "die": {"size": [150, 160]},
-        "core": {"utilitization": 0.5, "margin": [3]},
+        "core": {"utilitization": 0.5, "margin": [3, 3]},
     }
 
 
@@ -87,7 +87,7 @@ def test_geometry_to_parameters_extends_existing_subtrees():
     flat = {"die": {"area": 0}, "core": {"aspect_ratio": 1}, "die_width": 150, "margin": 3}
     assert geometry_to_parameters(flat) == {
         "die": {"area": 0, "size": [150]},
-        "core": {"aspect_ratio": 1, "margin": [3]},
+        "core": {"aspect_ratio": 1, "margin": [3, 3]},
     }
 
 
