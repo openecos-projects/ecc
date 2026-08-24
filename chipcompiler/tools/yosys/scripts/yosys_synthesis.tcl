@@ -42,7 +42,7 @@ yosys -import
 #   DELAY N   — maximize frequency
 #   AREA N    — minimize area
 #   BALANCE N — balanced PPA
-set synth_strategy "BALANCE 3"
+set synth_strategy "DELAY 4"
 if {[info exists env(YOSYS_SYNTH_STRATEGY)]} {
   # TODO: Move this to global_var.tcl
   set synth_strategy $::env(YOSYS_SYNTH_STRATEGY)
@@ -70,11 +70,11 @@ set valid_types {DELAY AREA BALANCE}
 
 # --- DELAY family ---
 # Slack margin: tighten target to push frequency (<1 = tighter)
-set delay_slack_margin 0.92
+set delay_slack_margin 0.95
 # Redelay depth
 set delay_retime_M 8
 # Max fanout for buffer insertion
-set delay_max_FO 24
+set delay_max_FO 20
 # Multi-pass: 0=off, 1=on (second ABC pass to reinforce critical paths)
 set delay_multipass 1
 # Pass-2 relaxation factor
@@ -195,7 +195,7 @@ close $abc_constr_file
 
 #=======================================================================
 # DELAY scripts — maximize frequency
-# 12 scripts (index 0..11)
+# 14 scripts (index 0..13)
 # Common prefix: fx;mfs;strash;refactor;resyn2;retime_dly;scleanup
 # Mapper: abc_map_tight (map,-p,-B,0.2,-A,0.9,-M,0)
 # Fine-tune: abc_finetune_delay / delay2 / delay3 (upsize+buffer)
