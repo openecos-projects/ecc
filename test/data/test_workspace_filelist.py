@@ -41,8 +41,8 @@ class TestCreateWorkspaceIntegration:
         filelist = project_dir / "design.f"
         _create_filelist(filelist, "gcd.v")
 
-        test_parameters.data["Design"] = "gcd"
-        test_parameters.data["Top module"] = "gcd"
+        test_parameters.data["design"] = "gcd"
+        test_parameters.data["top_module"] = "gcd"
 
         workspace_dir = tmp_path / "workspace"
         workspace = create_workspace(

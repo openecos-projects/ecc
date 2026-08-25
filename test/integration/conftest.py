@@ -27,9 +27,9 @@ def run_workspace_flow(
 ):
     workspace_dir = REPO_ROOT / "test" / "examples" / workspace_suffix
     parameters = get_design_parameters(pdk_name, design_name)
-    parameters.data["Design"] = design_name
-    parameters.data["Top module"] = design_name
-    parameters.data["Clock"] = "clk"
+    parameters.data["design"] = design_name
+    parameters.data["top_module"] = design_name
+    parameters.data["clock"] = "clk"
 
     if pdk_root is None:
         pdk = get_pdk(pdk_name=pdk_name)

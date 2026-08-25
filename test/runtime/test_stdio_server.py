@@ -61,11 +61,11 @@ def _create_real_workspace(tmp_path: Path, minimal_ics55_pdk_factory) -> Path:
         pdk="ics55",
         pdk_root=pdk_root,
         parameters={
-            "PDK": "ics55",
-            "Design": "gcd",
-            "Top module": "gcd",
-            "Clock": "clk",
-            "Frequency max [MHz]": 100,
+            "pdk": "ics55",
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+            "frequency_max": 100,
         },
     )
     return workspace_dir
