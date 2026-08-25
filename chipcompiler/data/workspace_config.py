@@ -252,17 +252,15 @@ def _merge_payload(sections: dict[str, Any]) -> dict:
     return params
 
 
-def load_workspace_config(workspace_dir: str | Path) -> dict:
-    """Load ``home/ecc.toml`` as a canonical flat parameter payload.
+def _decode_workspace_config(path: Path, workspace_dir: str | Path) -> dict:
+    """Decode and validate one workspace config document.
 
-    The returned dict always carries a ``_flow`` entry with the validated
-    ``[flow]`` section (empty dict when absent). ``pdk_config`` is resolved
-    against the workspace directory when stored workspace-relative.
-
+    Shared by load_workspace_config (canonical location) and the staged
+    migration candidate: TOML parse, [flow] validation with ledger
+    fallback, payload merge, and workspace-relative pdk_config resolution.
     Raises WorkspaceConfigError on TOML parse failure and
-    WorkspaceFlowTargetError on ``[flow]`` rule violations.
+    WorkspaceFlowTargetError on [flow] rule violations.
     """
-    path = workspace_config_path(workspace_dir)
     try:
         with open(path, "rb") as f:
             raw = tomllib.load(f)
@@ -282,6 +280,19 @@ def load_workspace_config(workspace_dir: str | Path) -> dict:
 
     payload["_flow"] = flow
     return payload
+
+
+def load_workspace_config(workspace_dir: str | Path) -> dict:
+    """Load ``home/ecc.toml`` as a canonical flat parameter payload.
+
+    The returned dict always carries a ``_flow`` entry with the validated
+    ``[flow]`` section (empty dict when absent). ``pdk_config`` is resolved
+    against the workspace directory when stored workspace-relative.
+
+    Raises WorkspaceConfigError on TOML parse failure and
+    WorkspaceFlowTargetError on ``[flow]`` rule violations.
+    """
+    return _decode_workspace_config(workspace_config_path(workspace_dir), workspace_dir)
 
 
 def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
@@ -336,6 +347,30 @@ def render_workspace_config(
     return tomli_w.dumps(document).encode("utf-8")
 
 
+def _stage_config_bytes(target: Path, content: bytes) -> Path | None:
+    """Write and fsync content at a temp path next to target (not installed)."""
+    tmp_path = None
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "wb",
+            dir=target.parent,
+            delete=False,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+        ) as f:
+            tmp_path = Path(f.name)
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        return tmp_path
+    except OSError:
+        logger.warning("failed to write workspace config: %s", target)
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+        return None
+
+
 def save_workspace_config(
     workspace_dir: str | Path,
     data: dict,
@@ -357,26 +392,15 @@ def save_workspace_config(
         return False
 
     target = workspace_config_path(workspace_dir).expanduser().resolve()
-    tmp_path = None
+    tmp_path = _stage_config_bytes(target, content)
+    if tmp_path is None:
+        return False
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "wb",
-            dir=target.parent,
-            delete=False,
-            prefix=f".{target.name}.",
-            suffix=".tmp",
-        ) as f:
-            tmp_path = Path(f.name)
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
         os.replace(tmp_path, target)
         return True
     except OSError:
         logger.warning("failed to write workspace config: %s", target)
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
+        tmp_path.unlink(missing_ok=True)
         return False
 
 
@@ -414,9 +438,11 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
     """Rewrite a legacy ``home/parameters.json`` into ``home/ecc.toml``.
 
     Runs at workspace open, the single choke point for loading workspaces.
-    When both files exist the TOML wins and the JSON is left untouched. A
-    failed rewrite (permissions, read-only fs) leaves the workspace loadable
-    via the normalized in-memory copy; the next open retries.
+    When both files exist the TOML wins and the JSON is left untouched. The
+    candidate is staged and validated before its atomic install, so any
+    failure (render, write, validation, install) leaves no final TOML:
+    the workspace loads via the normalized in-memory copy and the next
+    open retries.
     """
     from .parameter_keys import normalize_parameter_dict
 
@@ -445,23 +471,38 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
     # Derive the flow target from the persisted flow's first/last steps so
     # the migrated workspace stays self-describing.
     flow_section = _derive_flow_from_ledger(workspace_dir)
-    if not save_workspace_config(workspace_dir, normalized, flow_section or None):
+    try:
+        content = render_workspace_config(workspace_dir, normalized, flow_section or None)
+    except (TypeError, ValueError) as exc:
+        # Payload values tomli_w cannot serialize (e.g. a legacy null).
+        logger.warning(
+            "legacy parameters migration deferred (render failed): %s: %s", legacy_path, exc
+        )
+        return
+
+    # Stage the candidate, validate it against the workspace root, and only
+    # then atomically install it. A failed candidate validation leaves NO
+    # final config behind, so the next open retries without any cleanup of
+    # an installed unverified file.
+    candidate = _stage_config_bytes(config_path, content)
+    if candidate is None:
         logger.warning("legacy parameters migration deferred (rewrite failed): %s", legacy_path)
         return
     try:
-        load_workspace_config(workspace_dir)
+        _decode_workspace_config(candidate, workspace_dir)
     except Exception as exc:
-        # Verify failed: remove only the TOML this invocation created (the
-        # config_path.exists() guard above proves it did not exist before),
-        # so the next open retries the migration instead of treating the
-        # pair as intentional shadowing.
         logger.warning(
             "legacy parameters migration deferred (verify failed): %s: %s", config_path, exc
         )
-        try:
-            config_path.unlink(missing_ok=True)
-        except OSError as unlink_exc:
-            logger.warning("failed to remove unverified config %s: %s", config_path, unlink_exc)
+        candidate.unlink(missing_ok=True)
+        return
+    try:
+        os.replace(candidate, config_path)
+    except OSError as exc:
+        logger.warning(
+            "legacy parameters migration deferred (install failed): %s: %s", config_path, exc
+        )
+        candidate.unlink(missing_ok=True)
         return
     try:
         legacy_path.unlink()

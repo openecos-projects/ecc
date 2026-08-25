@@ -395,9 +395,8 @@ class TestMigrationPreview:
         rc = cli_main.run(["migrate", "--project", project_dir, "--json"])
 
         assert rc == 0
-        err = capsys.readouterr().err
-        assert "create project.json (1 workspaces: exp1)" in err
-        assert os.path.isfile(os.path.join(project_dir, "project.json"))
+        # The TTY render shows the full manifest document, not an id summary.
+        assert json.dumps(_manifest(project_dir), indent=2) in capsys.readouterr().err
         assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
 
     def test_resume_append_disclosed_in_preview(
@@ -432,17 +431,40 @@ class TestMigrationPreview:
         assert rc == 0
         records = _records(capsys)
         (append,) = [r for r in records if r.get("manifest") == "append"]
-        assert append["workspaces"] == [
-            {
-                "workspace_id": "exp2",
-                "workspace_path": os.path.join(project_dir, "exp2"),
-                "start_step": "Synth",
-                "end_step": "Floor",
-                "status": "failed",
-            }
+        (appended,) = [
+            w for w in _manifest(project_dir)["workspaces"] if w["workspace_id"] == "exp2"
         ]
-        # The executed append carries exactly the previewed fields.
-        final = _manifest(project_dir)
-        (appended,) = [w for w in final["workspaces"] if w["workspace_id"] == "exp2"]
+        # The applied entry IS the previewed entry, complete and verbatim.
         (previewed,) = append["workspaces"]
-        assert {key: appended[key] for key in previewed} == previewed
+        assert appended == previewed
+
+    def test_mixed_result_baseline_follows_first_success(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        """A failed first move must not own the manifest: workspaces and
+        qor_baseline derive together from the successful moves."""
+        import chipcompiler.data
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        _create_legacy_workspace(project_dir, pdk_root, "exp2", ["Success", "Success"])
+
+        real_refresh = chipcompiler.data.refresh_workspace_config
+
+        def selective_refresh(workspace):
+            if str(workspace.directory).endswith("exp1"):
+                raise RuntimeError("boom")
+            return real_refresh(workspace)
+
+        monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", selective_refresh)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        manifest = _manifest(project_dir)
+        assert [w["workspace_id"] for w in manifest["workspaces"]] == ["exp2"]
+        assert manifest["qor_baseline"]["workspace_id"] == "exp2"
+        # The failed move was rolled back under runs/.
+        assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
+        assert not os.path.exists(os.path.join(project_dir, "exp1"))

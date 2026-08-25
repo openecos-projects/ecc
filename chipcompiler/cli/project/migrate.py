@@ -14,11 +14,15 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from chipcompiler.cli.project.manifest import (
+    base_design_from_config,
     build_manifest_document,
     find_manifest,
+    load_manifest,
+    manifest_workspace_entry,
     update_manifest,
 )
 
@@ -137,16 +141,21 @@ def plan_migration(project_dir: str) -> MigrationPlan:
     )
 
 
-def _append_set(entries: tuple[MigrationEntry, ...]) -> tuple[dict, ...]:
-    """The display-exact workspace entries a resume migration appends."""
+def _workspace_entries(
+    entries: tuple[MigrationEntry, ...], *, name: str, now: str
+) -> tuple[dict, ...]:
+    """Complete workspace entries for the planned moves (preview-exact:
+    the applied objects are these, copied — never a partial reconstruction)."""
     return tuple(
-        {
-            "workspace_id": entry.run_id,
-            "workspace_path": entry.target,
-            "start_step": entry.start_step,
-            "end_step": entry.end_step,
-            "status": entry.status,
-        }
+        manifest_workspace_entry(
+            entry.run_id,
+            name=name,
+            workspace_path=entry.target,
+            start_step=entry.start_step,
+            end_step=entry.end_step,
+            status=entry.status,
+            now=now,
+        )
         for entry in entries
     )
 
@@ -159,10 +168,11 @@ def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
     appends: tuple[dict, ...] = ()
     if plan.entries:
         if plan.resume:
-            appends = _append_set(plan.entries)
+            # load_manifest guarantees a non-empty design_name.
+            name = load_manifest(project_dir).design_name
+            appends = _workspace_entries(plan.entries, name=name, now=datetime.now(UTC).isoformat())
         else:
             from chipcompiler.cli.project.config import resolve_pdk_root
-            from chipcompiler.cli.project.manifest import base_design_from_config
 
             first = plan.entries[0]
             document = build_manifest_document(
@@ -175,17 +185,11 @@ def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
                 end_step=first.end_step,
                 status=first.status,
             )
-            for extra in plan.entries[1:]:
-                document["workspaces"].append(
-                    {
-                        **document["workspaces"][0],
-                        "workspace_id": extra.run_id,
-                        "workspace_path": extra.target,
-                        "start_step": extra.start_step,
-                        "end_step": extra.end_step,
-                        "status": extra.status,
-                    }
+            document["workspaces"].extend(
+                _workspace_entries(
+                    plan.entries[1:], name=cfg.design_name, now=document["created_at"]
                 )
+            )
     return MigrationPreview(plan=plan, manifest_document=document, manifest_appends=appends)
 
 
@@ -291,36 +295,18 @@ def _append_manifest_entries(
 ) -> bool:
     """Append the planned workspaces to an existing manifest (resume path).
 
-    *append_set* is the preview's exact entry payloads, filtered to the
-    successfully moved *keep_ids*; dedup against the live document stays
-    inside the atomic update."""
+    *append_set* carries the preview's COMPLETE workspace entries, applied
+    verbatim (copied only to avoid aliasing), filtered to the successfully
+    moved *keep_ids*; dedup against the live document stays inside the
+    atomic update."""
 
     def mutate(document: dict) -> None:
-        from datetime import UTC, datetime
-
-        now = datetime.now(UTC).isoformat()
         workspaces = document.setdefault("workspaces", [])
         known = {entry.get("workspace_id") for entry in workspaces if isinstance(entry, dict)}
         for planned in append_set:
             if planned["workspace_id"] not in keep_ids or planned["workspace_id"] in known:
                 continue
-            workspaces.append(
-                {
-                    "workspace_id": planned["workspace_id"],
-                    "name": document.get("design_name", planned["workspace_id"]),
-                    "workspace_path": planned["workspace_path"],
-                    "source_workspace_id": None,
-                    "branch_from": None,
-                    "start_step": planned["start_step"],
-                    "end_step": planned["end_step"],
-                    "status": planned["status"],
-                    "created_at": now,
-                    "updated_at": now,
-                    "parameter_patch": {},
-                    "metrics_summary": {},
-                    "step_metrics": {},
-                }
-            )
+            workspaces.append(dict(planned))
 
     return update_manifest(project_dir, mutate)
 
@@ -395,21 +381,27 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
                     }
                 )
         else:
-            # The exact preview document, restricted to the moved subset.
+            # The exact preview document, restricted to the moved subset;
+            # workspaces and qor_baseline derive TOGETHER from the
+            # successful moves — never a rolled-back entry.
+            workspaces = [
+                workspace
+                for workspace in preview.manifest_document["workspaces"]
+                if workspace.get("workspace_id") in keep_ids
+            ]
             document = {
                 **preview.manifest_document,
-                "workspaces": [
-                    workspace
-                    for workspace in preview.manifest_document["workspaces"]
-                    if workspace.get("workspace_id") in keep_ids
-                ],
+                "workspaces": workspaces,
+                "qor_baseline": {
+                    **preview.manifest_document["qor_baseline"],
+                    "workspace_id": workspaces[0]["workspace_id"],
+                },
             }
             written = write_manifest_if_absent(project_dir, document)
             if not written and find_manifest(project_dir) is not None:
-                # Lost the creation race: append to the winning manifest.
-                written = _append_manifest_entries(
-                    project_dir, _append_set(tuple(migrated)), keep_ids
-                )
+                # Lost the creation race: append the same complete preview
+                # entries to the winning manifest.
+                written = _append_manifest_entries(project_dir, tuple(workspaces), keep_ids)
             registered = written
             if not written:
                 records.append(
@@ -446,17 +438,14 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
 
 
 def _render_preview(preview: MigrationPreview) -> None:
-    """TTY disclosure of the exact plan (stderr), manifest action included."""
+    """TTY disclosure of the exact plan (stderr): the moves, then the full
+    JSON of the manifest document to create (or the append entries)."""
     for entry in preview.plan.entries:
         print(f"  {entry.source} -> {entry.target}", file=sys.stderr)
     if preview.manifest_document:
-        action, workspaces = "create", preview.manifest_document["workspaces"]
+        print(json.dumps(preview.manifest_document, indent=2), file=sys.stderr)
     elif preview.manifest_appends:
-        action, workspaces = "append to", preview.manifest_appends
-    else:
-        return
-    ids = [workspace["workspace_id"] for workspace in workspaces]
-    print(f"  {action} project.json ({len(ids)} workspaces: {', '.join(ids)})", file=sys.stderr)
+        print(json.dumps(list(preview.manifest_appends), indent=2), file=sys.stderr)
 
 
 def _preview_records(preview: MigrationPreview) -> list[dict]:

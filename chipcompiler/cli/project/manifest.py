@@ -371,6 +371,38 @@ def base_design_from_config(cfg, pdk_root: str) -> dict:
     }
 
 
+def manifest_workspace_entry(
+    workspace_id: str,
+    *,
+    name: str,
+    workspace_path: str,
+    start_step: str,
+    end_step: str,
+    status: str,
+    now: str,
+) -> dict:
+    """One complete schema-v1 workspaces[] entry, every field materialized.
+
+    The single builder for generated manifests and migration previews, so
+    the previewed entry and the applied entry are the same object shape.
+    """
+    return {
+        "workspace_id": workspace_id,
+        "name": name,
+        "workspace_path": workspace_path,
+        "source_workspace_id": None,
+        "branch_from": None,
+        "start_step": start_step,
+        "end_step": end_step,
+        "status": status,
+        "created_at": now,
+        "updated_at": now,
+        "parameter_patch": {},
+        "metrics_summary": {},
+        "step_metrics": {},
+    }
+
+
 def _slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
     return slug or "project"
@@ -412,21 +444,15 @@ def build_manifest_document(
         },
         "objectives": json.loads(json.dumps(DEFAULT_OBJECTIVES)),
         "workspaces": [
-            {
-                "workspace_id": workspace_id,
-                "name": design_name,
-                "workspace_path": workspace_path,
-                "source_workspace_id": None,
-                "branch_from": None,
-                "start_step": start_step,
-                "end_step": end_step,
-                "status": status,
-                "created_at": now,
-                "updated_at": now,
-                "parameter_patch": {},
-                "metrics_summary": {},
-                "step_metrics": {},
-            }
+            manifest_workspace_entry(
+                workspace_id,
+                name=design_name,
+                workspace_path=workspace_path,
+                start_step=start_step,
+                end_step=end_step,
+                status=status,
+                now=now,
+            )
         ],
         "mpc": None,
         "best_workspace": None,

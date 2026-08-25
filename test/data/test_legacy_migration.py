@@ -154,10 +154,8 @@ def test_rewrite_failure_falls_back_to_in_memory_copy(
         tmp_path, minimal_ics55_pdk_factory, monkeypatch
     )
 
-    import chipcompiler.data.workspace as workspace_module
-
     monkeypatch.setattr(
-        "chipcompiler.data.workspace_config.save_workspace_config", lambda *a, **k: False
+        "chipcompiler.data.workspace_config._stage_config_bytes", lambda *a, **k: None
     )
 
     with caplog.at_level("WARNING"):
@@ -169,7 +167,6 @@ def test_rewrite_failure_falls_back_to_in_memory_copy(
     # Nothing rewritten; the legacy file stays for the next open to retry.
     assert (workspace_dir / "home" / "parameters.json").is_file()
     assert not (workspace_dir / "home" / "ecc.toml").exists()
-    assert workspace_module is not None  # silence unused import lint
 
 
 def test_malformed_toml_never_falls_back_to_legacy_json(
@@ -249,12 +246,12 @@ def test_migration_seeds_flow_section_from_persisted_flow(
     assert loaded.parameters.data["_flow"] == {"start": "Synthesis", "end": "Floorplan"}
 
 
-def test_verify_failure_removes_new_toml_and_next_open_retries(
+def test_verify_failure_installs_no_toml_and_next_open_retries(
     tmp_path, minimal_ics55_pdk_factory, monkeypatch, caplog
 ):
-    """AC-4: a failed post-write verification removes only the TOML that
-    invocation created — the legacy JSON is retained and the next open
-    retries the migration successfully."""
+    """AC-4: a failed candidate validation installs NO final TOML — the
+    legacy JSON is retained and the next open retries the migration
+    successfully; retry never depends on cleaning up an installed file."""
     workspace_dir, _pdk_root = _write_legacy_workspace(
         tmp_path, minimal_ics55_pdk_factory, monkeypatch
     )
@@ -263,22 +260,22 @@ def test_verify_failure_removes_new_toml_and_next_open_retries(
 
     import chipcompiler.data.workspace_config as workspace_config_module
 
-    real_load = workspace_config_module.load_workspace_config
+    real_decode = workspace_config_module._decode_workspace_config
     calls = {"n": 0}
 
-    def flaky_load(workspace_dir_arg):
+    def flaky_decode(path, workspace_dir_arg):
         calls["n"] += 1
         if calls["n"] == 1:
             raise ValueError("injected verify failure")
-        return real_load(workspace_dir_arg)
+        return real_decode(path, workspace_dir_arg)
 
-    monkeypatch.setattr("chipcompiler.data.workspace_config.load_workspace_config", flaky_load)
+    monkeypatch.setattr("chipcompiler.data.workspace_config._decode_workspace_config", flaky_decode)
 
     with caplog.at_level("WARNING"):
         loaded = load_workspace(str(workspace_dir))
 
-    # Deferred: the in-memory normalized copy serves this open, the
-    # invocation-created TOML is gone, and the legacy file stays for a retry.
+    # Deferred: the in-memory normalized copy serves this open, no final
+    # TOML was installed, and the legacy file stays for a retry.
     assert loaded is not None
     assert loaded.parameters.data["frequency_max"] == 250
     assert not config_path.exists()
