@@ -17,6 +17,7 @@ Layout::
 
 import logging
 import os
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,21 @@ WORKSPACE_CONFIG_FILENAME = "ecc.toml"
 LEGACY_PARAMETERS_FILENAME = "parameters.json"
 
 _IDENTITY_FIELDS = ("pdk", "design", "top_module", "clock")
+
+# param key -> TOML section key, for [design] and [pdk]. Splitting mirrors a
+# non-empty section value back under the param key; frequency is copied (not
+# moved) so the params copy stays authoritative on load.
+_DESIGN_SECTION_KEYS = {
+    "design": "name",
+    "top_module": "top",
+    "clock": "clock_port",
+    "frequency_max": "frequency_mhz",
+}
+_PDK_SECTION_KEYS = {
+    "pdk": "name",
+    "pdk_root": "root",
+    "pdk_config": "config",
+}
 
 
 class WorkspaceConfigError(ValueError):
@@ -56,6 +72,8 @@ def parameters_have_chip_identity(data: object) -> bool:
     """Return True when parameters still carry chip identity fields."""
     if not isinstance(data, dict):
         return False
+    # Rewrap to a plain dict: isinstance narrowing alone leaves dict[Never]
+    # keys under ty, which rejects every .get call below.
     payload: dict = dict(data)
     for key in _IDENTITY_FIELDS:
         if str(payload.get(key, "")).strip():
@@ -97,6 +115,7 @@ def validate_flow_config(flow: object) -> dict[str, str]:
     if preset is not None:
         if not isinstance(preset, str) or not preset.strip():
             raise WorkspaceFlowTargetError(f"[flow] preset must be a non-empty string: {preset!r}")
+        flow_range_for_preset(preset)  # raises on unknown presets
         result["preset"] = preset
         return result
 
@@ -184,8 +203,7 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict[str, str]:
 
     chain = [name for name, _tool, _state in canonical_entries]
     start, end = selected[0], selected[-1]
-    contiguous = chain[chain.index(start) : chain.index(end) + 1]
-    if selected != contiguous:
+    if selected != chain[chain.index(start) : chain.index(end) + 1]:
         logger.warning(
             "non-contiguous flow steps %s degraded to contiguous range %s..%s",
             selected,
@@ -200,29 +218,24 @@ def _split_payload(data: dict) -> dict[str, Any]:
     """Split a canonical flat parameter payload into the TOML section shape."""
     params = dict(data)
     design = {
-        key: params.pop(key)
-        for key in ("name", "top", "clock_port", "frequency_mhz")
-        if key in params
+        section_key: params.pop(section_key)
+        for section_key in _DESIGN_SECTION_KEYS.values()
+        if section_key in params
     }
     # Sync identity keys into the [design] section; the params copies are the
     # authoritative store read back into Parameters.data.
-    if str(params.get("design", "")).strip() and "name" not in design:
-        design["name"] = params["design"]
-    if str(params.get("top_module", "")).strip() and "top" not in design:
-        design["top"] = params["top_module"]
-    if str(params.get("clock", "")).strip() and "clock_port" not in design:
-        design["clock_port"] = params["clock"]
-    if "frequency_max" in params and "frequency_mhz" not in design:
-        design["frequency_mhz"] = params["frequency_max"]
+    for param_key, section_key in _DESIGN_SECTION_KEYS.items():
+        value = params.get(param_key)
+        if section_key not in design and value is not None:
+            if isinstance(value, str) and not value.strip():
+                continue
+            design[section_key] = value
 
-    pdk: dict[str, Any] = {}
-    if str(params.get("pdk", "")).strip():
-        pdk["name"] = params["pdk"]
-    if str(params.get("pdk_root", "")).strip():
-        pdk["root"] = params["pdk_root"]
-    if str(params.get("pdk_config", "")).strip():
-        pdk["config"] = params["pdk_config"]
-
+    pdk = {
+        section_key: params[param_key]
+        for param_key, section_key in _PDK_SECTION_KEYS.items()
+        if str(params.get(param_key, "")).strip()
+    }
     return {"design": design, "pdk": pdk, "params": params}
 
 
@@ -232,21 +245,18 @@ def _merge_payload(sections: dict[str, Any]) -> dict:
     design = sections.get("design") or {}
     pdk = sections.get("pdk") or {}
 
-    if str(design.get("name", "")).strip():
-        params["design"] = design["name"]
-    if str(design.get("top", "")).strip():
-        params["top_module"] = design["top"]
-    if str(design.get("clock_port", "")).strip():
-        params["clock"] = design["clock_port"]
-    if "frequency_mhz" in design:
-        params["frequency_max"] = design["frequency_mhz"]
+    for param_key, section_key in _DESIGN_SECTION_KEYS.items():
+        value = design.get(section_key)
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        params[param_key] = value
 
-    if str(pdk.get("name", "")).strip():
-        params["pdk"] = pdk["name"]
-    if str(pdk.get("root", "")).strip():
-        params["pdk_root"] = pdk["root"]
-    if str(pdk.get("config", "")).strip():
-        params["pdk_config"] = pdk["config"]
+    for param_key, section_key in _PDK_SECTION_KEYS.items():
+        value = pdk.get(section_key)
+        if str(value or "").strip():
+            params[param_key] = value
     return params
 
 
@@ -278,20 +288,18 @@ def load_workspace_config(workspace_dir: str | Path) -> dict:
     return payload
 
 
-def save_workspace_config(
+def render_workspace_config(
     workspace_dir: str | Path,
     data: dict,
     flow: dict | None = None,
-) -> bool:
-    """Write the workspace configuration atomically (tmp + rename).
+) -> bytes:
+    """Render the workspace configuration TOML document.
 
-    *data* is the canonical flat parameter payload; *flow* is the ``[flow]``
-    section (preset or start/end form). ``pdk_config`` values inside the
-    workspace are stored workspace-relative.
+    ``pdk_config`` values inside the workspace are stored
+    workspace-relative; *flow* is validated before rendering.
     """
     if flow:
         validate_flow_config(flow)
-    path = workspace_config_path(workspace_dir)
     workspace_root = Path(workspace_dir).resolve()
 
     payload = dict(data)
@@ -309,10 +317,30 @@ def save_workspace_config(
     if flow:
         document["flow"] = dict(flow)
     document["params"] = sections["params"]
+    return tomli_w.dumps(document).encode("utf-8")
 
-    import tempfile
 
-    target = path.expanduser().resolve()
+def save_workspace_config(
+    workspace_dir: str | Path,
+    data: dict,
+    flow: dict | None = None,
+) -> bool:
+    """Write the workspace configuration atomically (tmp + rename).
+
+    Invalid [flow] sections raise WorkspaceFlowTargetError before anything
+    is written; unserializable payloads and filesystem failures return
+    False so migration fallback paths stay reachable.
+    """
+    if flow:
+        validate_flow_config(flow)
+    try:
+        content = render_workspace_config(workspace_dir, data, flow)
+    except (TypeError, ValueError) as exc:
+        # Payload values tomli_w cannot serialize (e.g. a legacy null).
+        logger.warning("failed to render workspace config for %s: %s", workspace_dir, exc)
+        return False
+
+    target = workspace_config_path(workspace_dir).expanduser().resolve()
     tmp_path = None
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -324,15 +352,12 @@ def save_workspace_config(
             suffix=".tmp",
         ) as f:
             tmp_path = Path(f.name)
-            tomli_w.dump(document, f)
+            f.write(content)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, target)
         return True
-    except (OSError, TypeError, ValueError):
-        # OSError: filesystem failure; TypeError/ValueError: payload values
-        # tomli_w cannot serialize (e.g. a legacy null) — never leave a
-        # half-written config or abort the caller's fallback path.
+    except OSError:
         logger.warning("failed to write workspace config: %s", target)
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)

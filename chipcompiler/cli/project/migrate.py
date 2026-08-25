@@ -65,7 +65,7 @@ def _flow_status(steps: list[dict]) -> str:
         return "not_started"
     if states & {"Ongoing", "Pending"}:
         return "in_progress"
-    if "Imcomplete" in states:
+    if "Incomplete" in states:
         return "failed"
     if states == {"Success"}:
         return "success"
@@ -104,18 +104,17 @@ def plan_migration(project_dir: str) -> MigrationPlan:
             collisions.append(run_id)
             continue
         steps = _read_flow_steps(source)
-        names = [str(step.get("name", "")) for step in steps if isinstance(step, dict)]
-        names = [name for name in names if name]
-        start = CANONICAL_TO_DISPLAY.get(names[0], "Synth") if names else "Synth"
-        end = CANONICAL_TO_DISPLAY.get(names[-1], "Harden") if names else "Harden"
+        names = [
+            name for step in steps if isinstance(step, dict) and (name := str(step.get("name", "")))
+        ]
         entries.append(
             MigrationEntry(
                 run_id=run_id,
                 source=source,
                 target=target,
                 status=_flow_status(steps),
-                start_step=start,
-                end_step=end,
+                start_step=CANONICAL_TO_DISPLAY.get(names[0], "Synth") if names else "Synth",
+                end_step=CANONICAL_TO_DISPLAY.get(names[-1], "Harden") if names else "Harden",
             )
         )
     return MigrationPlan(
@@ -134,7 +133,7 @@ def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) 
 
     def rebase(value):
         if isinstance(value, str):
-            if value.startswith(old_prefix + os.sep) or value == old_prefix:
+            if value == old_prefix or value.startswith(old_prefix + os.sep):
                 return new_prefix + value[len(old_prefix) :]
             return value
         if isinstance(value, dict):
@@ -290,14 +289,11 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
                     }
                 )
         else:
-            from chipcompiler.cli.project.config import (
-                resolve_pdk_root,
-                resolve_rtl,
-                to_parameters,
-            )
+            from chipcompiler.cli.project.config import resolve_pdk_root, resolve_rtl
+            from chipcompiler.cli.project.manifest import resolved_base_parameters
 
             _, origin_verilog, _ = resolve_rtl(cfg)
-            parameters = to_parameters(cfg)
+            parameters = resolved_base_parameters(cfg)
             document = build_manifest_document(
                 project_dir,
                 design_name=cfg.design_name,
@@ -392,6 +388,27 @@ def migrate_project(command_input, ctx):
                 }
             ]
         )
+
+    if cfg is not None and not has_manifest:
+        # The generated manifest's base_design comes from this config; a
+        # broken or identity-less ecc.toml must not produce an invalid
+        # manifest. (Full run-time validation is not the migrate path's job.)
+        problems = []
+        if getattr(cfg, "_toml_error", None):
+            problems.append(f"malformed ecc.toml: {cfg._toml_error}")
+        if not cfg.design_name:
+            problems.append("design.name is required")
+        if problems:
+            return CommandResult.err(
+                [
+                    {
+                        "kind": "error",
+                        "error": "config_error",
+                        "reason": problem,
+                    }
+                    for problem in problems
+                ]
+            )
 
     if not command_input.yes:
         plan = plan_migration(project_dir)

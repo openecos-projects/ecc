@@ -1701,7 +1701,7 @@ def _publish_layout_edit_artifacts(edit_session: LayoutEditSession, workspace) -
         module.gds_save(output_path=str(staged["gds"]))
         if not module.geometry_snapshot_save(output_dir=str(staged["geometry"])):
             raise RuntimeApiError("command_failed", "failed to export layout geometry snapshot")
-        _stage_layout_edit_workspace_json(staged, staged_workspace_data)
+        _stage_layout_edit_workspace_json(staged, staged_workspace_data, workspace)
         _stage_layout_edit_verilog(module, staged, edit_session)
         _validate_layout_edit_staging(staged, targets)
         _validate_layout_edit_workspace_staging(staged, staged_workspace_data)
@@ -1827,28 +1827,26 @@ def _read_layout_edit_json(path: Path) -> dict[str, Any]:
 def _stage_layout_edit_workspace_json(
     staged: dict[str, Path],
     workspace_staging: dict[str, Any],
+    workspace,
 ) -> None:
     for key, data in workspace_staging["json"].items():
         staged_path = staged[key]
         staged_path.parent.mkdir(parents=True, exist_ok=True)
         if key == "parameters" and staged_path.suffix == ".toml":
-            staged_path.write_bytes(_workspace_config_bytes(data))
+            staged_path.write_bytes(_workspace_config_bytes(data, workspace))
             continue
         staged_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _workspace_config_bytes(data: dict[str, Any]) -> bytes:
-    import tomli_w
+def _workspace_config_bytes(data: dict[str, Any], workspace) -> bytes:
+    from chipcompiler.data.workspace_config import render_workspace_config
 
-    from chipcompiler.data.workspace_config import _split_payload
-
-    sections = _split_payload(dict(data))
-    document: dict[str, Any] = {"design": sections["design"], "pdk": sections["pdk"]}
-    flow = data.get("_flow")
-    if isinstance(flow, dict) and flow:
-        document["flow"] = flow
-    document["params"] = sections["params"]
-    return tomli_w.dumps(document).encode("utf-8")
+    workspace_dir = _path_or_none(getattr(workspace, "directory", None))
+    if workspace_dir is None:
+        raise RuntimeApiError("command_failed", "workspace directory is missing")
+    payload = dict(data)
+    flow = payload.pop("_flow", None)
+    return render_workspace_config(workspace_dir, payload, flow)
 
 
 def _stage_layout_edit_verilog(

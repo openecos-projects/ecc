@@ -16,6 +16,8 @@ chipcompiler.data imports here.
 import json
 import logging
 import os
+import re
+import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -53,18 +55,16 @@ _WORKSPACE_STATUSES = frozenset(
     {"success", "failed", "running", "in_progress", "not_started", "archived"}
 )
 
-_DEFAULT_DIRECTIONS: dict[str, str] = {
-    "wns": "maximize",
-    "tns": "maximize",
-    "area": "minimize",
-    "drc_count": "minimize",
-    "lvs_count": "minimize",
-    "power": "minimize",
-}
-
 DEFAULT_OBJECTIVES = {
     "primary": "timing",
-    "directions": _DEFAULT_DIRECTIONS,
+    "directions": {
+        "wns": "maximize",
+        "tns": "maximize",
+        "area": "minimize",
+        "drc_count": "minimize",
+        "lvs_count": "minimize",
+        "power": "minimize",
+    },
 }
 
 
@@ -135,14 +135,12 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
             f"workspaces[{index}] workspace_path escapes the project root: {workspace_path}"
         ) from None
     status = source.get("status")
-    if status not in _WORKSPACE_STATUSES:
-        status = "not_started"
     return ManifestWorkspace(
         workspace_id=workspace_id,
         workspace_path=str(resolved),
         start_step=_optional_str(source.get("start_step")) or "Synth",
         end_step=_optional_str(source.get("end_step")) or "Harden",
-        status=status,
+        status=status if status in _WORKSPACE_STATUSES else "not_started",
         parameter_patch=_record(source.get("parameter_patch")),
         raw=dict(source),
     )
@@ -196,7 +194,7 @@ def load_manifest(project_dir: str) -> ProjectManifest:
         raise ManifestError(f"invalid project manifest: {path}: {exc}") from exc
 
     if not isinstance(source, dict):
-        raise ManifestError("invalid project manifest: top level must be an object")
+        raise ManifestError(f"invalid project manifest: {path}: top level must be an object")
     if source.get("schema_version") != 1:
         raise ManifestError("invalid project manifest: schema_version 1 is required")
     raw_workspaces = source.get("workspaces")
@@ -220,14 +218,13 @@ def load_manifest(project_dir: str) -> ProjectManifest:
     # Mirror the GUI parser: primary defaults to "timing", directions keep
     # only maximize/minimize entries from the source (no default fill).
     objectives_raw = _record(source.get("objectives"))
-    directions = {
+    objectives = dict(objectives_raw)
+    objectives["primary"] = _optional_str(objectives_raw.get("primary")) or "timing"
+    objectives["directions"] = {
         key: value
         for key, value in _record(objectives_raw.get("directions")).items()
         if value in ("maximize", "minimize")
     }
-    objectives = dict(objectives_raw)
-    objectives["primary"] = _optional_str(objectives_raw.get("primary")) or "timing"
-    objectives["directions"] = directions
     qor_baseline_raw = _record(source.get("qor_baseline"))
     qor_baseline = None
     if _optional_str(qor_baseline_raw.get("workspace_id")):
@@ -288,10 +285,9 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
     parameters = dict(manifest.base_design.get("parameters") or {})
     if workspace is not None:
         for key, change in workspace.parameter_patch.items():
-            if isinstance(change, dict) and "to" in change:
-                parameters[key] = change["to"]
-            else:
-                parameters[key] = change
+            parameters[key] = (
+                change["to"] if isinstance(change, dict) and "to" in change else change
+            )
     if manifest.design_name and not _optional_str(parameters.get("design")):
         parameters["design"] = manifest.design_name
     return {
@@ -308,9 +304,30 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
     }
 
 
-def _slugify(value: str) -> str:
-    import re
+def resolved_base_parameters(cfg) -> dict:
+    """The ecc.toml-resolved base_design.parameters for a generated manifest.
 
+    Identity fields plus the [params] backend overrides; never includes
+    --set values (those are run-scoped).
+    """
+    parameters: dict = {
+        "design": cfg.design_name,
+        "top_module": cfg.design_top,
+        "clock": cfg.design_clock_port,
+        "frequency_max": cfg.design_frequency_mhz,
+    }
+    if cfg.params_overrides:
+        from chipcompiler.cli.project.params import (
+            build_backend_overrides,
+            resolve_parameters,
+        )
+
+        resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
+        parameters.update(build_backend_overrides(resolved))
+    return parameters
+
+
+def _slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
     return slug or "project"
 
@@ -333,7 +350,6 @@ def build_manifest_document(
     """Assemble a schema-v1 manifest for a virgin project's first run."""
     now = _now_iso()
     name = os.path.basename(os.path.normpath(project_dir)) or "project"
-    parameters = _record(base_design.get("parameters"))
     document: dict[str, Any] = {
         "schema_version": 1,
         "project_id": f"proj_{_slugify(name)}",
@@ -344,8 +360,8 @@ def build_manifest_document(
         "created_at": now,
         "updated_at": now,
         "base_design": {
-            **{k: v for k, v in base_design.items() if k != "parameters" and v},
-            "parameters": parameters,
+            **{key: value for key, value in base_design.items() if key != "parameters" and value},
+            "parameters": _record(base_design.get("parameters")),
             "rtl_list": [
                 item for item in base_design.get("rtl_list") or [] if isinstance(item, str)
             ],
@@ -378,26 +394,36 @@ def build_manifest_document(
 def write_manifest_if_absent(project_dir: str, document: dict) -> bool:
     """Write the manifest only when it does not exist (virgin generation race).
 
-    Returns True when written; False when a manifest appeared concurrently —
-    the caller discards its document, reloads, and continues read-only.
+    Fully written and fsynced at a temp path, then linked into place:
+    readers never see a partial file, and a concurrent creator wins the
+    link — ours is discarded and the caller continues read-only.
     """
     path = os.path.join(project_dir, MANIFEST_FILENAME)
     content = json.dumps(document, indent=2) + "\n"
+    tmp_path = None
     try:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=project_dir,
+            delete=False,
+            prefix=f".{MANIFEST_FILENAME}.",
+            suffix=".tmp",
+            encoding="utf-8",
+        ) as f:
+            tmp_path = f.name
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.link(tmp_path, path)
+        return True
     except FileExistsError:
         return False
     except OSError as exc:
         logger.warning("manifest write failed: %s: %s", path, exc)
         return False
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-    except OSError as exc:
-        logger.warning("manifest write failed: %s: %s", path, exc)
-        os.unlink(path)
-        return False
-    return True
+    finally:
+        if tmp_path is not None:
+            Path(tmp_path).unlink(missing_ok=True)
 
 
 def update_manifest(project_dir: str, mutator) -> bool:
@@ -420,8 +446,6 @@ def update_manifest(project_dir: str, mutator) -> bool:
 
     mutator(document)
     document["updated_at"] = _now_iso()
-
-    import tempfile
 
     target = Path(path)
     tmp_path = None

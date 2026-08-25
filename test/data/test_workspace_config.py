@@ -224,3 +224,8 @@ def test_flow_section_from_flow_config_non_contiguous_degrades(caplog):
 def test_flow_section_from_flow_config_empty():
     assert flow_section_from_flow_config(None) == {}
     assert flow_section_from_flow_config({}) == {}
+
+
+def test_flow_validation_rejects_unknown_preset():
+    with pytest.raises(WorkspaceFlowTargetError):
+        validate_flow_config({"preset": "does_not_exist"})

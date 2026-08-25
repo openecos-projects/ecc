@@ -1370,7 +1370,27 @@ def _migrate_legacy_parameters_file(workspace_dir: Path) -> None:
         return
 
     normalized = normalize_parameter_dict(legacy_data)
-    if not save_workspace_config(workspace_dir, normalized):
+    flow_section: dict = {}
+    flow_path = workspace_dir / "home" / "flow.json"
+    if flow_path.exists():
+        # Derive the flow target from the persisted flow's first/last steps
+        # so the migrated workspace stays self-describing.
+        from chipcompiler.utility import json_read
+
+        flow_data = json_read(flow_path)
+        step_names = [
+            step["name"]
+            for step in flow_data.get("steps", [])
+            if isinstance(step, dict) and step.get("name")
+        ]
+        if step_names:
+            from ..workspace_config import WorkspaceFlowTargetError, validate_flow_config
+
+            try:
+                flow_section = validate_flow_config({"start": step_names[0], "end": step_names[-1]})
+            except WorkspaceFlowTargetError:
+                flow_section = {}
+    if not save_workspace_config(workspace_dir, normalized, flow_section or None):
         logging.getLogger(__name__).warning(
             "legacy parameters migration deferred (rewrite failed): %s", legacy_path
         )

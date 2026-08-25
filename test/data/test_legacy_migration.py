@@ -223,3 +223,23 @@ def test_create_workspace_seeds_flow_range_from_flow_config(tmp_path, minimal_ic
     loaded = load_workspace(str(workspace_dir))
     assert loaded is not None
     assert loaded.parameters.data["_flow"] == {"start": "place", "end": "route"}
+
+
+def test_migration_seeds_flow_section_from_persisted_flow(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch
+):
+    workspace_dir, _pdk_root = _write_legacy_workspace(
+        tmp_path, minimal_ics55_pdk_factory, monkeypatch
+    )
+    steps = {
+        "steps": [
+            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+            {"name": "Floorplan", "tool": "ecc", "state": "Success"},
+        ]
+    }
+    (workspace_dir / "home" / "flow.json").write_text(json.dumps(steps))
+
+    loaded = load_workspace(str(workspace_dir))
+
+    assert loaded is not None
+    assert loaded.parameters.data["_flow"] == {"start": "Synthesis", "end": "Floorplan"}

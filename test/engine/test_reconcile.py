@@ -139,6 +139,35 @@ class TestReconcile:
         assert result.outcome == "no_op"
         assert len(_flow_steps(workspace_dir)) == len(RTL2GDS_STEPS) + 2
 
+    def test_target_prefix_noop_even_with_unfinished_extras(self, tmp_path):
+        # Extra steps beyond the target are never the run's business.
+        states = ["Success"] * 10 + ["Unstart", "Unstart"]
+        workspace_dir = _write_workspace(
+            tmp_path,
+            RTL2GDS_STEPS + RCX_SUFFIX,
+            states=states,
+            flow_section={"preset": "rcx"},
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "no_op"
+
+    def test_crash_window_repair_then_resume(self, tmp_path):
+        # flow.json appended (suffix Unstart) but [flow] never adopted.
+        states = ["Success"] * 10 + ["Unstart", "Unstart"]
+        workspace_dir = _write_workspace(
+            tmp_path,
+            RTL2GDS_STEPS + RCX_SUFFIX,
+            states=states,
+            flow_section={"preset": "rtl2gds"},
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rcx"})
+
+        assert result.outcome == "resume"
+        assert _flow_section(workspace_dir) == {"preset": "rcx"}
+
     def test_stale_flow_section_repaired(self, tmp_path):
         # Crash window: flow.json already extended, [flow] never adopted.
         workspace_dir = _write_workspace(

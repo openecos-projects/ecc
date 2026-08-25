@@ -20,10 +20,18 @@ def invalid_single_segment_id(run_id: str) -> bool:
     return (
         not run_id
         or os.path.isabs(run_id)
-        or os.sep in run_id
         or "/" in run_id
+        or (os.sep != "/" and os.sep in run_id)
         or run_id in (".", "..")
     )
+
+
+def _find_workspace_entry(manifest, run_id: str | None):
+    """The declared workspace for a run id; auto-selects a single active one."""
+    if run_id is not None:
+        return manifest.find_workspace(run_id)
+    active = manifest.active_workspaces()
+    return active[0] if len(active) == 1 else None
 
 
 def resolve_manifest_run_target(command_input, ctx):
@@ -56,20 +64,18 @@ def resolve_manifest_run_target(command_input, ctx):
         return CommandResult.err([error_record("manifest_invalid", reason=ctx.manifest_error)])
 
     manifest = load_manifest(project_dir)
-    match = manifest.find_workspace(cli_run_id) if cli_run_id is not None else None
-    if cli_run_id is None:
+    match = _find_workspace_entry(manifest, cli_run_id)
+    if match is None and cli_run_id is None:
         active = manifest.active_workspaces()
-        if len(active) != 1:
-            ids = ", ".join(w.workspace_id for w in active) or "(none)"
-            return CommandResult.err(
-                [
-                    error_record(
-                        "workspace_not_declared",
-                        reason=f"--run-id required; declared workspaces: {ids}",
-                    )
-                ]
-            )
-        match = active[0]
+        ids = ", ".join(w.workspace_id for w in active) or "(none)"
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_not_declared",
+                    reason=f"--run-id required; declared workspaces: {ids}",
+                )
+            ]
+        )
 
     if match is not None:
         return (match.workspace_path, match.workspace_id, True, [])
@@ -112,10 +118,7 @@ def manifest_project_config(command_input, ctx):
         )
 
     cli_run_id = command_input.project.run_id
-    entry = manifest.find_workspace(cli_run_id) if cli_run_id is not None else None
-    if entry is None and cli_run_id is None:
-        active = manifest.active_workspaces()
-        entry = active[0] if len(active) == 1 else None
+    entry = _find_workspace_entry(manifest, cli_run_id)
 
     assembled = assemble_config(manifest, entry)
     parameters = assembled["parameters"]
@@ -141,6 +144,7 @@ def manifest_project_config(command_input, ctx):
     )
     cfg.params_overrides = {}
     cfg.manifest_parameters = parameters
+    cfg.manifest_driven = True
     cfg.manifest_origin_def = str(manifest.base_design.get("origin_def") or "")
 
     flow_config = None
@@ -233,7 +237,7 @@ def run_existing_workspace(
 
     from chipcompiler.engine.reconcile import reconcile_workspace
 
-    if cfg.manifest_parameters:
+    if cfg.manifest_driven:
         # Manifest mode: the workspace's own [flow] is the target; the
         # manifest's start/end seeded it at creation and is not consulted.
         target_section = None
@@ -245,7 +249,14 @@ def run_existing_workspace(
         reason = result.error or "flow_mismatch"
         if reason.startswith("workspace_config_invalid"):
             return CommandResult.err(
-                [error_record("workspace_config_invalid", run=run_name, reason=reason)]
+                [
+                    error_record(
+                        "workspace_config_invalid",
+                        run=run_name,
+                        workspace=run_dir,
+                        reason=reason,
+                    )
+                ]
             )
         return CommandResult.err(
             [
@@ -285,10 +296,7 @@ def run_existing_workspace(
             # after load_workspace populated the in-memory copy.
             from chipcompiler.utility import json_read
 
-            flow_path = workspace.flow.path
-            if flow_path is None:
-                flow_path = Path(run_dir) / "home" / "flow.json"
-            flow_data = json_read(flow_path)
+            flow_data = json_read(workspace.flow.path or Path(run_dir) / "home" / "flow.json")
             executable = {
                 step["name"]
                 for step in flow_data.get("steps", [])

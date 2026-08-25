@@ -56,6 +56,10 @@ def _persisted_entries(flow_data: dict) -> list[tuple[str, str]]:
     ]
 
 
+def _entry_names(entries: list[tuple[str, str]]) -> tuple[str, ...]:
+    return tuple(name for name, _tool in entries)
+
+
 def compare_flows(persisted: list[tuple[str, str]], target: list[tuple[str, str]]) -> str:
     """Pairwise (name, tool) comparison of persisted vs target step lists."""
     if persisted == target:
@@ -78,7 +82,7 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     start, end = flow_range
     chain = _canonical_harden_flow_entries()
     names = [name for name, _tool, _state in chain]
-    return [(name, tool) for name, tool, _s in chain[names.index(start) : names.index(end) + 1]]
+    return [(name, tool) for name, tool, _state in chain[names.index(start) : names.index(end) + 1]]
 
 
 def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
@@ -88,16 +92,19 @@ def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
     return {"start": persisted[0][0], "end": persisted[-1][0]}
 
 
+def _persisted_flow_data(workspace_dir: Path, json_read) -> dict:
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    return flow_data if isinstance(flow_data, dict) else {}
+
+
 @contextmanager
 def _workspace_lock(workspace_dir: Path):
     home = workspace_dir / "home"
     home.mkdir(parents=True, exist_ok=True)
     with open(home / "workspace.lock", "a") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        yield
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def resolve_target_section(project_flow: dict | None, workspace_flow: dict | None) -> dict:
@@ -128,12 +135,9 @@ def reconcile_workspace(
     from chipcompiler.utility import json_read, json_write
 
     workspace_dir = Path(workspace_dir).resolve()
-    flow_path = workspace_dir / "home" / "flow.json"
 
     with _workspace_lock(workspace_dir):
-        flow_data = json_read(flow_path) if flow_path.exists() else {}
-        if not isinstance(flow_data, dict):
-            flow_data = {}
+        flow_data = _persisted_flow_data(workspace_dir, json_read)
         persisted = _persisted_entries(flow_data)
 
         try:
@@ -150,45 +154,34 @@ def reconcile_workspace(
         target = _target_entries(target_section)
 
         if not persisted:
-            return ReconcileResult(
-                outcome="no_op",
-                persisted=(),
-                target=tuple(name for name, _tool in target),
-            )
+            return ReconcileResult(outcome="no_op", target=_entry_names(target))
 
         relation = compare_flows(persisted, target)
         if relation == "divergent":
             return ReconcileResult(
                 outcome="mismatch",
-                persisted=tuple(name for name, _tool in persisted),
-                target=tuple(name for name, _tool in target),
+                persisted=_entry_names(persisted),
+                target=_entry_names(target),
                 error="flow_mismatch",
             )
 
         appended: list[str] = []
         adopted_flow: dict = {}
+        repaired = False
         outcome = None
 
         if relation == "proper_prefix":
             # Append the missing suffix as Unstart, then adopt the target.
-            suffix = target[len(persisted) :]
+            from chipcompiler.data.workspace import _flow_step_template
+
             steps = flow_data.setdefault("steps", [])
-            for name, tool in suffix:
-                steps.append(
-                    {
-                        "name": name,
-                        "tool": tool,
-                        "state": "Unstart",
-                        "runtime": "",
-                        "peak memory (mb)": 0,
-                        "info": {},
-                    }
-                )
+            for name, tool in target[len(persisted) :]:
+                steps.append(_flow_step_template(name, tool, "Unstart"))
                 appended.append(name)
-            if not json_write(flow_path, flow_data):
+            if not json_write(workspace_dir / "home" / "flow.json", flow_data):
                 return ReconcileResult(
                     outcome="mismatch",
-                    error=f"failed to append flow steps to {flow_path}",
+                    error=f"failed to append flow steps to {workspace_dir / 'home' / 'flow.json'}",
                 )
             adopted_flow = dict(target_section)
             outcome = "extended"
@@ -211,30 +204,39 @@ def reconcile_workspace(
                 stale = bool(effective)
             if stale:
                 adopted_flow = effective
-                outcome = "repaired"
+                repaired = True
 
         if adopted_flow and not save_workspace_config(workspace_dir, params, adopted_flow):
             # flow.json is already consistent with the target; the stale
-            # [flow] is repaired by the next reconcile (equal + stale →
-            # repaired). Proceed with the run.
+            # [flow] is repaired by the next reconcile. Proceed with the run.
             logger.warning(
                 "failed to adopt flow target into %s; will repair on next run",
                 workspace_dir / "home" / "ecc.toml",
             )
             adopted_flow = {}
+            repaired = False
 
         if outcome is None:
-            states = {
-                str(step.get("state", ""))
-                for step in flow_data.get("steps", [])
-                if isinstance(step, dict)
-            }
-            outcome = "no_op" if states == {"Success"} else "resume"
+            if relation == "target_prefix":
+                # The persisted flow already covers the target: unconditional
+                # no-op — steps beyond the target are never the run's business.
+                outcome = "no_op"
+            else:
+                flow_data = _persisted_flow_data(workspace_dir, json_read)
+                states = {
+                    str(step.get("state", ""))
+                    for step in flow_data.get("steps", [])
+                    if isinstance(step, dict)
+                }
+                if states == {"Success"}:
+                    outcome = "repaired" if repaired else "no_op"
+                else:
+                    outcome = "resume"
 
         return ReconcileResult(
             outcome=outcome,
-            persisted=tuple(name for name, _tool in _persisted_entries(flow_data)),
-            target=tuple(name for name, _tool in target),
+            persisted=_entry_names(_persisted_entries(flow_data)),
+            target=_entry_names(target),
             appended=tuple(appended),
             adopted_flow=adopted_flow,
         )

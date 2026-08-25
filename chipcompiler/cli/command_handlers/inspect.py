@@ -242,6 +242,8 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
 
 
 def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
+    if ctx.manifest_error:
+        return _manifest_error_result(ctx)
     configured = config_run_id_from(ctx.config)
     if isinstance(configured, InvalidFlowRun):
         return _config_error_result(ctx, configured.problem)

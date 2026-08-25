@@ -126,12 +126,15 @@ def _check_manifest_project(ctx: CommandContext) -> CommandResult:
         }
     ]
     if ctx.manifest_error:
-        records.append(
-            {
-                "kind": "warning",
-                "warning": "workspace_not_declared",
-                "reason": ctx.manifest_error,
-            }
+        # Read-only intent: an unresolvable run selector is an error, not a
+        # warning (the check result above would otherwise look authoritative).
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_not_declared",
+                    reason=ctx.manifest_error,
+                )
+            ]
         )
     return CommandResult.ok(records)
 
@@ -304,18 +307,6 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     }
                 ]
             )
-    elif ctx.project_state == "manifest":
-        # Hybrid project (both ecc.toml and project.json): the manifest base
-        # layers beneath the ecc.toml values; a declared entry seeds the
-        # creation-time flow range.
-        manifest_parameters, entry_flow_config = run_prepare.manifest_base_layer(
-            ctx, command_input.project.run_id or "default"
-        )
-        if manifest_parameters:
-            cfg.manifest_parameters = manifest_parameters
-        if entry_flow_config is not None:
-            flow_config = entry_flow_config
-
     errors = validate_project_config(cfg)
     if errors:
         return CommandResult.err(
@@ -362,6 +353,17 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         if isinstance(resolved, CommandResult):
             return resolved
         run_dir, run_name, workspace_registered, warning_records = resolved
+
+    if project_state == "manifest" and not cfg.manifest_driven:
+        # Hybrid project (both ecc.toml and project.json): the manifest base
+        # layers beneath the ecc.toml values; a declared entry seeds the
+        # creation-time flow range. Runs after run-name resolution so the
+        # real workspace's parameter_patch applies.
+        manifest_parameters, entry_flow_config = run_prepare.manifest_base_layer(ctx, run_name)
+        if manifest_parameters:
+            cfg.manifest_parameters = manifest_parameters
+        if entry_flow_config is not None:
+            flow_config = entry_flow_config
 
     protected = (project_dir, os.path.join(project_dir, "runs"))
     spelled = {os.path.normpath(p) for p in protected}
@@ -539,6 +541,8 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         start_step, end_step = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
         # base_design reflects the ecc.toml-resolved config only; --set
         # values are run-scoped and never baked into the manifest.
+        from chipcompiler.cli.project.manifest import resolved_base_parameters
+
         document = build_manifest_document(
             project_dir,
             design_name=cfg.design_name,
@@ -548,12 +552,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 "top_module": cfg.design_top,
                 "clock": cfg.design_clock_port,
                 "rtl_list": cfg.design_rtl,
-                "parameters": {
-                    "design": cfg.design_name,
-                    "top_module": cfg.design_top,
-                    "clock": cfg.design_clock_port,
-                    "frequency_max": cfg.design_frequency_mhz,
-                },
+                "parameters": resolved_base_parameters(cfg),
             },
             workspace_id=run_name,
             workspace_path=run_dir,

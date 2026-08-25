@@ -113,7 +113,7 @@ class TestMigrate:
         project_dir = create_cli_project(pdk_root=pdk_root)
         _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
         remaining = _create_legacy_workspace(
-            project_dir, pdk_root, "exp2", ["Success", "Imcomplete"]
+            project_dir, pdk_root, "exp2", ["Success", "Incomplete"]
         )
         # Partial prior migration: exp1 already at root + registered.
         os.rename(os.path.join(project_dir, "runs", "exp1"), os.path.join(project_dir, "exp1"))

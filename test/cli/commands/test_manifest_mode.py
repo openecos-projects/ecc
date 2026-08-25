@@ -431,3 +431,31 @@ class TestExistingRunGuards:
         assert rc != 0
         (record,) = _records(capsys)
         assert record["error"] == "invalid_flow_json"
+
+
+class TestCheckManifestSelection:
+    def test_check_errors_when_workspace_selection_ambiguous(self, tmp_path, capsys):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(
+            project_dir,
+            [
+                _workspace_entry(project_dir, "ws_0001"),
+                _workspace_entry(project_dir, "ws_0002"),
+            ],
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "workspace_not_declared"
+
+    def test_check_ok_with_single_workspace(self, tmp_path, capsys):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
