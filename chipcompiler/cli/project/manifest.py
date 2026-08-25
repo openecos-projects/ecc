@@ -475,26 +475,42 @@ def write_manifest_if_absent(project_dir: str, document: dict) -> bool:
             Path(tmp_path).unlink(missing_ok=True)
 
 
-def update_manifest(project_dir: str, mutator) -> bool:
-    """Read-modify-write the manifest atomically (re-read + patch + replace).
-
-    The mutator receives the parsed document and edits it in place. Returns
-    False (with a warning) when the manifest is missing, unreadable, or the
-    write fails — callers degrade to a warning, never a run failure.
-    """
-    path = os.path.join(project_dir, MANIFEST_FILENAME)
+def _read_manifest_document(path: str):
     try:
         with open(path, encoding="utf-8") as f:
             document = json.load(f)
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("manifest update skipped (unreadable): %s: %s", path, exc)
-        return False
-    if not isinstance(document, dict):
-        logger.warning("manifest update skipped (not an object): %s", path)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return document if isinstance(document, dict) else None
+
+
+def update_manifest(project_dir: str, mutator) -> bool:
+    """Read-modify-write the manifest atomically (re-read + patch + replace).
+
+    The mutator receives the parsed document and edits it in place. When an
+    unrelated change lands between the read and the write, the mutator is
+    re-applied to the freshest document instead of overwriting the change.
+    Project-level fields (including updated_at) are owned by the mutator.
+    Returns False (with a warning) when the manifest is missing, unreadable,
+    or the write fails — callers degrade to a warning, never a run failure.
+    """
+    path = os.path.join(project_dir, MANIFEST_FILENAME)
+    base = _read_manifest_document(path)
+    if base is None:
+        logger.warning("manifest update skipped (unreadable): %s", path)
         return False
 
+    from copy import deepcopy
+
+    document = deepcopy(base)
     mutator(document)
-    document["updated_at"] = _now_iso()
+
+    fresh = _read_manifest_document(path)
+    if fresh is not None and fresh != base:
+        # An unrelated edit landed after our read: re-apply the mutator to
+        # the freshest document so the interleaved change survives.
+        document = fresh
+        mutator(document)
 
     target = Path(path)
     tmp_path = None

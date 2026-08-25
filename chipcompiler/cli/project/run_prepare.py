@@ -347,7 +347,15 @@ def run_existing_workspace(
     if workspace_registered:
         from chipcompiler.cli.project.manifest import write_back_workspace_status
 
-        write_back_workspace_status(project_dir, run_name, "success" if flow_ok else "failed")
+        if not write_back_workspace_status(
+            project_dir, run_name, "success" if flow_ok else "failed"
+        ):
+            warnings.append(
+                warning_record(
+                    "manifest_write_back_failed",
+                    reason="run status could not be written back to project.json",
+                )
+            )
 
     record: dict = {
         "run": run_name,

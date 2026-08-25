@@ -644,7 +644,15 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             if workspace_registered:
                 from chipcompiler.cli.project.manifest import write_back_workspace_status
 
-                write_back_workspace_status(project_dir, run_name, "failed")
+                if not write_back_workspace_status(project_dir, run_name, "failed"):
+                    from chipcompiler.cli.core.records import warning_record
+
+                    warning_records.append(
+                        warning_record(
+                            "manifest_write_back_failed",
+                            reason="run status could not be written back to project.json",
+                        )
+                    )
             failure_records = [
                 {
                     "run": run_name,
@@ -675,7 +683,15 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     if workspace_registered:
         from chipcompiler.cli.project.manifest import write_back_workspace_status
 
-        write_back_workspace_status(project_dir, run_name, "success")
+        if not write_back_workspace_status(project_dir, run_name, "success"):
+            from chipcompiler.cli.core.records import warning_record
+
+            warning_records.append(
+                warning_record(
+                    "manifest_write_back_failed",
+                    reason="run status could not be written back to project.json",
+                )
+            )
 
     success_records = [
         {

@@ -295,3 +295,58 @@ def test_resolved_base_parameters_gui_flat_vocabulary():
     # Positional overrides surface as GUI aliases, not nested subtrees.
     assert parameters["utilitization"] == 0.45
     assert parameters["max_fanout"] == 16
+
+
+def test_update_manifest_preserves_interleaved_unrelated_change(tmp_path):
+    document = build_manifest_document(
+        str(tmp_path),
+        design_name="gcd",
+        base_design={"parameters": {"design": "gcd"}},
+        workspace_id="default",
+        workspace_path=str(tmp_path / "default"),
+        start_step="Synth",
+        end_step="Filler",
+    )
+    write_manifest_if_absent(str(tmp_path), document)
+
+    def mutate(doc):
+        # A concurrent writer lands an unrelated edit mid-update.
+        fresh = json.loads((tmp_path / "project.json").read_text())
+        fresh["custom_gui_field"] = {"concurrent": True}
+        (tmp_path / "project.json").write_text(json.dumps(fresh))
+        doc["workspaces"][0]["status"] = "failed"
+
+    assert update_manifest(str(tmp_path), mutate) is True
+
+    written = json.loads((tmp_path / "project.json").read_text())
+    # Both our status change and the interleaved GUI edit survive.
+    assert written["workspaces"][0]["status"] == "failed"
+    assert written["custom_gui_field"] == {"concurrent": True}
+
+
+def test_status_write_back_touches_only_target_entry(tmp_path):
+    document = build_manifest_document(
+        str(tmp_path),
+        design_name="gcd",
+        base_design={"parameters": {"design": "gcd"}},
+        workspace_id="default",
+        workspace_path=str(tmp_path / "default"),
+        start_step="Synth",
+        end_step="Filler",
+    )
+    write_manifest_if_absent(str(tmp_path), document)
+    before = json.loads((tmp_path / "project.json").read_text())
+
+    assert write_back_workspace_status(str(tmp_path), "default", "success") is True
+
+    after = json.loads((tmp_path / "project.json").read_text())
+    changed = []
+    for key in after:
+        if after[key] != before[key]:
+            changed.append(key)
+    # Only the workspaces array changes, and within it only status/updated_at.
+    assert changed == ["workspaces"]
+    entry_before, entry_after = before["workspaces"][0], after["workspaces"][0]
+    changed_entry_keys = [k for k in entry_after if entry_after[k] != entry_before.get(k)]
+    assert sorted(changed_entry_keys) == ["status", "updated_at"]
+    assert entry_after["status"] == "success"
