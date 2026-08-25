@@ -172,11 +172,16 @@ def flow_range_of(flow: dict) -> tuple[str, str] | None:
     return (flow["start"], flow["end"])
 
 
+def _contiguous_range(chain: list[str], first: str, last: str) -> list[str]:
+    """Chain names from *first* to *last* inclusive."""
+    return chain[chain.index(first) : chain.index(last) + 1]
+
+
 def flow_steps_in_range(start: str, end: str) -> list[str]:
     """Canonical step names from *start* to *end* inclusive."""
     chain = canonical_flow_chain()
     try:
-        return chain[chain.index(start) : chain.index(end) + 1]
+        return _contiguous_range(chain, start, end)
     except ValueError as exc:
         raise WorkspaceFlowTargetError(f"flow range outside the canonical chain: {exc}") from exc
 
@@ -281,13 +286,9 @@ def load_workspace_config(workspace_dir: str | Path) -> dict:
 
 def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
     """The [flow] section implied by the persisted flow.json, or {}."""
-    import json
+    from chipcompiler.utility import json_read
 
-    flow_path = Path(workspace_dir) / "home" / "flow.json"
-    try:
-        data = json.loads(flow_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    data = json_read(Path(workspace_dir) / "home" / "flow.json")
     if not isinstance(data, dict):
         return {}
     names = [
@@ -396,9 +397,7 @@ def resolve_flow_selection(
         return ([], False)
 
     canonical_names = [name for name, _tool, _state in canonical_steps]
-    contiguous = canonical_names[
-        canonical_names.index(selected_names[0]) : canonical_names.index(selected_names[-1]) + 1
-    ]
+    contiguous = _contiguous_range(canonical_names, selected_names[0], selected_names[-1])
     if contiguous == selected_names:
         return (contiguous, False)
 
@@ -425,7 +424,7 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
     legacy_path = legacy_parameters_path(workspace_dir)
     if config_path.exists():
         if legacy_path.exists():
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "workspace_config_shadowed: both %s and %s exist; using the TOML",
                 config_path,
                 legacy_path,
@@ -439,41 +438,20 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
     try:
         legacy_data = json_read_strict(legacy_path)
     except (JsonReadError, OSError) as exc:
-        logging.getLogger(__name__).warning(
-            "legacy parameters unreadable, skipping migration: %s: %s", legacy_path, exc
-        )
+        logger.warning("legacy parameters unreadable, skipping migration: %s: %s", legacy_path, exc)
         return
 
     normalized = normalize_parameter_dict(legacy_data)
-    flow_section: dict = {}
-    flow_path = workspace_dir / "home" / "flow.json"
-    if flow_path.exists():
-        # Derive the flow target from the persisted flow's first/last steps
-        # so the migrated workspace stays self-describing.
-        from chipcompiler.utility import json_read
-
-        flow_data = json_read(flow_path)
-        if not isinstance(flow_data, dict):
-            flow_data = {}
-        step_names = [
-            step["name"]
-            for step in flow_data.get("steps", [])
-            if isinstance(step, dict) and step.get("name")
-        ]
-        if step_names:
-            try:
-                flow_section = validate_flow_config({"start": step_names[0], "end": step_names[-1]})
-            except WorkspaceFlowTargetError:
-                flow_section = {}
+    # Derive the flow target from the persisted flow's first/last steps so
+    # the migrated workspace stays self-describing.
+    flow_section = _derive_flow_from_ledger(workspace_dir)
     if not save_workspace_config(workspace_dir, normalized, flow_section or None):
-        logging.getLogger(__name__).warning(
-            "legacy parameters migration deferred (rewrite failed): %s", legacy_path
-        )
+        logger.warning("legacy parameters migration deferred (rewrite failed): %s", legacy_path)
         return
     try:
         load_workspace_config(workspace_dir)
     except Exception as exc:
-        logging.getLogger(__name__).warning(
+        logger.warning(
             "legacy parameters migration deferred (verify failed): %s: %s", config_path, exc
         )
         return

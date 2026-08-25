@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import tempfile
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -499,8 +500,6 @@ def update_manifest(project_dir: str, mutator) -> bool:
     if base is None:
         logger.warning("manifest update skipped (unreadable): %s", path)
         return False
-
-    from copy import deepcopy
 
     document = deepcopy(base)
     mutator(document)

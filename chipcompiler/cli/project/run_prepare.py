@@ -361,17 +361,7 @@ def run_existing_workspace(
         )
 
     if workspace_registered:
-        from chipcompiler.cli.project.manifest import write_back_workspace_status
-
-        if not write_back_workspace_status(
-            project_dir, run_name, "success" if flow_ok else "failed"
-        ):
-            warnings.append(
-                warning_record(
-                    "manifest_write_back_failed",
-                    reason="run status could not be written back to project.json",
-                )
-            )
+        _write_back_status(project_dir, run_name, "success" if flow_ok else "failed", warnings)
 
     record: dict = {
         "run": run_name,
@@ -392,6 +382,29 @@ def run_existing_workspace(
     if not flow_ok:
         return CommandResult.err(records)
     return CommandResult.ok(records)
+
+
+def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) -> CommandResult:
+    from chipcompiler.cli.core.records import error_record
+
+    record = error_record("workspace_failed", run=run_name, workspace=run_dir)
+    if reason is not None:
+        record["reason"] = reason
+    return CommandResult.err([record])
+
+
+def _write_back_status(project_dir: str, run_name: str, status: str, warning_records: list) -> None:
+    """Best-effort manifest status write-back; degrades to a warning."""
+    from chipcompiler.cli.core.records import warning_record
+    from chipcompiler.cli.project.manifest import write_back_workspace_status
+
+    if not write_back_workspace_status(project_dir, run_name, status):
+        warning_records.append(
+            warning_record(
+                "manifest_write_back_failed",
+                reason="run status could not be written back to project.json",
+            )
+        )
 
 
 def execute_fresh_run(
@@ -417,7 +430,7 @@ def execute_fresh_run(
     import shutil
 
     from chipcompiler import rtl2gds as rtl2gds_api
-    from chipcompiler.cli.core.records import legacy_layout_hint_record, warning_record
+    from chipcompiler.cli.core.records import legacy_layout_hint_record
     from chipcompiler.cli.project.config import (
         resolve_pdk_overrides,
         resolve_pdk_root,
@@ -425,6 +438,7 @@ def execute_fresh_run(
         to_parameters,
     )
     from chipcompiler.data import create_workspace
+    from chipcompiler.data.parameter import save_parameter, update_parameters
     from chipcompiler.engine import EngineFlow
 
     project = ctx.project
@@ -436,7 +450,6 @@ def execute_fresh_run(
 
     manifest_parameters = cfg.manifest_parameters
     if manifest_parameters:
-        from chipcompiler.data.parameter import update_parameters
         from chipcompiler.data.parameter_keys import geometry_to_parameters
 
         # Manifest base layer: ecc.toml/--set values overlay it, not the
@@ -455,10 +468,7 @@ def execute_fresh_run(
             toml_overrides=cfg.params_overrides,
             cli_overrides=cli_overrides,
         )
-        backend_overrides = build_backend_overrides(resolved)
-        from chipcompiler.data.parameter import update_parameters
-
-        update_parameters(backend_overrides, parameters)
+        update_parameters(build_backend_overrides(resolved), parameters)
 
     try:
         workspace = create_workspace(
@@ -475,31 +485,12 @@ def execute_fresh_run(
     except Exception as exc:
         if owns_target:
             shutil.rmtree(run_dir, ignore_errors=True)
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "workspace_failed",
-                    "run": run_name,
-                    "workspace": run_dir,
-                    "reason": str(exc),
-                }
-            ]
-        )
+        return _workspace_failed_result(run_name, run_dir, str(exc))
 
     if workspace is None:
         if owns_target:
             shutil.rmtree(run_dir, ignore_errors=True)
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "workspace_failed",
-                    "run": run_name,
-                    "workspace": run_dir,
-                }
-            ]
-        )
+        return _workspace_failed_result(run_name, run_dir, None)
 
     if cli_overrides:
         import json
@@ -511,8 +502,6 @@ def execute_fresh_run(
 
     if flow_config is None:
         # CLI-born workspaces persist the named prefix chain as their target.
-        from chipcompiler.data.parameter import save_parameter
-
         workspace_parameters = getattr(workspace, "parameters", None)
         if workspace_parameters is not None:
             workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
@@ -522,14 +511,13 @@ def execute_fresh_run(
         from chipcompiler.cli.project.manifest import (
             PRESET_MANIFEST_RANGE,
             build_manifest_document,
+            resolved_base_parameters,
             write_manifest_if_absent,
         )
 
         start_step, end_step = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
         # base_design reflects the ecc.toml-resolved config only; --set
         # values are run-scoped and never baked into the manifest.
-        from chipcompiler.cli.project.manifest import resolved_base_parameters
-
         document = build_manifest_document(
             project_dir,
             design_name=cfg.design_name,
@@ -581,17 +569,7 @@ def execute_fresh_run(
 
         if not flow_ok:
             if workspace_registered:
-                from chipcompiler.cli.project.manifest import write_back_workspace_status
-
-                if not write_back_workspace_status(project_dir, run_name, "failed"):
-                    from chipcompiler.cli.core.records import warning_record
-
-                    warning_records.append(
-                        warning_record(
-                            "manifest_write_back_failed",
-                            reason="run status could not be written back to project.json",
-                        )
-                    )
+                _write_back_status(project_dir, run_name, "failed", warning_records)
             failure_records = [
                 {
                     "run": run_name,
@@ -602,35 +580,17 @@ def execute_fresh_run(
                 }
             ]
             if ctx.project_state == "legacy":
-                from chipcompiler.cli.core.records import legacy_layout_hint_record
-
                 failure_records.append(legacy_layout_hint_record(project))
             return CommandResult.err(warning_records + failure_records)
     except Exception as exc:
+        from chipcompiler.cli.core.records import error_record
+
         return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "flow_failed",
-                    "run": run_name,
-                    "workspace": run_dir,
-                    "reason": str(exc),
-                }
-            ]
+            [error_record("flow_failed", run=run_name, workspace=run_dir, reason=str(exc))]
         )
 
     if workspace_registered:
-        from chipcompiler.cli.project.manifest import write_back_workspace_status
-
-        if not write_back_workspace_status(project_dir, run_name, "success"):
-            from chipcompiler.cli.core.records import warning_record
-
-            warning_records.append(
-                warning_record(
-                    "manifest_write_back_failed",
-                    reason="run status could not be written back to project.json",
-                )
-            )
+        _write_back_status(project_dir, run_name, "success", warning_records)
 
     success_records = [
         {

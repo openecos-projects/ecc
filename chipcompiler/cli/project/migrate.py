@@ -14,6 +14,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from chipcompiler.cli.project.manifest import (
     build_manifest_document,
@@ -179,17 +180,12 @@ def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_pre
     home/ecc.toml can carry an absolute path under the old location; the
     workspace cannot load while the path points back at the old source.
     """
-    from pathlib import Path
-
     legacy_path = Path(workspace_dir) / "home" / "parameters.json"
     if legacy_path.exists():
         data = json.loads(legacy_path.read_text(encoding="utf-8"))
-        changed = False
         value = data.get("PDK Config")
         if isinstance(value, str) and value.startswith(old_prefix + os.sep):
             data["PDK Config"] = new_prefix + value[len(old_prefix) :]
-            changed = True
-        if changed:
             legacy_path.write_text(json.dumps(data), encoding="utf-8")
 
     config_path = Path(workspace_dir) / "home" / "ecc.toml"
@@ -394,8 +390,6 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
             os.rmdir(runs_dir)
     except OSError:
         logger.warning("could not remove empty runs directory: %s", runs_dir)
-
-    failures = [r for r in records if r.get("kind") == "error"]
     return records, 1 if failures else 0
 
 
