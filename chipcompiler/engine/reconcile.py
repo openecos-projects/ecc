@@ -185,13 +185,15 @@ def reconcile_workspace(
                 )
             adopted_flow = dict(target_section)
             outcome = "extended"
-        elif relation == "equal":
-            # Adopt the effective section when the persisted [flow] is stale
-            # (crash between append and adopt, or a hand-edited file).
+        elif relation in ("equal", "target_prefix"):
+            # Adopt the effective target when the persisted [flow] is stale
+            # (crash between append and adopt, a hand-edited file, or an
+            # older wider intent superseded by the current target).
             # Staleness compares ranges, not section form: preset="rcx" and
-            # start=Synthesis..end=sta describe the same steps. A
-            # target-prefix workspace is never rewritten: extra persisted
-            # steps are kept, and reconcile never widens intent.
+            # start=Synthesis..end=sta describe the same steps. Adoption
+            # always writes the effective target itself — never a range
+            # derived from the persisted ledger — so extra persisted steps
+            # are kept but never become the target.
             from chipcompiler.data.workspace_config import flow_range_of
 
             if workspace_flow:

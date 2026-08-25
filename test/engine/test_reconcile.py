@@ -138,6 +138,9 @@ class TestReconcile:
 
         assert result.outcome == "no_op"
         assert len(_flow_steps(workspace_dir)) == len(RTL2GDS_STEPS) + 2
+        # A stale wider target is adopted to the effective one; the extra
+        # persisted steps stay in the ledger untouched.
+        assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
 
     def test_target_prefix_noop_even_with_unfinished_extras(self, tmp_path):
         # Extra steps beyond the target are never the run's business, and
@@ -153,9 +156,9 @@ class TestReconcile:
         result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "no_op"
-        assert _flow_section(workspace_dir) == {"preset": "rcx"}
+        assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
         # A follow-up reconcile with the same target no-ops too — the extras
-        # never become executable through a rewritten [flow].
+        # never become executable.
         assert reconcile_workspace(workspace_dir, {"preset": "rtl2gds"}).outcome == "no_op"
 
     def test_crash_window_repair_then_resume(self, tmp_path):
