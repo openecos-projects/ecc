@@ -210,11 +210,10 @@ class TestReconcile:
 
         result = reconcile_workspace(workspace_dir)
 
-        # Absent [flow] derives from the persisted range and is written back
-        # so the workspace stays self-describing; the next reconcile no-ops.
-        assert result.outcome == "repaired"
+        # Absent [flow] derives from the persisted ledger at load; the
+        # derived range matches the persisted flow, so the run no-ops.
+        assert result.outcome == "no_op"
         assert _flow_section(workspace_dir) == {"start": "Synthesis", "end": "filler"}
-        assert reconcile_workspace(workspace_dir).outcome == "no_op"
 
 
 class TestTargetPrecedence:

@@ -239,8 +239,24 @@ def run_existing_workspace(
         )
 
     from chipcompiler.data import load_workspace
+    from chipcompiler.data.workspace_config import (
+        WorkspaceConfigError,
+        WorkspaceFlowTargetError,
+    )
 
-    workspace = load_workspace(run_dir)
+    try:
+        workspace = load_workspace(run_dir)
+    except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_config_invalid",
+                    run=run_name,
+                    workspace=run_dir,
+                    reason=str(exc),
+                )
+            ]
+        )
     if workspace is None:
         return CommandResult.err(
             [

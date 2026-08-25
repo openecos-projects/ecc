@@ -222,3 +222,24 @@ class TestFlowContinuation:
         records = _records(capsys)
         warning = [r for r in records if r.get("warning") == "params_ignored_on_existing_run"]
         assert len(warning) == 1
+
+    def test_malformed_workspace_config_is_config_invalid_not_invalid_workspace(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        Path(run_dir, "home", "ecc.toml").write_text("[params\nbroken =")
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "workspace_config_invalid"

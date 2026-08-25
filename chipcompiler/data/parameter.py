@@ -141,8 +141,6 @@ def _workspace_dir_for(path: Path) -> Path:
 
 def load_parameter(path: Path) -> Parameters:
     from .workspace_config import (
-        WorkspaceConfigError,
-        WorkspaceFlowTargetError,
         load_workspace_config,
     )
 
@@ -151,7 +149,7 @@ def load_parameter(path: Path) -> Parameters:
     workspace_dir = _workspace_dir_for(parameter.path)
     try:
         payload = load_workspace_config(workspace_dir)
-    except (FileNotFoundError, WorkspaceConfigError, WorkspaceFlowTargetError):
+    except FileNotFoundError:
         parameter.data = {}
         return parameter
     flow = payload.pop("_flow", {})

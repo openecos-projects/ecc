@@ -735,8 +735,15 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
     from chipcompiler.engine import EngineFlow, rerun
 
     workspace_path = os.path.abspath(os.path.expanduser(command_input.workspace))
+    from chipcompiler.data.workspace_config import (
+        WorkspaceConfigError,
+        WorkspaceFlowTargetError,
+    )
+
     try:
         workspace = load_workspace(workspace_path)
+    except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
+        return error("workspace_config_invalid", workspace=workspace_path, reason=str(exc))
     except Exception as exc:
         return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
     if workspace is None:

@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from chipcompiler.data import create_workspace, load_workspace
 from chipcompiler.data.parameter import (
     ICS55_PARAMETERS_TEMPLATE,
@@ -176,12 +178,13 @@ def test_malformed_toml_never_falls_back_to_legacy_json(
         tmp_path, minimal_ics55_pdk_factory, monkeypatch
     )
     # Both files present, TOML malformed: the workspace must not silently
-    # load the stale JSON values.
+    # load the stale JSON values — the invalid config surfaces loudly.
     (workspace_dir / "home" / "ecc.toml").write_text("[params\nbroken =")
 
-    loaded = load_workspace(str(workspace_dir))
+    from chipcompiler.data.workspace_config import WorkspaceConfigError
 
-    assert loaded is None
+    with pytest.raises(WorkspaceConfigError):
+        load_workspace(str(workspace_dir))
 
 
 def test_legacy_null_values_do_not_abort_migration(

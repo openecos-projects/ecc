@@ -268,6 +268,10 @@ def load_workspace_config(workspace_dir: str | Path) -> dict:
         raise WorkspaceConfigError(f"workspace config parse failure: {path}: {exc}") from exc
 
     flow = validate_flow_config(raw.get("flow"))
+    if not flow:
+        # A hand-broken file without [flow] derives its target from the
+        # persisted execution ledger (first and last step names).
+        flow = _derive_flow_from_ledger(workspace_dir)
     payload = _merge_payload(raw)
 
     pdk_config = payload.get("pdk_config")
@@ -276,6 +280,30 @@ def load_workspace_config(workspace_dir: str | Path) -> dict:
 
     payload["_flow"] = flow
     return payload
+
+
+def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
+    """The [flow] section implied by the persisted flow.json, or {}."""
+    import json
+
+    flow_path = Path(workspace_dir) / "home" / "flow.json"
+    try:
+        data = json.loads(flow_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    names = [
+        step["name"]
+        for step in data.get("steps", [])
+        if isinstance(step, dict) and isinstance(step.get("name"), str) and step["name"]
+    ]
+    if not names:
+        return {}
+    try:
+        return validate_flow_config({"start": names[0], "end": names[-1]})
+    except WorkspaceFlowTargetError:
+        return {}
 
 
 def render_workspace_config(

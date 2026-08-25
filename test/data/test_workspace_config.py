@@ -163,7 +163,24 @@ def test_load_flow_violation_raises(tmp_path):
         load_workspace_config(tmp_path)
 
 
-def test_missing_flow_section_falls_back_to_empty(tmp_path):
+def test_missing_flow_section_derives_from_flow_ledger(tmp_path):
+    import json
+
+    payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
+    save_workspace_config(tmp_path, payload)
+    steps = {
+        "steps": [
+            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+            {"name": "filler", "tool": "ecc", "state": "Success"},
+        ]
+    }
+    (tmp_path / "home" / "flow.json").write_text(json.dumps(steps))
+
+    loaded = load_workspace_config(tmp_path)
+    assert loaded["_flow"] == {"start": "Synthesis", "end": "filler"}
+
+
+def test_missing_flow_and_missing_ledger_falls_back_to_empty(tmp_path):
     payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
     save_workspace_config(tmp_path, payload)
     loaded = load_workspace_config(tmp_path)
