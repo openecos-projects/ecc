@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
 
@@ -228,3 +229,91 @@ class TestMigrate:
         assert any(r.get("error") == "config_error" for r in records)
         assert os.path.exists(run_dir)  # nothing moved
         assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+    def test_registration_failure_moves_batch_back(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run1 = _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        run2 = _create_legacy_workspace(project_dir, pdk_root, "exp2", ["Success", "Success"])
+
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.manifest.write_manifest_if_absent",
+            lambda *a, **k: False,
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.migrate.find_manifest",
+            lambda _dir: None,
+        )
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        assert any(r.get("error") == "manifest_update_failed" for r in records)
+        assert any(r.get("error") == "migration_rolled_back" for r in records)
+        # The whole batch is back under runs/; nothing stranded at the root.
+        assert os.path.isfile(os.path.join(run1, "home", "flow.json"))
+        assert os.path.isfile(os.path.join(run2, "home", "flow.json"))
+        assert not os.path.exists(os.path.join(project_dir, "exp1"))
+        assert not os.path.exists(os.path.join(project_dir, "exp2"))
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+        assert os.path.exists(os.path.join(project_dir, "runs"))
+
+    def test_invalid_existing_manifest_fails_before_any_move(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        with open(os.path.join(project_dir, "project.json"), "w") as f:
+            f.write("{broken")
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "manifest_invalid"
+        assert os.path.exists(run_dir)
+
+    def test_incomplete_outranks_ongoing_in_status_mapping(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Ongoing", "Incomplete"])
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 0
+        manifest = _manifest(project_dir)
+        assert manifest["workspaces"][0]["status"] == "failed"
+
+    def test_legacy_pdk_config_path_rebased_after_move(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        # Downgrade to a legacy workspace with an absolute PDK Config path.
+        from chipcompiler.data.parameter import load_parameter
+
+        parameters = load_parameter(os.path.join(run_dir, "home", "ecc.toml"))
+        legacy = dict(parameters.data)
+        legacy["PDK Config"] = os.path.join(run_dir, "home", "pdk.json")
+        Path(run_dir, "home", "pdk.json").write_text("{}")
+        os.unlink(os.path.join(run_dir, "home", "ecc.toml"))
+        import json as _json
+
+        long_keys = {"Design": "gcd", "Top module": "gcd", "Clock": "clk", "PDK": "ics55"}
+        long_keys["PDK Config"] = legacy["PDK Config"]
+        Path(run_dir, "home", "parameters.json").write_text(_json.dumps(long_keys))
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 0
+        from chipcompiler.data.parameter import load_parameter as lp
+
+        moved = lp(os.path.join(project_dir, "exp1", "home", "ecc.toml"))
+        assert moved.data["pdk_config"] == os.path.join(project_dir, "exp1", "home", "pdk.json")

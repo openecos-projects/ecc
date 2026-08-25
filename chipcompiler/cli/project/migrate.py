@@ -63,10 +63,10 @@ def _flow_status(steps: list[dict]) -> str:
     states = {str(step.get("state", "")) for step in steps if isinstance(step, dict)}
     if not states:
         return "not_started"
-    if states & {"Ongoing", "Pending"}:
-        return "in_progress"
     if "Incomplete" in states:
         return "failed"
+    if states & {"Ongoing", "Pending"}:
+        return "in_progress"
     if states == {"Success"}:
         return "success"
     return "not_started"
@@ -172,6 +172,38 @@ def _rollback_workspace(entry: MigrationEntry) -> None:
         logger.warning("rollback: config regeneration failed for %s", entry.run_id)
 
 
+def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_prefix: str) -> None:
+    """Rebase workspace-local pdk config paths BEFORE the moved workspace loads.
+
+    Both the legacy parameters.json ("PDK Config") and an already-migrated
+    home/ecc.toml can carry an absolute path under the old location; the
+    workspace cannot load while the path points back at the old source.
+    """
+    from pathlib import Path
+
+    legacy_path = Path(workspace_dir) / "home" / "parameters.json"
+    if legacy_path.exists():
+        data = json.loads(legacy_path.read_text(encoding="utf-8"))
+        changed = False
+        value = data.get("PDK Config")
+        if isinstance(value, str) and value.startswith(old_prefix + os.sep):
+            data["PDK Config"] = new_prefix + value[len(old_prefix) :]
+            changed = True
+        if changed:
+            legacy_path.write_text(json.dumps(data), encoding="utf-8")
+
+    config_path = Path(workspace_dir) / "home" / "ecc.toml"
+    if config_path.exists():
+        from chipcompiler.data.parameter import load_parameter, save_parameter
+
+        parameters = load_parameter(config_path)
+        value = parameters.data.get("pdk_config")
+        if isinstance(value, str) and value.startswith(old_prefix + os.sep):
+            parameters.data["pdk_config"] = new_prefix + value[len(old_prefix) :]
+            if not save_parameter(parameters):
+                raise OSError(f"failed to rebase workspace config paths: {workspace_dir}")
+
+
 def _move_workspace(entry: MigrationEntry) -> str | None:
     """Move one workspace and rebase it; returns an error string or None.
 
@@ -182,6 +214,7 @@ def _move_workspace(entry: MigrationEntry) -> str | None:
     try:
         from chipcompiler.data import load_workspace, refresh_workspace_config
 
+        _pre_rebase_legacy_config_paths(entry.target, entry.source, entry.target)
         workspace = load_workspace(entry.target)
         if workspace is None:
             raise ValueError(f"moved workspace fails to load: {entry.target}")
@@ -279,8 +312,10 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
         )
 
     if migrated:
+        registered = False
         if plan.resume:
-            if not _append_manifest_entries(project_dir, migrated):
+            registered = _append_manifest_entries(project_dir, migrated)
+            if not registered:
                 records.append(
                     {
                         "kind": "error",
@@ -327,6 +362,7 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
             if not written and find_manifest(project_dir) is not None:
                 # Lost the creation race: append to the winning manifest.
                 written = _append_manifest_entries(project_dir, migrated)
+            registered = written
             if not written:
                 records.append(
                     {
@@ -336,9 +372,25 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
                     }
                 )
 
+        if not registered:
+            # Registration is part of the transaction: without it the moved
+            # workspaces would be stranded at the root, invisible to the GUI
+            # and reported as "already migrated" on retry. Move the whole
+            # unregistered batch back.
+            for entry in migrated:
+                _rollback_workspace(entry)
+            records.append(
+                {
+                    "kind": "error",
+                    "error": "migration_rolled_back",
+                    "reason": "all moved workspaces were returned to runs/",
+                }
+            )
+
+    failures = [r for r in records if r.get("kind") == "error"]
     runs_dir = os.path.join(project_dir, "runs")
     try:
-        if os.path.isdir(runs_dir) and not os.listdir(runs_dir):
+        if not failures and os.path.isdir(runs_dir) and not os.listdir(runs_dir):
             os.rmdir(runs_dir)
     except OSError:
         logger.warning("could not remove empty runs directory: %s", runs_dir)
@@ -355,6 +407,19 @@ def migrate_project(command_input, ctx):
     project_dir = ctx.project_dir
     has_manifest = find_manifest(project_dir) is not None
     has_legacy = has_legacy_runs_layout(project_dir)
+
+    if has_manifest and has_legacy:
+        # Resume path: validate the existing manifest semantically before
+        # moving anything — a malformed winner must fail before the first
+        # rename, not after.
+        from chipcompiler.cli.project.manifest import ManifestError, load_manifest
+
+        try:
+            load_manifest(project_dir)
+        except ManifestError as exc:
+            return CommandResult.err(
+                [{"kind": "error", "error": "manifest_invalid", "reason": str(exc)}]
+            )
 
     if has_manifest and not has_legacy:
         return CommandResult.ok(
