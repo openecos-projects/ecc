@@ -246,6 +246,23 @@ def test_migration_seeds_flow_section_from_persisted_flow(
     assert loaded.parameters.data["_flow"] == {"start": "Synthesis", "end": "Floorplan"}
 
 
+def _fail_first_decode(monkeypatch):
+    """Make the first candidate verification raise; later calls decode for real."""
+    import chipcompiler.data.workspace_config as workspace_config_module
+
+    real_decode = workspace_config_module._decode_workspace_config
+    failed = False
+
+    def flaky_decode(path, workspace_dir_arg):
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise ValueError("injected verify failure")
+        return real_decode(path, workspace_dir_arg)
+
+    monkeypatch.setattr("chipcompiler.data.workspace_config._decode_workspace_config", flaky_decode)
+
+
 def test_verify_failure_installs_no_toml_and_next_open_retries(
     tmp_path, minimal_ics55_pdk_factory, monkeypatch, caplog
 ):
@@ -258,18 +275,7 @@ def test_verify_failure_installs_no_toml_and_next_open_retries(
     config_path = workspace_dir / "home" / "ecc.toml"
     legacy_path = workspace_dir / "home" / "parameters.json"
 
-    import chipcompiler.data.workspace_config as workspace_config_module
-
-    real_decode = workspace_config_module._decode_workspace_config
-    calls = {"n": 0}
-
-    def flaky_decode(path, workspace_dir_arg):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise ValueError("injected verify failure")
-        return real_decode(path, workspace_dir_arg)
-
-    monkeypatch.setattr("chipcompiler.data.workspace_config._decode_workspace_config", flaky_decode)
+    _fail_first_decode(monkeypatch)
 
     with caplog.at_level("WARNING"):
         loaded = load_workspace(str(workspace_dir))
@@ -324,3 +330,37 @@ def test_legacy_unlink_failure_still_opens_verified_toml(
     loaded_again = load_workspace(str(workspace_dir))
     assert loaded_again is not None
     assert loaded_again.parameters.data["frequency_max"] == 250
+
+
+def test_verify_failure_with_stubborn_candidate_still_retries(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch, caplog, stubborn_candidate_unlink
+):
+    """AC-4: a cleanup OSError on the uninstalled candidate must not abort
+    the open — the first open still falls back to the normalized copy, and
+    the next open retries and installs the TOML."""
+    workspace_dir, _pdk_root = _write_legacy_workspace(
+        tmp_path, minimal_ics55_pdk_factory, monkeypatch
+    )
+    config_path = workspace_dir / "home" / "ecc.toml"
+    legacy_path = workspace_dir / "home" / "parameters.json"
+
+    _fail_first_decode(monkeypatch)
+
+    with caplog.at_level("WARNING"):
+        loaded = load_workspace(str(workspace_dir))
+
+    # The cleanup failure did not abort the open: the normalized in-memory
+    # copy serves, no final TOML was installed, the legacy JSON is retained.
+    assert loaded is not None
+    assert loaded.parameters.data["frequency_max"] == 250
+    assert not config_path.exists()
+    assert legacy_path.is_file()
+    assert any("verify failed" in record.message for record in caplog.records)
+    assert any("temporary config candidate" in record.message for record in caplog.records)
+
+    loaded_again = load_workspace(str(workspace_dir))
+
+    assert loaded_again is not None
+    assert loaded_again.parameters.data["frequency_max"] == 250
+    assert config_path.is_file()
+    assert not legacy_path.exists()

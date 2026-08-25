@@ -246,3 +246,19 @@ def test_flow_section_from_flow_config_empty():
 def test_flow_validation_rejects_unknown_preset():
     with pytest.raises(WorkspaceFlowTargetError):
         validate_flow_config({"preset": "does_not_exist"})
+
+
+def test_save_replace_and_cleanup_failure_returns_false(
+    tmp_path, monkeypatch, stubborn_candidate_unlink
+):
+    """A replace failure must surface as the documented False even when the
+    temp-candidate cleanup itself fails — cleanup never aborts the caller."""
+    payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
+
+    def failing_replace(*args, **kwargs):
+        raise OSError("injected replace failure")
+
+    monkeypatch.setattr("chipcompiler.data.workspace_config.os.replace", failing_replace)
+
+    assert save_workspace_config(tmp_path, payload) is False
+    assert not workspace_config_path(tmp_path).exists()

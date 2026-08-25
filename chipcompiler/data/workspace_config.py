@@ -347,6 +347,19 @@ def render_workspace_config(
     return tomli_w.dumps(document).encode("utf-8")
 
 
+def _unlink_best_effort(path: Path) -> None:
+    """Remove a temporary config candidate, best-effort.
+
+    A failed cleanup must never abort the caller: the fallback contract
+    (normalized in-memory copy, retry on next open) does not depend on
+    the temp file being gone.
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("failed to remove temporary config candidate %s: %s", path, exc)
+
+
 def _stage_config_bytes(target: Path, content: bytes) -> Path | None:
     """Write and fsync content at a temp path next to target (not installed)."""
     tmp_path = None
@@ -367,7 +380,7 @@ def _stage_config_bytes(target: Path, content: bytes) -> Path | None:
     except OSError:
         logger.warning("failed to write workspace config: %s", target)
         if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
+            _unlink_best_effort(tmp_path)
         return None
 
 
@@ -400,7 +413,7 @@ def save_workspace_config(
         return True
     except OSError:
         logger.warning("failed to write workspace config: %s", target)
-        tmp_path.unlink(missing_ok=True)
+        _unlink_best_effort(tmp_path)
         return False
 
 
@@ -494,7 +507,7 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
         logger.warning(
             "legacy parameters migration deferred (verify failed): %s: %s", config_path, exc
         )
-        candidate.unlink(missing_ok=True)
+        _unlink_best_effort(candidate)
         return
     try:
         os.replace(candidate, config_path)
@@ -502,7 +515,7 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
         logger.warning(
             "legacy parameters migration deferred (install failed): %s: %s", config_path, exc
         )
-        candidate.unlink(missing_ok=True)
+        _unlink_best_effort(candidate)
         return
     try:
         legacy_path.unlink()
