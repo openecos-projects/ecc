@@ -1,6 +1,8 @@
 """Shared fixtures for CLI command tests."""
 
 import json
+import os
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -109,3 +111,45 @@ def manifest_stubs(capsys):
         return json.loads(capsys.readouterr().out)["records"]
 
     return SimpleNamespace(write=_write, entry=_entry, records=_records)
+
+
+@pytest.fixture
+def spy_mutations(monkeypatch):
+    """Factory installing chmod/rmtree spies AT CALL TIME.
+
+    Overwrite-guard tests call it after their own setup chmods, so only
+    the command-under-test's mutations are recorded."""
+
+    def _install():
+        calls = {"chmod": [], "rmtree": []}
+        real_chmod = os.chmod
+        real_rmtree = shutil.rmtree
+
+        def chmod_spy(path, mode, **kwargs):
+            calls["chmod"].append(path)
+            return real_chmod(path, mode, **kwargs)
+
+        def rmtree_spy(path, *args, **kwargs):
+            calls["rmtree"].append(path)
+            return real_rmtree(path, *args, **kwargs)
+
+        monkeypatch.setattr(os, "chmod", chmod_spy)
+        monkeypatch.setattr(shutil, "rmtree", rmtree_spy)
+        return calls
+
+    return _install
+
+
+@pytest.fixture
+def legacy_hint():
+    """The expected legacy_layout_detected record for a project path."""
+
+    def _build(project_dir):
+        return {
+            "kind": "warning",
+            "warning": "legacy_layout_detected",
+            "reason": "this project uses the legacy runs/ layout; run 'ecc migrate' to upgrade",
+            "migrate": f"ecc migrate --project {project_dir} --yes",
+        }
+
+    return _build
