@@ -91,9 +91,12 @@ def test_geometry_to_parameters_extends_existing_subtrees():
     }
 
 
-def test_geometry_to_parameters_keeps_unknown_flat_keys():
+def test_geometry_to_parameters_logs_and_keeps_unknown_flat_keys(caplog):
     flat = {"some_future_key": 1}
-    assert geometry_to_parameters(flat) == {"some_future_key": 1}
+    with caplog.at_level("WARNING"):
+        result = geometry_to_parameters(flat)
+    assert result == {"some_future_key": 1}
+    assert any("some_future_key" in record.message for record in caplog.records)
 
 
 def test_parameters_to_geometry_surfaces_aliases():

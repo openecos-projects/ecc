@@ -49,6 +49,7 @@ def _resolve_manifest_run(
     lists the declared ids).
     """
     from chipcompiler.cli.project.manifest import load_manifest
+    from chipcompiler.cli.project.run_prepare import invalid_single_segment_id
 
     manifest = load_manifest(project_dir)
     active = manifest.active_workspaces()
@@ -61,6 +62,13 @@ def _resolve_manifest_run(
             os.path.join(project_dir, "default"),
             None,
             f"workspace_not_declared: --run-id required; declared workspaces: {ids}",
+        )
+
+    if invalid_single_segment_id(cli_run_id):
+        return (
+            os.path.join(project_dir, "default"),
+            None,
+            f"invalid_run_id: {cli_run_id!r} is not a single path segment inside the project",
         )
 
     match = manifest.find_workspace(cli_run_id)

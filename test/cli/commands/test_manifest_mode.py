@@ -94,6 +94,30 @@ class TestManifestRunDiscovery:
         assert "ws_0001" in record["reason"]
         assert "ws_0002" in record["reason"]
 
+    def test_nested_run_id_is_invalid_not_undeclared(self, tmp_path, capsys):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+
+        rc = cli_main.run(
+            ["status", "--project", str(project_dir), "--run-id", "sweeps/s1", "--json"]
+        )
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "invalid_run_id"
+
+    def test_absolute_run_id_is_invalid_not_undeclared(self, tmp_path, capsys):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+
+        rc = cli_main.run(["status", "--project", str(project_dir), "--run-id", "/tmp/x", "--json"])
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "invalid_run_id"
+
     def test_unknown_run_id_errors_with_declared_ids(self, tmp_path, capsys):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()

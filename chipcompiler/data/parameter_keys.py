@@ -77,15 +77,32 @@ def _normalize_dict(data: dict, path: str) -> dict:
     return result
 
 
+def _known_top_level_keys() -> frozenset:
+    """Top-level keys of the canonical vocabulary (both PDK templates)."""
+    from .parameter import ICS55_PARAMETERS_TEMPLATE, SG13G2_PARAMETERS_TEMPLATE
+
+    return frozenset(
+        set(ICS55_PARAMETERS_TEMPLATE)
+        | set(SG13G2_PARAMETERS_TEMPLATE)
+        | set(_GEOMETRY_TO_PARAMETERS)
+        | {"pdk_root", "pdk_config", "file_list", "die_area_mode"}
+    )
+
+
 def geometry_to_parameters(flat: dict) -> dict:
     """Convert a GUI flat payload (geometry aliases included) to canonical form.
 
     Returns a new dict: mechanical normalization first, then the positional
     aliases folded into the ``die``/``core`` subtrees, and the GUI-only
-    ``die_area_mode`` dropped. Unknown flat keys are kept as-is.
+    ``die_area_mode`` dropped. Keys outside the canonical vocabulary are
+    logged (never silently shadowing a canonical one) and kept for
+    forward compatibility.
     """
     normalized = normalize_parameter_dict(flat)
     normalized.pop("die_area_mode", None)
+    for key in normalized:
+        if key not in _known_top_level_keys():
+            logger.warning("unknown GUI parameter key kept: %s", key)
     for alias, (subtree, key, index) in _GEOMETRY_TO_PARAMETERS.items():
         if alias not in normalized:
             continue

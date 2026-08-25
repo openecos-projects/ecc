@@ -29,7 +29,12 @@ def _config_error_result(ctx: CommandContext, reason: str) -> CommandResult:
 
 def _manifest_error_result(ctx: CommandContext) -> CommandResult:
     reason = ctx.manifest_error or ""
-    kind = "manifest_invalid" if reason.startswith("manifest_invalid") else "workspace_not_declared"
+    prefix, _, _ = reason.partition(":")
+    kind = (
+        prefix
+        if prefix in ("manifest_invalid", "workspace_not_declared", "invalid_run_id")
+        else "workspace_not_declared"
+    )
     return CommandResult.err(
         [
             error_record(
