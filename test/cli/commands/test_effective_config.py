@@ -5,6 +5,13 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 
+_HYBRID_TOML = (
+    '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\n'
+    'clock_port = "clk"\nfrequency_mhz = 100.0\n'
+    '\n[pdk]\nname = "ics55"\nroot = "{ROOT}"\n'
+    '\n[flow]\npreset = "rtl2gds"\n'
+)
+
 
 class TestHybridManifestFallbacks:
     def test_flowless_ecc_toml_existing_run_uses_workspace_flow(
@@ -387,7 +394,11 @@ class TestEffectiveConfigValidation:
         project_dir.mkdir()
         # Manifest spells pdk_root absolute and rtl relative; ecc.toml spells
         # pdk_root relative and rtl absolute. Same files: no false warnings.
-        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        # The entry declares the same range rtl2gds maps to, isolating the
+        # path-spelling comparison.
+        entry = manifest_stubs.entry(project_dir, "ws_0001")
+        entry["start_step"], entry["end_step"] = "Synth", "Filler"
+        manifest_stubs.write(project_dir, [entry])
         (project_dir / "ecc.toml").write_text(
             '[design]\nname = "gcd"\ntop = "gcd"\n'
             'rtl = ["' + str(project_dir / "rtl" / "gcd.v") + '"]\n'
@@ -504,13 +515,6 @@ class TestExplicitEmptyStaysExplicit:
     filled from the manifest layer: it stays explicit, fails validation,
     and participates in divergence reporting."""
 
-    _BASE_TOML = (
-        '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\n'
-        'clock_port = "clk"\nfrequency_mhz = 100.0\n'
-        '\n[pdk]\nname = "ics55"\nroot = "{ROOT}"\n'
-        '\n[flow]\npreset = "rtl2gds"\n'
-    )
-
     def _hybrid(self, manifest_stubs, tmp_path, monkeypatch, toml_text):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
@@ -526,37 +530,37 @@ class TestExplicitEmptyStaysExplicit:
 
     _CASES = [
         pytest.param(
-            _BASE_TOML.replace('name = "gcd"', 'name = ""'),
+            _HYBRID_TOML.replace('name = "gcd"', 'name = ""'),
             "design.name is required",
             id="empty-name",
         ),
         pytest.param(
-            _BASE_TOML.replace('top = "gcd"', 'top = ""'),
+            _HYBRID_TOML.replace('top = "gcd"', 'top = ""'),
             "design.top is required",
             id="empty-top",
         ),
         pytest.param(
-            _BASE_TOML.replace('clock_port = "clk"', 'clock_port = ""'),
+            _HYBRID_TOML.replace('clock_port = "clk"', 'clock_port = ""'),
             "design.clock_port is required",
             id="empty-clock",
         ),
         pytest.param(
-            _BASE_TOML.replace('rtl = ["rtl/gcd.v"]', "rtl = []"),
+            _HYBRID_TOML.replace('rtl = ["rtl/gcd.v"]', "rtl = []"),
             "design.rtl must have at least one entry",
             id="empty-rtl",
         ),
         pytest.param(
-            _BASE_TOML.replace('name = "ics55"', 'name = ""'),
+            _HYBRID_TOML.replace('name = "ics55"', 'name = ""'),
             "pdk.name is required",
             id="empty-pdk-name",
         ),
         pytest.param(
-            _BASE_TOML.replace('root = "{ROOT}"', 'root = ""'),
+            _HYBRID_TOML.replace('root = "{ROOT}"', 'root = ""'),
             "pdk.root is required",
             id="empty-pdk-root",
         ),
         pytest.param(
-            _BASE_TOML.replace('preset = "rtl2gds"', 'preset = ""'),
+            _HYBRID_TOML.replace('preset = "rtl2gds"', 'preset = ""'),
             "flow.preset is required",
             id="empty-preset",
         ),
@@ -597,7 +601,7 @@ class TestExplicitEmptyStaysExplicit:
             manifest_stubs,
             tmp_path,
             monkeypatch,
-            self._BASE_TOML.replace('root = "{ROOT}"', 'root = ""'),
+            _HYBRID_TOML.replace('root = "{ROOT}"', 'root = ""'),
         )
         monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(project_dir / "pdk"))
 
@@ -609,3 +613,144 @@ class TestExplicitEmptyStaysExplicit:
         ]
         assert len(warnings) == 1
         assert "pdk_root" in warnings[0]["keys"]
+
+
+class TestLowerLayerDivergence:
+    """The divergence projection covers every layerable key: a present-but-
+    falsy lower-layer frequency and the entry's declared flow range both
+    participate; equivalent layers never warn."""
+
+    def _hybrid(self, manifest_stubs, tmp_path, monkeypatch, *, base_parameters, entry_range):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        entry = manifest_stubs.entry(project_dir, "ws_0001")
+        entry["start_step"], entry["end_step"] = entry_range
+        manifest_stubs.write(
+            project_dir,
+            [entry],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": base_parameters,
+            },
+        )
+        (project_dir / "ecc.toml").write_text(
+            _HYBRID_TOML.replace("{ROOT}", str(project_dir / "pdk"))
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        return project_dir
+
+    @staticmethod
+    def _divergences(records):
+        return [r for r in records if r.get("warning") == "config_layer_diverged"]
+
+    def test_check_warns_on_zero_lower_frequency(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch
+    ):
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            base_parameters={"design": "gcd", "frequency_max": 0},
+            entry_range=("Synth", "Filler"),
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        warnings = self._divergences(manifest_stubs.records())
+        assert len(warnings) == 1
+        assert "frequency_max" in warnings[0]["keys"]
+
+    def test_run_warns_on_zero_lower_frequency(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks
+    ):
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            base_parameters={"design": "gcd", "frequency_max": 0},
+            entry_range=("Synth", "Filler"),
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        warnings = self._divergences(manifest_stubs.records())
+        assert len(warnings) == 1
+        assert "frequency_max" in warnings[0]["keys"]
+
+    def test_check_warns_on_different_flow_range(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch
+    ):
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            base_parameters={"design": "gcd", "frequency_max": 100},
+            entry_range=("Place", "Route"),
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        warnings = self._divergences(manifest_stubs.records())
+        assert len(warnings) == 1
+        assert "flow" in warnings[0]["keys"]
+
+    def test_run_warns_on_different_flow_range(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks
+    ):
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            base_parameters={"design": "gcd", "frequency_max": 100},
+            entry_range=("Place", "Route"),
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        warnings = self._divergences(manifest_stubs.records())
+        assert len(warnings) == 1
+        assert "flow" in warnings[0]["keys"]
+
+    def test_check_equivalent_flow_range_stays_silent(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch
+    ):
+        # rtl2gds maps to (Synth, Filler) — the same range the entry declares.
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            base_parameters={"design": "gcd", "frequency_max": 100},
+            entry_range=("Synth", "Filler"),
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert self._divergences(manifest_stubs.records()) == []
+
+    def test_run_equivalent_flow_range_stays_silent(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks
+    ):
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            base_parameters={"design": "gcd", "frequency_max": 100},
+            entry_range=("Synth", "Filler"),
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert self._divergences(manifest_stubs.records()) == []

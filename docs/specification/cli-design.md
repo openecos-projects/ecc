@@ -521,8 +521,8 @@ The override delta reaches the Yosys builder and other tool steps within a singl
   `tap_cell`, `end_cap`, `buffers`, `fillers`, `tie_high_cell`, `tie_high_port`,
   `tie_low_cell`, `tie_low_port`, `dont_use`, `abc_driver_cell`, `abc_load`):
   Applied in memory and consumed within the run (e.g., baked into generated Yosys
-  scripts). Not written to `home/ecc.toml`. On `load_workspace` (e.g., `ecc status`
-  or subsequent run without `[pdk.overrides]` in `ecc.toml`), these fields are
+  scripts). Not written to `home/ecc.toml`. On `load_workspace` (e.g., a subsequent
+  `ecc run` without `[pdk.overrides]` in `ecc.toml`), these fields are
   recomputed from the base built-in PDK. Effect: single-run only, dropped on reload
   unless the override is present in `ecc.toml` for the next run. `corners` is the
   exception in this list: no tool step currently consumes it (PDK-to-RCX propagation

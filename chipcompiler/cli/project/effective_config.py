@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from chipcompiler.cli.core.records import error_record, warning_record
 from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.cli.project.manifest import (
+    PRESET_MANIFEST_RANGE,
     ManifestError,
     assemble_config,
     load_manifest,
@@ -66,7 +67,7 @@ def resolve_effective_config(
                 flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
 
     warnings = []
-    diverging = layer_divergences(cfg, assembled)
+    diverging = layer_divergences(cfg, assembled, entry)
     if diverging:
         warnings.append(
             warning_record(
@@ -208,7 +209,7 @@ def _validate_rtl_source(project_dir: str, entry: str) -> list[str]:
     return []
 
 
-def layer_divergences(cfg, assembled: dict) -> list[str]:
+def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
     """Keys where the ecc.toml layer overrides a different manifest value.
 
     One canonical projection: manifest GUI-flat parameters are converted
@@ -216,7 +217,9 @@ def layer_divergences(cfg, assembled: dict) -> list[str]:
     against the project root, and the entry patch is already applied to
     *assembled* by the caller. Presence-keyed like the fill: only keys
     present in ecc.toml are compared — an explicit empty value diverges
-    from a non-empty base; an absent key never diverges.
+    from a non-empty base; an absent key never diverges. *entry* (the
+    selected manifest workspace, possibly None) supplies the lower-layer
+    flow range.
     """
     explicit = cfg._explicit_keys
     keys: list[str] = []
@@ -235,8 +238,8 @@ def layer_divergences(cfg, assembled: dict) -> list[str]:
     if "pdk.root" in explicit and base_root != toml_root:
         keys.append("pdk_root")
 
-    base_sources = {_normalize_path(cfg.project_dir, entry) for entry in _source_rtl(assembled)}
-    toml_sources = {_normalize_path(cfg.project_dir, entry) for entry in cfg.design_rtl}
+    base_sources = {_normalize_path(cfg.project_dir, source) for source in _source_rtl(assembled)}
+    toml_sources = {_normalize_path(cfg.project_dir, source) for source in cfg.design_rtl}
     base_sources.discard("")
     toml_sources.discard("")
     if "design.rtl" in explicit and base_sources != toml_sources:
@@ -245,13 +248,20 @@ def layer_divergences(cfg, assembled: dict) -> list[str]:
     from chipcompiler.data.parameter_keys import geometry_to_parameters
 
     canonical_params = geometry_to_parameters(assembled.get("parameters") or {})
-    base_frequency = canonical_params.get("frequency_max")
     if (
         "design.frequency_mhz" in explicit
-        and base_frequency
-        and base_frequency != cfg.design_frequency_mhz
+        and "frequency_max" in canonical_params
+        and canonical_params["frequency_max"] != cfg.design_frequency_mhz
     ):
         keys.append("frequency_max")
+
+    # An explicit valid preset overrides the entry's declared range (GUI
+    # range vocabulary on both sides); an unknown preset is left to
+    # validation instead of being projected here.
+    if "flow.preset" in explicit and entry is not None:
+        preset_range = PRESET_MANIFEST_RANGE.get(cfg.flow_preset)
+        if preset_range is not None and preset_range != (entry.start_step, entry.end_step):
+            keys.append("flow")
 
     if cfg.params_overrides and canonical_params:
         from chipcompiler.cli.project.params import (

@@ -246,14 +246,23 @@ class TestFlowContinuation:
 
 
 def _tree_snapshot(root):
-    """{relpath: bytes} for every file under root — catches both changed
-    content and newly created paths."""
+    """{relpath: (kind, payload)} for every entry under root — files carry
+    their bytes, symlinks their target, directories a marker — so a created
+    file, a created empty directory, or a new link all fail the comparison.
+    The is_symlink check comes first: is_file()/is_dir() follow links."""
     root_path = Path(root)
-    return {
-        str(path.relative_to(root_path)): path.read_bytes()
-        for path in sorted(root_path.rglob("*"))
-        if path.is_file()
-    }
+    snapshot = {}
+    for path in sorted(root_path.rglob("*")):
+        rel = str(path.relative_to(root_path))
+        if path.is_symlink():
+            snapshot[rel] = ("link", str(path.readlink()))
+        elif path.is_file():
+            snapshot[rel] = ("file", path.read_bytes())
+        elif path.is_dir():
+            snapshot[rel] = ("dir", None)
+        else:
+            snapshot[rel] = ("other", None)
+    return snapshot
 
 
 def _write_manifest_with_workspace(project_dir, run_dir, pdk_root):
