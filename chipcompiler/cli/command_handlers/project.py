@@ -80,7 +80,6 @@ run = "default"
 
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project import run_prepare
-    from chipcompiler.cli.project.config import validate_project_config
 
     project = ctx.project
 
@@ -112,7 +111,14 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    errors = validate_project_config(cfg)
+    # Hybrid projects validate the effective config: manifest fallback
+    # applied first, entry layer resolved, manifest relaxations honored.
+    run_prepare.fill_manifest_base(ctx, cfg)
+    _entry_flow_config, entry_warnings = run_prepare.apply_manifest_entry(
+        ctx, cfg, ctx.run_id or "default"
+    )
+
+    errors = run_prepare.validate_for_project(ctx, cfg)
 
     if errors:
         return CommandResult.err(
@@ -158,28 +164,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             }
         )
 
-    if ctx.project_state == "manifest":
-        # Hybrid check reports divergences between the complete lower layer
-        # (base_design + the selected entry's parameter_patch) and ecc.toml.
-        from chipcompiler.cli.core.records import warning_record
-        from chipcompiler.cli.project import run_prepare
-        from chipcompiler.cli.project.manifest import layer_divergences
-
-        base = run_prepare.manifest_base_config(ctx)
-        if base is not None:
-            entry_parameters, _ = run_prepare.manifest_entry_layer(ctx, ctx.run_id or "default")
-            diverging = layer_divergences(
-                cfg,
-                {**base, "parameters": entry_parameters or base["parameters"]},
-            )
-            if diverging:
-                records.append(
-                    warning_record(
-                        "config_layer_diverged",
-                        keys=diverging,
-                        reason="ecc.toml values override different project.json base values",
-                    )
-                )
+    records.extend(entry_warnings)
 
     if ctx.project_state == "legacy":
         from chipcompiler.cli.core.records import legacy_layout_hint_record
@@ -252,16 +237,12 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": "selector_requires_workspace"}])
 
     from chipcompiler.cli.project import run_prepare
-    from chipcompiler.cli.project.config import (
-        validate_project_config,
-    )
 
     project = ctx.project
     project_dir = ctx.project_dir
 
     cfg = ctx.config
     flow_config = None
-    base = None
     layer_warnings: list[dict] = []
     if cfg is None:
         if ctx.project_state == "manifest":
@@ -279,31 +260,10 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     }
                 ]
             )
-    elif ctx.project_state == "manifest":
-        # Hybrid project (both ecc.toml and project.json): the manifest base
-        # layers beneath the ecc.toml values — only missing fields are filled.
-        base = run_prepare.manifest_base_config(ctx)
-        if base is not None:
-            cfg.design_name = cfg.design_name or base["design_name"]
-            cfg.design_top = cfg.design_top or base["top_module"]
-            cfg.design_clock_port = cfg.design_clock_port or base["clock"]
-            if not cfg.design_rtl and base["rtl_list"]:
-                cfg.design_rtl = list(base["rtl_list"])
-            cfg.pdk_name = cfg.pdk_name or base["pdk"]
-            cfg.pdk_root = cfg.pdk_root or base["pdk_root"]
-            cfg.manifest_parameters = dict(base["parameters"] or {})
+    else:
+        run_prepare.fill_manifest_base(ctx, cfg)
 
-    errors = validate_project_config(cfg)
-    if ctx.project_state == "manifest":
-        # Manifest-backed projects allow an absent [flow] (the target comes
-        # from the workspace config or the entry range at creation) and a
-        # multi-entry rtl list (materialized as a filelist at creation).
-        errors = [
-            err
-            for err in errors
-            if err != "flow.preset is required"
-            and not err.startswith("design.rtl must have exactly one entry")
-        ]
+    errors = run_prepare.validate_for_project(ctx, cfg)
     if errors:
         return CommandResult.err(
             [
@@ -351,30 +311,10 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         run_dir, run_name, workspace_registered, warning_records = resolved
 
     if project_state == "manifest" and not cfg.manifest_driven:
-        # The declared entry layers its parameter_patch beneath ecc.toml,
-        # applied after run-name resolution. The entry's creation-time flow
-        # range seeds only when the project ecc.toml has no flow target —
-        # project [flow] always outranks the manifest entry.
-        entry_parameters, entry_flow_config = run_prepare.manifest_entry_layer(ctx, run_name)
-        if entry_parameters:
-            cfg.manifest_parameters = entry_parameters
-        if entry_flow_config is not None and not cfg.flow_preset:
+        entry_flow_config, entry_warnings = run_prepare.apply_manifest_entry(ctx, cfg, run_name)
+        if entry_flow_config is not None:
             flow_config = entry_flow_config
-        # Divergences are computed against the complete lower layer
-        # (base_design + the selected entry's parameter_patch).
-        from chipcompiler.cli.core.records import warning_record
-        from chipcompiler.cli.project.manifest import layer_divergences
-
-        if base is not None:
-            diverging = layer_divergences(cfg, {**base, "parameters": cfg.manifest_parameters})
-            if diverging:
-                layer_warnings.append(
-                    warning_record(
-                        "config_layer_diverged",
-                        keys=diverging,
-                        reason="ecc.toml values override different project.json base values",
-                    )
-                )
+        layer_warnings.extend(entry_warnings)
     warning_records = layer_warnings + warning_records
 
     protected = (project_dir, os.path.join(project_dir, "runs"))

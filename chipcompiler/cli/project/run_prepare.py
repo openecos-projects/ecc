@@ -194,6 +194,83 @@ def manifest_entry_layer(ctx, run_name):
     return (assembled["parameters"], flow_config)
 
 
+def fill_manifest_base(ctx, cfg) -> None:
+    """Fill a hybrid ProjectConfig's missing fields from the manifest base.
+
+    Only empty fields are filled — explicit ecc.toml values always win.
+    No-op for non-manifest projects and manifest-driven configs.
+    """
+    if ctx.project_state != "manifest" or cfg.manifest_driven:
+        return
+    base = manifest_base_config(ctx)
+    if base is None:
+        return
+    cfg.design_name = cfg.design_name or base["design_name"]
+    cfg.design_top = cfg.design_top or base["top_module"]
+    cfg.design_clock_port = cfg.design_clock_port or base["clock"]
+    if not cfg.design_rtl and base["rtl_list"]:
+        cfg.design_rtl = list(base["rtl_list"])
+    cfg.pdk_name = cfg.pdk_name or base["pdk"]
+    cfg.pdk_root = cfg.pdk_root or base["pdk_root"]
+    cfg.manifest_parameters = dict(base["parameters"] or {})
+
+
+def apply_manifest_entry(ctx, cfg, run_name):
+    """(flow_config, warnings) from the selected workspace entry.
+
+    Layers the entry's parameter_patch beneath ecc.toml, seeds the entry
+    flow range only when the project ecc.toml has no flow target, and
+    computes divergence warnings against the complete lower layer
+    (base_design + parameter_patch).
+    """
+    if ctx.project_state != "manifest" or cfg.manifest_driven:
+        return (None, [])
+    from chipcompiler.cli.core.records import warning_record
+    from chipcompiler.cli.project.manifest import layer_divergences
+
+    entry_parameters, entry_flow_config = manifest_entry_layer(ctx, run_name)
+    if entry_parameters:
+        cfg.manifest_parameters = entry_parameters
+
+    warnings = []
+    base = manifest_base_config(ctx)
+    if base is not None:
+        diverging = layer_divergences(cfg, {**base, "parameters": cfg.manifest_parameters})
+        if diverging:
+            warnings.append(
+                warning_record(
+                    "config_layer_diverged",
+                    keys=diverging,
+                    reason="ecc.toml values override different project.json base values",
+                )
+            )
+
+    flow_config = None
+    if entry_flow_config is not None and not cfg.flow_preset:
+        flow_config = entry_flow_config
+    return (flow_config, warnings)
+
+
+def validate_for_project(ctx, cfg) -> list[str]:
+    """validate_project_config with manifest-backed relaxations.
+
+    Manifest-backed projects tolerate an absent [flow] (the workspace
+    config or the creation entry supplies the target) and a multi-entry
+    rtl list (materialized as a filelist at creation).
+    """
+    from chipcompiler.cli.project.config import validate_project_config
+
+    errors = validate_project_config(cfg)
+    if ctx.project_state != "manifest":
+        return errors
+    return [
+        err
+        for err in errors
+        if err != "flow.preset is required"
+        and not err.startswith("design.rtl must have exactly one entry")
+    ]
+
+
 def run_existing_workspace(
     command_input,
     ctx,

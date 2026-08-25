@@ -685,3 +685,130 @@ class TestHybridManifestFallbacks:
         warnings = [r for r in records if r.get("warning") == "config_layer_diverged"]
         assert len(warnings) == 1
         assert "top_module" in warnings[0]["keys"]
+
+
+class TestCheckHybridEffectiveValidation:
+    def test_check_flowless_partial_hybrid_passes(self, tmp_path, capsys, monkeypatch):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        # Partial ecc.toml: only frequency — the rest comes from the manifest.
+        (project_dir / "ecc.toml").write_text("[design]\nfrequency_mhz = 200.0\n")
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        assert records[0]["status"] == "checked"
+
+    def test_check_multi_rtl_manifest_passes(self, tmp_path, capsys, monkeypatch):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / "rtl").mkdir()
+        (project_dir / "rtl" / "b.v").write_text("module b; endmodule\n")
+        _write_manifest(
+            project_dir,
+            [_workspace_entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v", "rtl/b.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100},
+            },
+        )
+        (project_dir / "ecc.toml").write_text("[design]\nfrequency_mhz = 100.0\n")
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        assert records[0]["status"] == "checked"
+
+
+class TestDivergenceProjectionFields:
+    def _hybrid(self, tmp_path, monkeypatch, toml_text, base_overrides=None, patch=None):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        base = {
+            "pdk": "ics55",
+            "pdk_root": str(project_dir / "pdk"),
+            "top_module": "gcd",
+            "clock": "clk",
+            "rtl_list": ["rtl/gcd.v"],
+            "parameters": {"design": "gcd", "frequency_max": 100, "max_fanout": 20},
+        }
+        if base_overrides:
+            base.update(base_overrides)
+        entry = _workspace_entry(project_dir, "ws_0001")
+        if patch:
+            entry["parameter_patch"] = patch
+        _write_manifest(project_dir, [entry], base_design=base)
+        (project_dir / "ecc.toml").write_text(toml_text)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        return project_dir
+
+    def test_check_warns_on_name_rtl_frequency_and_patched_parameter(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        project_dir = self._hybrid(
+            tmp_path,
+            monkeypatch,
+            '[design]\nname = "other"\ntop = "gcd"\n'
+            'rtl = ["rtl/other.v"]\nclock_port = "clk"\nfrequency_mhz = 250.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "'
+            + "{ROOT}"
+            + '"\n\n[flow]\npreset = "rtl2gds"\n\n[params.synth]\nmax_fanout = 32\n'.replace(
+                "{ROOT}", "{ROOT}"
+            ),
+            patch={"max_fanout": {"from": 20, "to": 24}},
+        )
+        toml_path = project_dir / "ecc.toml"
+        toml_path.write_text(toml_path.read_text().replace("{ROOT}", str(project_dir / "pdk")))
+        (project_dir / "rtl" / "other.v").write_text("module other; endmodule\n")
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        warnings = [r for r in records if r.get("warning") == "config_layer_diverged"]
+        assert len(warnings) == 1
+        keys = warnings[0]["keys"]
+        assert "design_name" in keys
+        assert "rtl" in keys
+        assert "frequency_max" in keys
+        assert "max_fanout" in keys
+
+    def test_run_warns_on_same_projection(self, tmp_path, capsys, monkeypatch, flow_mocks):
+        project_dir = self._hybrid(
+            tmp_path,
+            monkeypatch,
+            '[design]\nname = "other"\ntop = "gcd"\n'
+            'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 250.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "' + "{ROOT}" + '"\n'
+            '\n[flow]\npreset = "rtl2gds"\n',
+        )
+        toml_path = project_dir / "ecc.toml"
+        toml_path.write_text(toml_path.read_text().replace("{ROOT}", str(project_dir / "pdk")))
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        warnings = [r for r in records if r.get("warning") == "config_layer_diverged"]
+        assert len(warnings) == 1
+        keys = warnings[0]["keys"]
+        assert "design_name" in keys
+        assert "frequency_max" in keys

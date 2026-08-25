@@ -20,7 +20,7 @@ from ..parameter import (
 )
 from ..pdk import PDK, get_pdk
 from ..step import StateEnum, StepEnum
-from ..workspace_config import migrate_legacy_parameters
+from ..workspace_config import legacy_parameters_fallback, migrate_legacy_parameters
 from .layout import EccData, WorkspaceStepBase
 
 # The shared step type used as the annotation/constructor across the codebase.
@@ -1360,11 +1360,7 @@ def load_workspace(directory: str | Path) -> Workspace:
         # normalized in-memory copy so the workspace still opens. When the
         # TOML exists it wins unconditionally — a malformed config never
         # silently falls back to stale JSON.
-        from chipcompiler.utility import json_read
-
-        from ..parameter_keys import normalize_parameter_dict
-
-        fallback = normalize_parameter_dict(json_read(legacy_path))
+        fallback = legacy_parameters_fallback(workspace_dir)
         if fallback:
             parameters.data = fallback
     if len(parameters.data) <= 0:

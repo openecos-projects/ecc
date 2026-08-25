@@ -456,3 +456,16 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
         )
         return
     legacy_path.unlink(missing_ok=True)
+
+
+def legacy_parameters_fallback(workspace_dir: str | Path) -> dict:
+    """Normalized in-memory copy of a legacy parameters.json, or {}.
+
+    Used when the rewrite was deferred (e.g. read-only dir) so the
+    workspace still opens; the next open retries the migration.
+    """
+    from chipcompiler.utility import json_read
+
+    from .parameter_keys import normalize_parameter_dict
+
+    return normalize_parameter_dict(json_read(legacy_parameters_path(workspace_dir)))
