@@ -184,34 +184,24 @@ def flow_steps_in_range(start: str, end: str) -> list[str]:
 def flow_section_from_flow_config(flow_config: dict | None) -> dict[str, str]:
     """Derive the [flow] section (start/end canonical form) from a flow_config.
 
-    A non-contiguous explicit steps selection degrades to the contiguous
-    first..last range with a log note. Returns {} when the flow_config does
-    not select steps.
+    Uses the same selection resolution as the flow.json seeding, so both
+    stores always describe the same contiguous range. Returns {} when the
+    flow_config does not select steps.
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
     from chipcompiler.data.workspace import (
         _canonical_harden_flow_entries,
-        _selected_dynamic_flow_step_names,
+        resolve_flow_selection,
     )
 
-    canonical_entries = _canonical_harden_flow_entries()
-    selected = _selected_dynamic_flow_step_names(flow_config, canonical_entries)
+    selected, _degraded = resolve_flow_selection(flow_config, _canonical_harden_flow_entries())
     if not selected:
         return {}
 
-    chain = [name for name, _tool, _state in canonical_entries]
-    start, end = selected[0], selected[-1]
-    if selected != chain[chain.index(start) : chain.index(end) + 1]:
-        logger.warning(
-            "non-contiguous flow steps %s degraded to contiguous range %s..%s",
-            selected,
-            start,
-            end,
-        )
     # Names are already canonical here; validate to keep the contract explicit.
-    return validate_flow_config({"start": start, "end": end})
+    return validate_flow_config({"start": selected[0], "end": selected[-1]})
 
 
 def _split_payload(data: dict) -> dict[str, Any]:

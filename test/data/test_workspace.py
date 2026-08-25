@@ -199,6 +199,41 @@ def test_create_workspace_persists_dynamic_flow_steps(
     assert all(step["peak memory (mb)"] == 0 for step in flow_data["steps"])
 
 
+def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, caplog
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    with caplog.at_level("WARNING"):
+        workspace = create_workspace(
+            directory=workspace_dir,
+            origin_def=def_path,
+            origin_verilog=netlist_path,
+            pdk="ics55",
+            parameters=default_ics55_parameters,
+            pdk_root=pdk_root,
+            flow_config={"steps": ["Synth", "Place", "CTS"]},
+        )
+
+    assert workspace is not None
+    # Both stores carry the same contiguous first..last range.
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [step["name"] for step in flow_data["steps"]] == [
+        "Synthesis",
+        "Floorplan",
+        "fixFanout",
+        "place",
+        "CTS",
+    ]
+    assert workspace.parameters.data["_flow"] == {"start": "Synthesis", "end": "CTS"}
+    assert any("non-contiguous" in record.message for record in caplog.records)
+
+
 def test_create_workspace_derives_dynamic_flow_from_boundaries(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

@@ -254,12 +254,17 @@ def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:
 
 
 def build_dynamic_flow_data(flow_config: dict | None) -> dict:
-    """Build initial flow.json data from GUI-provided flow_config."""
+    """Build initial flow.json data from GUI-provided flow_config.
+
+    A non-contiguous explicit selection degrades to the contiguous
+    first..last range (with a log note) so flow.json and the [flow] target
+    always describe the same steps.
+    """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
     canonical_steps = _canonical_harden_flow_entries()
-    selected_names = _selected_dynamic_flow_step_names(flow_config, canonical_steps)
+    selected_names, _degraded = resolve_flow_selection(flow_config, canonical_steps)
     if not selected_names:
         return {}
 
@@ -271,6 +276,36 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
             if name in selected
         ]
     }
+
+
+def resolve_flow_selection(
+    flow_config: dict,
+    canonical_steps: list[tuple[str, str, str]],
+) -> tuple[list[str], bool]:
+    """Canonical step names selected by *flow_config*, widened to a range.
+
+    Returns (names, degraded): an explicit non-contiguous selection degrades
+    to the contiguous first..last range with a log note, so the execution
+    ledger and the persisted flow target can never contradict each other.
+    """
+    selected_names = _selected_dynamic_flow_step_names(flow_config, canonical_steps)
+    if not selected_names:
+        return ([], False)
+
+    canonical_names = [name for name, _tool, _state in canonical_steps]
+    contiguous = canonical_names[
+        canonical_names.index(selected_names[0]) : canonical_names.index(selected_names[-1]) + 1
+    ]
+    if contiguous == selected_names:
+        return (contiguous, False)
+
+    logging.getLogger(__name__).warning(
+        "non-contiguous flow steps %s degraded to contiguous range %s..%s",
+        selected_names,
+        selected_names[0],
+        selected_names[-1],
+    )
+    return (contiguous, True)
 
 
 def _canonical_harden_flow_entries() -> list[tuple[str, str, str]]:
