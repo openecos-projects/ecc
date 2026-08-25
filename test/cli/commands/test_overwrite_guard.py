@@ -26,6 +26,16 @@ def _spy_mutations(monkeypatch):
     return calls
 
 
+def _legacy_hint(project_dir):
+    """The legacy-layout hint rides every run/check/status result (AC-16)."""
+    return {
+        "kind": "warning",
+        "warning": "legacy_layout_detected",
+        "reason": "this project uses the legacy runs/ layout; run 'ecc migrate' to upgrade",
+        "migrate": f"ecc migrate --project {project_dir} --yes",
+    }
+
+
 class TestOverwriteGuard:
     def test_refuses_foreign_non_empty_dir(
         self, tmp_path, capsys, create_cli_project, mock_pdk_validation, monkeypatch
@@ -53,7 +63,8 @@ class TestOverwriteGuard:
                 "run": "exp1",
                 "workspace": run_dir,
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         with open(keep) as f:
@@ -93,7 +104,8 @@ class TestOverwriteGuard:
                 "run": "exp1",
                 "workspace": run_dir,
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert real_listdir(run_dir) == []
@@ -121,7 +133,8 @@ class TestOverwriteGuard:
                 "run": "exp1",
                 "workspace": link,
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert os.path.islink(link)
         assert os.path.isfile(os.path.join(real_run, "home", "flow.json"))
@@ -148,7 +161,8 @@ class TestOverwriteGuard:
                 "run": "exp1",
                 "workspace": target,
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         with open(target) as f:
             assert f.read() == "not a directory\n"
@@ -208,7 +222,8 @@ class TestOverwriteGuard:
                 "run": "exp1",
                 "workspace": run_dir,
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         with open(keep) as f:
             assert f.read() == "precious\n"
@@ -244,7 +259,8 @@ class TestOverwriteGuard:
                 "run": "exp1",
                 "workspace": run_dir,
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         with open(keep) as f:
             assert f.read() == "precious\n"
@@ -281,7 +297,8 @@ class TestOverwriteGuard:
                 "run": "sweeps/victim",
                 "workspace": os.path.join(project_dir, "sweeps", "victim"),
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert victim.is_dir()
@@ -326,7 +343,8 @@ class TestOverwriteGuard:
                 "run": "sweeps/victim",
                 "workspace": os.path.join(project_dir, "sweeps", "victim"),
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert keep.read_text() == "precious\n"
@@ -370,7 +388,8 @@ class TestOverwriteGuard:
                 "run": run_id,
                 "workspace": os.path.join(project_dir, run_id),
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert keep.read_text() == "precious\n"
@@ -412,7 +431,8 @@ class TestOverwriteGuard:
                 "run": run_id,
                 "workspace": os.path.join(link, "..", "victim"),
                 "reason": "target is not an ECC run directory",
-            }
+            },
+            _legacy_hint(link),
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert keep.read_text() == "precious\n"
@@ -461,7 +481,8 @@ class TestRunDirAliasRefusal:
                 "run": run_id,
                 "workspace": os.path.join(project_dir, workspace),
                 "reason": "run id must not resolve to the project or runs container",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert os.path.isdir(marker)
 
@@ -482,7 +503,8 @@ class TestRunDirAliasRefusal:
                 "run": project_dir,
                 "workspace": project_dir,
                 "reason": "run id must not resolve to the project or runs container",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_configured_dotdot_run_refused(
@@ -503,7 +525,8 @@ class TestRunDirAliasRefusal:
                 "run": "..",
                 "workspace": os.path.join(project_dir, "runs", ".."),
                 "reason": "run id must not resolve to the project or runs container",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_symlink_spelling_of_runs_container_refused(
@@ -528,7 +551,8 @@ class TestRunDirAliasRefusal:
                 "run": "sneaky",
                 "workspace": os.path.join(project_dir, "runs", "sneaky"),
                 "reason": "run id must not resolve to the project or runs container",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert os.path.isdir(marker)
 
@@ -551,7 +575,8 @@ class TestRunDirAliasRefusal:
                 "run": link,
                 "workspace": link,
                 "reason": "run id must not resolve to the project or runs container",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
 
@@ -580,7 +605,8 @@ class TestPartialWorkspaceRecovery:
                 "run": "exp1",
                 "workspace": run_dir,
                 "reason": "rtl copy failed",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert not os.path.lexists(run_dir)
 
@@ -607,7 +633,8 @@ class TestPartialWorkspaceRecovery:
                 "run": "exp1",
                 "workspace": run_dir,
                 "overwrite": f"ecc run --overwrite --project {project_dir} --run-id exp1",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         with open(keep) as f:
@@ -641,7 +668,8 @@ class TestPartialWorkspaceRecovery:
                 "run": "exp1",
                 "workspace": run_dir,
                 "reason": "rtl copy failed",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert not os.path.lexists(run_dir)
 
@@ -667,7 +695,8 @@ class TestPartialWorkspaceRecovery:
                 "run": "exp1",
                 "workspace": run_dir,
                 "overwrite": f"ecc run --overwrite --project {project_dir} --run-id exp1",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert mutations["rmtree"] == []
         assert os.path.isdir(os.path.join(run_dir, "home"))
@@ -691,6 +720,7 @@ class TestPartialWorkspaceRecovery:
                 "run": "exp1",
                 "workspace": run_dir,
                 "overwrite": f"ecc run --overwrite --project {project_dir} --run-id exp1",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
         assert os.listdir(run_dir) == []

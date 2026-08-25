@@ -60,6 +60,17 @@ class MigrationPlan:
     resume: bool = False
 
 
+@dataclass(frozen=True)
+class MigrationPreview:
+    """The exact migration plan: moves plus the manifest create document
+    (or resume append set), computed before any confirmation or mutation
+    so display and execution can never drift."""
+
+    plan: MigrationPlan
+    manifest_document: dict = field(default_factory=dict)
+    manifest_appends: tuple[dict, ...] = field(default_factory=tuple)
+
+
 def _flow_status(steps: list[dict]) -> str:
     states = {str(step.get("state", "")) for step in steps if isinstance(step, dict)}
     if not states:
@@ -124,6 +135,58 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         collisions=tuple(collisions),
         resume=find_manifest(project_dir) is not None,
     )
+
+
+def _append_set(entries: tuple[MigrationEntry, ...]) -> tuple[dict, ...]:
+    """The display-exact workspace entries a resume migration appends."""
+    return tuple(
+        {
+            "workspace_id": entry.run_id,
+            "workspace_path": entry.target,
+            "start_step": entry.start_step,
+            "end_step": entry.end_step,
+            "status": entry.status,
+        }
+        for entry in entries
+    )
+
+
+def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
+    """Compute the immutable preview: every move plus the exact manifest
+    create document (or resume append set), before confirmation or mutation."""
+    plan = plan_migration(project_dir)
+    document: dict = {}
+    appends: tuple[dict, ...] = ()
+    if plan.entries:
+        if plan.resume:
+            appends = _append_set(plan.entries)
+        else:
+            from chipcompiler.cli.project.config import resolve_pdk_root
+            from chipcompiler.cli.project.manifest import base_design_from_config
+
+            first = plan.entries[0]
+            document = build_manifest_document(
+                project_dir,
+                design_name=cfg.design_name,
+                base_design=base_design_from_config(cfg, resolve_pdk_root(cfg)),
+                workspace_id=first.run_id,
+                workspace_path=first.target,
+                start_step=first.start_step,
+                end_step=first.end_step,
+                status=first.status,
+            )
+            for extra in plan.entries[1:]:
+                document["workspaces"].append(
+                    {
+                        **document["workspaces"][0],
+                        "workspace_id": extra.run_id,
+                        "workspace_path": extra.target,
+                        "start_step": extra.start_step,
+                        "end_step": extra.end_step,
+                        "status": extra.status,
+                    }
+                )
+    return MigrationPreview(plan=plan, manifest_document=document, manifest_appends=appends)
 
 
 def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) -> None:
@@ -223,8 +286,14 @@ def _move_workspace(entry: MigrationEntry) -> str | None:
     return None
 
 
-def _append_manifest_entries(project_dir: str, entries: list[MigrationEntry]) -> bool:
-    """Append migrated workspaces to an existing manifest (resume path)."""
+def _append_manifest_entries(
+    project_dir: str, append_set: tuple[dict, ...], keep_ids: set[str]
+) -> bool:
+    """Append the planned workspaces to an existing manifest (resume path).
+
+    *append_set* is the preview's exact entry payloads, filtered to the
+    successfully moved *keep_ids*; dedup against the live document stays
+    inside the atomic update."""
 
     def mutate(document: dict) -> None:
         from datetime import UTC, datetime
@@ -232,19 +301,19 @@ def _append_manifest_entries(project_dir: str, entries: list[MigrationEntry]) ->
         now = datetime.now(UTC).isoformat()
         workspaces = document.setdefault("workspaces", [])
         known = {entry.get("workspace_id") for entry in workspaces if isinstance(entry, dict)}
-        for entry in entries:
-            if entry.run_id in known:
+        for planned in append_set:
+            if planned["workspace_id"] not in keep_ids or planned["workspace_id"] in known:
                 continue
             workspaces.append(
                 {
-                    "workspace_id": entry.run_id,
-                    "name": document.get("design_name", entry.run_id),
-                    "workspace_path": entry.target,
+                    "workspace_id": planned["workspace_id"],
+                    "name": document.get("design_name", planned["workspace_id"]),
+                    "workspace_path": planned["workspace_path"],
                     "source_workspace_id": None,
                     "branch_from": None,
-                    "start_step": entry.start_step,
-                    "end_step": entry.end_step,
-                    "status": entry.status,
+                    "start_step": planned["start_step"],
+                    "end_step": planned["end_step"],
+                    "status": planned["status"],
                     "created_at": now,
                     "updated_at": now,
                     "parameter_patch": {},
@@ -256,11 +325,16 @@ def _append_manifest_entries(project_dir: str, entries: list[MigrationEntry]) ->
     return update_manifest(project_dir, mutate)
 
 
-def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
-    """Run the migration; returns (records, exit_code)."""
+def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list[dict], int]:
+    """Run the migration; returns (records, exit_code).
+
+    Executes exactly the precomputed preview: moves from the plan, and the
+    preview's manifest document (or append set) restricted to the entries
+    that actually moved.
+    """
     from chipcompiler.cli.project.manifest import write_manifest_if_absent
 
-    plan = plan_migration(project_dir)
+    plan = preview.plan
     records: list[dict] = []
 
     if plan.resume and not plan.entries and not plan.collisions:
@@ -309,8 +383,9 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
 
     if migrated:
         registered = False
+        keep_ids = {entry.run_id for entry in migrated}
         if plan.resume:
-            registered = _append_manifest_entries(project_dir, migrated)
+            registered = _append_manifest_entries(project_dir, preview.manifest_appends, keep_ids)
             if not registered:
                 records.append(
                     {
@@ -320,34 +395,21 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
                     }
                 )
         else:
-            from chipcompiler.cli.project.config import resolve_pdk_root
-            from chipcompiler.cli.project.manifest import base_design_from_config
-
-            document = build_manifest_document(
-                project_dir,
-                design_name=cfg.design_name,
-                base_design=base_design_from_config(cfg, resolve_pdk_root(cfg)),
-                workspace_id=migrated[0].run_id,
-                workspace_path=migrated[0].target,
-                start_step=migrated[0].start_step,
-                end_step=migrated[0].end_step,
-                status=migrated[0].status,
-            )
-            for extra in migrated[1:]:
-                document["workspaces"].append(
-                    {
-                        **document["workspaces"][0],
-                        "workspace_id": extra.run_id,
-                        "workspace_path": extra.target,
-                        "start_step": extra.start_step,
-                        "end_step": extra.end_step,
-                        "status": extra.status,
-                    }
-                )
+            # The exact preview document, restricted to the moved subset.
+            document = {
+                **preview.manifest_document,
+                "workspaces": [
+                    workspace
+                    for workspace in preview.manifest_document["workspaces"]
+                    if workspace.get("workspace_id") in keep_ids
+                ],
+            }
             written = write_manifest_if_absent(project_dir, document)
             if not written and find_manifest(project_dir) is not None:
                 # Lost the creation race: append to the winning manifest.
-                written = _append_manifest_entries(project_dir, migrated)
+                written = _append_manifest_entries(
+                    project_dir, _append_set(tuple(migrated)), keep_ids
+                )
             registered = written
             if not written:
                 records.append(
@@ -383,8 +445,44 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
     return records, 1 if failures else 0
 
 
+def _render_preview(preview: MigrationPreview) -> None:
+    """TTY disclosure of the exact plan (stderr), manifest action included."""
+    for entry in preview.plan.entries:
+        print(f"  {entry.source} -> {entry.target}", file=sys.stderr)
+    if preview.manifest_document:
+        action, workspaces = "create", preview.manifest_document["workspaces"]
+    elif preview.manifest_appends:
+        action, workspaces = "append to", preview.manifest_appends
+    else:
+        return
+    ids = [workspace["workspace_id"] for workspace in workspaces]
+    print(f"  {action} project.json ({len(ids)} workspaces: {', '.join(ids)})", file=sys.stderr)
+
+
+def _preview_records(preview: MigrationPreview) -> list[dict]:
+    """The machine-readable disclosure: moves plus the exact manifest action."""
+    records: list[dict] = [
+        {
+            "kind": "plan",
+            "run": entry.run_id,
+            "from": entry.source,
+            "to": entry.target,
+        }
+        for entry in preview.plan.entries
+    ]
+    if preview.manifest_document:
+        records.append(
+            {"kind": "plan", "manifest": "create", "document": preview.manifest_document}
+        )
+    elif preview.manifest_appends:
+        records.append(
+            {"kind": "plan", "manifest": "append", "workspaces": list(preview.manifest_appends)}
+        )
+    return records
+
+
 def migrate_project(command_input, ctx):
-    """The ``ecc migrate`` handler: plan, confirm, execute."""
+    """The ``ecc migrate`` handler: plan, disclose, confirm, execute."""
     from chipcompiler.cli.core.types import CommandResult
     from chipcompiler.cli.project.manifest import find_manifest, has_legacy_runs_layout
 
@@ -481,20 +579,15 @@ def migrate_project(command_input, ctx):
                 ]
             )
 
+    # One exact preview drives disclosure, confirmation, and execution.
+    # --yes suppresses only the confirmation prompt, never the disclosure.
+    preview = build_migration_preview(project_dir, cfg)
+    plan_records = _preview_records(preview)
+
     if not command_input.yes:
-        plan = plan_migration(project_dir)
-        planned = [
-            {
-                "kind": "plan",
-                "run": entry.run_id,
-                "from": entry.source,
-                "to": entry.target,
-            }
-            for entry in plan.entries
-        ]
         if not sys.stdin.isatty():
             return CommandResult.err(
-                planned
+                plan_records
                 + [
                     {
                         "kind": "error",
@@ -503,8 +596,7 @@ def migrate_project(command_input, ctx):
                     }
                 ]
             )
-        for entry in plan.entries:
-            print(f"  {entry.source} -> {entry.target}", file=sys.stderr)
+        _render_preview(preview)
         answer = input("Migrate these workspaces? [y/N] ")
         if answer.strip().lower() not in ("y", "yes"):
             return CommandResult.err(
@@ -516,6 +608,8 @@ def migrate_project(command_input, ctx):
                     }
                 ]
             )
+    elif sys.stdin.isatty():
+        _render_preview(preview)
 
-    records, exit_code = execute_migration(project_dir, cfg)
-    return CommandResult(records=tuple(records), exit_code=exit_code)
+    records, exit_code = execute_migration(project_dir, preview)
+    return CommandResult(records=tuple(plan_records + records), exit_code=exit_code)

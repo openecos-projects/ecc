@@ -105,11 +105,6 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
             }
         )
 
-    if ctx.project_state == "legacy":
-        from chipcompiler.cli.core.records import legacy_layout_hint_record
-
-        records.append(legacy_layout_hint_record(project))
-
     return CommandResult.ok(records)
 
 

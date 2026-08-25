@@ -166,11 +166,6 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 
     records.extend(entry_warnings)
 
-    if ctx.project_state == "legacy":
-        from chipcompiler.cli.core.records import legacy_layout_hint_record
-
-        records.append(legacy_layout_hint_record(project))
-
     return CommandResult.ok(records)
 
 

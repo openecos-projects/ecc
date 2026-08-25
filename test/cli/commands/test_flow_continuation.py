@@ -183,8 +183,9 @@ class TestFlowContinuation:
         )
 
         assert rc != 0
-        (record,) = _records(capsys)
+        record, hint = _records(capsys)
         assert record["error"] == "set_requires_fresh_run"
+        assert hint["warning"] == "legacy_layout_detected"
         assert Path(run_dir, "home", "flow.json").read_bytes() == flow_before
 
     def test_params_warning_on_existing_run(
@@ -241,8 +242,9 @@ class TestFlowContinuation:
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
 
         assert rc != 0
-        (record,) = _records(capsys)
+        record, hint = _records(capsys)
         assert record["error"] == "workspace_config_invalid"
+        assert hint["warning"] == "legacy_layout_detected"
 
 
 def _tree_snapshot(root):

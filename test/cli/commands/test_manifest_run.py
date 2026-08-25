@@ -154,6 +154,69 @@ class TestManifestRunCommand:
         assert manifest["workspaces"][0]["status"] == "running"
 
 
+class TestOriginDefResolution:
+    """base_design.origin_def reaches workspace creation on both layering
+    paths; relative spellings resolve against the project root (never the
+    process cwd), absolute spellings pass through."""
+
+    def _project(self, manifest_stubs, tmp_path, origin_def, hybrid):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "origin_def": origin_def,
+                "parameters": {"design": "gcd", "frequency_max": 100},
+            },
+        )
+        if hybrid:
+            # Partial ecc.toml without [flow]: creation seeds the ledger from
+            # the entry range, which the flow mock emulates via has_init.
+            (project_dir / "ecc.toml").write_text("[design]\nfrequency_mhz = 100.0\n")
+        return project_dir
+
+    def test_manifest_only_relative_def_resolved_against_project(
+        self, tmp_path, capsys, flow_mocks, manifest_stubs
+    ):
+        project_dir = self._project(manifest_stubs, tmp_path, "inputs/gcd.def", hybrid=False)
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert flow_mocks.capture["create_kwargs"]["origin_def"] == str(
+            project_dir / "inputs" / "gcd.def"
+        )
+
+    def test_hybrid_relative_def_resolved_against_project(
+        self, tmp_path, capsys, flow_mocks, manifest_stubs
+    ):
+        project_dir = self._project(manifest_stubs, tmp_path, "inputs/gcd.def", hybrid=True)
+        flow_mocks.flow.has_init_value = True
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert flow_mocks.capture["create_kwargs"]["origin_def"] == str(
+            project_dir / "inputs" / "gcd.def"
+        )
+
+    def test_absolute_def_preserved(self, tmp_path, capsys, flow_mocks, manifest_stubs):
+        absolute = str(tmp_path / "elsewhere" / "gcd.def")
+        project_dir = self._project(manifest_stubs, tmp_path, absolute, hybrid=True)
+        flow_mocks.flow.has_init_value = True
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert flow_mocks.capture["create_kwargs"]["origin_def"] == absolute
+
+
 class TestHybridLayering:
     def test_ecc_toml_overlays_manifest_base(self, tmp_path, capsys, flow_mocks, manifest_stubs):
         project_dir = tmp_path / "proj"
@@ -244,8 +307,9 @@ class TestExistingRunGuards:
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
 
         assert rc != 0
-        (record,) = manifest_stubs.records()
+        record, hint = manifest_stubs.records()
         assert record["error"] == "invalid_flow_json"
+        assert hint["warning"] == "legacy_layout_detected"
 
 
 class TestHybridFullLayering:

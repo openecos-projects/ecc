@@ -58,7 +58,7 @@ def resolve_effective_config(
 
     flow_config = None
     if cfg is None:
-        cfg, flow_config = _manifest_only_config(ctx, manifest, assembled, entry)
+        cfg, flow_config = _manifest_only_config(ctx, assembled, entry)
     else:
         _fill_missing_from_base(cfg, assembled, ctx.project_dir)
         if entry is not None:
@@ -79,7 +79,7 @@ def resolve_effective_config(
     return (cfg, flow_config, warnings)
 
 
-def _manifest_only_config(ctx, manifest, assembled, entry):
+def _manifest_only_config(ctx, assembled, entry):
     """Build a ProjectConfig from the manifest alone (no ecc.toml)."""
     from chipcompiler.cli.project.config import ProjectConfig
 
@@ -98,7 +98,7 @@ def _manifest_only_config(ctx, manifest, assembled, entry):
     cfg.params_overrides = {}
     cfg.manifest_parameters = parameters
     cfg.manifest_driven = True
-    cfg.manifest_origin_def = str(manifest.base_design.get("origin_def") or "")
+    cfg.manifest_origin_def = _source_origin_def(assembled, ctx.project_dir)
 
     flow_config = None
     if entry is not None:
@@ -112,6 +112,16 @@ def _source_rtl(assembled: dict) -> list[str]:
     if not rtl and assembled["origin_verilog"]:
         rtl = [assembled["origin_verilog"]]
     return rtl
+
+
+def _source_origin_def(assembled: dict, project_dir: str) -> str:
+    """The base_design origin DEF; relative spellings resolve against the
+    project root (create_workspace resolves paths against the process cwd),
+    absolute spellings pass through unchanged."""
+    value = assembled.get("origin_def") or ""
+    if not value or os.path.isabs(value):
+        return value
+    return os.path.normpath(os.path.join(project_dir, value))
 
 
 def _assembled_frequency(parameters: dict) -> float:
@@ -146,6 +156,9 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
         cfg.manifest_parameters = dict(assembled["parameters"] or {})
     if "design.frequency_mhz" not in explicit:
         cfg.design_frequency_mhz = _assembled_frequency(assembled["parameters"])
+    # origin_def exists only in the manifest layer (no ecc.toml key), so it
+    # always comes from the base — resolved against the project root.
+    cfg.manifest_origin_def = _source_origin_def(assembled, project_dir)
 
 
 def validate_effective(ctx, cfg, *, fresh: bool, flow_config) -> list[str]:
@@ -238,10 +251,10 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
     if "pdk.root" in explicit and base_root != toml_root:
         keys.append("pdk_root")
 
-    base_sources = {_normalize_path(cfg.project_dir, source) for source in _source_rtl(assembled)}
-    toml_sources = {_normalize_path(cfg.project_dir, source) for source in cfg.design_rtl}
-    base_sources.discard("")
-    toml_sources.discard("")
+    # Ordered comparison: source order is execution-significant (filelist
+    # compilation order), so a reordered list diverges; duplicates survive.
+    base_sources = _normalized_sources(cfg.project_dir, _source_rtl(assembled))
+    toml_sources = _normalized_sources(cfg.project_dir, cfg.design_rtl)
     if "design.rtl" in explicit and base_sources != toml_sources:
         keys.append("rtl")
 
@@ -284,6 +297,13 @@ def _normalize_path(project_dir: str, value) -> str:
     if os.path.isabs(value):
         return os.path.normpath(value)
     return os.path.normpath(os.path.join(project_dir, value))
+
+
+def _normalized_sources(project_dir: str, sources: list[str]) -> tuple[str, ...]:
+    """Normalized source paths in declaration order, blanks dropped."""
+    return tuple(
+        normalized for source in sources if (normalized := _normalize_path(project_dir, source))
+    )
 
 
 def _flatten(data, prefix=()):

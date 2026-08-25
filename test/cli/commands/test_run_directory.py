@@ -189,7 +189,8 @@ class TestRunDirectory:
                 "reason": "the configured flow diverges from the persisted one",
                 "overwrite": f"ecc run --overwrite --project {project_dir} --run-id exp1",
                 "hint": "use --overwrite to wipe the run, or a new --run-id",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_empty_run_id_writes_default_and_preserves_selector(
@@ -243,7 +244,8 @@ class TestRunDirectory:
                 "reason": "the configured flow diverges from the persisted one",
                 "overwrite": f"ecc run --overwrite --project {project_dir} --run-id ''",
                 "hint": "use --overwrite to wipe the run, or a new --run-id",
-            }
+            },
+            _legacy_hint(project_dir),
         ]
 
     def test_overwrite_rebuilds_named_run(

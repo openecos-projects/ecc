@@ -334,3 +334,115 @@ class TestMigrate:
 
         moved = lp(Path(project_dir, "exp1", "home", "ecc.toml"))
         assert moved.data["pdk_config"] == os.path.join(project_dir, "exp1", "home", "pdk.json")
+
+
+class TestMigrationPreview:
+    """One exact preview drives disclosure and execution: the manifest
+    create document (or resume append set) is visible before mutation on
+    every command surface, and execution consumes the very same object."""
+
+    def test_yes_discloses_and_executes_the_exact_create_document(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        moves = [r for r in records if r.get("kind") == "plan" and "run" in r]
+        assert [(r["run"], r["from"], r["to"]) for r in moves] == [
+            (
+                "exp1",
+                os.path.join(project_dir, "runs", "exp1"),
+                os.path.join(project_dir, "exp1"),
+            )
+        ]
+        (create,) = [r for r in records if r.get("manifest") == "create"]
+        # Execution consumed the previewed document byte-for-byte.
+        assert create["document"] == _manifest(project_dir)
+
+    def test_non_tty_refusal_discloses_preview_without_mutation(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        (create,) = [r for r in records if r.get("manifest") == "create"]
+        assert [w["workspace_id"] for w in create["document"]["workspaces"]] == ["exp1"]
+        assert records[-1]["error"] == "confirmation_required"
+        # Disclosure only: nothing moved, nothing created.
+        assert os.path.exists(run_dir)
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+    def test_tty_accept_renders_preview_and_executes(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "create project.json (1 workspaces: exp1)" in err
+        assert os.path.isfile(os.path.join(project_dir, "project.json"))
+        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+
+    def test_resume_append_disclosed_in_preview(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        _create_legacy_workspace(project_dir, pdk_root, "exp2", ["Success", "Incomplete"])
+        # Partial prior migration: exp1 already at root + registered.
+        os.rename(os.path.join(project_dir, "runs", "exp1"), os.path.join(project_dir, "exp1"))
+        document = {
+            "schema_version": 1,
+            "design_name": "gcd",
+            "root_path": project_dir,
+            "base_design": {"parameters": {"design": "gcd"}},
+            "workspaces": [
+                {
+                    "workspace_id": "exp1",
+                    "workspace_path": os.path.join(project_dir, "exp1"),
+                    "status": "success",
+                    "start_step": "Synth",
+                    "end_step": "Floor",
+                }
+            ],
+        }
+        with open(os.path.join(project_dir, "project.json"), "w") as f:
+            json.dump(document, f)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        (append,) = [r for r in records if r.get("manifest") == "append"]
+        assert append["workspaces"] == [
+            {
+                "workspace_id": "exp2",
+                "workspace_path": os.path.join(project_dir, "exp2"),
+                "start_step": "Synth",
+                "end_step": "Floor",
+                "status": "failed",
+            }
+        ]
+        # The executed append carries exactly the previewed fields.
+        final = _manifest(project_dir)
+        (appended,) = [w for w in final["workspaces"] if w["workspace_id"] == "exp2"]
+        (previewed,) = append["workspaces"]
+        assert {key: appended[key] for key in previewed} == previewed

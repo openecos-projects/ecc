@@ -143,6 +143,29 @@ def _should_colorize():
     return supports_color(file=sys.stdout)
 
 
+def _with_legacy_hint(command: str, command_input, result, ctx):
+    """Append the legacy-layout hint at the command-result boundary.
+
+    run/check/status on a legacy runs/ project carry the hint on EVERY
+    outcome — success, config error, missing/corrupt flow, or run
+    failure — with exit code and other records untouched. ``run
+    --workspace`` targets an explicit workspace, not the project layout,
+    and stays undecorated.
+    """
+    if (
+        command not in ("run", "check", "status")
+        or ctx.project_state != "legacy"
+        or getattr(command_input, "workspace", None) is not None
+    ):
+        return result
+    from chipcompiler.cli.core.records import legacy_layout_hint_record
+
+    return CommandResult(
+        records=(*result.records, legacy_layout_hint_record(ctx.project)),
+        exit_code=result.exit_code,
+    )
+
+
 def execute_command(
     command: str,
     command_input: CommandInputT,
@@ -150,7 +173,7 @@ def execute_command(
     render_key: str | None = None,
 ) -> None:
     ctx = build_context(command_input)
-    result = handler(command_input, ctx)
+    result = _with_legacy_hint(command, command_input, handler(command_input, ctx), ctx)
     color = _should_colorize()
     selected_render_key = render_key or command
 

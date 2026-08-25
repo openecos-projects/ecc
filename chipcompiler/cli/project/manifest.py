@@ -301,6 +301,7 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
             item for item in manifest.base_design.get("rtl_list") or [] if isinstance(item, str)
         ],
         "origin_verilog": _optional_str(manifest.base_design.get("origin_verilog")),
+        "origin_def": _optional_str(manifest.base_design.get("origin_def")),
         "parameters": parameters,
     }
 

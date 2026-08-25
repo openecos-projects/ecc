@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -246,3 +247,83 @@ def test_migration_seeds_flow_section_from_persisted_flow(
 
     assert loaded is not None
     assert loaded.parameters.data["_flow"] == {"start": "Synthesis", "end": "Floorplan"}
+
+
+def test_verify_failure_removes_new_toml_and_next_open_retries(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch, caplog
+):
+    """AC-4: a failed post-write verification removes only the TOML that
+    invocation created — the legacy JSON is retained and the next open
+    retries the migration successfully."""
+    workspace_dir, _pdk_root = _write_legacy_workspace(
+        tmp_path, minimal_ics55_pdk_factory, monkeypatch
+    )
+    config_path = workspace_dir / "home" / "ecc.toml"
+    legacy_path = workspace_dir / "home" / "parameters.json"
+
+    import chipcompiler.data.workspace_config as workspace_config_module
+
+    real_load = workspace_config_module.load_workspace_config
+    calls = {"n": 0}
+
+    def flaky_load(workspace_dir_arg):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ValueError("injected verify failure")
+        return real_load(workspace_dir_arg)
+
+    monkeypatch.setattr("chipcompiler.data.workspace_config.load_workspace_config", flaky_load)
+
+    with caplog.at_level("WARNING"):
+        loaded = load_workspace(str(workspace_dir))
+
+    # Deferred: the in-memory normalized copy serves this open, the
+    # invocation-created TOML is gone, and the legacy file stays for a retry.
+    assert loaded is not None
+    assert loaded.parameters.data["frequency_max"] == 250
+    assert not config_path.exists()
+    assert legacy_path.is_file()
+    assert any("verify failed" in record.message for record in caplog.records)
+
+    loaded_again = load_workspace(str(workspace_dir))
+
+    assert loaded_again is not None
+    assert loaded_again.parameters.data["frequency_max"] == 250
+    assert loaded_again.parameters.data["core"]["utilitization"] == 0.55
+    assert config_path.is_file()
+    assert not legacy_path.exists()
+
+
+def test_legacy_unlink_failure_still_opens_verified_toml(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch, caplog
+):
+    """AC-4: a cleanup failure after a verified rewrite warns but does not
+    abort the open; the verified TOML wins on later opens too."""
+    workspace_dir, _pdk_root = _write_legacy_workspace(
+        tmp_path, minimal_ics55_pdk_factory, monkeypatch
+    )
+    config_path = workspace_dir / "home" / "ecc.toml"
+    legacy_path = workspace_dir / "home" / "parameters.json"
+
+    real_unlink = Path.unlink
+
+    def flaky_unlink(self, *args, **kwargs):
+        if self == legacy_path:
+            raise OSError("injected unlink failure")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+
+    with caplog.at_level("WARNING"):
+        loaded = load_workspace(str(workspace_dir))
+
+    assert loaded is not None
+    assert loaded.parameters.data["frequency_max"] == 250
+    assert config_path.is_file()
+    assert legacy_path.is_file()
+    assert any("could not be removed" in record.message for record in caplog.records)
+
+    # Both files now present: the TOML-wins shadow branch serves later opens.
+    loaded_again = load_workspace(str(workspace_dir))
+    assert loaded_again is not None
+    assert loaded_again.parameters.data["frequency_max"] == 250

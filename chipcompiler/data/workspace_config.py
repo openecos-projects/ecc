@@ -451,11 +451,28 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
     try:
         load_workspace_config(workspace_dir)
     except Exception as exc:
+        # Verify failed: remove only the TOML this invocation created (the
+        # config_path.exists() guard above proves it did not exist before),
+        # so the next open retries the migration instead of treating the
+        # pair as intentional shadowing.
         logger.warning(
             "legacy parameters migration deferred (verify failed): %s: %s", config_path, exc
         )
+        try:
+            config_path.unlink(missing_ok=True)
+        except OSError as unlink_exc:
+            logger.warning("failed to remove unverified config %s: %s", config_path, unlink_exc)
         return
-    legacy_path.unlink(missing_ok=True)
+    try:
+        legacy_path.unlink()
+    except OSError as exc:
+        # The TOML is verified; a leftover JSON only re-enters the shadowed
+        # branch on the next open — warn, but the workspace is migrated.
+        logger.warning(
+            "legacy parameters migrated but the original file could not be removed: %s: %s",
+            legacy_path,
+            exc,
+        )
 
 
 def legacy_parameters_fallback(workspace_dir: str | Path) -> dict:

@@ -299,10 +299,6 @@ def run_existing_workspace(
     if result.appended:
         record["appended_steps"] = list(result.appended)
     records = warnings + [record]
-    if ctx.project_state == "legacy":
-        from chipcompiler.cli.core.records import legacy_layout_hint_record
-
-        records.append(legacy_layout_hint_record(project))
     if not flow_ok:
         return CommandResult.err(records)
     return CommandResult.ok(records)
@@ -371,7 +367,6 @@ def execute_fresh_run(
     import shutil
 
     from chipcompiler import rtl2gds as rtl2gds_api
-    from chipcompiler.cli.core.records import legacy_layout_hint_record
     from chipcompiler.cli.project.config import (
         resolve_pdk_overrides,
         resolve_pdk_root,
@@ -518,8 +513,6 @@ def execute_fresh_run(
                     "log": disclosure_cmd("ecc log", project, ctx.run_id),
                 }
             ]
-            if ctx.project_state == "legacy":
-                failure_records.append(legacy_layout_hint_record(project))
             return CommandResult.err(warning_records + failure_records)
     except Exception as exc:
         from chipcompiler.cli.core.records import error_record
@@ -540,6 +533,4 @@ def execute_fresh_run(
             "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
         }
     ]
-    if project_state == "legacy":
-        success_records.append(legacy_layout_hint_record(project))
     return CommandResult.ok(warning_records + success_records)

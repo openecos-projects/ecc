@@ -1,6 +1,8 @@
 import json
 import os
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -198,6 +200,158 @@ class TestLegacyHint:
         records = manifest_stubs.records()
         hint = [r for r in records if r.get("warning") == "legacy_layout_detected"]
         assert len(hint) == 1
+
+
+class TestLegacyHintBoundary:
+    """AC-16: the hint rides every run/check/status outcome on legacy
+    projects — success and error alike — and never appears elsewhere."""
+
+    @staticmethod
+    def _hints(records):
+        return [r for r in records if r.get("warning") == "legacy_layout_detected"]
+
+    @pytest.mark.parametrize("command", ["check", "status"])
+    def test_success_outcome_carries_hint(
+        self,
+        command,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_flow_json,
+        manifest_stubs,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_flow_json(os.path.join(project_dir, "runs", "default"), profile="main")
+
+        rc = cli_main.run([command, "--project", project_dir, "--json"])
+
+        assert rc == 0
+        assert len(self._hints(manifest_stubs.records())) == 1
+
+    def test_run_success_carries_hint(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        flow_mocks,
+        manifest_stubs,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        # Legacy shape without an existing default run: a fresh run succeeds.
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        assert len(self._hints(manifest_stubs.records())) == 1
+
+    def test_status_missing_flow_carries_hint(
+        self, tmp_path, capsys, create_cli_project, manifest_stubs
+    ):
+        project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", "default"))
+
+        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        records = manifest_stubs.records()
+        assert records[0]["status"] == "missing"
+        assert len(self._hints(records)) == 1
+
+    def test_status_corrupt_flow_carries_hint(
+        self, tmp_path, capsys, create_cli_project, manifest_stubs
+    ):
+        project_dir = create_cli_project()
+        home = os.path.join(project_dir, "runs", "default", "home")
+        os.makedirs(home)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            f.write("{broken")
+
+        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        records = manifest_stubs.records()
+        assert records[0]["status"] == "corrupt"
+        assert len(self._hints(records)) == 1
+
+    def test_run_failure_carries_hint(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        flow_mocks,
+        manifest_stubs,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        flow_mocks.flow.run_steps_value = False
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        records = manifest_stubs.records()
+        assert records[0]["status"] == "failed"
+        assert len(self._hints(records)) == 1
+
+    def test_config_error_carries_hint(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, manifest_stubs
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
+            f.write("\n[params.synth]\nmax_fanout = 0\n")
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        assert len(self._hints(manifest_stubs.records())) == 1
+
+    @pytest.mark.parametrize("command", ["check", "status"])
+    def test_manifest_project_never_hints(
+        self,
+        command,
+        tmp_path,
+        capsys,
+        minimal_ics55_pdk_factory,
+        manifest_stubs,
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        minimal_ics55_pdk_factory(project_dir / "pdk")
+        home = project_dir / "ws_0001" / "home"
+        home.mkdir(parents=True)
+        (home / "flow.json").write_text('{"steps": []}')
+
+        rc = cli_main.run([command, "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert self._hints(manifest_stubs.records()) == []
+
+    def test_manifest_run_never_hints(
+        self,
+        tmp_path,
+        capsys,
+        minimal_ics55_pdk_factory,
+        flow_mocks,
+        manifest_stubs,
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        minimal_ics55_pdk_factory(project_dir / "pdk")
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert self._hints(manifest_stubs.records()) == []
 
 
 class TestParamManifestMode:
