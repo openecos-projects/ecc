@@ -307,10 +307,12 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
 def resolved_base_parameters(cfg) -> dict:
     """The ecc.toml-resolved base_design.parameters for a generated manifest.
 
-    Identity fields plus the [params] backend overrides; never includes
-    --set values (those are run-scoped).
+    GUI-flat vocabulary: identity fields plus the [params] overrides,
+    projected through the geometry converter so positional values surface
+    as the wizard's aliases (die_width, utilitization, margin, ...).
+    --set values are run-scoped and never included.
     """
-    parameters: dict = {
+    canonical: dict = {
         "design": cfg.design_name,
         "top_module": cfg.design_top,
         "clock": cfg.design_clock_port,
@@ -323,8 +325,11 @@ def resolved_base_parameters(cfg) -> dict:
         )
 
         resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
-        parameters.update(build_backend_overrides(resolved))
-    return parameters
+        canonical.update(build_backend_overrides(resolved))
+
+    from chipcompiler.data.parameter_keys import parameters_to_geometry
+
+    return parameters_to_geometry(canonical)
 
 
 def _slugify(value: str) -> str:

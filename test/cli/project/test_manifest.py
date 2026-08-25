@@ -10,6 +10,7 @@ from chipcompiler.cli.project.manifest import (
     build_manifest_document,
     classify_project,
     load_manifest,
+    resolved_base_parameters,
     update_manifest,
     write_back_workspace_status,
     write_manifest_if_absent,
@@ -272,3 +273,25 @@ def test_load_manifest_rejects_malformed_mpc(tmp_path):
 def test_load_manifest_accepts_null_mpc(tmp_path):
     _write_manifest(tmp_path, _minimal_document(tmp_path, mpc=None))
     assert load_manifest(str(tmp_path)).design_name == "gcd"
+
+
+def test_resolved_base_parameters_gui_flat_vocabulary():
+    from chipcompiler.cli.project.config import ProjectConfig
+
+    cfg = ProjectConfig(
+        design_name="gcd",
+        design_top="gcd",
+        design_clock_port="clk",
+        design_frequency_mhz=200.0,
+        params_overrides={"floorplan.core_util": 0.45, "synth.max_fanout": 16},
+    )
+
+    parameters = resolved_base_parameters(cfg)
+
+    assert parameters["design"] == "gcd"
+    assert parameters["top_module"] == "gcd"
+    assert parameters["clock"] == "clk"
+    assert parameters["frequency_max"] == 200.0
+    # Positional overrides surface as GUI aliases, not nested subtrees.
+    assert parameters["utilitization"] == 0.45
+    assert parameters["max_fanout"] == 16
