@@ -80,6 +80,16 @@ jobs:
       - name: Pytest
         run: uv run --no-sync pytest test/ --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report=
 
+      - name: Upload integration flow logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-flow-logs
+          if-no-files-found: ignore
+          path: |
+            test/examples/*/home/flow.json
+            test/examples/**/log/**
+
       - name: Publish coverage summary
         if: always()
         run: |

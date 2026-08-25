@@ -51,6 +51,8 @@ def _fake_execution(engine_flow, monkeypatch, outcomes=None):
     def run_step(workspace_step, *, rerun=False):
         calls.append((workspace_step.name, rerun))
         state = outcomes.get(workspace_step.name, StateEnum.Success)
+        # Simulate lifecycle: Unstart/Incomplete → Ongoing → target state
+        engine_flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Ongoing)
         engine_flow.set_state(workspace_step.name, workspace_step.tool, state)
         return state
 
@@ -155,6 +157,7 @@ class TestRunFrom:
         def run_step(workspace_step, *, rerun=False):
             disk = json.loads(flow.workspace.flow.path.read_text(encoding="utf-8"))
             persisted.append([step["state"] for step in disk["steps"]])
+            flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Ongoing)
             flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Success)
             return StateEnum.Success
 

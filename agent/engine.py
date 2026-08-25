@@ -34,6 +34,8 @@ class AgentEngineFlow(EngineFlow):
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             return StateEnum.Success
 
+        self._normalize_legacy_terminal_state(workspace_step, step_tag)
+
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()
         self.set_state(name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Ongoing)

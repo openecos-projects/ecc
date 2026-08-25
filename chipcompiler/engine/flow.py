@@ -18,6 +18,45 @@ from chipcompiler.engine.step_execution import execute_tool_step, record_tool_fa
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# State machine transition guards
+# ---------------------------------------------------------------------------
+
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    StateEnum.Unstart.value: {StateEnum.Ongoing.value, StateEnum.Imcomplete.value},
+    StateEnum.Pending.value: {StateEnum.Ongoing.value, StateEnum.Imcomplete.value},
+    StateEnum.Ongoing.value: {
+        StateEnum.Success.value,
+        StateEnum.Imcomplete.value,
+        StateEnum.Invalid.value,
+    },
+    # Terminal states — no outgoing lifecycle transitions.
+    # Batch resets (clear_states, _invalidate_suffix) bypass set_state() and
+    # can assign any state directly, including Unstart for terminal states.
+    StateEnum.Success.value: set(),
+    StateEnum.Imcomplete.value: set(),
+    StateEnum.Invalid.value: set(),
+}
+
+
+def _validate_transition(old_state: str | None, new_state: str, step_name: str, tool: str) -> None:
+    """Raise ``ValueError`` on illegal lifecycle transitions.
+
+    This guard applies only to ``set_state()`` calls.  Batch reset operations
+    (``clear_states``, ``_invalidate_suffix``, ``_prepare_steps_for_rerun``)
+    assign ``step["state"]`` directly and bypass this check by design.
+    """
+    if old_state is None or old_state == new_state:
+        return
+    allowed = _VALID_TRANSITIONS.get(old_state, set())
+    if new_state not in allowed:
+        raise ValueError(
+            f"Illegal state transition for {step_name}/{tool}: "
+            f"{old_state} → {new_state}. "
+            f"Allowed transitions from {old_state}: {sorted(allowed) or 'none'}"
+        )
+
+
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
         StepEnum.FLOORPLAN.value,
@@ -140,6 +179,8 @@ class EngineFlow:
         state_value = state.value if isinstance(state, StateEnum) else state
         for step in self.workspace.flow.data.get("steps", []):
             if step.get("name") == name and step.get("tool") == tool:
+                old_state = step.get("state")
+                _validate_transition(old_state, state_value, name, tool)
                 previous_step = deepcopy(step)
                 step["state"] = state_value
                 if runtime is not None:
@@ -300,14 +341,13 @@ class EngineFlow:
                 self.workspace_steps.append(eda_step)
                 pre_step = eda_step
             else:
-                step["state"] = StateEnum.Imcomplete.value
+                self.set_state(name=step["name"], tool=step["tool"], state=StateEnum.Imcomplete)
                 logger.error(
                     "Failed to create step workspace for %s (tool=%s); "
                     "step marked Incomplete, remaining steps will not be created",
                     step.get("name", step),
                     step.get("tool", "?"),
                 )
-                self.save()
                 break
 
     def init_db_engine(self) -> bool:
@@ -437,6 +477,31 @@ class EngineFlow:
 
         return True
 
+    def _normalize_legacy_terminal_state(self, workspace_step, step_tag):
+        """Reset terminal states from pre-guard workspaces to Unstart.
+
+        Pre-guard workspaces may have steps stuck in Incomplete/Invalid from
+        crashed runs.  Batch resets (_invalidate_suffix, clear_states) handle
+        rerun paths; this handles the rerun=False resume path.
+        """
+        old_step = self.get_step(name=workspace_step.name, tool=workspace_step.tool)
+        if old_step is None:
+            return
+        persisted = old_step.get("state")
+        if persisted in {
+            StateEnum.Imcomplete.value,
+            StateEnum.Invalid.value,
+        }:
+            logger.warning(
+                "Normalizing legacy %s state '%s' → Unstart before rerun",
+                step_tag,
+                persisted,
+            )
+            old_step["state"] = StateEnum.Unstart.value
+            old_step["runtime"] = ""
+            old_step["peak memory (mb)"] = 0
+            # No self.save() — set_state(Ongoing) below saves.
+
     def run_step(
         self,
         workspace_step: WorkspaceStep | str,
@@ -462,6 +527,8 @@ class EngineFlow:
             _notify_flow_observer(observer, "on_step_skipped", workspace_step)
             return StateEnum.Success
 
+        self._normalize_legacy_terminal_state(workspace_step, step_tag)
+
         # set state ongoing
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()
@@ -471,6 +538,12 @@ class EngineFlow:
             if flow_step is None:
                 raise RuntimeError(f"cannot persist runtime operation marker for {step_tag}")
             previous_state = flow_step.get("state")
+            _validate_transition(
+                previous_state,
+                StateEnum.Ongoing.value,
+                workspace_step.name,
+                workspace_step.tool,
+            )
             previous_info = dict(flow_step.get("info", {}))
             flow_step.setdefault("info", {})["runtime_operation"] = {
                 **operation_marker,

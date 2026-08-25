@@ -1,0 +1,51 @@
+name: Commit Message
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+
+concurrency:
+  group: commit-message-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  commit-message:
+    name: Check commit messages and PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+          enable-cache: "true"
+
+      - name: Run commit-msg hooks on every commit and the PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          msg_file="$RUNNER_TEMP/commit-msg.txt"
+
+          while read -r sha; do
+            git log -1 --format=%B "$sha" > "$msg_file"
+            echo "Checking commit $(git log -1 --format='%h %s' "$sha")"
+            uvx prek@0.2.30 run --hook-stage commit-msg --commit-msg-filename "$msg_file"
+          done < <(git log --format=%H "origin/$BASE_REF..HEAD")
+
+          printf '%s\n' "$TITLE" > "$msg_file"
+          echo "Checking PR title: $TITLE"
+          uvx prek@0.2.30 run --hook-stage commit-msg --commit-msg-filename "$msg_file"

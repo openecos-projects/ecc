@@ -190,7 +190,7 @@ class TestFlowSetStatePersistence:
 
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)
 
-        result = flow.set_state("SYNTHESIS", "yosys", StateEnum.Success)
+        result = flow.set_state("SYNTHESIS", "yosys", StateEnum.Ongoing)
         assert result is False
         assert workspace.flow.data["steps"][0]["state"] == StateEnum.Unstart.value
 
@@ -209,7 +209,7 @@ class TestFlowSetStatePersistence:
         }
         flow_path.write_text(json.dumps(flow_data))
 
-        # First run: mark SYNTHESIS as Success but save fails
+        # First run: marking SYNTHESIS as Ongoing fails to persist
         workspace = Workspace(directory=tmp_path)
         workspace.flow.path = flow_path
         workspace.flow.data = json.loads(json.dumps(flow_data))
@@ -219,7 +219,7 @@ class TestFlowSetStatePersistence:
             EccStep(name="FLOORPLAN", directory=tmp_path, tool="ecc"),
         ]
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)
-        engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Success)
+        engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Ongoing)
         # File is still Unstart (save failed)
 
         # Simulate resume: fresh load from disk (what production does)
@@ -253,6 +253,7 @@ class TestFlowSetStatePersistence:
         engine_flow = EngineFlow(workspace)
 
         # Mark SYNTHESIS as Success — save() succeeds
+        engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Ongoing)
         engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Success)
 
         # Verify file was updated

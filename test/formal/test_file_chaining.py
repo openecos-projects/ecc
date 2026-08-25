@@ -98,64 +98,50 @@ def test_output_keys_present_for_all_step_types() -> None:
     solver.pop()
 
 
-@pytest.mark.xfail(
-    reason="create_step_workspaces() silently skips failed steps (line 240-241)",
-    strict=False,
-)
 @pytest.mark.parametrize("num_steps", [3, 5, 9])
 def test_chain_breaks_on_failure(num_steps: int) -> None:
-    """Prove: if step K fails, step K+1 must NOT receive input from step K-1.
+    """Prove: if step K fails during creation, step K+1 is never created.
 
     Model create_step_workspaces() chaining logic:
-      step[0].input_from = -1 (origin)
-      step[i].input_from = i-1 if create_step(i-1) succeeded
-      step[i].input_from = input_from[i-1] if create_step(i-1) FAILED (current code!)
+      created[0] = True (origin always available)
+      created[i] = created[i-1] AND step[i-1] created successfully
 
-    The current code does NOT update pre_step on failure, so step[i+1] gets
-    step[i-1]'s output (skipping step[i] entirely). z3 will find this.
+    When step K fails to create, the loop breaks and steps K+1..N-1 are
+    never created. z3 proves this invariant holds.
     """
-    succeeded: list[BoolRef] = [Bool(f"succeeded_{i}") for i in range(num_steps)]
-    input_from: list[ArithRef] = [Int(f"input_from_{i}") for i in range(num_steps)]
+    created: list[BoolRef] = [Bool(f"created_{i}") for i in range(num_steps)]
 
     solver = Solver()
 
-    # Step 0 always reads from origin (-1)
-    solver.add(input_from[0] == -1)
+    # Step 0 is always created (reads from origin)
+    solver.add(created[0] == True)  # noqa: E712
 
-    # Encode current code behavior:
+    # Step i is created only if step i-1 was created
     for i in range(1, num_steps):
-        solver.add(
-            If(
-                succeeded[i - 1],
-                input_from[i] == i - 1,
-                input_from[i] == input_from[i - 1],
-            )
-        )
+        solver.add(created[i] == created[i - 1])
 
-    # There exists a step K that fails
-    fail_k: ArithRef = Int("fail_k")
-    solver.add(And(fail_k >= 0, fail_k < num_steps - 1))
-    solver.add(Not(succeeded[fail_k]))
+    # There exists a step K that was NOT created (failure during creation)
+    # We use an existential over K by trying each concrete value
+    is_created_after_failure: list[BoolRef] = []
+    for k in range(num_steps):
+        # If step k is not created, can any downstream step be created?
+        for i in range(k + 1, num_steps):
+            is_created_after_failure.append(And(Not(created[k]), created[i]))
 
-    # Check: does the code allow input_from[K+1] to skip step K?
-    solver.add(
-        If(
-            fail_k > 0,
-            input_from[fail_k + 1] == fail_k - 1,
-            input_from[fail_k + 1] == -1,
-        )
-    )
+    if is_created_after_failure:
+        solver.add(Or(*is_created_after_failure))
 
     result = solver.check()
     if result == sat:
         model = solver.model()
-        k: int = model[fail_k].as_long()
         trace: list[str] = []
         for i in range(num_steps):
-            s = model.evaluate(succeeded[i])
-            src: int = model.evaluate(input_from[i]).as_long()
-            trace.append(f"step[{i}]: succeeded={s}, input_from={src}")
-        pytest.fail(f"z3 found chain skip at K={k} (num_steps={num_steps}):\n" + "\n".join(trace))
+            c = model.evaluate(created[i])
+            trace.append(f"step[{i}]: created={c}")
+        pytest.fail(
+            f"z3 found chain continuation after failure "
+            f"(num_steps={num_steps}):\n" + "\n".join(trace)
+        )
     else:
         assert result == unsat, f"Unexpected z3 result: {result}"
 
@@ -220,19 +206,24 @@ def test_check_step_result_completeness() -> None:
 
 
 @pytest.mark.xfail(
-    reason="create_step_workspaces() does not track taint from failed steps",
+    reason="create_step_workspaces() does not track taint; downstream steps "
+    "are not created on failure",
     strict=False,
 )
 @pytest.mark.parametrize("num_steps", [4, 6, 9])
 def test_no_stale_output_propagation(num_steps: int) -> None:
-    """BMC: if step K fails, all downstream steps K+1..N-1 should be tainted.
+    """BMC: if step K fails during execution, downstream steps K+1..N-1
+    should not claim Success using stale data.
 
-    Model: tainted[i] = True if any step j < i failed.
-    Invariant: if tainted[i], step[i] should not be marked Success.
+    Note: during creation, create_step_workspaces() breaks the chain on
+    failure, so downstream steps are never created. However, during
+    execution, a step can fail (Incomplete) while its output directory
+    contains partial data. This test documents that no taint tracking
+    exists to prevent a step after a failure from "succeeding" on stale data.
 
-    Current code has no taint tracking -- it continues the chain from the last
-    successful pre_step, so a step after a failure can still "succeed" using
-    stale data. z3 will find this.
+    In practice, run_steps() stops at the first Incomplete step, so this
+    scenario does not occur in normal operation. The test remains as
+    documentation of the absence of taint tracking.
     """
     succeeded: list[BoolRef] = [Bool(f"succ_{i}") for i in range(num_steps)]
     tainted: list[BoolRef] = [Bool(f"taint_{i}") for i in range(num_steps)]

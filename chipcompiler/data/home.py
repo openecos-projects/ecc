@@ -9,43 +9,12 @@ from chipcompiler.utility import json_read, json_write
 
 from .checklist import Checklist
 
-# home_json = {
-#    "parameters" : "",
-#     "flow" : "",
-#     "layout" : "",
-#     "monitor" : {
-#         "step" : [],
-#         "memory" : [],
-#         "runtime" : [],
-#         "instance" : [],
-#         "frequency" : []
-#     },
-#     "metrics":{
-#         "instance dist." : "",
-#         "layer via dist." : "",
-#         "layer wire dist." : "",
-#         "pin dist." : "",
-#         "drc dist." : "",
-#         "CTS skew map" : ""
-#     },
-#     "checklist" : ""
-# }
 home_json = {
     "parameters": "",
     "flow": "",
     "layout": "",
     "checklist": "",
     "metrics": {},
-    "monitor": {"step": [], "memory": [], "runtime": [], "instance": [], "frequency": []},
-}
-
-_monitor_keys = ("step", "memory", "runtime", "instance", "frequency")
-_monitor_defaults = {
-    "step": "",
-    "memory": "",
-    "runtime": "",
-    "instance": 0,
-    "frequency": 0.0,
 }
 
 
@@ -59,31 +28,18 @@ def _normalize_home_data(data: dict) -> tuple[dict, bool]:
 
     if isinstance(data, dict):
         for key, value in data.items():
+            if key == "monitor":
+                changed = True
+                continue
             normalized[key] = value
 
     if not isinstance(normalized.get("metrics"), dict):
         normalized["metrics"] = {}
         changed = True
 
-    if not isinstance(normalized.get("monitor"), dict):
-        normalized["monitor"] = _default_home_data()["monitor"]
-        changed = True
-
     for key in home_json:
         if key not in normalized:
             normalized[key] = _default_home_data()[key]
-            changed = True
-
-    for key in _monitor_keys:
-        if not isinstance(normalized["monitor"].get(key), list):
-            normalized["monitor"][key] = []
-            changed = True
-
-    monitor_length = max(len(normalized["monitor"][key]) for key in _monitor_keys)
-    for key in _monitor_keys:
-        missing_count = monitor_length - len(normalized["monitor"][key])
-        if missing_count > 0:
-            normalized["monitor"][key].extend([_monitor_defaults[key]] * missing_count)
             changed = True
 
     if isinstance(data, dict) and normalized != data:
@@ -203,51 +159,6 @@ class HomeData:
 
     def set_metrics_cts_skew_map(self, image_path: Path):
         self._set_metric("CTS skew map", image_path)
-
-    def update_monitor(
-        self,
-        step: str,
-        sub_step: str,
-        memory: str,
-        runtime: str,
-        instance: int = 0,
-        frequency: float = 0.0,
-    ):
-        def mutator(data: dict) -> bool:
-            target_instance = instance
-            target_frequency = frequency
-
-            # if not set, use last value
-            if target_instance == 0:
-                instance_values = data["monitor"]["instance"]
-                target_instance = instance_values[-1] if len(instance_values) > 0 else 0
-            if target_frequency == 0.0:
-                frequency_values = data["monitor"]["frequency"]
-                target_frequency = frequency_values[-1] if len(frequency_values) > 0 else 0.0
-
-            step_name = f"{step} - {sub_step}"
-            for i, existing_step in enumerate(data["monitor"]["step"]):
-                if existing_step == step_name:
-                    changed = (
-                        data["monitor"]["memory"][i] != memory
-                        or data["monitor"]["runtime"][i] != runtime
-                        or data["monitor"]["instance"][i] != target_instance
-                        or data["monitor"]["frequency"][i] != target_frequency
-                    )
-                    data["monitor"]["memory"][i] = memory
-                    data["monitor"]["runtime"][i] = runtime
-                    data["monitor"]["instance"][i] = target_instance
-                    data["monitor"]["frequency"][i] = target_frequency
-                    return changed
-
-            data["monitor"]["step"].append(step_name)
-            data["monitor"]["memory"].append(memory)
-            data["monitor"]["runtime"].append(runtime)
-            data["monitor"]["instance"].append(target_instance)
-            data["monitor"]["frequency"].append(target_frequency)
-            return True
-
-        self._update(mutator)
 
     def set_checklist(self, checklist_path: Path):
         path = checklist_path

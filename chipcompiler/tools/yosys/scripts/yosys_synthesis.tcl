@@ -42,7 +42,7 @@ yosys -import
 #   DELAY N   — maximize frequency
 #   AREA N    — minimize area
 #   BALANCE N — balanced PPA
-set synth_strategy "BALANCE 3"
+set synth_strategy "DELAY 4"
 if {[info exists env(YOSYS_SYNTH_STRATEGY)]} {
   # TODO: Move this to global_var.tcl
   set synth_strategy $::env(YOSYS_SYNTH_STRATEGY)
@@ -70,11 +70,11 @@ set valid_types {DELAY AREA BALANCE}
 
 # --- DELAY family ---
 # Slack margin: tighten target to push frequency (<1 = tighter)
-set delay_slack_margin 0.92
+set delay_slack_margin 0.95
 # Redelay depth
 set delay_retime_M 8
 # Max fanout for buffer insertion
-set delay_max_FO 24
+set delay_max_FO 20
 # Multi-pass: 0=off, 1=on (second ABC pass to reinforce critical paths)
 set delay_multipass 1
 # Pass-2 relaxation factor
@@ -195,7 +195,7 @@ close $abc_constr_file
 
 #=======================================================================
 # DELAY scripts — maximize frequency
-# 12 scripts (index 0..11)
+# 14 scripts (index 0..13)
 # Common prefix: fx;mfs;strash;refactor;resyn2;retime_dly;scleanup
 # Mapper: abc_map_tight (map,-p,-B,0.2,-A,0.9,-M,0)
 # Fine-tune: abc_finetune_delay / delay2 / delay3 (upsize+buffer)
@@ -432,6 +432,11 @@ opt -fast -purge
 #===========================================================
 synth -run fine:
 
+# Preserve RTL tri-state semantics before simplemap lowers muxes to gate
+# primitives. The resulting $_TBUF_ cells are mapped to the target library
+# below; do not use -merge because it assumes mutually-exclusive enables.
+tribuf
+
 # simplemap: break complex gates into simple primitives
 # This gives ABC a simpler, more uniform input graph.
 simplemap
@@ -472,7 +477,9 @@ dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
 # dfflibmap intentionally handles only flip-flops.  For ics55 it selects the
 # final matching DFF library in lib_stdcell_list, so use that same H7 variant
-# for the plain D-latch mapping before ABC.
+# for latch mapping before ABC.  The library has separate cells for latch
+# enable polarity and asynchronous set/reset polarity; positive async
+# controls are inverted because the library controls are active low.
 set ics55_latch_suffix ""
 if {[llength $lib_stdcell_list] > 0} {
   set dff_lib [lindex $lib_stdcell_list end]
@@ -495,9 +502,96 @@ module \$_DLATCH_P_ (E, D, Q);
   output Q;
   LATHX1%s _TECHMAP_REPLACE_ (.D(D), .G(E), .Q(Q));
 endmodule
-} $ics55_latch_suffix $ics55_latch_suffix]
+
+module \$_DLATCH_NN0_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  LATLRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .GN(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_NN1_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  LATLSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .GN(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_NP0_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  wire RN;
+  INVX1%s inv_reset (.A(R), .Y(RN));
+  LATLRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .GN(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_NP1_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  wire SN;
+  INVX1%s inv_set (.A(R), .Y(SN));
+  LATLSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .GN(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_PN0_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  LATHRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .G(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_PN1_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  LATHSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .G(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_PP0_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  wire RN;
+  INVX1%s inv_reset (.A(R), .Y(RN));
+  LATHRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .G(E), .Q(Q));
+endmodule
+
+module \$_DLATCH_PP1_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  wire SN;
+  INVX1%s inv_set (.A(R), .Y(SN));
+  LATHSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .G(E), .Q(Q));
+endmodule
+} $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
+  $ics55_latch_suffix]
   close $latch_map_file
   techmap -map $ics55_latch_map
+  opt -fast -purge
+
+  # Map Yosys tri-state buffers to the same ICS55 voltage-threshold variant
+  # selected for the sequential cells.
+  set ics55_tri_map "${tmp_dir}/ics55_tri_map.v"
+  set tri_map_file [open $ics55_tri_map "w"]
+  puts $tri_map_file [format {
+(* techmap_celltype = "\$_TBUF_" *)
+module _tbuf_disabled (A, E, Y);
+  input A, E;
+  output Y;
+  parameter _TECHMAP_CONSTMSK_E_ = 1'b0;
+  parameter _TECHMAP_CONSTVAL_E_ = 1'bx;
+  wire _TECHMAP_FAIL_ = !(_TECHMAP_CONSTMSK_E_ && !_TECHMAP_CONSTVAL_E_);
+  wire [1023:0] _TECHMAP_DO_ = "connect -unset Y";
+endmodule
+
+(* techmap_celltype = "\$_TBUF_" *)
+module _tbuf_enabled (A, E, Y);
+  input A, E;
+  output Y;
+  TBUFX1%s _TECHMAP_REPLACE_ (.A(A), .OE(E), .Y(Y));
+endmodule
+} $ics55_latch_suffix]
+  close $tri_map_file
+  techmap -map $ics55_tri_map
   opt -fast -purge
 }
 
