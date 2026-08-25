@@ -414,6 +414,8 @@ def write_manifest_if_absent(project_dir: str, document: dict) -> bool:
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
+        # Mode stays the tempfile default (0600), matching json_write's
+        # convention for newly created state files.
         os.link(tmp_path, path)
         return True
     except FileExistsError:

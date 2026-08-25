@@ -158,6 +158,24 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
+    if ctx.manifest_error:
+        # Hybrid projects also resolve the run selector through the
+        # manifest; an unresolvable selection is an error, not a warning.
+        kind = (
+            "manifest_invalid"
+            if ctx.manifest_error.startswith("manifest_invalid")
+            else "workspace_not_declared"
+        )
+        return CommandResult.err(
+            [
+                error_record(
+                    kind,
+                    reason=ctx.manifest_error,
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
+
     errors = validate_project_config(cfg)
 
     if errors:

@@ -390,14 +390,36 @@ def migrate_project(command_input, ctx):
         )
 
     if cfg is not None and not has_manifest:
-        # The generated manifest's base_design comes from this config; a
-        # broken or identity-less ecc.toml must not produce an invalid
-        # manifest. (Full run-time validation is not the migrate path's job.)
-        problems = []
+        # The generated manifest's base_design comes from this config;
+        # semantic errors (broken TOML, bad params, missing identity fields,
+        # unknown PDK/preset) must not produce an invalid manifest.
+        # Filesystem existence checks stay out of scope: migration does not
+        # run the flow.
+        problems = list(getattr(cfg, "_param_errors", []))
+        problems.extend(getattr(cfg, "_pdk_config_errors", []))
         if getattr(cfg, "_toml_error", None):
             problems.append(f"malformed ecc.toml: {cfg._toml_error}")
         if not cfg.design_name:
             problems.append("design.name is required")
+        if not cfg.design_top:
+            problems.append("design.top is required")
+        if not cfg.design_clock_port:
+            problems.append("design.clock_port is required")
+        if not cfg.design_rtl:
+            problems.append("design.rtl must have at least one entry")
+        from chipcompiler.cli.project.config import SUPPORTED_PDK_NAMES
+
+        if not cfg.pdk_name:
+            problems.append("pdk.name is required")
+        elif cfg.pdk_name not in SUPPORTED_PDK_NAMES:
+            problems.append(f"unsupported pdk.name: {cfg.pdk_name}")
+        if not cfg.flow_preset:
+            problems.append("flow.preset is required")
+        else:
+            from chipcompiler import rtl2gds as rtl2gds_api
+
+            if cfg.flow_preset not in rtl2gds_api.get_flow_builders():
+                problems.append(f"unsupported flow.preset: {cfg.flow_preset}")
         if problems:
             return CommandResult.err(
                 [

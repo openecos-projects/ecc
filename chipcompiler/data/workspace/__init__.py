@@ -1378,6 +1378,8 @@ def _migrate_legacy_parameters_file(workspace_dir: Path) -> None:
         from chipcompiler.utility import json_read
 
         flow_data = json_read(flow_path)
+        if not isinstance(flow_data, dict):
+            flow_data = {}
         step_names = [
             step["name"]
             for step in flow_data.get("steps", [])

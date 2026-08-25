@@ -459,3 +459,32 @@ class TestCheckManifestSelection:
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
 
         assert rc == 0
+
+
+class TestHybridCheck:
+    def test_hybrid_check_errors_on_ambiguous_selection(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        import json as _json
+
+        (tmp_path / "gcd" / "project.json").write_text(
+            _json.dumps(
+                {
+                    "schema_version": 1,
+                    "design_name": "gcd",
+                    "root_path": project_dir,
+                    "workspaces": [
+                        {"workspace_id": "ws_0001", "workspace_path": f"{project_dir}/ws_0001"},
+                        {"workspace_id": "ws_0002", "workspace_path": f"{project_dir}/ws_0002"},
+                    ],
+                }
+            )
+        )
+
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        (record,) = _records(capsys)
+        assert record["error"] == "workspace_not_declared"

@@ -211,3 +211,20 @@ class TestMigrate:
         with open(os.path.join(run_dir, "home", "home.json")) as f:
             home = json.load(f)
         assert home["flow"] == os.path.join(run_dir, "home", "flow.json")
+
+    def test_migrate_rejects_broken_ecc_toml(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        with open(f"{project_dir}/ecc.toml", "a") as f:
+            f.write('\n[params.synth]\nmax_fanout = "loud"\n')
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        assert any(r.get("error") == "config_error" for r in records)
+        assert os.path.exists(run_dir)  # nothing moved
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
