@@ -242,14 +242,14 @@ def test_merge_against_real_template_scalar() -> None:
     template = get_parameters("ics55")
     target: dict[str, object] = deepcopy(template.data)
     source: dict[str, object] = {
-        "Design": "test_design",
-        "Top module": "test_top",
-        "Clock": "test_clk",
+        "design": "test_design",
+        "top_module": "test_top",
+        "clock": "test_clk",
         "frequency_max": 200,
         "max_fanout": 50,
-        "Target density": 0.6,
-        "Bottom layer": "MET3",
-        "Top layer": "MET4",
+        "target_density": 0.6,
+        "bottom_layer": "MET3",
+        "top_layer": "MET4",
     }
 
     result: dict[str, object] = update_parameters(source, target)
@@ -263,7 +263,7 @@ def test_merge_against_real_template_preserves_untouched() -> None:
     template = get_parameters("ics55")
     original: dict[str, object] = deepcopy(template.data)
     target: dict[str, object] = deepcopy(template.data)
-    source: dict[str, str] = {"Design": "override_only"}
+    source: dict[str, str] = {"design": "override_only"}
 
     update_parameters(source, target)
 
