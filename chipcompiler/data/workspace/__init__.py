@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
@@ -21,6 +20,7 @@ from ..parameter import (
 )
 from ..pdk import PDK, get_pdk
 from ..step import StateEnum, StepEnum
+from ..workspace_config import migrate_legacy_parameters
 from .layout import EccData, WorkspaceStepBase
 
 # The shared step type used as the annotation/constructor across the codebase.
@@ -264,6 +264,8 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
         return {}
 
     canonical_steps = _canonical_harden_flow_entries()
+    from ..workspace_config import resolve_flow_selection
+
     selected_names, _degraded = resolve_flow_selection(flow_config, canonical_steps)
     if not selected_names:
         return {}
@@ -276,36 +278,6 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
             if name in selected
         ]
     }
-
-
-def resolve_flow_selection(
-    flow_config: dict,
-    canonical_steps: list[tuple[str, str, str]],
-) -> tuple[list[str], bool]:
-    """Canonical step names selected by *flow_config*, widened to a range.
-
-    Returns (names, degraded): an explicit non-contiguous selection degrades
-    to the contiguous first..last range with a log note, so the execution
-    ledger and the persisted flow target can never contradict each other.
-    """
-    selected_names = _selected_dynamic_flow_step_names(flow_config, canonical_steps)
-    if not selected_names:
-        return ([], False)
-
-    canonical_names = [name for name, _tool, _state in canonical_steps]
-    contiguous = canonical_names[
-        canonical_names.index(selected_names[0]) : canonical_names.index(selected_names[-1]) + 1
-    ]
-    if contiguous == selected_names:
-        return (contiguous, False)
-
-    logging.getLogger(__name__).warning(
-        "non-contiguous flow steps %s degraded to contiguous range %s..%s",
-        selected_names,
-        selected_names[0],
-        selected_names[-1],
-    )
-    return (contiguous, True)
 
 
 def _canonical_harden_flow_entries() -> list[tuple[str, str, str]]:
@@ -1365,83 +1337,6 @@ def create_workspace(
     return workspace
 
 
-def _migrate_legacy_parameters_file(workspace_dir: Path) -> None:
-    """Rewrite a legacy ``home/parameters.json`` into ``home/ecc.toml``.
-
-    Runs at workspace open, the single choke point for loading workspaces.
-    When both files exist the TOML wins and the JSON is left untouched. A
-    failed rewrite (permissions, read-only fs) leaves the workspace loadable
-    via the normalized in-memory copy; the next open retries.
-    """
-    from ..parameter_keys import normalize_parameter_dict
-    from ..workspace_config import (
-        legacy_parameters_path,
-        load_workspace_config,
-        save_workspace_config,
-        workspace_config_path,
-    )
-
-    config_path = workspace_config_path(workspace_dir)
-    legacy_path = legacy_parameters_path(workspace_dir)
-    if config_path.exists():
-        if legacy_path.exists():
-            logging.getLogger(__name__).warning(
-                "workspace_config_shadowed: both %s and %s exist; using the TOML",
-                config_path,
-                legacy_path,
-            )
-        return
-    if not legacy_path.exists():
-        return
-
-    from chipcompiler.utility import JsonReadError, json_read_strict
-
-    try:
-        legacy_data = json_read_strict(legacy_path)
-    except (JsonReadError, OSError) as exc:
-        logging.getLogger(__name__).warning(
-            "legacy parameters unreadable, skipping migration: %s: %s", legacy_path, exc
-        )
-        return
-
-    normalized = normalize_parameter_dict(legacy_data)
-    flow_section: dict = {}
-    flow_path = workspace_dir / "home" / "flow.json"
-    if flow_path.exists():
-        # Derive the flow target from the persisted flow's first/last steps
-        # so the migrated workspace stays self-describing.
-        from chipcompiler.utility import json_read
-
-        flow_data = json_read(flow_path)
-        if not isinstance(flow_data, dict):
-            flow_data = {}
-        step_names = [
-            step["name"]
-            for step in flow_data.get("steps", [])
-            if isinstance(step, dict) and step.get("name")
-        ]
-        if step_names:
-            from ..workspace_config import WorkspaceFlowTargetError, validate_flow_config
-
-            try:
-                flow_section = validate_flow_config({"start": step_names[0], "end": step_names[-1]})
-            except WorkspaceFlowTargetError:
-                flow_section = {}
-    if not save_workspace_config(workspace_dir, normalized, flow_section or None):
-        logging.getLogger(__name__).warning(
-            "legacy parameters migration deferred (rewrite failed): %s", legacy_path
-        )
-        return
-    try:
-        load_workspace_config(workspace_dir)
-    except Exception as exc:
-        logging.getLogger(__name__).warning(
-            "legacy parameters migration deferred (verify failed): %s: %s", config_path, exc
-        )
-        return
-    legacy_path.unlink(missing_ok=True)
-
-
 def load_workspace(directory: str | Path) -> Workspace:
     workspace_dir = Path(directory).expanduser().resolve()
     origin_dir = workspace_dir / "origin"
@@ -1449,7 +1344,7 @@ def load_workspace(directory: str | Path) -> Workspace:
     if not workspace_dir.exists():
         return None
 
-    _migrate_legacy_parameters_file(workspace_dir)
+    migrate_legacy_parameters(workspace_dir)
 
     # create workspace instance
     workspace = Workspace()

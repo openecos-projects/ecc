@@ -46,6 +46,11 @@ from chipcompiler.runtime.sessions import (
     WorkspaceSessionNotFound,
     WorkspaceSessionRegistry,
 )
+from chipcompiler.runtime.workspace_config_io import (
+    canonical_request_parameters,
+    read_workspace_config_toml,
+    workspace_config_bytes,
+)
 from chipcompiler.utility.path import path_is_within, stringify_paths
 
 _T = TypeVar("_T")
@@ -100,7 +105,7 @@ class WorkspaceRuntimeApi:
             workspace = data_api.create_workspace(
                 directory=request.directory,
                 pdk=request.pdk,
-                parameters=_canonical_request_parameters(request.parameters),
+                parameters=canonical_request_parameters(request.parameters),
                 origin_def=request.origin_def,
                 origin_verilog=request.origin_verilog,
                 input_filelist=input_filelist,
@@ -1800,18 +1805,6 @@ def _workspace_path(workspace, owner_name: str, path_name: str) -> Path | None:
     return _path_or_none(getattr(owner, path_name, None))
 
 
-def _read_workspace_config_toml(path: Path) -> None:
-    import tomllib
-
-    try:
-        with open(path, "rb") as file:
-            tomllib.load(file)
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise RuntimeApiError(
-            "command_failed", f"failed to read workspace config artifact: {path}"
-        ) from exc
-
-
 def _read_layout_edit_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -1833,20 +1826,12 @@ def _stage_layout_edit_workspace_json(
         staged_path = staged[key]
         staged_path.parent.mkdir(parents=True, exist_ok=True)
         if key == "parameters" and staged_path.suffix == ".toml":
-            staged_path.write_bytes(_workspace_config_bytes(data, workspace))
+            try:
+                staged_path.write_bytes(workspace_config_bytes(data, workspace))
+            except ValueError as exc:
+                raise RuntimeApiError("command_failed", str(exc)) from exc
             continue
         staged_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def _workspace_config_bytes(data: dict[str, Any], workspace) -> bytes:
-    from chipcompiler.data.workspace_config import render_workspace_config
-
-    workspace_dir = _path_or_none(getattr(workspace, "directory", None))
-    if workspace_dir is None:
-        raise RuntimeApiError("command_failed", "workspace directory is missing")
-    payload = dict(data)
-    flow = payload.pop("_flow", None)
-    return render_workspace_config(workspace_dir, payload, flow)
 
 
 def _stage_layout_edit_verilog(
@@ -1869,7 +1854,10 @@ def _validate_layout_edit_workspace_staging(
         if not staged[key].is_file():
             raise RuntimeApiError("command_failed", f"layout edit staged {key} is missing")
         if key == "parameters" and staged[key].suffix == ".toml":
-            _read_workspace_config_toml(staged[key])
+            try:
+                read_workspace_config_toml(staged[key])
+            except ValueError as exc:
+                raise RuntimeApiError("command_failed", str(exc)) from exc
             continue
         _read_layout_edit_json(staged[key])
     if "verilog" in staged and not staged["verilog"].is_file():
@@ -2155,20 +2143,6 @@ def _materialize_inline_pdk_json(pdk_json: Any) -> tuple[Any, Path | None]:
     ) as f:
         json.dump(pdk_json, f)
         return f.name, Path(f.name)
-
-
-def _canonical_request_parameters(parameters: dict[str, Any] | None) -> dict[str, Any]:
-    """Normalize an RPC creation payload to the canonical flat vocabulary.
-
-    GUI flat keys (including the positional geometry aliases) and any legacy
-    long keys are both converted here; the result is merged verbatim by the
-    workspace layer.
-    """
-    if not parameters:
-        return {}
-    from chipcompiler.data.parameter_keys import geometry_to_parameters
-
-    return geometry_to_parameters(parameters)
 
 
 def _looks_like_old_workspace(directory: str) -> bool:

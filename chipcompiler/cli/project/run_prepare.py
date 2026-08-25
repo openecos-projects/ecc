@@ -392,3 +392,320 @@ def run_existing_workspace(
     if not flow_ok:
         return CommandResult.err(records)
     return CommandResult.ok(records)
+
+
+def execute_fresh_run(
+    command_input,
+    ctx,
+    cfg,
+    run_dir: str,
+    run_name: str,
+    cli_overrides: dict,
+    flow_config,
+    project_state: str | None,
+    warning_records: list[dict],
+    *,
+    workspace_registered: bool,
+    owns_target: bool,
+) -> CommandResult:
+    """Create the workspace, seed it, execute the flow, and map the result.
+
+    Fresh-run preparation and execution for a project run: parameter
+    assembly, workspace creation, flow target seeding, virgin manifest
+    generation, engine execution, and status write-back.
+    """
+    import shutil
+
+    from chipcompiler import rtl2gds as rtl2gds_api
+    from chipcompiler.cli.core.records import legacy_layout_hint_record, warning_record
+    from chipcompiler.cli.project.config import (
+        resolve_pdk_overrides,
+        resolve_pdk_root,
+        resolve_rtl,
+        to_parameters,
+    )
+    from chipcompiler.data import create_workspace
+    from chipcompiler.engine import EngineFlow
+
+    project = ctx.project
+    project_dir = ctx.project_dir
+
+    _, origin_verilog, input_filelist = resolve_rtl(cfg)
+    parameters = to_parameters(cfg)
+    pdk_root = resolve_pdk_root(cfg)
+
+    manifest_parameters = cfg.manifest_parameters
+    if manifest_parameters:
+        from chipcompiler.data.parameter import update_parameters
+        from chipcompiler.data.parameter_keys import geometry_to_parameters
+
+        # Manifest base layer: ecc.toml/--set values overlay it, not the
+        # other way around.
+        base = geometry_to_parameters(manifest_parameters)
+        update_parameters(parameters, base)
+        parameters = base
+
+    if cfg.params_overrides or cli_overrides:
+        from chipcompiler.cli.project.params import (
+            build_backend_overrides,
+            resolve_parameters,
+        )
+
+        resolved, _ = resolve_parameters(
+            toml_overrides=cfg.params_overrides,
+            cli_overrides=cli_overrides,
+        )
+        backend_overrides = build_backend_overrides(resolved)
+        from chipcompiler.data.parameter import update_parameters
+
+        update_parameters(backend_overrides, parameters)
+
+    try:
+        workspace = create_workspace(
+            directory=run_dir,
+            origin_def=cfg.manifest_origin_def,
+            origin_verilog=origin_verilog,
+            pdk=cfg.pdk_name,
+            parameters=parameters,
+            input_filelist=input_filelist,
+            pdk_root=pdk_root,
+            pdk_overrides=resolve_pdk_overrides(cfg),
+            flow_config=flow_config,
+        )
+    except Exception as exc:
+        if owns_target:
+            shutil.rmtree(run_dir, ignore_errors=True)
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "workspace_failed",
+                    "run": run_name,
+                    "workspace": run_dir,
+                    "reason": str(exc),
+                }
+            ]
+        )
+
+    if workspace is None:
+        if owns_target:
+            shutil.rmtree(run_dir, ignore_errors=True)
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "workspace_failed",
+                    "run": run_name,
+                    "workspace": run_dir,
+                }
+            ]
+        )
+
+    if cli_overrides:
+        import json
+
+        provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
+        os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
+        with open(provenance_path, "w") as _f:
+            json.dump(cli_overrides, _f)
+
+    if flow_config is None:
+        # CLI-born workspaces persist the named prefix chain as their target.
+        from chipcompiler.data.parameter import save_parameter
+
+        workspace_parameters = getattr(workspace, "parameters", None)
+        if workspace_parameters is not None:
+            workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
+            save_parameter(workspace_parameters)
+
+    if project_state == "virgin":
+        from chipcompiler.cli.project.manifest import (
+            PRESET_MANIFEST_RANGE,
+            build_manifest_document,
+            write_manifest_if_absent,
+        )
+
+        start_step, end_step = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
+        # base_design reflects the ecc.toml-resolved config only; --set
+        # values are run-scoped and never baked into the manifest.
+        from chipcompiler.cli.project.manifest import resolved_base_parameters
+
+        document = build_manifest_document(
+            project_dir,
+            design_name=cfg.design_name,
+            base_design={
+                "pdk": cfg.pdk_name,
+                "pdk_root": pdk_root,
+                "top_module": cfg.design_top,
+                "clock": cfg.design_clock_port,
+                "rtl_list": cfg.design_rtl,
+                "parameters": resolved_base_parameters(cfg),
+            },
+            workspace_id=run_name,
+            workspace_path=run_dir,
+            start_step=start_step,
+            end_step=end_step,
+        )
+        if write_manifest_if_absent(project_dir, document):
+            workspace_registered = True
+        else:
+            # Lost the generation race: discard ours, reload the winner, and
+            # continue read-only — write-back applies only when the winning
+            # manifest actually declares this workspace.
+            from chipcompiler.cli.project.manifest import load_manifest
+
+            try:
+                winner = load_manifest(project_dir)
+                workspace_registered = winner.find_workspace(run_name) is not None
+            except Exception:
+                workspace_registered = False
+
+    try:
+        engine_flow = EngineFlow(workspace=workspace)
+        flow_builders = rtl2gds_api.get_flow_builders()
+        if not engine_flow.has_init():
+            for step, tool, state in flow_builders[cfg.flow_preset]():
+                engine_flow.add_step(step=step, tool=tool, state=state)
+
+        engine_flow.create_step_workspaces()
+
+        from chipcompiler.cli.rendering.progress import (
+            run_flow_with_progress,
+            should_enable_run_progress,
+        )
+
+        if should_enable_run_progress(ctx, sys.stderr):
+            flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+        else:
+            flow_ok = engine_flow.run_steps()
+
+        if not flow_ok:
+            if workspace_registered:
+                from chipcompiler.cli.project.manifest import write_back_workspace_status
+
+                if not write_back_workspace_status(project_dir, run_name, "failed"):
+                    from chipcompiler.cli.core.records import warning_record
+
+                    warning_records.append(
+                        warning_record(
+                            "manifest_write_back_failed",
+                            reason="run status could not be written back to project.json",
+                        )
+                    )
+            failure_records = [
+                {
+                    "run": run_name,
+                    "status": "failed",
+                    "workspace": run_dir,
+                    "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+                    "log": disclosure_cmd("ecc log", project, ctx.run_id),
+                }
+            ]
+            if ctx.project_state == "legacy":
+                from chipcompiler.cli.core.records import legacy_layout_hint_record
+
+                failure_records.append(legacy_layout_hint_record(project))
+            return CommandResult.err(warning_records + failure_records)
+    except Exception as exc:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "flow_failed",
+                    "run": run_name,
+                    "workspace": run_dir,
+                    "reason": str(exc),
+                }
+            ]
+        )
+
+    if workspace_registered:
+        from chipcompiler.cli.project.manifest import write_back_workspace_status
+
+        if not write_back_workspace_status(project_dir, run_name, "success"):
+            from chipcompiler.cli.core.records import warning_record
+
+            warning_records.append(
+                warning_record(
+                    "manifest_write_back_failed",
+                    reason="run status could not be written back to project.json",
+                )
+            )
+
+    success_records = [
+        {
+            "run": run_name,
+            "status": "success",
+            "workspace": run_dir,
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+            "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
+        }
+    ]
+    if project_state == "legacy":
+        success_records.append(legacy_layout_hint_record(project))
+    return CommandResult.ok(warning_records + success_records)
+
+
+def check_manifest_project(ctx) -> CommandResult:
+    """`ecc check` for a project.json project (no ecc.toml)."""
+    import contextlib
+
+    from chipcompiler.cli.command_handlers.project import _canonically_inside
+    from chipcompiler.cli.core.records import error_record
+
+    project = ctx.project
+    if ctx.manifest_error and ctx.manifest_error.startswith("manifest_invalid"):
+        return CommandResult.err(
+            [
+                error_record(
+                    "manifest_invalid",
+                    reason=ctx.manifest_error,
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
+
+    from chipcompiler.cli.project.manifest import load_manifest
+
+    try:
+        manifest = load_manifest(ctx.project_dir)
+    except Exception as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "manifest_invalid",
+                    reason=str(exc),
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
+
+    run_dir_display = ctx.run_dir
+    if _canonically_inside(ctx.run_dir, ctx.project_dir):
+        with contextlib.suppress(ValueError):
+            run_dir_display = os.path.relpath(
+                os.path.realpath(ctx.run_dir), os.path.realpath(ctx.project_dir)
+            )
+
+    records = [
+        {
+            "project": manifest.design_name,
+            "status": "checked",
+            "config": "project.json",
+            "run_dir": run_dir_display,
+            "run": disclosure_cmd("ecc run", project),
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+        }
+    ]
+    if ctx.manifest_error:
+        # Read-only intent: an unresolvable run selector is an error, not a
+        # warning (the check result above would otherwise look authoritative).
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_not_declared",
+                    reason=ctx.manifest_error,
+                )
+            ]
+        )
+    return CommandResult.ok(records)

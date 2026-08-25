@@ -299,7 +299,7 @@ class TestMigrate:
         # Downgrade to a legacy workspace with an absolute PDK Config path.
         from chipcompiler.data.parameter import load_parameter
 
-        parameters = load_parameter(os.path.join(run_dir, "home", "ecc.toml"))
+        parameters = load_parameter(Path(run_dir, "home", "ecc.toml"))
         legacy = dict(parameters.data)
         legacy["PDK Config"] = os.path.join(run_dir, "home", "pdk.json")
         Path(run_dir, "home", "pdk.json").write_text("{}")
@@ -315,5 +315,5 @@ class TestMigrate:
         assert rc == 0
         from chipcompiler.data.parameter import load_parameter as lp
 
-        moved = lp(os.path.join(project_dir, "exp1", "home", "ecc.toml"))
+        moved = lp(Path(project_dir, "exp1", "home", "ecc.toml"))
         assert moved.data["pdk_config"] == os.path.join(project_dir, "exp1", "home", "pdk.json")
