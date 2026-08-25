@@ -87,6 +87,23 @@ class TestMigrate:
         assert entry["status"] == "success"
         assert manifest["design_name"] == "gcd"
         assert manifest["qor_baseline"]["workspace_id"] == "exp1"
+        # The migration base is built exactly like virgin generation:
+        # declared source spellings, GUI-flat parameters.
+        assert manifest["base_design"] == {
+            "pdk": "ics55",
+            "pdk_root": str(pdk_root),
+            "top_module": "gcd",
+            "clock": "clk",
+            "rtl_list": ["rtl/gcd.v"],
+            "origin_verilog": "rtl/gcd.v",
+            "parameters": {
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+                "frequency_max": 100.0,
+                "die_area_mode": "utilitization_margin",
+            },
+        }
 
         records = _records(capsys)
         assert any(r.get("status") == "migrated" and r.get("run") == "exp1" for r in records)

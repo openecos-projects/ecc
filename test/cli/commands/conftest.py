@@ -1,5 +1,6 @@
 """Shared fixtures for CLI command tests."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -68,3 +69,43 @@ def flow_mocks(monkeypatch):
     )
 
     return SimpleNamespace(capture=capture, flow=DummyFlow)
+
+
+@pytest.fixture
+def manifest_stubs(capsys):
+    """Shared manifest-project scaffolding: project.json writer, workspace
+    entry builder, and JSON record reader bound to capsys."""
+
+    def _write(project_dir, workspaces, **overrides):
+        rtl = project_dir / "rtl" / "gcd.v"
+        rtl.parent.mkdir(parents=True, exist_ok=True)
+        rtl.write_text("module gcd(input clk); endmodule\n")
+        (project_dir / "pdk").mkdir(exist_ok=True)
+        document = {
+            "schema_version": 1,
+            "design_name": "gcd",
+            "root_path": str(project_dir),
+            "base_design": {
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100},
+            },
+            "workspaces": workspaces,
+        }
+        document.update(overrides)
+        (project_dir / "project.json").write_text(json.dumps(document))
+
+    def _entry(project_dir, workspace_id, status="success"):
+        return {
+            "workspace_id": workspace_id,
+            "workspace_path": str(project_dir / workspace_id),
+            "status": status,
+        }
+
+    def _records():
+        return json.loads(capsys.readouterr().out)["records"]
+
+    return SimpleNamespace(write=_write, entry=_entry, records=_records)

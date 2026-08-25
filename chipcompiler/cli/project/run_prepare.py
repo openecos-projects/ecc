@@ -149,43 +149,9 @@ def run_existing_workspace(
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
     )
+    from chipcompiler.engine.reconcile import classify_workspace, reconcile_workspace
 
-    try:
-        workspace = load_workspace(run_dir)
-    except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
-        return CommandResult.err(
-            [
-                error_record(
-                    "workspace_config_invalid",
-                    run=run_name,
-                    workspace=run_dir,
-                    reason=str(exc),
-                )
-            ]
-        )
-    if workspace is None:
-        return CommandResult.err(
-            [
-                error_record(
-                    "invalid_workspace",
-                    run=run_name,
-                    workspace=run_dir,
-                )
-            ]
-        )
-
-    from chipcompiler.engine.reconcile import reconcile_workspace
-
-    if cfg.manifest_driven:
-        # Manifest mode: the workspace's own [flow] is the target; the
-        # manifest's start/end seeded it at creation and is not consulted.
-        target_section = None
-    else:
-        target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
-
-    result = reconcile_workspace(run_dir, target_section)
-    if result.outcome == "mismatch":
-        reason = result.error or "flow_mismatch"
+    def mismatch_error(reason: str) -> CommandResult:
         if reason.startswith("workspace_config_invalid"):
             return CommandResult.err(
                 [
@@ -220,6 +186,47 @@ def run_existing_workspace(
                 )
             ]
         )
+
+    if cfg.manifest_driven:
+        # Manifest mode: the workspace's own [flow] is the target; the
+        # manifest's start/end seeded it at creation and is not consulted.
+        target_section = None
+    else:
+        target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
+
+    # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
+    # can migrate configs, create home.json/checklist, or take the lock.
+    probe = classify_workspace(run_dir, target_section)
+    if probe.outcome == "mismatch":
+        return mismatch_error(probe.error or "flow_mismatch")
+
+    try:
+        workspace = load_workspace(run_dir)
+    except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_config_invalid",
+                    run=run_name,
+                    workspace=run_dir,
+                    reason=str(exc),
+                )
+            ]
+        )
+    if workspace is None:
+        return CommandResult.err(
+            [
+                error_record(
+                    "invalid_workspace",
+                    run=run_name,
+                    workspace=run_dir,
+                )
+            ]
+        )
+
+    result = reconcile_workspace(run_dir, target_section)
+    if result.outcome == "mismatch":
+        return mismatch_error(result.error or "flow_mismatch")
 
     if not result.persisted:
         # An existing run directory whose flow ledger has no steps cannot be
@@ -449,29 +456,18 @@ def execute_fresh_run(
     if project_state == "virgin":
         from chipcompiler.cli.project.manifest import (
             PRESET_MANIFEST_RANGE,
+            base_design_from_config,
             build_manifest_document,
-            resolved_base_parameters,
             write_manifest_if_absent,
         )
 
         start_step, end_step = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
         # base_design reflects the ecc.toml-resolved config only; --set
         # values are run-scoped and never baked into the manifest.
-        # origin_verilog mirrors the source resolve_rtl classified as plain
-        # RTL (declared spelling, like rtl_list); a filelist source leaves
-        # it empty and the builder drops the key.
         document = build_manifest_document(
             project_dir,
             design_name=cfg.design_name,
-            base_design={
-                "pdk": cfg.pdk_name,
-                "pdk_root": pdk_root,
-                "top_module": cfg.design_top,
-                "clock": cfg.design_clock_port,
-                "rtl_list": cfg.design_rtl,
-                "origin_verilog": cfg.design_rtl[0] if origin_verilog else "",
-                "parameters": resolved_base_parameters(cfg),
-            },
+            base_design=base_design_from_config(cfg, pdk_root),
             workspace_id=run_name,
             workspace_path=run_dir,
             start_step=start_step,

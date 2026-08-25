@@ -59,10 +59,11 @@ class ProjectConfig:
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _flow_run_error: str | None = field(default=None, init=False, repr=False)
-    # Parse provenance: True only when ecc.toml carries a frequency_mhz key.
-    # An absent key may fill from a lower (manifest) layer; an explicit value
-    # — even an invalid one — stays explicit and faces validation.
-    _frequency_explicit: bool = field(default=False, init=False, repr=False)
+    # Parse provenance: dotted "<section>.<key>" names of every design/pdk/
+    # flow key present in ecc.toml. An absent key may fill from a lower
+    # (manifest) layer; an explicit value — even an empty/invalid one —
+    # stays explicit and faces validation.
+    _explicit_keys: frozenset = field(default_factory=frozenset, init=False, repr=False)
 
 
 def load_project_config(config_path: str) -> ProjectConfig:
@@ -124,7 +125,11 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     )
 
     cfg._flow_run_error = _flow_run_problem(raw_run)
-    cfg._frequency_explicit = "frequency_mhz" in design
+    cfg._explicit_keys = frozenset(
+        f"{section}.{key}"
+        for section, table in (("design", design), ("pdk", pdk), ("flow", flow))
+        for key in table
+    )
 
     if not isinstance(pdk_overrides_raw, dict):
         cfg._pdk_config_errors = [

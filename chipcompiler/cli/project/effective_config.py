@@ -36,12 +36,6 @@ def _resolve_entry(manifest, run_name: str | None):
     return active[0] if len(active) == 1 else None
 
 
-def _find_entry(manifest, run_name: str | None):
-    if run_name is None:
-        return None
-    return manifest.find_workspace(run_name)
-
-
 def resolve_effective_config(
     ctx, run_name: str | None, cfg: "ProjectConfig | None"
 ) -> "CommandResult | tuple[ProjectConfig, dict | None, list[dict]]":
@@ -58,9 +52,7 @@ def resolve_effective_config(
     except (ManifestError, OSError) as exc:
         return CommandResult.err([error_record("manifest_invalid", reason=str(exc))])
 
-    entry = (
-        _resolve_entry(manifest, run_name) if run_name is None else _find_entry(manifest, run_name)
-    )
+    entry = _resolve_entry(manifest, run_name)
     assembled = assemble_config(manifest, entry)
 
     flow_config = None
@@ -70,7 +62,7 @@ def resolve_effective_config(
         _fill_missing_from_base(cfg, assembled, ctx.project_dir)
         if entry is not None:
             cfg.manifest_parameters = assembled["parameters"]
-            if not cfg.flow_preset:
+            if "flow.preset" not in cfg._explicit_keys:
                 flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
 
     warnings = []
@@ -130,19 +122,28 @@ def _assembled_frequency(parameters: dict) -> float:
 
 
 def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
-    """Fill a hybrid config's missing fields; explicit ecc.toml values win."""
-    cfg.design_name = cfg.design_name or assembled["design_name"]
-    cfg.design_top = cfg.design_top or assembled["top_module"]
-    cfg.design_clock_port = cfg.design_clock_port or assembled["clock"]
-    if not cfg.design_rtl:
+    """Fill a hybrid config's missing fields; explicit ecc.toml values win.
+
+    Presence, not truthiness: a key present in ecc.toml — even with an
+    empty value — stays explicit and faces validation instead of being
+    silently replaced by the manifest layer.
+    """
+    explicit = cfg._explicit_keys
+    if "design.name" not in explicit:
+        cfg.design_name = assembled["design_name"]
+    if "design.top" not in explicit:
+        cfg.design_top = assembled["top_module"]
+    if "design.clock_port" not in explicit:
+        cfg.design_clock_port = assembled["clock"]
+    if "design.rtl" not in explicit:
         cfg.design_rtl = _source_rtl(assembled)
-    cfg.pdk_name = cfg.pdk_name or assembled["pdk"]
-    cfg.pdk_root = cfg.pdk_root or assembled["pdk_root"]
+    if "pdk.name" not in explicit:
+        cfg.pdk_name = assembled["pdk"]
+    if "pdk.root" not in explicit:
+        cfg.pdk_root = assembled["pdk_root"]
     if not cfg.manifest_parameters:
         cfg.manifest_parameters = dict(assembled["parameters"] or {})
-    if not cfg._frequency_explicit:
-        # Presence, not truthiness: an explicit frequency_mhz = 0 stays
-        # explicit and fails validation instead of being silently replaced.
+    if "design.frequency_mhz" not in explicit:
         cfg.design_frequency_mhz = _assembled_frequency(assembled["parameters"])
 
 
@@ -159,10 +160,13 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config) -> list[str]:
 
     errors = validate_project_config(cfg)
     if ctx.project_state == "manifest":
+        # The [flow] relaxation covers an ABSENT preset only (the target is
+        # derivable elsewhere); an explicitly empty preset stays an error.
+        flow_relaxed = "flow.preset" not in cfg._explicit_keys
         errors = [
             err
             for err in errors
-            if err != "flow.preset is required"
+            if not (err == "flow.preset is required" and flow_relaxed)
             and not err.startswith("design.rtl must have exactly one entry")
         ]
         # validate_project_config checks the first source only for a
@@ -210,30 +214,32 @@ def layer_divergences(cfg, assembled: dict) -> list[str]:
     One canonical projection: manifest GUI-flat parameters are converted
     with geometry_to_parameters before comparison, paths are normalized
     against the project root, and the entry patch is already applied to
-    *assembled* by the caller. Empty/absent values never diverge.
+    *assembled* by the caller. Presence-keyed like the fill: only keys
+    present in ecc.toml are compared — an explicit empty value diverges
+    from a non-empty base; an absent key never diverges.
     """
+    explicit = cfg._explicit_keys
     keys: list[str] = []
-    for field_name, key in (
-        ("design_name", "design_name"),
-        ("design_top", "top_module"),
-        ("design_clock_port", "clock"),
-        ("pdk_name", "pdk"),
+    for dotted, field_name, key in (
+        ("design.name", "design_name", "design_name"),
+        ("design.top", "design_top", "top_module"),
+        ("design.clock_port", "design_clock_port", "clock"),
+        ("pdk.name", "pdk_name", "pdk"),
     ):
         base_value = assembled.get(key) or ""
-        toml_value = getattr(cfg, field_name, "")
-        if base_value and toml_value and str(base_value) != str(toml_value):
+        if dotted in explicit and str(base_value) != str(getattr(cfg, field_name, "")):
             keys.append(key)
 
     base_root = _normalize_path(cfg.project_dir, assembled.get("pdk_root"))
     toml_root = _normalize_path(cfg.project_dir, cfg.pdk_root)
-    if base_root and toml_root and base_root != toml_root:
+    if "pdk.root" in explicit and base_root != toml_root:
         keys.append("pdk_root")
 
     base_sources = {_normalize_path(cfg.project_dir, entry) for entry in _source_rtl(assembled)}
     toml_sources = {_normalize_path(cfg.project_dir, entry) for entry in cfg.design_rtl}
     base_sources.discard("")
     toml_sources.discard("")
-    if base_sources and toml_sources and base_sources != toml_sources:
+    if "design.rtl" in explicit and base_sources != toml_sources:
         keys.append("rtl")
 
     from chipcompiler.data.parameter_keys import geometry_to_parameters
@@ -241,8 +247,8 @@ def layer_divergences(cfg, assembled: dict) -> list[str]:
     canonical_params = geometry_to_parameters(assembled.get("parameters") or {})
     base_frequency = canonical_params.get("frequency_max")
     if (
-        base_frequency
-        and cfg.design_frequency_mhz > 0
+        "design.frequency_mhz" in explicit
+        and base_frequency
         and base_frequency != cfg.design_frequency_mhz
     ):
         keys.append("frequency_max")

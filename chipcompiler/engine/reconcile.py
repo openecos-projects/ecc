@@ -8,6 +8,12 @@ execution ledger. This module compares them and, under the workspace lock,
 appends missing suffix steps, adopts the new target, or repairs a stale
 ``[flow]`` — never deleting or invalidating successful prefix steps.
 
+Classification is pure-read and happens BEFORE any lock file or workspace
+initialization: a ``mismatch`` (or a read-only outcome) never creates
+``home/workspace.lock`` nor touches the tree. Only when the flow is
+compatible but needs an append/adopt does reconcile take the lock, re-read,
+reclassify, and mutate.
+
 Outcomes:
 
 - ``no_op``: persisted == target (or target is a prefix of persisted) and
@@ -20,6 +26,11 @@ Outcomes:
   between append and adopt); the section was rewritten in place.
 - ``mismatch``: divergent flows — validation is pure-read, nothing was
   written; the caller surfaces flow_mismatch.
+
+:func:`classify_workspace` exposes the pure-read phase to callers that
+must reject a mismatch before loading (and thereby initializing or
+migrating) the workspace; it additionally returns ``pending_mutation``
+when the flow is compatible but an append/adopt is due.
 """
 
 import fcntl
@@ -116,6 +127,116 @@ def resolve_target_section(project_flow: dict | None, workspace_flow: dict | Non
     return {}
 
 
+def _probe_workspace(workspace_dir: Path, target_section: dict | None):
+    """Pure-read classification plus the loaded inputs a mutation would need.
+
+    Returns (ReconcileResult, context) — the context dict is populated
+    only for ``pending_mutation``. The outcome is ``mismatch``, ``no_op``,
+    ``resume``, or ``pending_mutation`` (compatible, but an append/adopt
+    is due). Nothing is created or written here: no lock, no config
+    initialization, no ledger rewrite.
+    """
+    from chipcompiler.data.workspace_config import (
+        WorkspaceConfigError,
+        WorkspaceFlowTargetError,
+        flow_range_of,
+        load_workspace_config,
+    )
+    from chipcompiler.utility import json_read
+
+    flow_data = _persisted_flow_data(workspace_dir, json_read)
+    persisted = _persisted_entries(flow_data)
+
+    try:
+        config = load_workspace_config(workspace_dir)
+    except FileNotFoundError:
+        config = {"_flow": {}}
+    except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
+        return ReconcileResult(outcome="mismatch", error=f"workspace_config_invalid: {exc}"), {}
+    workspace_flow = config["_flow"]
+
+    if target_section is None:
+        target_section = workspace_flow or _derive_section_from_persisted(persisted)
+    target = _target_entries(target_section)
+
+    if not persisted:
+        return ReconcileResult(outcome="no_op", target=_entry_names(target)), {}
+
+    relation = compare_flows(persisted, target)
+    if relation == "divergent":
+        return (
+            ReconcileResult(
+                outcome="mismatch",
+                persisted=_entry_names(persisted),
+                target=_entry_names(target),
+                error="flow_mismatch",
+            ),
+            {},
+        )
+
+    if workspace_flow:
+        stale = flow_range_of(workspace_flow) != flow_range_of(target_section)
+    else:
+        stale = bool(target_section)
+    if relation == "proper_prefix" or stale:
+        context = {
+            "flow_data": flow_data,
+            "persisted": persisted,
+            "target": target,
+            "target_section": target_section,
+            "params": {key: value for key, value in config.items() if key != "_flow"},
+            "relation": relation,
+        }
+        return (
+            ReconcileResult(
+                outcome="pending_mutation",
+                persisted=_entry_names(persisted),
+                target=_entry_names(target),
+            ),
+            context,
+        )
+
+    if relation == "target_prefix":
+        # The persisted flow already covers the target: unconditional
+        # no-op — steps beyond the target are never the run's business.
+        return (
+            ReconcileResult(
+                outcome="no_op",
+                persisted=_entry_names(persisted),
+                target=_entry_names(target),
+            ),
+            {},
+        )
+
+    states = {
+        str(step.get("state", "")) for step in flow_data.get("steps", []) if isinstance(step, dict)
+    }
+    outcome = "no_op" if states == {"Success"} else "resume"
+    return (
+        ReconcileResult(
+            outcome=outcome,
+            persisted=_entry_names(persisted),
+            target=_entry_names(target),
+        ),
+        {},
+    )
+
+
+def classify_workspace(
+    workspace_dir: str | Path, target_section: dict | None = None
+) -> ReconcileResult:
+    """Pure-read classification of the workspace against the target range.
+
+    Use before loading/initializing a workspace: a ``mismatch`` result
+    guarantees nothing was written (no lock, no migration, no home.json).
+    ``pending_mutation`` means the flow is compatible but an append/adopt
+    is due — load the workspace and call :func:`reconcile_workspace`,
+    which re-classifies under the lock before writing.
+    """
+    probe, _context = _probe_workspace(Path(workspace_dir).resolve(), target_section)
+    return probe
+
+
 def reconcile_workspace(
     workspace_dir: str | Path, target_section: dict | None = None
 ) -> ReconcileResult:
@@ -126,118 +247,94 @@ def reconcile_workspace(
     ``home/ecc.toml [flow]`` is the target; when that is also absent, the
     persisted range itself is the target (nothing to reconcile).
     """
-    from chipcompiler.data.workspace_config import (
-        WorkspaceConfigError,
-        WorkspaceFlowTargetError,
-        load_workspace_config,
-        save_workspace_config,
-    )
-    from chipcompiler.utility import json_read, json_write
-
     workspace_dir = Path(workspace_dir).resolve()
 
+    probe, _context = _probe_workspace(workspace_dir, target_section)
+    if probe.outcome != "pending_mutation":
+        # Mismatch and read-only outcomes never see the lock created.
+        return probe
+
     with _workspace_lock(workspace_dir):
-        flow_data = _persisted_flow_data(workspace_dir, json_read)
-        persisted = _persisted_entries(flow_data)
+        # Re-read and reclassify under the lock: a concurrent reconcile may
+        # already have appended or repaired, downgrading this to read-only.
+        fresh, context = _probe_workspace(workspace_dir, target_section)
+        if fresh.outcome != "pending_mutation":
+            return fresh
+        return _apply_mutation(workspace_dir, fresh, context)
 
-        try:
-            config = load_workspace_config(workspace_dir)
-        except FileNotFoundError:
-            config = {"_flow": {}}
-        except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
-            return ReconcileResult(outcome="mismatch", error=f"workspace_config_invalid: {exc}")
-        params = {key: value for key, value in config.items() if key != "_flow"}
-        workspace_flow = config["_flow"]
 
-        if target_section is None:
-            target_section = workspace_flow or _derive_section_from_persisted(persisted)
-        target = _target_entries(target_section)
+def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) -> ReconcileResult:
+    """Append/adopt under the workspace lock for a pending classification."""
+    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.utility import json_read, json_write
 
-        if not persisted:
-            return ReconcileResult(outcome="no_op", target=_entry_names(target))
+    persisted = context["persisted"]
+    target = context["target"]
+    target_section = context["target_section"]
+    flow_data = context["flow_data"]
+    relation = context["relation"]
 
-        relation = compare_flows(persisted, target)
-        if relation == "divergent":
+    appended: list[str] = []
+    adopted_flow: dict = {}
+    outcome = None
+
+    if relation == "proper_prefix":
+        # Append the missing suffix as Unstart, then adopt the target.
+        from chipcompiler.data.workspace import _flow_step_template
+
+        steps = flow_data.setdefault("steps", [])
+        for name, tool in target[len(persisted) :]:
+            steps.append(_flow_step_template(name, tool, "Unstart"))
+            appended.append(name)
+        if not json_write(workspace_dir / "home" / "flow.json", flow_data):
             return ReconcileResult(
                 outcome="mismatch",
-                persisted=_entry_names(persisted),
-                target=_entry_names(target),
-                error="flow_mismatch",
+                error=f"failed to append flow steps to {workspace_dir / 'home' / 'flow.json'}",
             )
+        adopted_flow = dict(target_section)
+        outcome = "extended"
+    else:
+        # Adopt the effective target when the persisted [flow] is stale
+        # (crash between append and adopt, a hand-edited file, or an
+        # older wider intent superseded by the current target).
+        # Staleness compares ranges, not section form: preset="rcx" and
+        # start=Synthesis..end=sta describe the same steps. Adoption
+        # always writes the effective target itself — never a range
+        # derived from the persisted ledger — so extra persisted steps
+        # are kept but never become the target.
+        adopted_flow = dict(target_section)
 
-        appended: list[str] = []
-        adopted_flow: dict = {}
-        repaired = False
-        outcome = None
-
-        if relation == "proper_prefix":
-            # Append the missing suffix as Unstart, then adopt the target.
-            from chipcompiler.data.workspace import _flow_step_template
-
-            steps = flow_data.setdefault("steps", [])
-            for name, tool in target[len(persisted) :]:
-                steps.append(_flow_step_template(name, tool, "Unstart"))
-                appended.append(name)
-            if not json_write(workspace_dir / "home" / "flow.json", flow_data):
-                return ReconcileResult(
-                    outcome="mismatch",
-                    error=f"failed to append flow steps to {workspace_dir / 'home' / 'flow.json'}",
-                )
-            adopted_flow = dict(target_section)
-            outcome = "extended"
-        elif relation in ("equal", "target_prefix"):
-            # Adopt the effective target when the persisted [flow] is stale
-            # (crash between append and adopt, a hand-edited file, or an
-            # older wider intent superseded by the current target).
-            # Staleness compares ranges, not section form: preset="rcx" and
-            # start=Synthesis..end=sta describe the same steps. Adoption
-            # always writes the effective target itself — never a range
-            # derived from the persisted ledger — so extra persisted steps
-            # are kept but never become the target.
-            from chipcompiler.data.workspace_config import flow_range_of
-
-            if workspace_flow:
-                stale = flow_range_of(workspace_flow) != flow_range_of(target_section)
-            else:
-                stale = bool(target_section)
-            if stale:
-                adopted_flow = dict(target_section)
-                repaired = True
-
-        if adopted_flow and not save_workspace_config(workspace_dir, params, adopted_flow):
-            # A stale [flow] must never survive a completed run: adoption
-            # failure is an error, not a tolerated partial state.
-            return ReconcileResult(
-                outcome="mismatch",
-                persisted=_entry_names(persisted),
-                target=_entry_names(target),
-                error=(
-                    "flow_adopt_failed: failed to adopt flow target into "
-                    f"{workspace_dir / 'home' / 'ecc.toml'}"
-                ),
-            )
-
-        if outcome is None:
-            if relation == "target_prefix":
-                # The persisted flow already covers the target: unconditional
-                # no-op — steps beyond the target are never the run's business.
-                outcome = "no_op"
-            else:
-                flow_data = _persisted_flow_data(workspace_dir, json_read)
-                states = {
-                    str(step.get("state", ""))
-                    for step in flow_data.get("steps", [])
-                    if isinstance(step, dict)
-                }
-                if states == {"Success"}:
-                    outcome = "repaired" if repaired else "no_op"
-                else:
-                    outcome = "resume"
-
+    if adopted_flow and not save_workspace_config(workspace_dir, context["params"], adopted_flow):
+        # A stale [flow] must never survive a completed run: adoption
+        # failure is an error, not a tolerated partial state.
         return ReconcileResult(
-            outcome=outcome,
-            persisted=_entry_names(_persisted_entries(flow_data)),
-            target=_entry_names(target),
-            appended=tuple(appended),
-            adopted_flow=adopted_flow,
+            outcome="mismatch",
+            persisted=probe.persisted,
+            target=probe.target,
+            error=(
+                "flow_adopt_failed: failed to adopt flow target into "
+                f"{workspace_dir / 'home' / 'ecc.toml'}"
+            ),
         )
+
+    if outcome is None:
+        if relation == "target_prefix":
+            # The persisted flow already covers the target: unconditional
+            # no-op — steps beyond the target are never the run's business.
+            outcome = "no_op"
+        else:
+            flow_data = _persisted_flow_data(workspace_dir, json_read)
+            states = {
+                str(step.get("state", ""))
+                for step in flow_data.get("steps", [])
+                if isinstance(step, dict)
+            }
+            outcome = "repaired" if states == {"Success"} else "resume"
+
+    return ReconcileResult(
+        outcome=outcome,
+        persisted=_entry_names(_persisted_entries(flow_data)),
+        target=probe.target,
+        appended=tuple(appended),
+        adopted_flow=adopted_flow,
+    )

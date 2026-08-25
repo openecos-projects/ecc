@@ -442,6 +442,20 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
     )
+    from chipcompiler.engine.reconcile import classify_workspace, reconcile_workspace
+
+    # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
+    # can migrate configs, create home.json/checklist, or take the lock.
+    probe = classify_workspace(workspace_path)
+    if probe.outcome == "mismatch":
+        reason = probe.error or ""
+        if reason.startswith("workspace_config_invalid"):
+            return error("workspace_config_invalid", workspace=workspace_path, reason=reason)
+        return error(
+            "flow_mismatch",
+            workspace=workspace_path,
+            reason="the workspace flow target diverges from the persisted flow",
+        )
 
     try:
         workspace = load_workspace(workspace_path)
@@ -454,8 +468,6 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
 
     # Extend/resume against the workspace's own persisted flow target before
     # building the engine flow, so appended steps are visible below.
-    from chipcompiler.engine.reconcile import reconcile_workspace
-
     reconcile_result = reconcile_workspace(workspace_path)
     if not reconcile_result.ok:
         reason = reconcile_result.error or ""

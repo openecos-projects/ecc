@@ -320,23 +320,13 @@ def execute_migration(project_dir: str, cfg) -> tuple[list[dict], int]:
                     }
                 )
         else:
-            from chipcompiler.cli.project.config import resolve_pdk_root, resolve_rtl
-            from chipcompiler.cli.project.manifest import resolved_base_parameters
+            from chipcompiler.cli.project.config import resolve_pdk_root
+            from chipcompiler.cli.project.manifest import base_design_from_config
 
-            _, origin_verilog, _ = resolve_rtl(cfg)
-            parameters = resolved_base_parameters(cfg)
             document = build_manifest_document(
                 project_dir,
                 design_name=cfg.design_name,
-                base_design={
-                    "pdk": cfg.pdk_name,
-                    "pdk_root": resolve_pdk_root(cfg),
-                    "top_module": cfg.design_top,
-                    "clock": cfg.design_clock_port,
-                    "rtl_list": cfg.design_rtl,
-                    "origin_verilog": origin_verilog,
-                    "parameters": parameters,
-                },
+                base_design=base_design_from_config(cfg, resolve_pdk_root(cfg)),
                 workspace_id=migrated[0].run_id,
                 workspace_path=migrated[0].target,
                 start_step=migrated[0].start_step,

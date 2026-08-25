@@ -346,6 +346,30 @@ def resolved_base_parameters(cfg) -> dict:
     return flat
 
 
+def base_design_from_config(cfg, pdk_root: str) -> dict:
+    """The base_design document for a generated manifest.
+
+    Identity and sources come from the ecc.toml-resolved config with the
+    DECLARED project source spellings preserved: ``rtl_list`` verbatim,
+    and ``origin_verilog`` when the single source is plain RTL (empty for
+    a filelist source; the document builder drops empty keys). Parameters
+    are the GUI-flat projection. Shared by virgin generation and first
+    migration so the two writers cannot drift.
+    """
+    from chipcompiler.cli.project.config import resolve_rtl
+
+    _, origin_verilog, _ = resolve_rtl(cfg)
+    return {
+        "pdk": cfg.pdk_name,
+        "pdk_root": pdk_root,
+        "top_module": cfg.design_top,
+        "clock": cfg.design_clock_port,
+        "rtl_list": cfg.design_rtl,
+        "origin_verilog": cfg.design_rtl[0] if origin_verilog else "",
+        "parameters": resolved_base_parameters(cfg),
+    }
+
+
 def _slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
     return slug or "project"

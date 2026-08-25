@@ -245,13 +245,55 @@ class TestFlowContinuation:
         assert record["error"] == "workspace_config_invalid"
 
 
+def _tree_snapshot(root):
+    """{relpath: bytes} for every file under root — catches both changed
+    content and newly created paths."""
+    root_path = Path(root)
+    return {
+        str(path.relative_to(root_path)): path.read_bytes()
+        for path in sorted(root_path.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _write_manifest_with_workspace(project_dir, run_dir, pdk_root):
+    manifest_path = os.path.join(project_dir, "project.json")
+    with open(manifest_path, "w") as f:
+        json.dump(
+            {
+                "schema_version": 1,
+                "design_name": "gcd",
+                "root_path": project_dir,
+                "base_design": {
+                    "pdk": "ics55",
+                    "pdk_root": str(pdk_root),
+                    "top_module": "gcd",
+                    "clock": "clk",
+                    "rtl_list": ["rtl/gcd.v"],
+                    "parameters": {"design": "gcd", "frequency_max": 100},
+                },
+                "workspaces": [
+                    {
+                        "workspace_id": "ws_0001",
+                        "workspace_path": run_dir,
+                        "status": "failed",
+                    }
+                ],
+            },
+            f,
+            indent=2,
+        )
+    return manifest_path
+
+
 class TestFlowMismatchZeroMutation:
     def test_manifest_backed_mismatch_leaves_every_surface_untouched(
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
     ):
         """AC-14: a divergent persisted flow fails with flow_mismatch and zero
-        mutation — flow.json, home/ecc.toml, step outputs, and the manifest
-        are byte-identical before and after the rejected run."""
+        mutation — the whole workspace tree (paths and bytes, lock files and
+        home initialization included) and the manifest are identical before
+        and after the rejected run."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = os.path.join(project_dir, "ws_0001")
@@ -262,44 +304,68 @@ class TestFlowMismatchZeroMutation:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
             f.write("module gcd; endmodule // sentinel\n")
-        manifest_path = os.path.join(project_dir, "project.json")
-        with open(manifest_path, "w") as f:
-            json.dump(
-                {
-                    "schema_version": 1,
-                    "design_name": "gcd",
-                    "root_path": project_dir,
-                    "base_design": {
-                        "pdk": "ics55",
-                        "pdk_root": str(pdk_root),
-                        "top_module": "gcd",
-                        "clock": "clk",
-                        "rtl_list": ["rtl/gcd.v"],
-                        "parameters": {"design": "gcd", "frequency_max": 100},
-                    },
-                    "workspaces": [
-                        {
-                            "workspace_id": "ws_0001",
-                            "workspace_path": run_dir,
-                            "status": "failed",
-                        }
-                    ],
-                },
-                f,
-                indent=2,
-            )
+        manifest_path = _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
 
-        watched = [
-            os.path.join(run_dir, "home", "flow.json"),
-            os.path.join(run_dir, "home", "ecc.toml"),
-            output_path,
-            manifest_path,
-        ]
-        snapshots = {path: Path(path).read_bytes() for path in watched}
+        tree_before = _tree_snapshot(run_dir)
+        manifest_before = Path(manifest_path).read_bytes()
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
 
         assert rc != 0
         errors = [r for r in _records(capsys) if r.get("error") == "flow_mismatch"]
         assert len(errors) == 1
-        assert {path: Path(path).read_bytes() for path in watched} == snapshots
+        assert _tree_snapshot(run_dir) == tree_before
+        assert Path(manifest_path).read_bytes() == manifest_before
+
+    def test_legacy_parameters_mismatch_never_migrates(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        """AC-14 with a legacy-parameters workspace: the mismatch refusal must
+        not migrate parameters.json, create ecc.toml/lock/home.json, or touch
+        any other path."""
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = os.path.join(project_dir, "ws_0001")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home)
+        # Legacy shape: long-key parameters.json, no ecc.toml, and a ledger
+        # that diverges from the project preset at step one.
+        with open(os.path.join(home, "parameters.json"), "w") as f:
+            json.dump(
+                {
+                    "PDK": "ics55",
+                    "Design": "gcd",
+                    "Top module": "gcd",
+                    "Clock": "clk",
+                    "Frequency max [MHz]": 250,
+                },
+                f,
+            )
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump(
+                {
+                    "steps": [
+                        {
+                            "name": "place",
+                            "tool": "ecc",
+                            "state": "Success",
+                            "runtime": "",
+                            "peak memory (mb)": 0,
+                            "info": {},
+                        }
+                    ]
+                },
+                f,
+            )
+        manifest_path = _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
+
+        tree_before = _tree_snapshot(run_dir)
+        manifest_before = Path(manifest_path).read_bytes()
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        errors = [r for r in _records(capsys) if r.get("error") == "flow_mismatch"]
+        assert len(errors) == 1
+        assert _tree_snapshot(run_dir) == tree_before
+        assert Path(manifest_path).read_bytes() == manifest_before
