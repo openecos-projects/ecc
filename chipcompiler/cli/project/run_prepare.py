@@ -457,6 +457,9 @@ def execute_fresh_run(
         start_step, end_step = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
         # base_design reflects the ecc.toml-resolved config only; --set
         # values are run-scoped and never baked into the manifest.
+        # origin_verilog mirrors the source resolve_rtl classified as plain
+        # RTL (declared spelling, like rtl_list); a filelist source leaves
+        # it empty and the builder drops the key.
         document = build_manifest_document(
             project_dir,
             design_name=cfg.design_name,
@@ -466,6 +469,7 @@ def execute_fresh_run(
                 "top_module": cfg.design_top,
                 "clock": cfg.design_clock_port,
                 "rtl_list": cfg.design_rtl,
+                "origin_verilog": cfg.design_rtl[0] if origin_verilog else "",
                 "parameters": resolved_base_parameters(cfg),
             },
             workspace_id=run_name,

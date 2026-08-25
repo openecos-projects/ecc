@@ -91,17 +91,12 @@ def _manifest_only_config(ctx, manifest, assembled, entry):
     from chipcompiler.cli.project.config import ProjectConfig
 
     parameters = assembled["parameters"]
-    try:
-        frequency = float(parameters.get("frequency_max") or 0)
-    except (TypeError, ValueError):
-        frequency = 0.0
-
     cfg = ProjectConfig(
         design_name=assembled["design_name"],
         design_top=assembled["top_module"],
         design_rtl=_source_rtl(assembled),
         design_clock_port=assembled["clock"],
-        design_frequency_mhz=frequency,
+        design_frequency_mhz=_assembled_frequency(parameters),
         pdk_name=assembled["pdk"],
         pdk_root=assembled["pdk_root"],
         flow_preset="rtl2gds",  # inert: the entry range drives the created range
@@ -126,6 +121,14 @@ def _source_rtl(assembled: dict) -> list[str]:
     return rtl
 
 
+def _assembled_frequency(parameters: dict) -> float:
+    """The manifest layer's frequency_max as a float (0.0 when absent/invalid)."""
+    try:
+        return float(parameters.get("frequency_max") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
     """Fill a hybrid config's missing fields; explicit ecc.toml values win."""
     cfg.design_name = cfg.design_name or assembled["design_name"]
@@ -137,6 +140,10 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
     cfg.pdk_root = cfg.pdk_root or assembled["pdk_root"]
     if not cfg.manifest_parameters:
         cfg.manifest_parameters = dict(assembled["parameters"] or {})
+    if not cfg._frequency_explicit:
+        # Presence, not truthiness: an explicit frequency_mhz = 0 stays
+        # explicit and fails validation instead of being silently replaced.
+        cfg.design_frequency_mhz = _assembled_frequency(assembled["parameters"])
 
 
 def validate_effective(ctx, cfg, *, fresh: bool, flow_config) -> list[str]:

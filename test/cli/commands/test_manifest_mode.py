@@ -293,9 +293,22 @@ class TestVirginFirstRun:
         # initial "running" status.
         assert entry["status"] == "success"
         assert entry["parameter_patch"] == {}
-        assert manifest["base_design"]["pdk"] == "ics55"
-        assert manifest["base_design"]["top_module"] == "gcd"
-        assert manifest["base_design"]["clock"] == "clk"
+        # The complete D3 source shape, GUI-flat parameters included.
+        assert manifest["base_design"] == {
+            "pdk": "ics55",
+            "pdk_root": str(tmp_path / "ics55"),
+            "top_module": "gcd",
+            "clock": "clk",
+            "rtl_list": ["rtl/gcd.v"],
+            "origin_verilog": "rtl/gcd.v",
+            "parameters": {
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+                "frequency_max": 100.0,
+                "die_area_mode": "utilitization_margin",
+            },
+        }
 
     def test_virgin_run_set_values_stay_out_of_manifest(
         self, tmp_path, capsys, create_cli_project, flow_mocks
@@ -980,3 +993,80 @@ class TestEffectiveConfigValidation:
         records = _records(capsys)
         assert records[0]["status"] == "checked"
         assert all(r.get("warning") != "config_layer_diverged" for r in records)
+
+
+class TestHybridFrequencyProvenance:
+    """An absent ecc.toml frequency fills from the manifest layer; an explicit
+    (even invalid) ecc.toml frequency stays explicit and faces validation."""
+
+    def _hybrid(self, tmp_path, monkeypatch, design_lines, frequency_max=200):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(
+            project_dir,
+            [_workspace_entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": frequency_max},
+            },
+        )
+        (project_dir / "ecc.toml").write_text(
+            "[design]\n" + design_lines + "\n"
+            '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
+            '\n[flow]\npreset = "rtl2gds"\n'
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        return project_dir
+
+    _FULL_DESIGN_NO_FREQUENCY = 'name = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\nclock_port = "clk"'
+
+    def test_check_fills_absent_frequency_from_manifest(self, tmp_path, capsys, monkeypatch):
+        project_dir = self._hybrid(tmp_path, monkeypatch, self._FULL_DESIGN_NO_FREQUENCY)
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert _records(capsys)[0]["status"] == "checked"
+
+    def test_check_explicit_zero_frequency_still_fails(self, tmp_path, capsys, monkeypatch):
+        project_dir = self._hybrid(
+            tmp_path, monkeypatch, self._FULL_DESIGN_NO_FREQUENCY + "\nfrequency_mhz = 0"
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in _records(capsys))
+        assert "design.frequency_mhz must be greater than 0" in reasons
+
+    def test_run_fills_absent_frequency_from_manifest(
+        self, tmp_path, capsys, monkeypatch, flow_mocks
+    ):
+        project_dir = self._hybrid(tmp_path, monkeypatch, self._FULL_DESIGN_NO_FREQUENCY)
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["frequency_max"] == 200
+
+    def test_run_explicit_zero_frequency_fails_before_mutation(
+        self, tmp_path, capsys, monkeypatch, flow_mocks
+    ):
+        project_dir = self._hybrid(
+            tmp_path, monkeypatch, self._FULL_DESIGN_NO_FREQUENCY + "\nfrequency_mhz = 0"
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in _records(capsys))
+        assert "design.frequency_mhz must be greater than 0" in reasons
+        assert flow_mocks.capture["create_kwargs"] is None

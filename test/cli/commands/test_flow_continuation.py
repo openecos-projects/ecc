@@ -243,3 +243,63 @@ class TestFlowContinuation:
         assert rc != 0
         (record,) = _records(capsys)
         assert record["error"] == "workspace_config_invalid"
+
+
+class TestFlowMismatchZeroMutation:
+    def test_manifest_backed_mismatch_leaves_every_surface_untouched(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        """AC-14: a divergent persisted flow fails with flow_mismatch and zero
+        mutation — flow.json, home/ecc.toml, step outputs, and the manifest
+        are byte-identical before and after the rejected run."""
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = os.path.join(project_dir, "ws_0001")
+        # The persisted ledger diverges from the configured preset at step one
+        # (every preset chain starts with Synthesis).
+        _write_existing_workspace(run_dir, ["place"])
+        output_path = os.path.join(run_dir, "Synthesis_yosys", "output", "gcd.v")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w") as f:
+            f.write("module gcd; endmodule // sentinel\n")
+        manifest_path = os.path.join(project_dir, "project.json")
+        with open(manifest_path, "w") as f:
+            json.dump(
+                {
+                    "schema_version": 1,
+                    "design_name": "gcd",
+                    "root_path": project_dir,
+                    "base_design": {
+                        "pdk": "ics55",
+                        "pdk_root": str(pdk_root),
+                        "top_module": "gcd",
+                        "clock": "clk",
+                        "rtl_list": ["rtl/gcd.v"],
+                        "parameters": {"design": "gcd", "frequency_max": 100},
+                    },
+                    "workspaces": [
+                        {
+                            "workspace_id": "ws_0001",
+                            "workspace_path": run_dir,
+                            "status": "failed",
+                        }
+                    ],
+                },
+                f,
+                indent=2,
+            )
+
+        watched = [
+            os.path.join(run_dir, "home", "flow.json"),
+            os.path.join(run_dir, "home", "ecc.toml"),
+            output_path,
+            manifest_path,
+        ]
+        snapshots = {path: Path(path).read_bytes() for path in watched}
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        errors = [r for r in _records(capsys) if r.get("error") == "flow_mismatch"]
+        assert len(errors) == 1
+        assert {path: Path(path).read_bytes() for path in watched} == snapshots
