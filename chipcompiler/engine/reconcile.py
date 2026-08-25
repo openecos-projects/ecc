@@ -205,14 +205,17 @@ def reconcile_workspace(
                 repaired = True
 
         if adopted_flow and not save_workspace_config(workspace_dir, params, adopted_flow):
-            # flow.json is already consistent with the target; the stale
-            # [flow] is repaired by the next reconcile. Proceed with the run.
-            logger.warning(
-                "failed to adopt flow target into %s; will repair on next run",
-                workspace_dir / "home" / "ecc.toml",
+            # A stale [flow] must never survive a completed run: adoption
+            # failure is an error, not a tolerated partial state.
+            return ReconcileResult(
+                outcome="mismatch",
+                persisted=_entry_names(persisted),
+                target=_entry_names(target),
+                error=(
+                    "flow_adopt_failed: failed to adopt flow target into "
+                    f"{workspace_dir / 'home' / 'ecc.toml'}"
+                ),
             )
-            adopted_flow = {}
-            repaired = False
 
         if outcome is None:
             if relation == "target_prefix":

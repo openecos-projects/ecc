@@ -372,7 +372,20 @@ def resolved_base_parameters(cfg) -> dict:
 
     from chipcompiler.data.parameter_keys import parameters_to_geometry
 
-    return parameters_to_geometry(canonical)
+    flat = parameters_to_geometry(canonical)
+    # Exclusive GUI-flat shape: geometry lives only in the aliases —
+    # the canonical die/core subtrees are consumed, not duplicated.
+    # Non-positional members (e.g. aspect_ratio) hoist to flat top-level
+    # keys; positional members are covered by the aliases.
+    for subtree_name in ("die", "core"):
+        subtree = flat.pop(subtree_name, None)
+        if not isinstance(subtree, dict):
+            continue
+        for member, value in subtree.items():
+            if member in ("size", "utilitization", "margin"):
+                continue
+            flat.setdefault(member, value)
+    return flat
 
 
 def _slugify(value: str) -> str:

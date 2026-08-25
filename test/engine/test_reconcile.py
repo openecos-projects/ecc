@@ -224,3 +224,16 @@ class TestTargetPrecedence:
             "start": "place",
             "end": "route",
         }
+
+
+def test_adoption_failure_is_an_error_not_a_tolerated_stale_target(tmp_path, monkeypatch):
+    workspace_dir = _write_workspace(tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"})
+    monkeypatch.setattr(
+        "chipcompiler.data.workspace_config.save_workspace_config", lambda *a, **k: False
+    )
+
+    result = reconcile_workspace(workspace_dir, {"preset": "rcx"})
+
+    assert result.outcome == "mismatch"
+    assert result.error is not None
+    assert result.error.startswith("flow_adopt_failed")

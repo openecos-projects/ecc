@@ -291,6 +291,17 @@ def run_existing_workspace(
                     )
                 ]
             )
+        if reason.startswith("flow_adopt_failed"):
+            return CommandResult.err(
+                [
+                    error_record(
+                        "flow_adopt_failed",
+                        run=run_name,
+                        workspace=run_dir,
+                        reason=reason,
+                    )
+                ]
+            )
         return CommandResult.err(
             [
                 error_record(
@@ -407,6 +418,23 @@ def _write_back_status(project_dir: str, run_name: str, status: str, warning_rec
         )
 
 
+def _materialize_rtl_filelist(cfg) -> str:
+    """Write the declared multi-entry rtl list as one generated filelist.
+
+    Paths resolve against the project directory, mirroring resolve_rtl's
+    single-source rule. Returns the filelist path.
+    """
+    import tempfile
+
+    from chipcompiler.cli.project.config import _resolve_path
+
+    fd, filelist_path = tempfile.mkstemp(prefix="ecc-rtl-", suffix=".f")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        for entry in cfg.design_rtl:
+            f.write(_resolve_path(cfg.project_dir, entry) + "\n")
+    return filelist_path
+
+
 def execute_fresh_run(
     command_input,
     ctx,
@@ -445,6 +473,11 @@ def execute_fresh_run(
     project_dir = ctx.project_dir
 
     _, origin_verilog, input_filelist = resolve_rtl(cfg)
+    if len(cfg.design_rtl) > 1:
+        # Manifest-backed projects may declare several RTL sources;
+        # materialize them as one generated filelist for creation.
+        input_filelist = _materialize_rtl_filelist(cfg)
+        origin_verilog = ""
     parameters = to_parameters(cfg)
     pdk_root = resolve_pdk_root(cfg)
 
@@ -660,12 +693,7 @@ def check_manifest_project(ctx) -> CommandResult:
     if ctx.manifest_error:
         # Read-only intent: an unresolvable run selector is an error, not a
         # warning (the check result above would otherwise look authoritative).
-        return CommandResult.err(
-            [
-                error_record(
-                    "workspace_not_declared",
-                    reason=ctx.manifest_error,
-                )
-            ]
-        )
+        from chipcompiler.cli.core.records import manifest_error_record
+
+        return CommandResult.err([manifest_error_record(ctx.manifest_error)])
     return CommandResult.ok(records)

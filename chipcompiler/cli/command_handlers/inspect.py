@@ -28,18 +28,12 @@ def _config_error_result(ctx: CommandContext, reason: str) -> CommandResult:
 
 
 def _manifest_error_result(ctx: CommandContext) -> CommandResult:
-    reason = ctx.manifest_error or ""
-    prefix, _, _ = reason.partition(":")
-    kind = (
-        prefix
-        if prefix in ("manifest_invalid", "workspace_not_declared", "invalid_run_id")
-        else "workspace_not_declared"
-    )
+    from chipcompiler.cli.core.records import manifest_error_record
+
     return CommandResult.err(
         [
-            error_record(
-                kind,
-                reason=reason,
+            manifest_error_record(
+                ctx.manifest_error or "",
                 inspect=disclosure_cmd("ecc status", ctx.project, ctx.run_id),
             )
         ]

@@ -584,3 +584,104 @@ class TestHybridFullLayering:
         warnings = [r for r in records if r.get("warning") == "config_layer_diverged"]
         assert len(warnings) == 1
         assert "top_module" in warnings[0]["keys"]
+
+
+class TestHybridManifestFallbacks:
+    def test_flowless_ecc_toml_existing_run_uses_workspace_flow(
+        self, tmp_path, capsys, flow_mocks, monkeypatch
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        # Hybrid ecc.toml WITHOUT [flow].
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "gcd"\n'
+            'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 100.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
+        )
+        # Existing workspace carrying its own [flow].
+        run_dir = project_dir / "ws_0001"
+        (run_dir / "home").mkdir(parents=True)
+        (run_dir / "home" / "flow.json").write_text(
+            json.dumps(
+                {
+                    "steps": [
+                        {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                    ]
+                }
+            )
+        )
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        assert save_workspace_config(
+            run_dir,
+            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {"start": "Synthesis", "end": "Synthesis"},
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        assert records[0]["status"] == "success"
+        assert records[0]["no_op"] is True
+
+    def test_multi_rtl_manifest_materializes_filelist(
+        self, tmp_path, capsys, flow_mocks, monkeypatch
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / "rtl").mkdir(exist_ok=True)
+        (project_dir / "rtl" / "b.v").write_text("module b; endmodule\n")
+        _write_manifest(
+            project_dir,
+            [_workspace_entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v", "rtl/b.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100},
+            },
+        )
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nfrequency_mhz = 100.0\n\n[flow]\npreset = "rtl2gds"\n'
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        filelist = flow_mocks.capture["create_kwargs"]["input_filelist"]
+        from pathlib import Path as _P
+
+        lines = _P(filelist).read_text().splitlines()
+        assert len(lines) == 2
+        assert lines[0].endswith("rtl/gcd.v")
+        assert lines[1].endswith("rtl/b.v")
+
+    def test_check_reports_layer_divergence(
+        self, tmp_path, capsys, monkeypatch, minimal_ics55_pdk_factory
+    ):
+        minimal_ics55_pdk_factory(tmp_path / "ics55_unused")
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "other_top"\n'
+            'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 100.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
+            '\n[flow]\npreset = "rtl2gds"\n'
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        warnings = [r for r in records if r.get("warning") == "config_layer_diverged"]
+        assert len(warnings) == 1
+        assert "top_module" in warnings[0]["keys"]

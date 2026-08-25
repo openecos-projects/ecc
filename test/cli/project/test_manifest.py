@@ -295,6 +295,9 @@ def test_resolved_base_parameters_gui_flat_vocabulary():
     # Positional overrides surface as GUI aliases, not nested subtrees.
     assert parameters["utilitization"] == 0.45
     assert parameters["max_fanout"] == 16
+    # Exclusive GUI-flat shape: no canonical geometry subtrees survive.
+    assert "die" not in parameters
+    assert "core" not in parameters
 
 
 def test_update_manifest_preserves_interleaved_unrelated_change(tmp_path):
@@ -350,3 +353,25 @@ def test_status_write_back_touches_only_target_entry(tmp_path):
     changed_entry_keys = [k for k in entry_after if entry_after[k] != entry_before.get(k)]
     assert sorted(changed_entry_keys) == ["status", "updated_at"]
     assert entry_after["status"] == "success"
+
+
+def test_resolved_base_parameters_whole_object():
+    from chipcompiler.cli.project.config import ProjectConfig
+
+    cfg = ProjectConfig(
+        design_name="gcd",
+        design_top="gcd",
+        design_clock_port="clk",
+        design_frequency_mhz=200.0,
+        params_overrides={"floorplan.core_util": 0.45, "floorplan.core_margin": [3, 3]},
+    )
+
+    assert resolved_base_parameters(cfg) == {
+        "design": "gcd",
+        "top_module": "gcd",
+        "clock": "clk",
+        "frequency_max": 200.0,
+        "utilitization": 0.45,
+        "margin": 3,
+        "die_area_mode": "utilitization_margin",
+    }

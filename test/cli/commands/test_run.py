@@ -441,3 +441,52 @@ class TestWorkspaceRun:
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 1
         assert record["error"] == error
+
+
+class TestWorkspaceNoOp:
+    def test_target_prefix_workspace_resume_is_noop_without_executing_extras(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        import json as _json
+
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        workspace = tmp_path / "workspace"
+        home = workspace / "home"
+        home.mkdir(parents=True)
+        from chipcompiler.rtl2gds.builder import build_harden_flow
+
+        chain = [
+            (step.value if hasattr(step, "value") else str(step), str(tool))
+            for step, tool, _state in build_harden_flow()
+        ]
+        steps = [
+            {"name": name, "tool": tool, "state": "Success"}
+            for name, tool in chain[:10]  # full rtl2gds prefix
+        ] + [
+            {"name": chain[10][0], "tool": chain[10][1], "state": "Unstart"},
+            {"name": chain[11][0], "tool": chain[11][1], "state": "Unstart"},
+        ]
+        (home / "flow.json").write_text(_json.dumps({"steps": steps}))
+        assert save_workspace_config(
+            workspace,
+            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {"preset": "rtl2gds"},
+        )
+        monkeypatch.setattr(
+            "chipcompiler.engine.rerun.run_resume",
+            lambda flow: (_ for _ in ()).throw(
+                AssertionError("extras must not execute on a no_op reconcile")
+            ),
+        )
+
+        rc = cli_main.run(["run", "--workspace", str(workspace), "--resume", "--json"])
+
+        assert rc == 0
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert record["status"] == "success"
+        assert record["no_op"] is True
+        # The adopted narrower target replaced the stale wider one.
+        from chipcompiler.data.workspace_config import load_workspace_config
+
+        assert load_workspace_config(workspace)["_flow"] == {"preset": "rtl2gds"}
