@@ -49,7 +49,7 @@ def plot_csv_map(input_path: str, output_path: str = None) -> bool:
                 fig.colorbar(scatter, ax=ax, label="Value")
             else:
                 # For matrix-like CSV data (heatmap)
-                img = ax.imshow(df.values, cmap="viridis", origin="lower")
+                img = ax.imshow(df.values, cmap="viridis", origin="upper")
                 fig.colorbar(img, ax=ax, label="Value")
                 ax.set_xticks(range(df.shape[1]))
                 ax.set_xticklabels(df.columns if df.columns[0] != "0" else range(df.shape[1]))

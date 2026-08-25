@@ -5,6 +5,8 @@ from .parameter import (
     get_design_parameters,
     get_parameters,
     load_parameter,
+    parameters_have_chip_identity,
+    reload_parameter,
     save_parameter,
 )
 from .pdk import PDK, get_pdk
@@ -105,6 +107,8 @@ __all__ = [
     "log_workspace_step",
     "Parameters",
     "load_parameter",
+    "reload_parameter",
+    "parameters_have_chip_identity",
     "save_parameter",
     "get_parameters",
     "get_design_parameters",

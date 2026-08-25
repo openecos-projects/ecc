@@ -2,7 +2,13 @@ import json
 from pathlib import Path
 
 from chipcompiler.data import get_design_parameters, get_parameters
-from chipcompiler.data.parameter import load_parameter, save_parameter
+from chipcompiler.data.parameter import (
+    Parameters,
+    load_parameter,
+    parameters_have_chip_identity,
+    reload_parameter,
+    save_parameter,
+)
 
 
 def test_get_design_parameters_ics55_gcd_overrides_fields():
@@ -142,3 +148,37 @@ def test_get_parameters_without_path_uses_none():
     parameters = get_parameters("ics55")
 
     assert parameters.path is None
+
+
+def test_parameters_have_chip_identity_requires_dashboard_fields():
+    assert parameters_have_chip_identity({}) is False
+    assert parameters_have_chip_identity({"Die": {"Size": [], "Area": 0}}) is False
+    assert parameters_have_chip_identity({"PDK": "ics55"}) is True
+    assert parameters_have_chip_identity({"Design": "gcd"}) is True
+    assert parameters_have_chip_identity({"Top module": "gcd"}) is True
+    assert parameters_have_chip_identity({"Clock": "clk"}) is True
+    assert parameters_have_chip_identity({"Die": {"Area": 1200}}) is True
+
+
+def test_reload_parameter_keeps_identity_when_file_is_empty(tmp_path):
+    path = tmp_path / "parameters.json"
+    path.write_text("{}")
+    current = Parameters(
+        path=path,
+        data={
+            "PDK": "ics55",
+            "Design": "gcd",
+            "Top module": "gcd",
+            "Clock": "clk",
+            "Die": {"Size": [100, 80], "Area": 8000},
+        },
+    )
+
+    reloaded = reload_parameter(path, current)
+
+    assert reloaded.data["PDK"] == "ics55"
+    assert reloaded.data["Design"] == "gcd"
+    assert reloaded.data["Top module"] == "gcd"
+    assert reloaded.data["Clock"] == "clk"
+    assert reloaded.data["Die"]["Area"] == 8000
+    assert reloaded.path == path

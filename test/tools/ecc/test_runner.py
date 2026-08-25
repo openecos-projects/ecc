@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.data import (
     PDK,
     EccData,
@@ -162,8 +164,8 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
         config={
-            "flow": tmp_path / "config" / "flow_config.json",
-            "db": tmp_path / "config" / "db_default_config.json",
+            "flow": tmp_path / "config" / "flow_ecc.json",
+            "db": tmp_path / "config" / "db_ecc.json",
         },
     )
     step = EccStep(
@@ -198,8 +200,8 @@ def test_create_db_engine_uses_def_input_for_lvs_even_when_db_exists(tmp_path, m
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
         config={
-            "flow": tmp_path / "config" / "flow_config.json",
-            "db": tmp_path / "config" / "db_default_config.json",
+            "flow": tmp_path / "config" / "flow_ecc.json",
+            "db": tmp_path / "config" / "db_ecc.json",
         },
     )
     step = EccStep(
@@ -303,7 +305,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
         config={
             "flow": tmp_path / "config" / "flow.json",
             "db": tmp_path / "config" / "db.json",
-            StepEnum.STA.value: tmp_path / "config" / "sta.json",
+            StepEnum.STA.value: tmp_path / "config" / "sta_ecc.json",
         },
         logger=logger,
     )
@@ -408,8 +410,8 @@ def test_run_sta_without_spef_removes_stale_power_report_on_failure(tmp_path):
 def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    sta_config = config_dir / "sta.json"
-    rcx_config = config_dir / "rcx.json"
+    sta_config = config_dir / "sta_ecc.json"
+    rcx_config = config_dir / "rcx_ecc.json"
     sta_config.write_text(
         json.dumps(
             {
@@ -469,7 +471,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
-    sta_config = config_dir / "sta.json"
+    sta_config = config_dir / "sta_ecc.json"
     sta_config.write_text(
         json.dumps(
             {
@@ -482,12 +484,12 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         ),
         encoding="utf-8",
     )
-    rcx_config = config_dir / "rcx.json"
+    rcx_config = config_dir / "rcx_ecc.json"
     rcx_config.write_text(
         json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}),
         encoding="utf-8",
     )
-    incorrect_sta_config = tmp_path / "shared-config" / "sta.json"
+    incorrect_sta_config = tmp_path / "shared-config" / "sta_ecc.json"
     incorrect_sta_config.parent.mkdir()
     incorrect_sta_config.write_text("{}", encoding="utf-8")
     logger = FakeLogger()
@@ -566,9 +568,10 @@ def test_rcx_checklist_uses_top_module_for_spef_design_token(tmp_path):
     assert checklist.check_spef_file(str(spef)) is True
 
 
-def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path):
+@pytest.mark.parametrize("step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value))
+def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_name):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
-    step = build_step(workspace, StepEnum.ROUTING.value, None, None)
+    step = build_step(workspace, step_name, None, None)
     module = SnapshotSaveEccModule(write_snapshot=True)
 
     assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
@@ -626,11 +629,18 @@ def test_save_data_fails_when_geometry_snapshot_cannot_be_written(tmp_path):
     )
 
 
-def test_engine_flow_requires_geometry_manifest_for_physical_steps(tmp_path):
+@pytest.mark.parametrize("step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value))
+def test_engine_flow_requires_geometry_manifest_for_physical_steps(tmp_path, step_name):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
-    step = build_step(workspace, StepEnum.ROUTING.value, None, None)
+    step = build_step(workspace, step_name, None, None)
     build_step_space(step)
-    for output_path in (step.output.def_, step.output.verilog, step.output.gds):
+    for output_path in (
+        step.output.def_,
+        step.output.verilog,
+        step.output.gds,
+        step.report.step,
+        step.feature.step,
+    ):
         assert output_path is not None
         output_path.write_text("", encoding="utf-8")
     assert step.output.geometry_manifest is not None

@@ -14,7 +14,11 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_payload
-from chipcompiler.tools.ecc.signoff_checklist import _workspace_items, refresh_step_checklist
+from chipcompiler.tools.ecc.signoff_checklist import (
+    _workspace_items,
+    rebuild_home_checklist,
+    refresh_step_checklist,
+)
 
 
 def _record(metric_id, value, path="feature/step.json"):
@@ -531,3 +535,54 @@ def test_initial_rtl_reports_configured_file_missing(tmp_path):
         "source": {"kind": "provenance", "path": "origin/gcd.f"},
         "evidence": [{"kind": "provenance", "path": "origin/gcd.f"}],
     }
+
+
+def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    (tmp_path / "home").mkdir()
+    workspace.home.init(tmp_path / "home" / "home.json")
+    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    workspace.flow.data = {
+        "steps": [
+            {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
+            for step in (
+                StepEnum.ROUTING,
+                StepEnum.DRC,
+                StepEnum.LVS,
+                StepEnum.FILLER,
+                StepEnum.RCX,
+                StepEnum.STA,
+            )
+        ]
+        + [{"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Ongoing.value}]
+    }
+    step = EccStep(
+        name=StepEnum.HARDEN.value,
+        directory=tmp_path / "Harden_ecc",
+        checklist=ChecklistState(path=tmp_path / "Harden_ecc" / "checklist.json"),
+    )
+
+    refresh_step_checklist(workspace, step)
+    home_items = {
+        item["id"]: item
+        for item in json.loads((tmp_path / "home" / "checklist.json").read_text(encoding="utf-8"))[
+            "checklist"
+        ]
+    }
+    assert home_items["flow.harden.completed"]["state"] == "failed"
+    assert "Ongoing" in home_items["flow.harden.completed"]["summary"]
+
+    workspace.flow.data["steps"][-1]["state"] = StateEnum.Success.value
+    rebuild_home_checklist(workspace)
+    home_items = {
+        item["id"]: item
+        for item in json.loads((tmp_path / "home" / "checklist.json").read_text(encoding="utf-8"))[
+            "checklist"
+        ]
+    }
+    assert home_items["flow.harden.completed"]["state"] == "pass"
+    assert home_items["flow.harden.completed"]["blocked"] is False
+    assert home_items["flow.harden.completed"]["summary"] == (
+        "Required flow stage completed successfully."
+    )

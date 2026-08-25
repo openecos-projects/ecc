@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -304,3 +305,23 @@ def test_pdk_validate_optional_paths_absent_ok(tmp_path, minimal_ics55_pdk_facto
 
     assert pdk.mapping_file is None
     assert pdk.spef is None
+
+
+def test_builtin_pdk_external_config_keeps_explicit_buffer_override(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    pdk_config = tmp_path / "pdk.json"
+    pdk_config.write_text(
+        json.dumps(
+            {
+                "name": "ics55",
+                "root": str(pdk_root),
+                "buffers": ["CUSTOM_BUFFER"],
+            }
+        )
+    )
+
+    pdk = get_pdk("ics55", pdk_config=pdk_config)
+
+    assert pdk.buffers == ["CUSTOM_BUFFER"]

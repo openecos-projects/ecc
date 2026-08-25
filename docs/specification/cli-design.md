@@ -410,7 +410,7 @@ Examples:
 ```text
 run=default status=success workspace=runs/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
-config=rt_default_config.json scope=step step=routing role=config path=runs/default/config/rt_default_config.json inspect="ecc config routing --resolved --json"
+config=route_ecc.json scope=step step=routing role=config path=runs/default/config/route_ecc.json inspect="ecc config routing --resolved --json"
 ```
 
 Rules:

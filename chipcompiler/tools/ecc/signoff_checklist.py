@@ -64,10 +64,10 @@ _REQUIRED_FLOW_STEPS = (
 )
 
 _CONFIG_FILENAMES = {
-    "flow": "flow_config.json",
-    "db": "db_default_config.json",
-    StepEnum.RCX.value: "rcx.json",
-    StepEnum.STA.value: "sta.json",
+    "flow": "flow_ecc.json",
+    "db": "db_ecc.json",
+    StepEnum.RCX.value: "rcx_ecc.json",
+    StepEnum.STA.value: "sta_ecc.json",
 }
 
 
@@ -360,7 +360,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                     f"{len(report_corners)} configured corners."
                     if report_state == "pass"
                     else (
-                        "No STA signoff corners are configured in config/sta.json."
+                        "No STA signoff corners are configured in config/sta_ecc.json."
                         if report_state == "unavailable"
                         else f"Missing or empty STA reports: {', '.join(report_missing)}"
                     )
@@ -382,7 +382,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                     f"{len(summaries)} valid STA corner summaries are present."
                     if summary_state == "pass"
                     else (
-                        "No STA signoff corners are configured in config/sta.json."
+                        "No STA signoff corners are configured in config/sta_ecc.json."
                         if summary_state == "unavailable"
                         else (
                             f"Missing or invalid STA corner summaries: {', '.join(summary_missing)}"
@@ -407,7 +407,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                     f"{len(timing_paths)} valid STA timing-path artifacts are present."
                     if timing_paths_state == "pass"
                     else (
-                        "No STA signoff corners are configured in config/sta.json."
+                        "No STA signoff corners are configured in config/sta_ecc.json."
                         if timing_paths_state == "unavailable"
                         else (
                             "Missing or invalid STA timing paths: "

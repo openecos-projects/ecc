@@ -26,7 +26,7 @@ def _write_json(path: Path, payload: dict) -> None:
 
 
 def _workspace(tmp_path: Path):
-    cts_config = tmp_path / "config" / "cts_default_config.json"
+    cts_config = tmp_path / "config" / "cts_ecc.json"
     _write_json(cts_config, {"skew_bound": 0.08})
     parameters = tmp_path / "home" / "parameters.json"
     _write_json(parameters, {"Core": {"Utilitization": 0.6}})

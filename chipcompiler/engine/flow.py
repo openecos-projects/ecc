@@ -67,6 +67,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
         StepEnum.DRC.value,
+        StepEnum.LVS.value,
         StepEnum.FILLER.value,
     }
 )
@@ -109,9 +110,9 @@ class EngineFlow:
         steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.NETLIST_OPT, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.PLACEMENT, "ecc", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "ecc", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.ROUTING, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
         # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
@@ -656,6 +657,8 @@ class EngineFlow:
 
             save_layout_image(workspace=self.workspace, step=workspace_step)
 
+        _refresh_signoff_checklist(self.workspace, workspace_step)
+
         self.clear_db_engine_after_step(workspace_step, state)
         _notify_flow_observer(observer, "on_step_completed", workspace_step, state)
         if state == StateEnum.Success and not _wait_for_step_rendered(
@@ -675,6 +678,20 @@ class EngineFlow:
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
+
+
+def _refresh_signoff_checklist(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
+    """Replace step/home checklists after the step's terminal flow state is saved."""
+    try:
+        from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
+
+        refresh_step_checklist(workspace, workspace_step)
+    except Exception:
+        logger.exception(
+            "Failed to refresh signoff checklist after %s/%s",
+            workspace_step.name,
+            workspace_step.tool,
+        )
 
 
 def _notify_flow_observer(observer, method_name: str, *args) -> None:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import csv
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -137,27 +138,27 @@ def test_init_rcx_passes_pdk_when_configured():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.init_rcx(config="/tmp/rcx.json", pdk="ics55") is True
+    assert module.init_rcx(config="/tmp/rcx_ecc.json", pdk="ics55") is True
 
-    assert module.ecc.calls == [{"config": "/tmp/rcx.json", "pdk": "ics55"}]
+    assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json", "pdk": "ics55"}]
 
 
 def test_init_rcx_defaults_to_ics55_pdk():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.init_rcx(config="/tmp/rcx.json") is True
+    assert module.init_rcx(config="/tmp/rcx_ecc.json") is True
 
-    assert module.ecc.calls == [{"config": "/tmp/rcx.json", "pdk": "ics55"}]
+    assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json", "pdk": "ics55"}]
 
 
 def test_init_rcx_omits_explicit_empty_pdk_for_backward_compatibility():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
-    assert module.init_rcx(config="/tmp/rcx.json", pdk="") is True
+    assert module.init_rcx(config="/tmp/rcx_ecc.json", pdk="") is True
 
-    assert module.ecc.calls == [{"config": "/tmp/rcx.json"}]
+    assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json"}]
 
 
 def test_view_json_save_passes_output_options():
@@ -398,21 +399,15 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.run_drc(Path("/ws/config/drc.json"), Path("/ws/report/drc.rpt"))
     module.save_drc(Path("/ws/feature/drc.json"))
     module.pnp(Path("/ws/config/pnp.json"))
-    module.run_placement(Path("/ws/config/place.json"))
-    module.init_pl(Path("/ws/config/place.json"))
     module.feature_placement_map(Path("/ws/feature/place_map.json"))
-    module.run_incremental_flow(Path("/ws/config/incremental.json"))
-    module.run_legalize(Path("/ws/config/legalize.json"))
     module.run_filler(Path("/ws/config/filler.json"))
-    module.run_macro_placement(Path("/ws/config/macro.json"), Path("/ws/script/macro.tcl"))
-    module.run_refinement(Path("/ws/script/refine.tcl"))
     module.run_routing(Path("/ws/config/route.json"))
     module.feature_route_read(Path("/ws/feature/route_read.json"))
     module.feature_route(Path("/ws/feature/route.json"))
     module.write_abstract_lef(Path("/ws/output/abstract.lef"))
     module.write_timing_model(
         timing_output,
-        config=Path("/ws/config/sta.json"),
+        config=Path("/ws/config/sta_ecc.json"),
         output_dir=timing_work_dir,
         lib_paths=[Path("/pdk/lib.lib")],
         sdc_path=Path("/ws/design.sdc"),
@@ -422,13 +417,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.init_lvs(Path("/ws/data/lvs"))
     module.run_lvs()
     module.destroy_lvs()
-    module.layout_patchs(Path("/ws/layout/patches.json"))
-    module.layout_graph(Path("/ws/layout/graph.json"))
-    module.generate_vectors(Path("/ws/vectors"))
-    module.vectors_nets_to_def(Path("/ws/vectors"))
-    module.vectors_nets_patterns_to_def(Path("/ws/vectors/patterns.json"))
-    module.get_timing_wire_graph(Path("/ws/graph/wire.json"))
-    module.get_timing_instance_graph(Path("/ws/graph/inst.json"))
     module.cell_density(save_path=Path("/ws/eval/cell.csv"))
     module.pin_density(save_path=Path("/ws/eval/pin.csv"))
     module.net_density(save_path=Path("/ws/eval/net.csv"))
@@ -1701,7 +1689,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
-    sta_config = tmp_path / "config" / "sta.json"
+    sta_config = tmp_path / "config" / "sta_ecc.json"
     sta_config.parent.mkdir(parents=True, exist_ok=True)
     sta_config.write_text(
         json.dumps(
@@ -2009,7 +1997,7 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    sta_config = tmp_path / "config" / "sta.json"
+    sta_config = tmp_path / "config" / "sta_ecc.json"
     sta_config.parent.mkdir(parents=True, exist_ok=True)
     sta_config.write_text(
         json.dumps(
@@ -2067,7 +2055,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
-    sta_config = tmp_path / "config" / "sta.json"
+    sta_config = tmp_path / "config" / "sta_ecc.json"
     sta_config.parent.mkdir(parents=True, exist_ok=True)
     sta_config.write_text(
         json.dumps(
@@ -2468,6 +2456,7 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
                     "cut_layers": [],
                     "routing_layers": [
                         {"layer_name": "M1", "layer_order": 1},
+                        {"layer_name": "M2", "layer_order": 2},
                     ],
                 }
             }
@@ -2478,9 +2467,20 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
         json.dumps(
             {
                 "drc": {
-                    "number": 2,
+                    "number": 999,
                     "distribution": {
-                        "short": {"layers": {"M1": {"number": 2}}},
+                        "short": {
+                            "layers": {
+                                "M1": {"number": 2},
+                                "M2": {"number": 3},
+                            }
+                        },
+                        "spacing": {
+                            "layers": {
+                                "M1": {"number": 5},
+                                "M2": {"number": 7},
+                            }
+                        },
                     },
                 }
             }
@@ -2507,6 +2507,12 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
     assert plot_calls[0]["input_path"] == str(step.analysis.statis_csv)
     assert plot_calls[0]["output_path"] == expected_image_path
     assert metric_calls == [expected_image_path]
+    with open(step.analysis.statis_csv, newline="") as csvfile:
+        assert list(csv.DictReader(csvfile)) == [
+            {"Type": "short", "M1": "2", "M2": "3", "total": "5"},
+            {"Type": "spacing", "M1": "5", "M2": "7", "total": "12"},
+            {"Type": "total", "M1": "7", "M2": "10", "total": "17"},
+        ]
 
 
 def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):

@@ -33,7 +33,6 @@ BUILDER_PARAM_KEYS: list[tuple[str, str, str]] = [
     ("Bottom layer", "ecc/builder.py:329", "RT.-bottom_routing_layer"),
     ("Top layer", "ecc/builder.py:330", "RT.-top_routing_layer"),
     ("Max fanout", "ecc/builder.py:259", "no.max_fanout"),
-    ("Global right padding", "ecc/builder.py:273", "PL.GP.global_right_padding"),
     (
         "Target density",
         "ecc_dreamplace/parameter_overrides.py:8",
@@ -98,7 +97,6 @@ PARAM_CONFIG_DEFAULTS: list[tuple[str, float, float, str]] = [
     ("Cell padding x", 300, 300, "dreamplace.cell_padding_x"),
     ("Routability opt flag", 1, 1, "dreamplace.routability_opt_flag"),
     ("Max fanout", 20, 32, "no.max_fanout"),
-    ("Global right padding", 0, 0, "PL.GP.global_right_padding"),
 ]
 
 
@@ -176,7 +174,7 @@ class FakeDreamplaceParams:
 
 
 def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
-    config_path = tmp_path / "dreamplace.json"
+    config_path = tmp_path / "dreamplace_ecc.json"
     json_write(
         config_path,
         {
@@ -223,7 +221,6 @@ PROPAGATION_MAP: list[tuple[str, str, bool]] = [
     ("Target overflow", "dreamplace.stop_overflow", True),
     ("Cell padding x", "dreamplace.cell_padding_x", True),
     ("Routability opt flag", "dreamplace.routability_opt_flag", True),
-    ("Global right padding", "PL.GP.global_right_padding", True),
     ("Bottom layer", "RT.-bottom_routing_layer", True),
     ("Top layer", "RT.-top_routing_layer", True),
     ("Max fanout", "no.max_fanout", True),

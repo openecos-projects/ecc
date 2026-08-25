@@ -76,13 +76,13 @@ def _make_signoff_workspace(
     _write_json(workspace_dir / "home" / "checklist.json", {"checklist": []})
 
     _write_json(
-        workspace_dir / "config" / "sta.json",
+        workspace_dir / "config" / "sta_ecc.json",
         {
             "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
             "signoff": [{"MAX": ["RCworst"]}],
         },
     )
-    for config_name in ("db_default_config.json", "flow_config.json", "rcx.json"):
+    for config_name in ("db_ecc.json", "flow_ecc.json", "rcx_ecc.json"):
         _write_json(workspace_dir / "config" / config_name, {})
 
     _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.gds")
@@ -171,10 +171,10 @@ def _make_engine_flow(
     )
     workspace.pdk.sdc = workspace_dir / "origin" / f"{top_module}.sdc"
     workspace.config = {
-        "flow": workspace_dir / "config" / "flow_config.json",
-        "db": workspace_dir / "config" / "db_default_config.json",
-        "RCX": workspace_dir / "config" / "rcx.json",
-        "sta": workspace_dir / "config" / "sta.json",
+        "flow": workspace_dir / "config" / "flow_ecc.json",
+        "db": workspace_dir / "config" / "db_ecc.json",
+        "RCX": workspace_dir / "config" / "rcx_ecc.json",
+        "sta": workspace_dir / "config" / "sta_ecc.json",
     }
     workspace.flow.path = workspace_dir / "home" / "flow.json"
     workspace.flow.data = json.loads(workspace.flow.path.read_text(encoding="utf-8"))
@@ -253,6 +253,37 @@ def test_collect_signoff_package_requires_synthesis_verilog(tmp_path):
         and issue.required
         for issue in result.issues
     )
+
+
+def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz").unlink()
+    _write(
+        workspace_dir / "origin" / "gcd.v",
+        "module gcd; // original imported RTL\nendmodule\n",
+    )
+    flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
+    flow["steps"].insert(
+        0,
+        {"name": "Floorplan", "tool": "ecc", "state": StateEnum.Success.value},
+    )
+    _write_json(workspace_dir / "home" / "flow.json", flow)
+    engine_flow = _make_engine_flow(workspace_dir)
+    external_rtl = tmp_path / "external" / "gcd.v"
+    _write(external_rtl, "module gcd; // outside the workspace\nendmodule\n")
+    engine_flow.workspace.design.origin_verilog = external_rtl
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
+
+    assert result.ok is True
+    package_dir = Path(result.package_dir)
+    assert (package_dir / "initial" / "gcd.v").read_text() == (
+        "module gcd; // original imported RTL\nendmodule\n"
+    )
+    assert not (package_dir / "synthesis" / "gcd.v.gz").exists()
+    summary = json.loads((package_dir / "summary.json").read_text())
+    assert summary["initial"]["verilog"] == "initial/gcd.v"
+    assert "synthesis" not in summary
 
 
 def test_collect_signoff_package_tolerates_missing_sta_power_report(tmp_path):

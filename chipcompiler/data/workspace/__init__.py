@@ -14,6 +14,7 @@ from ..parameter import (
     Parameters,
     get_parameters,
     load_parameter,
+    reload_parameter,
     save_parameter,
     update_parameters,
 )
@@ -118,15 +119,27 @@ def log_workspace_step(step: WorkspaceStep, logger: Logger):
 
 
 _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
+    "flow": "flow_ecc.json",
+    "db": "db_ecc.json",
+    StepEnum.CTS.value: "cts_ecc.json",
+    StepEnum.DRC.value: "drc_ecc.json",
+    StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
+    StepEnum.NETLIST_OPT.value: "fixfanout_ecc.json",
+    StepEnum.ROUTING.value: "route_ecc.json",
+    StepEnum.FILLER.value: "filler_ecc.json",
+    StepEnum.RCX.value: "rcx_ecc.json",
+    StepEnum.STA.value: "sta_ecc.json",
+    "dreamplace": "dreamplace_ecc.json",
+}
+
+_LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "flow": "flow_config.json",
     "db": "db_default_config.json",
     StepEnum.CTS.value: "cts_default_config.json",
     StepEnum.DRC.value: "drc_default_config.json",
     StepEnum.FLOORPLAN.value: "fp_default_config.json",
     StepEnum.NETLIST_OPT.value: "no_default_config_fixfanout.json",
-    StepEnum.PLACEMENT.value: "pl_default_config.json",
     StepEnum.ROUTING.value: "rt_default_config.json",
-    StepEnum.LEGALIZATION.value: "pl_default_config.json",
     StepEnum.FILLER.value: "pl_default_config.json",
     StepEnum.RCX.value: "rcx.json",
     StepEnum.STA.value: "sta.json",
@@ -138,12 +151,12 @@ _STEP_BY_VALUE: Final[dict[str, StepEnum]] = {step.value: step for step in StepE
 _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
     (StepEnum.FLOORPLAN, "ecc"): ("flow", "db", StepEnum.FLOORPLAN.value),
     (StepEnum.NETLIST_OPT, "ecc"): ("flow", "db", StepEnum.NETLIST_OPT.value),
-    (StepEnum.PLACEMENT, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.PLACEMENT, "ecc"): ("flow", "db"),
     (StepEnum.CTS, "ecc"): ("flow", "db", StepEnum.CTS.value),
     (StepEnum.ROUTING, "ecc"): ("flow", "db", StepEnum.ROUTING.value),
     (StepEnum.DRC, "ecc"): ("flow", "db", StepEnum.DRC.value),
-    (StepEnum.LEGALIZATION, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
-    (StepEnum.FILLER, "ecc"): ("flow", "db", StepEnum.PLACEMENT.value),
+    (StepEnum.LEGALIZATION, "ecc"): ("flow", "db"),
+    (StepEnum.FILLER, "ecc"): ("flow", "db", StepEnum.FILLER.value),
     (StepEnum.RCX, "ecc"): ("flow", "db", StepEnum.RCX.value),
     (StepEnum.STA, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
@@ -166,6 +179,52 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
             for config_key, filename in _WORKSPACE_CONFIG_FILENAMES.items()
         },
     }
+
+
+def _migrate_flow_config_paths(flow_path: Path) -> None:
+    from chipcompiler.utility import json_read, json_write
+
+    if not flow_path.is_file():
+        return
+
+    flow = json_read(flow_path)
+    config_paths = flow.get("ConfigPath") if isinstance(flow, dict) else None
+    if not isinstance(config_paths, dict):
+        return
+
+    legacy_to_canonical = {
+        legacy_filename: _WORKSPACE_CONFIG_FILENAMES[config_key]
+        for config_key, legacy_filename in _LEGACY_WORKSPACE_CONFIG_FILENAMES.items()
+    }
+    changed = False
+    for config_key, path_value in config_paths.items():
+        if not isinstance(path_value, str):
+            continue
+        canonical_filename = legacy_to_canonical.get(Path(path_value).name)
+        if canonical_filename is None:
+            continue
+        canonical_path = str(Path(path_value).with_name(canonical_filename))
+        if canonical_path != path_value:
+            config_paths[config_key] = canonical_path
+            changed = True
+
+    if changed and not json_write(flow_path, flow):
+        raise OSError(f"Failed to update migrated flow config: {flow_path}")
+
+
+def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
+    """Rename legacy workspace configs before resolving their canonical paths."""
+    config_dir = Path(workspace_dir) / "config"
+    if not config_dir.is_dir():
+        return
+
+    for config_key, legacy_filename in _LEGACY_WORKSPACE_CONFIG_FILENAMES.items():
+        legacy_path = config_dir / legacy_filename
+        canonical_path = config_dir / _WORKSPACE_CONFIG_FILENAMES[config_key]
+        if legacy_path.is_file() and not canonical_path.exists():
+            legacy_path.rename(canonical_path)
+
+    _migrate_flow_config_paths(config_dir / _WORKSPACE_CONFIG_FILENAMES["flow"])
 
 
 def workspace_config_path(workspace_dir: str | Path, config_key: str) -> Path | None:
@@ -338,9 +397,9 @@ PARAMETER_CONFIG_FIELD_MAPPINGS = (
         ("max_fanout",),
     ),
     WorkspaceConfigParameterMapping(
-        "Global right padding",
-        StepEnum.PLACEMENT.value,
-        ("PL", "GP", "global_right_padding"),
+        "Max fanout",
+        StepEnum.CTS.value,
+        ("max_fanout",),
     ),
     WorkspaceConfigParameterMapping(
         "Bottom layer",
@@ -415,10 +474,10 @@ def _mapping_config_path(
 
 
 def _reload_workspace_parameters(workspace: Workspace) -> None:
-    if workspace.parameters.path:
-        parameter_path = Path(workspace.parameters.path)
-        if parameter_path.exists():
-            workspace.parameters = load_parameter(parameter_path)
+    parameter_path = workspace.parameters.path
+    if parameter_path is None:
+        return
+    workspace.parameters = reload_parameter(parameter_path, workspace.parameters)
 
 
 def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
@@ -457,7 +516,7 @@ def _load_default_floorplan_config() -> dict:
     from chipcompiler.utility import json_read
 
     root_dir = Path(__file__).resolve().parent.parent.parent
-    return json_read(root_dir / "tools" / "ecc" / "configs" / "fp_default_config.json")
+    return json_read(root_dir / "tools" / "ecc" / "configs" / "floorplan_ecc.json")
 
 
 def _has_new_floorplan_schema(config: dict) -> bool:
@@ -622,7 +681,7 @@ def init_workspace_config(workspace: Workspace) -> None:
     config_dir = workspace.config["dir"]
     root_dir = Path(__file__).resolve().parent.parent.parent
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
-    dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace.json"
+    dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
 
     _copy_missing_files(ecc_config_dir, config_dir)
     if not workspace.config["dreamplace"].exists():
@@ -651,7 +710,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
         )
     flow["ConfigPath"]["idb_path"] = str(workspace.config["db"])
     flow["ConfigPath"]["ifp_path"] = str(workspace.config[f"{StepEnum.FLOORPLAN.value}"])
-    flow["ConfigPath"]["ipl_path"] = str(workspace.config[f"{StepEnum.PLACEMENT.value}"])
+    flow["ConfigPath"].pop("ipl_path", None)
     flow["ConfigPath"]["irt_path"] = str(workspace.config[f"{StepEnum.ROUTING.value}"])
     flow["ConfigPath"]["idrc_path"] = str(workspace.config[f"{StepEnum.DRC.value}"])
     flow["ConfigPath"]["icts_path"] = str(workspace.config[f"{StepEnum.CTS.value}"])
@@ -679,23 +738,21 @@ def refresh_workspace_config(workspace: Workspace) -> None:
             f"Netlist opt config missing or corrupt: "
             f"{workspace.config[f'{StepEnum.NETLIST_OPT.value}']}"
         )
+    max_fanout = workspace.parameters.data.get("Max fanout", 32)
     fixfanout["insert_buffer"] = workspace.pdk.buffers[0] if len(workspace.pdk.buffers) > 0 else ""
-    fixfanout["max_fanout"] = workspace.parameters.data.get("Max fanout", 32)
+    fixfanout["max_fanout"] = max_fanout
     json_write(workspace.config[f"{StepEnum.NETLIST_OPT.value}"], fixfanout)
 
-    placement = json_read(workspace.config[f"{StepEnum.PLACEMENT.value}"])
-    if "PL" not in placement:
-        raise FileNotFoundError(
-            f"Placement config missing or corrupt (no 'PL' key): "
-            f"{workspace.config[f'{StepEnum.PLACEMENT.value}']}"
-        )
-    placement["PL"]["BUFFER"]["buffer_type"] = workspace.pdk.buffers
-    placement["PL"]["Filler"]["first_iter"] = workspace.pdk.fillers
-    placement["PL"]["Filler"]["second_iter"] = workspace.pdk.fillers
-    placement["PL"]["GP"]["global_right_padding"] = workspace.parameters.data.get(
-        "Global right padding", 0
-    )
-    json_write(workspace.config[f"{StepEnum.PLACEMENT.value}"], placement)
+    filler_path = workspace.config[f"{StepEnum.FILLER.value}"]
+    filler = json_read(filler_path)
+    if not isinstance(filler, dict):
+        raise FileNotFoundError(f"Filler config missing or corrupt: {filler_path}")
+    min_filler_width = filler.get("-min_filler_width")
+    if min_filler_width is None:
+        nested = filler.get("PL", {})
+        nested = nested.get("Filler", {}) if isinstance(nested, dict) else {}
+        min_filler_width = nested.get("min_filler_width", 1) if isinstance(nested, dict) else 1
+    json_write(filler_path, {"-min_filler_width": min_filler_width})
 
     cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
     if not cts:
@@ -703,6 +760,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
             f"CTS config missing or corrupt: {workspace.config[f'{StepEnum.CTS.value}']}"
         )
     cts["buffer_type"] = workspace.pdk.buffers
+    cts["max_fanout"] = max_fanout
     json_write(workspace.config[f"{StepEnum.CTS.value}"], cts)
 
     router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
@@ -881,6 +939,8 @@ def prepare_workspace_for_rerun(
     workspace.home.reset()
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(workspace_root / "home" / "checklist.json")
+    parameter_path = workspace.parameters.path or (workspace_root / "home" / "parameters.json")
+    workspace.parameters.path = Path(parameter_path)
     workspace.home.set_parameters(workspace.parameters.path)
     _reset_workspace_checklist(workspace)
     if not preserve_user_inputs:
@@ -1294,6 +1354,7 @@ def load_workspace(directory: str | Path) -> Workspace:
     # create workspace instance
     workspace = Workspace()
     workspace.directory = workspace_dir
+    migrate_workspace_config_filenames(workspace_dir)
     workspace.config = build_workspace_config_paths(workspace)
 
     parameters = load_parameter(home_dir / "parameters.json")

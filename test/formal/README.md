@@ -109,6 +109,6 @@ Documented by XFAIL tests with concrete z3 counterexamples:
 
 5. **"File list" key missing from template** -- yosys builder reads `"File list"` via `dict.get()` but ICS55 template does not define it
 6. **Dead config defaults** -- these JSON defaults are always overwritten by parameter propagation:
-   - `dreamplace.json: target_density=0.8` -- overwritten with parameter default 0.2
-   - `no_default_config_fixfanout.json: max_fanout=32` -- overwritten with parameter default 20
+   - `dreamplace_ecc.json: target_density=0.8` -- overwritten with parameter default 0.2
+   - `fixfanout_ecc.json: max_fanout=32` -- overwritten with parameter default 20
 7. **Forced overrides** -- DreamPlace runtime forces timing-only fields `with_sta`, `timing_opt_flag`, `timing_eval_flag`, `differentiable_timing_obj` off regardless of parameters

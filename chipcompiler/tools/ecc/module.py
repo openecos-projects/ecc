@@ -8,6 +8,10 @@ from typing import TypeAlias
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
 from chipcompiler.utility.path import path_text, path_texts
 
+# ecc-tools loggers terminate the host process on error by default; embedded in
+# Python they must raise instead so failures surface as Python exceptions.
+os.environ.setdefault("ECC_LOGGER_THROW_ON_ERROR", "1")
+
 # Path arguments to the native-wrapper methods are normalized via path_text(),
 # so they accept a Path, a str, or None (a step group field is Path | None).
 PathArg: TypeAlias = str | Path | None
@@ -533,68 +537,14 @@ class ECCToolsModule:
     ########################################################################
     # placement api
     ########################################################################
-    def run_placement(self, config: str):
-        self.ecc.run_placer(path_text(config))
-
-    def init_pl(self, config: str):
-        return self.ecc.init_pl(config=path_text(config))
-
-    def destroy_pl(self):
-        return self.ecc.destroy_pl()
-
     def feature_placement_map(self, json_path: PathArg, map_grid_size=5):
         """
         generate placement map feature
         """
         self.ecc.feature_pl_eval(path_text(json_path), map_grid_size)
 
-    def run_incremental_flow(self, config: str):
-        return self.ecc.run_incremental_flow(config=path_text(config))
-
-    def run_legalize(self, config: str):
-        self.ecc.run_incremental_lg()
-
     def run_filler(self, config: str):
         self.ecc.insert_filler(path_text(config))
-
-    def run_macro_placement(self, config: str, tcl_path=""):
-        """
-        run macro placement
-        """
-        self.ecc.runMP(path_text(config), path_text(tcl_path))
-
-    def run_refinement(self, tcl_path=""):
-        self.ecc.runRef(path_text(tcl_path))
-
-    def run_ai_placement(self, config: str, onnx_path: str, normalization_path: str):
-        """
-        Run AI-guided placement using ONNX model
-
-        Args:
-            onnx_path: Path to the ONNX model file
-            normalization_path: Path to the normalization parameters JSON file
-        """
-        self.ecc.run_ai_placement(
-            path_text(config), path_text(onnx_path), path_text(normalization_path)
-        )
-
-    def placer_run_mp(self):
-        return self.ecc.placer_run_mp()
-
-    def placer_run_gp(self):
-        return self.ecc.placer_run_gp()
-
-    def placer_run_lg(self):
-        return self.ecc.placer_run_lg()
-
-    def placer_run_dp(self):
-        return self.ecc.placer_run_dp()
-
-    def feature_macro_drc_distribution(self, path: str, drc_path: str):
-        """
-        build macro drc distribution
-        """
-        self.ecc.feature_macro_drc(path=path, drc_path=drc_path)
 
     ########################################################################
     # routing api
@@ -775,52 +725,6 @@ class ECCToolsModule:
                 "}\n",
                 encoding="utf-8",
             )
-
-    ########################################################################
-    # data vectorization
-    ########################################################################
-    def layout_patchs(self, path: str):
-        return self.ecc.layout_patchs(path=path_text(path))
-
-    def layout_graph(self, path: str):
-        return self.ecc.layout_graph(path=path_text(path))
-
-    def generate_vectors(
-        self,
-        vectors_dir: str,
-        patch_row_step: int = 9,
-        patch_col_step: int = 9,
-        *,
-        batch_mode: bool = True,
-        is_placement_mode: bool = False,
-        sta_mode: int = 0,
-    ):
-        """
-        generate vectorized data from design
-        """
-        self.ecc.generate_vectors(
-            dir=path_text(vectors_dir),
-            patch_row_step=patch_row_step,
-            patch_col_step=patch_col_step,
-            batch_mode=batch_mode,
-            is_placement_mode=is_placement_mode,
-            sta_mode=sta_mode,
-        )
-
-    def vectors_nets_to_def(self, vectors_dir: str):
-        """
-        save vectorized data to def
-        """
-        self.ecc.read_vectors_nets(dir=path_text(vectors_dir))
-
-    def vectors_nets_patterns_to_def(self, path):
-        self.ecc.read_vectors_nets_patterns(path=path_text(path))
-
-    def get_timing_wire_graph(self, wire_graph_path: str):
-        return self.ecc.get_timing_wire_graph(path_text(wire_graph_path))
-
-    def get_timing_instance_graph(self, instance_graph_path: str):
-        return self.ecc.get_timing_instance_graph(path_text(instance_graph_path))
 
     ########################################################################
     # evaluation api

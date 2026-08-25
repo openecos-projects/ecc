@@ -61,8 +61,8 @@ def test_pyinstaller_payload_filter_excludes_oversized_paths():
             "PYMODULE",
         ),
         (
-            "/repo/chipcompiler/tools/ecc/configs/flow_config.json",
-            "chipcompiler/tools/ecc/configs/flow_config.json",
+            "/repo/chipcompiler/tools/ecc/configs/flow_ecc.json",
+            "chipcompiler/tools/ecc/configs/flow_ecc.json",
             "DATA",
         ),
     ]

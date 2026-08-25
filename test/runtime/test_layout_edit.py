@@ -179,7 +179,7 @@ def _make_layout_workspace(tmp_path, *, with_db=False, with_editor_workspace=Fal
     )
     workspace = SimpleNamespace(directory=workspace_dir)
     if with_editor_workspace:
-        config_path = workspace_dir / "config" / "fp_default_config.json"
+        config_path = workspace_dir / "config" / "floorplan_ecc.json"
         config_path.parent.mkdir()
         config_path.write_text('{"legacy": true}\n', encoding="utf-8")
         parameters_path = workspace_dir / "parameters.json"

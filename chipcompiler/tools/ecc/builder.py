@@ -195,10 +195,9 @@ def build_step_config(workspace: Workspace, step: EccStep):
         workspace.config = build_workspace_config_paths(workspace)
 
     # reload parameters
-    from chipcompiler.data import load_parameter
+    from chipcompiler.data import reload_parameter
 
-    parameter = load_parameter(workspace.parameters.path)
-    workspace.parameters = parameter
+    workspace.parameters = reload_parameter(workspace.parameters.path, workspace.parameters)
 
     update_step_config(workspace=workspace, step=step)
 

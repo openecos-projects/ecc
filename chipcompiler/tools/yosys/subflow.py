@@ -113,12 +113,4 @@ class YosysSubFlow:
 
                 publish_subflow_stage(self.workspace, self.workspace_step, step_dict)
 
-                # update home page monitor
-                self.workspace.home.update_monitor(
-                    step=self.workspace_step.name,
-                    sub_step=step_name,
-                    memory=str(peak_memory),
-                    runtime=runtime,
-                )
-
                 break
