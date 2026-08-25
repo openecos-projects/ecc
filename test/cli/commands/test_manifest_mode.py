@@ -512,3 +512,75 @@ class TestHybridCheck:
         assert rc != 0
         (record,) = _records(capsys)
         assert record["error"] == "workspace_not_declared"
+
+
+class TestHybridFullLayering:
+    def test_partial_ecc_toml_filled_from_manifest_base(
+        self, tmp_path, capsys, flow_mocks, monkeypatch
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        # Partial ecc.toml: only [design] frequency — everything else from base.
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nfrequency_mhz = 200.0\n\n[flow]\npreset = "rtl2gds"\n'
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        kwargs = flow_mocks.capture["create_kwargs"]
+        assert kwargs["pdk"] == "ics55"
+        assert kwargs["directory"] == str(project_dir / "ws_0001")
+        parameters = kwargs["parameters"]
+        assert parameters["top_module"] == "gcd"  # from manifest base
+        assert parameters["clock"] == "clk"  # from manifest base
+        assert parameters["frequency_max"] == 200.0  # ecc.toml wins
+
+    def test_project_flow_preset_outranks_manifest_entry_range(
+        self, tmp_path, capsys, flow_mocks, monkeypatch
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(
+            project_dir,
+            [
+                {
+                    "workspace_id": "ws_0001",
+                    "workspace_path": str(project_dir / "ws_0001"),
+                    "start_step": "Place",
+                    "end_step": "Route",
+                }
+            ],
+        )
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "gcd"\n'
+            'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 100.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
+            '\n[flow]\npreset = "rcx"\n'
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        kwargs = flow_mocks.capture["create_kwargs"]
+        assert kwargs["flow_config"] is None  # preset drives, not the entry range
+
+    def test_diverging_layers_emit_warning(self, tmp_path, capsys, flow_mocks, monkeypatch):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "other_top"\n'
+            'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 100.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
+            '\n[flow]\npreset = "rtl2gds"\n'
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        warnings = [r for r in records if r.get("warning") == "config_layer_diverged"]
+        assert len(warnings) == 1
+        assert "top_module" in warnings[0]["keys"]

@@ -310,6 +310,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
     cfg = ctx.config
     flow_config = None
+    layer_warnings: list[dict] = []
     if cfg is None:
         if ctx.project_state == "manifest":
             assembled = run_prepare.manifest_project_config(command_input, ctx)
@@ -326,6 +327,33 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     }
                 ]
             )
+    elif ctx.project_state == "manifest":
+        # Hybrid project (both ecc.toml and project.json): the manifest base
+        # layers beneath the ecc.toml values — only missing fields are filled.
+        from chipcompiler.cli.project.manifest import layer_divergences
+
+        base = run_prepare.manifest_base_config(ctx)
+        if base is not None:
+            from chipcompiler.cli.core.records import warning_record
+
+            cfg.design_name = cfg.design_name or base["design_name"]
+            cfg.design_top = cfg.design_top or base["top_module"]
+            cfg.design_clock_port = cfg.design_clock_port or base["clock"]
+            if not cfg.design_rtl and base["rtl_list"]:
+                cfg.design_rtl = list(base["rtl_list"])
+            cfg.pdk_name = cfg.pdk_name or base["pdk"]
+            cfg.pdk_root = cfg.pdk_root or base["pdk_root"]
+            cfg.manifest_parameters = dict(base["parameters"] or {})
+            diverging = layer_divergences(cfg, base)
+            if diverging:
+                layer_warnings.append(
+                    warning_record(
+                        "config_layer_diverged",
+                        keys=diverging,
+                        reason="ecc.toml values override different project.json base values",
+                    )
+                )
+
     errors = validate_project_config(cfg)
     if errors:
         return CommandResult.err(
@@ -374,15 +402,16 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         run_dir, run_name, workspace_registered, warning_records = resolved
 
     if project_state == "manifest" and not cfg.manifest_driven:
-        # Hybrid project (both ecc.toml and project.json): the manifest base
-        # layers beneath the ecc.toml values; a declared entry seeds the
-        # creation-time flow range. Runs after run-name resolution so the
-        # real workspace's parameter_patch applies.
-        manifest_parameters, entry_flow_config = run_prepare.manifest_base_layer(ctx, run_name)
-        if manifest_parameters:
-            cfg.manifest_parameters = manifest_parameters
-        if entry_flow_config is not None:
+        # The declared entry layers its parameter_patch beneath ecc.toml,
+        # applied after run-name resolution. The entry's creation-time flow
+        # range seeds only when the project ecc.toml has no flow target —
+        # project [flow] always outranks the manifest entry.
+        entry_parameters, entry_flow_config = run_prepare.manifest_entry_layer(ctx, run_name)
+        if entry_parameters:
+            cfg.manifest_parameters = entry_parameters
+        if entry_flow_config is not None and not cfg.flow_preset:
             flow_config = entry_flow_config
+    warning_records = layer_warnings + warning_records
 
     protected = (project_dir, os.path.join(project_dir, "runs"))
     spelled = {os.path.normpath(p) for p in protected}

@@ -304,6 +304,48 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
     }
 
 
+def layer_divergences(cfg, assembled: dict) -> list[str]:
+    """Keys where the ecc.toml layer overrides a different manifest value.
+
+    Identity fields from [design] and backend parameter overrides from
+    [params]; empty/absent values never diverge.
+    """
+    keys: list[str] = []
+    for field_name, key in (
+        ("design_top", "top_module"),
+        ("design_clock_port", "clock"),
+        ("pdk_name", "pdk"),
+        ("pdk_root", "pdk_root"),
+    ):
+        base_value = assembled.get(key) or ""
+        toml_value = getattr(cfg, field_name, "")
+        if base_value and toml_value and str(base_value) != str(toml_value):
+            keys.append(key)
+
+    base_params = assembled.get("parameters") or {}
+    if cfg.params_overrides and base_params:
+        from chipcompiler.cli.project.params import (
+            build_backend_overrides,
+            resolve_parameters,
+        )
+
+        resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
+        backend = build_backend_overrides(resolved)
+        flat_base = dict(_flatten(base_params))
+        for key, value in _flatten(backend):
+            if key in flat_base and flat_base[key] != value:
+                keys.append(key)
+    return keys
+
+
+def _flatten(data, prefix=()):
+    for key, value in (data or {}).items():
+        if isinstance(value, dict):
+            yield from _flatten(value, (*prefix, key))
+        else:
+            yield ".".join((*prefix, key)), value
+
+
 def resolved_base_parameters(cfg) -> dict:
     """The ecc.toml-resolved base_design.parameters for a generated manifest.
 

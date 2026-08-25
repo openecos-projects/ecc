@@ -153,13 +153,30 @@ def manifest_project_config(command_input, ctx):
     return (cfg, flow_config)
 
 
-def manifest_base_layer(ctx, run_name):
-    """(parameters, flow_config) from the manifest for hybrid projects.
+def manifest_base_config(ctx):
+    """The full assembled manifest base for a hybrid project, or None.
 
-    Hybrid projects carry both ecc.toml and project.json: the manifest base
-    layers beneath the ecc.toml values, and a declared workspace entry seeds
-    the flow range at creation. Returns (None, None) when the project has no
-    manifest or the manifest is unusable.
+    Includes identity/pdk/rtl fallbacks and the base parameters; the
+    workspace-entry layer (parameter_patch, entry flow range) is applied
+    separately once the run name resolves.
+    """
+    if ctx.project_state != "manifest":
+        return None
+    from chipcompiler.cli.project.manifest import assemble_config, load_manifest
+
+    try:
+        manifest = load_manifest(ctx.project_dir)
+    except Exception:
+        return None
+    return assemble_config(manifest, None)
+
+
+def manifest_entry_layer(ctx, run_name):
+    """(parameters, flow_config) from the declared workspace entry.
+
+    Returns the base parameters layered with the entry's parameter_patch
+    and the entry's creation-time flow range; (None, None) when no entry
+    declares this run.
     """
     if ctx.project_state != "manifest":
         return (None, None)
@@ -170,10 +187,10 @@ def manifest_base_layer(ctx, run_name):
     except Exception:
         return (None, None)
     entry = manifest.find_workspace(run_name)
+    if entry is None:
+        return (None, None)
     assembled = assemble_config(manifest, entry)
-    flow_config = None
-    if entry is not None:
-        flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
+    flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
     return (assembled["parameters"], flow_config)
 
 
