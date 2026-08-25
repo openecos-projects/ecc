@@ -162,10 +162,11 @@ class TestManifestRunDiscovery:
 
 
 class TestManifestCheck:
-    def test_check_reports_manifest_project(self, tmp_path, capsys):
+    def test_check_reports_manifest_project(self, tmp_path, capsys, minimal_ics55_pdk_factory):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        minimal_ics55_pdk_factory(project_dir / "pdk")
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
 
@@ -203,10 +204,11 @@ class TestLegacyHint:
         records = _records(capsys)
         assert all(r.get("warning") != "legacy_layout_detected" for r in records)
 
-    def test_check_no_hint_in_manifest_project(self, tmp_path, capsys):
+    def test_check_no_hint_in_manifest_project(self, tmp_path, capsys, minimal_ics55_pdk_factory):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        minimal_ics55_pdk_factory(project_dir / "pdk")
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
 
@@ -475,10 +477,11 @@ class TestCheckManifestSelection:
         (record,) = _records(capsys)
         assert record["error"] == "workspace_not_declared"
 
-    def test_check_ok_with_single_workspace(self, tmp_path, capsys):
+    def test_check_ok_with_single_workspace(self, tmp_path, capsys, minimal_ics55_pdk_factory):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        minimal_ics55_pdk_factory(project_dir / "pdk")
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
 
@@ -812,3 +815,168 @@ class TestDivergenceProjectionFields:
         keys = warnings[0]["keys"]
         assert "design_name" in keys
         assert "frequency_max" in keys
+
+
+class TestEffectiveConfigValidation:
+    """The shared effective-config path: semantic check validation, per-source
+    RTL checks, origin_verilog fallback, and pre-mutation flow-target errors."""
+
+    def _manifest_base(self, project_dir, **overrides):
+        base = {
+            "pdk": "ics55",
+            "pdk_root": str(project_dir / "pdk"),
+            "top_module": "gcd",
+            "clock": "clk",
+            "rtl_list": ["rtl/gcd.v"],
+            "parameters": {"design": "gcd", "frequency_max": 100},
+        }
+        base.update(overrides)
+        return base
+
+    def test_manifest_only_check_fails_semantic_validation(self, tmp_path, capsys):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        # Missing top/clock and an empty PDK root must fail `ecc check` for a
+        # manifest-only project, not pass silently.
+        _write_manifest(
+            project_dir,
+            [_workspace_entry(project_dir, "ws_0001")],
+            base_design=self._manifest_base(project_dir, top_module="", clock=""),
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in _records(capsys))
+        assert "design.top is required" in reasons
+        assert "design.clock_port is required" in reasons
+        assert "PDK validation failed" in reasons
+
+    def test_manifest_only_check_validates_every_rtl_source(
+        self, tmp_path, capsys, minimal_ics55_pdk_factory
+    ):
+        for missing_position in (0, 1):
+            project_dir = tmp_path / f"proj{missing_position}"
+            project_dir.mkdir()
+            rtl_list = ["rtl/gcd.v", "rtl/b.v"]
+            _write_manifest(
+                project_dir,
+                [_workspace_entry(project_dir, "ws_0001")],
+                base_design=self._manifest_base(project_dir, rtl_list=rtl_list),
+            )
+            minimal_ics55_pdk_factory(project_dir / "pdk")
+            missing = rtl_list[missing_position]
+            present = rtl_list[1 - missing_position]
+            (project_dir / present).write_text("module b; endmodule\n")
+            if missing_position == 0:
+                # _write_manifest created rtl/gcd.v; remove it so the FIRST
+                # declared source is the missing one.
+                (project_dir / "rtl" / "gcd.v").unlink()
+
+            rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+            assert rc != 0
+            reasons = "\n".join(r.get("reason", "") for r in _records(capsys))
+            assert f"rtl path does not exist: {missing}" in reasons
+
+    def test_hybrid_check_falls_back_to_origin_verilog(self, tmp_path, capsys, monkeypatch):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / "src").mkdir()
+        (project_dir / "src" / "gcd.v").write_text("module gcd(input clk); endmodule\n")
+        _write_manifest(
+            project_dir,
+            [_workspace_entry(project_dir, "ws_0001")],
+            base_design=self._manifest_base(project_dir, rtl_list=[], origin_verilog="src/gcd.v"),
+        )
+        # Hybrid ecc.toml declares no rtl: the manifest origin_verilog fills it.
+        (project_dir / "ecc.toml").write_text("[design]\nfrequency_mhz = 100.0\n")
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        assert records[0]["status"] == "checked"
+        rtl_records = [r for r in records if r.get("check") == "rtl"]
+        assert rtl_records[0]["path"] == "src/gcd.v"
+
+    def test_flowless_undeclared_run_fails_before_any_mutation(self, tmp_path, capsys, flow_mocks):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        # Hybrid ecc.toml WITHOUT [flow]; the run id is NOT declared in the
+        # manifest, so no entry range can seed the flow target either.
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "gcd"\n'
+            'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 100.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--run-id", "sweep1", "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in _records(capsys))
+        assert "no flow target" in reasons
+        assert not (project_dir / "sweep1").exists()
+        assert flow_mocks.capture["create_kwargs"] is None
+
+    def test_check_warns_on_gui_geometry_divergence(self, tmp_path, capsys, monkeypatch):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        # GUI-flat alias in the manifest, canonical [params] override in
+        # ecc.toml: one canonical projection must still match them.
+        _write_manifest(
+            project_dir,
+            [_workspace_entry(project_dir, "ws_0001")],
+            base_design=self._manifest_base(
+                project_dir,
+                parameters={"design": "gcd", "frequency_max": 100, "utilitization": 0.6},
+            ),
+        )
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "gcd"\n'
+            'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 100.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
+            '\n[flow]\npreset = "rtl2gds"\n'
+            "\n[params.floorplan]\ncore_util = 0.55\n"
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        warnings = [r for r in _records(capsys) if r.get("warning") == "config_layer_diverged"]
+        assert len(warnings) == 1
+        assert "core.utilitization" in warnings[0]["keys"]
+
+    def test_equivalent_path_spellings_produce_no_divergence(self, tmp_path, capsys, monkeypatch):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        # Manifest spells pdk_root absolute and rtl relative; ecc.toml spells
+        # pdk_root relative and rtl absolute. Same files: no false warnings.
+        _write_manifest(project_dir, [_workspace_entry(project_dir, "ws_0001")])
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "gcd"\n'
+            'rtl = ["' + str(project_dir / "rtl" / "gcd.v") + '"]\n'
+            'clock_port = "clk"\nfrequency_mhz = 100.0\n'
+            '\n[pdk]\nname = "ics55"\nroot = "pdk"\n'
+            '\n[flow]\npreset = "rtl2gds"\n'
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = _records(capsys)
+        assert records[0]["status"] == "checked"
+        assert all(r.get("warning") != "config_layer_diverged" for r in records)

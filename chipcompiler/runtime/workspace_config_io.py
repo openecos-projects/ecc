@@ -3,9 +3,10 @@
 """Workspace configuration IO helpers for the runtime API.
 
 Config-staging policy extracted from the runtime API: RPC creation payload
-conversion and the TOML staging used by layout-edit publish.
+conversion and the format-agnostic staging used by layout-edit publish.
 """
 
+import json
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -44,3 +45,27 @@ def workspace_config_bytes(data: dict[str, Any], workspace) -> bytes:
     payload = dict(data)
     flow = payload.pop("_flow", None)
     return render_workspace_config(Path(workspace_dir), payload, flow)
+
+
+def workspace_state_bytes(kind: str, data: dict[str, Any], workspace, target: Path) -> bytes:
+    """Serialize one staged workspace-state artifact in its persisted format.
+
+    The parameters artifact persists as the TOML workspace config when its
+    target carries a .toml suffix; every other artifact is JSON.
+    """
+    if kind == "parameters" and target.suffix == ".toml":
+        return workspace_config_bytes(data, workspace)
+    return (json.dumps(data, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def read_workspace_state(kind: str, path: Path) -> None:
+    """Validate that a staged artifact parses in its persisted format."""
+    if kind == "parameters" and path.suffix == ".toml":
+        read_workspace_config_toml(path)
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"failed to read JSON artifact: {path}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"JSON artifact must contain an object: {path}")

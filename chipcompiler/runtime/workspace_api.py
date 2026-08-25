@@ -48,8 +48,8 @@ from chipcompiler.runtime.sessions import (
 )
 from chipcompiler.runtime.workspace_config_io import (
     canonical_request_parameters,
-    read_workspace_config_toml,
-    workspace_config_bytes,
+    read_workspace_state,
+    workspace_state_bytes,
 )
 from chipcompiler.utility.path import path_is_within, stringify_paths
 
@@ -1706,7 +1706,7 @@ def _publish_layout_edit_artifacts(edit_session: LayoutEditSession, workspace) -
         module.gds_save(output_path=str(staged["gds"]))
         if not module.geometry_snapshot_save(output_dir=str(staged["geometry"])):
             raise RuntimeApiError("command_failed", "failed to export layout geometry snapshot")
-        _stage_layout_edit_workspace_json(staged, staged_workspace_data, workspace)
+        _stage_layout_edit_workspace_state(staged, staged_workspace_data, workspace)
         _stage_layout_edit_verilog(module, staged, edit_session)
         _validate_layout_edit_staging(staged, targets)
         _validate_layout_edit_workspace_staging(staged, staged_workspace_data)
@@ -1817,7 +1817,7 @@ def _read_layout_edit_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def _stage_layout_edit_workspace_json(
+def _stage_layout_edit_workspace_state(
     staged: dict[str, Path],
     workspace_staging: dict[str, Any],
     workspace,
@@ -1825,13 +1825,10 @@ def _stage_layout_edit_workspace_json(
     for key, data in workspace_staging["json"].items():
         staged_path = staged[key]
         staged_path.parent.mkdir(parents=True, exist_ok=True)
-        if key == "parameters" and staged_path.suffix == ".toml":
-            try:
-                staged_path.write_bytes(workspace_config_bytes(data, workspace))
-            except ValueError as exc:
-                raise RuntimeApiError("command_failed", str(exc)) from exc
-            continue
-        staged_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        try:
+            staged_path.write_bytes(workspace_state_bytes(key, data, workspace, staged_path))
+        except ValueError as exc:
+            raise RuntimeApiError("command_failed", str(exc)) from exc
 
 
 def _stage_layout_edit_verilog(
@@ -1853,13 +1850,10 @@ def _validate_layout_edit_workspace_staging(
     for key in workspace_staging["json"]:
         if not staged[key].is_file():
             raise RuntimeApiError("command_failed", f"layout edit staged {key} is missing")
-        if key == "parameters" and staged[key].suffix == ".toml":
-            try:
-                read_workspace_config_toml(staged[key])
-            except ValueError as exc:
-                raise RuntimeApiError("command_failed", str(exc)) from exc
-            continue
-        _read_layout_edit_json(staged[key])
+        try:
+            read_workspace_state(key, staged[key])
+        except ValueError as exc:
+            raise RuntimeApiError("command_failed", str(exc)) from exc
     if "verilog" in staged and not staged["verilog"].is_file():
         raise RuntimeApiError("command_failed", "layout edit staged Verilog is missing")
 

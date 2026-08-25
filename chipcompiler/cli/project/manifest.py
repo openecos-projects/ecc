@@ -305,63 +305,6 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
     }
 
 
-def layer_divergences(cfg, assembled: dict) -> list[str]:
-    """Keys where the ecc.toml layer overrides a different manifest value.
-
-    Covers every manifest-owned field: design identity and source (name,
-    top module, clock, frequency, RTL list), PDK identity/root, and the
-    backend parameter overrides from [params]. Empty/absent values never
-    diverge.
-    """
-    keys: list[str] = []
-    for field_name, key in (
-        ("design_name", "design_name"),
-        ("design_top", "top_module"),
-        ("design_clock_port", "clock"),
-        ("pdk_name", "pdk"),
-        ("pdk_root", "pdk_root"),
-    ):
-        base_value = assembled.get(key) or ""
-        toml_value = getattr(cfg, field_name, "")
-        if base_value and toml_value and str(base_value) != str(toml_value):
-            keys.append(key)
-
-    base_rtl = [item for item in assembled.get("rtl_list") or [] if item]
-    if base_rtl and cfg.design_rtl and base_rtl != list(cfg.design_rtl):
-        keys.append("rtl")
-
-    base_params = assembled.get("parameters") or {}
-    base_frequency = base_params.get("frequency_max")
-    if (
-        base_frequency
-        and cfg.design_frequency_mhz > 0
-        and base_frequency != cfg.design_frequency_mhz
-    ):
-        keys.append("frequency_max")
-
-    if cfg.params_overrides and base_params:
-        from chipcompiler.cli.project.params import (
-            build_backend_overrides,
-            resolve_parameters,
-        )
-
-        resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
-        backend = build_backend_overrides(resolved)
-        flat_base = dict(_flatten(base_params))
-        for key, value in _flatten(backend):
-            if key in flat_base and flat_base[key] != value:
-                keys.append(key)
-    return keys
-
-
-def _flatten(data, prefix=()):
-    for key, value in (data or {}).items():
-        if isinstance(value, dict):
-            yield from _flatten(value, (*prefix, key))
-        else:
-            yield ".".join((*prefix, key)), value
-
-
 def resolved_base_parameters(cfg) -> dict:
     """The ecc.toml-resolved base_design.parameters for a generated manifest.
 

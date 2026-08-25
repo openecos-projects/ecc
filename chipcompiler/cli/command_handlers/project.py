@@ -79,23 +79,9 @@ run = "default"
 
 
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.project import run_prepare
+    from chipcompiler.cli.project import effective_config
 
     project = ctx.project
-
-    cfg = ctx.config
-    if cfg is None:
-        if ctx.project_state == "manifest":
-            return run_prepare.check_manifest_project(ctx)
-        return CommandResult.err(
-            [
-                error_record(
-                    "missing_config",
-                    path=os.path.join(ctx.project_dir, "ecc.toml"),
-                    inspect=disclosure_cmd("ecc check", project),
-                )
-            ]
-        )
 
     if ctx.manifest_error:
         # Hybrid projects also resolve the run selector through the
@@ -111,14 +97,28 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    # Hybrid projects validate the effective config: manifest fallback
-    # applied first, entry layer resolved, manifest relaxations honored.
-    run_prepare.fill_manifest_base(ctx, cfg)
-    _entry_flow_config, entry_warnings = run_prepare.apply_manifest_entry(
-        ctx, cfg, ctx.run_id or "default"
-    )
+    # Both manifest-only and hybrid projects validate the effective config:
+    # manifest fallback applied, entry layer resolved, manifest relaxations
+    # honored, every declared RTL source checked.
+    cfg = ctx.config
+    entry_warnings: list[dict] = []
+    if ctx.project_state == "manifest":
+        resolved_cfg = effective_config.resolve_effective_config(ctx, ctx.run_id, cfg)
+        if isinstance(resolved_cfg, CommandResult):
+            return resolved_cfg
+        cfg, _entry_flow_config, entry_warnings = resolved_cfg
+    elif cfg is None:
+        return CommandResult.err(
+            [
+                error_record(
+                    "missing_config",
+                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
 
-    errors = run_prepare.validate_for_project(ctx, cfg)
+    errors = effective_config.validate_effective(ctx, cfg, fresh=False, flow_config=None)
 
     if errors:
         return CommandResult.err(
@@ -127,7 +127,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
                     "check": "config",
                     "status": "fail",
                     "reason": err,
-                    "source": "ecc.toml",
+                    "source": "ecc.toml" if ctx.config is not None else "project.json",
                     "inspect": disclosure_cmd("ecc check --json", project),
                 }
                 for err in errors
@@ -147,7 +147,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
         {
             "project": cfg.design_name,
             "status": "checked",
-            "config": "ecc.toml",
+            "config": "ecc.toml" if ctx.config is not None else "project.json",
             "run_dir": run_dir_display,
             "run": disclosure_cmd("ecc run", project),
             "inspect_cmd": disclosure_cmd("ecc status", project),
@@ -244,37 +244,27 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     cfg = ctx.config
     flow_config = None
     layer_warnings: list[dict] = []
-    if cfg is None:
-        if ctx.project_state == "manifest":
-            assembled = run_prepare.manifest_project_config(command_input, ctx)
-            if isinstance(assembled, CommandResult):
-                return assembled
-            cfg, flow_config = assembled
-        else:
-            return CommandResult.err(
-                [
-                    {
-                        "kind": "error",
-                        "error": "missing_config",
-                        "path": os.path.join(project_dir, "ecc.toml"),
-                    }
-                ]
-            )
-    else:
-        run_prepare.fill_manifest_base(ctx, cfg)
-
-    errors = run_prepare.validate_for_project(ctx, cfg)
-    if errors:
+    if cfg is None and ctx.project_state != "manifest":
         return CommandResult.err(
             [
                 {
                     "kind": "error",
-                    "error": "config_error",
-                    "reason": err,
+                    "error": "missing_config",
+                    "path": os.path.join(project_dir, "ecc.toml"),
                 }
-                for err in errors
             ]
         )
+
+    from chipcompiler.cli.project import effective_config
+
+    if ctx.project_state == "manifest":
+        resolved_cfg = effective_config.resolve_effective_config(
+            ctx, command_input.project.run_id, cfg
+        )
+        if isinstance(resolved_cfg, CommandResult):
+            return resolved_cfg
+        cfg, flow_config, entry_warnings = resolved_cfg
+        layer_warnings.extend(entry_warnings)
 
     cli_overrides = {}
     raw_sets = command_input.param_set
@@ -309,13 +299,26 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         if isinstance(resolved, CommandResult):
             return resolved
         run_dir, run_name, workspace_registered, warning_records = resolved
-
-    if project_state == "manifest" and not cfg.manifest_driven:
-        entry_flow_config, entry_warnings = run_prepare.apply_manifest_entry(ctx, cfg, run_name)
-        if entry_flow_config is not None:
-            flow_config = entry_flow_config
-        layer_warnings.extend(entry_warnings)
     warning_records = layer_warnings + warning_records
+
+    flow_json = os.path.join(run_dir, "home", "flow.json")
+    errors = effective_config.validate_effective(
+        ctx,
+        cfg,
+        fresh=not os.path.exists(flow_json) and not command_input.overwrite,
+        flow_config=flow_config,
+    )
+    if errors:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "config_error",
+                    "reason": err,
+                }
+                for err in errors
+            ]
+        )
 
     protected = (project_dir, os.path.join(project_dir, "runs"))
     spelled = {os.path.normpath(p) for p in protected}
@@ -332,7 +335,6 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 }
             ]
         )
-    flow_json = os.path.join(run_dir, "home", "flow.json")
 
     if os.path.exists(flow_json) and not command_input.overwrite:
         return run_prepare.run_existing_workspace(
