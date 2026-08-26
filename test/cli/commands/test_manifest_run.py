@@ -91,6 +91,43 @@ class TestVirginFirstRun:
         (record,) = manifest_stubs.records()
         assert record["error"] == "invalid_run_id"
 
+    def test_virgin_run_warns_when_the_winner_is_unusable(
+        self, tmp_path, capsys, create_cli_project, flow_mocks, manifest_stubs
+    ):
+        project_dir = create_cli_project()
+        # A directory sitting at the project.json path: the create link
+        # loses, the "winner" cannot load, and the run must say so instead
+        # of silently succeeding without a usable manifest.
+        os.mkdir(os.path.join(project_dir, "project.json"))
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = manifest_stubs.records()
+        (warning,) = [r for r in records if r.get("warning") == "manifest_generation_failed"]
+        assert "GUI" in warning["reason"]
+        assert flow_mocks.capture["create_kwargs"] is not None
+        assert not os.path.isfile(os.path.join(project_dir, "project.json"))
+
+    def test_virgin_run_warns_when_no_manifest_winner_exists(
+        self, tmp_path, capsys, create_cli_project, flow_mocks, manifest_stubs, monkeypatch
+    ):
+        project_dir = create_cli_project()
+        # The write itself failed (nothing ever landed at project.json):
+        # same loud outcome — never a quiet success.
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.manifest.write_manifest_if_absent",
+            lambda *args, **kwargs: False,
+        )
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = manifest_stubs.records()
+        assert any(r.get("warning") == "manifest_generation_failed" for r in records)
+        assert flow_mocks.capture["create_kwargs"] is not None
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
 
 class TestManifestRunCommand:
     def test_undeclared_run_id_creates_at_root_with_warning(

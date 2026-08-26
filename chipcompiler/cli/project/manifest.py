@@ -172,7 +172,8 @@ def _validate_mpc(value: Any) -> None:
     if (
         not design
         or isinstance(index, bool)  # a JSON boolean is not an index (True == 1 in Python)
-        or not isinstance(index, int)
+        or not isinstance(index, (int, float))
+        or not float(index).is_integer()  # the GUI accepts integral numbers (0.0)
         or index < 0
         or not _optional_str(design.get("design_name"))
     ):

@@ -439,3 +439,47 @@ def test_load_manifest_rejects_boolean_mpc_design_index(tmp_path):
 
     with pytest.raises(ManifestError, match="mpc.design"):
         load_manifest(str(tmp_path))
+
+
+def test_load_manifest_accepts_integral_float_mpc_design_index(tmp_path):
+    # The GUI parser uses Number.isInteger: JSON 0.0 is a valid index.
+    _write_manifest(
+        tmp_path,
+        _minimal_document(
+            tmp_path,
+            mpc={
+                "resource_id": "mpc:x",
+                "display_name": "d",
+                "installed_version": "1",
+                "path": "/p",
+                "spec_path": "/p/spec/spec.json.in",
+                "design": {"index": 0.0, "design_name": "gcd"},
+                "core_template": {},
+            },
+        ),
+    )
+
+    manifest = load_manifest(str(tmp_path))
+
+    assert manifest.design_name == "gcd"
+
+
+def test_load_manifest_rejects_fractional_mpc_design_index(tmp_path):
+    _write_manifest(
+        tmp_path,
+        _minimal_document(
+            tmp_path,
+            mpc={
+                "resource_id": "mpc:x",
+                "display_name": "d",
+                "installed_version": "1",
+                "path": "/p",
+                "spec_path": "/p/spec/spec.json.in",
+                "design": {"index": 2.5, "design_name": "gcd"},
+                "core_template": {},
+            },
+        ),
+    )
+
+    with pytest.raises(ManifestError, match="mpc.design"):
+        load_manifest(str(tmp_path))

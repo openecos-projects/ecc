@@ -478,9 +478,11 @@ def execute_fresh_run(
             if write_manifest_if_absent(project_dir, document):
                 workspace_registered = True
             else:
-                # Lost the generation race: discard ours, reload the winner, and
-                # continue read-only — write-back applies only when the winning
-                # manifest actually declares this workspace.
+                # The write was lost to a concurrent creator OR failed: in
+                # both cases continue read-only against whatever won — but
+                # never silently, because a run the GUI cannot see is not a
+                # full success.
+                from chipcompiler.cli.core.records import warning_record
                 from chipcompiler.cli.project.manifest import load_manifest
 
                 try:
@@ -488,6 +490,14 @@ def execute_fresh_run(
                     workspace_registered = winner.find_workspace(run_name) is not None
                 except Exception:
                     workspace_registered = False
+                if not workspace_registered:
+                    warning_records.append(
+                        warning_record(
+                            "manifest_generation_failed",
+                            reason="project.json was not created and no valid manifest "
+                            "declares this run; the GUI will not show it",
+                        )
+                    )
 
     try:
         engine_flow = EngineFlow(workspace=workspace)
