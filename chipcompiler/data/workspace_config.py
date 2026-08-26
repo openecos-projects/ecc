@@ -331,6 +331,27 @@ def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
         return {}
 
 
+def _drop_null_values(value: Any, *, _path: str = "") -> Any:
+    """Drop JSON null values TOML cannot serialize, logging each removal.
+
+    Legacy ``parameters.json`` payloads may carry ``null``; a migration
+    blocked on it must not leave the workspace permanently unwritable —
+    absent beats null here (a parameter that cannot round-trip would
+    otherwise read back as a different value anyway).
+    """
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            if item is None:
+                logger.warning("dropping null value at %s%s during TOML render", _path, key)
+                continue
+            result[key] = _drop_null_values(item, _path=f"{_path}{key}.")
+        return result
+    if isinstance(value, list):
+        return [_drop_null_values(item, _path=f"{_path}[]") for item in value]
+    return value
+
+
 def render_workspace_config(
     workspace_dir: str | Path,
     data: dict,
@@ -345,7 +366,7 @@ def render_workspace_config(
         validate_flow_config(flow)
     workspace_root = Path(workspace_dir).resolve()
 
-    payload = dict(data)
+    payload = _drop_null_values(dict(data))
     pdk_config = payload.get("pdk_config")
     if isinstance(pdk_config, str) and pdk_config and os.path.isabs(pdk_config):
         resolved = Path(pdk_config).resolve()
@@ -504,6 +525,15 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
                 config_path,
                 legacy_path,
             )
+        return
+    if legacy_path.is_symlink():
+        # A symlinked legacy parameters file would let the migration copy
+        # external content into the workspace and then delete the link:
+        # refuse and leave the file untouched.
+        logger.warning(
+            "legacy parameters migration refused through a symlinked file: %s",
+            legacy_path,
+        )
         return
     if not legacy_path.exists():
         return

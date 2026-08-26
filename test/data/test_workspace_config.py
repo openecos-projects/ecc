@@ -134,11 +134,13 @@ def test_save_rejects_invalid_flow_target(tmp_path):
     assert not workspace_config_path(tmp_path).exists()
 
 
-def test_save_unserializable_payload_returns_false(tmp_path):
+def test_save_drops_null_values_with_a_warning(tmp_path):
     payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
     payload["broken"] = None
-    assert save_workspace_config(tmp_path, payload) is False
-    assert not workspace_config_path(tmp_path).exists()
+    assert save_workspace_config(tmp_path, payload) is True
+    loaded = load_workspace_config(tmp_path)
+    assert "broken" not in loaded
+    assert loaded["design"] == payload["design"]
 
 
 def test_flow_validation_none_and_empty_pass():
@@ -331,6 +333,7 @@ def test_save_refuses_symlinked_home_parent(tmp_path):
     assert ok is False
     assert not (external_home / "ecc.toml").exists()
 
+
 def test_migration_refuses_symlinked_home_parent(tmp_path):
     from chipcompiler.data.workspace_config import migrate_legacy_parameters
 
@@ -345,3 +348,35 @@ def test_migration_refuses_symlinked_home_parent(tmp_path):
 
     assert (external_home / "parameters.json").exists()
     assert not (external_home / "ecc.toml").exists()
+
+
+def test_migration_refuses_symlinked_legacy_parameters_file(tmp_path):
+    from chipcompiler.data.workspace_config import migrate_legacy_parameters
+
+    workspace_dir = tmp_path / "ws"
+    (workspace_dir / "home").mkdir(parents=True)
+    external = tmp_path / "external.json"
+    external.write_text('{"Design": "gcd"}')
+    (workspace_dir / "home" / "parameters.json").symlink_to(external)
+
+    migrate_legacy_parameters(workspace_dir)
+
+    assert not (workspace_dir / "home" / "ecc.toml").exists()
+    assert (workspace_dir / "home" / "parameters.json").is_symlink()
+
+
+def test_save_drops_null_values_instead_of_failing(tmp_path):
+    from chipcompiler.data.workspace_config import load_workspace_config, save_workspace_config
+
+    workspace_dir = tmp_path / "ws"
+    ok = save_workspace_config(
+        str(workspace_dir),
+        {"design": "gcd", "top_module": "gcd", "pdk_config": None, "core": {"margin": None}},
+        None,
+    )
+
+    assert ok is True
+    loaded = load_workspace_config(workspace_dir)
+    assert loaded["design"] == "gcd"
+    assert "pdk_config" not in loaded
+    assert "margin" not in loaded["core"]

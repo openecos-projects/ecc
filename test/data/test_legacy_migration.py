@@ -185,7 +185,7 @@ def test_malformed_toml_never_falls_back_to_legacy_json(
         load_workspace(str(workspace_dir))
 
 
-def test_legacy_null_values_do_not_abort_migration(
+def test_legacy_null_values_are_dropped_and_migration_completes(
     tmp_path, minimal_ics55_pdk_factory, monkeypatch
 ):
     workspace_dir, _pdk_root = _write_legacy_workspace(
@@ -198,11 +198,12 @@ def test_legacy_null_values_do_not_abort_migration(
 
     loaded = load_workspace(str(workspace_dir))
 
-    # The rewrite cannot serialize null; the workspace still opens from the
-    # normalized in-memory copy and the legacy file stays for a later retry.
+    # Null values cannot serialize into TOML, so they are dropped with a
+    # warning and the migration completes instead of deferring forever.
     assert loaded is not None
     assert loaded.parameters.data["frequency_max"] == 250
-    assert legacy_path.is_file()
+    assert "notes" not in loaded.parameters.data
+    assert not legacy_path.exists()
 
 
 def test_create_workspace_seeds_flow_range_from_flow_config(tmp_path, minimal_ics55_pdk_factory):

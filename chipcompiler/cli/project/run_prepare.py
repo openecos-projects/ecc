@@ -445,8 +445,14 @@ def execute_fresh_run(
     generated_filelist = None
     if len(cfg.design_rtl) > 1:
         # Manifest-backed projects may declare several RTL sources;
-        # materialize them as one generated filelist for creation.
-        generated_filelist = _materialize_rtl_filelist(cfg)
+        # materialize them as one generated filelist for creation. A failure
+        # here must not strand a partial run target for the next run.
+        try:
+            generated_filelist = _materialize_rtl_filelist(cfg)
+        except Exception as exc:
+            if owns_target:
+                shutil.rmtree(run_dir, ignore_errors=True)
+            return _workspace_failed_result(run_name, run_dir, str(exc))
         input_filelist = generated_filelist
         origin_verilog = ""
     parameters = to_parameters(cfg)
@@ -566,46 +572,52 @@ def execute_fresh_run(
                         )
                     )
 
-    try:
-        engine_flow = EngineFlow(workspace=workspace)
-        flow_builders = rtl2gds_api.get_flow_builders()
-        if not engine_flow.has_init():
-            for step, tool, state in flow_builders[cfg.flow_preset]():
-                engine_flow.add_step(step=step, tool=tool, state=state)
+    from chipcompiler.engine.reconcile import _workspace_lock
 
-        engine_flow.create_step_workspaces()
+    # Same execution ownership as the existing-run path: the fresh engine
+    # run holds the workspace lock, so a second `ecc run` taking the
+    # existing-workspace path can never race this ledger or its outputs.
+    with _workspace_lock(Path(run_dir)):
+        try:
+            engine_flow = EngineFlow(workspace=workspace)
+            flow_builders = rtl2gds_api.get_flow_builders()
+            if not engine_flow.has_init():
+                for step, tool, state in flow_builders[cfg.flow_preset]():
+                    engine_flow.add_step(step=step, tool=tool, state=state)
 
-        from chipcompiler.cli.rendering.progress import (
-            run_flow_with_progress,
-            should_enable_run_progress,
-        )
+            engine_flow.create_step_workspaces()
 
-        if should_enable_run_progress(ctx, sys.stderr):
-            flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
-        else:
-            flow_ok = engine_flow.run_steps()
+            from chipcompiler.cli.rendering.progress import (
+                run_flow_with_progress,
+                should_enable_run_progress,
+            )
 
-        if not flow_ok:
+            if should_enable_run_progress(ctx, sys.stderr):
+                flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+            else:
+                flow_ok = engine_flow.run_steps()
+
+            if not flow_ok:
+                if workspace_registered:
+                    _write_back_status(project_dir, run_name, "failed", warning_records)
+                failure_records = [
+                    {
+                        "run": run_name,
+                        "status": "failed",
+                        "workspace": run_dir,
+                        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+                        "log": disclosure_cmd("ecc log", project, ctx.run_id),
+                    }
+                ]
+                return CommandResult.err(warning_records + failure_records)
+        except Exception as exc:
+            from chipcompiler.cli.core.records import error_record
+
             if workspace_registered:
                 _write_back_status(project_dir, run_name, "failed", warning_records)
-            failure_records = [
-                {
-                    "run": run_name,
-                    "status": "failed",
-                    "workspace": run_dir,
-                    "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                    "log": disclosure_cmd("ecc log", project, ctx.run_id),
-                }
-            ]
-            return CommandResult.err(warning_records + failure_records)
-    except Exception as exc:
-        from chipcompiler.cli.core.records import error_record
-
-        if workspace_registered:
-            _write_back_status(project_dir, run_name, "failed", warning_records)
-        return CommandResult.err(
-            [error_record("flow_failed", run=run_name, workspace=run_dir, reason=str(exc))]
-        )
+            return CommandResult.err(
+                [error_record("flow_failed", run=run_name, workspace=run_dir, reason=str(exc))]
+            )
 
     if workspace_registered:
         _write_back_status(project_dir, run_name, "success", warning_records)
