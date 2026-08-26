@@ -516,3 +516,42 @@ def test_update_manifest_degrades_when_lock_is_unopenable(tmp_path):
     (tmp_path / ".manifest.lock").mkdir()
 
     assert update_manifest(str(tmp_path), lambda document: None) is False
+
+def test_load_manifest_stores_canonical_workspace_path_through_symlink(tmp_path):
+    real_dir = tmp_path / "proj" / "ws_0001"
+    real_dir.mkdir(parents=True)
+    (tmp_path / "proj" / "linked").symlink_to(real_dir)
+    document = {
+        "schema_version": 1,
+        "root_path": str(tmp_path / "proj"),
+        "design_name": "gcd",
+        "workspaces": [
+            {"workspace_id": "ws_0001", "workspace_path": str(tmp_path / "proj" / "linked")}
+        ],
+    }
+    import json
+
+    (tmp_path / "proj" / "project.json").write_text(json.dumps(document))
+
+    manifest = load_manifest(str(tmp_path / "proj"))
+
+    assert manifest.workspaces[0].workspace_path == str(real_dir.resolve())
+
+
+def test_load_manifest_symlink_loop_is_a_manifest_error_not_a_traceback(tmp_path):
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    loop = project_dir / "ws_0001"
+    loop.symlink_to(loop)
+    document = {
+        "schema_version": 1,
+        "root_path": str(project_dir),
+        "design_name": "gcd",
+        "workspaces": [{"workspace_id": "ws_0001", "workspace_path": str(loop)}],
+    }
+    import json
+
+    (project_dir / "project.json").write_text(json.dumps(document))
+
+    with pytest.raises(ManifestError, match="cannot be resolved"):
+        load_manifest(str(project_dir))

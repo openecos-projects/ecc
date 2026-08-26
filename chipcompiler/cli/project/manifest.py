@@ -130,17 +130,24 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
     if not resolved.is_absolute():
         resolved = Path(project_dir) / resolved
     try:
-        resolved.resolve().relative_to(Path(project_dir).resolve())
+        canonical = resolved.resolve()
+        canonical.relative_to(Path(project_dir).resolve())
     except ValueError:
         raise ManifestError(
             f"workspaces[{index}] workspace_path escapes the project root: {workspace_path}"
         ) from None
+    except RuntimeError as exc:
+        # e.g. a symlink loop inside the spelled path: invalid manifest
+        # input, never a traceback.
+        raise ManifestError(
+            f"workspaces[{index}] workspace_path cannot be resolved: {workspace_path}"
+        ) from exc
     status = source.get("status")
     if not isinstance(status, str) or status not in _WORKSPACE_STATUSES:
         status = "not_started"
     return ManifestWorkspace(
         workspace_id=workspace_id,
-        workspace_path=str(resolved),
+        workspace_path=str(canonical),
         start_step=_optional_str(source.get("start_step")) or "Synth",
         end_step=_optional_str(source.get("end_step")) or "Harden",
         status=status,

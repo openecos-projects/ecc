@@ -299,3 +299,18 @@ def test_derive_flow_ignores_non_list_ledger_steps(tmp_path):
     loaded = load_workspace_config(tmp_path)
 
     assert loaded["_flow"] == {}
+
+def test_save_refuses_symlinked_config_target(tmp_path):
+    from chipcompiler.data.workspace_config import save_workspace_config, workspace_config_path
+
+    workspace_dir = tmp_path / "ws"
+    (workspace_dir / "home").mkdir(parents=True)
+    external = tmp_path / "external.toml"
+    external.write_text('[params]\ndesign = "external"\n')
+    (workspace_dir / "home" / "ecc.toml").symlink_to(external)
+
+    ok = save_workspace_config(str(workspace_dir), {"design": "gcd"}, None)
+
+    assert ok is False
+    assert external.read_text() == '[params]\ndesign = "external"\n'
+    assert workspace_config_path(workspace_dir).is_symlink()
