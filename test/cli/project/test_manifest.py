@@ -375,3 +375,36 @@ def test_resolved_base_parameters_whole_object():
         "margin": 3,
         "die_area_mode": "utilitization_margin",
     }
+
+
+def test_load_manifest_tolerates_wrong_field_types(tmp_path):
+    _write_manifest(
+        tmp_path,
+        _minimal_document(
+            tmp_path,
+            workspaces=[
+                {
+                    "workspace_id": "ws_0001",
+                    "workspace_path": str(tmp_path / "ws_0001"),
+                    "status": [],
+                }
+            ],
+        ),
+    )
+
+    manifest = load_manifest(str(tmp_path))
+
+    (entry,) = manifest.workspaces
+    assert entry.status == "not_started"
+
+
+def test_assemble_config_tolerates_non_list_rtl(tmp_path):
+    _write_manifest(
+        tmp_path,
+        _minimal_document(tmp_path, base_design={"pdk": "ics55", "rtl_list": 1}),
+    )
+
+    manifest = load_manifest(str(tmp_path))
+    assembled = assemble_config(manifest, None)
+
+    assert assembled["rtl_list"] == []

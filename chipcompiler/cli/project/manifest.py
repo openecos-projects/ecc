@@ -136,12 +136,14 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
             f"workspaces[{index}] workspace_path escapes the project root: {workspace_path}"
         ) from None
     status = source.get("status")
+    if not isinstance(status, str) or status not in _WORKSPACE_STATUSES:
+        status = "not_started"
     return ManifestWorkspace(
         workspace_id=workspace_id,
         workspace_path=str(resolved),
         start_step=_optional_str(source.get("start_step")) or "Synth",
         end_step=_optional_str(source.get("end_step")) or "Harden",
-        status=status if status in _WORKSPACE_STATUSES else "not_started",
+        status=status,
         parameter_patch=_record(source.get("parameter_patch")),
         raw=dict(source),
     )
@@ -291,15 +293,16 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
             )
     if manifest.design_name and not _optional_str(parameters.get("design")):
         parameters["design"] = manifest.design_name
+    rtl_list = manifest.base_design.get("rtl_list")
+    if not isinstance(rtl_list, list):
+        rtl_list = []
     return {
         "pdk": _optional_str(manifest.base_design.get("pdk")),
         "pdk_root": _optional_str(manifest.base_design.get("pdk_root")),
         "design_name": manifest.design_name,
         "top_module": _optional_str(manifest.base_design.get("top_module")),
         "clock": _optional_str(manifest.base_design.get("clock")),
-        "rtl_list": [
-            item for item in manifest.base_design.get("rtl_list") or [] if isinstance(item, str)
-        ],
+        "rtl_list": [item for item in rtl_list if isinstance(item, str)],
         "origin_verilog": _optional_str(manifest.base_design.get("origin_verilog")),
         "origin_def": _optional_str(manifest.base_design.get("origin_def")),
         "parameters": parameters,

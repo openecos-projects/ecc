@@ -392,3 +392,66 @@ class TestOrderedRtlDivergence:
 
         assert rc == 0
         assert _divergences(manifest_stubs.records()) == []
+
+
+class TestConfigResolvedManifestLayering:
+    """ecc config --resolved shows the EFFECTIVE config: the same manifest
+    layering check/run resolve, with source labels following the layers."""
+
+    def _records_by_key(self, records):
+        return {r["config"]: r for r in records if r.get("scope") == "project" and "resolved" in r}
+
+    def test_manifest_only_project_shows_layered_config(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        entry = manifest_stubs.entry(project_dir, "ws_0001")
+        manifest_stubs.write(project_dir, [entry])
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        by_key = self._records_by_key(manifest_stubs.records())
+        assert by_key["design.name"]["value"] == "gcd"
+        assert by_key["design.name"]["source"] == "project.json"
+        assert by_key["design.top"]["source"] == "project.json"
+        assert by_key["design.rtl.0"]["source"] == "project.json"
+        # The selected entry's range is the flow target, not a preset.
+        assert by_key["flow.start"] == {
+            "config": "flow.start",
+            "scope": "project",
+            "value": "Synth",
+            "resolved": "Synth",
+            "source": "project.json",
+            "inspect": by_key["flow.start"]["inspect"],
+        }
+        assert by_key["flow.end"]["value"] == "Harden"
+        assert "flow.preset" not in by_key
+
+    def test_hybrid_project_labels_explicit_and_filled_sources(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        entry = manifest_stubs.entry(project_dir, "ws_0001")
+        manifest_stubs.write(project_dir, [entry])
+        (project_dir / "ecc.toml").write_text('[design]\nname = "other"\n')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        by_key = self._records_by_key(manifest_stubs.records())
+        assert by_key["design.name"]["value"] == "other"
+        assert by_key["design.name"]["source"] == "ecc.toml"
+        assert by_key["design.top"]["value"] == "gcd"
+        assert by_key["design.top"]["source"] == "project.json"
+        assert by_key["flow.start"]["source"] == "project.json"

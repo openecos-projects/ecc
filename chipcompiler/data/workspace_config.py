@@ -239,6 +239,10 @@ def _merge_payload(sections: dict[str, Any]) -> dict:
     aliases) never leaks non-canonical keys into a loaded Parameters
     payload.
     """
+    for name in ("params", "design", "pdk"):
+        section = sections.get(name)
+        if section is not None and not isinstance(section, dict):
+            raise WorkspaceConfigError(f"[{name}] must be a table, not {type(section).__name__}")
     params = dict(sections.get("params") or {})
     design = sections.get("design") or {}
     pdk = sections.get("pdk") or {}
@@ -311,9 +315,12 @@ def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
     data = json_read(Path(workspace_dir) / "home" / "flow.json")
     if not isinstance(data, dict):
         return {}
+    steps = data.get("steps", [])
+    if not isinstance(steps, list):
+        return {}
     names = [
         step["name"]
-        for step in data.get("steps", [])
+        for step in steps
         if isinstance(step, dict) and isinstance(step.get("name"), str) and step["name"]
     ]
     if not names:
@@ -488,6 +495,11 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
     except (JsonReadError, OSError) as exc:
         logger.warning("legacy parameters unreadable, skipping migration: %s: %s", legacy_path, exc)
         return
+    if not isinstance(legacy_data, dict):
+        logger.warning(
+            "legacy parameters unreadable, skipping migration: %s: not a JSON object", legacy_path
+        )
+        return
 
     normalized = normalize_parameter_dict(legacy_data)
     # Derive the flow target from the persisted flow's first/last steps so
@@ -548,4 +560,7 @@ def legacy_parameters_fallback(workspace_dir: str | Path) -> dict:
 
     from .parameter_keys import normalize_parameter_dict
 
-    return normalize_parameter_dict(json_read(legacy_parameters_path(workspace_dir)))
+    data = json_read(legacy_parameters_path(workspace_dir))
+    if not isinstance(data, dict):
+        return {}
+    return normalize_parameter_dict(data)

@@ -4,7 +4,12 @@ from chipcompiler.cli.core.output import disclosure_cmd
 
 
 def build_project_config_items(
-    project_dir: str, run_dir: str, project: str | None = None, run_id: str | None = None
+    project_dir: str,
+    run_dir: str,
+    project: str | None = None,
+    run_id: str | None = None,
+    *,
+    resolved: tuple | None = None,
 ) -> tuple[list[dict], int]:
     from chipcompiler.cli.project.config import (
         _resolve_path,
@@ -14,33 +19,67 @@ def build_project_config_items(
         validate_project_config,
     )
 
-    config_path = find_config_path(project_dir)
-    if config_path is None:
-        return [{"kind": "error", "status": "missing_config"}], 1
+    flow_config = None
+    if resolved is not None:
+        # The effective (manifest-layered) config, resolved by the handler.
+        cfg, flow_config = resolved
+    else:
+        config_path = find_config_path(project_dir)
+        if config_path is None:
+            return [{"kind": "error", "status": "missing_config"}], 1
 
-    try:
-        cfg = load_project_config(config_path)
-    except (OSError, UnicodeDecodeError):
-        return [{"kind": "error", "status": "invalid_config"}], 1
-    if getattr(cfg, "_toml_error", None):
-        return [{"kind": "error", "status": "invalid_config"}], 1
+        try:
+            cfg = load_project_config(config_path)
+        except (OSError, UnicodeDecodeError):
+            return [{"kind": "error", "status": "invalid_config"}], 1
+        if getattr(cfg, "_toml_error", None):
+            return [{"kind": "error", "status": "invalid_config"}], 1
 
-    errors = validate_project_config(cfg)
-    if errors:
-        return [{"kind": "error", "status": "invalid_config"}], 1
+        errors = validate_project_config(cfg)
+        if errors:
+            return [{"kind": "error", "status": "invalid_config"}], 1
 
     pdk_root = resolve_pdk_root(cfg)
 
+    # Source labels follow the effective layering: values the manifest
+    # supplied (or filled beneath an ecc.toml that does not set them) read
+    # "project.json"; explicit ecc.toml keys read "ecc.toml".
+    explicit = getattr(cfg, "_explicit_keys", frozenset())
+
+    def source_of(dotted: str) -> str:
+        if resolved is not None and dotted not in explicit:
+            return "project.json"
+        return "ecc.toml"
+
     items = []
     entries = [
-        ("design.name", cfg.design_name, cfg.design_name, "ecc.toml"),
-        ("design.top", cfg.design_top, cfg.design_top, "ecc.toml"),
-        ("design.clock_port", cfg.design_clock_port, cfg.design_clock_port, "ecc.toml"),
-        ("design.frequency_mhz", cfg.design_frequency_mhz, cfg.design_frequency_mhz, "ecc.toml"),
-        ("pdk.name", cfg.pdk_name, cfg.pdk_name, "ecc.toml"),
-        ("flow.preset", cfg.flow_preset, cfg.flow_preset, "ecc.toml"),
-        ("flow.run", cfg.flow_run, cfg.flow_run, "ecc.toml"),
+        ("design.name", cfg.design_name, cfg.design_name, source_of("design.name")),
+        ("design.top", cfg.design_top, cfg.design_top, source_of("design.top")),
+        (
+            "design.clock_port",
+            cfg.design_clock_port,
+            cfg.design_clock_port,
+            source_of("design.clock_port"),
+        ),
+        (
+            "design.frequency_mhz",
+            cfg.design_frequency_mhz,
+            cfg.design_frequency_mhz,
+            source_of("design.frequency_mhz"),
+        ),
+        ("pdk.name", cfg.pdk_name, cfg.pdk_name, source_of("pdk.name")),
     ]
+    if flow_config is not None and "flow.preset" not in explicit:
+        # The selected manifest entry's range is the flow target.
+        entries.append(
+            ("flow.start", flow_config["start_step"], flow_config["start_step"], "project.json")
+        )
+        entries.append(
+            ("flow.end", flow_config["end_step"], flow_config["end_step"], "project.json")
+        )
+    else:
+        entries.append(("flow.preset", cfg.flow_preset, cfg.flow_preset, source_of("flow.preset")))
+    entries.append(("flow.run", cfg.flow_run, cfg.flow_run, source_of("flow.run")))
 
     inspect = disclosure_cmd("ecc config --resolved --json", project, run_id)
 
@@ -67,13 +106,13 @@ def build_project_config_items(
                 "key": f"design.rtl.{i}",
                 "value": rtl,
                 "resolved": rtl_resolved,
-                "source": "ecc.toml",
+                "source": source_of("design.rtl"),
                 "inspect_cmd": inspect,
             }
         )
 
     # PDK root with resolution
-    pdk_source = "ecc.toml" if cfg.pdk_root else "env"
+    pdk_source = source_of("pdk.root") if cfg.pdk_root else "env"
     items.append(
         {
             "kind": "config",

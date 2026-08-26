@@ -250,6 +250,20 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
     step_token = command_input.step
     project = ctx.project
 
+    resolved = None
+    layer_warnings: list[dict] = []
+    if ctx.project_state == "manifest":
+        # The view must show the EFFECTIVE config — the same layering
+        # check/run resolve — not the bare ecc.toml (or missing_config on
+        # a manifest-only project).
+        from chipcompiler.cli.project import effective_config
+
+        resolved_cfg = effective_config.resolve_effective_config(ctx, ctx.run_id, ctx.config)
+        if isinstance(resolved_cfg, CommandResult):
+            return resolved_cfg
+        cfg_override, flow_override, layer_warnings = resolved_cfg
+        resolved = (cfg_override, flow_override)
+
     if step_token is not None:
         items, rc = build_step_config_items(
             ctx.run_dir,
@@ -264,6 +278,7 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
             ctx.run_dir,
             project,
             ctx.run_id,
+            resolved=resolved,
         )
 
     if rc != 0:
@@ -353,4 +368,5 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
                     "inspect": item.get("inspect_cmd"),
                 }
             )
+    records.extend(layer_warnings)
     return CommandResult.ok(records)

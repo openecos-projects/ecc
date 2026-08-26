@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -326,3 +328,42 @@ class TestDestinationBinding:
         assert not (other / "exp1").exists()
         assert not os.path.exists(os.path.join(project_dir, "project.json"))
         assert not (other / "project.json").exists()
+
+
+class TestRollbackMalformedState:
+    """Rollback re-reads the same state files after a failed content phase;
+    a malformed home.json downgrades the rebase to a warning — it never
+    escapes the rollback as an uncaught exception."""
+
+    @pytest.mark.parametrize("payload", [b"\xff", b"[]"], ids=["undecodable", "not_an_object"])
+    def test_corrupt_home_json_does_not_crash_rollback(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+        monkeypatch,
+        payload,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        target = os.path.join(project_dir, "exp1")
+
+        def corrupting_refresh(workspace):
+            # The forward load heals home.json, so the rollback's re-read
+            # only sees a malformed file when it turns corrupt mid-flight.
+            Path(target, "home", "home.json").write_bytes(payload)
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", corrupting_refresh)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        assert any(r.get("error") == "migration_failed" for r in records)
+        # The move was rolled back; nothing was registered.
+        assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))

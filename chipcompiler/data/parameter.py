@@ -141,6 +141,8 @@ def _workspace_dir_for(path: Path) -> Path:
 
 def load_parameter(path: Path) -> Parameters:
     from .workspace_config import (
+        LEGACY_PARAMETERS_FILENAME,
+        legacy_parameters_fallback,
         load_workspace_config,
     )
 
@@ -150,7 +152,13 @@ def load_parameter(path: Path) -> Parameters:
     try:
         payload = load_workspace_config(workspace_dir)
     except FileNotFoundError:
-        parameter.data = {}
+        if parameter.path.name == LEGACY_PARAMETERS_FILENAME:
+            # An explicit legacy parameters.json read on a workspace whose
+            # TOML migration was deferred: load the JSON itself (normalized)
+            # instead of silently returning nothing.
+            parameter.data = legacy_parameters_fallback(workspace_dir)
+        else:
+            parameter.data = {}
         return parameter
     flow = payload.pop("_flow", {})
     parameter.data = payload

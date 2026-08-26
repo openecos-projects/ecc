@@ -799,3 +799,23 @@ def test_collect_signoff_package_rewrites_absolute_filelist_entries(tmp_path):
     assert (package_dir / "initial" / "gcd.sv").is_file()
     packaged_filelist = (package_dir / "initial" / "gcd.f").read_text(encoding="utf-8")
     assert packaged_filelist == '"gcd.sv"  # top\n'
+
+
+def test_collect_signoff_package_packages_legacy_parameters_when_toml_absent(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    # A read-only legacy workspace whose TOML migration was deferred runs
+    # on parameters.json: the package carries the file it actually runs on.
+    (workspace_dir / "home" / "ecc.toml").unlink()
+    _write_json(
+        workspace_dir / "home" / "parameters.json",
+        {"design": "gcd", "top_module": "gcd", "pdk": "ics55"},
+    )
+    engine_flow = _make_engine_flow(workspace_dir)
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
+
+    package_dir = Path(result.package_dir)
+    assert result.ok is True
+    assert (package_dir / "initial" / "parameters.json").is_file()
+    summary = json.loads((package_dir / "summary.json").read_text())
+    assert summary["initial"]["parameters"] == "initial/parameters.json"

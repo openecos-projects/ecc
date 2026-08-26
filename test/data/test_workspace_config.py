@@ -282,3 +282,20 @@ def test_load_normalizes_legacy_long_keys(tmp_path):
     assert payload["target_density"] == 0.7
     assert "Max fanout" not in payload
     assert "Target density" not in payload
+
+
+def test_load_rejects_non_table_sections(tmp_path):
+    workspace_config_path(tmp_path).parent.mkdir(parents=True)
+    workspace_config_path(tmp_path).write_text("params = [1]\n")
+    with pytest.raises(WorkspaceConfigError):
+        load_workspace_config(tmp_path)
+
+
+def test_derive_flow_ignores_non_list_ledger_steps(tmp_path):
+    workspace_config_path(tmp_path).parent.mkdir(parents=True)
+    workspace_config_path(tmp_path).write_text("[params]\n")
+    (tmp_path / "home" / "flow.json").write_text('{"steps": 1}')
+
+    loaded = load_workspace_config(tmp_path)
+
+    assert loaded["_flow"] == {}

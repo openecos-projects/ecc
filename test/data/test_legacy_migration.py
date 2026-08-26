@@ -364,3 +364,29 @@ def test_verify_failure_with_stubborn_candidate_still_retries(
     assert loaded_again.parameters.data["frequency_max"] == 250
     assert config_path.is_file()
     assert not legacy_path.exists()
+
+
+def test_load_parameter_reads_legacy_json_when_toml_deferred(tmp_path):
+    import json as _json
+
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "parameters.json").write_text(_json.dumps({"Design": "gcd", "Max fanout": 48}))
+
+    from chipcompiler.data.parameter import load_parameter
+
+    parameters = load_parameter(home / "parameters.json")
+
+    assert parameters.data == {"design": "gcd", "max_fanout": 48}
+
+
+def test_non_object_legacy_parameters_open_as_empty(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "parameters.json").write_text("[]")
+
+    from chipcompiler.data import load_workspace
+    from chipcompiler.data.workspace_config import legacy_parameters_fallback
+
+    assert legacy_parameters_fallback(tmp_path) == {}
+    assert load_workspace(tmp_path) is None

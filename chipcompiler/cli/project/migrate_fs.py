@@ -183,6 +183,8 @@ def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) 
     home_path = os.path.join(workspace_dir, "home", "home.json")
     with open(home_path, encoding="utf-8") as f:
         data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"home.json is not a JSON object: {home_path}")
 
     def rebase(value):
         if isinstance(value, str):
@@ -225,7 +227,10 @@ def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
         # all-or-nothing covers the legacy "PDK Config" pointer too.
         _pre_rebase_legacy_config_paths(entry.source, entry.target, entry.source)
         _rebase_home_pointers(entry.source, entry.target, entry.source)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError):
+        # ValueError covers JSONDecodeError/UnicodeDecodeError and the
+        # not-an-object guard: a malformed state file only downgrades the
+        # rollback's rebase step, never escapes as an uncaught exception.
         logger.warning("rollback: home.json reverse rebase failed for %s", entry.run_id)
     try:
         from chipcompiler.data import load_workspace, refresh_workspace_config
@@ -248,10 +253,11 @@ def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_pre
     legacy_path = Path(workspace_dir) / "home" / "parameters.json"
     if legacy_path.exists():
         data = json.loads(legacy_path.read_text(encoding="utf-8"))
-        value = data.get("PDK Config")
-        if isinstance(value, str) and value.startswith(old_prefix + os.sep):
-            data["PDK Config"] = new_prefix + value[len(old_prefix) :]
-            legacy_path.write_text(json.dumps(data), encoding="utf-8")
+        if isinstance(data, dict):
+            value = data.get("PDK Config")
+            if isinstance(value, str) and value.startswith(old_prefix + os.sep):
+                data["PDK Config"] = new_prefix + value[len(old_prefix) :]
+                legacy_path.write_text(json.dumps(data), encoding="utf-8")
 
     config_path = Path(workspace_dir) / "home" / "ecc.toml"
     if config_path.exists():
