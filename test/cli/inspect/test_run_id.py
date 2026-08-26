@@ -300,7 +300,7 @@ class TestConfigRunResolution:
             "run": f"ecc run --project {project_dir} --run-id ''",
         }
 
-    def test_unreadable_config_falls_back_to_default_run(
+    def test_unreadable_config_fails_loudly(
         self, tmp_path, capsys, create_cli_project, create_flow_json, monkeypatch
     ):
         project_dir = create_cli_project()
@@ -314,17 +314,13 @@ class TestConfigRunResolution:
 
         rc = cli_main.run(["status", "--project", project_dir, "--json"])
 
-        assert rc == 0
+        assert rc == 1
         records = json.loads(capsys.readouterr().out)["records"]
-        assert records[0] == {
-            "run": "default",
-            "status": "success",
-            "workspace": run_dir,
-            "inspect_cmd": f"ecc status --project {project_dir}",
-            "log_cmd": f"ecc log --project {project_dir}",
-        }
+        assert records[0]["kind"] == "error"
+        assert records[0]["error"] == "config_error"
+        assert "unreadable project config" in records[0]["reason"]
 
-    def test_non_utf8_config_falls_back_to_default_run(
+    def test_non_utf8_config_fails_loudly(
         self, tmp_path, capsys, create_cli_project, create_flow_json
     ):
         project_dir = create_cli_project()
@@ -335,15 +331,11 @@ class TestConfigRunResolution:
 
         rc = cli_main.run(["status", "--project", project_dir, "--json"])
 
-        assert rc == 0
+        assert rc == 1
         records = json.loads(capsys.readouterr().out)["records"]
-        assert records[0] == {
-            "run": "default",
-            "status": "success",
-            "workspace": run_dir,
-            "inspect_cmd": f"ecc status --project {project_dir}",
-            "log_cmd": f"ecc log --project {project_dir}",
-        }
+        assert records[0]["kind"] == "error"
+        assert records[0]["error"] == "config_error"
+        assert "unreadable project config" in records[0]["reason"]
 
 
 class TestNamedRunDisclosures:

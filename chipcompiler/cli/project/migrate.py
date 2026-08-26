@@ -339,10 +339,10 @@ def _migrate_project_impl(command_input, ctx):
     has_manifest = find_manifest(project_dir) is not None
     has_legacy = has_legacy_runs_layout(project_dir)
 
-    if has_manifest and has_legacy:
-        # Resume path: validate the existing manifest semantically before
-        # moving anything — a malformed winner must fail before the first
-        # rename, not after.
+    if has_manifest:
+        # Validate the existing manifest semantically before reporting any
+        # outcome — a malformed winner must fail loud, whether it is about
+        # to be resumed into or reported as already migrated.
         from chipcompiler.cli.project.manifest import ManifestError, load_manifest
 
         try:

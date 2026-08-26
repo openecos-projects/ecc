@@ -67,14 +67,30 @@ class TestHybridManifestFallbacks:
             '[design]\nfrequency_mhz = 100.0\n\n[flow]\npreset = "rtl2gds"\n'
         )
 
+        generated = {}
+        from chipcompiler.cli.project import run_prepare
+
+        original_materialize = run_prepare._materialize_rtl_filelist
+
+        def capture_materialize(cfg):
+            path = original_materialize(cfg)
+            generated["content"] = Path(path).read_text()
+            return path
+
+        monkeypatch.setattr(
+            run_prepare, "_materialize_rtl_filelist", capture_materialize
+        )
+
         rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
 
         assert rc == 0
-        filelist = flow_mocks.capture["create_kwargs"]["input_filelist"]
-        lines = Path(filelist).read_text().splitlines()
+        lines = generated["content"].splitlines()
         assert len(lines) == 2
         assert lines[0].endswith("rtl/gcd.v")
         assert lines[1].endswith("rtl/b.v")
+        # The generated temporary filelist is cleaned up after creation.
+        filelist = flow_mocks.capture["create_kwargs"]["input_filelist"]
+        assert not Path(filelist).exists()
 
     def test_check_reports_layer_divergence(
         self, tmp_path, capsys, monkeypatch, minimal_ics55_pdk_factory, manifest_stubs

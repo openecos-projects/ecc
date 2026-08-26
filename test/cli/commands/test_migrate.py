@@ -154,6 +154,19 @@ class TestMigrate:
         (record,) = _records(capsys)
         assert record["status"] == "already_migrated"
 
+    def test_malformed_manifest_fails_instead_of_reporting_already_migrated(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        with open(os.path.join(project_dir, "project.json"), "w") as f:
+            f.write('{"schema_version": 1, "workspaces": "not-a-list"}')
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 1
+        (record,) = _records(capsys)
+        assert record["error"] == "manifest_invalid"
+
     def test_collision_skips_that_workspace(
         self,
         tmp_path,

@@ -85,3 +85,28 @@ class TestCreateWorkspaceIntegration:
         origin_dir = workspace_dir / "origin"
         assert (origin_dir / "rtl" / "core" / "alu.v").exists()
         assert (origin_dir / "rtl" / "core" / "ctrl.v").exists()
+
+    def test_filelist_absolute_entries_rewritten_to_frozen_sources(
+        self, tmp_path, test_parameters, pdk
+    ):
+        from chipcompiler.data.workspace import copy_filelist_with_sources
+
+        project_dir = tmp_path / "project"
+        (project_dir / "rtl").mkdir(parents=True)
+        (project_dir / "rtl" / "a.v").write_text("module a; endmodule\n")
+        (project_dir / "rtl" / "b.v").write_text("module b; endmodule\n")
+        filelist = project_dir / "design.f"
+        filelist.write_text(
+            f"{project_dir / 'rtl' / 'a.v'}\nrtl/b.v\n# a comment\n",
+        )
+
+        workspace_dir = tmp_path / "workspace"
+        installed = copy_filelist_with_sources(str(filelist), str(workspace_dir))
+
+        lines = (tmp_path / "workspace" / "origin" / "design.f").read_text().splitlines()
+        assert lines[0] == "a.v"
+        assert lines[1] == "rtl/b.v"
+        assert lines[2] == "# a comment"
+        assert (workspace_dir / "origin" / "a.v").exists()
+        assert (workspace_dir / "origin" / "rtl" / "b.v").exists()
+        assert installed == str(workspace_dir / "origin" / "design.f")

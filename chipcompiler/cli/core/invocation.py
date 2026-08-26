@@ -9,6 +9,7 @@ from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.inspection.discovery import resolve_run_dir
 from chipcompiler.cli.project.config import (
+    ConfigUnreadableError,
     InvalidFlowRun,
     config_run_id_from,
     load_run_config,
@@ -87,7 +88,12 @@ def build_context(command_input: CommandInput) -> CommandContext:
     project_dir = resolve_project_dir(project)
 
     cli_run_id = command_input.project.run_id
-    cfg = load_run_config(project_dir)
+    config_error = None
+    try:
+        cfg = load_run_config(project_dir)
+    except ConfigUnreadableError as exc:
+        cfg = None
+        config_error = str(exc)
 
     from chipcompiler.cli.project.manifest import (
         ManifestError,
@@ -95,7 +101,6 @@ def build_context(command_input: CommandInput) -> CommandContext:
     )
 
     project_state = classify_project(project_dir)
-    config_error = None
     manifest_error = None
 
     if project_state == "manifest":

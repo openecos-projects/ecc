@@ -1035,6 +1035,7 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
 
     filelist_dir = os.path.dirname(os.path.abspath(input_filelist))
     copied_files = set()
+    copied_abs_sources: dict[str, str] = {}
     stats = {"copied": 0, "missing": 0, "incdir_copied": 0, "incdir_skipped": 0}
 
     # Copy files listed in filelist
@@ -1063,6 +1064,8 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
 
         if _copy_file_safely(abs_src, os.path.join(origin_dir, rel_path), logger, src_path):
             copied_files.add(rel_path)
+            if os.path.isabs(src_path):
+                copied_abs_sources[os.path.normpath(abs_src)] = rel_path
             stats["copied"] += 1
 
     # Copy +incdir directories
@@ -1111,6 +1114,9 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
             logger.error(f"Failed to copy filelist: {e}")
         raise
 
+    if copied_abs_sources:
+        _rewrite_filelist_absolute_sources(new_filelist, copied_abs_sources, logger)
+
     if logger:
         logger.info(
             f"Copied filelist and sources: "
@@ -1121,6 +1127,40 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
         )
 
     return new_filelist
+
+
+def _rewrite_filelist_absolute_sources(
+    filelist_path: str, copied_abs_sources: dict, logger=None
+) -> None:
+    """Point absolute filelist entries at the copied origin sources.
+
+    The verbatim filelist copy keeps absolute paths referencing the original
+    files, so a later run would read (and depend on) the project sources
+    instead of the frozen workspace copies. Rewrites each copied absolute
+    entry to its origin-relative path, preserving comments, directives,
+    quoting, and relative entries.
+    """
+    import os
+
+    with open(filelist_path, encoding="utf-8") as f:
+        lines = f.read().splitlines(keepends=True)
+
+    rewritten = []
+    for line in lines:
+        stripped = line.strip()
+        candidate = stripped.strip('"')
+        if stripped and not stripped.startswith(("+", "#", "//")) and os.path.isabs(candidate):
+            mapped = copied_abs_sources.get(os.path.normpath(candidate))
+            if mapped is not None:
+                line = line.replace(candidate, mapped)
+        rewritten.append(line)
+
+    with open(filelist_path, "w", encoding="utf-8") as f:
+        f.writelines(rewritten)
+    if logger:
+        logger.info(
+            f"Rewrote {len(copied_abs_sources)} absolute filelist entries to frozen sources"
+        )
 
 
 def _copy_file_safely(src: str, dst: str, logger, context: str) -> bool:

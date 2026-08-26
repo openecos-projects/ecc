@@ -159,15 +159,25 @@ def find_config_path(project_dir: str) -> str | None:
     return path if os.path.isfile(path) else None
 
 
+class ConfigUnreadableError(ValueError):
+    """The project's ecc.toml exists but cannot be read (I/O or encoding)."""
+
+
 def load_run_config(project_dir: str) -> ProjectConfig | None:
-    """Parse the project's ecc.toml; None when it is missing or unreadable."""
+    """Parse the project's ecc.toml.
+
+    None only when the file is absent. An existing but unreadable file
+    raises :class:`ConfigUnreadableError` — callers must never silently
+    fall back to defaults while a higher-precedence configuration is
+    being ignored.
+    """
     config_path = find_config_path(project_dir)
     if config_path is None:
         return None
     try:
         return load_project_config(config_path)
-    except (OSError, UnicodeDecodeError):
-        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ConfigUnreadableError(f"unreadable project config: {config_path}: {exc}") from exc
 
 
 def config_run_id_from(cfg: ProjectConfig | None) -> str | InvalidFlowRun | None:
@@ -188,7 +198,10 @@ def config_run_id(project_dir: str) -> str | InvalidFlowRun | None:
     InvalidFlowRun when the key is present but cannot name a run directory;
     otherwise the run id string.
     """
-    return config_run_id_from(load_run_config(project_dir))
+    try:
+        return config_run_id_from(load_run_config(project_dir))
+    except ConfigUnreadableError:
+        return None
 
 
 def _supported_flow_presets() -> set[str]:

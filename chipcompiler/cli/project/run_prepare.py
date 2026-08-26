@@ -273,6 +273,8 @@ def run_existing_workspace(
             else:
                 flow_ok = engine_flow.run_steps()
     except Exception as exc:
+        if workspace_registered:
+            _write_back_status(project_dir, run_name, "failed", warnings)
         return CommandResult.err(
             [
                 error_record(
@@ -381,10 +383,12 @@ def execute_fresh_run(
     project_dir = ctx.project_dir
 
     _, origin_verilog, input_filelist = resolve_rtl(cfg)
+    generated_filelist = None
     if len(cfg.design_rtl) > 1:
         # Manifest-backed projects may declare several RTL sources;
         # materialize them as one generated filelist for creation.
-        input_filelist = _materialize_rtl_filelist(cfg)
+        generated_filelist = _materialize_rtl_filelist(cfg)
+        input_filelist = generated_filelist
         origin_verilog = ""
     parameters = to_parameters(cfg)
     pdk_root = resolve_pdk_root(cfg)
@@ -434,6 +438,12 @@ def execute_fresh_run(
             if owns_target:
                 shutil.rmtree(run_dir, ignore_errors=True)
             return _workspace_failed_result(run_name, run_dir, str(exc))
+        finally:
+            if generated_filelist is not None:
+                try:
+                    os.unlink(generated_filelist)
+                except OSError:
+                    pass
 
         if workspace is None:
             if owns_target:
@@ -534,6 +544,8 @@ def execute_fresh_run(
     except Exception as exc:
         from chipcompiler.cli.core.records import error_record
 
+        if workspace_registered:
+            _write_back_status(project_dir, run_name, "failed", warning_records)
         return CommandResult.err(
             [error_record("flow_failed", run=run_name, workspace=run_dir, reason=str(exc))]
         )

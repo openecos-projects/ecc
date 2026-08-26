@@ -431,3 +431,40 @@ class TestFlowMismatchZeroMutation:
         ]
         assert len(errors) == 1
         assert (external / "home" / "flow.json").read_bytes() == flow_before
+
+    def test_flow_exception_marks_manifest_status_failed(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        """A handled engine exception must not leave the manifest status at
+        running: the write-back records failed."""
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        run_dir = os.path.join(project_dir, "ws_0001")
+        _write_existing_workspace(
+            run_dir, RTL2GDS_NAMES, states=["Unstart"] * len(RTL2GDS_NAMES)
+        )
+        manifest_path = _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
+
+        class Flow:
+            def __init__(self, workspace):
+                self.workspace = workspace
+
+            def create_step_workspaces(self, *, executable_steps=None):
+                return None
+
+            def run_steps(self):
+                raise RuntimeError("engine exploded")
+
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        manifest = json.loads(Path(manifest_path).read_text())
+        assert manifest["workspaces"][0]["status"] == "failed"
+        errors = [r for r in _records(capsys) if r.get("error") == "flow_failed"]
+        assert len(errors) == 1
