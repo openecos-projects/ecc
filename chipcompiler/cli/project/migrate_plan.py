@@ -93,7 +93,7 @@ def _flow_status(steps: list[dict]) -> str:
     states = {str(step.get("state", "")) for step in steps if isinstance(step, dict)}
     if not states:
         return "not_started"
-    if "Incomplete" in states:
+    if states & {"Incomplete", "Invalid"}:
         return "failed"
     if states & {"Ongoing", "Pending"}:
         return "in_progress"

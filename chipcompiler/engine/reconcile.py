@@ -153,6 +153,10 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
         config = {"_flow": {}}
     except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
         return ReconcileResult(outcome="mismatch", error=f"workspace_config_invalid: {exc}"), {}
+    except OSError as exc:
+        # An existing but unreadable home/ecc.toml (permissions, a directory
+        # in its place) is invalid configuration, never an uncaught traceback.
+        return ReconcileResult(outcome="mismatch", error=f"workspace_config_invalid: {exc}"), {}
     workspace_flow = config["_flow"]
 
     if target_section is None:
@@ -258,6 +262,23 @@ def classify_workspace(
     return probe
 
 
+def reconcile_workspace_locked(
+    workspace_dir: str | Path, target_section: dict | None = None
+) -> ReconcileResult:
+    """Reconcile assuming the caller already holds the workspace lock.
+
+    Same re-probe-and-apply as :func:`reconcile_workspace` but without
+    acquiring the lock again — used when execution ownership must span
+    revalidation, the engine run, and terminal persistence.
+    """
+    workspace_dir = Path(workspace_dir).resolve()
+
+    probe, context = _probe_workspace(workspace_dir, target_section)
+    if probe.outcome != "pending_mutation":
+        return probe
+    return _apply_mutation(workspace_dir, probe, context)
+
+
 def reconcile_workspace(
     workspace_dir: str | Path, target_section: dict | None = None
 ) -> ReconcileResult:
@@ -301,8 +322,11 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
 
     if relation == "proper_prefix":
         # Append the missing suffix as Unstart, then adopt the target.
+        import copy
+
         from chipcompiler.data.workspace import _flow_step_template
 
+        context["flow_data_original"] = copy.deepcopy(flow_data)
         steps = flow_data.setdefault("steps", [])
         for name, tool in target[len(persisted) :]:
             steps.append(_flow_step_template(name, tool, "Unstart"))
@@ -327,7 +351,11 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
 
     if adopted_flow and not save_workspace_config(workspace_dir, context["params"], adopted_flow):
         # A stale [flow] must never survive a completed run: adoption
-        # failure is an error, not a tolerated partial state.
+        # failure is an error, not a tolerated partial state. Roll the
+        # ledger back too — leaving the appended suffix behind would
+        # report failure while the persisted flow is wider than the target.
+        if appended:
+            json_write(workspace_dir / "home" / "flow.json", context["flow_data_original"])
         return ReconcileResult(
             outcome="mismatch",
             persisted=probe.persisted,

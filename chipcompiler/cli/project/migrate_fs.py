@@ -257,7 +257,10 @@ def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_pre
             value = data.get("PDK Config")
             if isinstance(value, str) and value.startswith(old_prefix + os.sep):
                 data["PDK Config"] = new_prefix + value[len(old_prefix) :]
-                legacy_path.write_text(json.dumps(data), encoding="utf-8")
+                from chipcompiler.utility import json_write
+
+                if not json_write(legacy_path, data):
+                    raise OSError(f"failed to rebase PDK Config in {legacy_path}")
 
     config_path = Path(workspace_dir) / "home" / "ecc.toml"
     if config_path.exists():

@@ -167,7 +167,7 @@ def run_existing_workspace(
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
     )
-    from chipcompiler.engine.reconcile import classify_workspace, reconcile_workspace
+    from chipcompiler.engine.reconcile import classify_workspace
 
     def mismatch_error(reason: str) -> CommandResult:
         if reason.startswith("workspace_config_invalid"):
@@ -218,112 +218,131 @@ def run_existing_workspace(
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "flow_mismatch")
 
-    try:
-        workspace = load_workspace(run_dir)
-    except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
-        return CommandResult.err(
-            [
-                error_record(
-                    "workspace_config_invalid",
-                    run=run_name,
-                    workspace=run_dir,
-                    reason=str(exc),
-                )
-            ]
-        )
-    if workspace is None:
-        return CommandResult.err(
-            [
-                error_record(
-                    "invalid_workspace",
-                    run=run_name,
-                    workspace=run_dir,
-                )
-            ]
-        )
+    # Execution ownership: the ledger revalidation, migration, reconcile,
+    # and the engine run all hold the workspace lock, so two `ecc run`
+    # processes can never execute the same workspace concurrently.
+    from chipcompiler.engine.reconcile import _workspace_lock, reconcile_workspace_locked
 
-    result = reconcile_workspace(run_dir, target_section)
-    if result.outcome == "mismatch":
-        return mismatch_error(result.error or "flow_mismatch")
+    with _workspace_lock(Path(run_dir)):
+        probe = classify_workspace(run_dir, target_section)
+        if probe.outcome == "mismatch":
+            return mismatch_error(probe.error or "flow_mismatch")
 
-    if not result.persisted:
-        # An existing run directory whose flow ledger has no steps cannot be
-        # resumed or extended — nothing valid was persisted.
-        return CommandResult.err(
-            [
-                error_record(
-                    "invalid_flow_json",
-                    run=run_name,
-                    workspace=run_dir,
-                    reason="the persisted flow has no steps",
-                    overwrite=disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                )
-            ]
-        )
-
-    from chipcompiler.engine import EngineFlow
-
-    try:
-        engine_flow = EngineFlow(workspace=workspace)
-        flow_ok = True
-        if result.outcome != "no_op":
-            # Re-read the ledger: reconcile may have appended suffix steps
-            # after load_workspace populated the in-memory copy.
-            from chipcompiler.utility import json_read
-
-            flow_data = json_read(workspace.flow.path or Path(run_dir) / "home" / "flow.json")
-            target_names = set(result.target)
-            executable = {
-                step["name"]
-                for step in flow_data.get("steps", [])
-                if isinstance(step, dict)
-                and isinstance(step.get("name"), str)
-                and step.get("state") != "Success"
-                and step["name"] in target_names
-            }
-            engine_flow.create_step_workspaces(executable_steps=executable)
-
-            from chipcompiler.cli.rendering.progress import (
-                run_flow_with_progress,
-                should_enable_run_progress,
+        try:
+            workspace = load_workspace(run_dir)
+        except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
+            return CommandResult.err(
+                [
+                    error_record(
+                        "workspace_config_invalid",
+                        run=run_name,
+                        workspace=run_dir,
+                        reason=str(exc),
+                    )
+                ]
+            )
+        if workspace is None:
+            return CommandResult.err(
+                [
+                    error_record(
+                        "invalid_workspace",
+                        run=run_name,
+                        workspace=run_dir,
+                    )
+                ]
             )
 
-            if should_enable_run_progress(ctx, sys.stderr):
-                flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
-            else:
-                flow_ok = engine_flow.run_steps()
-    except Exception as exc:
-        if workspace_registered:
-            _write_back_status(project_dir, run_name, "failed", warnings)
-        return CommandResult.err(
-            [
-                error_record(
-                    "flow_failed",
-                    run=run_name,
-                    workspace=run_dir,
-                    reason=str(exc),
+        result = reconcile_workspace_locked(run_dir, target_section)
+        if result.outcome == "mismatch":
+            return mismatch_error(result.error or "flow_mismatch")
+
+        if not result.persisted:
+            # An existing run directory whose flow ledger has no steps cannot be
+            # resumed or extended — nothing valid was persisted.
+            return CommandResult.err(
+                [
+                    error_record(
+                        "invalid_flow_json",
+                        run=run_name,
+                        workspace=run_dir,
+                        reason="the persisted flow has no steps",
+                        overwrite=disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
+                    )
+                ]
+            )
+
+        from chipcompiler.engine import EngineFlow
+
+        try:
+            engine_flow = EngineFlow(workspace=workspace)
+            flow_ok = True
+            if result.outcome != "no_op":
+                # Re-read the ledger: reconcile may have appended suffix steps
+                # after load_workspace populated the in-memory copy.
+                from chipcompiler.utility import json_read
+
+                flow_data = json_read(workspace.flow.path or Path(run_dir) / "home" / "flow.json")
+                target_names = set(result.target)
+                executable = {
+                    step["name"]
+                    for step in flow_data.get("steps", [])
+                    if isinstance(step, dict)
+                    and isinstance(step.get("name"), str)
+                    and step.get("state") != "Success"
+                    and step["name"] in target_names
+                }
+                engine_flow.create_step_workspaces(executable_steps=executable)
+                # executable_steps only gates dependency verification; the
+                # actual runner iterates every workspace step. Bind execution
+                # to the reconciled target so a wider persisted ledger (e.g.
+                # RCX/sta beyond the requested end) never runs on resume.
+                engine_flow.workspace_steps = [
+                    step
+                    for step in getattr(engine_flow, "workspace_steps", None) or []
+                    if step.name in target_names
+                ]
+
+                from chipcompiler.cli.rendering.progress import (
+                    run_flow_with_progress,
+                    should_enable_run_progress,
                 )
-            ]
-        )
 
-    if workspace_registered:
-        _write_back_status(project_dir, run_name, "success" if flow_ok else "failed", warnings)
+                if should_enable_run_progress(ctx, sys.stderr):
+                    flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+                else:
+                    flow_ok = engine_flow.run_steps()
+        except Exception as exc:
+            if workspace_registered:
+                _write_back_status(project_dir, run_name, "failed", warnings)
+            return CommandResult.err(
+                [
+                    error_record(
+                        "flow_failed",
+                        run=run_name,
+                        workspace=run_dir,
+                        reason=str(exc),
+                    )
+                ]
+            )
 
-    record: dict = {
-        "run": run_name,
-        "status": "success" if flow_ok else "failed",
-        "workspace": run_dir,
-        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-        "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
-    }
-    if result.outcome == "no_op":
-        record["no_op"] = True
-    if result.appended:
-        record["appended_steps"] = list(result.appended)
-    records = warnings + [record]
-    if not flow_ok:
-        return CommandResult.err(records)
-    return CommandResult.ok(records)
+        if workspace_registered:
+            _write_back_status(project_dir, run_name, "success" if flow_ok else "failed", warnings)
+
+        record: dict = {
+            "run": run_name,
+            "status": "success" if flow_ok else "failed",
+            "workspace": run_dir,
+            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
+            "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
+        }
+        if result.outcome == "no_op":
+            record["no_op"] = True
+        if result.appended:
+            record["appended_steps"] = list(result.appended)
+        records = warnings + [record]
+        if not flow_ok:
+            return CommandResult.err(records)
+        return CommandResult.ok(records)
 
 
 def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) -> CommandResult:
@@ -363,6 +382,7 @@ def _materialize_rtl_filelist(cfg) -> str:
     from chipcompiler.cli.project.config import FILELIST_SUFFIXES, _resolve_path
     from chipcompiler.utility.filelist import (
         parse_filelist,
+        parse_incdir_directives,
     )
     from chipcompiler.utility.filelist import (
         resolve_path as resolve_filelist_entry,
@@ -376,6 +396,10 @@ def _materialize_rtl_filelist(cfg) -> str:
                 nested_dir = os.path.dirname(resolved_entry)
                 for nested in parse_filelist(resolved_entry):
                     f.write(resolve_filelist_entry(nested, nested_dir) + "\n")
+                # Keep the nested file's include directives (rebased to
+                # absolute): dropping them silently breaks `include sources.
+                for incdir in parse_incdir_directives(resolved_entry):
+                    f.write(f"+incdir+{resolve_filelist_entry(incdir, nested_dir)}\n")
             else:
                 f.write(resolved_entry + "\n")
     return filelist_path
