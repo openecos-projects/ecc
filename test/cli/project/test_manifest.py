@@ -483,3 +483,27 @@ def test_load_manifest_rejects_fractional_mpc_design_index(tmp_path):
 
     with pytest.raises(ManifestError, match="mpc.design"):
         load_manifest(str(tmp_path))
+
+
+def test_load_manifest_tolerates_huge_integer_mpc_design_index(tmp_path):
+    # float(10**400) raises OverflowError; ints are integral by
+    # construction, so the check never float-converts them.
+    _write_manifest(
+        tmp_path,
+        _minimal_document(
+            tmp_path,
+            mpc={
+                "resource_id": "mpc:x",
+                "display_name": "d",
+                "installed_version": "1",
+                "path": "/p",
+                "spec_path": "/p/spec/spec.json.in",
+                "design": {"index": 10**400, "design_name": "gcd"},
+                "core_template": {},
+            },
+        ),
+    )
+
+    manifest = load_manifest(str(tmp_path))
+
+    assert manifest.design_name == "gcd"

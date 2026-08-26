@@ -576,3 +576,37 @@ class TestMigrationPreview:
         # The failed move was rolled back under runs/.
         assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
         assert not os.path.exists(os.path.join(project_dir, "exp1"))
+
+    def test_resume_with_huge_integer_mpc_index_does_not_crash(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+        manifest_stubs,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        # The resume path validates the existing manifest BEFORE moving:
+        # a huge MPC index must pass the parser without OverflowError.
+        manifest_stubs.write(
+            Path(project_dir),
+            [],
+            mpc={
+                "resource_id": "mpc:x",
+                "display_name": "d",
+                "installed_version": "1",
+                "path": "/p",
+                "spec_path": "/p/spec/spec.json.in",
+                "design": {"index": 10**400, "design_name": "gcd"},
+                "core_template": {},
+            },
+        )
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 0
+        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
+        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))

@@ -173,7 +173,10 @@ def _validate_mpc(value: Any) -> None:
         not design
         or isinstance(index, bool)  # a JSON boolean is not an index (True == 1 in Python)
         or not isinstance(index, (int, float))
-        or not float(index).is_integer()  # the GUI accepts integral numbers (0.0)
+        # The GUI accepts integral numbers (0.0). is_integer() applies to
+        # floats only: float(huge_int) raises OverflowError, and ints are
+        # integral by construction.
+        or (isinstance(index, float) and not index.is_integer())
         or index < 0
         or not _optional_str(design.get("design_name"))
     ):
