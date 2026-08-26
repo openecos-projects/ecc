@@ -220,17 +220,18 @@ def export_signoff_package_archive(
                 "command_failed",
                 "signoff package directory was not created",
             )
-            
+
         package_dir = Path(result.package_dir)
-        
+
         if additional_files:
             for file_info in additional_files:
                 p = package_dir / file_info["archivePath"]
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(file_info["content"], encoding="utf-8")
-                
+
         archive = package_dir.with_suffix(".tar.gz")
         import tarfile
+
         with tarfile.open(archive, "w:gz") as tar:
             tar.add(package_dir, arcname=package_dir.name)
 
