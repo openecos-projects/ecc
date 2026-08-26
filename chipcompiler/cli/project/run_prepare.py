@@ -272,12 +272,14 @@ def run_existing_workspace(
             from chipcompiler.utility import json_read
 
             flow_data = json_read(workspace.flow.path or Path(run_dir) / "home" / "flow.json")
+            target_names = set(result.target)
             executable = {
                 step["name"]
                 for step in flow_data.get("steps", [])
                 if isinstance(step, dict)
                 and isinstance(step.get("name"), str)
                 and step.get("state") != "Success"
+                and step["name"] in target_names
             }
             engine_flow.create_step_workspaces(executable_steps=executable)
 
@@ -351,16 +353,31 @@ def _materialize_rtl_filelist(cfg) -> str:
     """Write the declared multi-entry rtl list as one generated filelist.
 
     Paths resolve against the project directory, mirroring resolve_rtl's
-    single-source rule. Returns the filelist path.
+    single-source rule. Entries that are themselves filelists (``.f``) are
+    expanded in place — a nested filelist copied verbatim would be fed to
+    synthesis as an HDL source, silently dropping everything it names.
+    Returns the filelist path.
     """
     import tempfile
 
-    from chipcompiler.cli.project.config import _resolve_path
+    from chipcompiler.cli.project.config import FILELIST_SUFFIXES, _resolve_path
+    from chipcompiler.utility.filelist import (
+        parse_filelist,
+    )
+    from chipcompiler.utility.filelist import (
+        resolve_path as resolve_filelist_entry,
+    )
 
     fd, filelist_path = tempfile.mkstemp(prefix="ecc-rtl-", suffix=".f")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         for entry in cfg.design_rtl:
-            f.write(_resolve_path(cfg.project_dir, entry) + "\n")
+            resolved_entry = _resolve_path(cfg.project_dir, entry)
+            if os.path.splitext(resolved_entry)[1].lower() in FILELIST_SUFFIXES:
+                nested_dir = os.path.dirname(resolved_entry)
+                for nested in parse_filelist(resolved_entry):
+                    f.write(resolve_filelist_entry(nested, nested_dir) + "\n")
+            else:
+                f.write(resolved_entry + "\n")
     return filelist_path
 
 

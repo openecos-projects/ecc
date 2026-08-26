@@ -420,14 +420,18 @@ def save_workspace_config(
         logger.warning("failed to render workspace config for %s: %s", workspace_dir, exc)
         return False
 
-    target_spelled = workspace_config_path(workspace_dir).expanduser()
-    if target_spelled.is_symlink():
-        # A symlinked config target would redirect the staged replace onto
-        # whatever it points at (potentially outside the workspace): refuse
-        # instead of overwriting a file we do not own.
-        logger.warning("refusing to write workspace config through a symlink: %s", target_spelled)
+    workspace_real = Path(workspace_dir).resolve()
+    home_spelled = workspace_real / "home"
+    if home_spelled.is_symlink() or (home_spelled / WORKSPACE_CONFIG_FILENAME).is_symlink():
+        # A symlinked config target (leaf or its home parent) would redirect
+        # the staged replace onto whatever it points at (potentially outside
+        # the workspace): refuse instead of overwriting a file we do not own.
+        logger.warning(
+            "refusing to write workspace config through a symlinked path: %s",
+            home_spelled / WORKSPACE_CONFIG_FILENAME,
+        )
         return False
-    target = target_spelled.resolve()
+    target = (home_spelled / WORKSPACE_CONFIG_FILENAME).resolve()
     tmp_path = _stage_config_bytes(target, content)
     if tmp_path is None:
         return False

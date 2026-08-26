@@ -466,3 +466,46 @@ class TestFlowMismatchZeroMutation:
         assert manifest["workspaces"][0]["status"] == "failed"
         errors = [r for r in _records(capsys) if r.get("error") == "flow_failed"]
         assert len(errors) == 1
+
+    def test_resume_runs_only_steps_within_the_target_range(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        """Persisted flow wider than the target: resume must not execute the
+        steps that lie beyond the requested end."""
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        _set_flow_preset(project_dir, "rtl2gds")
+        run_dir = os.path.join(project_dir, "runs", "default")
+        _write_existing_workspace(
+            run_dir,
+            RTL2GDS_NAMES + ["RCX", "sta"],
+            states=["Success"] * 4
+            + ["Unstart"] * (len(RTL2GDS_NAMES) - 4)
+            + ["Unstart", "Unstart"],
+            preset="rtl2gds",
+        )
+
+        created = {}
+
+        class Flow:
+            def __init__(self, workspace):
+                self.workspace = workspace
+
+            def create_step_workspaces(self, *, executable_steps=None):
+                created["executable"] = executable_steps
+
+            def run_steps(self):
+                return True
+
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        assert "RCX" not in created["executable"]
+        assert "sta" not in created["executable"]

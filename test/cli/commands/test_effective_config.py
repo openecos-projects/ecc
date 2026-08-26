@@ -473,3 +473,49 @@ class TestHybridFrequencyProvenance:
         assert rc != 0
         records = json.loads(capsys.readouterr().out)["records"]
         assert any(r.get("error") == "config_error" for r in records)
+
+    def test_multi_rtl_manifest_expands_nested_filelists(
+        self, tmp_path, capsys, flow_mocks, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / "rtl").mkdir()
+        (project_dir / "rtl" / "a.v").write_text("module a; endmodule\n")
+        (project_dir / "rtl" / "b.v").write_text("module b; endmodule\n")
+        (project_dir / "rtl" / "nested.f").write_text("b.v\n")
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/a.v", "rtl/nested.f"],
+                "parameters": {"design": "gcd", "frequency_max": 100},
+            },
+        )
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nfrequency_mhz = 100.0\n\n[flow]\npreset = "rtl2gds"\n'
+        )
+
+        generated = {}
+        from chipcompiler.cli.project import run_prepare
+
+        original_materialize = run_prepare._materialize_rtl_filelist
+
+        def capture_materialize(cfg):
+            path = original_materialize(cfg)
+            generated["content"] = Path(path).read_text()
+            return path
+
+        monkeypatch.setattr(run_prepare, "_materialize_rtl_filelist", capture_materialize)
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        lines = generated["content"].splitlines()
+        assert len(lines) == 2
+        assert lines[0].endswith("rtl/a.v")
+        assert lines[1].endswith("rtl/b.v")
+        assert not any(line.endswith(".f") for line in lines)

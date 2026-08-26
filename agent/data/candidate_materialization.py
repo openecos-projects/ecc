@@ -244,10 +244,16 @@ def _load_parameters_config(path: Path) -> dict:
         raise ValueError(f"invalid candidate base config: {path}: {exc}") from exc
 
 
-def _write_parameters_config(workspace: Any, path: Path, config: dict) -> None:
+def _write_parameters_config(workspace: Any, path: Path, config: dict) -> Path:
     """Persist candidate parameters through the canonical save boundary
-    (home/ecc.toml), keeping the workspace's [flow] section."""
+    (home/ecc.toml), keeping the workspace's [flow] section.
+
+    Returns the path that was actually written: when the workspace still
+    references a legacy parameters.json path, the save lands on the
+    canonical home/ecc.toml target, and receipts must hash THAT file.
+    """
     from chipcompiler.data.parameter import Parameters, save_parameter
+    from chipcompiler.data.workspace_config import workspace_config_path
 
     parameters = Parameters()
     parameters.path = path
@@ -258,6 +264,7 @@ def _write_parameters_config(workspace: Any, path: Path, config: dict) -> None:
             parameters.data["_flow"] = existing_flow
     if not save_parameter(parameters):
         raise ValueError(f"failed to write candidate config: {path}")
+    return workspace_config_path(workspace.directory)
 
 
 def _load_configs(
@@ -331,7 +338,8 @@ def _write_configs(
     for config_key, config in configs.items():
         path = config_paths[config_key]
         if config_key == "parameters":
-            _write_parameters_config(workspace, path, config)
+            path = _write_parameters_config(workspace, path, config)
+            config_paths[config_key] = path
         else:
             write_json_atomic(path, config)
         digest = sha256_path(path)
