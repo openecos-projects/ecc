@@ -54,6 +54,29 @@ def _resolves_as_spelled(path: str, anchor: str) -> bool:
     return os.path.realpath(path) == spelled
 
 
+def _existing_target_guard(run_dir: str, project_dir: str, run_name: str) -> CommandResult | None:
+    """Reject an existing run target that escapes the project.
+
+    A symlinked run target (or one whose home/flow.json is itself linked)
+    must never be executed or mutated in place of a project-owned run:
+    fail loud instead of touching the external workspace it points at.
+    """
+    from chipcompiler.cli.core.records import error_record
+
+    if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
+        return CommandResult.err(
+            [
+                error_record(
+                    "run_target_unsafe",
+                    run=run_name,
+                    workspace=run_dir,
+                    reason="existing target is not an ECC run directory inside the project",
+                )
+            ]
+        )
+    return None
+
+
 def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
     """Overwrite-delete + atomic create of the run target (the caller holds
     the shared project lock).
@@ -200,6 +223,9 @@ def dispatch_project_run(
             if stale is not None:
                 return stale
             if os.path.exists(flow_json) and not command_input.overwrite:
+                unsafe = _existing_target_guard(run_dir, project_dir, run_name)
+                if unsafe is not None:
+                    return unsafe
                 return existing_workspace_run()
             prepared = _prepare_run_target(command_input, ctx, run_dir, run_name)
             if isinstance(prepared, CommandResult):
@@ -212,6 +238,9 @@ def dispatch_project_run(
     # engine runs outside the lock so a run never holds it for minutes.
     with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
         if os.path.exists(flow_json) and not command_input.overwrite:
+            unsafe = _existing_target_guard(run_dir, project_dir, run_name)
+            if unsafe is not None:
+                return unsafe
             return existing_workspace_run()
         prepared = _prepare_run_target(command_input, ctx, run_dir, run_name)
         if isinstance(prepared, CommandResult):

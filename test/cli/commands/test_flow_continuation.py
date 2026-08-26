@@ -380,3 +380,54 @@ class TestFlowMismatchZeroMutation:
         assert len(errors) == 1
         assert _tree_snapshot(run_dir) == tree_before
         assert Path(manifest_path).read_bytes() == manifest_before
+
+    def test_existing_run_rejects_symlinked_legacy_target(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        """A symlinked legacy run target must never be executed or mutated:
+        the run fails loud with run_target_unsafe and the external workspace
+        behind the link is left byte-identical."""
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        external = tmp_path / "external-ws"
+        _write_existing_workspace(str(external), RTL2GDS_NAMES)
+        os.symlink(str(external), os.path.join(project_dir, "runs", "default"))
+
+        flow_before = (external / "home" / "flow.json").read_bytes()
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        errors = [r for r in _records(capsys) if r.get("error") == "run_target_unsafe"]
+        assert len(errors) == 1
+        assert (external / "home" / "flow.json").read_bytes() == flow_before
+
+    def test_existing_run_rejects_symlinked_manifest_target(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        """A declared workspace whose directory is a symlink into an
+        external tree never reaches the engine: the manifest layer rejects it
+        (manifest_invalid), with the dispatch ownership guard as the backup
+        line behind it. The external tree is left untouched either way."""
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        external = tmp_path / "external-ws"
+        _write_existing_workspace(str(external), RTL2GDS_NAMES)
+        run_dir = os.path.join(project_dir, "ws_0001")
+        os.symlink(str(external), run_dir)
+        _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
+
+        flow_before = (external / "home" / "flow.json").read_bytes()
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc != 0
+        errors = [
+            r
+            for r in _records(capsys)
+            if r.get("error") in {"manifest_invalid", "run_target_unsafe"}
+        ]
+        assert len(errors) == 1
+        assert (external / "home" / "flow.json").read_bytes() == flow_before
