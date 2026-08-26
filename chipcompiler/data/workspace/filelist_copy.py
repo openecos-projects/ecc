@@ -231,7 +231,8 @@ def _rewrite_filelist_absolute_sources(
         stripped = line.strip()
         candidate = ""
         if stripped.startswith("+incdir+"):
-            include_path = stripped[len("+incdir+") :].strip().strip("\"'")
+            directive = _remove_inline_comment(stripped[len("+incdir+") :]).strip()
+            include_path = directive.strip("\"'")
             mapped = incdirs.get(os.path.normpath(include_path))
             if mapped is not None:
                 line = line.replace(include_path, mapped)

@@ -180,6 +180,24 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
             )
             return records, 1
         project_fd = os.open(project_dir, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            opened_stat = os.fstat(project_fd)
+            opened_identity = (opened_stat.st_dev, opened_stat.st_ino)
+        except OSError:
+            opened_identity = None
+        if project_identity is not None and opened_identity != project_identity:
+            # The opened destination is no longer the confirmed project
+            # object (replaced or retargeted between the check and the open):
+            # never move workspaces into an unverified tree.
+            os.close(project_fd)
+            records.append(
+                {
+                    "kind": "error",
+                    "error": "migration_failed",
+                    "reason": "project directory changed before the first move",
+                }
+            )
+            return records, 1
 
         for entry in plan.entries:
             failure = migrate_fs._move_workspace(entry, container_fd, project_fd)

@@ -317,7 +317,8 @@ def run_existing_workspace(
             if workspace_registered:
                 _write_back_status(project_dir, run_name, "failed", warnings)
             return CommandResult.err(
-                [
+                warnings
+                + [
                     error_record(
                         "flow_failed",
                         run=run_name,
@@ -471,7 +472,28 @@ def execute_fresh_run(
 
     manifest_parameters = cfg.manifest_parameters
     if manifest_parameters:
+        # Manifest parameter values face the same registry type/range rules
+        # as ecc.toml and --set — but only when they are the EFFECTIVE value:
+        # a value overridden by an explicit ecc.toml/--set key participates
+        # in divergence warnings instead of failing the run.
+        from chipcompiler.cli.core.records import error_record
+        from chipcompiler.cli.project.params import PARAM_REGISTRY, validate_value
         from chipcompiler.data.parameter_keys import geometry_to_parameters
+
+        explicit = set(getattr(cfg, "_explicit_keys", frozenset()))
+        overridden_keys = explicit | set(cfg.params_overrides) | set(cli_overrides)
+        invalid = _invalid_manifest_parameters(
+            manifest_parameters, PARAM_REGISTRY, validate_value, overridden_keys
+        )
+        if invalid:
+            return CommandResult.err(
+                [
+                    error_record(
+                        "manifest_invalid",
+                        reason="invalid manifest parameter values: " + "; ".join(invalid),
+                    )
+                ]
+            )
 
         # Manifest base layer: ecc.toml/--set values overlay it, not the
         # other way around.
@@ -627,7 +649,8 @@ def execute_fresh_run(
             if workspace_registered:
                 _write_back_status(project_dir, run_name, "failed", warning_records)
             return CommandResult.err(
-                [error_record("flow_failed", run=run_name, workspace=run_dir, reason=str(exc))]
+                warning_records
+                + [error_record("flow_failed", run=run_name, workspace=run_dir, reason=str(exc))]
             )
 
     if workspace_registered:
@@ -643,3 +666,40 @@ def execute_fresh_run(
         }
     ]
     return CommandResult.ok(warning_records + success_records)
+
+
+def _invalid_manifest_parameters(
+    manifest_parameters: dict,
+    registry,
+    validate_value,
+    overridden_keys: frozenset | set = frozenset(),
+) -> list[str]:
+    """Validate manifest-layer parameter values against the registry.
+
+    Maps each known registry target (maps_to) back to the manifest's flat
+    keys and applies the schema's range/choice rules. Values whose dotted
+    key has an explicit ecc.toml/--set override are skipped (they are inert
+    and surface as divergence warnings instead). Unknown keys pass through
+    untouched (forward-compatible additions).
+    """
+    errors: list[str] = []
+    for schema in registry:
+        if schema.param in overridden_keys:
+            continue
+        maps_to = schema.maps_to
+        value = None
+        present = False
+        if isinstance(maps_to, str):
+            if maps_to in manifest_parameters:
+                value = manifest_parameters[maps_to]
+                present = True
+        elif isinstance(maps_to, dict):
+            for subtree, leaf in maps_to.items():
+                node = manifest_parameters.get(subtree)
+                if isinstance(node, dict) and leaf in node:
+                    value = node[leaf]
+                    present = True
+                    break
+        if present:
+            errors.extend(validate_value(value, schema))
+    return errors

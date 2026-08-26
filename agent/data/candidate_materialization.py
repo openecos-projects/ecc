@@ -286,7 +286,7 @@ def _load_configs(
                 configs[knob.config_key] = read_json_object(path, "candidate base config")
         except ValueError as error:
             raise CandidateMaterializationError(str(error)) from error
-        before = sha256_path(path)
+        before = sha256_bytes(canonical_json_bytes(configs[knob.config_key]))
         if before is None:
             raise CandidateMaterializationError(f"missing candidate base config: {path}")
         before_hashes[knob.config_key] = before
@@ -347,7 +347,13 @@ def _write_configs(
             raise CandidateMaterializationError(f"failed to write candidate config: {path}")
         hashes[config_key] = digest
         if config_key == "parameters" and hasattr(workspace, "parameters"):
-            workspace.parameters.data = config
+            # Keep the flow target attached to the live parameters: the
+            # candidate overlay never resets [flow].
+            merged = dict(config)
+            existing_flow = getattr(workspace.parameters, "data", {}).get("_flow")
+            if existing_flow and "_flow" not in merged:
+                merged["_flow"] = existing_flow
+            workspace.parameters.data = merged
     return hashes
 
 

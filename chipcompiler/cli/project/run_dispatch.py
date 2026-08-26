@@ -14,6 +14,7 @@ imports cheap.
 """
 
 import os
+from pathlib import Path
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
@@ -92,6 +93,7 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
     import shutil
 
     from chipcompiler.cli.core.records import error_record
+    from chipcompiler.engine.reconcile import _workspace_lock
 
     project_dir = ctx.project_dir
     if command_input.overwrite and os.path.lexists(run_dir):
@@ -106,17 +108,22 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
                     )
                 ]
             )
-        for root, dirs, files in os.walk(run_dir):
-            for d in dirs:
-                dp = os.path.join(root, d)
-                if not os.path.islink(dp):
-                    os.chmod(dp, 0o755)
-            for f in files:
-                fp = os.path.join(root, f)
-                if not os.path.islink(fp):
-                    os.chmod(fp, 0o644)
-        os.chmod(run_dir, 0o755)
-        shutil.rmtree(run_dir)
+        # Serialize the deletion with an active execution of this workspace:
+        # flock blocks until the running engine releases home/workspace.lock,
+        # and the fresh engine re-acquires it on the recreated tree, so two
+        # runs never execute against the same paths.
+        with _workspace_lock(Path(run_dir)):
+            for root, dirs, files in os.walk(run_dir):
+                for d in dirs:
+                    dp = os.path.join(root, d)
+                    if not os.path.islink(dp):
+                        os.chmod(dp, 0o755)
+                for f in files:
+                    fp = os.path.join(root, f)
+                    if not os.path.islink(fp):
+                        os.chmod(fp, 0o644)
+            os.chmod(run_dir, 0o755)
+            shutil.rmtree(run_dir)
 
     try:
         os.makedirs(run_dir)
