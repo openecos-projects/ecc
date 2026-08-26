@@ -74,6 +74,11 @@ class MigrationPlan:
     # Plan-time lstat identity of the confirmed runs/ container.
     container_dev: int = 0
     container_ino: int = 0
+    # Plan-time lstat identity of the RESOLVED project directory: a
+    # retargeted project symlink or replaced project dir fails at
+    # execution time before any move.
+    project_dev: int = 0
+    project_ino: int = 0
     resume: bool = False
 
 
@@ -184,6 +189,12 @@ def plan_migration(project_dir: str) -> MigrationPlan:
                 source_ino=source_stat.st_ino,
             )
         )
+    project_identity = (0, 0)
+    try:
+        project_stat = os.lstat(os.path.realpath(project_dir))
+        project_identity = (project_stat.st_dev, project_stat.st_ino)
+    except OSError:
+        pass
     return MigrationPlan(
         project_dir=project_dir,
         entries=tuple(entries),
@@ -191,6 +202,8 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         unsafe=tuple(unsafe),
         container_dev=container_dev,
         container_ino=container_ino,
+        project_dev=project_identity[0],
+        project_ino=project_identity[1],
         resume=find_manifest(project_dir) is not None,
     )
 
@@ -325,11 +338,29 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
         )
 
     migrated: list[MigrationEntry] = []
+    moved_records: list[dict] = []
     container_fd = None
     project_fd = None
     runs_dir = os.path.join(project_dir, "runs")
     try:
         with migrate_fs.project_migrate_lock(project_dir, exclusive=True):
+            # Bind the destination: the resolved project directory must
+            # still be the confirmed object — a retargeted symlink or a
+            # replaced project dir refuses before any move.
+            try:
+                project_stat = os.lstat(os.path.realpath(project_dir))
+                project_identity = (project_stat.st_dev, project_stat.st_ino)
+            except OSError:
+                project_identity = None
+            if project_identity != (plan.project_dev, plan.project_ino):
+                records.append(
+                    {
+                        "kind": "error",
+                        "error": "migration_failed",
+                        "reason": "project directory changed after preview",
+                    }
+                )
+                return records, 1
             container_fd, container_identity = migrate_fs.open_container(runs_dir)
             if container_fd is None:
                 records.append(
@@ -365,7 +396,9 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
                     )
                     continue
                 migrated.append(entry)
-                records.append(
+                # Success records are deferred until registration completes:
+                # a run never shows both "migrated" and "migration_failed".
+                moved_records.append(
                     {
                         "status": "migrated",
                         "run": entry.run_id,
@@ -449,6 +482,8 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
                             }
                         )
 
+                if registered:
+                    records.extend(moved_records)
                 if not registered:
                     # Registration is part of the transaction: without it the moved
                     # workspaces would be stranded at the root, invisible to the GUI

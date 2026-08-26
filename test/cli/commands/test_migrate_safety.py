@@ -665,3 +665,49 @@ class TestMigrationProjectLock:
         assert flow_mocks.capture["create_kwargs"]["directory"] == os.path.join(
             project_dir, "default"
         )
+
+
+class TestDestinationBinding:
+    def test_retargeted_project_symlink_is_refused_before_any_move(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+        monkeypatch,
+    ):
+        import chipcompiler.cli.project.migrate as migrate_module
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        link_dir = tmp_path / "links"
+        link_dir.mkdir()
+        link = str(link_dir / "project_link")
+        os.symlink(project_dir, link)
+        other = tmp_path / "other_project"
+        other.mkdir()
+
+        real_plan = migrate_module.plan_migration
+
+        def retargeting_plan(project_dir_arg):
+            plan = real_plan(project_dir_arg)
+            # The project symlink is retargeted after the preview.
+            os.unlink(link)
+            os.symlink(other, link)
+            return plan
+
+        monkeypatch.setattr(migrate_module, "plan_migration", retargeting_plan)
+
+        rc = cli_main.run(["migrate", "--project", link, "--yes", "--json"])
+
+        assert rc != 0
+        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        assert failure["reason"] == "project directory changed after preview"
+        # Nothing was moved into the retargeted destination and nothing was
+        # written anywhere: the real workspace stays under runs/.
+        assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
+        assert not (other / "exp1").exists()
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+        assert not (other / "project.json").exists()
