@@ -26,6 +26,10 @@ from chipcompiler.cli.project.migrate_plan import (
 logger = logging.getLogger(__name__)
 
 
+class _ManifestRebindConflict(ValueError):
+    """A planned workspace id is already bound to a different path."""
+
+
 def _append_manifest_entries(
     project_dir: str, append_set: tuple[dict, ...], keep_ids: set[str]
 ) -> bool:
@@ -38,13 +42,33 @@ def _append_manifest_entries(
 
     def mutate(document: dict) -> None:
         workspaces = document.setdefault("workspaces", [])
-        known = {entry.get("workspace_id") for entry in workspaces if isinstance(entry, dict)}
+        known = {
+            entry.get("workspace_id"): entry
+            for entry in workspaces
+            if isinstance(entry, dict) and entry.get("workspace_id")
+        }
         for planned in append_set:
-            if planned["workspace_id"] not in keep_ids or planned["workspace_id"] in known:
+            if planned["workspace_id"] not in keep_ids:
+                continue
+            existing = known.get(planned["workspace_id"])
+            if existing is not None:
+                # The id is already bound to a different path by a winning
+                # writer: silently keeping it would report a migration whose
+                # workspace the manifest does not point at.
+                if existing.get("workspace_path") != planned.get("workspace_path"):
+                    raise _ManifestRebindConflict(
+                        f"workspace {planned['workspace_id']!r} is already registered "
+                        f"at {existing.get('workspace_path')!r}, refusing to rebind "
+                        f"to {planned.get('workspace_path')!r}"
+                    )
                 continue
             workspaces.append(dict(planned))
 
-    return update_manifest(project_dir, mutate)
+    try:
+        return update_manifest(project_dir, mutate)
+    except _ManifestRebindConflict as exc:
+        logger.warning("manifest registration refused: %s", exc)
+        return False
 
 
 def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list[dict], int]:

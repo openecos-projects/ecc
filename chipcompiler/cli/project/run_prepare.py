@@ -48,7 +48,9 @@ def resolve_manifest_run_target(command_input, ctx):
     cli_run_id = command_input.project.run_id
 
     if ctx.project_state == "virgin":
-        run_name = cli_run_id or "default"
+        # A configured [flow] run id resolves through ctx.run_id: honoring
+        # it keeps the first writer on the same workspace the inspector shows.
+        run_name = cli_run_id or ctx.run_id or "default"
         if invalid_single_segment_id(run_name):
             return CommandResult.err(
                 [

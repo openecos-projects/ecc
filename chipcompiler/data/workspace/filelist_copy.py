@@ -135,7 +135,28 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
             # filelist location (a generated outer filelist lives in a temp
             # dir): anchor it under origin by the directory's own name so
             # the frozen workspace no longer depends on the source project.
+            # Distinct directories sharing a basename disambiguate like
+            # colliding sources — never silently merge into one anchor.
             incdir_anchor = os.path.basename(abs_incdir.rstrip(os.sep))
+            if incdir_anchor in copied_abs_incdirs.values() or incdir_anchor in copied_files:
+                parent = os.path.basename(os.path.dirname(abs_incdir))
+                disambiguated = f"{parent}_{incdir_anchor}" if parent else incdir_anchor
+                suffix = 2
+                while disambiguated in copied_abs_incdirs.values() or disambiguated in copied_files:
+                    disambiguated = (
+                        f"{parent}_{suffix}_{incdir_anchor}"
+                        if parent
+                        else f"_{suffix}_{incdir_anchor}"
+                    )
+                    suffix += 1
+                    if suffix > 99:
+                        raise ValueError(
+                            f"filelist include directories collide on basename "
+                            f"{incdir_anchor}: {abs_incdir}"
+                        )
+                if logger:
+                    logger.info(f"Disambiguating include anchor: {abs_incdir} -> {disambiguated}")
+                incdir_anchor = disambiguated
             copied_abs_incdirs[os.path.normpath(abs_incdir)] = incdir_anchor
 
         for root, _dirs, files in os.walk(abs_incdir):

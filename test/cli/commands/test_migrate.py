@@ -623,3 +623,36 @@ class TestMigrationPreview:
         assert rc == 0
         assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
         assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+
+    def test_manifest_rebind_conflict_fails_instead_of_silent_skip(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        import json
+
+        document = {
+            "schema_version": 1,
+            "design_name": "gcd",
+            "root_path": project_dir,
+            "workspaces": [
+                {
+                    "workspace_id": "ws_0001",
+                    "workspace_path": f"{project_dir}/other_place",
+                    "status": "success",
+                }
+            ],
+        }
+        (tmp_path / "gcd" / "project.json").write_text(json.dumps(document))
+
+        from chipcompiler.cli.project.migrate import _append_manifest_entries
+
+        planned = {
+            "workspace_id": "ws_0001",
+            "workspace_path": f"{project_dir}/ws_0001",
+            "status": "success",
+        }
+        written = _append_manifest_entries(project_dir, (planned,), {"ws_0001"})
+
+        assert written is False
+        manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
+        assert manifest["workspaces"][0]["workspace_path"] == f"{project_dir}/other_place"

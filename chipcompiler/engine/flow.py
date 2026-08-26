@@ -633,34 +633,6 @@ class EngineFlow:
             # after a persisted Success the transition table forbids the
             # rollback and the ledger would claim a failed step succeeded.
             if state == StateEnum.Success:
-                if self.save_step_flow_facts(
-                    workspace_step=workspace_step,
-                    state=state,
-                    runtime_seconds=elapsed,
-                    peak_memory_mb=peak_memory_mb,
-                    timing_constraints=timing_constraints,
-                ):
-                    try:
-                        from chipcompiler.tools import build_step_metrics
-
-                        if (
-                            build_step_metrics(workspace=self.workspace, step=workspace_step)
-                            is None
-                        ):
-                            self.workspace.logger.warning(
-                                "[QOR] %s run facts were saved but analysis refresh is unavailable",
-                                step_tag,
-                            )
-                    except Exception:
-                        self.workspace.logger.exception(
-                            "[QOR] %s failed to refresh analysis after saving run facts",
-                            step_tag,
-                        )
-                else:
-                    self.workspace.logger.warning(
-                        "[QOR] %s has no step feature path; run facts were not saved",
-                        step_tag,
-                    )
                 from chipcompiler.tools import save_layout_image
 
                 save_layout_image(workspace=self.workspace, step=workspace_step)
@@ -675,6 +647,44 @@ class EngineFlow:
             ):
                 raise RuntimeError(f"failed to persist terminal state for {step_tag}")
             terminal_persisted = True
+
+            # QoR facts persist only after the ledger commits: a refresh
+            # failure degrades to a warning, never a state rollback attempt.
+            if state == StateEnum.Success:
+                try:
+                    if self.save_step_flow_facts(
+                        workspace_step=workspace_step,
+                        state=state,
+                        runtime_seconds=elapsed,
+                        peak_memory_mb=peak_memory_mb,
+                        timing_constraints=timing_constraints,
+                    ):
+                        try:
+                            from chipcompiler.tools import build_step_metrics
+
+                            if (
+                                build_step_metrics(workspace=self.workspace, step=workspace_step)
+                                is None
+                            ):
+                                self.workspace.logger.warning(
+                                    "[QOR] %s run facts saved; analysis refresh unavailable",
+                                    step_tag,
+                                )
+                        except Exception:
+                            self.workspace.logger.exception(
+                                "[QOR] %s failed to refresh analysis after saving run facts",
+                                step_tag,
+                            )
+                    else:
+                        self.workspace.logger.warning(
+                            "[QOR] %s has no step feature path; run facts were not saved",
+                            step_tag,
+                        )
+                except Exception:
+                    self.workspace.logger.exception(
+                        "[QOR] %s failed to save run facts after the step succeeded",
+                        step_tag,
+                    )
         except (Exception, SystemExit) as exc:
             failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)
             step_error = step_error or failure_message

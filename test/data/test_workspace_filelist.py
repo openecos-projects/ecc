@@ -184,3 +184,27 @@ class TestCreateWorkspaceIntegration:
 
         with pytest.raises(WorkspaceConfigError):
             load_workspace(str(workspace_dir))
+
+    def test_filelist_absolute_incdirs_with_same_basename_are_disambiguated(
+        self, tmp_path, test_parameters, pdk
+    ):
+        from chipcompiler.data.workspace.filelist_copy import copy_filelist_with_sources
+
+        dir_a = tmp_path / "a" / "include"
+        dir_b = tmp_path / "b" / "include"
+        dir_a.mkdir(parents=True)
+        dir_b.mkdir(parents=True)
+        (dir_a / "defs.svh").write_text("`define A 1\n")
+        (dir_b / "defs.svh").write_text("`define B 1\n")
+        (tmp_path / "top.v").write_text("module top; endmodule\n")
+        filelist = tmp_path / "design.f"
+        filelist.write_text(f"+incdir+{dir_a}\n+incdir+{dir_b}\n{tmp_path / 'top.v'}\n")
+
+        workspace_dir = tmp_path / "workspace"
+        copy_filelist_with_sources(str(filelist), str(workspace_dir))
+
+        lines = (workspace_dir / "origin" / "design.f").read_text().splitlines()
+        assert lines[0] == "+incdir+include"
+        assert lines[1] == "+incdir+b_include"
+        assert (workspace_dir / "origin" / "include" / "defs.svh").read_text() == "`define A 1\n"
+        assert (workspace_dir / "origin" / "b_include" / "defs.svh").read_text() == "`define B 1\n"
