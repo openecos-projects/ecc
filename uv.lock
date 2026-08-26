@@ -445,7 +445,7 @@ wheels = [
 
 [[package]]
 name = "ecc"
-version = "0.1.0a10"
+version = "0.1.0a11"
 source = { editable = "." }
 dependencies = [
     { name = "ecc-dreamplace" },
@@ -589,7 +589,7 @@ dev = [
 
 [[package]]
 name = "ecc-tools-bin"
-version = "0.1.0a11"
+version = "0.1.0a12"
 source = { editable = "chipcompiler/thirdparty/ecc-tools" }
 dependencies = [
     { name = "matplotlib" },
