@@ -519,3 +519,93 @@ class TestHybridFrequencyProvenance:
         assert lines[0].endswith("rtl/a.v")
         assert lines[1].endswith("rtl/b.v")
         assert not any(line.endswith(".f") for line in lines)
+
+
+class TestManifestParameterValidation:
+    """Manifest-layer parameter values face the registry rules in the shared
+    preflight (both `ecc check` and `ecc run`) — unless an explicit
+    ecc.toml/--set key makes the value inert, in which case it surfaces as a
+    divergence warning instead of an error."""
+
+    def _write_project(self, manifest_stubs, tmp_path, monkeypatch, frequency_max, ecc_toml=None):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": frequency_max},
+            },
+        )
+        if ecc_toml is not None:
+            (project_dir / "ecc.toml").write_text(ecc_toml)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        return project_dir
+
+    def _hybrid_toml(self, project_dir, *, frequency: bool) -> str:
+        design = '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\nclock_port = "clk"\n'
+        if frequency:
+            design += "frequency_mhz = 100.0\n"
+        return (
+            design
+            + '\n[pdk]\nname = "ics55"\nroot = "'
+            + str(project_dir / "pdk")
+            + '"\n\n[flow]\npreset = "rtl2gds"\n'
+        )
+
+    def test_check_rejects_out_of_range_manifest_frequency(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = self._write_project(manifest_stubs, tmp_path, monkeypatch, 99999)
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
+        assert "project.json: value 99999 out of range" in reasons
+        assert "design.frequency_mhz" in reasons
+
+    def test_check_explicit_frequency_overrides_invalid_manifest_value(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._hybrid_toml(project_dir, frequency=True)
+        self._write_project(manifest_stubs, tmp_path, monkeypatch, 99999, ecc_toml=toml_text)
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = manifest_stubs.records()
+        assert records[0]["status"] == "checked"
+        diverged = [r for r in records if r.get("warning") == "config_layer_diverged"]
+        assert diverged and "frequency_max" in diverged[0]["keys"]
+
+    def test_run_set_overrides_invalid_manifest_value(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._hybrid_toml(project_dir, frequency=False)
+        self._write_project(manifest_stubs, tmp_path, monkeypatch, 99999, ecc_toml=toml_text)
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                str(project_dir),
+                "--set",
+                "design.frequency_mhz=100",
+                "--json",
+            ]
+        )
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["frequency_max"] == 100.0

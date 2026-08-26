@@ -264,8 +264,12 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     errors = effective_config.validate_effective(
         ctx,
         cfg,
-        fresh=not os.path.exists(flow_json) and not command_input.overwrite,
+        # An overwrite wipes and recreates the target, so it validates as a
+        # fresh run (a derivable flow target is required) even when the
+        # ledger still exists at preflight time.
+        fresh=not os.path.exists(flow_json) or command_input.overwrite,
         flow_config=flow_config,
+        cli_overrides=cli_overrides,
     )
     if errors:
         return CommandResult.err(

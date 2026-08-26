@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
-"""Run preparation for manifest/virgin projects and existing workspaces.
+"""Run preparation for manifest/virgin projects and fresh workspaces.
 
 Pulled out of the command handler: run-target resolution for manifest and
-virgin projects, manifest-backed config assembly, and the existing-run
-reconcile wiring. Imported lazily by the run handler, so module-level
-imports here must stay cheap (no chipcompiler.data at module level).
+virgin projects, manifest-backed config assembly, and fresh-run creation
+and execution (the existing-run path lives in ``run_existing``). Imported
+lazily by the run handler, so module-level imports here must stay cheap
+(no chipcompiler.data at module level).
 """
 
 import contextlib
@@ -118,234 +119,6 @@ def resolve_manifest_run_target(command_input, ctx):
         )
     ]
     return (os.path.join(project_dir, cli_run_id), cli_run_id, False, warnings)
-
-
-def run_existing_workspace(
-    command_input,
-    ctx,
-    cfg,
-    run_dir: str,
-    run_name: str,
-    cli_overrides: dict,
-    warning_records: list[dict],
-    *,
-    workspace_registered: bool,
-) -> CommandResult:
-    """Run against an existing workspace: reconcile target vs persisted flow.
-
-    Extends a proper-prefix target, resumes from the first non-Success step,
-    no-ops when everything already succeeded, and fails divergent flows with
-    flow_mismatch before any mutation.
-    """
-    from chipcompiler.cli.core.records import error_record, warning_record
-
-    project = ctx.project
-    project_dir = ctx.project_dir
-
-    if cli_overrides:
-        return CommandResult.err(
-            [
-                error_record(
-                    "set_requires_fresh_run",
-                    run=run_name,
-                    workspace=run_dir,
-                    reason="--set applies only to fresh runs; use --overwrite or a new --run-id",
-                )
-            ]
-        )
-
-    warnings = list(warning_records)
-    if cfg.params_overrides:
-        warnings.append(
-            warning_record(
-                "params_ignored_on_existing_run",
-                reason="[params] in ecc.toml apply only to fresh runs; "
-                "the workspace reuses its persisted home/ecc.toml",
-            )
-        )
-
-    from chipcompiler.data import load_workspace
-    from chipcompiler.data.workspace_config import (
-        WorkspaceConfigError,
-        WorkspaceFlowTargetError,
-    )
-    from chipcompiler.engine.reconcile import classify_workspace
-
-    def mismatch_error(reason: str) -> CommandResult:
-        if reason.startswith("workspace_config_invalid"):
-            return CommandResult.err(
-                [
-                    error_record(
-                        "workspace_config_invalid",
-                        run=run_name,
-                        workspace=run_dir,
-                        reason=reason,
-                    )
-                ]
-            )
-        if reason.startswith("flow_adopt_failed"):
-            return CommandResult.err(
-                [
-                    error_record(
-                        "flow_adopt_failed",
-                        run=run_name,
-                        workspace=run_dir,
-                        reason=reason,
-                    )
-                ]
-            )
-        return CommandResult.err(
-            [
-                error_record(
-                    "flow_mismatch",
-                    run=run_name,
-                    workspace=run_dir,
-                    reason="the configured flow diverges from the persisted one",
-                    overwrite=disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                    hint="use --overwrite to wipe the run, or a new --run-id",
-                )
-            ]
-        )
-
-    if cfg.manifest_driven:
-        # Manifest mode: the workspace's own [flow] is the target; the
-        # manifest's start/end seeded it at creation and is not consulted.
-        target_section = None
-    else:
-        target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
-
-    # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
-    # can migrate configs, create home.json/checklist, or take the lock.
-    probe = classify_workspace(run_dir, target_section)
-    if probe.outcome == "mismatch":
-        return mismatch_error(probe.error or "flow_mismatch")
-
-    # Execution ownership: the ledger revalidation, migration, reconcile,
-    # and the engine run all hold the workspace lock, so two `ecc run`
-    # processes can never execute the same workspace concurrently.
-    from chipcompiler.engine.reconcile import _workspace_lock, reconcile_workspace_locked
-
-    with _workspace_lock(Path(run_dir)):
-        probe = classify_workspace(run_dir, target_section)
-        if probe.outcome == "mismatch":
-            return mismatch_error(probe.error or "flow_mismatch")
-
-        try:
-            workspace = load_workspace(run_dir)
-        except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
-            return CommandResult.err(
-                [
-                    error_record(
-                        "workspace_config_invalid",
-                        run=run_name,
-                        workspace=run_dir,
-                        reason=str(exc),
-                    )
-                ]
-            )
-        if workspace is None:
-            return CommandResult.err(
-                [
-                    error_record(
-                        "invalid_workspace",
-                        run=run_name,
-                        workspace=run_dir,
-                    )
-                ]
-            )
-
-        result = reconcile_workspace_locked(run_dir, target_section)
-        if result.outcome == "mismatch":
-            return mismatch_error(result.error or "flow_mismatch")
-
-        if not result.persisted:
-            # An existing run directory whose flow ledger has no steps cannot be
-            # resumed or extended — nothing valid was persisted.
-            return CommandResult.err(
-                [
-                    error_record(
-                        "invalid_flow_json",
-                        run=run_name,
-                        workspace=run_dir,
-                        reason="the persisted flow has no steps",
-                        overwrite=disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                    )
-                ]
-            )
-
-        from chipcompiler.engine import EngineFlow
-
-        try:
-            engine_flow = EngineFlow(workspace=workspace)
-            flow_ok = True
-            if result.outcome != "no_op":
-                # Re-read the ledger: reconcile may have appended suffix steps
-                # after load_workspace populated the in-memory copy.
-                from chipcompiler.utility import json_read
-
-                flow_data = json_read(workspace.flow.path or Path(run_dir) / "home" / "flow.json")
-                target_names = set(result.target)
-                executable = {
-                    step["name"]
-                    for step in flow_data.get("steps", [])
-                    if isinstance(step, dict)
-                    and isinstance(step.get("name"), str)
-                    and step.get("state") != "Success"
-                    and step["name"] in target_names
-                }
-                engine_flow.create_step_workspaces(executable_steps=executable)
-                # executable_steps only gates dependency verification; the
-                # actual runner iterates every workspace step. Bind execution
-                # to the reconciled target so a wider persisted ledger (e.g.
-                # RCX/sta beyond the requested end) never runs on resume.
-                engine_flow.workspace_steps = [
-                    step
-                    for step in getattr(engine_flow, "workspace_steps", None) or []
-                    if step.name in target_names
-                ]
-
-                from chipcompiler.cli.rendering.progress import (
-                    run_flow_with_progress,
-                    should_enable_run_progress,
-                )
-
-                if should_enable_run_progress(ctx, sys.stderr):
-                    flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
-                else:
-                    flow_ok = engine_flow.run_steps()
-        except Exception as exc:
-            if workspace_registered:
-                _write_back_status(project_dir, run_name, "failed", warnings)
-            return CommandResult.err(
-                warnings
-                + [
-                    error_record(
-                        "flow_failed",
-                        run=run_name,
-                        workspace=run_dir,
-                        reason=str(exc),
-                    )
-                ]
-            )
-
-        if workspace_registered:
-            _write_back_status(project_dir, run_name, "success" if flow_ok else "failed", warnings)
-
-        record: dict = {
-            "run": run_name,
-            "status": "success" if flow_ok else "failed",
-            "workspace": run_dir,
-            "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-            "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
-        }
-        if result.outcome == "no_op":
-            record["no_op"] = True
-        if result.appended:
-            record["appended_steps"] = list(result.appended)
-        records = warnings + [record]
-        if not flow_ok:
-            return CommandResult.err(records)
-        return CommandResult.ok(records)
 
 
 def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) -> CommandResult:
@@ -472,31 +245,11 @@ def execute_fresh_run(
 
     manifest_parameters = cfg.manifest_parameters
     if manifest_parameters:
-        # Manifest parameter values face the same registry type/range rules
-        # as ecc.toml and --set — but only when they are the EFFECTIVE value:
-        # a value overridden by an explicit ecc.toml/--set key participates
-        # in divergence warnings instead of failing the run.
-        from chipcompiler.cli.core.records import error_record
-        from chipcompiler.cli.project.params import PARAM_REGISTRY, validate_value
+        # Manifest base layer: ecc.toml/--set values overlay it, not the
+        # other way around. Values were validated up front by
+        # effective_config.validate_effective (shared with `ecc check`).
         from chipcompiler.data.parameter_keys import geometry_to_parameters
 
-        explicit = set(getattr(cfg, "_explicit_keys", frozenset()))
-        overridden_keys = explicit | set(cfg.params_overrides) | set(cli_overrides)
-        invalid = _invalid_manifest_parameters(
-            manifest_parameters, PARAM_REGISTRY, validate_value, overridden_keys
-        )
-        if invalid:
-            return CommandResult.err(
-                [
-                    error_record(
-                        "manifest_invalid",
-                        reason="invalid manifest parameter values: " + "; ".join(invalid),
-                    )
-                ]
-            )
-
-        # Manifest base layer: ecc.toml/--set values overlay it, not the
-        # other way around.
         base = geometry_to_parameters(manifest_parameters)
         update_parameters(parameters, base)
         parameters = base
@@ -514,37 +267,46 @@ def execute_fresh_run(
         update_parameters(build_backend_overrides(resolved), parameters)
 
     from chipcompiler.cli.project import migrate_fs
+    from chipcompiler.engine.reconcile import _workspace_lock
 
-    # Hold the project migration lock (shared) across workspace creation:
-    # a GUI/CLI run and an ecc migrate in the same project serialize
-    # instead of corrupting each other. The engine execution below runs
-    # outside the lock so a run never holds it for minutes.
-    with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-        try:
-            workspace = create_workspace(
-                directory=run_dir,
-                origin_def=cfg.manifest_origin_def,
-                origin_verilog=origin_verilog,
-                pdk=cfg.pdk_name,
-                parameters=parameters,
-                input_filelist=input_filelist,
-                pdk_root=pdk_root,
-                pdk_overrides=resolve_pdk_overrides(cfg),
-                flow_config=flow_config,
-            )
-        except Exception as exc:
-            if owns_target:
-                shutil.rmtree(run_dir, ignore_errors=True)
-            return _workspace_failed_result(run_name, run_dir, str(exc))
-        finally:
-            if generated_filelist is not None:
-                with contextlib.suppress(OSError):
-                    shutil.rmtree(os.path.dirname(generated_filelist))
+    # Lock order is always migration → workspace, and the workspace lock
+    # is taken BEFORE the target becomes discoverable (flow.json appears
+    # in create_workspace): a concurrent `ecc run` can never classify
+    # this target as existing and win the race to execute it. The lock
+    # file lives next to the workspace, so it predates and survives the
+    # creation. It stays held through seeding and engine execution below —
+    # the same execution ownership as the existing-run path — while the
+    # migration lock is released right after creation so a run never pins
+    # project-wide migration for minutes.
+    ws_locks = contextlib.ExitStack()
+    try:
+        with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
+            ws_locks.enter_context(_workspace_lock(Path(run_dir)))
+            try:
+                workspace = create_workspace(
+                    directory=run_dir,
+                    origin_def=cfg.manifest_origin_def,
+                    origin_verilog=origin_verilog,
+                    pdk=cfg.pdk_name,
+                    parameters=parameters,
+                    input_filelist=input_filelist,
+                    pdk_root=pdk_root,
+                    pdk_overrides=resolve_pdk_overrides(cfg),
+                    flow_config=flow_config,
+                )
+            except Exception as exc:
+                if owns_target:
+                    shutil.rmtree(run_dir, ignore_errors=True)
+                return _workspace_failed_result(run_name, run_dir, str(exc))
+            finally:
+                if generated_filelist is not None:
+                    with contextlib.suppress(OSError):
+                        shutil.rmtree(os.path.dirname(generated_filelist))
 
-        if workspace is None:
-            if owns_target:
-                shutil.rmtree(run_dir, ignore_errors=True)
-            return _workspace_failed_result(run_name, run_dir, None)
+            if workspace is None:
+                if owns_target:
+                    shutil.rmtree(run_dir, ignore_errors=True)
+                return _workspace_failed_result(run_name, run_dir, None)
 
         if cli_overrides:
             import json
@@ -605,12 +367,9 @@ def execute_fresh_run(
                         )
                     )
 
-    from chipcompiler.engine.reconcile import _workspace_lock
-
-    # Same execution ownership as the existing-run path: the fresh engine
-    # run holds the workspace lock, so a second `ecc run` taking the
-    # existing-workspace path can never race this ledger or its outputs.
-    with _workspace_lock(Path(run_dir)):
+        # Engine execution still holds the workspace lock taken before
+        # creation: a second `ecc run` taking the existing-workspace path
+        # can never race this ledger or its outputs.
         try:
             engine_flow = EngineFlow(workspace=workspace)
             flow_builders = rtl2gds_api.get_flow_builders()
@@ -652,6 +411,8 @@ def execute_fresh_run(
                 warning_records
                 + [error_record("flow_failed", run=run_name, workspace=run_dir, reason=str(exc))]
             )
+    finally:
+        ws_locks.close()
 
     if workspace_registered:
         _write_back_status(project_dir, run_name, "success", warning_records)
@@ -666,40 +427,3 @@ def execute_fresh_run(
         }
     ]
     return CommandResult.ok(warning_records + success_records)
-
-
-def _invalid_manifest_parameters(
-    manifest_parameters: dict,
-    registry,
-    validate_value,
-    overridden_keys: frozenset | set = frozenset(),
-) -> list[str]:
-    """Validate manifest-layer parameter values against the registry.
-
-    Maps each known registry target (maps_to) back to the manifest's flat
-    keys and applies the schema's range/choice rules. Values whose dotted
-    key has an explicit ecc.toml/--set override are skipped (they are inert
-    and surface as divergence warnings instead). Unknown keys pass through
-    untouched (forward-compatible additions).
-    """
-    errors: list[str] = []
-    for schema in registry:
-        if schema.param in overridden_keys:
-            continue
-        maps_to = schema.maps_to
-        value = None
-        present = False
-        if isinstance(maps_to, str):
-            if maps_to in manifest_parameters:
-                value = manifest_parameters[maps_to]
-                present = True
-        elif isinstance(maps_to, dict):
-            for subtree, leaf in maps_to.items():
-                node = manifest_parameters.get(subtree)
-                if isinstance(node, dict) and leaf in node:
-                    value = node[leaf]
-                    present = True
-                    break
-        if present:
-            errors.extend(validate_value(value, schema))
-    return errors

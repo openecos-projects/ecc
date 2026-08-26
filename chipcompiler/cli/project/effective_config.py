@@ -170,14 +170,18 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
     cfg.manifest_origin_def = _source_origin_def(assembled, project_dir)
 
 
-def validate_effective(ctx, cfg, *, fresh: bool, flow_config) -> list[str]:
+def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None) -> list[str]:
     """Validate the effective config for a manifest-backed project.
 
     Relaxations vs legacy projects: [flow] is optional when a target can be
     derived (workspace config for existing runs, entry range for declared
     creation); a multi-entry rtl list is allowed (materialized at
     creation) with every source validated. A fresh run without any
-    derivable flow target is an error — before any mutation.
+    derivable flow target is an error — before any mutation. Manifest-layer
+    parameter values face the same registry type/range rules as ecc.toml
+    and --set values whenever they are EFFECTIVE: a value overridden by an
+    explicit ecc.toml/--set key is inert and surfaces as a divergence
+    warning instead of an error.
     """
     from chipcompiler.cli.project.config import validate_project_config
 
@@ -202,6 +206,21 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config) -> list[str]:
             errors.append(
                 "no flow target: set flow.preset in ecc.toml or declare the workspace's "
                 "start/end range in project.json"
+            )
+        manifest_parameters = getattr(cfg, "manifest_parameters", None)
+        if manifest_parameters:
+            from chipcompiler.cli.project.params import PARAM_REGISTRY, validate_value
+
+            overridden = (
+                set(getattr(cfg, "_explicit_keys", frozenset()))
+                | set(cfg.params_overrides or {})
+                | set(cli_overrides or {})
+            )
+            errors.extend(
+                f"project.json: {err}"
+                for err in _invalid_manifest_parameters(
+                    manifest_parameters, PARAM_REGISTRY, validate_value, overridden
+                )
             )
     return errors
 
@@ -313,6 +332,43 @@ def _normalized_sources(project_dir: str, sources: list[str]) -> tuple[str, ...]
     return tuple(
         normalized for source in sources if (normalized := _normalize_path(project_dir, source))
     )
+
+
+def _invalid_manifest_parameters(
+    manifest_parameters: dict,
+    registry,
+    validate_value,
+    overridden_keys: frozenset | set = frozenset(),
+) -> list[str]:
+    """Validate manifest-layer parameter values against the registry.
+
+    Maps each known registry target (maps_to) back to the manifest's flat
+    keys and applies the schema's range/choice rules. Values whose dotted
+    key has an explicit ecc.toml/--set override are skipped (they are inert
+    and surface as divergence warnings instead). Unknown keys pass through
+    untouched (forward-compatible additions).
+    """
+    errors: list[str] = []
+    for schema in registry:
+        if schema.param in overridden_keys:
+            continue
+        maps_to = schema.maps_to
+        value = None
+        present = False
+        if isinstance(maps_to, str):
+            if maps_to in manifest_parameters:
+                value = manifest_parameters[maps_to]
+                present = True
+        elif isinstance(maps_to, dict):
+            for subtree, leaf in maps_to.items():
+                node = manifest_parameters.get(subtree)
+                if isinstance(node, dict) and leaf in node:
+                    value = node[leaf]
+                    present = True
+                    break
+        if present:
+            errors.extend(validate_value(value, schema))
+    return errors
 
 
 def _flatten(data, prefix=()):

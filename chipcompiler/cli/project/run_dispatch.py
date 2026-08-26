@@ -18,7 +18,8 @@ from pathlib import Path
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
-from chipcompiler.cli.project.run_prepare import execute_fresh_run, run_existing_workspace
+from chipcompiler.cli.project.run_existing import run_existing_workspace
+from chipcompiler.cli.project.run_prepare import execute_fresh_run
 
 
 def _is_ecc_run_dir(path: str) -> bool:
@@ -31,7 +32,13 @@ def _is_ecc_run_dir(path: str) -> bool:
         return False
     home = os.path.join(path, "home")
     flow_json = os.path.join(home, "flow.json")
-    return not os.path.islink(home) and not os.path.islink(flow_json) and os.path.isfile(flow_json)
+    home_json = os.path.join(home, "home.json")
+    return (
+        not os.path.islink(home)
+        and not os.path.islink(flow_json)
+        and not os.path.islink(home_json)
+        and os.path.isfile(flow_json)
+    )
 
 
 def _resolves_as_spelled(path: str, anchor: str) -> bool:
@@ -109,9 +116,10 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
                 ]
             )
         # Serialize the deletion with an active execution of this workspace:
-        # flock blocks until the running engine releases home/workspace.lock,
-        # and the fresh engine re-acquires it on the recreated tree, so two
-        # runs never execute against the same paths.
+        # flock blocks until the running engine releases the sibling lock
+        # (<run_dir>.lock, which survives the rmtree), and the fresh engine
+        # re-acquires it on the recreated tree, so two runs never execute
+        # against the same paths.
         with _workspace_lock(Path(run_dir)):
             for root, dirs, files in os.walk(run_dir):
                 for d in dirs:

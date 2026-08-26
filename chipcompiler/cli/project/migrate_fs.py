@@ -44,8 +44,8 @@ def project_migrate_lock(project_dir: str, *, exclusive: bool):
     transaction; ``ecc run`` holds it shared while creating a workspace,
     so a GUI/CLI run and a migration in the same project serialize
     instead of corrupting each other. A process dying mid-hold releases
-    the lock via the kernel; the file itself is left in place like
-    ``home/workspace.lock``.
+    the lock via the kernel; the file itself is left in place like the
+    sibling ``<workspace>.lock``.
     """
     with flock_file(os.path.join(project_dir, ".migrate.lock"), exclusive=exclusive):
         yield

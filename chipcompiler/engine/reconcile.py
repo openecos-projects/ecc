@@ -9,8 +9,8 @@ appends missing suffix steps, adopts the new target, or repairs a stale
 ``[flow]`` — never deleting or invalidating successful prefix steps.
 
 Classification is pure-read and happens BEFORE any lock file or workspace
-initialization: a ``mismatch`` (or a read-only outcome) never creates
-``home/workspace.lock`` nor touches the tree. Only when the flow is
+initialization: a ``mismatch`` (or a read-only outcome) never creates the
+sibling ``<workspace>.lock`` nor touches the tree. Only when the flow is
 compatible but needs an append/adopt does reconcile take the lock, re-read,
 reclassify, and mutate.
 
@@ -110,9 +110,12 @@ def _persisted_flow_data(workspace_dir: Path, json_read) -> dict:
 
 @contextmanager
 def _workspace_lock(workspace_dir: Path):
-    home = workspace_dir / "home"
-    home.mkdir(parents=True, exist_ok=True)
-    with open(home / "workspace.lock", "a") as lock_file:
+    # The lock lives NEXT TO the workspace (never inside it): an overwrite
+    # deleting the tree cannot invalidate the lock's inode, so a waiter
+    # always serializes against the run that replaces the directory.
+    lock_path = workspace_dir.parent / f"{workspace_dir.name}.lock"
+    workspace_dir.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         yield
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
