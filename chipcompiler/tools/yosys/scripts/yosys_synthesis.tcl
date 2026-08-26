@@ -630,7 +630,7 @@ autoname
 write_verilog -attr2comment -noexpr -nohex -nodec -defparam ${final_netlist_sim_file}
 
 # splitting nets resolves unwanted compound assign statements in netlist (assign {..} = {..}
-splitnets -format __v -ports
+splitnets -format _ -ports
 
 # remove unused cells and wires
 opt_clean -purge
