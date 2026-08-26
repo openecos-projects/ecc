@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -591,4 +593,179 @@ class TestMigrationSymlinkSafety:
         # without writing anywhere; the substituted link stays under runs/.
         assert _tree_snapshot(external) == before
         assert os.path.islink(run_dir)
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+
+def _external_runs_with_workspace(tmp_path):
+    """A real runs-like tree OUTSIDE the project, with one workspace inside."""
+    home = tmp_path / "external-runs" / "exp1" / "home"
+    home.mkdir(parents=True)
+    (home / "flow.json").write_text(
+        json.dumps({"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Success"}]})
+    )
+    (home / "ecc.toml").write_text('[design]\nname = "gcd"\n[pdk]\nname = "ics55"\n')
+    return tmp_path / "external-runs"
+
+
+def _substitute_workspace(tmp_path, steps):
+    """A real directory (with a keep file) standing by to replace a planned
+    source after preview."""
+    substitute = tmp_path / "substitute"
+    home = substitute / "home"
+    home.mkdir(parents=True)
+    (home / "flow.json").write_text(json.dumps({"steps": steps}))
+    (substitute / "keep.txt").write_text("precious\n")
+    return substitute
+
+
+class TestMigrationIdentityBinding:
+    """AC-17: migration acts only on the exact confirmed objects — container,
+    sources, and absent targets — across the plan→confirm→execute window."""
+
+    def test_symlinked_runs_container_refused_before_enumeration(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        external_runs = _external_runs_with_workspace(tmp_path)
+        os.rmdir(os.path.join(project_dir, "runs"))
+        os.symlink(external_runs, os.path.join(project_dir, "runs"))
+        before = _tree_snapshot(external_runs)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        assert "unsafe runs container" in failure["reason"]
+        # Nothing enumerated or moved: the external tree is identical,
+        # nothing landed at the project root, no manifest was written.
+        assert _tree_snapshot(external_runs) == before
+        assert not os.path.exists(os.path.join(project_dir, "exp1"))
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+        assert os.path.islink(os.path.join(project_dir, "runs"))
+
+    def test_real_source_substitution_after_preview_fails(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        import shutil
+
+        import chipcompiler.cli.project.migrate as migrate_module
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        substitute = _substitute_workspace(
+            tmp_path, [{"name": "Synthesis", "tool": "yosys", "state": "Success"}]
+        )
+        before = _tree_snapshot(substitute)
+
+        real_plan = migrate_module.plan_migration
+
+        def swapping_plan(project_dir_arg):
+            plan = real_plan(project_dir_arg)
+            # Replace the confirmed source with a DIFFERENT real directory.
+            shutil.rmtree(run_dir)
+            shutil.move(str(substitute), run_dir)
+            return plan
+
+        monkeypatch.setattr(migrate_module, "plan_migration", swapping_plan)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        assert failure["reason"] == "run source changed after preview"
+        # The substitute was never migrated or rebased: it sits unchanged
+        # at the runs/ path, and no manifest was written.
+        assert _tree_snapshot(run_dir) == before
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+    @pytest.mark.parametrize("appearance", ["empty_dir", "file", "symlink"])
+    def test_target_appearance_after_preview_is_collision(
+        self,
+        appearance,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+    ):
+        import chipcompiler.cli.project.migrate as migrate_module
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        _create_legacy_workspace(project_dir, pdk_root, "exp2", ["Success", "Success"])
+        target = os.path.join(project_dir, "exp1")
+        external = _external_workspace(tmp_path)
+        external_before = _tree_snapshot(external)
+
+        real_plan = migrate_module.plan_migration
+
+        def appearing_plan(project_dir_arg):
+            plan = real_plan(project_dir_arg)
+            if appearance == "empty_dir":
+                os.mkdir(target)
+            elif appearance == "file":
+                Path(target).write_text("occupied\n")
+            else:
+                os.symlink(external, target)
+            return plan
+
+        monkeypatch.setattr(migrate_module, "plan_migration", appearing_plan)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        (collision,) = [r for r in records if r.get("error") == "migration_collision"]
+        assert collision["run"] == "exp1"
+        # The appearing object is UNTOUCHED and the source stays under runs/.
+        if appearance == "empty_dir":
+            assert os.path.isdir(target) and not os.path.islink(target)
+            assert os.listdir(target) == []
+        elif appearance == "file":
+            assert Path(target).read_text() == "occupied\n"
+        else:
+            assert os.path.islink(target)
+            assert os.readlink(target) == str(external)
+            assert _tree_snapshot(external) == external_before
+        assert os.path.isfile(os.path.join(run_dir, "home", "flow.json"))
+        # The safe sibling still migrates and registers alone.
+        assert any(r.get("status") == "migrated" and r.get("run") == "exp2" for r in records)
+        manifest = _manifest(project_dir)
+        assert [w["workspace_id"] for w in manifest["workspaces"]] == ["exp2"]
+        assert os.path.isdir(os.path.join(project_dir, "runs"))
+
+    def test_substitution_between_preflight_and_rename_is_rejected_after_move(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        import shutil
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        substitute = _substitute_workspace(tmp_path, [])
+        before = _tree_snapshot(substitute)
+
+        real_rename = os.rename
+        swapped = {"done": False}
+
+        def swapping_rename(src, dst):
+            if src == run_dir and not swapped["done"]:
+                swapped["done"] = True
+                shutil.rmtree(src)
+                shutil.move(str(substitute), src)
+            return real_rename(src, dst)
+
+        monkeypatch.setattr(os, "rename", swapping_rename)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        assert "identity changed after rename" in failure["reason"]
+        # The post-rename rejection moved the substitute back untouched:
+        # no rebase/refresh reached it, and nothing stayed at the root.
+        assert _tree_snapshot(run_dir) == before
+        assert not os.path.exists(os.path.join(project_dir, "exp1"))
         assert not os.path.exists(os.path.join(project_dir, "project.json"))

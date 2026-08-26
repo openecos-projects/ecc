@@ -12,6 +12,7 @@ already migrated one is a no-op report.
 import json
 import logging
 import os
+import stat
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -54,6 +55,10 @@ class MigrationEntry:
     status: str
     start_step: str
     end_step: str
+    # Plan-time lstat identity of the confirmed source: a substituted
+    # real directory fails the move-time check, not just a symlink.
+    source_dev: int = 0
+    source_ino: int = 0
 
 
 @dataclass(frozen=True)
@@ -64,6 +69,12 @@ class MigrationPlan:
     # Symlinked or otherwise not-project-owned run sources: never read,
     # never moved, reported as migration_failed and left under runs/.
     unsafe: tuple[str, ...] = field(default_factory=tuple)
+    # Set when the runs/ container itself is a symlink or not a real
+    # directory: nothing is enumerated, previewed, or executed.
+    container_unsafe: str | None = None
+    # Plan-time lstat identity of the confirmed runs/ container.
+    container_dev: int = 0
+    container_ino: int = 0
     resume: bool = False
 
 
@@ -105,11 +116,37 @@ def _read_flow_steps(run_dir: str) -> list[dict]:
 def plan_migration(project_dir: str) -> MigrationPlan:
     """Enumerate the runs/ workspaces to move and any name collisions.
 
-    Discovery never follows symlinks: a symlinked (or otherwise not real
-    project-owned) run source lands in ``unsafe`` — its flow.json is never
-    read and no manifest entry is ever constructed for it.
+    Discovery never follows symlinks: a linked or non-directory runs/
+    container refuses before any enumeration (``container_unsafe``), and
+    a symlinked child source lands in ``unsafe`` — its flow.json is never
+    read and no manifest entry is ever constructed for it. Confirmed
+    objects carry their plan-time lstat identity so a later substitution
+    fails the move-time check.
     """
     runs_dir = os.path.join(project_dir, "runs")
+    container_unsafe = None
+    container_dev = container_ino = 0
+    try:
+        container_stat = os.lstat(runs_dir)
+    except OSError:
+        container_stat = None
+    if container_stat is not None:
+        # Screen the lstat mode itself: no follow-up stat calls, no window
+        # for the container to change between probes.
+        if stat.S_ISLNK(container_stat.st_mode):
+            container_unsafe = "runs/ is a symlink"
+        elif not stat.S_ISDIR(container_stat.st_mode):
+            container_unsafe = "runs/ is not a directory"
+        else:
+            container_dev, container_ino = container_stat.st_dev, container_stat.st_ino
+    if container_unsafe is not None:
+        return MigrationPlan(
+            project_dir=project_dir,
+            entries=(),
+            container_unsafe=container_unsafe,
+            resume=find_manifest(project_dir) is not None,
+        )
+
     entries: list[MigrationEntry] = []
     collisions: list[str] = []
     unsafe: list[str] = []
@@ -135,6 +172,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         names = [
             name for step in steps if isinstance(step, dict) and (name := str(step.get("name", "")))
         ]
+        source_stat = os.lstat(source)
         entries.append(
             MigrationEntry(
                 run_id=run_id,
@@ -143,6 +181,8 @@ def plan_migration(project_dir: str) -> MigrationPlan:
                 status=_flow_status(steps),
                 start_step=CANONICAL_TO_DISPLAY.get(names[0], "Synth") if names else "Synth",
                 end_step=CANONICAL_TO_DISPLAY.get(names[-1], "Harden") if names else "Harden",
+                source_dev=source_stat.st_dev,
+                source_ino=source_stat.st_ino,
             )
         )
     return MigrationPlan(
@@ -150,6 +190,8 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         entries=tuple(entries),
         collisions=tuple(collisions),
         unsafe=tuple(unsafe),
+        container_dev=container_dev,
+        container_ino=container_ino,
         resume=find_manifest(project_dir) is not None,
     )
 
@@ -257,15 +299,38 @@ def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) 
         raise OSError(f"failed to write rebased home.json: {home_path}")
 
 
+def _rename_back_guarded(source: str, target: str, expect_identity: tuple[int, int] | None) -> None:
+    """Rename the moved target back, only when safe.
+
+    Never overwrites an object that appeared at the source path. When
+    *expect_identity* is given (rollback after rebase), the target is
+    moved back only when it is the exact inode this invocation moved;
+    when None (immediate revalidation failure), the just-moved target
+    itself is moved straight back.
+    """
+    if os.path.lexists(source):
+        logger.warning("move-back skipped: source path reappeared: %s", source)
+        return
+    if not os.path.lexists(target):
+        return
+    if expect_identity is not None:
+        target_stat = os.lstat(target)
+        if (target_stat.st_dev, target_stat.st_ino) != expect_identity:
+            logger.warning("move-back skipped: target is not the moved inode: %s", target)
+            return
+    os.rename(target, source)
+
+
 def _rollback_workspace(entry: MigrationEntry) -> None:
     """Undo a failed move: rename back, then restore content at the source.
 
     The rename alone is not enough — the rebase already rewrote home.json
     pointers (and possibly tool configs) to the target location. Reverse the
     pointer rewrite and regenerate configs from the workspace parameters at
-    the original location, best-effort.
+    the original location, best-effort. Only the exact inode this invocation
+    moved is renamed back, never an object that reappeared at the source.
     """
-    os.rename(entry.target, entry.source)
+    _rename_back_guarded(entry.source, entry.target, (entry.source_dev, entry.source_ino))
     try:
         _rebase_home_pointers(entry.source, entry.target, entry.source)
     except (OSError, json.JSONDecodeError):
@@ -307,35 +372,49 @@ def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_pre
                 raise OSError(f"failed to rebase workspace config paths: {workspace_dir}")
 
 
-def _move_workspace(entry: MigrationEntry) -> str | None:
-    """Move one workspace and rebase it; returns an error string or None.
+def _move_workspace(
+    entry: MigrationEntry, container_identity: tuple[int, int]
+) -> tuple[str, str] | None:
+    """Move one confirmed workspace and rebase it; (error_kind, reason) or None.
 
-    The source is screened for symlink components BEFORE the rename (a
-    link can redirect every later rebase/refresh write outside the
-    project), and the moved target is revalidated as the same real
-    directory IMMEDIATELY after the rename — before any content is
-    touched. A rebase failure rolls the move back and restores the
-    workspace content at its original location, all-or-nothing per
-    workspace.
+    The container and source must still match their PLAN-TIME identities
+    and the target must still not exist immediately before the rename;
+    immediately after it, the moved target must match the plan-time
+    source identity and stay free of symlink components before any load,
+    rebase, or refresh. Every lstat/rename/revalidation sits inside the
+    per-workspace failure boundary, and move-backs touch only the exact
+    moved inode, never an object that reappeared at the source path.
     """
-    unsafe_reason = _unsafe_workspace_source(entry.source)
-    if unsafe_reason is not None:
-        return f"unsafe run source: {unsafe_reason}"
-    source_stat = os.lstat(entry.source)
-    os.rename(entry.source, entry.target)
     try:
+        container_stat = os.lstat(os.path.dirname(entry.source))
+        if (container_stat.st_dev, container_stat.st_ino) != container_identity:
+            return ("migration_failed", "runs/ container changed after preview")
+        unsafe_reason = _unsafe_workspace_source(entry.source)
+        if unsafe_reason is not None:
+            return ("migration_failed", f"unsafe run source: {unsafe_reason}")
+        source_stat = os.lstat(entry.source)
+        source_identity = (source_stat.st_dev, source_stat.st_ino)
+        if source_identity != (entry.source_dev, entry.source_ino):
+            return ("migration_failed", "run source changed after preview")
+        if os.path.lexists(entry.target):
+            return (
+                "migration_collision",
+                f"{entry.run_id} appeared at the project root after preview",
+            )
+        os.rename(entry.source, entry.target)
         target_stat = os.lstat(entry.target)
         revalidate_reason = _unsafe_workspace_source(entry.target)
-        source_identity = (source_stat.st_dev, source_stat.st_ino)
         target_identity = (target_stat.st_dev, target_stat.st_ino)
-        if revalidate_reason is not None or target_identity != source_identity:
+        if target_identity != source_identity or revalidate_reason is not None:
             # Possible source substitution between preview and move:
-            # rename back without load_workspace, rebasing, or refresh —
-            # nothing has been written, so there is nothing to restore.
-            os.rename(entry.target, entry.source)
+            # rename the just-moved object back without load_workspace,
+            # rebasing, or refresh — nothing has been written, so there
+            # is nothing to restore.
+            _rename_back_guarded(entry.source, entry.target, None)
             return (
+                "migration_failed",
                 "moved target failed revalidation "
-                f"({revalidate_reason or 'identity changed after rename'})"
+                f"({revalidate_reason or 'identity changed after rename'})",
             )
         from chipcompiler.data import load_workspace, refresh_workspace_config
 
@@ -348,7 +427,7 @@ def _move_workspace(entry: MigrationEntry) -> str | None:
         refresh_workspace_config(workspace)
     except Exception as exc:
         _rollback_workspace(entry)
-        return str(exc)
+        return ("migration_failed", str(exc))
     return None
 
 
@@ -385,6 +464,18 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
     plan = preview.plan
     records: list[dict] = []
 
+    if plan.container_unsafe is not None:
+        # A linked or substituted runs/ container is refused before any
+        # enumeration, preview content, or move.
+        records.append(
+            {
+                "kind": "error",
+                "error": "migration_failed",
+                "reason": f"unsafe runs container: {plan.container_unsafe}",
+            }
+        )
+        return records, 1
+
     if plan.resume and not plan.entries and not plan.collisions and not plan.unsafe:
         records.append(
             {
@@ -417,15 +508,17 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
         )
 
     migrated: list[MigrationEntry] = []
+    container_identity = (plan.container_dev, plan.container_ino)
     for entry in plan.entries:
-        failure = _move_workspace(entry)
+        failure = _move_workspace(entry, container_identity)
         if failure is not None:
+            kind, reason = failure
             records.append(
                 {
                     "kind": "error",
-                    "error": "migration_failed",
+                    "error": kind,
                     "run": entry.run_id,
-                    "reason": failure,
+                    "reason": reason,
                 }
             )
             continue
