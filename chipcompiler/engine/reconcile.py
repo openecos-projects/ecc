@@ -157,7 +157,21 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
 
     if target_section is None:
         target_section = workspace_flow or _derive_section_from_persisted(persisted)
-    target = _target_entries(target_section)
+    try:
+        target = _target_entries(target_section)
+    except WorkspaceFlowTargetError as exc:
+        # Reached when the target had to be derived from the persisted
+        # ledger (no [flow] anywhere): unknown persisted step names — a
+        # foreign or hand-edited flow.json — make the ledger unreadable,
+        # which is a recorded mismatch, never an uncaught exception.
+        return (
+            ReconcileResult(
+                outcome="mismatch",
+                error=f"workspace_config_invalid: the persisted flow is not on "
+                f"the canonical chain: {exc}",
+            ),
+            {},
+        )
 
     if not persisted:
         return ReconcileResult(outcome="no_op", target=_entry_names(target)), {}

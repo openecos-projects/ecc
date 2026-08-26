@@ -347,6 +347,33 @@ class TestMigrate:
         assert moved.data["pdk_config"] == os.path.join(project_dir, "exp1", "home", "pdk.json")
 
 
+class TestMigrationPlanningRobustness:
+    """Planning never crashes on malformed workspace state: an unreadable
+    flow ledger degrades to the empty-ledger defaults, not an exception."""
+
+    def test_non_object_flow_json_migrates_with_defaults(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        # JSON-valid but not an object: unreadable as a flow ledger.
+        Path(run_dir, "home", "flow.json").write_text("[]")
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 0
+        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
+        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+        (workspace,) = _manifest(project_dir)["workspaces"]
+        assert workspace["status"] == "not_started"
+
+
 class TestMigrationPreview:
     """One exact preview drives disclosure and execution: the manifest
     create document (or resume append set) is visible before mutation on

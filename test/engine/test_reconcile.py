@@ -215,6 +215,21 @@ class TestReconcile:
         assert result.outcome == "no_op"
         assert _flow_section(workspace_dir) == {"start": "Synthesis", "end": "filler"}
 
+    def test_unknown_persisted_steps_are_a_mismatch_not_a_crash(self, tmp_path):
+        workspace_dir = _write_workspace(
+            tmp_path, [("MysteryStep", "ecc"), ("Synthesis", "yosys")], flow_section=None
+        )
+        flow_before = (workspace_dir / "home" / "flow.json").read_bytes()
+
+        result = reconcile_workspace(workspace_dir)
+
+        # The target derives from the persisted ledger when no [flow]
+        # exists; a foreign or hand-edited ledger is unreadable, never an
+        # uncaught exception — and classification stays pure-read.
+        assert result.outcome == "mismatch"
+        assert (result.error or "").startswith("workspace_config_invalid")
+        assert (workspace_dir / "home" / "flow.json").read_bytes() == flow_before
+
 
 class TestTargetPrecedence:
     def test_project_flow_wins_over_workspace_flow(self):
