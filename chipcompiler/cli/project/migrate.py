@@ -61,6 +61,9 @@ class MigrationPlan:
     project_dir: str
     entries: tuple[MigrationEntry, ...]
     collisions: tuple[str, ...] = field(default_factory=tuple)
+    # Symlinked or otherwise not-project-owned run sources: never read,
+    # never moved, reported as migration_failed and left under runs/.
+    unsafe: tuple[str, ...] = field(default_factory=tuple)
     resume: bool = False
 
 
@@ -100,20 +103,29 @@ def _read_flow_steps(run_dir: str) -> list[dict]:
 
 
 def plan_migration(project_dir: str) -> MigrationPlan:
-    """Enumerate the runs/ workspaces to move and any name collisions."""
+    """Enumerate the runs/ workspaces to move and any name collisions.
+
+    Discovery never follows symlinks: a symlinked (or otherwise not real
+    project-owned) run source lands in ``unsafe`` — its flow.json is never
+    read and no manifest entry is ever constructed for it.
+    """
     runs_dir = os.path.join(project_dir, "runs")
     entries: list[MigrationEntry] = []
     collisions: list[str] = []
+    unsafe: list[str] = []
     try:
-        run_ids = sorted(
-            entry
-            for entry in os.listdir(runs_dir)
-            if os.path.isdir(os.path.join(runs_dir, entry)) and not entry.startswith(".")
-        )
+        with os.scandir(runs_dir) as scan:
+            dirents = sorted(scan, key=lambda dirent: dirent.name)
     except OSError:
-        run_ids = []
+        dirents = []
 
-    for run_id in run_ids:
+    for dirent in dirents:
+        run_id = dirent.name
+        if run_id.startswith("."):
+            continue
+        if dirent.is_symlink() or not dirent.is_dir(follow_symlinks=False):
+            unsafe.append(run_id)
+            continue
         source = os.path.join(runs_dir, run_id)
         target = os.path.join(project_dir, run_id)
         if os.path.lexists(target):
@@ -137,8 +149,36 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         project_dir=project_dir,
         entries=tuple(entries),
         collisions=tuple(collisions),
+        unsafe=tuple(unsafe),
         resume=find_manifest(project_dir) is not None,
     )
+
+
+def _contains_symlink(root: str) -> bool:
+    """Any symlink anywhere below root (walk never follows links)."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in (*dirnames, *filenames):
+            if os.path.islink(os.path.join(dirpath, name)):
+                return True
+    return False
+
+
+def _unsafe_workspace_source(source: str) -> str | None:
+    """Why this run source is unsafe to migrate, or None.
+
+    The source and every workspace-local path the migration mutates
+    (home/, config/, recursively) must be real, non-symlink filesystem
+    objects owned by that workspace.
+    """
+    if os.path.islink(source) or not os.path.isdir(source):
+        return "run source is not a real directory"
+    for sub in ("home", "config"):
+        sub_path = os.path.join(source, sub)
+        if os.path.islink(sub_path):
+            return f"{sub} is a symlink"
+        if os.path.isdir(sub_path) and _contains_symlink(sub_path):
+            return f"{sub} contains a symlink"
+    return None
 
 
 def _workspace_entries(
@@ -270,11 +310,33 @@ def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_pre
 def _move_workspace(entry: MigrationEntry) -> str | None:
     """Move one workspace and rebase it; returns an error string or None.
 
-    A rebase failure rolls the move back and restores the workspace content
-    at its original location, all-or-nothing per workspace.
+    The source is screened for symlink components BEFORE the rename (a
+    link can redirect every later rebase/refresh write outside the
+    project), and the moved target is revalidated as the same real
+    directory IMMEDIATELY after the rename — before any content is
+    touched. A rebase failure rolls the move back and restores the
+    workspace content at its original location, all-or-nothing per
+    workspace.
     """
+    unsafe_reason = _unsafe_workspace_source(entry.source)
+    if unsafe_reason is not None:
+        return f"unsafe run source: {unsafe_reason}"
+    source_stat = os.lstat(entry.source)
     os.rename(entry.source, entry.target)
     try:
+        target_stat = os.lstat(entry.target)
+        revalidate_reason = _unsafe_workspace_source(entry.target)
+        source_identity = (source_stat.st_dev, source_stat.st_ino)
+        target_identity = (target_stat.st_dev, target_stat.st_ino)
+        if revalidate_reason is not None or target_identity != source_identity:
+            # Possible source substitution between preview and move:
+            # rename back without load_workspace, rebasing, or refresh —
+            # nothing has been written, so there is nothing to restore.
+            os.rename(entry.target, entry.source)
+            return (
+                "moved target failed revalidation "
+                f"({revalidate_reason or 'identity changed after rename'})"
+            )
         from chipcompiler.data import load_workspace, refresh_workspace_config
 
         _pre_rebase_legacy_config_paths(entry.target, entry.source, entry.target)
@@ -323,7 +385,7 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
     plan = preview.plan
     records: list[dict] = []
 
-    if plan.resume and not plan.entries and not plan.collisions:
+    if plan.resume and not plan.entries and not plan.collisions and not plan.unsafe:
         records.append(
             {
                 "status": "already_migrated",
@@ -340,6 +402,17 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
                 "error": "migration_collision",
                 "run": run_id,
                 "reason": f"{run_id} already exists at the project root",
+            }
+        )
+
+    for run_id in plan.unsafe:
+        records.append(
+            {
+                "kind": "error",
+                "error": "migration_failed",
+                "run": run_id,
+                "reason": "unsafe run source: not a real project-owned directory "
+                "(symlink or special entry); remove the link or migrate its target by hand",
             }
         )
 

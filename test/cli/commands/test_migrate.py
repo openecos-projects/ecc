@@ -468,3 +468,127 @@ class TestMigrationPreview:
         # The failed move was rolled back under runs/.
         assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
         assert not os.path.exists(os.path.join(project_dir, "exp1"))
+
+
+def _tree_snapshot(root):
+    """{relpath: (kind, payload)} for every entry under root — files carry
+    bytes, symlinks their target, directories a marker."""
+    root_path = Path(root)
+    snapshot = {}
+    for path in sorted(root_path.rglob("*")):
+        rel = str(path.relative_to(root_path))
+        if path.is_symlink():
+            snapshot[rel] = ("link", str(path.readlink()))
+        elif path.is_file():
+            snapshot[rel] = ("file", path.read_bytes())
+        elif path.is_dir():
+            snapshot[rel] = ("dir", None)
+        else:
+            snapshot[rel] = ("other", None)
+    return snapshot
+
+
+def _external_workspace(tmp_path):
+    """A plausible workspace OUTSIDE the project, to be reached via runs/ links."""
+    external = tmp_path / "external"
+    home = external / "home"
+    home.mkdir(parents=True)
+    (home / "flow.json").write_text(
+        json.dumps({"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Success"}]})
+    )
+    (home / "home.json").write_text(
+        json.dumps({"parameters": str(home / "ecc.toml"), "flow": str(home / "flow.json")})
+    )
+    (home / "ecc.toml").write_text('[design]\nname = "gcd"\n[pdk]\nname = "ics55"\n')
+    (external / "keep.txt").write_text("precious\n")
+    os.symlink("keep.txt", external / "keep-link.txt")
+    return external
+
+
+class TestMigrationSymlinkSafety:
+    """AC-17: migration never follows a symlinked run source nor mutates a
+    project-external tree — at discovery, at move time, and after rename."""
+
+    def test_symlinked_run_source_never_mutates_external_tree(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        external = _external_workspace(tmp_path)
+        os.symlink(external, os.path.join(project_dir, "runs", "linked"))
+        before = _tree_snapshot(external)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        (failure,) = [r for r in records if r.get("error") == "migration_failed"]
+        assert failure["run"] == "linked"
+        # The external tree is untouched (bytes, dirs, and symlinks), the
+        # link stays under runs/, and nothing was moved or registered.
+        assert _tree_snapshot(external) == before
+        assert os.path.islink(os.path.join(project_dir, "runs", "linked"))
+        assert not os.path.exists(os.path.join(project_dir, "linked"))
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+    def test_real_sibling_migrates_while_unsafe_entry_stays(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        external = _external_workspace(tmp_path)
+        os.symlink(external, os.path.join(project_dir, "runs", "linked"))
+        before = _tree_snapshot(external)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        assert any(
+            r.get("error") == "migration_failed" and r.get("run") == "linked" for r in records
+        )
+        assert any(r.get("status") == "migrated" and r.get("run") == "exp1" for r in records)
+        # The real sibling migrated and registered alone; the link and
+        # runs/ stay put, and the external tree is untouched.
+        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+        manifest = _manifest(project_dir)
+        assert [w["workspace_id"] for w in manifest["workspaces"]] == ["exp1"]
+        assert _tree_snapshot(external) == before
+        assert os.path.islink(os.path.join(project_dir, "runs", "linked"))
+        assert os.path.isdir(os.path.join(project_dir, "runs"))
+
+    def test_source_substitution_after_preview_is_rejected(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+    ):
+        import shutil
+
+        import chipcompiler.cli.project.migrate as migrate_module
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = _create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        external = _external_workspace(tmp_path)
+
+        real_plan = migrate_module.plan_migration
+
+        def swapping_plan(project_dir_arg):
+            plan = real_plan(project_dir_arg)
+            # Substitute the planned source with a symlink BEFORE execution.
+            shutil.rmtree(run_dir)
+            os.symlink(external, run_dir)
+            return plan
+
+        monkeypatch.setattr(migrate_module, "plan_migration", swapping_plan)
+        before = _tree_snapshot(external)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        (failure,) = [r for r in records if r.get("error") == "migration_failed"]
+        assert "unsafe run source" in failure["reason"]
+        # The execution-time revalidation rejected the swapped source
+        # without writing anywhere; the substituted link stays under runs/.
+        assert _tree_snapshot(external) == before
+        assert os.path.islink(run_dir)
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
