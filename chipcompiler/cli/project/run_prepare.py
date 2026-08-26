@@ -374,7 +374,10 @@ def _materialize_rtl_filelist(cfg) -> str:
     Paths resolve against the project directory, mirroring resolve_rtl's
     single-source rule. Entries that are themselves filelists (``.f``) are
     expanded in place — a nested filelist copied verbatim would be fed to
-    synthesis as an HDL source, silently dropping everything it names.
+    synthesis as an HDL source, silently dropping everything it names. The
+    file is named ``filelist`` so the frozen origin copy is the same name
+    ``load_workspace`` restores on reopen (a random temp basename would be
+    lost, silently narrowing a resumed workspace to the first RTL source).
     Returns the filelist path.
     """
     import tempfile
@@ -388,21 +391,27 @@ def _materialize_rtl_filelist(cfg) -> str:
         resolve_path as resolve_filelist_entry,
     )
 
-    fd, filelist_path = tempfile.mkstemp(prefix="ecc-rtl-", suffix=".f")
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
+    temp_dir = tempfile.mkdtemp(prefix="ecc-rtl-")
+    filelist_path = os.path.join(temp_dir, "filelist")
+    with open(filelist_path, "w", encoding="utf-8") as f:
         for entry in cfg.design_rtl:
             resolved_entry = _resolve_path(cfg.project_dir, entry)
             if os.path.splitext(resolved_entry)[1].lower() in FILELIST_SUFFIXES:
                 nested_dir = os.path.dirname(resolved_entry)
                 for nested in parse_filelist(resolved_entry):
-                    f.write(resolve_filelist_entry(nested, nested_dir) + "\n")
+                    f.write(_quote_filelist_path(resolve_filelist_entry(nested, nested_dir)) + "\n")
                 # Keep the nested file's include directives (rebased to
                 # absolute): dropping them silently breaks `include sources.
                 for incdir in parse_incdir_directives(resolved_entry):
                     f.write(f"+incdir+{resolve_filelist_entry(incdir, nested_dir)}\n")
             else:
-                f.write(resolved_entry + "\n")
+                f.write(_quote_filelist_path(resolved_entry) + "\n")
     return filelist_path
+
+
+def _quote_filelist_path(path: str) -> str:
+    """Quote a filelist entry containing whitespace (Slang requires it)."""
+    return f'"{path}"' if any(ch.isspace() for ch in path) else path
 
 
 def execute_fresh_run(
@@ -506,7 +515,7 @@ def execute_fresh_run(
         finally:
             if generated_filelist is not None:
                 with contextlib.suppress(OSError):
-                    os.unlink(generated_filelist)
+                    shutil.rmtree(os.path.dirname(generated_filelist))
 
         if workspace is None:
             if owns_target:

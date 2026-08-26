@@ -1212,9 +1212,16 @@ def load_workspace(directory: str | Path) -> Workspace:
     migrate_workspace_config_filenames(workspace_dir)
     workspace.config = build_workspace_config_paths(workspace)
 
-    parameters = load_parameter(home_dir / "ecc.toml")
     config_path = home_dir / "ecc.toml"
     legacy_path = home_dir / "parameters.json"
+    if config_path.is_symlink():
+        # A symlinked canonical config would make the workspace execute
+        # with external parameters it does not own: reject it the same way
+        # the save path refuses to write through a symlink.
+        from chipcompiler.data.workspace_config import WorkspaceConfigError
+
+        raise WorkspaceConfigError(f"workspace config is a symlink: {config_path}")
+    parameters = load_parameter(home_dir / "ecc.toml")
     if len(parameters.data) <= 0 and not config_path.exists() and legacy_path.exists():
         # Migration was deferred (e.g. read-only dir): fall back to the
         # normalized in-memory copy so the workspace still opens. When the

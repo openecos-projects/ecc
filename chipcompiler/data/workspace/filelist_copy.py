@@ -54,6 +54,7 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
     filelist_dir = os.path.dirname(os.path.abspath(input_filelist))
     copied_files = set()
     copied_abs_sources: dict[str, str] = {}
+    copied_abs_incdirs: dict[str, str] = {}
     stats = {"copied": 0, "missing": 0, "incdir_copied": 0, "incdir_skipped": 0}
 
     # Copy files listed in filelist
@@ -127,10 +128,25 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
                 logger.warning(f"Include path is not a directory: {abs_incdir}")
             continue
 
+        absolute_incdir = os.path.isabs(incdir_path)
+        incdir_anchor = ""
+        if absolute_incdir:
+            # An absolute include dir cannot rebase by relpath from the
+            # filelist location (a generated outer filelist lives in a temp
+            # dir): anchor it under origin by the directory's own name so
+            # the frozen workspace no longer depends on the source project.
+            incdir_anchor = os.path.basename(abs_incdir.rstrip(os.sep))
+            copied_abs_incdirs[os.path.normpath(abs_incdir)] = incdir_anchor
+
         for root, _dirs, files in os.walk(abs_incdir):
             for filename in files:
                 src_file = os.path.join(root, filename)
-                rel_from_filelist = os.path.relpath(src_file, filelist_dir)
+                if absolute_incdir:
+                    rel_from_filelist = os.path.join(
+                        incdir_anchor, os.path.relpath(src_file, abs_incdir)
+                    )
+                else:
+                    rel_from_filelist = os.path.relpath(src_file, filelist_dir)
 
                 if rel_from_filelist in copied_files:
                     stats["incdir_skipped"] += 1
@@ -152,8 +168,10 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
             logger.error(f"Failed to copy filelist: {e}")
         raise
 
-    if copied_abs_sources:
-        _rewrite_filelist_absolute_sources(new_filelist, copied_abs_sources, logger)
+    if copied_abs_sources or copied_abs_incdirs:
+        _rewrite_filelist_absolute_sources(
+            new_filelist, copied_abs_sources, logger, copied_abs_incdirs
+        )
 
     if logger:
         logger.info(
@@ -168,7 +186,10 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
 
 
 def _rewrite_filelist_absolute_sources(
-    filelist_path: str, copied_abs_sources: dict, logger=None
+    filelist_path: str,
+    copied_abs_sources: dict,
+    logger=None,
+    copied_abs_incdirs: dict | None = None,
 ) -> None:
     """Point absolute filelist entries at the copied origin sources.
 
@@ -183,11 +204,17 @@ def _rewrite_filelist_absolute_sources(
     with open(filelist_path, encoding="utf-8") as f:
         lines = f.read().splitlines(keepends=True)
 
+    incdirs = copied_abs_incdirs or {}
     rewritten = []
     for line in lines:
         stripped = line.strip()
         candidate = ""
-        if stripped and not stripped.startswith(("+", "-", "#", "//", "`")):
+        if stripped.startswith("+incdir+"):
+            include_path = stripped[len("+incdir+") :].strip().strip("\"'")
+            mapped = incdirs.get(os.path.normpath(include_path))
+            if mapped is not None:
+                line = line.replace(include_path, mapped)
+        elif stripped and not stripped.startswith(("+", "-", "#", "//", "`")):
             candidate = _remove_inline_comment(stripped).strip("\"'")
         if candidate and os.path.isabs(candidate):
             mapped = copied_abs_sources.get(os.path.normpath(candidate))

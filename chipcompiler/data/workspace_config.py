@@ -348,7 +348,13 @@ def _drop_null_values(value: Any, *, _path: str = "") -> Any:
             result[key] = _drop_null_values(item, _path=f"{_path}{key}.")
         return result
     if isinstance(value, list):
-        return [_drop_null_values(item, _path=f"{_path}[]") for item in value]
+        result = []
+        for index, item in enumerate(value):
+            if item is None:
+                logger.warning("dropping null element at %s[%d] during TOML render", _path, index)
+                continue
+            result.append(_drop_null_values(item, _path=f"{_path}[{index}]."))
+        return result
     return value
 
 

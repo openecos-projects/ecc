@@ -380,3 +380,15 @@ def test_save_drops_null_values_instead_of_failing(tmp_path):
     assert loaded["design"] == "gcd"
     assert "pdk_config" not in loaded
     assert "margin" not in loaded["core"]
+
+
+def test_save_drops_null_list_elements_with_a_warning(tmp_path):
+    ok = save_workspace_config(
+        str(tmp_path),
+        {"design": "gcd", "top_module": "gcd", "core": {"margin": [None, 2]}},
+        None,
+    )
+
+    assert ok is True
+    loaded = load_workspace_config(tmp_path)
+    assert loaded["core"]["margin"] == [2]

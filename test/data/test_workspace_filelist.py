@@ -151,3 +151,36 @@ class TestCreateWorkspaceIntegration:
         assert lines[1] == "b_foo.v"
         assert (workspace_dir / "origin" / "foo.v").read_text() == "module foo_a; endmodule\n"
         assert (workspace_dir / "origin" / "b_foo.v").read_text() == "module foo_b; endmodule\n"
+
+    def test_filelist_absolute_incdir_is_frozen_inside_origin(self, tmp_path, test_parameters, pdk):
+        from chipcompiler.data.workspace.filelist_copy import copy_filelist_with_sources
+
+        include_dir = tmp_path / "proj" / "include"
+        include_dir.mkdir(parents=True)
+        (include_dir / "defs.svh").write_text("`define FOO 1\n")
+        (tmp_path / "proj" / "a.v").write_text("module a; endmodule\n")
+        filelist = tmp_path / "design.f"
+        filelist.write_text(f"+incdir+{include_dir}\n{tmp_path / 'proj' / 'a.v'}\n")
+
+        workspace_dir = tmp_path / "workspace"
+        copy_filelist_with_sources(str(filelist), str(workspace_dir))
+
+        lines = (workspace_dir / "origin" / "design.f").read_text().splitlines()
+        assert lines[0] == "+incdir+include"
+        assert (workspace_dir / "origin" / "include" / "defs.svh").exists()
+
+    def test_load_workspace_rejects_symlinked_ecc_toml(self, tmp_path, test_parameters, pdk):
+        from chipcompiler.data.workspace import load_workspace
+        from chipcompiler.data.workspace_config import WorkspaceConfigError, save_workspace_config
+
+        real_dir = tmp_path / "real-ws"
+        save_workspace_config(str(real_dir), {"design": "gcd", "top_module": "gcd"}, None)
+        workspace_dir = tmp_path / "linked-ws"
+        (workspace_dir / "home").mkdir(parents=True)
+        (workspace_dir / "home" / "flow.json").write_text('{"steps": []}')
+        (workspace_dir / "home" / "ecc.toml").symlink_to(real_dir / "home" / "ecc.toml")
+
+        import pytest
+
+        with pytest.raises(WorkspaceConfigError):
+            load_workspace(str(workspace_dir))
