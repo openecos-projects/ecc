@@ -67,6 +67,9 @@ class MigrationPlan:
     # Set when the runs/ container itself is a symlink or not a real
     # directory: nothing is enumerated, previewed, or executed.
     container_unsafe: str | None = None
+    # run_id -> refusal reason for sources that cannot be represented as a
+    # contiguous manifest flow range (a legacy hand-edited or partial ledger).
+    blocked: dict = field(default_factory=dict)
     # Plan-time lstat identity of the confirmed runs/ container.
     container_dev: int = 0
     container_ino: int = 0
@@ -117,6 +120,19 @@ def _read_flow_steps(run_dir: str) -> list[dict]:
     return steps if isinstance(steps, list) else []
 
 
+def _is_contiguous_flow(names: list[str]) -> bool:
+    """The persisted step names must form one contiguous slice of the
+    canonical chain: anything else cannot be registered as a start..end
+    manifest range without lying about the ledger."""
+    from chipcompiler.data.workspace_config import canonical_flow_chain
+
+    chain = canonical_flow_chain()
+    for start in range(len(chain) - len(names) + 1):
+        if chain[start : start + len(names)] == names:
+            return True
+    return False
+
+
 def plan_migration(project_dir: str) -> MigrationPlan:
     """Enumerate the runs/ workspaces to move and any name collisions.
 
@@ -154,6 +170,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
     entries: list[MigrationEntry] = []
     collisions: list[str] = []
     unsafe: list[str] = []
+    blocked: dict = {}
     try:
         with os.scandir(runs_dir) as scan:
             dirents = sorted(scan, key=lambda dirent: dirent.name)
@@ -176,6 +193,12 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         names = [
             name for step in steps if isinstance(step, dict) and (name := str(step.get("name", "")))
         ]
+        if names and not _is_contiguous_flow(names):
+            blocked[run_id] = (
+                "legacy flow is not a contiguous slice of the canonical chain "
+                f"({names[0]}..{names[-1]} with gaps); register it by hand"
+            )
+            continue
         source_stat = os.lstat(source)
         entries.append(
             MigrationEntry(
@@ -198,6 +221,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
     return MigrationPlan(
         project_dir=project_dir,
         entries=tuple(entries),
+        blocked=blocked,
         collisions=tuple(collisions),
         unsafe=tuple(unsafe),
         container_dev=container_dev,

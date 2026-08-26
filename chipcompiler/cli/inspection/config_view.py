@@ -169,6 +169,7 @@ def build_project_config_items(
     resolved_params, _ = resolve_parameters(
         toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
+        manifest_overrides=_manifest_parameter_overrides(cfg),
     )
     from chipcompiler.cli.handlers.param import _maps_to_str
 
@@ -286,3 +287,32 @@ def build_step_config_items(
         ], 0
 
     return items, 0
+
+
+def _manifest_parameter_overrides(cfg) -> dict:
+    """The manifest layer's parameter values in dotted registry-key form.
+
+    Execution layers ``base_design.parameters`` / ``parameter_patch`` beneath
+    ecc.toml and CLI overrides; the resolved view must present them instead
+    of reporting registry defaults.
+    """
+    from chipcompiler.cli.project.params import PARAM_REGISTRY
+
+    manifest_parameters = getattr(cfg, "manifest_parameters", None) or {}
+    if not isinstance(manifest_parameters, dict):
+        return {}
+    overrides = {}
+    for schema in PARAM_REGISTRY:
+        maps_to = schema.maps_to
+        value = None
+        if isinstance(maps_to, str):
+            value = manifest_parameters.get(maps_to)
+        elif isinstance(maps_to, dict):
+            for subtree, leaf in maps_to.items():
+                node = manifest_parameters.get(subtree)
+                if isinstance(node, dict):
+                    value = node.get(leaf)
+                    break
+        if value is not None:
+            overrides[schema.param] = value
+    return overrides

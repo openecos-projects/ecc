@@ -656,3 +656,30 @@ class TestMigrationPreview:
         assert written is False
         manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
         assert manifest["workspaces"][0]["workspace_path"] == f"{project_dir}/other_place"
+
+    def test_non_contiguous_legacy_flow_is_refused_not_registered(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        import json
+
+        run_dir = tmp_path / "gcd" / "runs" / "ws_0001"
+        (run_dir / "home").mkdir(parents=True)
+        (run_dir / "home" / "flow.json").write_text(
+            json.dumps(
+                {
+                    "steps": [
+                        {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                        {"name": "place", "tool": "dreamplace", "state": "Success"},
+                        {"name": "CTS", "tool": "ecc", "state": "Success"},
+                    ]
+                }
+            )
+        )
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 1
+        errors = [r for r in _records(capsys) if r.get("error") == "migration_unsupported"]
+        assert len(errors) == 1
+        assert not (tmp_path / "gcd" / "ws_0001").exists()

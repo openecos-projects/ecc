@@ -127,6 +127,16 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
             }
         )
 
+    for run_id, reason in plan.blocked.items():
+        records.append(
+            {
+                "kind": "error",
+                "error": "migration_unsupported",
+                "run": run_id,
+                "reason": reason,
+            }
+        )
+
     migrated: list[MigrationEntry] = []
     moved_records: list[tuple[MigrationEntry, dict]] = []
     container_fd = None

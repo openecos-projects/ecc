@@ -365,9 +365,11 @@ def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str
 def resolve_parameters(
     toml_overrides: dict[str, object] | None = None,
     cli_overrides: dict[str, object] | None = None,
+    manifest_overrides: dict[str, object] | None = None,
 ) -> tuple[list[ResolvedParam], list[str]]:
     toml_overrides = toml_overrides or {}
     cli_overrides = cli_overrides or {}
+    manifest_overrides = manifest_overrides or {}
     resolved: list[ResolvedParam] = []
     errors: list[str] = []
 
@@ -401,6 +403,20 @@ def resolve_parameters(
                     value=value,
                     default=schema.default,
                     source="ecc.toml",
+                    schema=schema,
+                )
+            )
+        elif key in manifest_overrides:
+            value = manifest_overrides[key]
+            val_errors = validate_value(value, schema)
+            if val_errors:
+                errors.extend(val_errors)
+            resolved.append(
+                ResolvedParam(
+                    param=key,
+                    value=value,
+                    default=schema.default,
+                    source="project.json",
                     schema=schema,
                 )
             )
