@@ -168,10 +168,12 @@ def _validate_mpc(value: Any) -> None:
             "invalid project manifest: mpc.spec_path must reference spec/spec.json.in"
         )
     design = _record(source.get("design"))
+    index = design.get("index")
     if (
         not design
-        or not isinstance(design.get("index"), int)
-        or design["index"] < 0
+        or isinstance(index, bool)  # a JSON boolean is not an index (True == 1 in Python)
+        or not isinstance(index, int)
+        or index < 0
         or not _optional_str(design.get("design_name"))
     ):
         raise ManifestError(
@@ -198,7 +200,10 @@ def load_manifest(project_dir: str) -> ProjectManifest:
 
     if not isinstance(source, dict):
         raise ManifestError(f"invalid project manifest: {path}: top level must be an object")
-    if source.get("schema_version") != 1:
+    schema_version = source.get("schema_version")
+    # A JSON boolean is not the schema version (True == 1 in Python); the
+    # GUI parser rejects it, and the CLI must not open what the GUI cannot.
+    if isinstance(schema_version, bool) or schema_version != 1:
         raise ManifestError("invalid project manifest: schema_version 1 is required")
     raw_workspaces = source.get("workspaces")
     if not isinstance(raw_workspaces, list):

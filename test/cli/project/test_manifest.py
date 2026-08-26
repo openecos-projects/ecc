@@ -408,3 +408,34 @@ def test_assemble_config_tolerates_non_list_rtl(tmp_path):
     assembled = assemble_config(manifest, None)
 
     assert assembled["rtl_list"] == []
+
+
+def test_load_manifest_rejects_boolean_schema_version(tmp_path):
+    # True == 1 in Python, but a JSON boolean is not the schema version —
+    # the GUI parser rejects it and the CLI must not open what the GUI
+    # cannot.
+    _write_manifest(tmp_path, _minimal_document(tmp_path, schema_version=True))
+
+    with pytest.raises(ManifestError, match="schema_version 1 is required"):
+        load_manifest(str(tmp_path))
+
+
+def test_load_manifest_rejects_boolean_mpc_design_index(tmp_path):
+    _write_manifest(
+        tmp_path,
+        _minimal_document(
+            tmp_path,
+            mpc={
+                "resource_id": "mpc:x",
+                "display_name": "d",
+                "installed_version": "1",
+                "path": "/p",
+                "spec_path": "/p/spec/spec.json.in",
+                "design": {"index": True, "design_name": "gcd"},
+                "core_template": {},
+            },
+        ),
+    )
+
+    with pytest.raises(ManifestError, match="mpc.design"):
+        load_manifest(str(tmp_path))
