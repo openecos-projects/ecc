@@ -332,65 +332,77 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         )
 
     if os.path.exists(flow_json) and not command_input.overwrite:
-        return run_prepare.run_existing_workspace(
-            command_input,
-            ctx,
-            cfg,
-            run_dir,
-            run_name,
-            cli_overrides,
-            warning_records,
-            workspace_registered=workspace_registered,
-        )
+        # Existing-workspace runs hold the shared project lock for their
+        # whole duration (reader semantics): a migration never moves a
+        # workspace out from under an active run — it waits.
+        from chipcompiler.cli.project import migrate_fs
 
-    if command_input.overwrite and os.path.lexists(run_dir):
-        if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
+        with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
+            return run_prepare.run_existing_workspace(
+                command_input,
+                ctx,
+                cfg,
+                run_dir,
+                run_name,
+                cli_overrides,
+                warning_records,
+                workspace_registered=workspace_registered,
+            )
+
+    # The overwrite-delete + atomic create run inside the shared project
+    # lock: an `ecc migrate` holding the exclusive lock sees them as one
+    # serialized section instead of racing the target's appearance.
+    from chipcompiler.cli.project import migrate_fs
+
+    with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
+        if command_input.overwrite and os.path.lexists(run_dir):
+            if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
+                return CommandResult.err(
+                    [
+                        {
+                            "kind": "error",
+                            "error": "overwrite_refused",
+                            "run": run_name,
+                            "workspace": run_dir,
+                            "reason": "target is not an ECC run directory",
+                        }
+                    ]
+                )
+            for root, dirs, files in os.walk(run_dir):
+                for d in dirs:
+                    dp = os.path.join(root, d)
+                    if not os.path.islink(dp):
+                        os.chmod(dp, 0o755)
+                for f in files:
+                    fp = os.path.join(root, f)
+                    if not os.path.islink(fp):
+                        os.chmod(fp, 0o644)
+            os.chmod(run_dir, 0o755)
+            shutil.rmtree(run_dir)
+
+        # Only the process that atomically creates the target may proceed or
+        # clean up a failed create_workspace: an existing target (pre-existing
+        # or won by a concurrent run) is never written into or removed by this
+        # invocation. create_workspace re-attempts the creation, so any other
+        # error surfaces from there.
+        owns_target = False
+        try:
+            os.makedirs(run_dir)
+            owns_target = True
+        except FileExistsError:
             return CommandResult.err(
                 [
                     {
                         "kind": "error",
-                        "error": "overwrite_refused",
+                        "error": "run_exists",
                         "run": run_name,
                         "workspace": run_dir,
-                        "reason": "target is not an ECC run directory",
+                        "overwrite": disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
                     }
                 ]
             )
-        for root, dirs, files in os.walk(run_dir):
-            for d in dirs:
-                dp = os.path.join(root, d)
-                if not os.path.islink(dp):
-                    os.chmod(dp, 0o755)
-            for f in files:
-                fp = os.path.join(root, f)
-                if not os.path.islink(fp):
-                    os.chmod(fp, 0o644)
-        os.chmod(run_dir, 0o755)
-        shutil.rmtree(run_dir)
-
-    # Only the process that atomically creates the target may proceed or
-    # clean up a failed create_workspace: an existing target (pre-existing
-    # or won by a concurrent run) is never written into or removed by this
-    # invocation. create_workspace re-attempts the creation, so any other
-    # error surfaces from there.
-    owns_target = False
-    try:
-        os.makedirs(run_dir)
-        owns_target = True
-    except FileExistsError:
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "run_exists",
-                    "run": run_name,
-                    "workspace": run_dir,
-                    "overwrite": disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                }
-            ]
-        )
-    except OSError:
-        pass
+        except OSError:
+            pass
 
     return run_prepare.execute_fresh_run(
         command_input,

@@ -197,11 +197,18 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
         )
 
     if relation == "target_prefix":
-        # The persisted flow already covers the target: unconditional
-        # no-op — steps beyond the target are never the run's business.
+        # The persisted flow already covers the target: no-op only when
+        # every step WITHIN the requested target range succeeded; a
+        # non-Success step inside the target resumes. Steps beyond the
+        # target are never the run's business.
+        target_states = {
+            str(step.get("state", ""))
+            for step in flow_data.get("steps", [])[: len(target)]
+            if isinstance(step, dict)
+        }
         return (
             ReconcileResult(
-                outcome="no_op",
+                outcome="no_op" if target_states == {"Success"} else "resume",
                 persisted=_entry_names(persisted),
                 target=_entry_names(target),
             ),
@@ -319,9 +326,15 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
 
     if outcome is None:
         if relation == "target_prefix":
-            # The persisted flow already covers the target: unconditional
-            # no-op — steps beyond the target are never the run's business.
-            outcome = "no_op"
+            # The persisted flow already covers the target: no-op only
+            # when every step within the requested target range succeeded.
+            flow_data = _persisted_flow_data(workspace_dir, json_read)
+            target_states = {
+                str(step.get("state", ""))
+                for step in flow_data.get("steps", [])[: len(target)]
+                if isinstance(step, dict)
+            }
+            outcome = "no_op" if target_states == {"Success"} else "resume"
         else:
             flow_data = _persisted_flow_data(workspace_dir, json_read)
             states = {

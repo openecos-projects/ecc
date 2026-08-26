@@ -1,0 +1,277 @@
+import json
+import os
+from pathlib import Path
+
+from chipcompiler.cli import main as cli_main
+
+
+def _records(capsys):
+    return json.loads(capsys.readouterr().out)["records"]
+
+
+def _tree_snapshot(root):
+    """{relpath: (kind, payload)} for every entry under root — files carry
+    bytes, symlinks their target, directories a marker."""
+    root_path = Path(root)
+    snapshot = {}
+    for path in sorted(root_path.rglob("*")):
+        rel = str(path.relative_to(root_path))
+        if path.is_symlink():
+            snapshot[rel] = ("link", str(path.readlink()))
+        elif path.is_file():
+            snapshot[rel] = ("file", path.read_bytes())
+        elif path.is_dir():
+            snapshot[rel] = ("dir", None)
+        else:
+            snapshot[rel] = ("other", None)
+    return snapshot
+
+
+def _substitute_workspace(tmp_path, steps):
+    """A real directory (with a keep file) standing by to replace a planned
+    source after preview."""
+    substitute = tmp_path / "substitute"
+    home = substitute / "home"
+    home.mkdir(parents=True)
+    (home / "flow.json").write_text(json.dumps({"steps": steps}))
+    (substitute / "keep.txt").write_text("precious\n")
+    return substitute
+
+
+class TestMigrationFailLoud:
+    """Fail-loud detection: a replaced/removed workspace is never mutated or
+    registered — it is reported with the exact paths for manual resolution."""
+
+    def test_replaced_before_content_phase_is_refused(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+        create_legacy_workspace,
+    ):
+        import shutil
+
+        import chipcompiler.cli.project.migrate_fs as migrate_fs
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        target = os.path.join(project_dir, "exp1")
+        third = _substitute_workspace(tmp_path / "sub", [])
+        third_before = _tree_snapshot(third)
+
+        real_screen = migrate_fs._unsafe_workspace_source
+
+        def swapping_screen(source):
+            # A third party replaces the moved workspace right after the
+            # post-move screen, before any content write.
+            if source == target:
+                shutil.rmtree(target)
+                shutil.move(str(third), target)
+            return real_screen(source)
+
+        monkeypatch.setattr(migrate_fs, "_unsafe_workspace_source", swapping_screen)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        assert "replaced during migration" in failure["reason"]
+        # The pre-content gate fired: the replacement was never loaded or
+        # registered, and sits untouched for manual inspection.
+        assert _tree_snapshot(target) == third_before
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+    def test_replaced_during_content_phase_is_never_registered(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+        create_legacy_workspace,
+    ):
+        import shutil
+
+        import chipcompiler.data
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        target = os.path.join(project_dir, "exp1")
+        # The replacement must be refreshable so the flow reaches the
+        # registration gate: a real workspace at a sibling location.
+        third = create_legacy_workspace(
+            str(tmp_path / "sibling"), pdk_root, "exp1", ["Success", "Success"]
+        )
+
+        real_refresh = chipcompiler.data.refresh_workspace_config
+
+        def swapping_refresh(workspace):
+            # A third party replaces the moved workspace mid-content-phase.
+            shutil.rmtree(target)
+            shutil.move(str(third), target)
+            return real_refresh(workspace)
+
+        monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", swapping_refresh)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        (failure,) = [r for r in records if r.get("error") == "migration_failed"]
+        assert "NOT registered" in failure["reason"]
+        # The registration gate caught the identity change: project.json was
+        # never written, and the replacement stays unregistered at the root.
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+        assert os.path.isdir(target)
+        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
+
+    def test_missing_target_with_unproven_source_is_incomplete_rollback(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+        create_legacy_workspace,
+    ):
+        import shutil
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        target = os.path.join(project_dir, "exp1")
+        replacement_home_json = {"flow": os.path.join(run_dir, "home", "flow.json")}
+
+        def failing_refresh(workspace):
+            # The moved target disappears and an unconfirmed replacement
+            # appears at the source before the failure surfaces.
+            shutil.rmtree(target)
+            (Path(run_dir) / "home").mkdir(parents=True)
+            (Path(run_dir) / "home" / "home.json").write_text(json.dumps(replacement_home_json))
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", failing_refresh)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        assert "rollback incomplete" in failure["reason"]
+        # The unconfirmed replacement was never reverse-rebased.
+        current = json.loads((Path(run_dir) / "home" / "home.json").read_text())
+        assert current == replacement_home_json
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+
+def _hold_lock_briefly(project_dir, seconds=0.4):
+    """Hold the project migration lock exclusively in a thread; returns
+    (thread, released_event) so callers can assert the CLI waited."""
+    import fcntl
+    import threading
+    import time
+
+    fd = os.open(os.path.join(project_dir, ".migrate.lock"), os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    released = threading.Event()
+
+    def release():
+        time.sleep(seconds)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+        released.set()
+
+    thread = threading.Thread(target=release, daemon=True)
+    thread.start()
+    return thread, released
+
+
+class TestMigrationProjectLock:
+    """The .migrate.lock serializes cooperating writers: a migration and a
+    run creation in the same project wait for each other instead of racing."""
+
+    def test_second_migrate_waits_for_the_first_lock(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        thread, released = _hold_lock_briefly(project_dir)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        thread.join()
+        assert rc == 0
+        # The migrate returned only AFTER the holder released: it blocked
+        # on the shared lock rather than racing or failing.
+        assert released.is_set()
+        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+
+    def test_run_creation_waits_for_migration_lock(
+        self, tmp_path, capsys, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+        thread, released = _hold_lock_briefly(project_dir)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        thread.join()
+        assert rc == 0
+        assert released.is_set()
+        assert flow_mocks.capture["create_kwargs"]["directory"] == os.path.join(
+            project_dir, "default"
+        )
+
+
+class TestDestinationBinding:
+    def test_retargeted_project_symlink_is_refused_before_any_move(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+        monkeypatch,
+    ):
+        import chipcompiler.cli.project.migrate as migrate_module
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        link_dir = tmp_path / "links"
+        link_dir.mkdir()
+        link = str(link_dir / "project_link")
+        os.symlink(project_dir, link)
+        other = tmp_path / "other_project"
+        other.mkdir()
+
+        real_plan = migrate_module.plan_migration
+
+        def retargeting_plan(project_dir_arg):
+            plan = real_plan(project_dir_arg)
+            # The project symlink is retargeted after the preview.
+            os.unlink(link)
+            os.symlink(other, link)
+            return plan
+
+        monkeypatch.setattr(migrate_module, "plan_migration", retargeting_plan)
+
+        rc = cli_main.run(["migrate", "--project", link, "--yes", "--json"])
+
+        assert rc != 0
+        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        assert failure["reason"] == "project directory changed after preview"
+        # Nothing was moved into the retargeted destination and nothing was
+        # written anywhere: the real workspace stays under runs/.
+        assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
+        assert not (other / "exp1").exists()
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+        assert not (other / "project.json").exists()

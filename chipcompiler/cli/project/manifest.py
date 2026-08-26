@@ -508,54 +508,60 @@ def _read_manifest_document(path: str):
 
 
 def update_manifest(project_dir: str, mutator) -> bool:
-    """Read-modify-write the manifest atomically (re-read + patch + replace).
+    """Read-modify-write the manifest atomically (locked re-read + patch + replace).
 
-    The mutator receives the parsed document and edits it in place. When an
+    The whole read-modify-replace runs under ``.manifest.lock`` (flock):
+    two cooperating writers can no longer both complete the fresh read
+    before either replaces, so neither loses the other's update. The
+    mutator receives the parsed document and edits it in place. When an
     unrelated change lands between the read and the write, the mutator is
     re-applied to the freshest document instead of overwriting the change.
     Project-level fields (including updated_at) are owned by the mutator.
     Returns False (with a warning) when the manifest is missing, unreadable,
     or the write fails — callers degrade to a warning, never a run failure.
     """
+    from chipcompiler.cli.project.migrate_fs import flock_file
+
     path = os.path.join(project_dir, MANIFEST_FILENAME)
-    base = _read_manifest_document(path)
-    if base is None:
-        logger.warning("manifest update skipped (unreadable): %s", path)
-        return False
+    with flock_file(os.path.join(project_dir, ".manifest.lock"), exclusive=True):
+        base = _read_manifest_document(path)
+        if base is None:
+            logger.warning("manifest update skipped (unreadable): %s", path)
+            return False
 
-    document = deepcopy(base)
-    mutator(document)
-
-    fresh = _read_manifest_document(path)
-    if fresh is not None and fresh != base:
-        # An unrelated edit landed after our read: re-apply the mutator to
-        # the freshest document so the interleaved change survives.
-        document = fresh
+        document = deepcopy(base)
         mutator(document)
 
-    target = Path(path)
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            dir=target.parent,
-            delete=False,
-            prefix=f".{target.name}.",
-            suffix=".tmp",
-            encoding="utf-8",
-        ) as f:
-            tmp_path = Path(f.name)
-            json.dump(document, f, indent=2)
-            f.write("\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, target)
-        return True
-    except OSError as exc:
-        logger.warning("manifest update failed: %s: %s", path, exc)
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
-        return False
+        fresh = _read_manifest_document(path)
+        if fresh is not None and fresh != base:
+            # An unrelated edit landed after our read: re-apply the mutator to
+            # the freshest document so the interleaved change survives.
+            document = fresh
+            mutator(document)
+
+        target = Path(path)
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=target.parent,
+                delete=False,
+                prefix=f".{target.name}.",
+                suffix=".tmp",
+                encoding="utf-8",
+            ) as f:
+                tmp_path = Path(f.name)
+                json.dump(document, f, indent=2)
+                f.write("\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, target)
+            return True
+        except OSError as exc:
+            logger.warning("manifest update failed: %s: %s", path, exc)
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
+            return False
 
 
 def write_back_workspace_status(project_dir: str, workspace_id: str, status: str) -> bool:

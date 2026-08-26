@@ -25,6 +25,18 @@ RENAME_NOREPLACE = 1
 
 
 @contextmanager
+def flock_file(path: str, *, exclusive: bool):
+    """Hold an flock on *path* for the with-block (kernel-released on death)."""
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+@contextmanager
 def project_migrate_lock(project_dir: str, *, exclusive: bool):
     """Project-level migration lock (flock, cooperating writers only).
 
@@ -35,13 +47,8 @@ def project_migrate_lock(project_dir: str, *, exclusive: bool):
     the lock via the kernel; the file itself is left in place like
     ``home/workspace.lock``.
     """
-    fd = os.open(os.path.join(project_dir, ".migrate.lock"), os.O_CREAT | os.O_RDWR, 0o600)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+    with flock_file(os.path.join(project_dir, ".migrate.lock"), exclusive=exclusive):
         yield
-    finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
 
 
 def _load_renameat2():
@@ -214,6 +221,9 @@ def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
     ):
         return False
     try:
+        # Reverse the pre-load config path retarget as well as home.json:
+        # all-or-nothing covers the legacy "PDK Config" pointer too.
+        _pre_rebase_legacy_config_paths(entry.source, entry.target, entry.source)
         _rebase_home_pointers(entry.source, entry.target, entry.source)
     except (OSError, json.JSONDecodeError):
         logger.warning("rollback: home.json reverse rebase failed for %s", entry.run_id)
