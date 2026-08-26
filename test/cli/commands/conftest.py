@@ -153,3 +153,51 @@ def legacy_hint():
         }
 
     return _build
+
+
+@pytest.fixture
+def create_legacy_workspace():
+    """Factory: a real runs/<run_id> workspace with a two-step flow ledger."""
+
+    def _create(project_dir, pdk_root, run_id, states):
+        from chipcompiler.data import create_workspace
+
+        rtl_path = os.path.join(project_dir, "rtl", "gcd.v")
+        os.makedirs(os.path.dirname(rtl_path), exist_ok=True)
+        with open(rtl_path, "w") as f:
+            f.write("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+        run_dir = os.path.join(project_dir, "runs", run_id)
+        workspace = create_workspace(
+            directory=run_dir,
+            origin_def="",
+            origin_verilog=rtl_path,
+            pdk="ics55",
+            parameters={"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            pdk_root=str(pdk_root),
+        )
+        assert workspace is not None
+
+        steps = [
+            {
+                "name": "Synthesis",
+                "tool": "yosys",
+                "state": states[0],
+                "runtime": "",
+                "peak memory (mb)": 0,
+                "info": {},
+            },
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": states[1],
+                "runtime": "",
+                "peak memory (mb)": 0,
+                "info": {},
+            },
+        ]
+        with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
+            json.dump({"steps": steps}, f)
+        return run_dir
+
+    return _create

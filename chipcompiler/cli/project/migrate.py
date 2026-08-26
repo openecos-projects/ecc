@@ -16,7 +16,6 @@ import stat
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 
 from chipcompiler.cli.project.manifest import (
     base_design_from_config,
@@ -196,33 +195,6 @@ def plan_migration(project_dir: str) -> MigrationPlan:
     )
 
 
-def _contains_symlink(root: str) -> bool:
-    """Any symlink anywhere below root (walk never follows links)."""
-    for dirpath, dirnames, filenames in os.walk(root):
-        for name in (*dirnames, *filenames):
-            if os.path.islink(os.path.join(dirpath, name)):
-                return True
-    return False
-
-
-def _unsafe_workspace_source(source: str) -> str | None:
-    """Why this run source is unsafe to migrate, or None.
-
-    The source and every workspace-local path the migration mutates
-    (home/, config/, recursively) must be real, non-symlink filesystem
-    objects owned by that workspace.
-    """
-    if os.path.islink(source) or not os.path.isdir(source):
-        return "run source is not a real directory"
-    for sub in ("home", "config"):
-        sub_path = os.path.join(source, sub)
-        if os.path.islink(sub_path):
-            return f"{sub} is a symlink"
-        if os.path.isdir(sub_path) and _contains_symlink(sub_path):
-            return f"{sub} contains a symlink"
-    return None
-
-
 def _workspace_entries(
     entries: tuple[MigrationEntry, ...], *, name: str, now: str
 ) -> tuple[dict, ...]:
@@ -275,162 +247,6 @@ def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
     return MigrationPreview(plan=plan, manifest_document=document, manifest_appends=appends)
 
 
-def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) -> None:
-    """Rewrite home.json path values from the old workspace location."""
-    home_path = os.path.join(workspace_dir, "home", "home.json")
-    with open(home_path, encoding="utf-8") as f:
-        data = json.load(f)
-
-    def rebase(value):
-        if isinstance(value, str):
-            if value == old_prefix or value.startswith(old_prefix + os.sep):
-                return new_prefix + value[len(old_prefix) :]
-            return value
-        if isinstance(value, dict):
-            return {key: rebase(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [rebase(item) for item in value]
-        return value
-
-    rebased = {key: rebase(value) for key, value in data.items()}
-    from chipcompiler.utility import json_write
-
-    if not json_write(home_path, rebased):
-        raise OSError(f"failed to write rebased home.json: {home_path}")
-
-
-def _rename_back_guarded(source: str, target: str, expect_identity: tuple[int, int] | None) -> None:
-    """Rename the moved target back, only when safe.
-
-    Never overwrites an object that appeared at the source path. When
-    *expect_identity* is given (rollback after rebase), the target is
-    moved back only when it is the exact inode this invocation moved;
-    when None (immediate revalidation failure), the just-moved target
-    itself is moved straight back.
-    """
-    if os.path.lexists(source):
-        logger.warning("move-back skipped: source path reappeared: %s", source)
-        return
-    if not os.path.lexists(target):
-        return
-    if expect_identity is not None:
-        target_stat = os.lstat(target)
-        if (target_stat.st_dev, target_stat.st_ino) != expect_identity:
-            logger.warning("move-back skipped: target is not the moved inode: %s", target)
-            return
-    os.rename(target, source)
-
-
-def _rollback_workspace(entry: MigrationEntry) -> None:
-    """Undo a failed move: rename back, then restore content at the source.
-
-    The rename alone is not enough — the rebase already rewrote home.json
-    pointers (and possibly tool configs) to the target location. Reverse the
-    pointer rewrite and regenerate configs from the workspace parameters at
-    the original location, best-effort. Only the exact inode this invocation
-    moved is renamed back, never an object that reappeared at the source.
-    """
-    _rename_back_guarded(entry.source, entry.target, (entry.source_dev, entry.source_ino))
-    try:
-        _rebase_home_pointers(entry.source, entry.target, entry.source)
-    except (OSError, json.JSONDecodeError):
-        logger.warning("rollback: home.json reverse rebase failed for %s", entry.run_id)
-    try:
-        from chipcompiler.data import load_workspace, refresh_workspace_config
-
-        workspace = load_workspace(entry.source)
-        if workspace is not None:
-            refresh_workspace_config(workspace)
-    except Exception:
-        logger.warning("rollback: config regeneration failed for %s", entry.run_id)
-
-
-def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_prefix: str) -> None:
-    """Rebase workspace-local pdk config paths BEFORE the moved workspace loads.
-
-    Both the legacy parameters.json ("PDK Config") and an already-migrated
-    home/ecc.toml can carry an absolute path under the old location; the
-    workspace cannot load while the path points back at the old source.
-    """
-    legacy_path = Path(workspace_dir) / "home" / "parameters.json"
-    if legacy_path.exists():
-        data = json.loads(legacy_path.read_text(encoding="utf-8"))
-        value = data.get("PDK Config")
-        if isinstance(value, str) and value.startswith(old_prefix + os.sep):
-            data["PDK Config"] = new_prefix + value[len(old_prefix) :]
-            legacy_path.write_text(json.dumps(data), encoding="utf-8")
-
-    config_path = Path(workspace_dir) / "home" / "ecc.toml"
-    if config_path.exists():
-        from chipcompiler.data.parameter import load_parameter, save_parameter
-
-        parameters = load_parameter(config_path)
-        value = parameters.data.get("pdk_config")
-        if isinstance(value, str) and value.startswith(old_prefix + os.sep):
-            parameters.data["pdk_config"] = new_prefix + value[len(old_prefix) :]
-            if not save_parameter(parameters):
-                raise OSError(f"failed to rebase workspace config paths: {workspace_dir}")
-
-
-def _move_workspace(
-    entry: MigrationEntry, container_identity: tuple[int, int]
-) -> tuple[str, str] | None:
-    """Move one confirmed workspace and rebase it; (error_kind, reason) or None.
-
-    The container and source must still match their PLAN-TIME identities
-    and the target must still not exist immediately before the rename;
-    immediately after it, the moved target must match the plan-time
-    source identity and stay free of symlink components before any load,
-    rebase, or refresh. Every lstat/rename/revalidation sits inside the
-    per-workspace failure boundary, and move-backs touch only the exact
-    moved inode, never an object that reappeared at the source path.
-    """
-    try:
-        container_stat = os.lstat(os.path.dirname(entry.source))
-        if (container_stat.st_dev, container_stat.st_ino) != container_identity:
-            return ("migration_failed", "runs/ container changed after preview")
-        unsafe_reason = _unsafe_workspace_source(entry.source)
-        if unsafe_reason is not None:
-            return ("migration_failed", f"unsafe run source: {unsafe_reason}")
-        source_stat = os.lstat(entry.source)
-        source_identity = (source_stat.st_dev, source_stat.st_ino)
-        if source_identity != (entry.source_dev, entry.source_ino):
-            return ("migration_failed", "run source changed after preview")
-        if os.path.lexists(entry.target):
-            return (
-                "migration_collision",
-                f"{entry.run_id} appeared at the project root after preview",
-            )
-        os.rename(entry.source, entry.target)
-        target_stat = os.lstat(entry.target)
-        revalidate_reason = _unsafe_workspace_source(entry.target)
-        target_identity = (target_stat.st_dev, target_stat.st_ino)
-        if target_identity != source_identity or revalidate_reason is not None:
-            # Possible source substitution between preview and move:
-            # rename the just-moved object back without load_workspace,
-            # rebasing, or refresh — nothing has been written, so there
-            # is nothing to restore.
-            _rename_back_guarded(entry.source, entry.target, None)
-            return (
-                "migration_failed",
-                "moved target failed revalidation "
-                f"({revalidate_reason or 'identity changed after rename'})",
-            )
-        from chipcompiler.data import load_workspace, refresh_workspace_config
-
-        _pre_rebase_legacy_config_paths(entry.target, entry.source, entry.target)
-        workspace = load_workspace(entry.target)
-        if workspace is None:
-            raise ValueError(f"moved workspace fails to load: {entry.target}")
-        _rebase_home_pointers(entry.target, entry.source, entry.target)
-        workspace = load_workspace(entry.target)
-        refresh_workspace_config(workspace)
-    except Exception as exc:
-        _rollback_workspace(entry)
-        return ("migration_failed", str(exc))
-    return None
-
-
 def _append_manifest_entries(
     project_dir: str, append_set: tuple[dict, ...], keep_ids: set[str]
 ) -> bool:
@@ -459,6 +275,7 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
     preview's manifest document (or append set) restricted to the entries
     that actually moved.
     """
+    from chipcompiler.cli.project import migrate_fs
     from chipcompiler.cli.project.manifest import write_manifest_if_absent
 
     plan = preview.plan
@@ -508,93 +325,136 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
         )
 
     migrated: list[MigrationEntry] = []
-    container_identity = (plan.container_dev, plan.container_ino)
-    for entry in plan.entries:
-        failure = _move_workspace(entry, container_identity)
-        if failure is not None:
-            kind, reason = failure
+    container_fd = None
+    project_fd = None
+    runs_dir = os.path.join(project_dir, "runs")
+    try:
+        container_fd, container_identity = migrate_fs.open_container(runs_dir)
+        if container_fd is None:
             records.append(
                 {
                     "kind": "error",
-                    "error": kind,
+                    "error": "migration_failed",
+                    "reason": f"unsafe runs container: {container_identity}",
+                }
+            )
+            return records, 1
+        if container_identity != (plan.container_dev, plan.container_ino):
+            records.append(
+                {
+                    "kind": "error",
+                    "error": "migration_failed",
+                    "reason": "runs/ container changed after preview",
+                }
+            )
+            return records, 1
+        project_fd = os.open(project_dir, os.O_RDONLY | os.O_DIRECTORY)
+
+        for entry in plan.entries:
+            failure = migrate_fs._move_workspace(entry, container_fd, project_fd)
+            if failure is not None:
+                kind, reason = failure
+                records.append(
+                    {
+                        "kind": "error",
+                        "error": kind,
+                        "run": entry.run_id,
+                        "reason": reason,
+                    }
+                )
+                continue
+            migrated.append(entry)
+            records.append(
+                {
+                    "status": "migrated",
                     "run": entry.run_id,
-                    "reason": reason,
+                    "from": entry.source,
+                    "to": entry.target,
+                    "workspace_status": entry.status,
                 }
             )
-            continue
-        migrated.append(entry)
-        records.append(
-            {
-                "status": "migrated",
-                "run": entry.run_id,
-                "from": entry.source,
-                "to": entry.target,
-                "workspace_status": entry.status,
-            }
-        )
 
-    if migrated:
-        registered = False
-        keep_ids = {entry.run_id for entry in migrated}
-        if plan.resume:
-            registered = _append_manifest_entries(project_dir, preview.manifest_appends, keep_ids)
+        if migrated:
+            registered = False
+            keep_ids = {entry.run_id for entry in migrated}
+            if plan.resume:
+                registered = _append_manifest_entries(
+                    project_dir, preview.manifest_appends, keep_ids
+                )
+                if not registered:
+                    records.append(
+                        {
+                            "kind": "error",
+                            "error": "manifest_update_failed",
+                            "reason": "moved workspaces were not registered in project.json",
+                        }
+                    )
+            else:
+                # The exact preview document, restricted to the moved subset;
+                # workspaces and qor_baseline derive TOGETHER from the
+                # successful moves — never a rolled-back entry.
+                workspaces = [
+                    workspace
+                    for workspace in preview.manifest_document["workspaces"]
+                    if workspace.get("workspace_id") in keep_ids
+                ]
+                document = {
+                    **preview.manifest_document,
+                    "workspaces": workspaces,
+                    "qor_baseline": {
+                        **preview.manifest_document["qor_baseline"],
+                        "workspace_id": workspaces[0]["workspace_id"],
+                    },
+                }
+                written = write_manifest_if_absent(project_dir, document)
+                if not written and find_manifest(project_dir) is not None:
+                    # Lost the creation race: append the same complete preview
+                    # entries to the winning manifest.
+                    written = _append_manifest_entries(project_dir, tuple(workspaces), keep_ids)
+                registered = written
+                if not written:
+                    records.append(
+                        {
+                            "kind": "error",
+                            "error": "manifest_update_failed",
+                            "reason": "project.json was not written",
+                        }
+                    )
+
             if not registered:
-                records.append(
-                    {
-                        "kind": "error",
-                        "error": "manifest_update_failed",
-                        "reason": "moved workspaces were not registered in project.json",
-                    }
-                )
-        else:
-            # The exact preview document, restricted to the moved subset;
-            # workspaces and qor_baseline derive TOGETHER from the
-            # successful moves — never a rolled-back entry.
-            workspaces = [
-                workspace
-                for workspace in preview.manifest_document["workspaces"]
-                if workspace.get("workspace_id") in keep_ids
-            ]
-            document = {
-                **preview.manifest_document,
-                "workspaces": workspaces,
-                "qor_baseline": {
-                    **preview.manifest_document["qor_baseline"],
-                    "workspace_id": workspaces[0]["workspace_id"],
-                },
-            }
-            written = write_manifest_if_absent(project_dir, document)
-            if not written and find_manifest(project_dir) is not None:
-                # Lost the creation race: append the same complete preview
-                # entries to the winning manifest.
-                written = _append_manifest_entries(project_dir, tuple(workspaces), keep_ids)
-            registered = written
-            if not written:
-                records.append(
-                    {
-                        "kind": "error",
-                        "error": "manifest_update_failed",
-                        "reason": "project.json was not written",
-                    }
-                )
-
-        if not registered:
-            # Registration is part of the transaction: without it the moved
-            # workspaces would be stranded at the root, invisible to the GUI
-            # and reported as "already migrated" on retry. Move the whole
-            # unregistered batch back.
-            for entry in migrated:
-                _rollback_workspace(entry)
-            records.append(
-                {
-                    "kind": "error",
-                    "error": "migration_rolled_back",
-                    "reason": "all moved workspaces were returned to runs/",
-                }
-            )
+                # Registration is part of the transaction: without it the moved
+                # workspaces would be stranded at the root, invisible to the GUI
+                # and reported as "already migrated" on retry. Move the whole
+                # unregistered batch back — and say so honestly when a rollback
+                # cannot complete without touching unconfirmed objects.
+                stranded = [
+                    entry.run_id
+                    for entry in migrated
+                    if not migrate_fs._rollback_workspace(entry, container_fd, project_fd)
+                ]
+                if stranded:
+                    records.append(
+                        {
+                            "kind": "error",
+                            "error": "migration_rollback_incomplete",
+                            "reason": "workspaces left at the project root: " + ", ".join(stranded),
+                        }
+                    )
+                else:
+                    records.append(
+                        {
+                            "kind": "error",
+                            "error": "migration_rolled_back",
+                            "reason": "all moved workspaces were returned to runs/",
+                        }
+                    )
+    finally:
+        if container_fd is not None:
+            os.close(container_fd)
+        if project_fd is not None:
+            os.close(project_fd)
 
     failures = [r for r in records if r.get("kind") == "error"]
-    runs_dir = os.path.join(project_dir, "runs")
     try:
         if not failures and os.path.isdir(runs_dir) and not os.listdir(runs_dir):
             os.rmdir(runs_dir)
