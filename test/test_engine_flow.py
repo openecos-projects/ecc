@@ -719,3 +719,63 @@ class TestMandatoryArtifactFailure:
 
         state = engine_flow.run_step(ws_step)
         assert state == StateEnum.Imcomplete
+
+
+def test_engine_flow_post_success_failure_marks_incomplete_not_success(
+    monkeypatch,
+    tmp_path,
+):
+    """A failure in post-success work (layout snapshot) must transition the
+    step to Incomplete — the terminal commit happens after the fallible
+    work, so no forbidden Success -> Incomplete rollback is attempted and
+    the original error is not masked."""
+    workspace = Workspace()
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir(parents=True)
+    flow_path.write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {
+                        "name": "route",
+                        "tool": "ecc",
+                        "state": "Unstart",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "info": {},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace.flow.path = flow_path
+    workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
+    workspace_step = EccStep(
+        name="route",
+        directory=tmp_path,
+        tool="ecc",
+        feature=EccFeature(step=tmp_path / "feature" / "route.step.json"),
+    )
+    workspace_step.feature.step.parent.mkdir(parents=True, exist_ok=True)
+    workspace_step.feature.step.write_text("{}", encoding="utf-8")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "save_step_flow_facts", lambda **_kwargs: False)
+
+    def explode_layout(**_kwargs):
+        raise RuntimeError("layout render exploded")
+
+    monkeypatch.setattr(tools, "save_layout_image", explode_layout)
+
+    result = engine_flow.run_step(workspace_step)
+
+    assert result == StateEnum.Imcomplete
+    persisted = json.loads(flow_path.read_text(encoding="utf-8"))
+    assert persisted["steps"][0]["state"] == StateEnum.Imcomplete.value

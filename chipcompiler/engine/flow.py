@@ -628,18 +628,10 @@ class EngineFlow:
                     peak_memory_mb,
                 )
 
-            if flow_step is not None and not self.set_state(
-                name=workspace_step.name,
-                tool=workspace_step.tool,
-                state=state,
-                runtime=runtime,
-                peak_memory=peak_memory_mb,
-                clear_runtime_operation=True,
-            ):
-                raise RuntimeError(f"failed to persist terminal state for {step_tag}")
-            terminal_persisted = True
-
-            # save layout snapshot on success
+            # Run fallible post-success work BEFORE the terminal commit: a
+            # failure here must still transition Ongoing -> Imcomplete —
+            # after a persisted Success the transition table forbids the
+            # rollback and the ledger would claim a failed step succeeded.
             if state == StateEnum.Success:
                 if self.save_step_flow_facts(
                     workspace_step=workspace_step,
@@ -672,6 +664,17 @@ class EngineFlow:
                 from chipcompiler.tools import save_layout_image
 
                 save_layout_image(workspace=self.workspace, step=workspace_step)
+
+            if flow_step is not None and not self.set_state(
+                name=workspace_step.name,
+                tool=workspace_step.tool,
+                state=state,
+                runtime=runtime,
+                peak_memory=peak_memory_mb,
+                clear_runtime_operation=True,
+            ):
+                raise RuntimeError(f"failed to persist terminal state for {step_tag}")
+            terminal_persisted = True
         except (Exception, SystemExit) as exc:
             failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)
             step_error = step_error or failure_message
