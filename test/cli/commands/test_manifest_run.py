@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
 
@@ -91,23 +92,50 @@ class TestVirginFirstRun:
         (record,) = manifest_stubs.records()
         assert record["error"] == "invalid_run_id"
 
-    def test_virgin_run_warns_when_the_winner_is_unusable(
+    def test_virgin_run_fails_manifest_invalid_when_manifest_path_is_a_directory(
         self, tmp_path, capsys, create_cli_project, flow_mocks, manifest_stubs
     ):
         project_dir = create_cli_project()
-        # A directory sitting at the project.json path: the create link
-        # loses, the "winner" cannot load, and the run must say so instead
-        # of silently succeeding without a usable manifest.
+        # A directory sitting at the project.json path is PRESENT but not a
+        # manifest: the project classifies as manifest and fails loud, never
+        # a silent virgin demotion.
         os.mkdir(os.path.join(project_dir, "project.json"))
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
 
-        assert rc == 0
+        assert rc != 0
         records = manifest_stubs.records()
-        (warning,) = [r for r in records if r.get("warning") == "manifest_generation_failed"]
-        assert "GUI" in warning["reason"]
-        assert flow_mocks.capture["create_kwargs"] is not None
-        assert not os.path.isfile(os.path.join(project_dir, "project.json"))
+        assert any(r.get("error") == "manifest_invalid" for r in records)
+        assert flow_mocks.capture["create_kwargs"] is None
+
+    def test_run_rejects_canonical_alias_of_a_declared_symlinked_workspace(
+        self, tmp_path, capsys, create_cli_project, flow_mocks, manifest_stubs
+    ):
+        """The canonical target name of a declared symlinked workspace is
+        not a selector: --run-id actual must not resume (or overwrite) the
+        workspace declared as linked."""
+        project_dir = create_cli_project()
+        actual = Path(project_dir) / "actual"
+        actual.mkdir()
+        (Path(project_dir) / "linked").symlink_to(actual)
+        manifest_stubs.write(
+            Path(project_dir),
+            [
+                {
+                    "workspace_id": "ws_0001",
+                    "workspace_path": str(Path(project_dir) / "linked"),
+                    "status": "success",
+                }
+            ],
+        )
+
+        rc = cli_main.run(["run", "--project", project_dir, "--run-id", "actual", "--json"])
+
+        assert rc != 0
+        records = manifest_stubs.records()
+        (failure,) = [r for r in records if r.get("error") == "workspace_not_declared"]
+        assert "ws_0001" in failure["reason"]
+        assert flow_mocks.capture["create_kwargs"] is None
 
     def test_virgin_run_warns_when_no_manifest_winner_exists(
         self, tmp_path, capsys, create_cli_project, flow_mocks, manifest_stubs, monkeypatch

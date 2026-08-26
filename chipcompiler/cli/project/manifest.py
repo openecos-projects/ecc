@@ -278,8 +278,15 @@ def load_manifest(project_dir: str) -> ProjectManifest:
 
 
 def find_manifest(project_dir: str) -> str | None:
+    """The manifest path when the entry lexically exists.
+
+    Lexical presence, not readability: a directory, symlink loop, or
+    dangling symlink still counts as PRESENT so ``load_manifest`` fails
+    loud (manifest_invalid) instead of silently demoting the project to
+    the virgin or legacy layout.
+    """
     path = os.path.join(project_dir, MANIFEST_FILENAME)
-    return path if os.path.isfile(path) else None
+    return path if os.path.lexists(path) else None
 
 
 def has_legacy_runs_layout(project_dir: str) -> bool:

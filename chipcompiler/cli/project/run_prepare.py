@@ -91,6 +91,23 @@ def resolve_manifest_run_target(command_input, ctx):
                 )
             ]
         )
+    # An undeclared id that canonically lands on a DECLARED workspace's
+    # path would operate that workspace under an alias the document never
+    # spelled — bypassing its registration and status write-back. Refuse
+    # and name the declared selector instead.
+    candidate_real = os.path.realpath(os.path.join(project_dir, cli_run_id))
+    for workspace in manifest.workspaces:
+        if os.path.realpath(workspace.workspace_path) == candidate_real:
+            return CommandResult.err(
+                [
+                    error_record(
+                        "workspace_not_declared",
+                        run=cli_run_id,
+                        reason=f"workspace id {cli_run_id!r} is not declared in project.json; "
+                        f"the workspace at that path is declared as {workspace.workspace_id!r}",
+                    )
+                ]
+            )
     warnings = [
         warning_record(
             "workspace_not_registered",
