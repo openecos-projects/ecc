@@ -196,7 +196,7 @@ class FoundationExtractor:
         )
         parameters = self._run_logged_stage(
             "read_parameters",
-            lambda: self._read_json(self.workspace_dir / "home" / "parameters.json"),
+            self._read_workspace_parameters,
         )
         self._lef_macros = self._run_logged_stage(
             "load_lef", lambda: self._load_lef_macros(parameters)
@@ -574,6 +574,28 @@ class FoundationExtractor:
         if unknown:
             raise ValueError(f"unknown foundation extraction stage: {', '.join(unknown)}")
         return [by_name[name] for name in requested_names]
+
+    def _workspace_config_path(self) -> Path:
+        """The workspace's persisted configuration: home/ecc.toml preferred,
+        legacy home/parameters.json as the fallback."""
+        toml_path = self.workspace_dir / "home" / "ecc.toml"
+        if toml_path.exists():
+            return toml_path
+        return self.workspace_dir / "home" / "parameters.json"
+
+    def _workspace_config_rel_path(self) -> str:
+        return str(self._workspace_config_path().relative_to(self.workspace_dir))
+
+    def _read_workspace_parameters(self) -> dict[str, Any]:
+        """Read workspace parameters in whichever format the workspace
+        persists them: canonical flat keys from home/ecc.toml, or the legacy
+        display-key JSON with display/flat fallback reads downstream."""
+        config_path = self._workspace_config_path()
+        if config_path.suffix == ".json":
+            return self._read_json(config_path)
+        from chipcompiler.data.workspace_config import load_workspace_config
+
+        return load_workspace_config(self.workspace_dir)
 
     def _load_lef_macros(self, parameters: dict[str, Any]) -> dict[str, LefMacro]:
         pdk_root = parameters.get("PDK Root") or parameters.get("pdk_root")
@@ -3344,7 +3366,7 @@ class FoundationExtractor:
                     "availability": "available" if path.exists() else "missing",
                 }
             )
-        for rel_path in ("home/flow.json", "home/parameters.json"):
+        for rel_path in ("home/flow.json", self._workspace_config_rel_path()):
             if rel_path in seen:
                 continue
             path = self.workspace_dir / rel_path
@@ -4937,7 +4959,7 @@ class FoundationExtractor:
     def _compute_source_signature(self) -> list[str]:
         paths = [
             self.workspace_dir / "home" / "flow.json",
-            self.workspace_dir / "home" / "parameters.json",
+            self._workspace_config_path(),
         ]
         for stage_dir in self.workspace_dir.glob("*_*"):
             if not stage_dir.is_dir():

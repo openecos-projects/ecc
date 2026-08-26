@@ -234,6 +234,32 @@ def _validate_pdk_string(knob: CandidateKnob, value: Any, workspace: Any) -> Non
         raise CandidateMaterializationError(f"{knob.knob_id} must be a workspace PDK cell")
 
 
+def _load_parameters_config(path: Path) -> dict:
+    """Load the canonical workspace parameters regardless of on-disk format."""
+    from chipcompiler.data.parameter import load_parameter
+
+    try:
+        return dict(load_parameter(path).data)
+    except Exception as exc:
+        raise ValueError(f"invalid candidate base config: {path}: {exc}") from exc
+
+
+def _write_parameters_config(workspace: Any, path: Path, config: dict) -> None:
+    """Persist candidate parameters through the canonical save boundary
+    (home/ecc.toml), keeping the workspace's [flow] section."""
+    from chipcompiler.data.parameter import Parameters, save_parameter
+
+    parameters = Parameters()
+    parameters.path = path
+    parameters.data = dict(config)
+    if hasattr(workspace, "parameters"):
+        existing_flow = getattr(workspace.parameters, "data", {}).get("_flow")
+        if existing_flow:
+            parameters.data["_flow"] = existing_flow
+    if not save_parameter(parameters):
+        raise ValueError(f"failed to write candidate config: {path}")
+
+
 def _load_configs(
     workspace: Any,
     knobs: list[CandidateKnob],
@@ -247,7 +273,10 @@ def _load_configs(
         path = _config_path(workspace, knob.config_key)
         config_paths[knob.config_key] = path
         try:
-            configs[knob.config_key] = read_json_object(path, "candidate base config")
+            if knob.config_key == "parameters":
+                configs[knob.config_key] = _load_parameters_config(path)
+            else:
+                configs[knob.config_key] = read_json_object(path, "candidate base config")
         except ValueError as error:
             raise CandidateMaterializationError(str(error)) from error
         before = sha256_path(path)
@@ -301,7 +330,10 @@ def _write_configs(
     hashes: dict[str, str] = {}
     for config_key, config in configs.items():
         path = config_paths[config_key]
-        write_json_atomic(path, config)
+        if config_key == "parameters":
+            _write_parameters_config(workspace, path, config)
+        else:
+            write_json_atomic(path, config)
         digest = sha256_path(path)
         if digest is None:
             raise CandidateMaterializationError(f"failed to write candidate config: {path}")
