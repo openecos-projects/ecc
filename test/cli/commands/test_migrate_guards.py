@@ -231,6 +231,57 @@ class TestMigrationProjectLock:
         )
 
 
+class TestRunMigrationRace:
+    """A run whose context was built before a concurrent migration must not
+    act on the stale legacy layout: the locked dispatch revalidates the
+    project state and refuses, instead of recreating runs/<id> next to the
+    moved, registered workspace."""
+
+    def test_stale_legacy_run_does_not_recreate_migrated_workspace(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+        monkeypatch,
+    ):
+        from chipcompiler.cli.project import effective_config
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+
+        created = []
+
+        def fake_create_workspace(**kwargs):
+            created.append(kwargs)
+            return None
+
+        monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
+
+        def migrating_validate(*args, **kwargs):
+            # A concurrent migration completes between context construction
+            # and the run's locked decision.
+            rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+            assert rc == 0
+            capsys.readouterr()  # drop the migration's own output
+            return []
+
+        monkeypatch.setattr(effective_config, "validate_effective", migrating_validate)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
+
+        assert rc != 0
+        (failure,) = [r for r in _records(capsys) if r.get("error") == "project_state_changed"]
+        assert "retry" in failure["reason"]
+        # The moved workspace was not shadowed by a recreated runs/exp1,
+        # and workspace creation never ran for the stale target.
+        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
+        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+        assert created == []
+
+
 class TestDestinationBinding:
     def test_retargeted_project_symlink_is_refused_before_any_move(
         self,
@@ -241,7 +292,7 @@ class TestDestinationBinding:
         create_legacy_workspace,
         monkeypatch,
     ):
-        import chipcompiler.cli.project.migrate as migrate_module
+        import chipcompiler.cli.project.migrate_plan as migrate_module
 
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)

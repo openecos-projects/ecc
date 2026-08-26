@@ -1,7 +1,6 @@
 import contextlib
 import os
 import shlex
-import shutil
 
 from chipcompiler.cli.core.inputs import CheckInput, InitInput, MigrateInput, RunInput
 from chipcompiler.cli.core.output import disclosure_cmd
@@ -169,40 +168,6 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records)
 
 
-def _is_ecc_run_dir(path: str) -> bool:
-    if not os.path.isdir(path):
-        return False
-    try:
-        if not os.listdir(path):
-            return True
-    except OSError:
-        return False
-    home = os.path.join(path, "home")
-    flow_json = os.path.join(home, "flow.json")
-    return not os.path.islink(home) and not os.path.islink(flow_json) and os.path.isfile(flow_json)
-
-
-def _resolves_as_spelled(path: str, anchor: str) -> bool:
-    """Return True when path canonically resolves where its spelling claims.
-
-    For a path spelled inside anchor, the canonical resolution must equal the
-    anchor's canonical resolution plus the textual tail; for any other path
-    (external or escaping), the canonical resolution must equal the
-    normalized spelling. A symlink component that redirects the target —
-    including one hidden behind ".." segments, which os.path.normpath would
-    collapse textually — breaks the equality. The anchor itself is trusted,
-    so a project reached through a symlinked parent keeps working.
-    """
-    spelled = os.path.normpath(path)
-    base = os.path.normpath(anchor)
-    if spelled == base:
-        return os.path.realpath(path) == os.path.realpath(base)
-    if spelled.startswith(base + os.sep):
-        tail = spelled[len(base) + 1 :]
-        return os.path.realpath(path) == os.path.join(os.path.realpath(base), tail)
-    return os.path.realpath(path) == spelled
-
-
 def _canonically_inside(path: str, anchor: str) -> bool:
     """Return True when path's canonical resolution is anchor or below it."""
     real_base = os.path.realpath(anchor)
@@ -231,9 +196,8 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     ):
         return CommandResult.err([{"kind": "error", "error": "selector_requires_workspace"}])
 
-    from chipcompiler.cli.project import run_prepare
+    from chipcompiler.cli.project import run_dispatch, run_prepare
 
-    project = ctx.project
     project_dir = ctx.project_dir
 
     cfg = ctx.config
@@ -331,100 +295,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    if os.path.exists(flow_json) and not command_input.overwrite:
-        # Existing-workspace runs hold the shared project lock for their
-        # whole duration (reader semantics): a migration never moves a
-        # workspace out from under an active run — it waits.
-        from chipcompiler.cli.project import migrate_fs
-
-        with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-            return run_prepare.run_existing_workspace(
-                command_input,
-                ctx,
-                cfg,
-                run_dir,
-                run_name,
-                cli_overrides,
-                warning_records,
-                workspace_registered=workspace_registered,
-            )
-
-    # The overwrite-delete + atomic create run inside the shared project
-    # lock: an `ecc migrate` holding the exclusive lock sees them as one
-    # serialized section instead of racing the target's appearance.
-    from chipcompiler.cli.project import migrate_fs
-
-    with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-        if command_input.overwrite and os.path.lexists(run_dir):
-            if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
-                return CommandResult.err(
-                    [
-                        {
-                            "kind": "error",
-                            "error": "overwrite_refused",
-                            "run": run_name,
-                            "workspace": run_dir,
-                            "reason": "target is not an ECC run directory",
-                        }
-                    ]
-                )
-            for root, dirs, files in os.walk(run_dir):
-                for d in dirs:
-                    dp = os.path.join(root, d)
-                    if not os.path.islink(dp):
-                        os.chmod(dp, 0o755)
-                for f in files:
-                    fp = os.path.join(root, f)
-                    if not os.path.islink(fp):
-                        os.chmod(fp, 0o644)
-            os.chmod(run_dir, 0o755)
-            shutil.rmtree(run_dir)
-
-        # Only the process that atomically creates the target may proceed or
-        # clean up a failed create_workspace: an existing target (pre-existing
-        # or won by a concurrent run) is never written into or removed by this
-        # invocation. create_workspace re-attempts the creation, so any other
-        # error surfaces from there.
-        owns_target = False
-        try:
-            os.makedirs(run_dir)
-            owns_target = True
-        except FileExistsError:
-            return CommandResult.err(
-                [
-                    {
-                        "kind": "error",
-                        "error": "run_exists",
-                        "run": run_name,
-                        "workspace": run_dir,
-                        "overwrite": disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                    }
-                ]
-            )
-        except OSError:
-            pass
-
-    # Legacy-layout fresh runs create inside runs/<id> — the very paths a
-    # migration moves — so their whole execution (creation AND engine)
-    # holds the shared project lock; a migration waits for an active run
-    # instead of moving the workspace out from under it.
-    if project_state == "legacy":
-        with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-            return run_prepare.execute_fresh_run(
-                command_input,
-                ctx,
-                cfg,
-                run_dir,
-                run_name,
-                cli_overrides,
-                flow_config,
-                project_state,
-                warning_records,
-                workspace_registered=workspace_registered,
-                owns_target=owns_target,
-            )
-
-    return run_prepare.execute_fresh_run(
+    return run_dispatch.dispatch_project_run(
         command_input,
         ctx,
         cfg,
@@ -435,7 +306,6 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         project_state,
         warning_records,
         workspace_registered=workspace_registered,
-        owns_target=owns_target,
     )
 
 

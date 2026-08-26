@@ -119,7 +119,7 @@ class TestMigrationSymlinkSafety:
     ):
         import shutil
 
-        import chipcompiler.cli.project.migrate as migrate_module
+        import chipcompiler.cli.project.migrate_plan as migrate_module
 
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -209,7 +209,7 @@ class TestMigrationIdentityBinding:
     ):
         import shutil
 
-        import chipcompiler.cli.project.migrate as migrate_module
+        import chipcompiler.cli.project.migrate_plan as migrate_module
 
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -251,7 +251,7 @@ class TestMigrationIdentityBinding:
         monkeypatch,
         create_legacy_workspace,
     ):
-        import chipcompiler.cli.project.migrate as migrate_module
+        import chipcompiler.cli.project.migrate_plan as migrate_module
 
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -351,7 +351,7 @@ class TestMigrationIdentityBinding:
     ):
         import shutil
 
-        import chipcompiler.cli.project.migrate as migrate_module
+        import chipcompiler.cli.project.migrate_plan as migrate_module
 
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
