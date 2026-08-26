@@ -2837,7 +2837,7 @@ def _mpc_area_constraints(workspace: Workspace | None) -> tuple[float | None, fl
     parameters = getattr(getattr(workspace, "parameters", None), "data", {})
     if not isinstance(parameters, dict):
         return None
-    mpc = parameters.get("MPC")
+    mpc = parameters.get("mpc")
     core_template = mpc.get("core_template") if isinstance(mpc, dict) else None
     if not isinstance(core_template, dict):
         return None

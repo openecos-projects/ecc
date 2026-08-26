@@ -176,7 +176,7 @@ def _expected_quality_gate_ids(workspace: Workspace, step_name: str) -> tuple[st
         return gate_ids
 
     parameters = getattr(getattr(workspace, "parameters", None), "data", {})
-    mpc = parameters.get("MPC") if isinstance(parameters, dict) else None
+    mpc = parameters.get("mpc") if isinstance(parameters, dict) else None
     core_template = mpc.get("core_template") if isinstance(mpc, dict) else None
     return gate_ids if isinstance(core_template, dict) else ()
 
