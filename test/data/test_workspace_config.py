@@ -330,3 +330,18 @@ def test_save_refuses_symlinked_home_parent(tmp_path):
 
     assert ok is False
     assert not (external_home / "ecc.toml").exists()
+
+def test_migration_refuses_symlinked_home_parent(tmp_path):
+    from chipcompiler.data.workspace_config import migrate_legacy_parameters
+
+    workspace_dir = tmp_path / "ws"
+    external_home = tmp_path / "external-home"
+    external_home.mkdir()
+    (external_home / "parameters.json").write_text('{"Design": "gcd"}')
+    workspace_dir.mkdir()
+    (workspace_dir / "home").symlink_to(external_home, target_is_directory=True)
+
+    migrate_legacy_parameters(workspace_dir)
+
+    assert (external_home / "parameters.json").exists()
+    assert not (external_home / "ecc.toml").exists()

@@ -486,6 +486,15 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
     """
     from .parameter_keys import normalize_parameter_dict
 
+    home_spelled = Path(workspace_dir).resolve() / "home"
+    if home_spelled.is_symlink():
+        # A symlinked home redirects the migration's write AND the legacy
+        # delete onto an external directory: never mutate through it.
+        logger.warning(
+            "legacy parameters migration refused through a symlinked home: %s",
+            home_spelled,
+        )
+        return
     config_path = workspace_config_path(workspace_dir)
     legacy_path = legacy_parameters_path(workspace_dir)
     if config_path.exists():
