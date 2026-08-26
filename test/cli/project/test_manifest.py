@@ -579,3 +579,36 @@ def test_find_workspace_selects_by_declared_tail_not_canonical_alias(tmp_path):
     assert manifest.find_workspace("linked") == manifest.workspaces[0]
     assert manifest.find_workspace("actual") is None
     assert manifest.find_workspace("ws_0001") == manifest.workspaces[0]
+
+
+def test_load_manifest_rejects_unknown_flow_step(tmp_path):
+    document = {
+        "schema_version": 1,
+        "root_path": str(tmp_path),
+        "design_name": "gcd",
+        "workspaces": [
+            {"workspace_id": "ws", "workspace_path": str(tmp_path / "ws"), "start_step": "Spin"}
+        ],
+    }
+    (tmp_path / "project.json").write_text(json.dumps(document))
+    with pytest.raises(ManifestError, match="not on the canonical flow chain"):
+        load_manifest(str(tmp_path))
+
+
+def test_load_manifest_rejects_reversed_flow_range(tmp_path):
+    document = {
+        "schema_version": 1,
+        "root_path": str(tmp_path),
+        "design_name": "gcd",
+        "workspaces": [
+            {
+                "workspace_id": "ws",
+                "workspace_path": str(tmp_path / "ws"),
+                "start_step": "Harden",
+                "end_step": "Synth",
+            }
+        ],
+    }
+    (tmp_path / "project.json").write_text(json.dumps(document))
+    with pytest.raises(ManifestError, match="reversed"):
+        load_manifest(str(tmp_path))
