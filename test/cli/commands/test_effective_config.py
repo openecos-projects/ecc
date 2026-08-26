@@ -456,3 +456,20 @@ class TestHybridFrequencyProvenance:
         assert rc != 0
         records = json.loads(capsys.readouterr().out)["records"]
         assert any(r.get("error") == "config_error" for r in records)
+
+    def test_check_rejects_symlink_loop_ecc_toml_instead_of_manifest_fallback(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        """Discovery itself must not swallow the config: a symlink loop at
+        ecc.toml is PRESENT but unreadable — config_error, not a silent
+        manifest-only demotion."""
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        (project_dir / "ecc.toml").symlink_to("ecc.toml")
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert any(r.get("error") == "config_error" for r in records)

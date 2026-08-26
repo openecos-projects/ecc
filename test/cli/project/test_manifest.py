@@ -556,3 +556,26 @@ def test_load_manifest_symlink_loop_is_a_manifest_error_not_a_traceback(tmp_path
 
     with pytest.raises(ManifestError, match="cannot be resolved"):
         load_manifest(str(project_dir))
+
+
+def test_find_workspace_selects_by_declared_tail_not_canonical_alias(tmp_path):
+    real_dir = tmp_path / "proj" / "actual"
+    real_dir.mkdir(parents=True)
+    (tmp_path / "proj" / "linked").symlink_to(real_dir)
+    document = {
+        "schema_version": 1,
+        "root_path": str(tmp_path / "proj"),
+        "design_name": "gcd",
+        "workspaces": [
+            {"workspace_id": "ws_0001", "workspace_path": str(tmp_path / "proj" / "linked")}
+        ],
+    }
+    (tmp_path / "proj" / "project.json").write_text(json.dumps(document))
+
+    manifest = load_manifest(str(tmp_path / "proj"))
+
+    # Execution uses the canonical path; selection spells the document.
+    assert manifest.workspaces[0].workspace_path == str(real_dir.resolve())
+    assert manifest.find_workspace("linked") == manifest.workspaces[0]
+    assert manifest.find_workspace("actual") is None
+    assert manifest.find_workspace("ws_0001") == manifest.workspaces[0]

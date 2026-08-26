@@ -101,13 +101,19 @@ class ProjectManifest:
         return [w for w in self.workspaces if w.status != "archived"]
 
     def find_workspace(self, run_id: str) -> ManifestWorkspace | None:
-        """Match a run id against workspace_id, or a declared path tail."""
+        """Match a run id against workspace_id, or a declared path tail.
+
+        The stored workspace_path is canonical (symlinks resolved) for
+        execution, but selection spells the DECLARED document: a symlinked
+        declared path is selected by its declared name, and the canonical
+        target name never becomes an alias the document does not contain.
+        """
         for workspace in self.workspaces:
             if workspace.workspace_id == run_id:
                 return workspace
         for workspace in self.workspaces:
-            tail = os.path.basename(workspace.workspace_path.rstrip("/"))
-            if tail == run_id:
+            declared = str(workspace.raw.get("workspace_path", "")).rstrip("/")
+            if declared and os.path.basename(declared) == run_id:
                 return workspace
         return None
 

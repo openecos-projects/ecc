@@ -155,8 +155,15 @@ def resolve_project_dir(project: str | None) -> str:
 
 
 def find_config_path(project_dir: str) -> str | None:
+    """The project config path when the entry lexically exists.
+
+    Lexical presence, not readability: a symlink loop, a directory, or an
+    otherwise stat-failing entry still counts as PRESENT so the read that
+    follows fails loud (ConfigUnreadableError) instead of silently
+    demoting the project to a lower-precedence configuration layer.
+    """
     path = os.path.join(project_dir, "ecc.toml")
-    return path if os.path.isfile(path) else None
+    return path if os.path.lexists(path) else None
 
 
 class ConfigUnreadableError(ValueError):
