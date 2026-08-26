@@ -300,6 +300,7 @@ def test_derive_flow_ignores_non_list_ledger_steps(tmp_path):
 
     assert loaded["_flow"] == {}
 
+
 def test_save_refuses_symlinked_config_target(tmp_path):
     from chipcompiler.data.workspace_config import save_workspace_config, workspace_config_path
 

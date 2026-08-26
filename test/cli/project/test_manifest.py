@@ -517,6 +517,7 @@ def test_update_manifest_degrades_when_lock_is_unopenable(tmp_path):
 
     assert update_manifest(str(tmp_path), lambda document: None) is False
 
+
 def test_load_manifest_stores_canonical_workspace_path_through_symlink(tmp_path):
     real_dir = tmp_path / "proj" / "ws_0001"
     real_dir.mkdir(parents=True)
