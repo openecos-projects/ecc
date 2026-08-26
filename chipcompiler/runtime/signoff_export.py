@@ -193,7 +193,11 @@ def _review_group_for_item(item: dict) -> str:
     return "reports"
 
 
-def export_signoff_package_archive(workspace, output_path: str) -> str:
+def export_signoff_package_archive(
+    workspace,
+    output_path: str,
+    additional_files: list[dict[str, str]] | None = None,
+) -> str:
     raw_destination = Path(output_path).expanduser()
     destination = raw_destination.parent.resolve() / raw_destination.name
 
@@ -201,7 +205,7 @@ def export_signoff_package_archive(workspace, output_path: str) -> str:
         result = EngineFlow(workspace).collect_signoff_package(
             SignoffPackageOptions(
                 output_dir=temporary_root,
-                archive=True,
+                archive=False,
                 refresh_analysis=True,
             )
         )
@@ -211,18 +215,24 @@ def export_signoff_package_archive(workspace, output_path: str) -> str:
                 "command_failed",
                 f"signoff package is incomplete: {missing}",
             )
-        if not result.archive_path:
+        if not result.package_dir:
             raise RuntimeApiError(
                 "command_failed",
-                "signoff package archive was not created",
+                "signoff package directory was not created",
             )
-
-        archive = Path(result.archive_path)
-        if not archive.is_file():
-            raise RuntimeApiError(
-                "command_failed",
-                "signoff package archive does not exist",
-            )
+            
+        package_dir = Path(result.package_dir)
+        
+        if additional_files:
+            for file_info in additional_files:
+                p = package_dir / file_info["archivePath"]
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(file_info["content"], encoding="utf-8")
+                
+        archive = package_dir.with_suffix(".tar.gz")
+        import tarfile
+        with tarfile.open(archive, "w:gz") as tar:
+            tar.add(package_dir, arcname=package_dir.name)
 
         destination.parent.mkdir(parents=True, exist_ok=True)
         descriptor, staged_name = tempfile.mkstemp(

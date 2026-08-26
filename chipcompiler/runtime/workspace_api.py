@@ -224,6 +224,7 @@ class WorkspaceRuntimeApi:
             output_path = export_signoff_package_archive(
                 session.workspace,
                 request.output_path,
+                request.additional_files,
             )
             return {"outputPath": output_path}
 

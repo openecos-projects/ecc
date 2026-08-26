@@ -48,6 +48,7 @@ class WorkspaceSyncConfigRequest:
 class WorkspaceExportSignoffRequest:
     workspace_id: str
     output_path: str
+    additional_files: list[dict[str, str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -192,6 +193,7 @@ FIELD_ALIASES = {
     "expectedRevision": "expected_revision",
     "expectedSourceFingerprint": "expected_source_fingerprint",
     "id": "info_id",
+    "additionalFiles": "additional_files",
 }
 
 
