@@ -22,7 +22,7 @@ def test_workspace_export_signoff_returns_exact_output_path(monkeypatch, tmp_pat
     output_path = tmp_path / "exports" / "custom name.tar.gz"
     calls = []
 
-    def fake_export(active_workspace, requested_output):
+    def fake_export(active_workspace, requested_output, additional_files=None):
         calls.append((active_workspace, requested_output))
         return str(output_path)
 
@@ -51,7 +51,7 @@ def test_workspace_export_signoff_waits_for_session_mutation_lock(monkeypatch, t
     entered = threading.Event()
     results = queue.Queue()
 
-    def fake_export(_workspace, requested_output):
+    def fake_export(_workspace, requested_output, additional_files=None):
         entered.set()
         return requested_output
 
@@ -292,7 +292,10 @@ def test_export_signoff_package_archive_collects_temporarily_and_replaces_atomic
     result = export_signoff_package_archive("workspace", str(output_path))
 
     assert result == str(output_path.resolve())
-    assert output_path.read_bytes() == b"archive"
+    import tarfile
+
+    with tarfile.open(output_path, "r:gz") as tar:
+        assert tar.extractfile("design_signoff_package/dummy.txt").read() == b"archive"
     assert captured_output_dirs
     assert not Path(captured_output_dirs[0]).exists()
     assert not list(output_path.parent.glob(f".{output_path.name}.*"))
@@ -353,7 +356,7 @@ def test_export_signoff_package_archive_replaces_symlink_entry_not_target(
         def collect_signoff_package(self, options):
             package_dir = Path(options.output_dir) / "design_signoff_package"
             package_dir.mkdir(parents=True, exist_ok=True)
-            (package_dir / "dummy.txt").write_text("archive")
+            (package_dir / "dummy.txt").write_text("new")
             return SimpleNamespace(ok=True, package_dir=str(package_dir), missing_required=[])
 
     monkeypatch.setattr(
@@ -364,5 +367,8 @@ def test_export_signoff_package_archive_replaces_symlink_entry_not_target(
     export_signoff_package_archive("workspace", str(output_path))
 
     assert not output_path.is_symlink()
-    assert output_path.read_bytes() == b"new"
+    import tarfile
+
+    with tarfile.open(output_path, "r:gz") as tar:
+        assert tar.extractfile("design_signoff_package/dummy.txt").read() == b"new"
     assert target.read_bytes() == b"target"
