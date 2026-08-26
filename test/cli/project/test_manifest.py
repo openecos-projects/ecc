@@ -507,3 +507,12 @@ def test_load_manifest_tolerates_huge_integer_mpc_design_index(tmp_path):
     manifest = load_manifest(str(tmp_path))
 
     assert manifest.design_name == "gcd"
+
+
+def test_update_manifest_degrades_when_lock_is_unopenable(tmp_path):
+    _write_manifest(tmp_path, _minimal_document(tmp_path))
+    # A directory at the lock path: flock cannot be taken — degrade to
+    # False (callers warn/roll back), never an uncaught OSError.
+    (tmp_path / ".manifest.lock").mkdir()
+
+    assert update_manifest(str(tmp_path), lambda document: None) is False

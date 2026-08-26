@@ -1138,9 +1138,13 @@ def _rewrite_filelist_absolute_sources(
     files, so a later run would read (and depend on) the project sources
     instead of the frozen workspace copies. Rewrites each copied absolute
     entry to its origin-relative path, preserving comments, directives,
-    quoting, and relative entries.
+    quoting, and relative entries. Entry extraction mirrors the canonical
+    filelist parser: quoted entries and inline comments are stripped before
+    matching, and only the path token itself is replaced.
     """
     import os
+
+    from chipcompiler.utility.filelist import _remove_inline_comment
 
     with open(filelist_path, encoding="utf-8") as f:
         lines = f.read().splitlines(keepends=True)
@@ -1148,8 +1152,10 @@ def _rewrite_filelist_absolute_sources(
     rewritten = []
     for line in lines:
         stripped = line.strip()
-        candidate = stripped.strip('"')
-        if stripped and not stripped.startswith(("+", "#", "//")) and os.path.isabs(candidate):
+        candidate = ""
+        if stripped and not stripped.startswith(("+", "-", "#", "//", "`")):
+            candidate = _remove_inline_comment(stripped).strip("\"'")
+        if candidate and os.path.isabs(candidate):
             mapped = copied_abs_sources.get(os.path.normpath(candidate))
             if mapped is not None:
                 line = line.replace(candidate, mapped)

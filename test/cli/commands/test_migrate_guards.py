@@ -367,3 +367,30 @@ class TestRollbackMalformedState:
         # The move was rolled back; nothing was registered.
         assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
         assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+    def test_manifest_lock_failure_rolls_back_the_moves(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+        manifest_stubs,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        manifest_stubs.write(Path(project_dir), [])
+        # The registration's lock cannot be taken: update_manifest degrades
+        # to False and the moved workspace rolls back instead of stranding.
+        os.mkdir(os.path.join(project_dir, ".manifest.lock"))
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        assert any(r.get("error") == "manifest_update_failed" for r in records)
+        assert any(r.get("error") == "migration_rolled_back" for r in records)
+        assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
+        manifest = json.loads(Path(project_dir, "project.json").read_text())
+        assert manifest["workspaces"] == []

@@ -2963,17 +2963,23 @@ class FoundationExtractor:
     @staticmethod
     def _engineer_settable_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
         normalized = json.loads(json.dumps(parameters))
-        normalized.pop("PDK Root", None)
-        normalized.pop("Die", None)
-        core = normalized.get("Core")
-        if isinstance(core, dict):
-            allowed_core = {
-                key: core[key] for key in ("Utilitization", "Margin", "Aspect ratio") if key in core
-            }
+        # Same projection in both vocabularies: environment keys and the
+        # flow target never surface, and core keeps only the tunables —
+        # canonical (ecc.toml) and legacy display-key (parameters.json).
+        for key in ("PDK Root", "pdk_root", "Die", "die", "_flow"):
+            normalized.pop(key, None)
+        for core_key, allowed in (
+            ("Core", ("Utilitization", "Margin", "Aspect ratio")),
+            ("core", ("utilitization", "margin", "aspect_ratio")),
+        ):
+            core = normalized.get(core_key)
+            if not isinstance(core, dict):
+                continue
+            allowed_core = {key: core[key] for key in allowed if key in core}
             if allowed_core:
-                normalized["Core"] = allowed_core
+                normalized[core_key] = allowed_core
             else:
-                normalized.pop("Core", None)
+                normalized.pop(core_key, None)
         return normalized
 
     def _collect_control_knobs(self, stages: list[StageInfo]) -> dict[str, Any]:

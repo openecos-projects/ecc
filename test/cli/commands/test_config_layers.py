@@ -455,3 +455,29 @@ class TestConfigResolvedManifestLayering:
         assert by_key["design.top"]["value"] == "gcd"
         assert by_key["design.top"]["source"] == "project.json"
         assert by_key["flow.start"]["source"] == "project.json"
+
+
+def test_check_tolerates_huge_manifest_frequency(tmp_path, capsys, manifest_stubs):
+    """A huge JSON integer frequency_max overflows float(); it degrades to
+    the invalid-frequency config error, never a traceback."""
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    entry = manifest_stubs.entry(project_dir, "ws_0001")
+    manifest_stubs.write(
+        project_dir,
+        [entry],
+        base_design={
+            "pdk": "ics55",
+            "pdk_root": str(project_dir / "pdk"),
+            "top_module": "gcd",
+            "clock": "clk",
+            "rtl_list": ["rtl/gcd.v"],
+            "parameters": {"design": "gcd", "frequency_max": 10**400},
+        },
+    )
+
+    rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+    assert rc != 0
+    records = manifest_stubs.records()
+    assert any("frequency" in str(r.get("reason", "")) for r in records)

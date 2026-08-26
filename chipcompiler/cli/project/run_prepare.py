@@ -8,6 +8,7 @@ reconcile wiring. Imported lazily by the run handler, so module-level
 imports here must stay cheap (no chipcompiler.data at module level).
 """
 
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -440,10 +441,8 @@ def execute_fresh_run(
             return _workspace_failed_result(run_name, run_dir, str(exc))
         finally:
             if generated_filelist is not None:
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(generated_filelist)
-                except OSError:
-                    pass
 
         if workspace is None:
             if owns_target:

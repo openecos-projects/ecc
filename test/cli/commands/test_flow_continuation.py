@@ -444,9 +444,7 @@ class TestFlowMismatchZeroMutation:
             lambda name, root, overrides=None: None,
         )
         run_dir = os.path.join(project_dir, "ws_0001")
-        _write_existing_workspace(
-            run_dir, RTL2GDS_NAMES, states=["Unstart"] * len(RTL2GDS_NAMES)
-        )
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, states=["Unstart"] * len(RTL2GDS_NAMES))
         manifest_path = _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
 
         class Flow:

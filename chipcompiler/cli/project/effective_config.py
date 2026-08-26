@@ -128,7 +128,9 @@ def _assembled_frequency(parameters: dict) -> float:
     """The manifest layer's frequency_max as a float (0.0 when absent/invalid)."""
     try:
         return float(parameters.get("frequency_max") or 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError: a huge JSON integer (10**400) cannot become a float;
+        # it is invalid input, not a crash.
         return 0.0
 
 

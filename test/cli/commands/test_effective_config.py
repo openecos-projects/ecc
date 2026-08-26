@@ -77,9 +77,7 @@ class TestHybridManifestFallbacks:
             generated["content"] = Path(path).read_text()
             return path
 
-        monkeypatch.setattr(
-            run_prepare, "_materialize_rtl_filelist", capture_materialize
-        )
+        monkeypatch.setattr(run_prepare, "_materialize_rtl_filelist", capture_materialize)
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
 

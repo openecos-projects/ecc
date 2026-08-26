@@ -5570,3 +5570,36 @@ END DESIGN
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
     assert quality["availability"]["routing_graphs"]["drc"] == "optional_post_route_snapshot"
     assert quality["null_reason"]["routing_graphs"]["drc"] == "optional_post_route_snapshot"
+
+
+def test_engineer_settable_parameters_projects_canonical_vocabulary():
+    from agent.data.foundation.extractor import FoundationExtractor
+
+    projected = FoundationExtractor._engineer_settable_parameters(
+        {
+            "pdk_root": "/abs/pdk",
+            "die": {"size": [100, 100]},
+            "core": {"utilitization": 0.6, "margin": [2, 2], "aspect_ratio": 1.0, "extra": 1},
+            "_flow": {"preset": "rtl2gds"},
+            "max_fanout": 32,
+        }
+    )
+
+    assert projected == {
+        "core": {"utilitization": 0.6, "margin": [2, 2], "aspect_ratio": 1.0},
+        "max_fanout": 32,
+    }
+
+
+def test_engineer_settable_parameters_projects_legacy_vocabulary():
+    from agent.data.foundation.extractor import FoundationExtractor
+
+    projected = FoundationExtractor._engineer_settable_parameters(
+        {
+            "PDK Root": "/abs/pdk",
+            "Die": {"Area": 1},
+            "Core": {"Utilitization": 0.6, "Margin": [2, 2], "Internal": 1},
+        }
+    )
+
+    assert projected == {"Core": {"Utilitization": 0.6, "Margin": [2, 2]}}

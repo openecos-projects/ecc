@@ -110,3 +110,21 @@ class TestCreateWorkspaceIntegration:
         assert (workspace_dir / "origin" / "a.v").exists()
         assert (workspace_dir / "origin" / "rtl" / "b.v").exists()
         assert installed == str(workspace_dir / "origin" / "design.f")
+
+    def test_filelist_rewrite_handles_quoted_and_commented_entries(
+        self, tmp_path, test_parameters, pdk
+    ):
+        from chipcompiler.data.workspace import copy_filelist_with_sources
+
+        project_dir = tmp_path / "project"
+        (project_dir / "rtl").mkdir(parents=True)
+        (project_dir / "rtl" / "a.v").write_text("module a; endmodule\n")
+        filelist = project_dir / "design.f"
+        filelist.write_text(f'"{project_dir / "rtl" / "a.v"}" # top\n')
+
+        workspace_dir = tmp_path / "workspace"
+        copy_filelist_with_sources(str(filelist), str(workspace_dir))
+
+        lines = (workspace_dir / "origin" / "design.f").read_text().splitlines()
+        assert lines == ['"a.v" # top']
+        assert (workspace_dir / "origin" / "a.v").exists()
