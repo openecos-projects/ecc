@@ -113,7 +113,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
         origin_def="",
         origin_verilog=rtl_path,
         pdk="ics55",
-        parameters={**default_ics55_parameters, "Max fanout": 37},
+        parameters={**default_ics55_parameters, "max_fanout": 37},
         pdk_root=pdk_root,
     )
 
@@ -894,9 +894,13 @@ def test_sync_workspace_config_to_parameters_propagates_cts_max_fanout(
     assert sync_workspace_config_to_parameters(workspace, cts_path) is True
     refresh_workspace_config(workspace)
 
-    parameters = json_read(workspace_dir / "home" / "parameters.json")
+    from chipcompiler.data.parameter import load_parameter
+
+    parameters = load_parameter(workspace_dir / "home" / "ecc.toml")
+    fixfanout = json_read(workspace.config[StepEnum.NETLIST_OPT.value])
     cts = json_read(cts_path)
-    assert parameters["Max fanout"] == 48
+    assert parameters.data["max_fanout"] == 48
+    assert fixfanout["max_fanout"] == 48
     assert cts["max_fanout"] == 48
 
 
