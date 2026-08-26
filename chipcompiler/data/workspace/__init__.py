@@ -1058,9 +1058,29 @@ def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=N
         rel_path = os.path.basename(src_path) if os.path.isabs(src_path) else src_path
 
         if rel_path in copied_files:
+            same_source = os.path.normpath(abs_src) in copied_abs_sources
+            if not os.path.isabs(src_path) or same_source:
+                if logger:
+                    logger.debug(f"Skipping duplicate: {rel_path}")
+                continue
+            # Two different absolute sources sharing a basename: keep both
+            # by anchoring the destination with the immediate parent
+            # directory, walking up until the name is unique. A filelist
+            # that still collides after that is rejected rather than
+            # silently frozen with a dangling external reference.
+            parent = os.path.basename(os.path.dirname(abs_src))
+            disambiguated = f"{parent}_{rel_path}" if parent else rel_path
+            suffix = 2
+            while disambiguated in copied_files:
+                disambiguated = (
+                    f"{parent}_{suffix}_{rel_path}" if parent else f"_{suffix}_{rel_path}"
+                )
+                suffix += 1
+                if suffix > 99:
+                    raise ValueError(f"filelist sources collide on basename {rel_path}: {abs_src}")
             if logger:
-                logger.debug(f"Skipping duplicate: {rel_path}")
-            continue
+                logger.info(f"Disambiguating duplicate basename: {abs_src} -> {disambiguated}")
+            rel_path = disambiguated
 
         if _copy_file_safely(abs_src, os.path.join(origin_dir, rel_path), logger, src_path):
             copied_files.add(rel_path)

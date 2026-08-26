@@ -435,3 +435,24 @@ class TestHybridFrequencyProvenance:
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
         assert "design.frequency_mhz must be greater than 0" in reasons
         assert flow_mocks.capture["create_kwargs"] is None
+
+    def test_check_rejects_unreadable_ecc_toml_instead_of_manifest_fallback(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        """An existing but unreadable ecc.toml is the highest-precedence
+        config: check must fail loud, not silently run on the manifest."""
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        (project_dir / "ecc.toml").write_text('[design]\nname = "gcd"\n')
+
+        def deny(config_path):
+            raise PermissionError(13, "Permission denied", config_path)
+
+        monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", deny)
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert any(r.get("error") == "config_error" for r in records)

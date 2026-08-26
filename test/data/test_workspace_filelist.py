@@ -128,3 +128,26 @@ class TestCreateWorkspaceIntegration:
         lines = (workspace_dir / "origin" / "design.f").read_text().splitlines()
         assert lines == ['"a.v" # top']
         assert (workspace_dir / "origin" / "a.v").exists()
+
+    def test_filelist_absolute_duplicate_basenames_are_disambiguated(
+        self, tmp_path, test_parameters, pdk
+    ):
+        from chipcompiler.data.workspace import copy_filelist_with_sources
+
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+        (dir_a / "foo.v").write_text("module foo_a; endmodule\n")
+        (dir_b / "foo.v").write_text("module foo_b; endmodule\n")
+        filelist = tmp_path / "design.f"
+        filelist.write_text(f"{dir_a / 'foo.v'}\n{dir_b / 'foo.v'}\n")
+
+        workspace_dir = tmp_path / "workspace"
+        copy_filelist_with_sources(str(filelist), str(workspace_dir))
+
+        lines = (workspace_dir / "origin" / "design.f").read_text().splitlines()
+        assert lines[0] == "foo.v"
+        assert lines[1] == "b_foo.v"
+        assert (workspace_dir / "origin" / "foo.v").read_text() == "module foo_a; endmodule\n"
+        assert (workspace_dir / "origin" / "b_foo.v").read_text() == "module foo_b; endmodule\n"

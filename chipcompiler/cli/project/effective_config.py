@@ -58,6 +58,13 @@ def resolve_effective_config(
 
     flow_config = None
     if cfg is None:
+        unreadable = getattr(ctx, "config_error", None)
+        if unreadable:
+            # An ecc.toml that exists but cannot be read must not be
+            # silently demoted to the manifest layer: it is the
+            # highest-precedence configuration, and running on defaults
+            # would hide that it is being ignored.
+            return CommandResult.err([error_record("config_error", reason=unreadable)])
         cfg, flow_config = _manifest_only_config(ctx, assembled, entry)
     else:
         _fill_missing_from_base(cfg, assembled, ctx.project_dir)

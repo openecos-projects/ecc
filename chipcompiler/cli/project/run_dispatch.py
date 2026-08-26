@@ -237,13 +237,19 @@ def dispatch_project_run(
     # serialized section instead of racing the target's appearance. The
     # engine runs outside the lock so a run never holds it for minutes.
     with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-        if os.path.exists(flow_json) and not command_input.overwrite:
+        existing = os.path.exists(flow_json) and not command_input.overwrite
+        if existing:
             unsafe = _existing_target_guard(run_dir, project_dir, run_name)
             if unsafe is not None:
                 return unsafe
-            return existing_workspace_run()
-        prepared = _prepare_run_target(command_input, ctx, run_dir, run_name)
-        if isinstance(prepared, CommandResult):
-            return prepared
-        owns_target = prepared
+        else:
+            prepared = _prepare_run_target(command_input, ctx, run_dir, run_name)
+            if isinstance(prepared, CommandResult):
+                return prepared
+            owns_target = prepared
+    if existing:
+        # Manifest workspaces live outside runs/ — migration never moves
+        # them, so the engine must not pin the shared lock for its whole
+        # execution the way the legacy branch intentionally does.
+        return existing_workspace_run()
     return fresh_run(owns_target=owns_target)
