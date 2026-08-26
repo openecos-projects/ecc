@@ -404,6 +404,26 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         except OSError:
             pass
 
+    # Legacy-layout fresh runs create inside runs/<id> — the very paths a
+    # migration moves — so their whole execution (creation AND engine)
+    # holds the shared project lock; a migration waits for an active run
+    # instead of moving the workspace out from under it.
+    if project_state == "legacy":
+        with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
+            return run_prepare.execute_fresh_run(
+                command_input,
+                ctx,
+                cfg,
+                run_dir,
+                run_name,
+                cli_overrides,
+                flow_config,
+                project_state,
+                warning_records,
+                workspace_registered=workspace_registered,
+                owns_target=owns_target,
+            )
+
     return run_prepare.execute_fresh_run(
         command_input,
         ctx,

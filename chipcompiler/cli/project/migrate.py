@@ -588,6 +588,17 @@ def _preview_records(preview: MigrationPreview) -> list[dict]:
 
 def migrate_project(command_input, ctx):
     """The ``ecc migrate`` handler: plan, disclose, confirm, execute."""
+    # The exclusive project lock is taken BEFORE any state read: a second
+    # migration never observes the first one's half-finished transaction
+    # (moved but not yet registered) — it waits and then sees the
+    # completed state (already_migrated).
+    from chipcompiler.cli.project import migrate_fs
+
+    with migrate_fs.project_migrate_lock(ctx.project_dir, exclusive=True):
+        return _migrate_project_impl(command_input, ctx)
+
+
+def _migrate_project_impl(command_input, ctx):
     from chipcompiler.cli.core.types import CommandResult
     from chipcompiler.cli.project.manifest import find_manifest, has_legacy_runs_layout
 
@@ -686,41 +697,35 @@ def migrate_project(command_input, ctx):
 
     # One exact preview drives disclosure, confirmation, and execution.
     # --yes suppresses only the confirmation prompt, never the disclosure.
-    # The exclusive project lock covers preview + confirmation + execute:
-    # a second migration plans against the first's COMPLETED state
-    # (already_migrated), never a stale duplicate preview.
-    from chipcompiler.cli.project import migrate_fs
+    preview = build_migration_preview(project_dir, cfg)
+    plan_records = _preview_records(preview)
 
-    with migrate_fs.project_migrate_lock(project_dir, exclusive=True):
-        preview = build_migration_preview(project_dir, cfg)
-        plan_records = _preview_records(preview)
+    if not command_input.yes:
+        if not sys.stdin.isatty():
+            return CommandResult.err(
+                plan_records
+                + [
+                    {
+                        "kind": "error",
+                        "error": "confirmation_required",
+                        "reason": "re-run with --yes to migrate",
+                    }
+                ]
+            )
+        _render_preview(preview)
+        answer = input("Migrate these workspaces? [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            return CommandResult.err(
+                [
+                    {
+                        "kind": "error",
+                        "error": "migration_aborted",
+                        "reason": "declined by user",
+                    }
+                ]
+            )
+    elif sys.stdin.isatty():
+        _render_preview(preview)
 
-        if not command_input.yes:
-            if not sys.stdin.isatty():
-                return CommandResult.err(
-                    plan_records
-                    + [
-                        {
-                            "kind": "error",
-                            "error": "confirmation_required",
-                            "reason": "re-run with --yes to migrate",
-                        }
-                    ]
-                )
-            _render_preview(preview)
-            answer = input("Migrate these workspaces? [y/N] ")
-            if answer.strip().lower() not in ("y", "yes"):
-                return CommandResult.err(
-                    [
-                        {
-                            "kind": "error",
-                            "error": "migration_aborted",
-                            "reason": "declined by user",
-                        }
-                    ]
-                )
-        elif sys.stdin.isatty():
-            _render_preview(preview)
-
-        records, exit_code = execute_migration(project_dir, preview)
+    records, exit_code = execute_migration(project_dir, preview)
     return CommandResult(records=tuple(plan_records + records), exit_code=exit_code)

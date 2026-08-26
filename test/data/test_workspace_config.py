@@ -262,3 +262,23 @@ def test_save_replace_and_cleanup_failure_returns_false(
 
     assert save_workspace_config(tmp_path, payload) is False
     assert not workspace_config_path(tmp_path).exists()
+
+
+def test_load_normalizes_legacy_long_keys(tmp_path):
+    """AC-1: a hand-written ecc.toml with legacy long keys loads canonical."""
+    from chipcompiler.data.workspace_config import load_workspace_config
+
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "ecc.toml").write_text(
+        '[design]\nname = "gcd"\ntop = "gcd"\nclock_port = "clk"\n'
+        '\n[pdk]\nname = "ics55"\nroot = "/pdk"\n'
+        '\n[params]\n"Max fanout" = 48\n"Target density" = 0.7\n'
+    )
+
+    payload = load_workspace_config(tmp_path)
+
+    assert payload["max_fanout"] == 48
+    assert payload["target_density"] == 0.7
+    assert "Max fanout" not in payload
+    assert "Target density" not in payload

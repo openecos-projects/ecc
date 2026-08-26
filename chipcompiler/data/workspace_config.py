@@ -232,7 +232,13 @@ def _split_payload(data: dict) -> dict[str, Any]:
 
 
 def _merge_payload(sections: dict[str, Any]) -> dict:
-    """Inverse of _split_payload: flatten TOML sections back to one dict."""
+    """Inverse of _split_payload: flatten TOML sections back to one dict.
+
+    The merged payload is normalized to the canonical flat vocabulary:
+    a hand-written ecc.toml with legacy long keys (or GUI geometry
+    aliases) never leaks non-canonical keys into a loaded Parameters
+    payload.
+    """
     params = dict(sections.get("params") or {})
     design = sections.get("design") or {}
     pdk = sections.get("pdk") or {}
@@ -249,7 +255,10 @@ def _merge_payload(sections: dict[str, Any]) -> dict:
         value = pdk.get(section_key)
         if str(value or "").strip():
             params[param_key] = value
-    return params
+
+    from .parameter_keys import normalize_parameter_dict
+
+    return normalize_parameter_dict(params)
 
 
 def _decode_workspace_config(path: Path, workspace_dir: str | Path) -> dict:
