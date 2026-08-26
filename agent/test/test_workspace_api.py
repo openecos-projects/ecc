@@ -9,6 +9,7 @@ from agent.data.candidate_artifacts import sha256_path
 from agent.requests import CandidateRerunRequest
 from agent.workspace_api import (
     FlowAgentRuntimeApi,
+    _candidate_rerun_steps,
     _candidate_step_artifact_dirs,
     _reject_workspace_symlinks,
     build_agent_flow_for_workspace,
@@ -28,6 +29,26 @@ def test_candidate_artifact_dirs_support_typed_step_outputs(tmp_path):
     )
 
     assert _candidate_step_artifact_dirs(step) == (Path(output_dir), Path(analysis_dir))
+
+
+@pytest.mark.parametrize(
+    "target_step,expected_first",
+    [
+        ("Floorplan", "Floorplan"),
+        ("fixFanout", "fixFanout"),
+        ("place", "place"),
+    ],
+)
+def test_candidate_rerun_slice_starts_at_the_modified_stage(
+    target_step: str, expected_first: str
+) -> None:
+    names = ("Synthesis", "Floorplan", "fixFanout", "place", "CTS", "Harden")
+    flow = SimpleNamespace(workspace_steps=tuple(SimpleNamespace(name=name) for name in names))
+
+    steps = _candidate_rerun_steps(flow, target_step, "Harden", "full_flow")
+
+    assert steps[0].name == expected_first
+    assert steps[-1].name == "Harden"
 
 
 def test_agent_flow_defaults_to_harden_flow(monkeypatch):
