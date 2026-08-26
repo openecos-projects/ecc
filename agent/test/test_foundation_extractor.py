@@ -2153,12 +2153,14 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert "created_at" not in summary
     assert "stages" not in summary
     assert all("info" not in step for step in summary["flow"]["steps"])
+    assert "die" not in summary["parameters"]
     assert "Die" not in summary["parameters"]
-    assert summary["parameters"]["Core"] == {
-        "Utilitization": 0.5,
-        "Margin": [2, 2],
-        "Aspect ratio": 1,
+    assert summary["parameters"]["core"] == {
+        "utilitization": 0.5,
+        "margin": [2, 2],
+        "aspect_ratio": 1,
     }
+    assert "Core" not in summary["parameters"]
     assert "PDK Root" not in summary["parameters"]
     control_knobs = summary["parameters"]["control_knobs"]
     assert control_knobs["source"] == "effective_tool_flow_configs"
@@ -2173,9 +2175,10 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert control_knobs["dreamplace"]["global_place_stages"][0]["iteration"] == 3000
     assert "target_density" not in control_knobs["dreamplace"]
     assert control_knobs["route"] == {"thread_number": "50", "enable_timing": "0"}
-    assert "Max fanout" in summary["parameters"]
-    assert "Target density" in summary["parameters"]
-    assert "Top layer" in summary["parameters"]
+    assert "max_fanout" in summary["parameters"]
+    assert "target_density" in summary["parameters"]
+    assert "top_layer" in summary["parameters"]
+    assert "Max fanout" not in summary["parameters"]
     metrics = summary["metrics"]
     assert metrics["route"]["wire_count"] > 0
     assert metrics["route"]["wire_length"] > 0
@@ -5591,7 +5594,7 @@ def test_engineer_settable_parameters_projects_canonical_vocabulary():
     }
 
 
-def test_engineer_settable_parameters_projects_legacy_vocabulary():
+def test_engineer_settable_parameters_normalizes_legacy_vocabulary():
     from agent.data.foundation.extractor import FoundationExtractor
 
     projected = FoundationExtractor._engineer_settable_parameters(
@@ -5602,4 +5605,4 @@ def test_engineer_settable_parameters_projects_legacy_vocabulary():
         }
     )
 
-    assert projected == {"Core": {"Utilitization": 0.6, "Margin": [2, 2]}}
+    assert projected == {"core": {"utilitization": 0.6, "margin": [2, 2]}}

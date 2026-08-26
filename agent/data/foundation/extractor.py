@@ -2962,24 +2962,24 @@ class FoundationExtractor:
 
     @staticmethod
     def _engineer_settable_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
-        normalized = json.loads(json.dumps(parameters))
-        # Same projection in both vocabularies: environment keys and the
-        # flow target never surface, and core keeps only the tunables —
-        # canonical (ecc.toml) and legacy display-key (parameters.json).
-        for key in ("PDK Root", "pdk_root", "Die", "die", "_flow"):
+        from chipcompiler.data.parameter_keys import normalize_parameter_dict
+
+        # One canonical schema regardless of the on-disk format: legacy
+        # display keys normalize first, then environment keys and the flow
+        # target are dropped and core keeps only the tunables. The flow
+        # target surfaces as "flow" after normalization ("_flow").
+        normalized = json.loads(json.dumps(normalize_parameter_dict(parameters)))
+        for key in ("pdk_root", "die", "flow"):
             normalized.pop(key, None)
-        for core_key, allowed in (
-            ("Core", ("Utilitization", "Margin", "Aspect ratio")),
-            ("core", ("utilitization", "margin", "aspect_ratio")),
-        ):
-            core = normalized.get(core_key)
-            if not isinstance(core, dict):
-                continue
-            allowed_core = {key: core[key] for key in allowed if key in core}
+        core = normalized.get("core")
+        if isinstance(core, dict):
+            allowed_core = {
+                key: core[key] for key in ("utilitization", "margin", "aspect_ratio") if key in core
+            }
             if allowed_core:
-                normalized[core_key] = allowed_core
+                normalized["core"] = allowed_core
             else:
-                normalized.pop(core_key, None)
+                normalized.pop("core", None)
         return normalized
 
     def _collect_control_knobs(self, stages: list[StageInfo]) -> dict[str, Any]:

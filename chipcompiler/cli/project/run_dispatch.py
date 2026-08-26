@@ -236,6 +236,7 @@ def dispatch_project_run(
     # lock: an `ecc migrate` holding the exclusive lock sees them as one
     # serialized section instead of racing the target's appearance. The
     # engine runs outside the lock so a run never holds it for minutes.
+    owns_target = False
     with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
         existing = os.path.exists(flow_json) and not command_input.overwrite
         if existing:
