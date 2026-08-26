@@ -94,13 +94,24 @@ def move_back(
 
     The object at *target_path* must be the confirmed moved one
     (identity checked first), and the source name must still be free
-    (NOREPLACE enforced by the primitive). Touching neither object when
-    recovery is impossible returns False.
+    (NOREPLACE enforced by the primitive). A missing target counts as
+    recovered only when the child under the anchored container provably
+    has the expected identity. Touching neither object when recovery is
+    impossible returns False.
     """
     try:
         target_stat = os.lstat(target_path)
     except OSError:
-        return True  # nothing at the target to move back
+        # Nothing at the target: recovery is real only when the anchored
+        # source child independently proves to be the moved object.
+        child = child_stat(container_fd, name)
+        if child is not None and (child.st_dev, child.st_ino) == expect_identity:
+            return True
+        logger.warning(
+            "rollback incomplete: moved object missing and source identity unproven: %s",
+            target_path,
+        )
+        return False
     if (target_stat.st_dev, target_stat.st_ino) != expect_identity:
         logger.warning("rollback skipped: target is not the moved object: %s", target_path)
         return False
@@ -280,6 +291,17 @@ def _move_workspace(entry, container_fd: int, project_fd: int) -> tuple[str, str
             return ("migration_failed", reason)
         from chipcompiler.data import load_workspace, refresh_workspace_config
 
+        # Fail-loud gate before the first content write: if the moved
+        # workspace was replaced since the move, refuse loudly and leave
+        # the state for the user to inspect — never mutate or register
+        # an unconfirmed object.
+        current = os.lstat(entry.target)
+        if (current.st_dev, current.st_ino) != (entry.source_dev, entry.source_ino):
+            return (
+                "migration_failed",
+                "the moved workspace was replaced during migration; "
+                f"inspect {entry.target} and {entry.source} manually",
+            )
         _pre_rebase_legacy_config_paths(entry.target, entry.source, entry.target)
         workspace = load_workspace(entry.target)
         if workspace is None:

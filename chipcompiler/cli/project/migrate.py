@@ -374,6 +374,33 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
                 }
             )
 
+        # Fail-loud gate before registration: an entry whose moved target
+        # no longer matches its confirmed identity is NEVER registered —
+        # it is reported for manual inspection instead.
+        confirmed: list[MigrationEntry] = []
+        for entry in migrated:
+            try:
+                current = os.lstat(entry.target)
+                identical = (current.st_dev, current.st_ino) == (
+                    entry.source_dev,
+                    entry.source_ino,
+                )
+            except OSError:
+                identical = False
+            if identical:
+                confirmed.append(entry)
+                continue
+            records.append(
+                {
+                    "kind": "error",
+                    "error": "migration_failed",
+                    "run": entry.run_id,
+                    "reason": "the moved workspace was replaced or removed during "
+                    f"migration and was NOT registered; inspect {entry.target} manually",
+                }
+            )
+        migrated = confirmed
+
         if migrated:
             registered = False
             keep_ids = {entry.run_id for entry in migrated}
