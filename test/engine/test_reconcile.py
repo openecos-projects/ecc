@@ -230,6 +230,17 @@ class TestReconcile:
         assert (result.error or "").startswith("workspace_config_invalid")
         assert (workspace_dir / "home" / "flow.json").read_bytes() == flow_before
 
+    def test_undecodable_config_is_a_mismatch_not_a_crash(self, tmp_path):
+        workspace_dir = _write_workspace(tmp_path, RTL2GDS_STEPS, flow_section=None)
+        (workspace_dir / "home" / "ecc.toml").write_bytes(b"\xff")
+        flow_before = (workspace_dir / "home" / "flow.json").read_bytes()
+
+        result = reconcile_workspace(workspace_dir)
+
+        assert result.outcome == "mismatch"
+        assert (result.error or "").startswith("workspace_config_invalid")
+        assert (workspace_dir / "home" / "flow.json").read_bytes() == flow_before
+
 
 class TestTargetPrecedence:
     def test_project_flow_wins_over_workspace_flow(self):

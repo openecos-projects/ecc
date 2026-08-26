@@ -191,7 +191,7 @@ def load_manifest(project_dir: str) -> ProjectManifest:
     try:
         with open(path, encoding="utf-8") as f:
             source = json.load(f)
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ManifestError(f"invalid project manifest: {path}: {exc}") from exc
 
     if not isinstance(source, dict):
@@ -502,7 +502,7 @@ def _read_manifest_document(path: str):
     try:
         with open(path, encoding="utf-8") as f:
             document = json.load(f)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return None
     return document if isinstance(document, dict) else None
 

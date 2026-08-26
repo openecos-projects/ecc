@@ -373,6 +373,48 @@ class TestMigrationPlanningRobustness:
         (workspace,) = _manifest(project_dir)["workspaces"]
         assert workspace["status"] == "not_started"
 
+    def test_undecodable_flow_json_migrates_with_defaults(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        Path(run_dir, "home", "flow.json").write_bytes(b"\xff")
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 0
+        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
+        (workspace,) = _manifest(project_dir)["workspaces"]
+        assert workspace["status"] == "not_started"
+
+    def test_undecodable_manifest_is_a_recorded_error_not_a_crash(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        # Resume layout (project.json + runs/): the malformed winner must
+        # fail BEFORE the first rename, not escape as UnicodeDecodeError.
+        Path(project_dir, "project.json").write_bytes(b"\xff")
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        (failure,) = [r for r in _records(capsys) if r.get("error") == "manifest_invalid"]
+        assert "invalid project manifest" in failure["reason"]
+        assert os.path.isfile(os.path.join(run_dir, "home", "flow.json"))
+
 
 class TestMigrationPreview:
     """One exact preview drives disclosure and execution: the manifest

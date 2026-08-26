@@ -107,7 +107,7 @@ def _read_flow_steps(run_dir: str) -> list[dict]:
     try:
         with open(flow_path, encoding="utf-8") as f:
             data = json.load(f)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return []
     if not isinstance(data, dict):
         # JSON-valid but not an object: unreadable as a flow ledger,

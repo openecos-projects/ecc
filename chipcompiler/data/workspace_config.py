@@ -273,7 +273,7 @@ def _decode_workspace_config(path: Path, workspace_dir: str | Path) -> dict:
     try:
         with open(path, "rb") as f:
             raw = tomllib.load(f)
-    except tomllib.TOMLDecodeError as exc:
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
         raise WorkspaceConfigError(f"workspace config parse failure: {path}: {exc}") from exc
 
     flow = validate_flow_config(raw.get("flow"))
