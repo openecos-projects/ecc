@@ -411,76 +411,83 @@ def execute_fresh_run(
         )
         update_parameters(build_backend_overrides(resolved), parameters)
 
-    try:
-        workspace = create_workspace(
-            directory=run_dir,
-            origin_def=cfg.manifest_origin_def,
-            origin_verilog=origin_verilog,
-            pdk=cfg.pdk_name,
-            parameters=parameters,
-            input_filelist=input_filelist,
-            pdk_root=pdk_root,
-            pdk_overrides=resolve_pdk_overrides(cfg),
-            flow_config=flow_config,
-        )
-    except Exception as exc:
-        if owns_target:
-            shutil.rmtree(run_dir, ignore_errors=True)
-        return _workspace_failed_result(run_name, run_dir, str(exc))
+    from chipcompiler.cli.project import migrate_fs
 
-    if workspace is None:
-        if owns_target:
-            shutil.rmtree(run_dir, ignore_errors=True)
-        return _workspace_failed_result(run_name, run_dir, None)
+    # Hold the project migration lock (shared) across workspace creation:
+    # a GUI/CLI run and an ecc migrate in the same project serialize
+    # instead of corrupting each other. The engine execution below runs
+    # outside the lock so a run never holds it for minutes.
+    with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
+        try:
+            workspace = create_workspace(
+                directory=run_dir,
+                origin_def=cfg.manifest_origin_def,
+                origin_verilog=origin_verilog,
+                pdk=cfg.pdk_name,
+                parameters=parameters,
+                input_filelist=input_filelist,
+                pdk_root=pdk_root,
+                pdk_overrides=resolve_pdk_overrides(cfg),
+                flow_config=flow_config,
+            )
+        except Exception as exc:
+            if owns_target:
+                shutil.rmtree(run_dir, ignore_errors=True)
+            return _workspace_failed_result(run_name, run_dir, str(exc))
 
-    if cli_overrides:
-        import json
+        if workspace is None:
+            if owns_target:
+                shutil.rmtree(run_dir, ignore_errors=True)
+            return _workspace_failed_result(run_name, run_dir, None)
 
-        provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
-        os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
-        with open(provenance_path, "w") as _f:
-            json.dump(cli_overrides, _f)
+        if cli_overrides:
+            import json
 
-    if flow_config is None:
-        # CLI-born workspaces persist the named prefix chain as their target.
-        workspace_parameters = getattr(workspace, "parameters", None)
-        if workspace_parameters is not None:
-            workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
-            save_parameter(workspace_parameters)
+            provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
+            os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
+            with open(provenance_path, "w") as _f:
+                json.dump(cli_overrides, _f)
 
-    if project_state == "virgin":
-        from chipcompiler.cli.project.manifest import (
-            PRESET_MANIFEST_RANGE,
-            base_design_from_config,
-            build_manifest_document,
-            write_manifest_if_absent,
-        )
+        if flow_config is None:
+            # CLI-born workspaces persist the named prefix chain as their target.
+            workspace_parameters = getattr(workspace, "parameters", None)
+            if workspace_parameters is not None:
+                workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
+                save_parameter(workspace_parameters)
 
-        start_step, end_step = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
-        # base_design reflects the ecc.toml-resolved config only; --set
-        # values are run-scoped and never baked into the manifest.
-        document = build_manifest_document(
-            project_dir,
-            design_name=cfg.design_name,
-            base_design=base_design_from_config(cfg, pdk_root),
-            workspace_id=run_name,
-            workspace_path=run_dir,
-            start_step=start_step,
-            end_step=end_step,
-        )
-        if write_manifest_if_absent(project_dir, document):
-            workspace_registered = True
-        else:
-            # Lost the generation race: discard ours, reload the winner, and
-            # continue read-only — write-back applies only when the winning
-            # manifest actually declares this workspace.
-            from chipcompiler.cli.project.manifest import load_manifest
+        if project_state == "virgin":
+            from chipcompiler.cli.project.manifest import (
+                PRESET_MANIFEST_RANGE,
+                base_design_from_config,
+                build_manifest_document,
+                write_manifest_if_absent,
+            )
 
-            try:
-                winner = load_manifest(project_dir)
-                workspace_registered = winner.find_workspace(run_name) is not None
-            except Exception:
-                workspace_registered = False
+            start_step, end_step = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
+            # base_design reflects the ecc.toml-resolved config only; --set
+            # values are run-scoped and never baked into the manifest.
+            document = build_manifest_document(
+                project_dir,
+                design_name=cfg.design_name,
+                base_design=base_design_from_config(cfg, pdk_root),
+                workspace_id=run_name,
+                workspace_path=run_dir,
+                start_step=start_step,
+                end_step=end_step,
+            )
+            if write_manifest_if_absent(project_dir, document):
+                workspace_registered = True
+            else:
+                # Lost the generation race: discard ours, reload the winner, and
+                # continue read-only — write-back applies only when the winning
+                # manifest actually declares this workspace.
+                from chipcompiler.cli.project.manifest import load_manifest
+
+                try:
+                    winner = load_manifest(project_dir)
+                    workspace_registered = winner.find_workspace(run_name) is not None
+                except Exception:
+                    workspace_registered = False
 
     try:
         engine_flow = EngineFlow(workspace=workspace)

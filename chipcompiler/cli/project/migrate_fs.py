@@ -11,15 +11,37 @@ enforced by the primitive itself, never by a check-then-act pair.
 
 import ctypes
 import errno
+import fcntl
 import json
 import logging
 import os
 import stat
+from contextlib import contextmanager
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 RENAME_NOREPLACE = 1
+
+
+@contextmanager
+def project_migrate_lock(project_dir: str, *, exclusive: bool):
+    """Project-level migration lock (flock, cooperating writers only).
+
+    ``ecc migrate`` holds it exclusive across the move+register
+    transaction; ``ecc run`` holds it shared while creating a workspace,
+    so a GUI/CLI run and a migration in the same project serialize
+    instead of corrupting each other. A process dying mid-hold releases
+    the lock via the kernel; the file itself is left in place like
+    ``home/workspace.lock``.
+    """
+    fd = os.open(os.path.join(project_dir, ".migrate.lock"), os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def _load_renameat2():

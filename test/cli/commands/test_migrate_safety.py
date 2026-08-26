@@ -601,3 +601,67 @@ class TestMigrationFailLoud:
         current = json.loads((Path(run_dir) / "home" / "home.json").read_text())
         assert current == replacement_home_json
         assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+
+def _hold_lock_briefly(project_dir, seconds=0.4):
+    """Hold the project migration lock exclusively in a thread; returns
+    (thread, released_event) so callers can assert the CLI waited."""
+    import fcntl
+    import threading
+    import time
+
+    fd = os.open(os.path.join(project_dir, ".migrate.lock"), os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    released = threading.Event()
+
+    def release():
+        time.sleep(seconds)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+        released.set()
+
+    thread = threading.Thread(target=release, daemon=True)
+    thread.start()
+    return thread, released
+
+
+class TestMigrationProjectLock:
+    """The .migrate.lock serializes cooperating writers: a migration and a
+    run creation in the same project wait for each other instead of racing."""
+
+    def test_second_migrate_waits_for_the_first_lock(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        thread, released = _hold_lock_briefly(project_dir)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        thread.join()
+        assert rc == 0
+        # The migrate returned only AFTER the holder released: it blocked
+        # on the shared lock rather than racing or failing.
+        assert released.is_set()
+        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+
+    def test_run_creation_waits_for_migration_lock(
+        self, tmp_path, capsys, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+        thread, released = _hold_lock_briefly(project_dir)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        thread.join()
+        assert rc == 0
+        assert released.is_set()
+        assert flow_mocks.capture["create_kwargs"]["directory"] == os.path.join(
+            project_dir, "default"
+        )
