@@ -415,6 +415,18 @@ def _candidate_parameter_receipt(
     )
     h = sha256(materialization_path.read_bytes()).hexdigest()
     digest = f"sha256:{h}"
+    runtime_report_path = (
+        Path(workspace.directory) / "analysis" / "parameter_runtime_report.v1.json"
+    )
+    try:
+        runtime_report = json.loads(runtime_report_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        runtime_report = {
+            "application_status": "unknown",
+            "activation": {"status": "unknown", "consumers": []},
+            "effective_initial": {"value": None, "unit": unit},
+            "effective_final": {"value": None, "unit": unit},
+        }
     return build_parameter_application_receipt(
         receipt_id=f"parameter-receipt-{request.candidate_id}",
         tool={"name": "ECC", "revision": "runtime"},
@@ -436,12 +448,7 @@ def _candidate_parameter_receipt(
             "written_value": patch["value"],
             "unit": unit,
         },
-        runtime_report={
-            "application_status": "unknown",
-            "activation": {"status": "unknown", "consumers": []},
-            "effective_initial": {"value": None, "unit": unit},
-            "effective_final": {"value": None, "unit": unit},
-        },
+        runtime_report=runtime_report,
     )
 
 

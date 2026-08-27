@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import hashlib
 import json
 import logging
 import os
@@ -113,6 +114,7 @@ class DreamplaceModule:
 
         with self._configure_root_logging(legalize_only=legalize_only):
             params = self._build_params(Params, legalize_only=legalize_only)
+            _write_parameter_runtime_report(self.workspace, params)
 
             engine = PlacementEngine(params)
             engine.setup_rawdb(ecc_module=self.ecc_module)
@@ -135,3 +137,63 @@ class DreamplaceModule:
 
 
 __all__ = ["DreamplaceModule"]
+
+
+def _write_parameter_runtime_report(workspace: Workspace, params) -> None:
+    """Record the selected candidate knob at the native DreamPlace boundary."""
+    report_path = Path(workspace.directory) / "analysis" / "parameter_runtime_report.v1.json"
+    materialization_path = (
+        Path(workspace.directory) / "analysis" / "candidate_materialization.v1.json"
+    )
+    if not materialization_path.is_file():
+        return
+    try:
+        materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
+        patch = materialization["patch"][0]
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return
+    knob_id = patch.get("knob_id")
+    key_by_knob = {
+        "place.target_density": ("target_density", "dreamplace.density_objective"),
+        "place.target_overflow": ("stop_overflow", "dreamplace.overflow_predicate"),
+        "place.cell_padding_x": ("cell_padding_x", "dreamplace.cell_size_expansion"),
+        "place.routability_opt": ("routability_opt_flag", "dreamplace.routability_branch"),
+        "place.density_weight": ("density_weight", "dreamplace.density_preconditioner"),
+    }
+    if knob_id not in key_by_knob:
+        return
+    key, consumer_id = key_by_knob[knob_id]
+    value = getattr(params, key, None)
+    status = "used" if value is not None else "unknown"
+    if knob_id == "place.routability_opt" and value in (False, 0):
+        status = "not_activated"
+    evidence = {
+        "consumer_id": consumer_id,
+        "outcome": "entered" if status == "used" else "evaluated",
+        "evidence_ref": "analysis/parameter_runtime_report.v1.json",
+    }
+    evidence["evidence_sha256"] = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
+    report = {
+        "application_status": "applied" if value is not None else "unknown",
+        "effective_initial": {
+            "value": value,
+            "unit": "dbu" if knob_id.endswith("cell_padding_x") else "ratio",
+        },
+        "effective_final": {
+            "value": value,
+            "unit": "dbu" if knob_id.endswith("cell_padding_x") else "ratio",
+        },
+        "activation": {"status": status, "consumers": [evidence] if status != "unknown" else []},
+        "transitions": [],
+    }
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = report_path.with_suffix(report_path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+    )
+    os.replace(temporary, report_path)
