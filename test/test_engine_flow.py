@@ -759,8 +759,10 @@ def test_engine_flow_post_success_failure_marks_incomplete_not_success(
         tool="ecc",
         feature=EccFeature(step=tmp_path / "feature" / "route.step.json"),
     )
-    workspace_step.feature.step.parent.mkdir(parents=True, exist_ok=True)
-    workspace_step.feature.step.write_text("{}", encoding="utf-8")
+    step_feature_path = workspace_step.feature.step
+    assert step_feature_path is not None
+    step_feature_path.parent.mkdir(parents=True, exist_ok=True)
+    step_feature_path.write_text("{}", encoding="utf-8")
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
