@@ -2,7 +2,9 @@
 import hashlib
 import json
 import os
+import re
 import shutil
+from math import isfinite
 from pathlib import Path
 
 from chipcompiler.data import (
@@ -756,6 +758,12 @@ def run_floorplan(
             feature_step=False,
             report_timing=False,
         )
+        _write_floorplan_parameter_runtime_report(
+            workspace,
+            workspace.config.get(StepEnum.FLOORPLAN.value, ""),
+            feature_path=step.feature.db,
+            report_path=step.report.db,
+        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -765,7 +773,11 @@ def run_floorplan(
 
 
 def _write_floorplan_parameter_runtime_report(
-    workspace: Workspace, config_path: str | Path
+    workspace: Workspace,
+    config_path: str | Path,
+    *,
+    feature_path: str | Path | None = None,
+    report_path: str | Path | None = None,
 ) -> None:
     """Record the candidate knob consumed by iFP's native die builder."""
     workspace_dir = getattr(workspace, "directory", None)
@@ -820,13 +832,77 @@ def _write_floorplan_parameter_runtime_report(
         },
         "transitions": [],
     }
-    report_path = Path(workspace_dir) / "analysis" / "parameter_runtime_report.v1.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = report_path.with_name(report_path.name + ".tmp")
+    observation = _floorplan_geometry_observation(feature_path, report_path)
+    if observation is not None:
+        report["consumer_observation"] = observation
+    if feature_path is not None and not _floorplan_observation_complete(observation):
+        report["application_status"] = "unknown"
+        report["activation"] = {"status": "unknown", "consumers": []}
+    output_path = Path(workspace_dir) / "analysis" / "parameter_runtime_report.v1.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_name(output_path.name + ".tmp")
     temporary.write_text(
         json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
     )
-    os.replace(temporary, report_path)
+    os.replace(temporary, output_path)
+
+
+def _floorplan_geometry_observation(
+    feature_path: str | Path | None, report_path: str | Path | None
+) -> dict | None:
+    if not feature_path or not Path(feature_path).is_file():
+        return None
+    try:
+        feature = json.loads(Path(feature_path).read_text(encoding="utf-8"))
+        layout = feature["Design Layout"]
+        width = layout["core_bounding_width"]
+        height = layout["core_bounding_height"]
+        area = layout.get("core_area")
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    numeric = all(isinstance(item, (int, float)) and isfinite(item) for item in (width, height))
+    if not numeric or width <= 0 or height <= 0:
+        return None
+    ratio = width / height
+    rows, sites = _floorplan_report_counts(report_path)
+    return {
+        "core_geometry": {
+            "width": {"value": width, "unit": "um"},
+            "height": {"value": height, "unit": "um"},
+            "area": {"value": area, "unit": "um^2"},
+            "aspect_ratio": {"value": ratio, "unit": "ratio"},
+        },
+        "rows": {"count": rows, "observed": rows is not None},
+        "sites": {"count": sites, "observed": sites is not None},
+    }
+
+
+def _floorplan_observation_complete(observation: dict | None) -> bool:
+    if not observation:
+        return False
+    geometry = observation.get("core_geometry", {})
+    return all(
+        geometry.get(name, {}).get("value") is not None
+        for name in ("width", "height", "area", "aspect_ratio")
+    ) and (
+        observation.get("rows", {}).get("observed") is True
+        and observation.get("sites", {}).get("observed") is True
+    )
+
+
+def _floorplan_report_counts(report_path: str | Path | None) -> tuple[int | None, int | None]:
+    if not report_path or not Path(report_path).is_file():
+        return None, None
+    try:
+        text = Path(report_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None, None
+    values = {}
+    for name in ("Site", "Row"):
+        match = re.search(rf"Number\s*-\s*{name}[^0-9]*(\d+)", text)
+        if match:
+            values[name] = int(match.group(1))
+    return values.get("Row"), values.get("Site")
 
 
 def run_harden(
