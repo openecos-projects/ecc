@@ -144,17 +144,17 @@ class FlowAgentRuntimeApi:
         )
         flow = self._build_flow(candidate_workspace, create_step_workspaces=False)
         try:
+            if request.patch:
+                _materialize_candidate_rerun(candidate_workspace, flow, request)
+            create_step_workspaces = getattr(flow, "create_step_workspaces", None)
+            if callable(create_step_workspaces):
+                create_step_workspaces()
             steps = _candidate_rerun_steps(
                 flow,
                 request.target_step,
                 request.end_step,
                 request.execution_scope,
             )
-            if request.patch:
-                _materialize_candidate_rerun(candidate_workspace, flow, request)
-            create_step_workspaces = getattr(flow, "create_step_workspaces", None)
-            if callable(create_step_workspaces):
-                create_step_workspaces()
             _prepare_candidate_rerun(candidate_workspace, flow, steps)
             _notify_candidate_rerun_prepared(observer, steps, request)
             if request.patch:
@@ -662,10 +662,12 @@ def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest
 
 
 def _candidate_source_step(flow, target_step: str) -> str:
-    steps = list(getattr(flow, "workspace_steps", ()))
+    steps = flow.workspace.flow.data.get("steps", [])
     for index, step in enumerate(steps):
-        if step.name == target_step and index:
-            return steps[index - 1].name
+        if step.get("name") == target_step and index:
+            source = steps[index - 1].get("name")
+            if isinstance(source, str):
+                return source
     raise RuntimeApiError("invalid_request", f"candidate target has no predecessor: {target_step}")
 
 

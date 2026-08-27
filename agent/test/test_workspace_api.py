@@ -113,7 +113,8 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     calls = []
     flows = []
 
-    def build_flow(candidate_workspace):
+    def build_flow(candidate_workspace, *, create_step_workspaces=True):
+        assert create_step_workspaces is False
         root = Path(candidate_workspace.directory)
         flow = _Flow(
             candidate_workspace,
@@ -144,6 +145,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     )
 
     def materialize(candidate_workspace, target, patch, candidate):
+        assert not flows[-1].created
         path = Path(candidate_workspace.directory) / "config" / "dreamplace.json"
         config = json.loads(path.read_text(encoding="utf-8"))
         config[patch[0]["knob_id"].removeprefix("place.")] = patch[0]["value"]
@@ -211,6 +213,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     candidate_root_ref = ".agent/candidates/candidate-1"
     candidate_manifest_ref = f"{candidate_root_ref}/analysis/candidate_workspace.v1.json"
     assert flows[0].run_calls == [("place", True), ("CTS", True)]
+    assert flows[0].created is True
     assert flow_path.read_bytes() == parent_flow_bytes
     assert config_path.read_text(encoding="utf-8") == '{"target_density": 0.5}\n'
     assert (tmp_path / "place_dreamplace" / "output" / "stale").is_file()
@@ -431,8 +434,14 @@ class _EccApi:
 class _Flow:
     def __init__(self, workspace, workspace_steps):
         self.workspace = workspace
-        self.workspace_steps = workspace_steps
+        self._workspace_steps = workspace_steps
+        self.workspace_steps = ()
+        self.created = False
         self.run_calls = []
+
+    def create_step_workspaces(self):
+        self.workspace_steps = self._workspace_steps
+        self.created = True
 
     def get_step(self, name, tool):
         return next(
