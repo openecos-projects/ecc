@@ -482,11 +482,17 @@ def _candidate_parameter_receipt(
             "lattice_version": "ecos.optimization_lattice.v1",
         }
     )
+    requested_value = patch["value"]
+    if knob_id == "place.cell_padding_x":
+        site_width = context.get("site_width_dbu")
+        if type(site_width) is not int or site_width <= 0 or requested_value % site_width:
+            raise RuntimeApiError("command_failed", "cell padding surface unit is unavailable")
+        requested_value //= site_width
     return build_parameter_application_receipt(
         receipt_id=f"parameter-receipt-{request.candidate_id}",
         tool={"name": tool_name, "revision": "bound"},
         context=context,
-        requested={"knob_id": knob_id, "value": patch["value"], "unit": unit},
+        requested={"knob_id": knob_id, "value": requested_value, "unit": unit},
         materialization={
             "receipt_ref": "analysis/candidate_materialization.v1.json",
             "receipt_sha256": materialization.get("receipt_sha256", digest),
