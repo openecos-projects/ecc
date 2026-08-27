@@ -225,6 +225,21 @@ def test_materialization_preserves_complete_before_and_after_config_snapshots(tm
     assert snapshot["after_sha256"] == _sha256(workspace.config["dreamplace"])
 
 
+def test_reapply_keeps_original_receipt_when_config_is_already_materialized(tmp_path):
+    workspace = _workspace(tmp_path)
+    original = materialize_candidate_config(
+        workspace,
+        "place",
+        [{"knob_id": "place.target_density", "value": 0.7}],
+        candidate_id="place-candidate",
+    )
+
+    reapplied = reapply_materialized_candidate_config(workspace, "place")
+
+    assert reapplied == original
+    assert reapplied["configs"][0]["before_sha256"] != reapplied["configs"][0]["after_sha256"]
+
+
 def test_materialized_candidate_rejects_tampered_config_snapshot(tmp_path):
     workspace = _workspace(tmp_path)
     receipt = materialize_candidate_config(

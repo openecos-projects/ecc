@@ -70,6 +70,12 @@ def reapply_materialized_candidate_config(
     receipt = _read_receipt(receipt_path)
     if receipt["target"]["step"] != target_step:
         return None
+    current_configs = receipt.get("configs", [])
+    if all(
+        sha256_path(_config_path(workspace, entry["config_key"])) == entry["after_sha256"]
+        for entry in current_configs
+    ):
+        return receipt
     normalized_patch = receipt["patch"]
     knobs = _resolve_knobs(target_step, normalized_patch, workspace)
     configs, config_paths, before_hashes = _load_configs(workspace, knobs)
