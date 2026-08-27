@@ -22,6 +22,27 @@ def test_runtime_report_records_native_density_consumer(tmp_path):
     assert report["activation"]["consumers"][0]["consumer_id"] == "dreamplace.density_objective"
 
 
+def test_runtime_report_does_not_parse_logged_parameter_values(tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.target_density", "value": 0.85}]}),
+        encoding="utf-8",
+    )
+    log_dir = tmp_path / "place_dreamplace" / "log"
+    log_dir.mkdir(parents=True)
+    (log_dir / "place.log").write_text("parameters = {'target_density': 0.2}\n", encoding="utf-8")
+
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(target_density=0.85),
+        engine_succeeded=True,
+    )
+
+    report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
+    assert report["effective_final"]["value"] == 0.85
+
+
 def test_runtime_report_uses_objective_weight_unit(tmp_path):
     analysis = tmp_path / "analysis"
     analysis.mkdir()
