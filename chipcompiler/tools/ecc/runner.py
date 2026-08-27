@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import hashlib
+import json
 import os
 import shutil
 from pathlib import Path
@@ -734,6 +736,9 @@ def run_floorplan(
 
         ecc_module.init_fp(config=workspace.config.get(StepEnum.FLOORPLAN.value, ""))
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value, state=StateEnum.Success)
+        _write_floorplan_parameter_runtime_report(
+            workspace, workspace.config.get(StepEnum.FLOORPLAN.value, "")
+        )
 
         ecc_module.run_fp()
         sub_flow.update_step(step_name=EccSubFlowEnum.create_tracks.value, state=StateEnum.Success)
@@ -757,6 +762,71 @@ def run_floorplan(
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
 
     return reslut
+
+
+def _write_floorplan_parameter_runtime_report(
+    workspace: Workspace, config_path: str | Path
+) -> None:
+    """Record the candidate knob consumed by iFP's native die builder."""
+    workspace_dir = getattr(workspace, "directory", None)
+    if workspace_dir is None:
+        return
+    materialization_path = Path(workspace_dir) / "analysis" / "candidate_materialization.v1.json"
+    if not materialization_path.is_file():
+        return
+    try:
+        materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
+        patch = next(
+            item
+            for item in materialization["patch"]
+            if item.get("knob_id") in {"floorplan.core_util", "floorplan.aspect_ratio"}
+        )
+        floorplan = json.loads(Path(config_path).read_text(encoding="utf-8"))
+        die_builder = floorplan["die_builder"]
+        die_util = die_builder["die_util"]
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        return
+
+    knob_id = patch["knob_id"]
+    field, consumer_id = {
+        "floorplan.core_util": ("utilization", "ifp.die_builder.die_utilization"),
+        "floorplan.aspect_ratio": ("aspect_ratio", "ifp.die_builder.die_aspect_ratio"),
+    }[knob_id]
+    value = die_util.get(field)
+    requested = patch.get("value")
+    mode = die_builder.get("mode")
+    matches_request = value == requested
+    status = "used" if mode == "die_util" and value is not None and matches_request else "unknown"
+    if mode != "die_util" and value is not None and matches_request:
+        status = "not_activated"
+    evidence = {
+        "consumer_id": consumer_id,
+        "outcome": "entered" if status == "used" else "evaluated",
+        "evidence_ref": "analysis/parameter_runtime_report.v1.json",
+    }
+    evidence["evidence_sha256"] = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
+    report = {
+        "application_status": "applied" if matches_request else "unknown",
+        "effective_initial": {"value": value, "unit": "ratio"},
+        "effective_final": {"value": value, "unit": "ratio"},
+        "activation": {
+            "status": status,
+            "consumers": [evidence] if status in {"used", "not_activated"} else [],
+        },
+        "transitions": [],
+    }
+    report_path = Path(workspace_dir) / "analysis" / "parameter_runtime_report.v1.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = report_path.with_name(report_path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+    )
+    os.replace(temporary, report_path)
 
 
 def run_harden(
