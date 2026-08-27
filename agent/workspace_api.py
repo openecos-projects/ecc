@@ -34,6 +34,11 @@ from .requests import (
 )
 
 
+def _stable_hash(value) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return f"sha256:{sha256(payload).hexdigest()}"
+
+
 def build_agent_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     import chipcompiler.rtl2gds as rtl2gds_api
 
@@ -144,7 +149,11 @@ class FlowAgentRuntimeApi:
             )
             if materialization_path.is_file():
                 parameter_receipt = _candidate_parameter_receipt(
-                    candidate_workspace, request, candidate_root_ref, materialization_path
+                    candidate_workspace,
+                    request,
+                    candidate_root_ref,
+                    materialization_path,
+                    parent_flow_sha256,
                 )
             result = {
                 "candidateId": request.candidate_id,
@@ -154,6 +163,9 @@ class FlowAgentRuntimeApi:
                     request.candidate_id,
                     parent_flow_sha256,
                     request.parent_candidate_root_ref,
+                    request.target_step,
+                    request.end_step,
+                    request.execution_scope,
                 ),
                 "endStep": request.end_step,
                 "executionScope": request.execution_scope,
@@ -372,6 +384,9 @@ def _candidate_workspace_receipt(
     candidate_id: str,
     parent_flow_sha256: str,
     parent_candidate_root_ref: str | None,
+    target_step: str,
+    end_step: str,
+    execution_scope: str,
 ) -> dict:
     candidate_root = Path(workspace.directory).resolve()
     manifest_path = candidate_root / "analysis" / _CANDIDATE_WORKSPACE_MANIFEST
@@ -386,6 +401,9 @@ def _candidate_workspace_receipt(
         "parent_candidate_root_ref": parent_candidate_root_ref,
         "parent_flow_sha256": parent_flow_sha256,
         "candidate_flow_sha256": candidate_flow_sha256,
+        "target_step": target_step,
+        "end_step": end_step,
+        "execution_scope": execution_scope,
     }
     artifacts = {}
     for key, relative in (
@@ -413,7 +431,11 @@ def _candidate_workspace_receipt(
 
 
 def _candidate_parameter_receipt(
-    workspace, request, candidate_root_ref: str, materialization_path: Path
+    workspace,
+    request,
+    candidate_root_ref: str,
+    materialization_path: Path,
+    parent_flow_sha256: str | None = None,
 ) -> dict:
     materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
     configs = materialization.get("configs") or [{}]
@@ -451,14 +473,19 @@ def _candidate_parameter_receipt(
         else "DREAMPlace"
     )
     receipt_path = Path(workspace.directory) / "analysis" / "parameter_application_receipt.v1.json"
-    return build_parameter_application_receipt(
-        receipt_id=f"parameter-receipt-{request.candidate_id}",
-        tool={"name": tool_name, "revision": "bound"},
-        context={
+    context = (
+        _parameter_receipt_context(workspace, request, parent_flow_sha256)
+        if parent_flow_sha256 is not None
+        else {
             "run_id": request.candidate_id,
             "stage": request.target_step,
             "lattice_version": "ecos.optimization_lattice.v1",
-        },
+        }
+    )
+    return build_parameter_application_receipt(
+        receipt_id=f"parameter-receipt-{request.candidate_id}",
+        tool={"name": tool_name, "revision": "bound"},
+        context=context,
         requested={"knob_id": knob_id, "value": patch["value"], "unit": unit},
         materialization={
             "receipt_ref": "analysis/candidate_materialization.v1.json",
@@ -475,6 +502,81 @@ def _candidate_parameter_receipt(
         runtime_report=runtime_report,
         destination=receipt_path,
     )
+
+
+def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> dict[str, object]:
+    root = Path(workspace.directory)
+    origin = root / "origin"
+    rtl_files = sorted(path for path in (origin / "rtl").glob("*") if path.is_file())
+    sdc_files = sorted(origin.glob("*.sdc"))
+    if not rtl_files or not sdc_files:
+        raise RuntimeApiError("command_failed", "candidate input fingerprints are unavailable")
+    try:
+        parameters = json.loads((root / "home" / "parameters.json").read_text(encoding="utf-8"))
+        pdk_root = Path(parameters["PDK Root"])
+        tech_lef = pdk_root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
+        pdk_sha256 = f"sha256:{sha256(tech_lef.read_bytes()).hexdigest()}"
+        lef_text = tech_lef.read_text(encoding="utf-8")
+        units_match = re.search(r"DATABASE\s+MICRONS\s+(\d+)", lef_text, re.IGNORECASE)
+        site_match = re.search(
+            r"SITE\s+(?:core7|CoreSite)\b(?P<body>.*?)END\s+(?:core7|CoreSite)",
+            lef_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        size_match = re.search(
+            r"SIZE\s+([0-9]+(?:\.[0-9]+)?)\s+BY",
+            site_match.group("body") if site_match else "",
+            re.IGNORECASE,
+        )
+        if not units_match or not size_match:
+            raise ValueError("site width is unavailable")
+        site_width_dbu = round(float(units_match.group(1)) * float(size_match.group(1)))
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeApiError("command_failed", "candidate PDK fingerprint is unavailable") from exc
+    rtl_hashes = [f"sha256:{sha256(path.read_bytes()).hexdigest()}" for path in rtl_files]
+    sdc_hashes = [f"sha256:{sha256(path.read_bytes()).hexdigest()}" for path in sdc_files]
+    filelist = origin / "filelist.f"
+    if not filelist.is_file():
+        raise RuntimeApiError("command_failed", "candidate filelist fingerprint is unavailable")
+    filelist_sha256 = f"sha256:{sha256(filelist.read_bytes()).hexdigest()}"
+    design_sha256 = _stable_hash(
+        {
+            "rtl_sha256": rtl_hashes[0],
+            "filelist_sha256": filelist_sha256,
+            "sdc_sha256": sdc_hashes[0],
+        }
+    )
+    knob_name = str(request.patch[0].get("knob_id"))
+    unit = (
+        "boolean"
+        if knob_name.endswith("routability_opt")
+        else "site"
+        if knob_name.endswith("cell_padding_x")
+        else "count"
+        if knob_name.endswith("fanout")
+        else "ratio"
+    )
+    context = {
+        "run_id": request.candidate_id,
+        "design_sha256": design_sha256,
+        "stage": request.target_step,
+        "backend": "ecc",
+        "lattice_version": "ecos.optimization_lattice.v1",
+        "rtl_sha256": (
+            rtl_hashes[0] if len(rtl_hashes) == 1 else _stable_hash({"files": rtl_hashes})
+        ),
+        "filelist_sha256": filelist_sha256,
+        "sdc_sha256": (
+            sdc_hashes[0] if len(sdc_hashes) == 1 else _stable_hash({"files": sdc_hashes})
+        ),
+        "pdk_sha256": pdk_sha256,
+        "parent_lineage_sha256": parent_flow_sha256,
+        "seed": 0,
+        "site_width_dbu": site_width_dbu,
+        "tool_revision": "bound",
+        "unit": unit,
+    }
+    return context
 
 
 def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest) -> None:
