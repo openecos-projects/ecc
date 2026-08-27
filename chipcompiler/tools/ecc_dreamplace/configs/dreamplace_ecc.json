@@ -56,6 +56,7 @@
     "dump_legalize_solution_flag": 0,
     "routability_opt_flag": 1,
     "macro_place_flag": 0,
+    "macro_only": 0,
     "use_bb": 0,
     "route_num_bins_x": 512,
     "route_num_bins_y": 512,

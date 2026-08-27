@@ -16,6 +16,7 @@ class EccSubFlowEnum(Enum):
     PDN = "PDN"
     set_clock_net = "set clock net"
     run_net_optimization = "run net optimization"
+    run_macro_placement = "run macro placement"
     run_placement = "run placement"
     run_CTS = "run CTS"
     run_legalization = "run legalization"
@@ -86,6 +87,11 @@ class EccSubFlow:
             case StepEnum.PLACEMENT:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_placement.value))
+                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
+            case StepEnum.MACRO_PLACEMENT:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.run_macro_placement.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
             case StepEnum.CTS:

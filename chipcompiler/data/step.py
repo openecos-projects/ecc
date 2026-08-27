@@ -13,6 +13,7 @@ class StepEnum(Enum):
     SYNTHESIS = "Synthesis"
     FLOORPLAN = "Floorplan"
     NETLIST_OPT = "fixFanout"
+    MACRO_PLACEMENT = "macroPlacement"
     PLACEMENT = "place"
     CTS = "CTS"
     TIMING_OPT = "Timing optimization"
