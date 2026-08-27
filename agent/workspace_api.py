@@ -427,9 +427,16 @@ def _candidate_parameter_receipt(
             "effective_initial": {"value": None, "unit": unit},
             "effective_final": {"value": None, "unit": unit},
         }
+    tool_name = (
+        "ECC-Floorplan"
+        if knob_id.startswith("floorplan.")
+        else "ECC-fixFanout"
+        if knob_id == "synth.max_fanout"
+        else "DREAMPlace"
+    )
     return build_parameter_application_receipt(
         receipt_id=f"parameter-receipt-{request.candidate_id}",
-        tool={"name": "ECC", "revision": "runtime"},
+        tool={"name": tool_name, "revision": "bound"},
         context={
             "run_id": request.candidate_id,
             "stage": request.target_step,
