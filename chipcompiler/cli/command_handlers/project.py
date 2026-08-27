@@ -1,6 +1,5 @@
 import contextlib
 import os
-import shlex
 
 from chipcompiler.cli.core.inputs import CheckInput, InitInput, MigrateInput, RunInput
 from chipcompiler.cli.core.output import disclosure_cmd
@@ -242,6 +241,13 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     for err in set_errors
                 ]
             )
+        set_warning = (
+            effective_config.cli_divergence_warning(cfg, cli_overrides)
+            if ctx.project_state == "manifest"
+            else None
+        )
+        if set_warning is not None:
+            layer_warnings.append(set_warning)
 
     # TODO: Move non-interactive project run preparation/execution into
     # chipcompiler.runtime.project_runner.run_project or
@@ -335,114 +341,6 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
     if command_input.force and command_input.only is None:
         return error("force_requires_only")
 
-    from chipcompiler.data import load_workspace
-    from chipcompiler.engine import EngineFlow, rerun
+    from chipcompiler.cli.project import run_workspace
 
-    workspace_path = os.path.abspath(os.path.expanduser(command_input.workspace))
-    from chipcompiler.data.workspace_config import (
-        WorkspaceConfigError,
-        WorkspaceFlowTargetError,
-    )
-    from chipcompiler.engine.reconcile import classify_workspace, reconcile_workspace
-
-    # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
-    # can migrate configs, create home.json/checklist, or take the lock.
-    probe = classify_workspace(workspace_path)
-    if probe.outcome == "mismatch":
-        reason = probe.error or ""
-        if reason.startswith("workspace_config_invalid"):
-            return error("workspace_config_invalid", workspace=workspace_path, reason=reason)
-        return error(
-            "flow_mismatch",
-            workspace=workspace_path,
-            reason="the workspace flow target diverges from the persisted flow",
-        )
-
-    try:
-        workspace = load_workspace(workspace_path)
-    except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
-        return error("workspace_config_invalid", workspace=workspace_path, reason=str(exc))
-    except Exception as exc:
-        return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
-    if workspace is None:
-        return error("invalid_workspace", workspace=workspace_path)
-
-    # Extend/resume against the workspace's own persisted flow target before
-    # building the engine flow, so appended steps are visible below.
-    reconcile_result = reconcile_workspace(workspace_path)
-    if not reconcile_result.ok:
-        reason = reconcile_result.error or ""
-        if reason.startswith("flow_adopt_failed"):
-            return error("flow_adopt_failed", workspace=workspace_path, reason=reason)
-        return error(
-            "flow_mismatch",
-            workspace=workspace_path,
-            reason="the workspace flow target diverges from the persisted flow",
-        )
-    if (
-        reconcile_result.outcome == "no_op"
-        and reconcile_result.persisted
-        and command_input.from_step is None
-        and command_input.only is None
-    ):
-        # The persisted flow already covers the target and succeeded;
-        # resume has nothing to do. Explicit selectors (--from/--only)
-        # still re-execute on request.
-        return CommandResult.ok(
-            [
-                {
-                    "run": "workspace",
-                    "status": "success",
-                    "workspace": workspace_path,
-                    "executed_steps": [],
-                    "no_op": True,
-                }
-            ]
-        )
-
-    try:
-        engine_flow = EngineFlow(workspace=workspace)
-    except Exception as exc:
-        return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
-    if not engine_flow.has_init():
-        return error("missing_flow", workspace=workspace_path)
-
-    try:
-        selected = rerun.selected_step_names(
-            engine_flow,
-            from_step=command_input.from_step,
-            only=command_input.only,
-            force=command_input.force,
-        )
-    except ValueError as exc:
-        return error("unknown_step", workspace=workspace_path, reason=str(exc))
-
-    from chipcompiler.cli.rendering.progress import preserve_cli_stdio
-
-    try:
-        with preserve_cli_stdio():
-            if selected:
-                engine_flow.create_step_workspaces(executable_steps=set(selected))
-            if command_input.only is not None:
-                result = rerun.run_only(engine_flow, command_input.only, force=command_input.force)
-            elif command_input.from_step is not None:
-                result = rerun.run_from(engine_flow, command_input.from_step)
-            else:
-                result = rerun.run_resume(engine_flow)
-    except ValueError as exc:
-        return error("step_unavailable", workspace=workspace_path, reason=str(exc))
-    except Exception as exc:
-        return error("flow_failed", workspace=workspace_path, reason=str(exc))
-
-    record = {
-        "run": "workspace",
-        "status": "success" if result.ok else "failed",
-        "workspace": workspace_path,
-        "executed_steps": list(result.executed),
-        "no_op": result.ok and not result.executed,
-    }
-    if result.ok:
-        return CommandResult.ok([record])
-    record["failed_step"] = result.failed
-    record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_path)} --resume"
-    return CommandResult.err([record])
+    return run_workspace.execute_workspace_run(command_input)

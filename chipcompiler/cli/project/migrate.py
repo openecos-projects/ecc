@@ -352,7 +352,8 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
                         {
                             "kind": "error",
                             "error": "migration_rollback_incomplete",
-                            "reason": "workspaces left at the project root: " + ", ".join(stranded),
+                            "reason": "workspaces were not fully restored (left at the project "
+                            "root or with stale rebased content): " + ", ".join(stranded),
                         }
                     )
                 else:

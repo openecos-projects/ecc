@@ -333,3 +333,45 @@ class TestInitDbEngineForStep:
 
         assert flow.init_db_engine_for_step(flow.workspace_steps[0]) is True
         assert flow.engine_db is engine_db
+
+
+class TestBoundedResume:
+    def test_resume_bounded_to_target_end_keeps_beyond_target_outputs(self, monkeypatch, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("route", "Incomplete"),
+                ("filler", "Unstart"),
+                ("RCX", "Success"),
+                ("sta", "Success"),
+            ],
+        )
+        keep_rcx = _write_output(flow, "RCX")
+        keep_sta = _write_output(flow, "sta")
+        calls = _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_resume(flow, through="filler")
+
+        assert result.ok
+        assert result.executed == ("route", "filler")
+        assert calls == [("route", True), ("filler", True)]
+        # Beyond-target steps were neither invalidated nor re-executed.
+        assert keep_rcx.read_text(encoding="utf-8") == "old"
+        assert keep_sta.read_text(encoding="utf-8") == "old"
+
+    def test_bounded_resume_names_stop_at_the_target_end(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("route", "Incomplete"),
+                ("filler", "Unstart"),
+                ("RCX", "Success"),
+                ("sta", "Success"),
+            ],
+        )
+
+        assert rerun.bounded_resume_names(flow, "filler") == ["route", "filler"]
+        # The first non-Success step lies beyond the target: nothing to do.
+        assert rerun.bounded_resume_names(flow, "Synthesis") == []

@@ -449,3 +449,36 @@ class TestHybridFullLayering:
         warnings = [r for r in records if r.get("warning") == "config_layer_diverged"]
         assert len(warnings) == 1
         assert "top_module" in warnings[0]["keys"]
+
+    def test_virgin_run_does_not_bind_to_a_same_id_winner_at_another_path(
+        self, tmp_path, capsys, create_cli_project, flow_mocks, manifest_stubs, monkeypatch
+    ):
+        project_dir = create_cli_project()
+
+        def losing_write(project_dir_arg, document):
+            # The winning manifest declares our run id at ANOTHER path:
+            # continuing is fine, writing our status into it is not.
+            manifest_stubs.write(
+                Path(project_dir_arg),
+                [
+                    {
+                        "workspace_id": "default",
+                        "workspace_path": str(Path(project_dir_arg) / "other"),
+                        "status": "running",
+                    }
+                ],
+            )
+            return False
+
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.manifest.write_manifest_if_absent", losing_write
+        )
+
+        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+
+        assert rc == 0
+        records = manifest_stubs.records()
+        assert any(r.get("warning") == "manifest_generation_failed" for r in records)
+        winner = json.loads((Path(project_dir) / "project.json").read_text())
+        # Our run's success was never written into the other path's entry.
+        assert winner["workspaces"][0]["status"] == "running"

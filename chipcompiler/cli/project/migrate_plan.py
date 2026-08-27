@@ -192,6 +192,9 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         run_id = dirent.name
         if run_id.startswith("."):
             continue
+        if run_id.endswith(".lock") and not dirent.is_dir(follow_symlinks=False):
+            # A workspace execution-lock artifact, not a workspace.
+            continue
         if dirent.is_symlink() or not dirent.is_dir(follow_symlinks=False):
             unsafe.append(run_id)
             continue

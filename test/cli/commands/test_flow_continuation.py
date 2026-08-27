@@ -509,3 +509,87 @@ class TestFlowMismatchZeroMutation:
         assert rc == 0
         assert "RCX" not in created["executable"]
         assert "sta" not in created["executable"]
+
+
+def _hold_workspace_lock_briefly(workspace_dir, seconds=0.4):
+    """Hold the sibling <workspace>.lock in a thread; returns (thread, released)."""
+    import fcntl
+    import threading
+    import time
+
+    lock_path = os.path.join(
+        os.path.dirname(workspace_dir), os.path.basename(workspace_dir) + ".lock"
+    )
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    released = threading.Event()
+
+    def release():
+        time.sleep(seconds)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+        released.set()
+
+    thread = threading.Thread(target=release, daemon=True)
+    thread.start()
+    return thread, released
+
+
+class TestWorkspaceRunLockAndTargetBound:
+    def test_workspace_run_waits_for_an_active_workspace_lock(self, tmp_path, capsys):
+        """Two runs of the same workspace serialize on the sibling lock."""
+        run_dir = os.path.join(str(tmp_path), "ws")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        thread, released = _hold_workspace_lock_briefly(run_dir)
+
+        rc = cli_main.run(["run", "--workspace", run_dir, "--json"])
+
+        thread.join()
+        assert rc == 0
+        assert released.is_set()
+
+    def test_workspace_resume_is_bounded_to_the_reconciled_target(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """A persisted ledger wider than the flow target: the default resume
+        never selects or executes steps beyond the target end."""
+        from chipcompiler.engine import rerun
+
+        run_dir = os.path.join(str(tmp_path), "ws")
+        _write_existing_workspace(
+            run_dir,
+            RTL2GDS_NAMES + ["RCX", "sta"],
+            states=["Success"] * 4 + ["Unstart"] * (len(RTL2GDS_NAMES) - 4) + ["Success"] * 2,
+            preset="rtl2gds",
+        )
+        captured = {}
+
+        class Flow:
+            def __init__(self, workspace):
+                self.workspace = workspace
+                from chipcompiler.utility import json_read
+
+                # The real EngineFlow loads the persisted ledger on build.
+                workspace.flow.data = json_read(workspace.flow.path)
+
+            def has_init(self):
+                return True
+
+            def create_step_workspaces(self, *, executable_steps=None):
+                captured["executable"] = executable_steps
+
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+
+        def spy_resume(flow, *, through=None):
+            captured["through"] = through
+            return rerun.StepRunResult(ok=True, executed=("place",))
+
+        monkeypatch.setattr(rerun, "run_resume", spy_resume)
+
+        rc = cli_main.run(["run", "--workspace", run_dir, "--json"])
+
+        assert rc == 0
+        assert captured["through"] == "filler"
+        # Synthesis..place are Success; the bounded selection starts at CTS
+        # and never reaches RCX/sta beyond the target end.
+        assert captured["executable"] == {"CTS", "legalization", "route", "drc", "lvs", "filler"}

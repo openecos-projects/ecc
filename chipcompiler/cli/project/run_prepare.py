@@ -355,7 +355,13 @@ def execute_fresh_run(
 
                 try:
                     winner = load_manifest(project_dir)
-                    workspace_registered = winner.find_workspace(run_name) is not None
+                    matched = winner.find_workspace(run_name)
+                    # The winner must declare THIS id at THIS path: a
+                    # concurrent manifest that reused the id for another
+                    # workspace must not receive our run's status.
+                    workspace_registered = matched is not None and os.path.realpath(
+                        matched.workspace_path
+                    ) == os.path.realpath(run_dir)
                 except Exception:
                     workspace_registered = False
                 if not workspace_registered:

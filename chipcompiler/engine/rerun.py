@@ -47,22 +47,43 @@ def selected_step_names(
     return []
 
 
-def run_resume(flow: "EngineFlow") -> StepRunResult:
-    """Resume from the first non-successful step, re-executing the persisted suffix."""
+def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
+    """The default-resume selection bounded to the reconciled target's end."""
+    steps = flow.workspace.flow.data.get("steps", [])
+    last_index = _require_step_index(flow, through)
+    for index, step in enumerate(steps):
+        if step.get("state") != StateEnum.Success.value:
+            if index > last_index:
+                return []
+            return [step["name"] for step in steps[index : last_index + 1]]
+    return []
+
+
+def run_resume(flow: "EngineFlow", *, through: str = None) -> StepRunResult:
+    """Resume from the first non-successful step, re-executing the persisted suffix.
+
+    *through* bounds the resume to the reconciled target's last step: a
+    persisted ledger wider than the target is neither re-executed nor
+    invalidated past it.
+    """
     for step in flow.workspace.flow.data.get("steps", []):
         if step.get("state") != StateEnum.Success.value:
-            return run_from(flow, step["name"])
+            return run_from(flow, step["name"], through=through)
     return StepRunResult(ok=True, executed=())
 
 
-def run_from(flow: "EngineFlow", name: str) -> StepRunResult:
-    """Re-execute the named step and every following step in persisted order."""
+def run_from(flow: "EngineFlow", name: str, *, through: str = None) -> StepRunResult:
+    """Re-execute the named step and every following step in persisted order
+    (at most through the *through* step when given)."""
     steps = flow.workspace.flow.data.get("steps", [])
     index = _require_step_index(flow, name)
-    _require_steps_available(flow, len(steps) - 1)
-    suffix = flow.workspace_steps[index:]
+    last_index = _require_step_index(flow, through) if through is not None else len(steps) - 1
+    if last_index < index:
+        raise ValueError(f"step '{through}' is before '{name}'")
+    _require_steps_available(flow, last_index)
+    suffix = flow.workspace_steps[index : last_index + 1]
     output_dirs = _validated_output_dirs(flow.workspace, suffix)
-    _invalidate_suffix(flow, index)
+    _invalidate_suffix(flow, index, last_index)
     return _run_selected(flow, list(zip(suffix, output_dirs, strict=True)))
 
 
@@ -101,10 +122,15 @@ def _require_steps_available(flow: "EngineFlow", last_index: int) -> None:
             raise ValueError(f"step is unavailable in this workspace: {step['name']}")
 
 
-def _invalidate_suffix(flow: "EngineFlow", index: int) -> None:
-    """Mark the steps from index on as Unstart, persisted before any deletion."""
+def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int = None) -> None:
+    """Mark the steps from index on as Unstart, persisted before any deletion.
+
+    *last_index* bounds the invalidation to the reconciled target: steps
+    beyond it keep their state and outputs.
+    """
     steps = flow.workspace.flow.data.get("steps", [])
-    for step in steps[index:]:
+    end = len(steps) if last_index is None else last_index + 1
+    for step in steps[index:end]:
         step["state"] = StateEnum.Unstart.value
         step["runtime"] = ""
         step["peak memory (mb)"] = 0

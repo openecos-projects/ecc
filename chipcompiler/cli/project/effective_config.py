@@ -324,6 +324,44 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
     return keys
 
 
+def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
+    """The config_layer_diverged warning for --set values overriding a
+    DIFFERENT lower-layer value (manifest base, then ecc.toml [params]).
+
+    Same canonical projection as layer_divergences: every layer is
+    resolved through the params registry and compared flattened. An
+    override that merely restates the lower-layer value does not warn.
+    """
+    if not cli_overrides:
+        return None
+    from chipcompiler.cli.project.params import build_backend_overrides, resolve_parameters
+    from chipcompiler.data.parameter_keys import geometry_to_parameters
+
+    lower: dict = {}
+    manifest_parameters = getattr(cfg, "manifest_parameters", None)
+    if manifest_parameters:
+        lower.update(_flatten(geometry_to_parameters(manifest_parameters)))
+    if cfg.params_overrides:
+        resolved_toml, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
+        lower.update(_flatten(build_backend_overrides(resolved_toml)))
+    if not lower:
+        return None
+
+    resolved_cli, _ = resolve_parameters(cli_overrides=cli_overrides)
+    diverging = [
+        key
+        for key, value in _flatten(build_backend_overrides(resolved_cli))
+        if key in lower and lower[key] != value
+    ]
+    if not diverging:
+        return None
+    return warning_record(
+        "config_layer_diverged",
+        keys=diverging,
+        reason="--set values override different lower-layer values",
+    )
+
+
 def _normalize_path(project_dir: str, value) -> str:
     if not isinstance(value, str) or not value.strip():
         return ""

@@ -394,3 +394,86 @@ class TestRollbackMalformedState:
         assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
         manifest = json.loads(Path(project_dir, "project.json").read_text())
         assert manifest["workspaces"] == []
+
+
+def _hold_workspace_lock_briefly(workspace_dir, seconds=0.4):
+    """Hold the sibling <workspace>.lock in a thread; returns (thread, released)."""
+    import fcntl
+    import threading
+    import time
+
+    lock_path = os.path.join(
+        os.path.dirname(workspace_dir), os.path.basename(workspace_dir) + ".lock"
+    )
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    released = threading.Event()
+
+    def release():
+        time.sleep(seconds)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+        released.set()
+
+    thread = threading.Thread(target=release, daemon=True)
+    thread.start()
+    return thread, released
+
+
+class TestMigrationExecutionLock:
+    def test_migrate_waits_for_an_active_workspace_execution(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        """An explicit --workspace run holds the sibling lock; the migration
+        moves the workspace only after the run releases it."""
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        thread, released = _hold_workspace_lock_briefly(os.path.join(project_dir, "runs", "exp1"))
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        thread.join()
+        assert rc == 0
+        assert released.is_set()
+        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+
+    def test_rollback_with_unrestored_content_reports_incomplete(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+        manifest_stubs,
+        monkeypatch,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        manifest_stubs.write(Path(project_dir), [])
+        target = os.path.join(project_dir, "exp1")
+
+        def corrupting_update(project_dir_arg, mutator):
+            # Registration fails AND the moved workspace's home.json is now
+            # undecodable: the rollback moves it back but cannot reverse the
+            # rebase — that is incomplete, not "rolled back".
+            Path(target, "home", "home.json").write_bytes(b"\xff")
+            return False
+
+        monkeypatch.setattr("chipcompiler.cli.project.migrate.update_manifest", corrupting_update)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc != 0
+        records = _records(capsys)
+        assert any(r.get("error") == "migration_rollback_incomplete" for r in records)
+        assert not any(r.get("error") == "migration_rolled_back" for r in records)
+        assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
+        manifest = json.loads(Path(project_dir, "project.json").read_text())
+        assert manifest["workspaces"] == []

@@ -481,3 +481,68 @@ def test_check_tolerates_huge_manifest_frequency(tmp_path, capsys, manifest_stub
     assert rc != 0
     records = manifest_stubs.records()
     assert any("frequency" in str(r.get("reason", "")) for r in records)
+
+
+class TestSetDivergence:
+    def test_run_warns_when_set_overrides_a_different_lower_value(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100, "max_fanout": 20},
+            },
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(
+            ["run", "--project", str(project_dir), "--set", "synth.max_fanout=32", "--json"]
+        )
+
+        assert rc == 0
+        records = manifest_stubs.records()
+        (warning,) = [r for r in records if r.get("warning") == "config_layer_diverged"]
+        assert "max_fanout" in warning["keys"]
+        assert "--set" in warning["reason"]
+
+    def test_run_quiet_when_set_restates_the_lower_value(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100, "max_fanout": 20},
+            },
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(
+            ["run", "--project", str(project_dir), "--set", "synth.max_fanout=20", "--json"]
+        )
+
+        assert rc == 0
+        assert not [
+            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
+        ]

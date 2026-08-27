@@ -51,6 +51,34 @@ def project_migrate_lock(project_dir: str, *, exclusive: bool):
         yield
 
 
+@contextmanager
+def existing_workspace_execution_lock(workspace_dir: str):
+    """Serialize a migration move with an active execution of the workspace.
+
+    Runs hold the sibling ``<workspace>.lock`` for their whole execution.
+    The lock is only opened when the file already exists — creating it
+    here would leave runs/ non-empty after a full migration. A run that
+    starts after this probe holds its own fresh lock, re-classifies the
+    workspace under it, and finds the workspace moved: a clean error, not
+    a race. (The create-vs-probe instant itself is a syscall-granularity
+    residual, out of the documented threat model.)
+    """
+    lock_path = os.path.join(
+        os.path.dirname(workspace_dir), os.path.basename(workspace_dir) + ".lock"
+    )
+    try:
+        fd = os.open(lock_path, os.O_RDWR)  # deliberately no O_CREAT
+    except OSError:
+        yield
+        return
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def _load_renameat2():
     """The raw renameat2 syscall wrapper, or None when unavailable."""
     try:
@@ -222,6 +250,7 @@ def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
         (entry.source_dev, entry.source_ino),
     ):
         return False
+    restored = True
     try:
         # Reverse the pre-load config path retarget as well as home.json:
         # all-or-nothing covers the legacy "PDK Config" pointer too.
@@ -232,6 +261,7 @@ def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
         # not-an-object guard: a malformed state file only downgrades the
         # rollback's rebase step, never escapes as an uncaught exception.
         logger.warning("rollback: home.json reverse rebase failed for %s", entry.run_id)
+        restored = False
     try:
         from chipcompiler.data import load_workspace, refresh_workspace_config
 
@@ -240,7 +270,10 @@ def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
             refresh_workspace_config(workspace)
     except Exception:
         logger.warning("rollback: config regeneration failed for %s", entry.run_id)
-    return True
+        restored = False
+    # Back at the source but with stale rebased content is NOT a completed
+    # rollback: the caller reports it as incomplete, not as rolled back.
+    return restored
 
 
 def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_prefix: str) -> None:
@@ -285,76 +318,82 @@ def _move_workspace(entry, container_fd: int, project_fd: int) -> tuple[str, str
     stay free of symlink components before any load, rebase, or refresh.
     Recovery touches only identity-confirmed objects.
     """
-    try:
-        child = child_stat(container_fd, entry.run_id)
-        if child is None:
-            return ("migration_failed", "run source vanished after preview")
-        if stat.S_ISLNK(child.st_mode):
-            return ("migration_failed", "unsafe run source: run source is a symlink")
-        if (child.st_dev, child.st_ino) != (entry.source_dev, entry.source_ino):
-            return ("migration_failed", "run source changed after preview")
-        rc = move_noreplace(container_fd, entry.run_id, project_fd, entry.run_id)
-        if rc == errno.ENOSYS:
+    # Serialize with an active run of this workspace: its sibling lock
+    # is only opened when it already exists — creating it would leave
+    # runs/ non-empty after a full migration. A run that starts after
+    # this probe re-classifies under its own fresh lock and finds the
+    # workspace moved (a clean error, not a race).
+    with existing_workspace_execution_lock(entry.source):
+        try:
+            child = child_stat(container_fd, entry.run_id)
+            if child is None:
+                return ("migration_failed", "run source vanished after preview")
+            if stat.S_ISLNK(child.st_mode):
+                return ("migration_failed", "unsafe run source: run source is a symlink")
+            if (child.st_dev, child.st_ino) != (entry.source_dev, entry.source_ino):
+                return ("migration_failed", "run source changed after preview")
+            rc = move_noreplace(container_fd, entry.run_id, project_fd, entry.run_id)
+            if rc == errno.ENOSYS:
+                return (
+                    "migration_failed",
+                    "atomic no-replace move is unavailable on this platform",
+                )
+            if rc in (errno.EEXIST, errno.ENOTEMPTY):
+                return (
+                    "migration_collision",
+                    f"{entry.run_id} appeared at the project root after preview",
+                )
+            if rc != 0:
+                return ("migration_failed", f"move failed: {os.strerror(rc)}")
+
+            target_stat = os.lstat(entry.target)
+            revalidate_reason = _unsafe_workspace_source(entry.target)
+            if (target_stat.st_dev, target_stat.st_ino) != (
+                entry.source_dev,
+                entry.source_ino,
+            ) or revalidate_reason is not None:
+                # Possible source substitution inside the move: move the
+                # just-moved object back (identity-bound), without
+                # load_workspace, rebasing, or refresh.
+                moved_back = move_back(
+                    container_fd,
+                    project_fd,
+                    entry.run_id,
+                    entry.target,
+                    (target_stat.st_dev, target_stat.st_ino),
+                )
+                reason = (
+                    "moved target failed revalidation "
+                    f"({revalidate_reason or 'identity changed after rename'})"
+                )
+                if not moved_back:
+                    reason += "; rollback incomplete: the object was left at the project root"
+                return ("migration_failed", reason)
+            from chipcompiler.data import load_workspace, refresh_workspace_config
+
+            # Fail-loud gate before the first content write: if the moved
+            # workspace was replaced since the move, refuse loudly and leave
+            # the state for the user to inspect — never mutate or register
+            # an unconfirmed object.
+            current = os.lstat(entry.target)
+            if (current.st_dev, current.st_ino) != (entry.source_dev, entry.source_ino):
+                return (
+                    "migration_failed",
+                    "the moved workspace was replaced during migration; "
+                    f"inspect {entry.target} and {entry.source} manually",
+                )
+            _pre_rebase_legacy_config_paths(entry.target, entry.source, entry.target)
+            workspace = load_workspace(entry.target)
+            if workspace is None:
+                raise ValueError(f"moved workspace fails to load: {entry.target}")
+            _rebase_home_pointers(entry.target, entry.source, entry.target)
+            workspace = load_workspace(entry.target)
+            refresh_workspace_config(workspace)
+        except Exception as exc:
+            if _rollback_workspace(entry, container_fd, project_fd):
+                return ("migration_failed", str(exc))
             return (
                 "migration_failed",
-                "atomic no-replace move is unavailable on this platform",
+                f"{exc}; rollback incomplete: the moved workspace was left at {entry.target}",
             )
-        if rc in (errno.EEXIST, errno.ENOTEMPTY):
-            return (
-                "migration_collision",
-                f"{entry.run_id} appeared at the project root after preview",
-            )
-        if rc != 0:
-            return ("migration_failed", f"move failed: {os.strerror(rc)}")
-
-        target_stat = os.lstat(entry.target)
-        revalidate_reason = _unsafe_workspace_source(entry.target)
-        if (target_stat.st_dev, target_stat.st_ino) != (
-            entry.source_dev,
-            entry.source_ino,
-        ) or revalidate_reason is not None:
-            # Possible source substitution inside the move: move the
-            # just-moved object back (identity-bound), without
-            # load_workspace, rebasing, or refresh.
-            moved_back = move_back(
-                container_fd,
-                project_fd,
-                entry.run_id,
-                entry.target,
-                (target_stat.st_dev, target_stat.st_ino),
-            )
-            reason = (
-                "moved target failed revalidation "
-                f"({revalidate_reason or 'identity changed after rename'})"
-            )
-            if not moved_back:
-                reason += "; rollback incomplete: the object was left at the project root"
-            return ("migration_failed", reason)
-        from chipcompiler.data import load_workspace, refresh_workspace_config
-
-        # Fail-loud gate before the first content write: if the moved
-        # workspace was replaced since the move, refuse loudly and leave
-        # the state for the user to inspect — never mutate or register
-        # an unconfirmed object.
-        current = os.lstat(entry.target)
-        if (current.st_dev, current.st_ino) != (entry.source_dev, entry.source_ino):
-            return (
-                "migration_failed",
-                "the moved workspace was replaced during migration; "
-                f"inspect {entry.target} and {entry.source} manually",
-            )
-        _pre_rebase_legacy_config_paths(entry.target, entry.source, entry.target)
-        workspace = load_workspace(entry.target)
-        if workspace is None:
-            raise ValueError(f"moved workspace fails to load: {entry.target}")
-        _rebase_home_pointers(entry.target, entry.source, entry.target)
-        workspace = load_workspace(entry.target)
-        refresh_workspace_config(workspace)
-    except Exception as exc:
-        if _rollback_workspace(entry, container_fd, project_fd):
-            return ("migration_failed", str(exc))
-        return (
-            "migration_failed",
-            f"{exc}; rollback incomplete: the moved workspace was left at {entry.target}",
-        )
-    return None
+        return None
