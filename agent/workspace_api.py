@@ -136,6 +136,16 @@ class FlowAgentRuntimeApi:
                 _reapply_candidate_input(candidate_workspace, flow, request.target_step)
             for step in steps:
                 _run_candidate_step(flow, step, observer=observer)
+            parameter_receipt = None
+            materialization_path = (
+                Path(candidate_workspace.directory)
+                / "analysis"
+                / "candidate_materialization.v1.json"
+            )
+            if materialization_path.is_file():
+                parameter_receipt = _candidate_parameter_receipt(
+                    candidate_workspace, request, candidate_root_ref, materialization_path
+                )
             result = {
                 "candidateId": request.candidate_id,
                 **_candidate_workspace_receipt(
@@ -149,15 +159,8 @@ class FlowAgentRuntimeApi:
                 "executionScope": request.execution_scope,
                 "targetStep": request.target_step,
             }
-            materialization_path = (
-                Path(candidate_workspace.directory)
-                / "analysis"
-                / "candidate_materialization.v1.json"
-            )
-            if materialization_path.is_file():
-                result["parameterApplicationReceipt"] = _candidate_parameter_receipt(
-                    candidate_workspace, request, candidate_root_ref, materialization_path
-                )
+            if parameter_receipt is not None:
+                result["parameterApplicationReceipt"] = parameter_receipt
             return result
         finally:
             self.ecc_api._close_transient_flow_db(flow)
@@ -384,6 +387,19 @@ def _candidate_workspace_receipt(
         "parent_flow_sha256": parent_flow_sha256,
         "candidate_flow_sha256": candidate_flow_sha256,
     }
+    artifacts = {}
+    for key, relative in (
+        ("parameter_runtime_report", "analysis/parameter_runtime_report.v1.json"),
+        ("parameter_application_receipt", "analysis/parameter_application_receipt.v1.json"),
+    ):
+        artifact = candidate_root / relative
+        if artifact.is_file() and not artifact.is_symlink():
+            artifacts[key] = {
+                "ref": relative,
+                "sha256": _required_file_sha256(artifact, key),
+            }
+    if artifacts:
+        manifest["artifacts"] = artifacts
     try:
         write_json_atomic(manifest_path, manifest)
     except OSError as exc:
@@ -434,6 +450,7 @@ def _candidate_parameter_receipt(
         if knob_id == "synth.max_fanout"
         else "DREAMPlace"
     )
+    receipt_path = Path(workspace.directory) / "analysis" / "parameter_application_receipt.v1.json"
     return build_parameter_application_receipt(
         receipt_id=f"parameter-receipt-{request.candidate_id}",
         tool={"name": tool_name, "revision": "bound"},
@@ -456,6 +473,7 @@ def _candidate_parameter_receipt(
             "unit": unit,
         },
         runtime_report=runtime_report,
+        destination=receipt_path,
     )
 
 
