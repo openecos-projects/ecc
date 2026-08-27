@@ -141,6 +141,14 @@ class DreamplaceModule:
 __all__ = ["DreamplaceModule"]
 
 
+def _runtime_unit(knob_id: str) -> str:
+    if knob_id.endswith("cell_padding_x"):
+        return "dbu"
+    if knob_id.endswith("density_weight"):
+        return "objective_weight"
+    return "ratio"
+
+
 def _write_parameter_runtime_report(
     workspace: Workspace, params, *, engine_succeeded: bool = False
 ) -> None:
@@ -193,11 +201,11 @@ def _write_parameter_runtime_report(
         "application_status": "applied" if value is not None else "unknown",
         "effective_initial": {
             "value": value,
-            "unit": "dbu" if knob_id.endswith("cell_padding_x") else "ratio",
+            "unit": _runtime_unit(knob_id),
         },
         "effective_final": {
             "value": value,
-            "unit": "dbu" if knob_id.endswith("cell_padding_x") else "ratio",
+            "unit": _runtime_unit(knob_id),
         },
         "activation": {"status": status, "consumers": [evidence] if status != "unknown" else []},
         "transitions": [],

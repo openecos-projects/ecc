@@ -39,6 +39,18 @@ def _stable_hash(value) -> str:
     return f"sha256:{sha256(payload).hexdigest()}"
 
 
+def _parameter_unit(knob_id: str) -> str:
+    if knob_id.endswith("routability_opt"):
+        return "boolean"
+    if knob_id.endswith("cell_padding_x"):
+        return "site"
+    if knob_id.endswith("fanout"):
+        return "fanout"
+    if knob_id.endswith("density_weight"):
+        return "objective_weight"
+    return "ratio"
+
+
 def build_agent_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     import chipcompiler.rtl2gds as rtl2gds_api
 
@@ -442,15 +454,7 @@ def _candidate_parameter_receipt(
     config = configs[0]
     patch = request.patch[0]
     knob_id = patch["knob_id"]
-    unit = (
-        "boolean"
-        if knob_id.endswith("routability_opt")
-        else "site"
-        if knob_id.endswith("cell_padding_x")
-        else "fanout"
-        if knob_id.endswith("fanout")
-        else "ratio"
-    )
+    unit = _parameter_unit(knob_id)
     h = sha256(materialization_path.read_bytes()).hexdigest()
     digest = f"sha256:{h}"
     runtime_report_path = (
@@ -553,15 +557,7 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         }
     )
     knob_name = str(request.patch[0].get("knob_id"))
-    unit = (
-        "boolean"
-        if knob_name.endswith("routability_opt")
-        else "site"
-        if knob_name.endswith("cell_padding_x")
-        else "fanout"
-        if knob_name.endswith("fanout")
-        else "ratio"
-    )
+    unit = _parameter_unit(knob_name)
     context = {
         "run_id": request.candidate_id,
         "design_sha256": design_sha256,
