@@ -67,8 +67,10 @@ class MigrationPlan:
     # Set when the runs/ container itself is a symlink or not a real
     # directory: nothing is enumerated, previewed, or executed.
     container_unsafe: str | None = None
-    # run_id -> refusal reason for sources that cannot be represented as a
-    # contiguous manifest flow range (a legacy hand-edited or partial ledger).
+    # run_id -> refusal reason for sources that cannot be registered as a
+    # manifest flow range without lying about the ledger: a legacy
+    # hand-edited or partial ledger, an unreadable/malformed flow.json, or
+    # a step record without a name.
     blocked: dict = field(default_factory=dict)
     # Plan-time lstat identity of the confirmed runs/ container.
     container_dev: int = 0
@@ -105,19 +107,26 @@ def _flow_status(steps: list[dict]) -> str:
     return "not_started"
 
 
-def _read_flow_steps(run_dir: str) -> list[dict]:
+def _read_flow_steps(run_dir: str) -> list[dict] | None:
+    """The persisted ledger's steps; None when the ledger is malformed.
+
+    A MISSING ledger reads as [] — a workspace that never ran migrates
+    with the not_started defaults. A present-but-undecodable or
+    wrong-shaped ledger is None: the manifest would fabricate a range and
+    status it cannot know, so the workspace must be blocked instead.
+    """
     flow_path = os.path.join(run_dir, "home", "flow.json")
     try:
         with open(flow_path, encoding="utf-8") as f:
             data = json.load(f)
+    except FileNotFoundError:
+        return []
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        return []
+        return None
     if not isinstance(data, dict):
-        # JSON-valid but not an object: unreadable as a flow ledger,
-        # degrade to the empty-ledger defaults instead of crashing.
-        return []
+        return None
     steps = data.get("steps", [])
-    return steps if isinstance(steps, list) else []
+    return steps if isinstance(steps, list) else None
 
 
 def _is_contiguous_flow(names: list[str]) -> bool:
@@ -190,9 +199,19 @@ def plan_migration(project_dir: str) -> MigrationPlan:
             collisions.append(run_id)
             continue
         steps = _read_flow_steps(source)
-        names = [
-            name for step in steps if isinstance(step, dict) and (name := str(step.get("name", "")))
-        ]
+        if steps is None:
+            blocked[run_id] = (
+                "the persisted flow ledger is unreadable or malformed; "
+                "repair or remove home/flow.json and retry"
+            )
+            continue
+        if any(not isinstance(step, dict) or not str(step.get("name", "")) for step in steps):
+            blocked[run_id] = (
+                "the persisted flow ledger contains a step record without a name; "
+                "repair home/flow.json and retry"
+            )
+            continue
+        names = [str(step["name"]) for step in steps]
         if names and not _is_contiguous_flow(names):
             blocked[run_id] = (
                 "legacy flow is not a contiguous slice of the canonical chain "

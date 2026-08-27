@@ -361,10 +361,42 @@ class TestMigrate:
 
 
 class TestMigrationPlanningRobustness:
-    """Planning never crashes on malformed workspace state: an unreadable
-    flow ledger degrades to the empty-ledger defaults, not an exception."""
+    """Malformed workspace state never crashes planning: a MISSING ledger
+    migrates with not_started defaults (a workspace that never ran), while
+    a present-but-malformed ledger is blocked and left under runs/ — the
+    manifest never fabricates a range/status it cannot know."""
 
-    def test_non_object_flow_json_migrates_with_defaults(
+    def _assert_blocked(self, rc, capsys, project_dir, run_dir):
+        assert rc != 0
+        records = _records(capsys)
+        (failure,) = [r for r in records if r.get("error") == "migration_unsupported"]
+        assert failure["run"] == "exp1"
+        # The workspace stays put and unregistered.
+        assert os.path.isdir(run_dir)
+        assert not os.path.exists(os.path.join(project_dir, "exp1"))
+        assert not os.path.exists(os.path.join(project_dir, "project.json"))
+
+    def test_missing_flow_json_migrates_with_not_started_defaults(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        Path(run_dir, "home", "flow.json").unlink()
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        assert rc == 0
+        assert not os.path.exists(run_dir)
+        (workspace,) = _manifest(project_dir)["workspaces"]
+        assert workspace["status"] == "not_started"
+
+    def test_non_object_flow_json_is_blocked(
         self,
         tmp_path,
         capsys,
@@ -380,13 +412,9 @@ class TestMigrationPlanningRobustness:
 
         rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
 
-        assert rc == 0
-        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
-        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
-        (workspace,) = _manifest(project_dir)["workspaces"]
-        assert workspace["status"] == "not_started"
+        self._assert_blocked(rc, capsys, project_dir, run_dir)
 
-    def test_undecodable_flow_json_migrates_with_defaults(
+    def test_undecodable_flow_json_is_blocked(
         self,
         tmp_path,
         capsys,
@@ -401,10 +429,26 @@ class TestMigrationPlanningRobustness:
 
         rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
 
-        assert rc == 0
-        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
-        (workspace,) = _manifest(project_dir)["workspaces"]
-        assert workspace["status"] == "not_started"
+        self._assert_blocked(rc, capsys, project_dir, run_dir)
+
+    def test_nameless_step_record_is_blocked(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        Path(run_dir, "home", "flow.json").write_text(
+            json.dumps({"steps": [{"name": "", "state": "Success"}]})
+        )
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        self._assert_blocked(rc, capsys, project_dir, run_dir)
 
     def test_undecodable_manifest_is_a_recorded_error_not_a_crash(
         self,
