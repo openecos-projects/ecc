@@ -34,3 +34,17 @@ def test_runtime_report_marks_disabled_routability_not_activated(tmp_path):
     )
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
     assert report["activation"]["status"] == "not_activated"
+
+
+def test_runtime_report_does_not_claim_use_before_engine_success(tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.target_density", "value": 0.85}]}),
+        encoding="utf-8",
+    )
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path), SimpleNamespace(target_density=0.85)
+    )
+    report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
+    assert report["activation"] == {"status": "unknown", "consumers": []}
