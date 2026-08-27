@@ -14,6 +14,8 @@ import logging
 import os
 import sys
 
+from typing_extensions import deprecated
+
 from chipcompiler.cli.project.manifest import find_manifest, load_manifest, update_manifest
 from chipcompiler.cli.project.migrate_plan import (
     MigrationEntry,
@@ -30,6 +32,11 @@ class _ManifestRebindConflict(ValueError):
     """A planned workspace id is already bound to a different path."""
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _append_manifest_entries(
     project_dir: str, append_set: tuple[dict, ...], keep_ids: set[str]
 ) -> bool:
@@ -71,6 +78,11 @@ def _append_manifest_entries(
         return False
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list[dict], int]:
     """Run the migration; returns (records, exit_code).
 
@@ -379,6 +391,11 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
     return records, 1 if failures else 0
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def migrate_project(command_input, ctx):
     """The ``ecc migrate`` handler: plan, disclose, confirm, execute."""
     # The exclusive project lock is taken BEFORE any state read: a second
@@ -391,6 +408,11 @@ def migrate_project(command_input, ctx):
         return _migrate_project_impl(command_input, ctx)
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _migrate_project_impl(command_input, ctx):
     from chipcompiler.cli.core.types import CommandResult
     from chipcompiler.cli.project.manifest import find_manifest, has_legacy_runs_layout

@@ -19,6 +19,8 @@ import stat
 from contextlib import contextmanager
 from pathlib import Path
 
+from typing_extensions import deprecated
+
 logger = logging.getLogger(__name__)
 
 RENAME_NOREPLACE = 1
@@ -36,6 +38,11 @@ def flock_file(path: str, *, exclusive: bool):
         os.close(fd)
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 @contextmanager
 def project_migrate_lock(project_dir: str, *, exclusive: bool):
     """Project-level migration lock (flock, cooperating writers only).
@@ -51,6 +58,11 @@ def project_migrate_lock(project_dir: str, *, exclusive: bool):
         yield
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 @contextmanager
 def existing_workspace_execution_lock(workspace_dir: str):
     """Serialize a migration move with an active execution of the workspace.
@@ -79,6 +91,11 @@ def existing_workspace_execution_lock(workspace_dir: str):
         os.close(fd)
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _load_renameat2():
     """The raw renameat2 syscall wrapper, or None when unavailable."""
     try:
@@ -100,6 +117,11 @@ def _load_renameat2():
 _renameat2 = _load_renameat2()
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def open_container(runs_dir: str):
     """Open the runs/ container without following symlinks.
 
@@ -118,6 +140,11 @@ def open_container(runs_dir: str):
     return fd, (info.st_dev, info.st_ino)
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def child_stat(container_fd: int, name: str):
     """fstatat(name, dir_fd, nofollow); None when the child vanished."""
     try:
@@ -126,6 +153,11 @@ def child_stat(container_fd: int, name: str):
         return None
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def move_noreplace(src_fd: int, src_name: str, dst_fd: int, dst_name: str) -> int:
     """renameat2(RENAME_NOREPLACE); 0 on success, an errno otherwise."""
     if _renameat2 is None:
@@ -140,6 +172,11 @@ def move_noreplace(src_fd: int, src_name: str, dst_fd: int, dst_name: str) -> in
     return 0 if rc == 0 else ctypes.get_errno()
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def move_back(
     container_fd: int,
     project_fd: int,
@@ -179,6 +216,11 @@ def move_back(
     return False
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _contains_symlink(root: str) -> bool:
     """Any symlink anywhere below root (walk never follows links)."""
     for dirpath, dirnames, filenames in os.walk(root):
@@ -188,6 +230,11 @@ def _contains_symlink(root: str) -> bool:
     return False
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _unsafe_workspace_source(source: str) -> str | None:
     """Why this run source is unsafe to migrate, or None.
 
@@ -206,6 +253,11 @@ def _unsafe_workspace_source(source: str) -> str | None:
     return None
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) -> None:
     """Rewrite home.json path values from the old workspace location."""
     home_path = os.path.join(workspace_dir, "home", "home.json")
@@ -232,6 +284,11 @@ def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) 
         raise OSError(f"failed to write rebased home.json: {home_path}")
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
     """Undo a failed move when identity permits; touch nothing otherwise.
 
@@ -276,6 +333,11 @@ def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
     return restored
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_prefix: str) -> None:
     """Rebase workspace-local pdk config paths BEFORE the moved workspace loads.
 
@@ -307,6 +369,11 @@ def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_pre
                 raise OSError(f"failed to rebase workspace config paths: {workspace_dir}")
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _move_workspace(entry, container_fd: int, project_fd: int) -> tuple[str, str] | None:
     """Move one confirmed workspace and rebase it; (error_kind, reason) or None.
 

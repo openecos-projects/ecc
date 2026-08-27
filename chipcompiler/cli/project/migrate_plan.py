@@ -16,6 +16,8 @@ import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from typing_extensions import deprecated
+
 from chipcompiler.cli.project.manifest import (
     base_design_from_config,
     build_manifest_document,
@@ -94,6 +96,11 @@ class MigrationPreview:
     manifest_appends: tuple[dict, ...] = field(default_factory=tuple)
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _flow_status(steps: list[dict]) -> str:
     states = {str(step.get("state", "")) for step in steps if isinstance(step, dict)}
     if not states:
@@ -107,6 +114,11 @@ def _flow_status(steps: list[dict]) -> str:
     return "not_started"
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _read_flow_steps(run_dir: str) -> list[dict] | None:
     """The persisted ledger's steps; None when the ledger is malformed.
 
@@ -131,6 +143,11 @@ def _read_flow_steps(run_dir: str) -> list[dict] | None:
     return steps if isinstance(steps, list) else None
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _is_contiguous_flow(names: list[str]) -> bool:
     """The persisted step names must form one contiguous slice of the
     canonical chain: anything else cannot be registered as a start..end
@@ -144,6 +161,11 @@ def _is_contiguous_flow(names: list[str]) -> bool:
     return False
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def plan_migration(project_dir: str) -> MigrationPlan:
     """Enumerate the runs/ workspaces to move and any name collisions.
 
@@ -256,6 +278,11 @@ def plan_migration(project_dir: str) -> MigrationPlan:
     )
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _workspace_entries(
     entries: tuple[MigrationEntry, ...], *, name: str, now: str
 ) -> tuple[dict, ...]:
@@ -275,6 +302,11 @@ def _workspace_entries(
     )
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
     """Compute the immutable preview: every move plus the exact manifest
     create document (or resume append set), before confirmation or mutation."""
@@ -308,6 +340,11 @@ def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
     return MigrationPreview(plan=plan, manifest_document=document, manifest_appends=appends)
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def render_preview(preview: MigrationPreview) -> None:
     """TTY disclosure of the exact plan (stderr): the moves, then the full
     JSON of the manifest document to create (or the append entries)."""
@@ -319,6 +356,11 @@ def render_preview(preview: MigrationPreview) -> None:
         print(json.dumps(list(preview.manifest_appends), indent=2), file=sys.stderr)
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def preview_records(preview: MigrationPreview) -> list[dict]:
     """The machine-readable disclosure: moves plus the exact manifest action."""
     records: list[dict] = [

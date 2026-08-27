@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import tomli_w
+from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,11 @@ def workspace_config_path(workspace_dir: str | Path) -> Path:
     return Path(workspace_dir) / "home" / WORKSPACE_CONFIG_FILENAME
 
 
+@deprecated(
+    "legacy parameters.json -> ecc.toml migration; slated for removal once "
+    "legacy workspaces are phased out",
+    category=None,
+)
 def legacy_parameters_path(workspace_dir: str | Path) -> Path:
     return Path(workspace_dir) / "home" / LEGACY_PARAMETERS_FILENAME
 
@@ -501,6 +507,11 @@ def resolve_flow_selection(
     return (contiguous, True)
 
 
+@deprecated(
+    "legacy parameters.json -> ecc.toml migration; slated for removal once "
+    "legacy workspaces are phased out",
+    category=None,
+)
 def migrate_legacy_parameters(workspace_dir: Path) -> None:
     """Rewrite a legacy ``home/parameters.json`` into ``home/ecc.toml``.
 
@@ -606,6 +617,11 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
         )
 
 
+@deprecated(
+    "legacy parameters.json -> ecc.toml migration; slated for removal once "
+    "legacy workspaces are phased out",
+    category=None,
+)
 def legacy_parameters_fallback(workspace_dir: str | Path) -> dict:
     """Normalized in-memory copy of a legacy parameters.json, or {}.
 

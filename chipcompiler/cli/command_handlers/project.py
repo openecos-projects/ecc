@@ -1,6 +1,8 @@
 import contextlib
 import os
 
+from typing_extensions import deprecated
+
 from chipcompiler.cli.core.inputs import CheckInput, InitInput, MigrateInput, RunInput
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
@@ -174,6 +176,11 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
 
 
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def migrate(command_input: MigrateInput, ctx: CommandContext) -> CommandResult:
     """Upgrade a legacy runs/ project to the manifest layout."""
     from chipcompiler.cli.project.migrate import migrate_project
