@@ -22,6 +22,23 @@ def test_runtime_report_records_native_density_consumer(tmp_path):
     assert report["activation"]["consumers"][0]["consumer_id"] == "dreamplace.density_objective"
 
 
+def test_runtime_report_uses_objective_weight_unit(tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.density_weight", "value": 0.001}]}),
+        encoding="utf-8",
+    )
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(density_weight=0.001),
+        engine_succeeded=True,
+    )
+    report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
+    assert report["effective_initial"]["unit"] == "objective_weight"
+    assert report["effective_final"]["unit"] == "objective_weight"
+
+
 def test_runtime_report_marks_disabled_routability_not_activated(tmp_path):
     analysis = tmp_path / "analysis"
     analysis.mkdir()
