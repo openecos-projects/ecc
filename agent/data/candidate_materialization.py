@@ -1,6 +1,7 @@
 """Controlled, replayable config overlays for isolated ECC candidate workspaces."""
 
 import math
+import shutil
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -71,10 +72,23 @@ def reapply_materialized_candidate_config(
     if receipt["target"]["step"] != target_step:
         return None
     current_configs = receipt.get("configs", [])
-    if all(
-        sha256_path(_config_path(workspace, entry["config_key"])) == entry["after_sha256"]
-        for entry in current_configs
-    ):
+    snapshots = receipt.get("snapshots", [])
+    if current_configs and snapshots:
+        _verify_config_snapshot_hashes(workspace, snapshots)
+        snapshot_by_key = {
+            item["config_key"]: item
+            for item in snapshots
+            if isinstance(item, dict) and isinstance(item.get("config_key"), str)
+        }
+        for entry in current_configs:
+            snapshot = snapshot_by_key.get(entry.get("config_key"))
+            if snapshot is None:
+                raise CandidateMaterializationError("candidate config snapshot is incomplete")
+            after_ref = snapshot.get("after_ref")
+            if not isinstance(after_ref, str):
+                raise CandidateMaterializationError("candidate config snapshot ref is invalid")
+            after_path = Path(workspace.directory) / after_ref
+            shutil.copyfile(after_path, _config_path(workspace, entry["config_key"]))
         return receipt
     normalized_patch = receipt["patch"]
     knobs = _resolve_knobs(target_step, normalized_patch, workspace)
