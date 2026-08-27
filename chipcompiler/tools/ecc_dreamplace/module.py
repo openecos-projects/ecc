@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -168,8 +169,15 @@ def _write_parameter_runtime_report(
     key, consumer_id = key_by_knob[knob_id]
     value = getattr(params, key, None)
     status = "used" if value is not None and engine_succeeded else "unknown"
-    if knob_id == "place.routability_opt" and value in (False, 0):
-        status = "not_activated"
+    branch_round_count = None
+    if knob_id == "place.routability_opt":
+        branch_round_count = _routability_branch_round_count(workspace)
+        if value in (False, 0):
+            status = "not_activated"
+        elif not engine_succeeded:
+            status = "unknown"
+        else:
+            status = "used" if branch_round_count else "not_activated"
     evidence = {
         "consumer_id": consumer_id,
         "outcome": "entered" if status == "used" else "evaluated",
@@ -194,9 +202,24 @@ def _write_parameter_runtime_report(
         "activation": {"status": status, "consumers": [evidence] if status != "unknown" else []},
         "transitions": [],
     }
+    if knob_id == "place.routability_opt":
+        report["consumer_observation"] = {
+            "branch_round_count": branch_round_count,
+            "evidence_complete": isinstance(branch_round_count, int),
+        }
     report_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = report_path.with_suffix(report_path.suffix + ".tmp")
     temporary.write_text(
         json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
     )
     os.replace(temporary, report_path)
+
+
+def _routability_branch_round_count(workspace: Workspace) -> int | None:
+    """Count native routability rounds emitted by the placement engine."""
+    log_path = Path(workspace.directory) / "place_dreamplace" / "log" / "place.log"
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return len(re.findall(r"routability optimization round \d+:", text))

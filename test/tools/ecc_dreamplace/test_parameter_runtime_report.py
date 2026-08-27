@@ -36,6 +36,38 @@ def test_runtime_report_marks_disabled_routability_not_activated(tmp_path):
     assert report["activation"]["status"] == "not_activated"
 
 
+def test_runtime_report_requires_a_native_routability_round(tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.routability_opt", "value": True}]}),
+        encoding="utf-8",
+    )
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(routability_opt_flag=True),
+        engine_succeeded=True,
+    )
+    report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
+    assert report["activation"]["status"] == "not_activated"
+    assert report["consumer_observation"]["evidence_complete"] is False
+
+    log_dir = tmp_path / "place_dreamplace" / "log"
+    log_dir.mkdir(parents=True)
+    (log_dir / "place.log").write_text(
+        "routability optimization round 0: adjust area flags = (1, 1, 0)\n",
+        encoding="utf-8",
+    )
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(routability_opt_flag=True),
+        engine_succeeded=True,
+    )
+    report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
+    assert report["activation"]["status"] == "used"
+    assert report["consumer_observation"]["branch_round_count"] == 1
+
+
 def test_runtime_report_does_not_claim_use_before_engine_success(tmp_path):
     analysis = tmp_path / "analysis"
     analysis.mkdir()
