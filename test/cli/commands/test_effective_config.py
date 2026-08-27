@@ -521,34 +521,44 @@ class TestHybridFrequencyProvenance:
         assert not any(line.endswith(".f") for line in lines)
 
 
+def _write_manifest_project(
+    manifest_stubs,
+    tmp_path,
+    monkeypatch,
+    frequency_max,
+    ecc_toml=None,
+    extra_parameters=None,
+):
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    parameters = {"design": "gcd", "frequency_max": frequency_max}
+    parameters.update(extra_parameters or {})
+    manifest_stubs.write(
+        project_dir,
+        [manifest_stubs.entry(project_dir, "ws_0001")],
+        base_design={
+            "pdk": "ics55",
+            "pdk_root": str(project_dir / "pdk"),
+            "top_module": "gcd",
+            "clock": "clk",
+            "rtl_list": ["rtl/gcd.v"],
+            "parameters": parameters,
+        },
+    )
+    if ecc_toml is not None:
+        (project_dir / "ecc.toml").write_text(ecc_toml)
+    monkeypatch.setattr(
+        "chipcompiler.cli.project.config._validate_pdk_contents",
+        lambda name, root, overrides=None: None,
+    )
+    return project_dir
+
+
 class TestManifestParameterValidation:
     """Manifest-layer parameter values face the registry rules in the shared
     preflight (both `ecc check` and `ecc run`) — unless an explicit
     ecc.toml/--set key makes the value inert, in which case it surfaces as a
     divergence warning instead of an error."""
-
-    def _write_project(self, manifest_stubs, tmp_path, monkeypatch, frequency_max, ecc_toml=None):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design={
-                "pdk": "ics55",
-                "pdk_root": str(project_dir / "pdk"),
-                "top_module": "gcd",
-                "clock": "clk",
-                "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": frequency_max},
-            },
-        )
-        if ecc_toml is not None:
-            (project_dir / "ecc.toml").write_text(ecc_toml)
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
-        return project_dir
 
     def _hybrid_toml(self, project_dir, *, frequency: bool) -> str:
         design = '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\nclock_port = "clk"\n'
@@ -564,7 +574,7 @@ class TestManifestParameterValidation:
     def test_check_rejects_out_of_range_manifest_frequency(
         self, tmp_path, capsys, monkeypatch, manifest_stubs
     ):
-        project_dir = self._write_project(manifest_stubs, tmp_path, monkeypatch, 99999)
+        project_dir = _write_manifest_project(manifest_stubs, tmp_path, monkeypatch, 99999)
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
 
@@ -578,7 +588,7 @@ class TestManifestParameterValidation:
     ):
         project_dir = tmp_path / "proj"
         toml_text = self._hybrid_toml(project_dir, frequency=True)
-        self._write_project(manifest_stubs, tmp_path, monkeypatch, 99999, ecc_toml=toml_text)
+        _write_manifest_project(manifest_stubs, tmp_path, monkeypatch, 99999, ecc_toml=toml_text)
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
 
@@ -593,7 +603,7 @@ class TestManifestParameterValidation:
     ):
         project_dir = tmp_path / "proj"
         toml_text = self._hybrid_toml(project_dir, frequency=False)
-        self._write_project(manifest_stubs, tmp_path, monkeypatch, 99999, ecc_toml=toml_text)
+        _write_manifest_project(manifest_stubs, tmp_path, monkeypatch, 99999, ecc_toml=toml_text)
 
         rc = cli_main.run(
             [
@@ -609,3 +619,90 @@ class TestManifestParameterValidation:
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
         assert parameters["frequency_max"] == 100.0
+
+
+class TestManifestFlatGeometryValidation:
+    """Generated manifests hoist geometry to GUI-flat aliases (utilitization,
+    margin, ...); validation must resolve the canonical projection, and raw
+    values must satisfy the registry's type rules — not just its ranges."""
+
+    def test_check_rejects_out_of_range_gui_flat_geometry(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            extra_parameters={"utilitization": 5.0},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
+        assert "project.json: value 5.0 out of range [0.01, 1.0] for floorplan.core_util" in reasons
+
+    def test_check_rejects_non_numeric_manifest_parameter(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            extra_parameters={"max_fanout": "abc"},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
+        assert "project.json: value 'abc' is not numeric for synth.max_fanout" in reasons
+
+    def test_check_accepts_valid_gui_flat_geometry(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            extra_parameters={"utilitization": 0.6, "aspect_ratio": 1.0, "margin": 2},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert manifest_stubs.records()[0]["status"] == "checked"
+
+
+class TestManifestResolvedConfigView:
+    """`ecc config --resolved` presents manifest-layer parameters through the
+    same canonical projection the run uses (GUI-flat aliases included)."""
+
+    def test_config_resolved_shows_gui_flat_manifest_geometry(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100, "utilitization": 0.6},
+            },
+        )
+
+        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        params = {r["key"]: r for r in data["records"] if r.get("kind") == "param"}
+        assert params["floorplan.core_util"]["value"] == 0.6
+        assert params["floorplan.core_util"]["source"] == "project.json"

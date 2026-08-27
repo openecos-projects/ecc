@@ -190,6 +190,7 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
             # object (replaced or retargeted between the check and the open):
             # never move workspaces into an unverified tree.
             os.close(project_fd)
+            project_fd = None
             records.append(
                 {
                     "kind": "error",

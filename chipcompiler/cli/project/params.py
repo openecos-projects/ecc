@@ -274,7 +274,12 @@ def validate_value(value: object, schema: ParamSchema) -> list[str]:
 
     if schema.range is not None:
         lo, hi = schema.range
-        if isinstance(value, (int, float)) and (value < lo or value > hi):
+        if not isinstance(value, (int, float)):
+            # Raw layers (e.g. project.json parameters) reach this without
+            # the typed parsing --set/[params] get: a string must fail loud
+            # instead of silently skipping the range check.
+            errors.append(f"value {value!r} is not numeric for {schema.param}")
+        elif value < lo or value > hi:
             errors.append(f"value {value} out of range [{lo}, {hi}] for {schema.param}")
 
     if schema.choices is not None:

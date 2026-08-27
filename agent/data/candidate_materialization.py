@@ -239,9 +239,16 @@ def _load_parameters_config(path: Path) -> dict:
     from chipcompiler.data.parameter import load_parameter
 
     try:
-        return dict(load_parameter(path).data)
+        data = dict(load_parameter(path).data)
     except Exception as exc:
         raise ValueError(f"invalid candidate base config: {path}: {exc}") from exc
+    if not data:
+        # load_parameter returns {} when neither the canonical TOML nor a
+        # legacy JSON exists; hashing {} would sail through the missing-base
+        # guard and let the applied patch recreate a config holding only the
+        # patch keys, dropping the workspace identity and other parameters.
+        raise ValueError(f"missing candidate base config: {path}")
+    return data
 
 
 def _write_parameters_config(workspace: Any, path: Path, config: dict) -> Path:

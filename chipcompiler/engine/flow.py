@@ -464,9 +464,15 @@ class EngineFlow:
 
         return True
 
-    def run_steps(self, *, rerun: bool = False, observer=None) -> bool:
+    def run_steps(
+        self, *, rerun: bool = False, observer=None, require_full_ledger: bool = True
+    ) -> bool:
         """
         run all flow steps
+
+        require_full_ledger: verify at the end that every persisted ledger
+        step had a workspace step. Callers that intentionally bind execution
+        to a range narrower than the persisted ledger pass False.
         """
 
         for workspace_step in self.workspace_steps:
@@ -500,7 +506,7 @@ class EngineFlow:
                     return False
 
         total_steps = len(self.workspace.flow.data.get("steps", []))
-        if len(self.workspace_steps) < total_steps:
+        if require_full_ledger and len(self.workspace_steps) < total_steps:
             self.workspace.logger.error(
                 "Flow incomplete: %d of %d steps were created; remaining steps could not be set up",
                 len(self.workspace_steps),

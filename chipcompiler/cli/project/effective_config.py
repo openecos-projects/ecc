@@ -210,16 +210,21 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
         manifest_parameters = getattr(cfg, "manifest_parameters", None)
         if manifest_parameters:
             from chipcompiler.cli.project.params import PARAM_REGISTRY, validate_value
+            from chipcompiler.data.parameter_keys import geometry_to_parameters
 
             overridden = (
                 set(getattr(cfg, "_explicit_keys", frozenset()))
                 | set(cfg.params_overrides or {})
                 | set(cli_overrides or {})
             )
+            # Generated manifests hoist geometry values to GUI-flat aliases
+            # (utilitization, margin, ...); validate the canonical form so
+            # the registry's nested maps_to targets actually resolve.
+            canonical = geometry_to_parameters(manifest_parameters)
             errors.extend(
                 f"project.json: {err}"
                 for err in _invalid_manifest_parameters(
-                    manifest_parameters, PARAM_REGISTRY, validate_value, overridden
+                    canonical, PARAM_REGISTRY, validate_value, overridden
                 )
             )
     return errors
@@ -367,7 +372,10 @@ def _invalid_manifest_parameters(
                     present = True
                     break
         if present:
-            errors.extend(validate_value(value, schema))
+            # A list value (e.g. core.margin's [x, y]) validates per element.
+            values = value if isinstance(value, list) else [value]
+            for item in values:
+                errors.extend(validate_value(item, schema))
     return errors
 
 

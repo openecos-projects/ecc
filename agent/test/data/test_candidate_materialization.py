@@ -423,3 +423,19 @@ def test_materialize_floorplan_patch_preserves_the_canonical_core_tree(tmp_path)
     assert reloaded["core"] == {"utilitization": 0.7, "aspect_ratio": 1.1, "margin": [3, 3]}
     assert "Core" not in workspace.parameters.data
     assert workspace.parameters.data["core"]["utilitization"] == 0.7
+
+
+def test_materialize_rejects_missing_parameters_base_config(tmp_path):
+    """A missing canonical config is not an empty base: patching it would
+    recreate the TOML with only the patch keys, dropping the workspace
+    identity — fail closed instead."""
+    workspace = _workspace(tmp_path)
+    Path(workspace.parameters.path).unlink()
+
+    with pytest.raises(CandidateMaterializationError, match="missing candidate base config"):
+        materialize_candidate_config(
+            workspace,
+            "Floorplan",
+            [{"knob_id": "floorplan.core_util", "value": 0.7}],
+            candidate_id="missing-base",
+        )

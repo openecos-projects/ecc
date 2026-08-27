@@ -294,22 +294,26 @@ def _manifest_parameter_overrides(cfg) -> dict:
 
     Execution layers ``base_design.parameters`` / ``parameter_patch`` beneath
     ecc.toml and CLI overrides; the resolved view must present them instead
-    of reporting registry defaults.
+    of reporting registry defaults. Generated manifests hoist geometry values
+    to GUI-flat aliases (utilitization, margin, ...), so the lookup runs on
+    the canonical projection whose nested keys match the registry's maps_to.
     """
     from chipcompiler.cli.project.params import PARAM_REGISTRY
+    from chipcompiler.data.parameter_keys import geometry_to_parameters
 
     manifest_parameters = getattr(cfg, "manifest_parameters", None) or {}
     if not isinstance(manifest_parameters, dict):
         return {}
+    canonical = geometry_to_parameters(manifest_parameters)
     overrides = {}
     for schema in PARAM_REGISTRY:
         maps_to = schema.maps_to
         value = None
         if isinstance(maps_to, str):
-            value = manifest_parameters.get(maps_to)
+            value = canonical.get(maps_to)
         elif isinstance(maps_to, dict):
             for subtree, leaf in maps_to.items():
-                node = manifest_parameters.get(subtree)
+                node = canonical.get(subtree)
                 if isinstance(node, dict):
                     value = node.get(leaf)
                     break

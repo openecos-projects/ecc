@@ -105,7 +105,7 @@ class TestFlowContinuation:
             def create_step_workspaces(self, *, executable_steps=None):
                 created["executable"] = executable_steps
 
-            def run_steps(self):
+            def run_steps(self, **_kwargs):
                 return True
 
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
@@ -454,7 +454,7 @@ class TestFlowMismatchZeroMutation:
             def create_step_workspaces(self, *, executable_steps=None):
                 return None
 
-            def run_steps(self):
+            def run_steps(self, **_kwargs):
                 raise RuntimeError("engine exploded")
 
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
@@ -499,7 +499,7 @@ class TestFlowMismatchZeroMutation:
             def create_step_workspaces(self, *, executable_steps=None):
                 created["executable"] = executable_steps
 
-            def run_steps(self):
+            def run_steps(self, **_kwargs):
                 return True
 
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)

@@ -431,3 +431,30 @@ class TestLegacyStateNormalization:
 
         persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
         assert persisted["steps"][1]["state"] == StateEnum.Success.value
+
+
+class TestRunStepsLedgerCompleteness:
+    """run_steps verifies full-ledger coverage by default; callers binding
+    execution to a reconciled range narrower than the persisted ledger opt
+    out explicitly."""
+
+    def _bound_flow(self, tmp_path, monkeypatch, ledger_steps: int, created_steps: int):
+        ws = _make_workspace(tmp_path, num_steps=ledger_steps)
+        flow = EngineFlow(workspace=ws)
+        flow.workspace_steps = [
+            SimpleNamespace(name=f"step_{i}", tool="mock") for i in range(created_steps)
+        ]
+        monkeypatch.setattr(flow, "init_db_engine", lambda: True)
+        monkeypatch.setattr(flow, "run_step", lambda *args, **kwargs: StateEnum.Success)
+        monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
+        return flow
+
+    def test_narrowed_execution_fails_full_ledger_check_by_default(self, tmp_path, monkeypatch):
+        flow = self._bound_flow(tmp_path, monkeypatch, ledger_steps=3, created_steps=2)
+
+        assert flow.run_steps() is False
+
+    def test_narrowed_execution_passes_when_full_ledger_not_required(self, tmp_path, monkeypatch):
+        flow = self._bound_flow(tmp_path, monkeypatch, ledger_steps=3, created_steps=2)
+
+        assert flow.run_steps(require_full_ledger=False) is True

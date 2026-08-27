@@ -208,7 +208,10 @@ def run_existing_workspace(
                 if should_enable_run_progress(ctx, sys.stderr):
                     flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
                 else:
-                    flow_ok = engine_flow.run_steps()
+                    # The persisted ledger may be wider than the reconciled
+                    # target by design (workspace_steps is bound above), so
+                    # the full-ledger completeness check does not apply.
+                    flow_ok = engine_flow.run_steps(require_full_ledger=False)
         except Exception as exc:
             if workspace_registered:
                 _write_back_status(project_dir, run_name, "failed", warnings)

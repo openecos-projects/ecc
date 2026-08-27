@@ -30,7 +30,7 @@ class DummyFlow:
     def create_step_workspaces(self):
         self.create_called = True
 
-    def run_steps(self):
+    def run_steps(self, **_kwargs):
         self.run_called = True
         return self.run_steps_value
 
