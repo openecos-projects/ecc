@@ -14,7 +14,9 @@ def test_runtime_report_records_native_density_consumer(tmp_path):
         encoding="utf-8",
     )
     params = SimpleNamespace(target_density=0.85)
-    _write_parameter_runtime_report(SimpleNamespace(directory=tmp_path), params)
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path), params, engine_succeeded=True
+    )
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
     assert report["activation"]["status"] == "used"
     assert report["activation"]["consumers"][0]["consumer_id"] == "dreamplace.density_objective"

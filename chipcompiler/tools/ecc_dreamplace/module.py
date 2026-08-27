@@ -114,17 +114,18 @@ class DreamplaceModule:
 
         with self._configure_root_logging(legalize_only=legalize_only):
             params = self._build_params(Params, legalize_only=legalize_only)
-            _write_parameter_runtime_report(self.workspace, params)
 
             engine = PlacementEngine(params)
             engine.setup_rawdb(ecc_module=self.ecc_module)
             ppa = engine.run()
 
             if ppa.get("hpwl") == float("inf"):
+                _write_parameter_runtime_report(self.workspace, params, engine_succeeded=False)
                 LOGGER = logging.getLogger(__name__)
                 LOGGER.error("dreamplace failed for %s", self.step.name)
                 return False
 
+            _write_parameter_runtime_report(self.workspace, params, engine_succeeded=True)
             return True
 
     def run_placement(self) -> bool:
@@ -139,7 +140,9 @@ class DreamplaceModule:
 __all__ = ["DreamplaceModule"]
 
 
-def _write_parameter_runtime_report(workspace: Workspace, params) -> None:
+def _write_parameter_runtime_report(
+    workspace: Workspace, params, *, engine_succeeded: bool = False
+) -> None:
     """Record the selected candidate knob at the native DreamPlace boundary."""
     report_path = Path(workspace.directory) / "analysis" / "parameter_runtime_report.v1.json"
     materialization_path = (
@@ -164,7 +167,7 @@ def _write_parameter_runtime_report(workspace: Workspace, params) -> None:
         return
     key, consumer_id = key_by_knob[knob_id]
     value = getattr(params, key, None)
-    status = "used" if value is not None else "unknown"
+    status = "used" if value is not None and engine_succeeded else "unknown"
     if knob_id == "place.routability_opt" and value in (False, 0):
         status = "not_activated"
     evidence = {
