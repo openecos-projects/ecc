@@ -108,10 +108,10 @@ parameters, and optional input files:
     "pdk": "ics55",
     "pdkRoot": "/path/to/icsprout55-pdk",
     "parameters": {
-      "Design": "gcd",
-      "Top module": "gcd",
-      "Clock": "clk",
-      "Frequency max [MHz]": 100
+      "design": "gcd",
+      "top_module": "gcd",
+      "clock": "clk",
+      "frequency_max": 100
     },
     "originVerilog": "/path/to/gcd.v",
     "rtlList": ["/path/to/gcd.v"]
