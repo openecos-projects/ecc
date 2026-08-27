@@ -255,7 +255,10 @@ class TestRunFlowPreset:
 
 class TestWorkspaceRun:
     @pytest.fixture
-    def workspace_mocks(self, monkeypatch):
+    def workspace_mocks(self, monkeypatch, tmp_path):
+        # The workspace must exist on disk: the locked execution path
+        # refuses to even take the sibling lock for an absent target.
+        (tmp_path / "workspace").mkdir()
         seen = SimpleNamespace(
             load_path=None,
             has_init=True,

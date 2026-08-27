@@ -59,6 +59,12 @@ def execute_workspace_run(command_input) -> CommandResult:
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "")
 
+    # An absent workspace fails before the lock: taking the sibling lock
+    # would create the lock file (and its parent directories) for a command
+    # that has nothing to run — a failed command must not mutate the tree.
+    if not os.path.isdir(workspace_path):
+        return error("invalid_workspace", workspace=workspace_path)
+
     # Everything from here holds the workspace lock: two runs of the same
     # workspace never execute concurrently, and an overwrite or migration
     # replacing the tree serializes against this execution.

@@ -59,7 +59,7 @@ def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
     return []
 
 
-def run_resume(flow: "EngineFlow", *, through: str = None) -> StepRunResult:
+def run_resume(flow: "EngineFlow", *, through: str | None = None) -> StepRunResult:
     """Resume from the first non-successful step, re-executing the persisted suffix.
 
     *through* bounds the resume to the reconciled target's last step: a
@@ -72,7 +72,7 @@ def run_resume(flow: "EngineFlow", *, through: str = None) -> StepRunResult:
     return StepRunResult(ok=True, executed=())
 
 
-def run_from(flow: "EngineFlow", name: str, *, through: str = None) -> StepRunResult:
+def run_from(flow: "EngineFlow", name: str, *, through: str | None = None) -> StepRunResult:
     """Re-execute the named step and every following step in persisted order
     (at most through the *through* step when given)."""
     steps = flow.workspace.flow.data.get("steps", [])
@@ -122,7 +122,7 @@ def _require_steps_available(flow: "EngineFlow", last_index: int) -> None:
             raise ValueError(f"step is unavailable in this workspace: {step['name']}")
 
 
-def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int = None) -> None:
+def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int | None = None) -> None:
     """Mark the steps from index on as Unstart, persisted before any deletion.
 
     *last_index* bounds the invalidation to the reconciled target: steps

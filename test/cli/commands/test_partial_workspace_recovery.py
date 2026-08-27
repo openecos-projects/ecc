@@ -167,3 +167,15 @@ class TestPartialWorkspaceRecovery:
             legacy_hint(project_dir),
         ]
         assert os.listdir(run_dir) == []
+
+    def test_nonexistent_workspace_run_leaves_no_artifacts(self, tmp_path, capsys):
+        """A failed --workspace run must not mutate the tree: no parent
+        directories, no sibling lock file."""
+        workspace_path = os.path.join(str(tmp_path), "new", "sub", "ws")
+
+        rc = cli_main.run(["run", "--workspace", workspace_path, "--json"])
+
+        assert rc == 1
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert any(r.get("error") == "invalid_workspace" for r in records)
+        assert not os.path.exists(os.path.join(str(tmp_path), "new"))
