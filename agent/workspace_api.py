@@ -447,7 +447,7 @@ def _candidate_parameter_receipt(
         if knob_id.endswith("routability_opt")
         else "site"
         if knob_id.endswith("cell_padding_x")
-        else "count"
+        else "fanout"
         if knob_id.endswith("fanout")
         else "ratio"
     )
@@ -558,7 +558,7 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         if knob_name.endswith("routability_opt")
         else "site"
         if knob_name.endswith("cell_padding_x")
-        else "count"
+        else "fanout"
         if knob_name.endswith("fanout")
         else "ratio"
     )
