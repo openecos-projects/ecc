@@ -487,6 +487,10 @@ def _validate_config_receipts(configs: Any) -> None:
             for key in ("before_sha256", "after_sha256")
         ):
             raise CandidateMaterializationError("candidate materialization config hash is invalid")
+        if entry["before_sha256"] == entry["after_sha256"]:
+            raise CandidateMaterializationError(
+                "candidate materialization patch did not change config"
+            )
 
 
 def _validate_snapshot_receipts(snapshots: Any) -> None:
@@ -512,6 +516,8 @@ def _validate_snapshot_receipts(snapshots: Any) -> None:
             for key in ("before_sha256", "after_sha256")
         ):
             raise CandidateMaterializationError("candidate config snapshot hash is invalid")
+        if entry["before_sha256"] == entry["after_sha256"]:
+            raise CandidateMaterializationError("candidate config snapshot did not change config")
 
 
 def _verify_materialized_config_hashes(workspace: Any, configs: list[dict[str, Any]]) -> None:
