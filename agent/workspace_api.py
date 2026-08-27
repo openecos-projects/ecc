@@ -144,11 +144,11 @@ class FlowAgentRuntimeApi:
         )
         flow = self._build_flow(candidate_workspace, create_step_workspaces=False)
         try:
-            if request.patch:
-                _materialize_candidate_rerun(candidate_workspace, flow, request)
             create_step_workspaces = getattr(flow, "create_step_workspaces", None)
             if callable(create_step_workspaces):
-                create_step_workspaces()
+                create_step_workspaces(initialize_config=False)
+            if request.patch:
+                _materialize_candidate_rerun(candidate_workspace, flow, request)
             steps = _candidate_rerun_steps(
                 flow,
                 request.target_step,

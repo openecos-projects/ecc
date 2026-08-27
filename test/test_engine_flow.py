@@ -249,6 +249,29 @@ def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path, spef_paths):
     assert sta_step.output.spef is rcx_output.spef  # same object, per legacy contract
 
 
+def test_create_step_workspaces_can_preserve_existing_configs(monkeypatch, tmp_path):
+    import chipcompiler.tools as tools_api
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    initialize_config_values = []
+
+    def fake_create_step(workspace, step, eda, **kwargs):
+        initialize_config_values.append(kwargs["initialize_config"])
+        return EccStep(name=step, tool=eda)
+
+    monkeypatch.setattr(tools_api, "create_step", fake_create_step)
+
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {"steps": [{"name": "Floorplan", "tool": "ecc"}]}
+    flow.create_step_workspaces(initialize_config=False)
+
+    assert initialize_config_values == [False]
+
+
 # --- Phase 2: Silent failure regression tests ---
 
 

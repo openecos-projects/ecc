@@ -139,13 +139,16 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     monkeypatch.setattr("agent.workspace_api.build_agent_flow_for_workspace", build_flow)
     monkeypatch.setattr(
         "agent.workspace_api.bind_candidate_input",
-        lambda _ws, _flow, target, source, candidate: calls.append(
-            ("bind", target, source, candidate)
+        lambda _ws, _flow, target, source, candidate: (
+            calls.append(("bind", target, source, candidate))
+            if flows[-1].created
+            else pytest.fail("candidate steps must exist before input binding")
         ),
     )
 
     def materialize(candidate_workspace, target, patch, candidate):
-        assert not flows[-1].created
+        assert flows[-1].created
+        assert flows[-1].initialize_config is False
         path = Path(candidate_workspace.directory) / "config" / "dreamplace.json"
         config = json.loads(path.read_text(encoding="utf-8"))
         config[patch[0]["knob_id"].removeprefix("place.")] = patch[0]["value"]
@@ -214,6 +217,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     candidate_manifest_ref = f"{candidate_root_ref}/analysis/candidate_workspace.v1.json"
     assert flows[0].run_calls == [("place", True), ("CTS", True)]
     assert flows[0].created is True
+    assert flows[0].initialize_config is False
     assert flow_path.read_bytes() == parent_flow_bytes
     assert config_path.read_text(encoding="utf-8") == '{"target_density": 0.5}\n'
     assert (tmp_path / "place_dreamplace" / "output" / "stale").is_file()
@@ -437,11 +441,13 @@ class _Flow:
         self._workspace_steps = workspace_steps
         self.workspace_steps = ()
         self.created = False
+        self.initialize_config = None
         self.run_calls = []
 
-    def create_step_workspaces(self):
+    def create_step_workspaces(self, *, initialize_config=True):
         self.workspace_steps = self._workspace_steps
         self.created = True
+        self.initialize_config = initialize_config
 
     def get_step(self, name, tool):
         return next(
