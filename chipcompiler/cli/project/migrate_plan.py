@@ -125,7 +125,9 @@ def _read_flow_steps(run_dir: str) -> list[dict] | None:
         return None
     if not isinstance(data, dict):
         return None
-    steps = data.get("steps", [])
+    steps = data.get("steps")
+    # A present ledger without a valid steps field is malformed: the engine
+    # always writes one, so its absence means hand-edited or corrupt state.
     return steps if isinstance(steps, list) else None
 
 

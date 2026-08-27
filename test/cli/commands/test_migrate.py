@@ -450,6 +450,52 @@ class TestMigrationPlanningRobustness:
 
         self._assert_blocked(rc, capsys, project_dir, run_dir)
 
+    def test_steps_less_flow_object_is_blocked(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        # A present ledger without a steps field: the engine always writes
+        # one, so this is hand-made or corrupt state.
+        Path(run_dir, "home", "flow.json").write_text("{}")
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        self._assert_blocked(rc, capsys, project_dir, run_dir)
+
+    def test_resume_with_only_blocked_workspaces_is_not_already_migrated(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+        manifest_stubs,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        Path(run_dir, "home", "flow.json").write_bytes(b"\xff")
+        manifest_stubs.write(Path(project_dir), [])
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+
+        # Blocked workspaces ARE left in runs/: reporting already_migrated
+        # would claim otherwise.
+        assert rc != 0
+        records = _records(capsys)
+        assert any(r.get("error") == "migration_unsupported" for r in records)
+        assert not any(r.get("status") == "already_migrated" for r in records)
+        assert os.path.isfile(os.path.join(run_dir, "home", "flow.json"))
+        manifest = _manifest(project_dir)
+        assert manifest["workspaces"] == []
+
     def test_undecodable_manifest_is_a_recorded_error_not_a_crash(
         self,
         tmp_path,

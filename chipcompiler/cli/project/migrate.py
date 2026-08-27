@@ -96,7 +96,13 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
         )
         return records, 1
 
-    if plan.resume and not plan.entries and not plan.collisions and not plan.unsafe:
+    if (
+        plan.resume
+        and not plan.entries
+        and not plan.collisions
+        and not plan.unsafe
+        and not plan.blocked
+    ):
         records.append(
             {
                 "status": "already_migrated",
