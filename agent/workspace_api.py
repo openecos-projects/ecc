@@ -24,6 +24,7 @@ from .data import (
     validate_candidate_step_contract,
 )
 from .data.candidate_artifacts import sha256_path, validate_candidate_id, write_json_atomic
+from .data.parameter_application_receipt import build_parameter_application_receipt
 from .engine import AgentEngineFlow
 from .requests import (
     CandidateBindInputRequest,
@@ -135,7 +136,7 @@ class FlowAgentRuntimeApi:
                 _reapply_candidate_input(candidate_workspace, flow, request.target_step)
             for step in steps:
                 _run_candidate_step(flow, step, observer=observer)
-            return {
+            result = {
                 "candidateId": request.candidate_id,
                 **_candidate_workspace_receipt(
                     candidate_workspace,
@@ -148,6 +149,16 @@ class FlowAgentRuntimeApi:
                 "executionScope": request.execution_scope,
                 "targetStep": request.target_step,
             }
+            materialization_path = (
+                Path(candidate_workspace.directory)
+                / "analysis"
+                / "candidate_materialization.v1.json"
+            )
+            if materialization_path.is_file():
+                result["parameterApplicationReceipt"] = _candidate_parameter_receipt(
+                    candidate_workspace, request, candidate_root_ref, materialization_path
+                )
+            return result
         finally:
             self.ecc_api._close_transient_flow_db(flow)
 
@@ -383,6 +394,55 @@ def _candidate_workspace_receipt(
         "candidateManifestRef": f"{candidate_root_ref}/analysis/{_CANDIDATE_WORKSPACE_MANIFEST}",
         "candidateManifestSha256": manifest_sha256,
     }
+
+
+def _candidate_parameter_receipt(
+    workspace, request, candidate_root_ref: str, materialization_path: Path
+) -> dict:
+    materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
+    configs = materialization.get("configs") or [{}]
+    config = configs[0]
+    patch = request.patch[0]
+    knob_id = patch["knob_id"]
+    unit = (
+        "boolean"
+        if knob_id.endswith("routability_opt")
+        else "site"
+        if knob_id.endswith("cell_padding_x")
+        else "count"
+        if knob_id.endswith("fanout")
+        else "ratio"
+    )
+    h = sha256(materialization_path.read_bytes()).hexdigest()
+    digest = f"sha256:{h}"
+    return build_parameter_application_receipt(
+        receipt_id=f"parameter-receipt-{request.candidate_id}",
+        tool={"name": "ECC", "revision": "runtime"},
+        context={
+            "run_id": request.candidate_id,
+            "stage": request.target_step,
+            "lattice_version": "ecos.optimization_lattice.v1",
+        },
+        requested={"knob_id": knob_id, "value": patch["value"], "unit": unit},
+        materialization={
+            "receipt_ref": "analysis/candidate_materialization.v1.json",
+            "receipt_sha256": materialization.get("receipt_sha256", digest),
+            "registry_sha256": materialization.get("registry_sha256", digest),
+            "patch_sha256": materialization.get("patch_sha256", digest),
+            "candidate_ref": candidate_root_ref,
+            "workspace_ref": candidate_root_ref,
+            "config_before_sha256": config.get("before_sha256", digest),
+            "config_after_sha256": config.get("after_sha256", digest),
+            "written_value": patch["value"],
+            "unit": unit,
+        },
+        runtime_report={
+            "application_status": "unknown",
+            "activation": {"status": "unknown", "consumers": []},
+            "effective_initial": {"value": None, "unit": unit},
+            "effective_final": {"value": None, "unit": unit},
+        },
+    )
 
 
 def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest) -> None:
