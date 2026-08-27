@@ -142,7 +142,7 @@ class FlowAgentRuntimeApi:
             request.candidate_id,
             request.parent_candidate_root_ref,
         )
-        flow = self._build_flow(candidate_workspace)
+        flow = self._build_flow(candidate_workspace, create_step_workspaces=False)
         try:
             steps = _candidate_rerun_steps(
                 flow,
@@ -152,6 +152,9 @@ class FlowAgentRuntimeApi:
             )
             if request.patch:
                 _materialize_candidate_rerun(candidate_workspace, flow, request)
+            create_step_workspaces = getattr(flow, "create_step_workspaces", None)
+            if callable(create_step_workspaces):
+                create_step_workspaces()
             _prepare_candidate_rerun(candidate_workspace, flow, steps)
             _notify_candidate_rerun_prepared(observer, steps, request)
             if request.patch:
@@ -195,8 +198,15 @@ class FlowAgentRuntimeApi:
         finally:
             self.ecc_api._close_transient_flow_db(flow)
 
-    def _build_flow(self, workspace):
-        flow = build_agent_flow_for_workspace(workspace)
+    def _build_flow(self, workspace, *, create_step_workspaces: bool = True):
+        try:
+            flow = build_agent_flow_for_workspace(
+                workspace, create_step_workspaces=create_step_workspaces
+            )
+        except TypeError as exc:
+            if "create_step_workspaces" not in str(exc):
+                raise
+            flow = build_agent_flow_for_workspace(workspace)
         return flow
 
     def _with_workspace_lock(self, workspace_id: str, operation):
