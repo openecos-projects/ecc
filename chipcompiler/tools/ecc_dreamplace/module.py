@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import ast
 import hashlib
 import json
 import logging
@@ -142,6 +143,8 @@ __all__ = ["DreamplaceModule"]
 
 
 def _runtime_unit(knob_id: str) -> str:
+    if knob_id.endswith("routability_opt"):
+        return "boolean"
     if knob_id.endswith("cell_padding_x"):
         return "dbu"
     if knob_id.endswith("density_weight"):
@@ -175,7 +178,7 @@ def _write_parameter_runtime_report(
     if knob_id not in key_by_knob:
         return
     key, consumer_id = key_by_knob[knob_id]
-    value = getattr(params, key, None)
+    value = _native_parameter_value(workspace, key, getattr(params, key, None))
     status = "used" if value is not None and engine_succeeded else "unknown"
     branch_round_count = None
     if knob_id == "place.routability_opt":
@@ -221,6 +224,22 @@ def _write_parameter_runtime_report(
         json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
     )
     os.replace(temporary, report_path)
+
+
+def _native_parameter_value(workspace: Workspace, key: str, fallback):
+    """Read the parameter dictionary emitted by the native placement runner."""
+    log_path = Path(workspace.directory) / "place_dreamplace" / "log" / "place.log"
+    try:
+        for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            marker = "parameters = "
+            if marker not in line:
+                continue
+            payload = ast.literal_eval(line.split(marker, 1)[1].strip())
+            if isinstance(payload, dict) and key in payload:
+                return payload[key]
+    except (OSError, SyntaxError, ValueError):
+        pass
+    return fallback
 
 
 def _routability_branch_round_count(workspace: Workspace) -> int | None:

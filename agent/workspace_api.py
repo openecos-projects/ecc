@@ -131,7 +131,12 @@ class FlowAgentRuntimeApi:
             raise RuntimeApiError("command_failed", str(exc)) from exc
 
     def _candidate_rerun(self, session, request: CandidateRerunRequest, observer) -> dict:
-        candidate_workspace, candidate_root_ref, parent_flow_sha256 = _create_candidate_workspace(
+        (
+            candidate_workspace,
+            candidate_root_ref,
+            parent_flow_sha256,
+            parent_state_sha256,
+        ) = _create_candidate_workspace(
             self.ecc_api,
             session.workspace,
             request.candidate_id,
@@ -178,6 +183,7 @@ class FlowAgentRuntimeApi:
                     request.target_step,
                     request.end_step,
                     request.execution_scope,
+                    parent_state_sha256,
                 ),
                 "endStep": request.end_step,
                 "executionScope": request.execution_scope,
@@ -297,6 +303,7 @@ def _create_candidate_workspace(
     _reject_workspace_symlinks(source_root)
     candidate_root = _candidate_workspace_root(workspace_root, candidate_id)
     parent_flow_sha256 = _required_file_sha256(source_root / "home" / "flow.json", "flow")
+    parent_state_sha256 = _workspace_state_sha256(source_root)
     candidate_root.parent.mkdir(parents=True, exist_ok=True)
     try:
         candidate_root.parent.resolve().relative_to(workspace_root)
@@ -318,7 +325,26 @@ def _create_candidate_workspace(
         candidate_workspace,
         candidate_root.relative_to(workspace_root).as_posix(),
         parent_flow_sha256,
+        parent_state_sha256,
     )
+
+
+def _workspace_state_sha256(root: Path) -> str:
+    relative_files = (
+        "home/flow.json",
+        "home/parameters.json",
+        "config/floorplan_ecc.json",
+        "config/fixfanout_ecc.json",
+        "config/dreamplace_ecc.json",
+    )
+    hashes = {
+        relative: _required_file_sha256(root / relative, relative)
+        for relative in relative_files
+        if (root / relative).is_file() and not (root / relative).is_symlink()
+    }
+    if not hashes:
+        raise RuntimeApiError("command_failed", "candidate parent state is unavailable")
+    return _stable_hash(hashes)
 
 
 def _parent_workspace_root(workspace) -> Path:
@@ -399,6 +425,7 @@ def _candidate_workspace_receipt(
     target_step: str,
     end_step: str,
     execution_scope: str,
+    parent_state_sha256: str,
 ) -> dict:
     candidate_root = Path(workspace.directory).resolve()
     manifest_path = candidate_root / "analysis" / _CANDIDATE_WORKSPACE_MANIFEST
@@ -412,6 +439,7 @@ def _candidate_workspace_receipt(
         "candidate_root_ref": candidate_root_ref,
         "parent_candidate_root_ref": parent_candidate_root_ref,
         "parent_flow_sha256": parent_flow_sha256,
+        "parent_state_sha256": parent_state_sha256,
         "candidate_flow_sha256": candidate_flow_sha256,
         "target_step": target_step,
         "end_step": end_step,
@@ -419,6 +447,8 @@ def _candidate_workspace_receipt(
     }
     artifacts = {}
     for key, relative in (
+        ("candidate_materialization", "analysis/candidate_materialization.v1.json"),
+        ("candidate_input_binding", "analysis/candidate_input_binding.v1.json"),
         ("parameter_runtime_report", "analysis/parameter_runtime_report.v1.json"),
         ("parameter_application_receipt", "analysis/parameter_application_receipt.v1.json"),
     ):
@@ -430,6 +460,29 @@ def _candidate_workspace_receipt(
             }
     if artifacts:
         manifest["artifacts"] = artifacts
+    replay_path = candidate_root / "analysis" / "candidate_execution_receipt.v1.json"
+    replay = {
+        "schema": "ecc.candidate_execution_receipt.v1",
+        "candidate_id": candidate_id,
+        "candidate_root_ref": candidate_root_ref,
+        "parent_candidate_root_ref": parent_candidate_root_ref,
+        "parent_flow_sha256": parent_flow_sha256,
+        "parent_state_sha256": parent_state_sha256,
+        "target_step": target_step,
+        "end_step": end_step,
+        "execution_scope": execution_scope,
+        "candidate_manifest_sha256": None,
+    }
+    try:
+        write_json_atomic(replay_path, replay)
+    except OSError as exc:
+        raise RuntimeApiError(
+            "command_failed", f"candidate replay receipt write failed: {exc}"
+        ) from exc
+    artifacts["candidate_execution_receipt"] = {
+        "ref": "analysis/candidate_execution_receipt.v1.json",
+        "sha256": _required_file_sha256(replay_path, "candidate replay receipt"),
+    }
     try:
         write_json_atomic(manifest_path, manifest)
     except OSError as exc:
