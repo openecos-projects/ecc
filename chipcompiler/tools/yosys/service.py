@@ -65,7 +65,7 @@ def build_subflow(workspace: Workspace, step: YosysStep) -> dict:
 
 
 def build_config(workspace: Workspace, step: YosysStep) -> dict:
-    return {"path": stringify_paths(workspace.config.get("flow", ""))}
+    return {"path": stringify_paths(workspace.config.get("db", ""))}
 
 
 def build_analysis(workspace: Workspace, step: YosysStep) -> dict:

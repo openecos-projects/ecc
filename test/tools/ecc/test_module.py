@@ -30,10 +30,6 @@ class FakeEcc:
         self.generated_timing_lib_name = "gcd_max.lib"
         self.generated_timing_lib_contents = "library (gcd_max) {}\n"
 
-    def flow_init(self, **kwargs):
-        self.calls.append(("flow_init", kwargs))
-        return True
-
     def init_rcx(self, **kwargs):
         self.calls.append(kwargs)
         return True
@@ -310,7 +306,6 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     module.ecc = FakeEcc()
 
     module.init_config(
-        flow_config=Path("/ws/config/flow.json"),
         db_config=Path("/ws/config/db.json"),
         output_dir=Path("/ws/output"),
         feature_dir=Path("/ws/feature"),
@@ -330,7 +325,6 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     )
 
     assert module.ecc.calls == [
-        ("flow_init", {"flow_config": "/ws/config/flow.json"}),
         (
             "db_init",
             {

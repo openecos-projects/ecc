@@ -32,7 +32,7 @@ def test_workspace_config_generation_leaves_config_root_writable_after_read_only
     init_workspace_config(workspace)
 
     config_mode = config_dir.stat().st_mode
-    copied_config = config_dir / "flow_ecc.json"
+    copied_config = config_dir / "db_ecc.json"
     copied_mode = copied_config.stat().st_mode
     assert config_mode & stat.S_IWUSR
     assert config_mode & stat.S_IXUSR

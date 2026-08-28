@@ -190,7 +190,6 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
         ecc_module = ECCToolsModule()
 
         ecc_module.init_config(
-            flow_config=workspace.config.get("flow"),
             db_config=workspace.config.get("db"),
             output_dir=step.data.dir,
             feature_dir=step.feature.dir,
@@ -227,7 +226,6 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
         ecc_module = ECCToolsModule()
 
         ecc_module.init_config(
-            flow_config=workspace.config.get("flow"),
             db_config=workspace.config.get("db"),
             output_dir=step.data.dir,
             feature_dir=step.feature.dir,
@@ -350,7 +348,6 @@ def run_sta_without_spef(
         if ecc_module is None:
             ecc_module = ECCToolsModule()
             ecc_module.init_config(
-                flow_config=workspace.config.get("flow", ""),
                 db_config=workspace.config.get("db", ""),
                 output_dir=step.data.dir or "",
                 feature_dir=step.feature.dir or "",

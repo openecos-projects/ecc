@@ -82,7 +82,7 @@ def _make_signoff_workspace(
             "signoff": [{"MAX": ["RCworst"]}],
         },
     )
-    for config_name in ("db_ecc.json", "flow_ecc.json", "rcx_ecc.json"):
+    for config_name in ("db_ecc.json", "rcx_ecc.json"):
         _write_json(workspace_dir / "config" / config_name, {})
 
     _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.gds")
@@ -171,7 +171,6 @@ def _make_engine_flow(
     )
     workspace.pdk.sdc = workspace_dir / "origin" / f"{top_module}.sdc"
     workspace.config = {
-        "flow": workspace_dir / "config" / "flow_ecc.json",
         "db": workspace_dir / "config" / "db_ecc.json",
         "RCX": workspace_dir / "config" / "rcx_ecc.json",
         "sta": workspace_dir / "config" / "sta_ecc.json",

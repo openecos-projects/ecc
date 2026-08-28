@@ -159,7 +159,6 @@ class SignoffPackageCollector:
         config_dir = workspace_dir / "config"
         required_configs = {
             "db_ecc.json",
-            "flow_ecc.json",
             "rcx_ecc.json",
             "sta_ecc.json",
         }

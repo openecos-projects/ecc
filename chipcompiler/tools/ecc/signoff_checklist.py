@@ -64,7 +64,6 @@ _REQUIRED_FLOW_STEPS = (
 )
 
 _CONFIG_FILENAMES = {
-    "flow": "flow_ecc.json",
     "db": "db_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",
@@ -508,7 +507,7 @@ def _workspace_items(workspace: Workspace) -> list[dict]:
     origin_sdc = getattr(pdk, "sdc", None)
     if not origin_sdc:
         origin_sdc = next(iter(sorted(origin_directory.glob("*.sdc"))), None)
-    config_keys = ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value)
+    config_keys = ("db", StepEnum.RCX.value, StepEnum.STA.value)
     inputs = (
         (
             "provenance.initial.rtl",

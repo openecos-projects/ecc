@@ -164,7 +164,6 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
         config={
-            "flow": tmp_path / "config" / "flow_ecc.json",
             "db": tmp_path / "config" / "db_ecc.json",
         },
     )
@@ -200,7 +199,6 @@ def test_create_db_engine_uses_def_input_for_lvs_even_when_db_exists(tmp_path, m
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
         config={
-            "flow": tmp_path / "config" / "flow_ecc.json",
             "db": tmp_path / "config" / "db_ecc.json",
         },
     )
@@ -303,7 +301,6 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=techlef, lefs=[lef], libs=[liberty], sdc=sdc),
         config={
-            "flow": tmp_path / "config" / "flow.json",
             "db": tmp_path / "config" / "db.json",
             StepEnum.STA.value: tmp_path / "config" / "sta_ecc.json",
         },
@@ -327,7 +324,6 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
         (
             "init_config",
             {
-                "flow_config": workspace.config["flow"],
                 "db_config": workspace.config["db"],
                 "output_dir": step.data.dir,
                 "feature_dir": step.feature.dir,

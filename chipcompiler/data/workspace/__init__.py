@@ -119,7 +119,6 @@ def log_workspace_step(step: WorkspaceStep, logger: Logger):
 
 
 _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
-    "flow": "flow_ecc.json",
     "db": "db_ecc.json",
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
@@ -133,7 +132,6 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
 }
 
 _LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
-    "flow": "flow_config.json",
     "db": "db_default_config.json",
     StepEnum.CTS.value: "cts_default_config.json",
     StepEnum.DRC.value: "drc_default_config.json",
@@ -149,16 +147,16 @@ _LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
 _STEP_BY_VALUE: Final[dict[str, StepEnum]] = {step.value: step for step in StepEnum}
 
 _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
-    (StepEnum.FLOORPLAN, "ecc"): ("flow", "db", StepEnum.FLOORPLAN.value),
-    (StepEnum.NETLIST_OPT, "ecc"): ("flow", "db", StepEnum.NETLIST_OPT.value),
-    (StepEnum.PLACEMENT, "ecc"): ("flow", "db"),
-    (StepEnum.CTS, "ecc"): ("flow", "db", StepEnum.CTS.value),
-    (StepEnum.ROUTING, "ecc"): ("flow", "db", StepEnum.ROUTING.value),
-    (StepEnum.DRC, "ecc"): ("flow", "db", StepEnum.DRC.value),
-    (StepEnum.LEGALIZATION, "ecc"): ("flow", "db"),
-    (StepEnum.FILLER, "ecc"): ("flow", "db", StepEnum.FILLER.value),
-    (StepEnum.RCX, "ecc"): ("flow", "db", StepEnum.RCX.value),
-    (StepEnum.STA, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
+    (StepEnum.FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
+    (StepEnum.NETLIST_OPT, "ecc"): ("db", StepEnum.NETLIST_OPT.value),
+    (StepEnum.PLACEMENT, "ecc"): ("db",),
+    (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
+    (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
+    (StepEnum.DRC, "ecc"): ("db", StepEnum.DRC.value),
+    (StepEnum.LEGALIZATION, "ecc"): ("db",),
+    (StepEnum.FILLER, "ecc"): ("db", StepEnum.FILLER.value),
+    (StepEnum.RCX, "ecc"): ("db", StepEnum.RCX.value),
+    (StepEnum.STA, "ecc"): ("db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
 }
@@ -181,37 +179,6 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
     }
 
 
-def _migrate_flow_config_paths(flow_path: Path) -> None:
-    from chipcompiler.utility import json_read, json_write
-
-    if not flow_path.is_file():
-        return
-
-    flow = json_read(flow_path)
-    config_paths = flow.get("ConfigPath") if isinstance(flow, dict) else None
-    if not isinstance(config_paths, dict):
-        return
-
-    legacy_to_canonical = {
-        legacy_filename: _WORKSPACE_CONFIG_FILENAMES[config_key]
-        for config_key, legacy_filename in _LEGACY_WORKSPACE_CONFIG_FILENAMES.items()
-    }
-    changed = False
-    for config_key, path_value in config_paths.items():
-        if not isinstance(path_value, str):
-            continue
-        canonical_filename = legacy_to_canonical.get(Path(path_value).name)
-        if canonical_filename is None:
-            continue
-        canonical_path = str(Path(path_value).with_name(canonical_filename))
-        if canonical_path != path_value:
-            config_paths[config_key] = canonical_path
-            changed = True
-
-    if changed and not json_write(flow_path, flow):
-        raise OSError(f"Failed to update migrated flow config: {flow_path}")
-
-
 def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
     """Rename legacy workspace configs before resolving their canonical paths."""
     config_dir = Path(workspace_dir) / "config"
@@ -223,8 +190,6 @@ def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
         canonical_path = config_dir / _WORKSPACE_CONFIG_FILENAMES[config_key]
         if legacy_path.is_file() and not canonical_path.exists():
             legacy_path.rename(canonical_path)
-
-    _migrate_flow_config_paths(config_dir / _WORKSPACE_CONFIG_FILENAMES["flow"])
 
 
 def workspace_config_path(workspace_dir: str | Path, config_key: str) -> Path | None:
@@ -702,20 +667,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
 
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
-
-    flow = json_read(workspace.config["flow"])
-    if "ConfigPath" not in flow:
-        raise FileNotFoundError(
-            f"Flow config missing or corrupt (no 'ConfigPath' key): {workspace.config['flow']}"
-        )
-    flow["ConfigPath"]["idb_path"] = str(workspace.config["db"])
-    flow["ConfigPath"]["ifp_path"] = str(workspace.config[f"{StepEnum.FLOORPLAN.value}"])
-    flow["ConfigPath"].pop("ipl_path", None)
-    flow["ConfigPath"]["irt_path"] = str(workspace.config[f"{StepEnum.ROUTING.value}"])
-    flow["ConfigPath"]["idrc_path"] = str(workspace.config[f"{StepEnum.DRC.value}"])
-    flow["ConfigPath"]["icts_path"] = str(workspace.config[f"{StepEnum.CTS.value}"])
-    if not json_write(workspace.config["flow"], flow):
-        raise OSError(f"Failed to write flow config: {workspace.config['flow']}")
 
     db = json_read(workspace.config["db"])
     if "INPUT" not in db or "LayerSettings" not in db:

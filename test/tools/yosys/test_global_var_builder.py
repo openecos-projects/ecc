@@ -137,7 +137,7 @@ def test_yosys_step_info_stringifies_path_payloads(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="top", top_module="top"),
-        config={"flow": tmp_path / "config" / "flow.json"},
+        config={"db": tmp_path / "config" / "db_ecc.json"},
     )
     step = yosys_builder.build_step(
         workspace=workspace,
@@ -150,7 +150,7 @@ def test_yosys_step_info_stringifies_path_payloads(tmp_path):
     assert get_step_info(workspace, step, "metrics") == {"metrics": str(step.analysis.metrics)}
     assert get_step_info(workspace, step, "subflow") == {"path": str(step.subflow.path)}
     assert get_step_info(workspace, step, "checklist") == {"path": str(step.checklist.path)}
-    assert get_step_info(workspace, step, "config") == {"path": str(workspace.config["flow"])}
+    assert get_step_info(workspace, step, "config") == {"path": str(workspace.config["db"])}
 
 
 def test_plain_verilog_filelist_uses_native_parser(tmp_path):
