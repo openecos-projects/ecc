@@ -22,7 +22,9 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "status",
         "log",
         "config",
+        "doctor",
         "param",
+        "signoff",
         "rpc",
     ):
         assert command in out

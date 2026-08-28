@@ -260,6 +260,47 @@ uv run ecc check --project gcd
 uv run ecc run --project gcd
 ```
 
+### Environment Doctor
+
+`ecc doctor` probes the host environment (PDK, yosys incl. the slang frontend,
+bundled ecc-tools/dreamplace, optional klayout/sizer) and reports
+pass/fail/skip per component with remediation hints. Only required failures
+exit non-zero. `ecc run` performs the same probes for the tools the chosen
+preset needs and fails fast with `env_not_ready` before creating a workspace:
+
+```bash
+uv run ecc doctor                  # inside a project for the PDK probe
+uv run ecc doctor --project gcd --json
+```
+
+### Flow Preset Override
+
+`ecc run --preset <name>` overrides `[flow] preset` for a single run without
+editing `ecc.toml`. Valid names are auto-discovered from
+`chipcompiler/rtl2gds/builder.py` (`rtl2gds | rcx | harden | syn_sta`); the
+`harden` preset is the full synthesis-to-harden chain (13 steps, Harden
+emits GDS + abstract LEF + timing LIB):
+
+```bash
+uv run ecc run --project gcd --preset harden
+```
+
+### Signoff
+
+After a completed flow, inspect and export the signoff package and write the
+text design summary (GUI-parity report):
+
+```bash
+uv run ecc signoff inspect --project gcd       # readiness review (blocked still exits 0)
+uv run ecc signoff export -o gcd.tar.gz --project gcd [--include-debug]
+uv run ecc signoff report --project gcd        # writes runs/<id>/signoff/<design>_design_summary.txt
+```
+
+`inspect`/`export` refresh step analysis first (same as the GUI); `report`
+extracts as-is and defaults the destination to the workspace `signoff/`
+directory. Both project runs (`--project`/`--run-id`) and `--workspace` paths
+are accepted.
+
 The project config is the CLI input surface:
 
 ```toml

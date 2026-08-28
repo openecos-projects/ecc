@@ -169,6 +169,34 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records)
 
 
+def _preflight_environment(preset: str, project: str | None) -> CommandResult | None:
+    """Fail fast when the tools a preset needs are missing. None means ready."""
+    from chipcompiler.cli.inspection import env_probe
+
+    probes = env_probe.probe_environment(env_probe.probe_components_for_preset(preset))
+    failures = [p for p in probes if p.status == env_probe.FAIL]
+    if not failures:
+        return None
+    records = [
+        error_record(
+            "env_not_ready",
+            reason="; ".join(f"{p.component}: {p.remediation or p.detail}" for p in failures),
+            preset=preset,
+            doctor=disclosure_cmd("ecc doctor", project),
+        )
+    ]
+    records.extend(
+        {
+            "component": p.component,
+            "status": p.status,
+            "required": p.required,
+            "remediation": p.remediation,
+        }
+        for p in failures
+    )
+    return CommandResult.err(records)
+
+
 def _canonically_inside(path: str, anchor: str) -> bool:
     """Return True when path's canonical resolution is anchor or below it."""
     real_base = os.path.realpath(anchor)
@@ -202,8 +230,10 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     ):
         return CommandResult.err([{"kind": "error", "error": "selector_requires_workspace"}])
 
+    from chipcompiler import rtl2gds as rtl2gds_api
     from chipcompiler.cli.project import run_dispatch, run_prepare
 
+    project = ctx.project
     project_dir = ctx.project_dir
 
     cfg = ctx.config
@@ -230,6 +260,26 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             return resolved_cfg
         cfg, flow_config, entry_warnings = resolved_cfg
         layer_warnings.extend(entry_warnings)
+
+    flow_builders = rtl2gds_api.get_flow_builders()
+    effective_preset = command_input.preset or cfg.flow_preset
+    if command_input.preset is not None and effective_preset not in flow_builders:
+        return CommandResult.err(
+            [
+                error_record(
+                    "unsupported_preset",
+                    preset=command_input.preset,
+                    presets=", ".join(sorted(flow_builders)),
+                    inspect=disclosure_cmd("ecc config --resolved", project),
+                )
+            ]
+        )
+    if command_input.preset is not None:
+        # The explicit CLI selection takes precedence over a manifest range
+        # for this invocation without changing either project config file.
+        cfg.flow_preset = effective_preset
+        cfg.manifest_driven = False
+        flow_config = None
 
     cli_overrides = {}
     raw_sets = command_input.param_set
@@ -312,6 +362,10 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
+    preflight = _preflight_environment(effective_preset, project)
+    if preflight is not None:
+        return preflight
+
     return run_dispatch.dispatch_project_run(
         command_input,
         ctx,
@@ -332,6 +386,8 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
 
     if ctx.project is not None or command_input.project.run_id is not None:
         return error("project_workspace_conflict")
+    if command_input.preset is not None:
+        return error("preset_requires_project")
     if command_input.overwrite:
         return error("overwrite_requires_project")
     if command_input.param_set:

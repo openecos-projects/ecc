@@ -73,6 +73,14 @@ class SignoffPackageCollector:
     def __init__(self, workspace: Workspace):
         self.workspace = workspace
 
+    def text_report(self) -> str:
+        """GUI-parity text design summary for this workspace.
+
+        The implementation lives in engine.signoff.report to keep this module
+        from growing further; re-exported below as the public entry point.
+        """
+        return generate_text_report(self.workspace)
+
     def collect(
         self,
         options: SignoffPackageOptions | None = None,
@@ -1303,3 +1311,8 @@ class SignoffPackageCollector:
             StepEnum.STA.value: "sta_ecc",
             StepEnum.HARDEN.value: "Harden_ecc",
         }
+
+
+# Public entry point for the text design summary; the implementation lives in
+# the engine.signoff.report* sibling modules, re-exported here as the API.
+from chipcompiler.engine.signoff.report import generate_text_report  # noqa: E402,F401
