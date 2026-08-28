@@ -21,6 +21,7 @@ from ..parameter import (
 from ..pdk import PDK, get_pdk
 from ..step import StateEnum, StepEnum
 from .layout import EccData, WorkspaceStepBase
+from .sdc import create_default_sdc
 
 # The shared step type used as the annotation/constructor across the codebase.
 WorkspaceStep = WorkspaceStepBase
@@ -1470,24 +1471,3 @@ def log_flow(workspace: Workspace):
             format_string(step.get("state", "")),
             format_string(step.get("runtime", "")),
         )
-
-
-def create_default_sdc(workspace: Workspace):
-    """
-    Create SDC file based on PDK and workspace parameters.
-    """
-    sdc_content = []
-    sdc_content.append("# Auto-generated SDC file\n")
-    sdc_content.append("\n")
-    sdc_content.append("set clk_name {} \n".format(workspace.parameters.data.get("Clock", "")))
-    sdc_content.append("set clk_port_name {}\n".format(workspace.parameters.data.get("Clock", "")))
-    sdc_content.append(
-        "set clk_freq_mhz {}\n".format(workspace.parameters.data.get("Frequency max [MHz]", 100))
-    )
-    sdc_content.append("set clk_period [expr 1000.0 / $clk_freq_mhz]\n")
-    sdc_content.append("set clk_io_pct 0.2\n")
-    sdc_content.append("set clk_port [get_ports $clk_port_name]\n")
-    sdc_content.append("create_clock -name $clk_name -period $clk_period $clk_port\n")
-
-    with open(workspace.pdk.sdc, "w") as file:
-        file.writelines(sdc_content)
