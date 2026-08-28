@@ -10,6 +10,8 @@ from agent.server import AgentRuntimeServer
 from chipcompiler.runtime.requests import RequestValidationError
 from chipcompiler.runtime.transport import ContentLengthDecoder, encode_content_length_frame
 
+CONTEXT_SHA256 = "sha256:" + "a" * 64
+
 
 def test_agent_methods_keep_the_original_rpc_names():
     assert agent_method_names() == (
@@ -38,6 +40,7 @@ def test_agent_request_normalizes_camel_case_fields():
             "patch": [],
             "executionScope": "full_flow",
             "idempotencyKey": "episode-1.intervention-1",
+            "contextSha256": CONTEXT_SHA256,
             "parentCandidateRootRef": ".agent/candidates/candidate-0",
         },
     )
@@ -50,8 +53,25 @@ def test_agent_request_normalizes_camel_case_fields():
         patch=[],
         execution_scope="full_flow",
         idempotency_key="episode-1.intervention-1",
+        context_sha256=CONTEXT_SHA256,
         parent_candidate_root_ref=".agent/candidates/candidate-0",
     )
+
+
+def test_candidate_rerun_request_requires_context_hash():
+    with pytest.raises(RequestValidationError, match="missing required field: context_sha256"):
+        parse_agent_request_model(
+            CandidateRerunRequest,
+            {
+                "workspaceId": "workspace-1",
+                "targetStep": "place",
+                "endStep": "Harden",
+                "candidateId": "candidate-1",
+                "patch": [{"knob_id": "place.target_density", "value": 0.6}],
+                "executionScope": "full_flow",
+                "idempotencyKey": "episode-1.intervention-1",
+            },
+        )
 
 
 def test_agent_request_rejects_duplicate_aliases():
@@ -83,7 +103,7 @@ def test_candidate_rerun_rejects_a_multi_knob_patch_as_an_invalid_request():
                     "params": {
                         "workspaceId": "workspace-1",
                         "targetStep": "place",
-                        "endStep": "route",
+                        "endStep": "Harden",
                         "candidateId": "candidate-1",
                         "patch": [
                             {"knob_id": "place.target_density", "value": 0.6},
@@ -91,6 +111,7 @@ def test_candidate_rerun_rejects_a_multi_knob_patch_as_an_invalid_request():
                         ],
                         "executionScope": "full_flow",
                         "idempotencyKey": "episode-1.intervention-1",
+                        "contextSha256": CONTEXT_SHA256,
                     },
                 }
             )

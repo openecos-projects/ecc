@@ -39,7 +39,16 @@ def build_parameter_application_receipt(
     if activation.get("status") == "used" and not activation.get("consumers"):
         raise ValueError("used activation requires consumer evidence")
     normalized_tool = dict(tool)
-    normalized_tool.setdefault("source_sha256", None)
+    required_tool = ("name", "revision", "source_sha256")
+    if any(
+        not isinstance(normalized_tool.get(key), str) or not normalized_tool[key].strip()
+        for key in required_tool
+    ):
+        raise ValueError("complete tool metadata is required")
+    if normalized_tool["revision"] == "bound":
+        raise ValueError("bound tool metadata is not allowed")
+    if not _is_sha256(normalized_tool["source_sha256"]):
+        raise ValueError("tool source_sha256 is invalid")
     normalized_materialization = dict(materialization)
     normalized_materialization.setdefault("parent_ref", None)
     payload: dict[str, Any] = {
@@ -71,3 +80,12 @@ def build_parameter_application_receipt(
         )
         os.replace(temporary, destination)
     return payload
+
+
+def _is_sha256(value: str) -> bool:
+    digest = value.removeprefix("sha256:")
+    return (
+        value.startswith("sha256:")
+        and len(digest) == 64
+        and all(character in "0123456789abcdef" for character in digest)
+    )

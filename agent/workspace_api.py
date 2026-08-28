@@ -5,7 +5,7 @@ import shutil
 from hashlib import sha256
 from pathlib import Path
 
-from chipcompiler.runtime.operations import RuntimeOperationConflict
+from chipcompiler.runtime.operations import RuntimeOperationConflict, RuntimeOperationFailed
 from chipcompiler.runtime.requests import WorkspaceIdRequest
 from chipcompiler.runtime.workspace_api import (
     RuntimeApiError,
@@ -24,6 +24,10 @@ from .data import (
     validate_candidate_step_contract,
 )
 from .data.candidate_artifacts import sha256_path, validate_candidate_id, write_json_atomic
+from .data.candidate_materialization import (
+    candidate_written_patch,
+    validate_candidate_materialization_receipt,
+)
 from .data.parameter_application_receipt import build_parameter_application_receipt
 from .engine import AgentEngineFlow
 from .requests import (
@@ -131,19 +135,15 @@ class FlowAgentRuntimeApi:
             raise RuntimeApiError("command_failed", str(exc)) from exc
 
     def _candidate_rerun(self, session, request: CandidateRerunRequest, observer) -> dict:
-        (
-            candidate_workspace,
-            candidate_root_ref,
-            parent_flow_sha256,
-            parent_state_sha256,
-        ) = _create_candidate_workspace(
+        candidate_workspace, candidate_root_ref, parent = _create_candidate_workspace(
             self.ecc_api,
             session.workspace,
             request.candidate_id,
             request.parent_candidate_root_ref,
         )
-        flow = self._build_flow(candidate_workspace, create_step_workspaces=False)
+        flow = None
         try:
+            flow = self._build_flow(candidate_workspace, create_step_workspaces=False)
             create_step_workspaces = getattr(flow, "create_step_workspaces", None)
             if callable(create_step_workspaces):
                 create_step_workspaces(initialize_config=False)
@@ -161,42 +161,36 @@ class FlowAgentRuntimeApi:
                 _reapply_candidate_input(candidate_workspace, flow, request.target_step)
             for step in steps:
                 _run_candidate_step(flow, step, observer=observer)
-            parameter_receipt = None
-            materialization_path = (
-                Path(candidate_workspace.directory)
-                / "analysis"
-                / "candidate_materialization.v1.json"
+            return _candidate_rerun_result(
+                candidate_workspace,
+                request,
+                candidate_root_ref,
+                parent,
+                terminal_state="succeeded",
             )
-            if materialization_path.is_file():
-                parameter_receipt = _candidate_parameter_receipt(
+        except Exception as exc:
+            try:
+                result = _candidate_rerun_result(
                     candidate_workspace,
                     request,
                     candidate_root_ref,
-                    materialization_path,
-                    parent_flow_sha256,
+                    parent,
+                    terminal_state="failed",
                 )
-            result = {
-                "candidateId": request.candidate_id,
-                **_candidate_workspace_receipt(
-                    candidate_workspace,
-                    candidate_root_ref,
-                    request.candidate_id,
-                    parent_flow_sha256,
-                    request.parent_candidate_root_ref,
-                    request.target_step,
-                    request.end_step,
-                    request.execution_scope,
-                    parent_state_sha256,
-                ),
-                "endStep": request.end_step,
-                "executionScope": request.execution_scope,
-                "targetStep": request.target_step,
-            }
-            if parameter_receipt is not None:
-                result["parameterApplicationReceipt"] = parameter_receipt
-            return result
+            except Exception as evidence_error:
+                result = {
+                    "candidateId": request.candidate_id,
+                    "candidateRootRef": candidate_root_ref,
+                    "evidenceError": str(evidence_error),
+                }
+            raise RuntimeOperationFailed(
+                str(exc),
+                code=getattr(exc, "code", "command_failed"),
+                result=result,
+            ) from exc
         finally:
-            self.ecc_api._close_transient_flow_db(flow)
+            if flow is not None:
+                self.ecc_api._close_transient_flow_db(flow)
 
     def _build_flow(self, workspace, *, create_step_workspaces: bool = True):
         try:
@@ -266,6 +260,8 @@ def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
         validate_candidate_id(request.candidate_id)
     except ValueError as exc:
         raise RuntimeApiError("invalid_request", "candidate rerun candidate_id is invalid") from exc
+    if request.end_step != "Harden":
+        raise RuntimeApiError("invalid_request", "candidate rerun end step must be Harden")
     if request.execution_scope != "full_flow":
         raise RuntimeApiError(
             "invalid_request", "candidate rerun execution scope must be full_flow"
@@ -287,6 +283,11 @@ def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
         request.idempotency_key
     ):
         raise RuntimeApiError("invalid_request", "candidate rerun idempotency key is invalid")
+    if (
+        not isinstance(request.context_sha256, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", request.context_sha256) is None
+    ):
+        raise RuntimeApiError("invalid_request", "candidate rerun context_sha256 is invalid")
     if request.parent_candidate_root_ref is not None:
         _validate_parent_candidate_root_ref(request.parent_candidate_root_ref)
 
@@ -309,11 +310,10 @@ def _create_candidate_workspace(
     ecc_api, workspace, candidate_id: str, parent_candidate_root_ref: str | None = None
 ):
     workspace_root = _parent_workspace_root(workspace)
-    source_root = _candidate_parent_root(workspace_root, parent_candidate_root_ref)
-    _reject_workspace_symlinks(source_root)
+    _reject_workspace_symlinks(_candidate_parent_root(workspace_root, parent_candidate_root_ref))
+    parent = _candidate_parent_binding(workspace_root, parent_candidate_root_ref)
+    source_root = parent["root"]
     candidate_root = _candidate_workspace_root(workspace_root, candidate_id)
-    parent_flow_sha256 = _required_file_sha256(source_root / "home" / "flow.json", "flow")
-    parent_state_sha256 = _workspace_state_sha256(source_root)
     candidate_root.parent.mkdir(parents=True, exist_ok=True)
     try:
         candidate_root.parent.resolve().relative_to(workspace_root)
@@ -334,8 +334,7 @@ def _create_candidate_workspace(
     return (
         candidate_workspace,
         candidate_root.relative_to(workspace_root).as_posix(),
-        parent_flow_sha256,
-        parent_state_sha256,
+        parent,
     )
 
 
@@ -346,6 +345,7 @@ def _workspace_state_sha256(root: Path) -> str:
         "config/floorplan_ecc.json",
         "config/fixfanout_ecc.json",
         "config/dreamplace_ecc.json",
+        "config/dreamplace.json",
     )
     hashes = {
         relative: _required_file_sha256(root / relative, relative)
@@ -393,6 +393,51 @@ def _candidate_parent_root(workspace_root: Path, candidate_root_ref: str | None)
     return resolved
 
 
+def _candidate_parent_binding(workspace_root: Path, candidate_root_ref: str | None) -> dict:
+    source = _candidate_parent_root(workspace_root, candidate_root_ref)
+    flow_sha256 = _required_file_sha256(source / "home" / "flow.json", "parent flow")
+    state_sha256 = _workspace_state_sha256(source)
+    binding = {
+        "root": source,
+        "root_ref": candidate_root_ref,
+        "flow_sha256": flow_sha256,
+        "state_sha256": state_sha256,
+        "manifest_ref": None,
+        "manifest_sha256": None,
+    }
+    if candidate_root_ref is None:
+        return binding
+    manifest_ref = f"{candidate_root_ref}/analysis/{_CANDIDATE_WORKSPACE_MANIFEST}"
+    manifest_path = workspace_root / manifest_ref
+    manifest_sha256 = _required_file_sha256(manifest_path, "parent manifest")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeApiError("command_failed", "candidate parent manifest is invalid") from exc
+    expected = {
+        "schema": _CANDIDATE_WORKSPACE_SCHEMA,
+        "schema_version": 1,
+        "candidate_id": Path(candidate_root_ref).name,
+        "candidate_root_ref": candidate_root_ref,
+        "candidate_flow_sha256": flow_sha256,
+        "candidate_state_sha256": state_sha256,
+        "terminal_state": "succeeded",
+        "end_step": "Harden",
+        "execution_scope": "full_flow",
+    }
+    if not isinstance(manifest, dict) or any(
+        manifest.get(key) != value for key, value in expected.items()
+    ):
+        raise RuntimeApiError(
+            "command_failed", "candidate parent is not a verified successful Harden candidate"
+        )
+    return {
+        **binding,
+        "manifest_ref": manifest_ref,
+        "manifest_sha256": manifest_sha256,
+    }
+
+
 def _reject_workspace_symlinks(workspace_root: Path) -> None:
     for directory, directories, files in os.walk(workspace_root, followlinks=False):
         for name in directories + files:
@@ -430,27 +475,31 @@ def _candidate_workspace_receipt(
     workspace,
     candidate_root_ref: str,
     candidate_id: str,
-    parent_flow_sha256: str,
-    parent_candidate_root_ref: str | None,
+    parent: dict,
     target_step: str,
     end_step: str,
     execution_scope: str,
-    parent_state_sha256: str,
+    terminal_state: str,
 ) -> dict:
     candidate_root = Path(workspace.directory).resolve()
     manifest_path = candidate_root / "analysis" / _CANDIDATE_WORKSPACE_MANIFEST
     if manifest_path.parent.is_symlink():
         raise RuntimeApiError("command_failed", "candidate manifest path is unsafe")
     candidate_flow_sha256 = _required_file_sha256(candidate_root / "home" / "flow.json", "flow")
+    candidate_state_sha256 = _workspace_state_sha256(candidate_root)
     manifest = {
         "schema": _CANDIDATE_WORKSPACE_SCHEMA,
         "schema_version": 1,
         "candidate_id": candidate_id,
         "candidate_root_ref": candidate_root_ref,
-        "parent_candidate_root_ref": parent_candidate_root_ref,
-        "parent_flow_sha256": parent_flow_sha256,
-        "parent_state_sha256": parent_state_sha256,
+        "parent_candidate_root_ref": parent["root_ref"],
+        "parent_manifest_ref": parent["manifest_ref"],
+        "parent_manifest_sha256": parent["manifest_sha256"],
+        "parent_flow_sha256": parent["flow_sha256"],
+        "parent_state_sha256": parent["state_sha256"],
         "candidate_flow_sha256": candidate_flow_sha256,
+        "candidate_state_sha256": candidate_state_sha256,
+        "terminal_state": terminal_state,
         "target_step": target_step,
         "end_step": end_step,
         "execution_scope": execution_scope,
@@ -468,20 +517,27 @@ def _candidate_workspace_receipt(
                 "ref": relative,
                 "sha256": _required_file_sha256(artifact, key),
             }
-    if artifacts:
-        manifest["artifacts"] = artifacts
+    manifest["artifacts"] = artifacts
+    try:
+        write_json_atomic(manifest_path, manifest)
+    except OSError as exc:
+        raise RuntimeApiError("command_failed", f"candidate manifest write failed: {exc}") from exc
+    manifest_sha256 = _required_file_sha256(manifest_path, "manifest")
     replay_path = candidate_root / "analysis" / "candidate_execution_receipt.v1.json"
     replay = {
         "schema": "ecc.candidate_execution_receipt.v1",
         "candidate_id": candidate_id,
         "candidate_root_ref": candidate_root_ref,
-        "parent_candidate_root_ref": parent_candidate_root_ref,
-        "parent_flow_sha256": parent_flow_sha256,
-        "parent_state_sha256": parent_state_sha256,
+        "parent_candidate_root_ref": parent["root_ref"],
+        "parent_manifest_ref": parent["manifest_ref"],
+        "parent_manifest_sha256": parent["manifest_sha256"],
+        "parent_flow_sha256": parent["flow_sha256"],
+        "parent_state_sha256": parent["state_sha256"],
+        "terminal_state": terminal_state,
         "target_step": target_step,
         "end_step": end_step,
         "execution_scope": execution_scope,
-        "candidate_manifest_sha256": None,
+        "candidate_manifest_sha256": manifest_sha256,
     }
     try:
         write_json_atomic(replay_path, replay)
@@ -489,20 +545,61 @@ def _candidate_workspace_receipt(
         raise RuntimeApiError(
             "command_failed", f"candidate replay receipt write failed: {exc}"
         ) from exc
-    artifacts["candidate_execution_receipt"] = {
-        "ref": "analysis/candidate_execution_receipt.v1.json",
-        "sha256": _required_file_sha256(replay_path, "candidate replay receipt"),
-    }
-    try:
-        write_json_atomic(manifest_path, manifest)
-    except OSError as exc:
-        raise RuntimeApiError("command_failed", f"candidate manifest write failed: {exc}") from exc
-    manifest_sha256 = _required_file_sha256(manifest_path, "manifest")
     return {
         "candidateRootRef": candidate_root_ref,
         "candidateManifestRef": f"{candidate_root_ref}/analysis/{_CANDIDATE_WORKSPACE_MANIFEST}",
         "candidateManifestSha256": manifest_sha256,
     }
+
+
+def _candidate_rerun_result(
+    workspace,
+    request,
+    candidate_root_ref: str,
+    parent: dict,
+    *,
+    terminal_state: str,
+) -> dict:
+    materialization_path = (
+        Path(workspace.directory) / "analysis" / "candidate_materialization.v1.json"
+    )
+    parameter_receipt = None
+    evidence_error = None
+    if materialization_path.is_file():
+        try:
+            parameter_receipt = _candidate_parameter_receipt(
+                workspace,
+                request,
+                candidate_root_ref,
+                materialization_path,
+                parent["flow_sha256"],
+                parent,
+            )
+        except Exception as exc:
+            if terminal_state == "succeeded":
+                raise
+            evidence_error = str(exc)
+    result = {
+        "candidateId": request.candidate_id,
+        **_candidate_workspace_receipt(
+            workspace,
+            candidate_root_ref,
+            request.candidate_id,
+            parent,
+            request.target_step,
+            request.end_step,
+            request.execution_scope,
+            terminal_state,
+        ),
+        "endStep": request.end_step,
+        "executionScope": request.execution_scope,
+        "targetStep": request.target_step,
+    }
+    if parameter_receipt is not None:
+        result["parameterApplicationReceipt"] = parameter_receipt
+    if evidence_error is not None:
+        result["evidenceError"] = evidence_error
+    return result
 
 
 def _candidate_parameter_receipt(
@@ -511,27 +608,25 @@ def _candidate_parameter_receipt(
     candidate_root_ref: str,
     materialization_path: Path,
     parent_flow_sha256: str | None = None,
+    parent: dict | None = None,
 ) -> dict:
-    materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
-    configs = materialization.get("configs") or [{}]
-    config = configs[0]
+    expected_path = Path(workspace.directory) / "analysis" / "candidate_materialization.v1.json"
+    if materialization_path.resolve() != expected_path.resolve():
+        raise RuntimeApiError("command_failed", "candidate materialization path is invalid")
+    materialization = validate_candidate_materialization_receipt(workspace, request.target_step)
+    if materialization is None:
+        raise RuntimeApiError("command_failed", "candidate materialization receipt is missing")
     patch = request.patch[0]
+    if materialization["candidate_id"] != request.candidate_id or materialization[
+        "patch"
+    ] != candidate_written_patch(workspace, request.target_step, request.patch):
+        raise RuntimeApiError(
+            "command_failed", "candidate materialization request binding is invalid"
+        )
+    config = materialization["configs"][0]
+    snapshot = materialization["snapshots"][0]
     knob_id = patch["knob_id"]
     unit = _parameter_unit(knob_id)
-    h = sha256(materialization_path.read_bytes()).hexdigest()
-    digest = f"sha256:{h}"
-    runtime_report_path = (
-        Path(workspace.directory) / "analysis" / "parameter_runtime_report.v1.json"
-    )
-    try:
-        runtime_report = json.loads(runtime_report_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        runtime_report = {
-            "application_status": "unknown",
-            "activation": {"status": "unknown", "consumers": []},
-            "effective_initial": {"value": None, "unit": unit},
-            "effective_final": {"value": None, "unit": unit},
-        }
     tool_name = (
         "ECC-Floorplan"
         if knob_id.startswith("floorplan.")
@@ -539,6 +634,24 @@ def _candidate_parameter_receipt(
         if knob_id == "synth.max_fanout"
         else "DREAMPlace"
     )
+    runtime_report_path = (
+        Path(workspace.directory) / "analysis" / "parameter_runtime_report.v1.json"
+    )
+    try:
+        runtime_report = json.loads(runtime_report_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeApiError("command_failed", "candidate runtime report is unavailable") from exc
+    runtime_tool = runtime_report.get("tool") if isinstance(runtime_report, dict) else None
+    if (
+        not isinstance(runtime_tool, dict)
+        or runtime_tool.get("name") != tool_name
+        or not isinstance(runtime_tool.get("revision"), str)
+        or not runtime_tool["revision"].strip()
+        or not isinstance(runtime_tool.get("source_sha256"), str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", runtime_tool["source_sha256"]) is None
+    ):
+        raise RuntimeApiError("command_failed", "candidate runtime report tool binding is invalid")
+    tool = {key: runtime_tool[key] for key in ("name", "revision", "source_sha256")}
     receipt_path = Path(workspace.directory) / "analysis" / "parameter_application_receipt.v1.json"
     context = (
         _parameter_receipt_context(workspace, request, parent_flow_sha256)
@@ -549,28 +662,39 @@ def _candidate_parameter_receipt(
             "lattice_version": "ecos.optimization_lattice.v1",
         }
     )
+    context["tool_revision"] = tool["revision"]
+    context["context_sha256"] = request.context_sha256
     requested_value = patch["value"]
+    written_unit = unit
     if knob_id == "place.cell_padding_x":
-        site_width = context.get("site_width_dbu")
-        if type(site_width) is not int or site_width <= 0 or requested_value % site_width:
-            raise RuntimeApiError("command_failed", "cell padding surface unit is unavailable")
-        requested_value //= site_width
+        written_unit = "dbu"
+    parent = parent or {}
     return build_parameter_application_receipt(
         receipt_id=f"parameter-receipt-{request.candidate_id}",
-        tool={"name": tool_name, "revision": "bound"},
+        tool=tool,
         context=context,
         requested={"knob_id": knob_id, "value": requested_value, "unit": unit},
         materialization={
             "receipt_ref": "analysis/candidate_materialization.v1.json",
-            "receipt_sha256": materialization.get("receipt_sha256", digest),
-            "registry_sha256": materialization.get("registry_sha256", digest),
-            "patch_sha256": materialization.get("patch_sha256", digest),
+            "receipt_sha256": materialization["receipt_sha256"],
+            "registry_sha256": materialization["registry_sha256"],
+            "patch_sha256": materialization["patch_sha256"],
             "candidate_ref": candidate_root_ref,
+            "target_step": request.target_step,
             "workspace_ref": candidate_root_ref,
-            "config_before_sha256": config.get("before_sha256", digest),
-            "config_after_sha256": config.get("after_sha256", digest),
-            "written_value": patch["value"],
-            "unit": unit,
+            "config_ref": config["ref"],
+            "config_before_sha256": config["before_sha256"],
+            "config_after_sha256": config["after_sha256"],
+            "before_snapshot_ref": snapshot["before_ref"],
+            "before_snapshot_sha256": snapshot["before_sha256"],
+            "after_snapshot_ref": snapshot["after_ref"],
+            "after_snapshot_sha256": snapshot["after_sha256"],
+            "parent_ref": parent.get("root_ref"),
+            "parent_manifest_ref": parent.get("manifest_ref"),
+            "parent_manifest_sha256": parent.get("manifest_sha256"),
+            "parent_state_sha256": parent.get("state_sha256"),
+            "written_value": materialization["patch"][0]["value"],
+            "unit": written_unit,
         },
         runtime_report=runtime_report,
         destination=receipt_path,
@@ -638,7 +762,6 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         "parent_lineage_sha256": parent_flow_sha256,
         "seed": 0,
         "site_width_dbu": site_width_dbu,
-        "tool_revision": "bound",
         "unit": unit,
     }
     return context

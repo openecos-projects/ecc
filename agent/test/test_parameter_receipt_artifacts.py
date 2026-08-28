@@ -4,33 +4,91 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from agent.data.candidate_artifacts import sha256_path
+from agent.data.candidate_materialization import (
+    CandidateMaterializationError,
+    materialize_candidate_config,
+)
+from agent.data.parameter_application_receipt import build_parameter_application_receipt
 from agent.workspace_api import _candidate_parameter_receipt
 
 HASH = "sha256:" + "a" * 64
+PRODUCER = Path(__file__).parents[2] / "chipcompiler/tools/ecc_dreamplace/module.py"
+TOOL = {
+    "name": "DREAMPlace",
+    "revision": "ecc.dreamplace.parameter_runtime_report.v2",
+    "source_sha256": sha256_path(PRODUCER),
+}
 
 
-def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> None:
-    analysis = tmp_path / "analysis"
-    analysis.mkdir()
-    materialization = analysis / "candidate_materialization.v1.json"
-    materialization.write_text(
+def _write_unknown_runtime_report(analysis: Path) -> None:
+    (analysis / "parameter_runtime_report.v1.json").write_text(
         json.dumps(
             {
-                "patch": [{"knob_id": "place.target_density", "value": 0.85}],
-                "configs": [{}],
+                "tool": TOOL,
+                "application_status": "unknown",
+                "activation": {"status": "unknown", "consumers": []},
+                "effective_initial": {"value": None, "unit": "ratio"},
+                "effective_final": {"value": None, "unit": "ratio"},
             }
         ),
         encoding="utf-8",
     )
+
+
+def _materialized_workspace(
+    tmp_path: Path,
+    *,
+    candidate_id: str,
+    knob_id: str,
+    before: object,
+    written: object,
+) -> tuple[SimpleNamespace, Path]:
+    tech = tmp_path / "pdk" / "tech.lef"
+    tech.parent.mkdir(parents=True)
+    tech.write_text(
+        "UNITS\n  DATABASE MICRONS 1000 ;\nEND UNITS\nSITE core7\n  SIZE 0.2 BY 1.4 ;\nEND core7\n",
+        encoding="utf-8",
+    )
+    config = tmp_path / "config" / "dreamplace.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(json.dumps({knob_id.removeprefix("place."): before}), encoding="utf-8")
+    workspace = SimpleNamespace(
+        directory=tmp_path,
+        config={"dreamplace": config},
+        pdk=SimpleNamespace(tech=tech, site_core="core7"),
+        flow=SimpleNamespace(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+    )
+    materialize_candidate_config(
+        workspace,
+        "place",
+        [{"knob_id": knob_id, "value": written}],
+        candidate_id,
+    )
+    return workspace, tmp_path / "analysis" / "candidate_materialization.v1.json"
+
+
+def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> None:
+    workspace, materialization = _materialized_workspace(
+        tmp_path,
+        candidate_id="candidate-1",
+        knob_id="place.target_density",
+        before=0.5,
+        written=0.85,
+    )
+    analysis = tmp_path / "analysis"
+    _write_unknown_runtime_report(analysis)
     request = SimpleNamespace(
         candidate_id="candidate-1",
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
+        context_sha256=HASH,
     )
 
     receipt = _candidate_parameter_receipt(
-        SimpleNamespace(directory=tmp_path),
+        workspace,
         request,
         ".agent/candidates/candidate-1",
         materialization,
@@ -40,50 +98,80 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
     assert receipt_path.is_file()
     assert json.loads(receipt_path.read_text(encoding="utf-8")) == receipt
     assert sha256_path(receipt_path) is not None
+    assert receipt["tool"] == TOOL
+    materialization_ref = receipt["materialization"]
+    assert materialization_ref["target_step"] == "place"
+    assert materialization_ref["config_ref"] == "config/dreamplace.json"
+    assert materialization_ref["before_snapshot_ref"].endswith("dreamplace.before.json")
+    assert materialization_ref["after_snapshot_ref"].endswith("dreamplace.after.json")
+    assert materialization_ref["receipt_sha256"] != materialization_ref["registry_sha256"]
 
 
 def test_cell_padding_receipt_preserves_surface_site_value(tmp_path: Path, monkeypatch) -> None:
-    analysis = tmp_path / "analysis"
-    analysis.mkdir()
-    materialization = analysis / "candidate_materialization.v1.json"
-    materialization.write_text(
-        json.dumps(
-            {
-                "patch": [{"knob_id": "place.cell_padding_x", "value": 200}],
-                "configs": [{}],
-            }
-        ),
-        encoding="utf-8",
+    workspace, materialization = _materialized_workspace(
+        tmp_path,
+        candidate_id="candidate-padding",
+        knob_id="place.cell_padding_x",
+        before=0,
+        written=1,
     )
     request = SimpleNamespace(
         candidate_id="candidate-padding",
         target_step="place",
-        patch=[{"knob_id": "place.cell_padding_x", "value": 200}],
+        patch=[{"knob_id": "place.cell_padding_x", "value": 1}],
+        context_sha256=HASH,
     )
     monkeypatch.setattr(
         "agent.workspace_api._parameter_receipt_context",
         lambda *_args: {"site_width_dbu": 200},
     )
+    _write_unknown_runtime_report(tmp_path / "analysis")
     receipt = _candidate_parameter_receipt(
-        SimpleNamespace(directory=tmp_path),
+        workspace,
         request,
         ".agent/candidates/candidate-padding",
         materialization,
         parent_flow_sha256="sha256:" + "0" * 64,
     )
     assert receipt["requested"] == {"knob_id": "place.cell_padding_x", "value": 1, "unit": "site"}
+    assert receipt["materialization"]["written_value"] == 200
+    assert receipt["materialization"]["unit"] == "dbu"
+
+
+def test_candidate_parameter_receipt_rejects_incomplete_l1(tmp_path: Path) -> None:
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    materialization = analysis / "candidate_materialization.v1.json"
+    materialization.write_text(
+        json.dumps({"patch": [{"knob_id": "place.target_density", "value": 0.85}]}),
+        encoding="utf-8",
+    )
+    request = SimpleNamespace(
+        candidate_id="candidate-1",
+        target_step="place",
+        patch=[{"knob_id": "place.target_density", "value": 0.85}],
+    )
+
+    with pytest.raises(CandidateMaterializationError):
+        _candidate_parameter_receipt(
+            SimpleNamespace(directory=tmp_path),
+            request,
+            ".agent/candidates/candidate-1",
+            materialization,
+        )
 
 
 def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
     tmp_path: Path,
 ) -> None:
-    analysis = tmp_path / "analysis"
-    analysis.mkdir()
-    materialization = analysis / "candidate_materialization.v1.json"
-    materialization.write_text(
-        json.dumps({"patch": [{"knob_id": "place.target_density", "value": 0.2}], "configs": [{}]}),
-        encoding="utf-8",
+    workspace, materialization = _materialized_workspace(
+        tmp_path,
+        candidate_id="candidate-floor",
+        knob_id="place.target_density",
+        before=0.5,
+        written=0.2,
     )
+    analysis = tmp_path / "analysis"
     observation = {
         "requested_target_density": 0.2,
         "effective_target_density": 0.8,
@@ -104,6 +192,7 @@ def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
     (analysis / "parameter_runtime_report.v1.json").write_text(
         json.dumps(
             {
+                "tool": TOOL,
                 "application_status": "applied",
                 "effective_initial": {"value": 0.8, "unit": "ratio"},
                 "effective_final": {"value": 0.8, "unit": "ratio"},
@@ -128,10 +217,11 @@ def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
         candidate_id="candidate-floor",
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.2}],
+        context_sha256=HASH,
     )
 
     receipt = _candidate_parameter_receipt(
-        SimpleNamespace(directory=tmp_path),
+        workspace,
         request,
         ".agent/candidates/candidate-floor",
         materialization,
@@ -139,3 +229,15 @@ def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
 
     assert receipt["consumer_observation"] == observation
     assert receipt["transitions"] == [transition]
+
+
+def test_parameter_receipt_rejects_unbound_tool_metadata() -> None:
+    with pytest.raises(ValueError, match="tool metadata"):
+        build_parameter_application_receipt(
+            receipt_id="parameter-receipt-1",
+            tool={"name": "DREAMPlace", "revision": "bound"},
+            context={"stage": "place"},
+            requested={"knob_id": "place.target_density", "value": 0.85, "unit": "ratio"},
+            materialization={},
+            runtime_report={"activation": {"status": "unknown", "consumers": []}},
+        )

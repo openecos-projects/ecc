@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from agent.data.candidate_artifacts import sha256_path
+from agent.data.candidate_materialization import materialize_candidate_config
 from agent.requests import CandidateRerunRequest
 from agent.workspace_api import (
     FlowAgentRuntimeApi,
@@ -18,6 +19,8 @@ from chipcompiler.data import StateEnum
 from chipcompiler.data.workspace.layout import EccOutput
 from chipcompiler.runtime.operations import RuntimeOperationManager
 from chipcompiler.runtime.workspace_api import RuntimeApiError
+
+CONTEXT_SHA256 = "sha256:" + "a" * 64
 
 
 def test_candidate_artifact_dirs_support_typed_step_outputs(tmp_path):
@@ -89,6 +92,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             {"name": "Floorplan", "tool": "ecc", "state": "Success"},
             {"name": "place", "tool": "dreamplace", "state": "Success"},
             {"name": "CTS", "tool": "ecc", "state": "Success"},
+            {"name": "Harden", "tool": "ecc", "state": "Success"},
         ]
     }
     flow_path = tmp_path / "home" / "flow.json"
@@ -106,6 +110,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         tmp_path / "place_dreamplace" / "output",
         tmp_path / "place_dreamplace" / "analysis",
         tmp_path / "CTS_ecc" / "output",
+        tmp_path / "Harden_ecc" / "output",
     ):
         directory.mkdir(parents=True)
         (directory / "stale").write_text("stale", encoding="utf-8")
@@ -130,6 +135,11 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
                     name="CTS",
                     tool="ecc",
                     output={"dir": root / "CTS_ecc" / "output"},
+                ),
+                SimpleNamespace(
+                    name="Harden",
+                    tool="ecc",
+                    output={"dir": root / "Harden_ecc" / "output"},
                 ),
             ),
         )
@@ -173,11 +183,12 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         CandidateRerunRequest(
             workspace_id="workspace-1",
             target_step="place",
-            end_step="CTS",
+            end_step="Harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
+            context_sha256=CONTEXT_SHA256,
         )
     )
 
@@ -190,11 +201,12 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         CandidateRerunRequest(
             workspace_id="workspace-1",
             target_step="place",
-            end_step="CTS",
+            end_step="Harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
+            context_sha256=CONTEXT_SHA256,
         )
     )
     assert duplicate["operationId"] == result["operationId"]
@@ -211,11 +223,12 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         ("reapply", "place"),
         ("init", "place"),
         ("init", "CTS"),
+        ("init", "Harden"),
     ]
     candidate_root = tmp_path / ".agent" / "candidates" / "candidate-1"
     candidate_root_ref = ".agent/candidates/candidate-1"
     candidate_manifest_ref = f"{candidate_root_ref}/analysis/candidate_workspace.v1.json"
-    assert flows[0].run_calls == [("place", True), ("CTS", True)]
+    assert flows[0].run_calls == [("place", True), ("CTS", True), ("Harden", True)]
     assert flows[0].created is True
     assert flows[0].initialize_config is False
     assert flow_path.read_bytes() == parent_flow_bytes
@@ -223,37 +236,48 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     assert (tmp_path / "place_dreamplace" / "output" / "stale").is_file()
     assert (tmp_path / "place_dreamplace" / "analysis" / "stale").is_file()
     assert (tmp_path / "CTS_ecc" / "output" / "stale").is_file()
+    assert (tmp_path / "Harden_ecc" / "output" / "stale").is_file()
     assert (candidate_root / "config" / "dreamplace.json").read_text(encoding="utf-8") == (
         '{"target_density": 0.6}\n'
     )
     assert not list((candidate_root / "place_dreamplace" / "output").iterdir())
     assert not list((candidate_root / "place_dreamplace" / "analysis").iterdir())
     assert not list((candidate_root / "CTS_ecc" / "output").iterdir())
+    assert not list((candidate_root / "Harden_ecc" / "output").iterdir())
     candidate_manifest = candidate_root / "analysis" / "candidate_workspace.v1.json"
     result = terminal["result"]
     assert {key: value for key, value in result.items() if key != "candidateManifestSha256"} == {
         "candidateId": "candidate-1",
         "candidateManifestRef": candidate_manifest_ref,
         "candidateRootRef": candidate_root_ref,
-        "endStep": "CTS",
+        "endStep": "Harden",
         "executionScope": "full_flow",
         "targetStep": "place",
     }
     assert candidate_manifest.is_file()
     assert result["candidateManifestSha256"] == sha256_path(candidate_manifest)
-    assert (
-        json.loads(candidate_manifest.read_text(encoding="utf-8"))["candidate_id"] == "candidate-1"
+    first_manifest = json.loads(candidate_manifest.read_text(encoding="utf-8"))
+    assert first_manifest["candidate_id"] == "candidate-1"
+    assert first_manifest["terminal_state"] == "succeeded"
+    assert first_manifest["candidate_state_sha256"].startswith("sha256:")
+    assert "candidate_execution_receipt" not in first_manifest["artifacts"]
+    execution_receipt = json.loads(
+        (candidate_root / "analysis" / "candidate_execution_receipt.v1.json").read_text(
+            encoding="utf-8"
+        )
     )
+    assert execution_receipt["candidate_manifest_sha256"] == result["candidateManifestSha256"]
 
     second = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
             target_step="place",
-            end_step="CTS",
+            end_step="Harden",
             candidate_id="candidate-2",
             patch=[{"knob_id": "place.routability_opt", "value": True}],
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-2",
+            context_sha256=CONTEXT_SHA256,
             parent_candidate_root_ref=candidate_root_ref,
         )
     )
@@ -275,6 +299,173 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         ).read_text(encoding="utf-8")
     )
     assert second_manifest["parent_candidate_root_ref"] == candidate_root_ref
+    assert second_manifest["parent_manifest_ref"] == candidate_manifest_ref
+    assert second_manifest["parent_manifest_sha256"] == sha256_path(candidate_manifest)
+    assert second_manifest["parent_state_sha256"] == first_manifest["candidate_state_sha256"]
+
+    first_manifest["terminal_state"] = "failed"
+    candidate_manifest.write_text(json.dumps(first_manifest), encoding="utf-8")
+    rejected = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id="workspace-1",
+            target_step="place",
+            end_step="Harden",
+            candidate_id="candidate-3",
+            patch=[{"knob_id": "place.target_density", "value": 0.7}],
+            execution_scope="full_flow",
+            idempotency_key="episode-1.intervention-3",
+            context_sha256=CONTEXT_SHA256,
+            parent_candidate_root_ref=candidate_root_ref,
+        )
+    )
+    terminal = _wait_for_terminal(api.ecc_api.operations, rejected["operationId"], "failed")
+    assert "verified successful Harden candidate" in terminal["error"]["message"]
+    assert not (tmp_path / ".agent" / "candidates" / "candidate-3").exists()
+
+
+def test_failed_candidate_returns_materialization_application_and_manifest_evidence(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    candidate = tmp_path / ".agent" / "candidates" / "candidate-failed"
+    flow_path = candidate / "home" / "flow.json"
+    flow_path.parent.mkdir(parents=True)
+    flow_path.write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {"name": "place", "tool": "dreamplace", "state": "Success"},
+                    {"name": "Harden", "tool": "ecc", "state": "Success"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = candidate / "config" / "dreamplace.json"
+    config.parent.mkdir(parents=True)
+    config.write_text('{"target_density": 0.5}', encoding="utf-8")
+    candidate_workspace = SimpleNamespace(
+        directory=candidate,
+        config={"dreamplace": config},
+        flow=SimpleNamespace(data=json.loads(flow_path.read_text()), path=flow_path),
+    )
+    parent = {
+        "root": tmp_path,
+        "root_ref": None,
+        "flow_sha256": "sha256:" + "1" * 64,
+        "state_sha256": "sha256:" + "2" * 64,
+        "manifest_ref": None,
+        "manifest_sha256": None,
+    }
+    steps = tuple(
+        SimpleNamespace(name=name, tool=tool, output={})
+        for name, tool in (("place", "dreamplace"), ("Harden", "ecc"))
+    )
+    flow = SimpleNamespace(
+        workspace_steps=steps,
+        create_step_workspaces=lambda **_kwargs: None,
+    )
+    ecc_api = _EccApi(SimpleNamespace(directory=tmp_path))
+    api = FlowAgentRuntimeApi(ecc_api)
+    monkeypatch.setattr(
+        "agent.workspace_api._create_candidate_workspace",
+        lambda *_args: (candidate_workspace, ".agent/candidates/candidate-failed", parent),
+    )
+    monkeypatch.setattr(api, "_build_flow", lambda *_args, **_kwargs: flow)
+    monkeypatch.setattr(
+        "agent.workspace_api._materialize_candidate_rerun",
+        lambda workspace, _flow, request: materialize_candidate_config(
+            workspace, request.target_step, request.patch, request.candidate_id
+        ),
+    )
+    monkeypatch.setattr("agent.workspace_api._prepare_candidate_rerun", lambda *_args: None)
+    monkeypatch.setattr("agent.workspace_api._reapply_candidate_input", lambda *_args: None)
+    tool = {
+        "name": "DREAMPlace",
+        "revision": "ecc.dreamplace.parameter_runtime_report.v2",
+        "source_sha256": "sha256:" + "3" * 64,
+    }
+
+    def run_candidate_step(_flow, step, **_kwargs):
+        if step.name == "place":
+            report = {
+                "tool": tool,
+                "application_status": "applied",
+                "effective_initial": {"value": 0.6, "unit": "ratio"},
+                "effective_final": {"value": 0.6, "unit": "ratio"},
+                "activation": {
+                    "status": "used",
+                    "consumers": [
+                        {
+                            "consumer_id": "dreamplace.density_objective",
+                            "outcome": "entered",
+                            "evidence_ref": "analysis/parameter_runtime_report.v1.json",
+                            "evidence_sha256": "sha256:" + "4" * 64,
+                        }
+                    ],
+                },
+                "consumer_observation": {
+                    "requested_target_density": 0.6,
+                    "effective_target_density": 0.6,
+                    "density_tensor_value": 0.6,
+                    "placement_iteration_count": 3,
+                    "evidence_complete": True,
+                },
+                "transitions": [],
+            }
+            (candidate / "analysis" / "parameter_runtime_report.v1.json").write_text(
+                json.dumps(report), encoding="utf-8"
+            )
+            return
+        raise RuntimeError("Harden failed")
+
+    monkeypatch.setattr("agent.workspace_api._run_candidate_step", run_candidate_step)
+    monkeypatch.setattr(
+        "agent.workspace_api._parameter_receipt_context",
+        lambda *_args: {"site_width_dbu": 200},
+    )
+
+    started = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id="workspace-1",
+            target_step="place",
+            end_step="Harden",
+            candidate_id="candidate-failed",
+            patch=[{"knob_id": "place.target_density", "value": 0.6}],
+            execution_scope="full_flow",
+            idempotency_key="episode-1.failed",
+            context_sha256=CONTEXT_SHA256,
+        )
+    )
+
+    terminal = _wait_for_terminal(ecc_api.operations, started["operationId"], "failed")
+    assert terminal["result"].get("evidenceError") is None, terminal["result"].get("evidenceError")
+    assert "parameterApplicationReceipt" in terminal["result"], terminal
+    application = terminal["result"]["parameterApplicationReceipt"]
+    assert application["application_status"] == "applied"
+    assert application["tool"] == tool
+    assert application["context"]["tool_revision"] == tool["revision"]
+    assert application["context"]["context_sha256"] == CONTEXT_SHA256
+    manifest = json.loads(
+        (candidate / "analysis" / "candidate_workspace.v1.json").read_text(encoding="utf-8")
+    )
+    assert manifest["terminal_state"] == "failed"
+    assert set(manifest["artifacts"]) >= {
+        "candidate_materialization",
+        "parameter_runtime_report",
+        "parameter_application_receipt",
+    }
+    assert "candidate_execution_receipt" not in manifest["artifacts"]
+    assert terminal["result"]["candidateManifestSha256"] == sha256_path(
+        candidate / "analysis" / "candidate_workspace.v1.json"
+    )
+    execution_receipt = json.loads(
+        (candidate / "analysis" / "candidate_execution_receipt.v1.json").read_text(encoding="utf-8")
+    )
+    assert (
+        execution_receipt["candidate_manifest_sha256"]
+        == terminal["result"]["candidateManifestSha256"]
+    )
 
 
 def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(tmp_path):
@@ -287,7 +478,7 @@ def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(t
             CandidateRerunRequest(
                 workspace_id="workspace-1",
                 target_step="place",
-                end_step="CTS",
+                end_step="Harden",
                 candidate_id="candidate-1",
                 patch=[
                     {"knob_id": "place.target_density", "value": 0.6},
@@ -295,6 +486,49 @@ def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(t
                 ],
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
+                context_sha256=CONTEXT_SHA256,
+            )
+        )
+
+    assert ecc_api.operations.workspace_snapshot("workspace-1")["operations"] == []
+
+
+def test_candidate_rerun_rejects_invalid_context_hash_before_starting_an_operation(tmp_path):
+    ecc_api = _EccApi(SimpleNamespace(directory=tmp_path))
+    api = FlowAgentRuntimeApi(ecc_api)
+
+    with pytest.raises(RuntimeApiError, match="context_sha256"):
+        api.candidate_rerun(
+            CandidateRerunRequest(
+                workspace_id="workspace-1",
+                target_step="place",
+                end_step="Harden",
+                candidate_id="candidate-1",
+                patch=[{"knob_id": "place.target_density", "value": 0.6}],
+                execution_scope="full_flow",
+                idempotency_key="episode-1.intervention-1",
+                context_sha256="sha256:invalid",
+            )
+        )
+
+    assert ecc_api.operations.workspace_snapshot("workspace-1")["operations"] == []
+
+
+def test_candidate_rerun_rejects_non_harden_end_step_before_starting_an_operation(tmp_path):
+    ecc_api = _EccApi(SimpleNamespace(directory=tmp_path))
+    api = FlowAgentRuntimeApi(ecc_api)
+
+    with pytest.raises(RuntimeApiError, match="end step must be Harden"):
+        api.candidate_rerun(
+            CandidateRerunRequest(
+                workspace_id="workspace-1",
+                target_step="place",
+                end_step="CTS",
+                candidate_id="candidate-1",
+                patch=[{"knob_id": "place.target_density", "value": 0.6}],
+                execution_scope="full_flow",
+                idempotency_key="episode-1.intervention-1",
+                context_sha256=CONTEXT_SHA256,
             )
         )
 
@@ -310,11 +544,12 @@ def test_candidate_rerun_rejects_unsafe_candidate_id_before_starting_an_operatio
             CandidateRerunRequest(
                 workspace_id="workspace-1",
                 target_step="place",
-                end_step="CTS",
+                end_step="Harden",
                 candidate_id="../escape",
                 patch=[{"knob_id": "place.target_density", "value": 0.6}],
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
+                context_sha256=CONTEXT_SHA256,
             )
         )
 
@@ -332,11 +567,12 @@ def test_candidate_rerun_rejects_unsafe_parent_candidate_ref_before_starting_an_
             CandidateRerunRequest(
                 workspace_id="workspace-1",
                 target_step="place",
-                end_step="CTS",
+                end_step="Harden",
                 candidate_id="candidate-1",
                 patch=[{"knob_id": "place.target_density", "value": 0.6}],
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
+                context_sha256=CONTEXT_SHA256,
                 parent_candidate_root_ref="../outside",
             )
         )
@@ -355,11 +591,12 @@ def test_candidate_rerun_rejects_parent_workspace_symlinks(tmp_path):
         CandidateRerunRequest(
             workspace_id="workspace-1",
             target_step="place",
-            end_step="CTS",
+            end_step="Harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
+            context_sha256=CONTEXT_SHA256,
         )
     )
 
@@ -391,11 +628,12 @@ def test_candidate_rerun_removes_partial_clone_on_copy_failure(monkeypatch, tmp_
         CandidateRerunRequest(
             workspace_id="workspace-1",
             target_step="place",
-            end_step="CTS",
+            end_step="Harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
+            context_sha256=CONTEXT_SHA256,
         )
     )
 

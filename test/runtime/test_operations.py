@@ -3,7 +3,60 @@ from types import SimpleNamespace
 
 from chipcompiler.data import StateEnum
 from chipcompiler.runtime import operations
-from chipcompiler.runtime.operations import RuntimeOperationManager
+from chipcompiler.runtime.operations import RuntimeOperationFailed, RuntimeOperationManager
+
+
+def test_structured_failure_preserves_partial_result() -> None:
+    events = []
+    manager = RuntimeOperationManager(events.append)
+    partial = {"candidateRootRef": ".agent/candidates/candidate-1"}
+
+    def runner(_observer):
+        raise RuntimeOperationFailed("candidate Harden failed", result=partial)
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="candidate_rerun",
+        origin="agent",
+        rerun=True,
+        step="place",
+        idempotency_key="failed-candidate",
+        runner=runner,
+    )
+
+    status = _wait_for_terminal(manager, started["operationId"])
+    assert status["state"] == "failed"
+    assert status["result"] == partial
+    failed = _wait_for_event(events, "operation.failed")
+    assert failed["payload"]["result"] == partial
+
+
+def test_cancelled_operation_preserves_runner_result() -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    manager = RuntimeOperationManager()
+
+    def runner(_observer):
+        entered.set()
+        assert release.wait(timeout=1)
+        return {"candidateRootRef": ".agent/candidates/candidate-1"}
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="candidate_rerun",
+        origin="agent",
+        rerun=True,
+        step="place",
+        idempotency_key="cancelled-candidate",
+        runner=runner,
+    )
+    assert entered.wait(timeout=1)
+    assert manager.request_cancel(started["operationId"])["accepted"] is True
+    release.set()
+
+    status = _wait_for_terminal(manager, started["operationId"])
+    assert status["state"] == "cancelled"
+    assert status["result"] == {"candidateRootRef": ".agent/candidates/candidate-1"}
 
 
 def test_successful_step_waits_for_matching_render_ack_before_completing():
