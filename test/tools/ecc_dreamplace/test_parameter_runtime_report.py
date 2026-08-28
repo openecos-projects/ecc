@@ -6,6 +6,22 @@ from types import SimpleNamespace
 from chipcompiler.tools.ecc_dreamplace.module import _write_parameter_runtime_report
 
 
+class _Scalar:
+    def __init__(self, value):
+        self.value = value
+
+    def item(self):
+        return self.value
+
+
+def _engine(*, target_density=None, cell_padding_x=None):
+    data_collections = SimpleNamespace(target_density=_Scalar(target_density))
+    return SimpleNamespace(
+        placer=SimpleNamespace(data_collections=data_collections),
+        placedb=SimpleNamespace(cell_padding_x=cell_padding_x, num_movable_nodes=12),
+    )
+
+
 def test_runtime_report_records_native_density_consumer(tmp_path):
     analysis = tmp_path / "analysis"
     analysis.mkdir()
@@ -15,11 +31,54 @@ def test_runtime_report_records_native_density_consumer(tmp_path):
     )
     params = SimpleNamespace(target_density=0.85)
     _write_parameter_runtime_report(
-        SimpleNamespace(directory=tmp_path), params, engine_succeeded=True
+        SimpleNamespace(directory=tmp_path),
+        params,
+        engine=_engine(target_density=0.85),
+        ppa={"iteration": 3},
+        engine_succeeded=True,
     )
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
     assert report["activation"]["status"] == "used"
     assert report["activation"]["consumers"][0]["consumer_id"] == "dreamplace.density_objective"
+    assert report["consumer_observation"] == {
+        "density_tensor_value": 0.85,
+        "effective_target_density": 0.85,
+        "evidence_complete": True,
+        "placement_iteration_count": 3,
+        "requested_target_density": 0.85,
+    }
+
+
+def test_runtime_report_records_density_utilization_floor_transition(tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.target_density", "value": 0.2}]}),
+        encoding="utf-8",
+    )
+
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(target_density=0.8),
+        engine=_engine(target_density=0.8),
+        ppa={"iteration": 4},
+        engine_succeeded=True,
+    )
+
+    report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
+    assert report["effective_initial"] == {"unit": "ratio", "value": 0.8}
+    assert report["transitions"] == [
+        {
+            "evidence_ref": "analysis/parameter_runtime_report.v1.json",
+            "evidence_sha256": report["activation"]["consumers"][0]["evidence_sha256"],
+            "from": "materialized",
+            "reason": "DREAMPlace utilization lower bound",
+            "rule_id": "dreamplace.target_density.utilization_floor",
+            "sequence": 0,
+            "to": "overridden",
+            "value": 0.8,
+        }
+    ]
 
 
 def test_runtime_report_does_not_parse_logged_parameter_values(tmp_path):
@@ -36,6 +95,8 @@ def test_runtime_report_does_not_parse_logged_parameter_values(tmp_path):
     _write_parameter_runtime_report(
         SimpleNamespace(directory=tmp_path),
         SimpleNamespace(target_density=0.85),
+        engine=_engine(target_density=0.85),
+        ppa={"iteration": 2},
         engine_succeeded=True,
     )
 
@@ -53,11 +114,74 @@ def test_runtime_report_uses_objective_weight_unit(tmp_path):
     _write_parameter_runtime_report(
         SimpleNamespace(directory=tmp_path),
         SimpleNamespace(density_weight=0.001),
+        engine=SimpleNamespace(),
+        ppa={"iteration": 5, "objective": 12.5},
         engine_succeeded=True,
     )
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
     assert report["effective_initial"]["unit"] == "objective_weight"
     assert report["effective_final"]["unit"] == "objective_weight"
+    assert report["consumer_observation"] == {
+        "configured_density_weight": 0.001,
+        "evidence_complete": True,
+        "final_objective": 12.5,
+        "placement_iteration_count": 5,
+    }
+
+
+def test_runtime_report_records_overflow_predicate_evaluation(tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.target_overflow", "value": 0.1}]}),
+        encoding="utf-8",
+    )
+
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(stop_overflow=0.1),
+        engine=SimpleNamespace(),
+        ppa={"iteration": 7, "overflow": 0.08},
+        engine_succeeded=True,
+    )
+
+    report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
+    assert report["activation"]["status"] == "used"
+    assert report["activation"]["consumers"][0]["outcome"] == "evaluated"
+    assert report["consumer_observation"] == {
+        "effective_stop_overflow": 0.1,
+        "evidence_complete": True,
+        "final_overflow": 0.08,
+        "placement_iteration_count": 7,
+    }
+
+
+def test_runtime_report_preserves_consumed_cell_padding_after_restore(tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.cell_padding_x", "value": 400}]}),
+        encoding="utf-8",
+    )
+
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(cell_padding_x=0),
+        engine=_engine(target_density=0.8, cell_padding_x=200),
+        ppa={"iteration": 3},
+        engine_succeeded=True,
+    )
+
+    report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
+    assert report["effective_initial"] == {"unit": "dbu", "value": 200}
+    assert report["activation"]["status"] == "used"
+    assert report["consumer_observation"] == {
+        "effective_padding_dbu": 200,
+        "evidence_complete": True,
+        "movable_node_count": 12,
+        "placement_iteration_count": 3,
+        "requested_padding_site": 400,
+    }
 
 
 def test_runtime_report_marks_disabled_routability_not_activated(tmp_path):
@@ -68,7 +192,10 @@ def test_runtime_report_marks_disabled_routability_not_activated(tmp_path):
         encoding="utf-8",
     )
     _write_parameter_runtime_report(
-        SimpleNamespace(directory=tmp_path), SimpleNamespace(routability_opt_flag=False)
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(routability_opt_flag=False),
+        engine=SimpleNamespace(),
+        ppa={"iteration": 3},
     )
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
     assert report["activation"]["status"] == "not_activated"
@@ -84,10 +211,12 @@ def test_runtime_report_requires_a_native_routability_round(tmp_path):
     _write_parameter_runtime_report(
         SimpleNamespace(directory=tmp_path),
         SimpleNamespace(routability_opt_flag=True),
+        engine=SimpleNamespace(),
+        ppa={"iteration": 3},
         engine_succeeded=True,
     )
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
-    assert report["activation"]["status"] == "not_activated"
+    assert report["activation"]["status"] == "unknown"
     assert report["consumer_observation"]["evidence_complete"] is False
 
     log_dir = tmp_path / "place_dreamplace" / "log"
@@ -99,6 +228,8 @@ def test_runtime_report_requires_a_native_routability_round(tmp_path):
     _write_parameter_runtime_report(
         SimpleNamespace(directory=tmp_path),
         SimpleNamespace(routability_opt_flag=True),
+        engine=SimpleNamespace(),
+        ppa={"iteration": 3},
         engine_succeeded=True,
     )
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
@@ -110,11 +241,15 @@ def test_runtime_report_does_not_claim_use_before_engine_success(tmp_path):
     analysis = tmp_path / "analysis"
     analysis.mkdir()
     (analysis / "candidate_materialization.v1.json").write_text(
-        json.dumps({"patch": [{"knob_id": "place.target_density", "value": 0.85}]}),
+        json.dumps({"patch": [{"knob_id": "place.target_density", "value": 0.2}]}),
         encoding="utf-8",
     )
     _write_parameter_runtime_report(
-        SimpleNamespace(directory=tmp_path), SimpleNamespace(target_density=0.85)
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(target_density=0.8),
+        engine=_engine(target_density=0.8),
+        ppa={"iteration": 3},
     )
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
     assert report["activation"] == {"status": "unknown", "consumers": []}
+    assert report["transitions"] == []

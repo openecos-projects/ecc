@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import sys
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
@@ -121,12 +121,22 @@ class DreamplaceModule:
             ppa = engine.run()
 
             if ppa.get("hpwl") == float("inf"):
-                _write_parameter_runtime_report(self.workspace, params, engine_succeeded=False)
+                if not legalize_only:
+                    _write_parameter_runtime_report(
+                        self.workspace, engine.params, engine=engine, ppa=ppa
+                    )
                 LOGGER = logging.getLogger(__name__)
                 LOGGER.error("dreamplace failed for %s", self.step.name)
                 return False
 
-            _write_parameter_runtime_report(self.workspace, params, engine_succeeded=True)
+            if not legalize_only:
+                _write_parameter_runtime_report(
+                    self.workspace,
+                    engine.params,
+                    engine=engine,
+                    ppa=ppa,
+                    engine_succeeded=True,
+                )
             return True
 
     def run_placement(self) -> bool:
@@ -152,77 +162,183 @@ def _runtime_unit(knob_id: str) -> str:
 
 
 def _write_parameter_runtime_report(
-    workspace: Workspace, params, *, engine_succeeded: bool = False
+    workspace: Workspace,
+    params,
+    *,
+    engine=None,
+    ppa: dict | None = None,
+    engine_succeeded: bool = False,
 ) -> None:
     """Record the selected candidate knob at the native DreamPlace boundary."""
-    report_path = Path(workspace.directory) / "analysis" / "parameter_runtime_report.v1.json"
-    materialization_path = (
-        Path(workspace.directory) / "analysis" / "candidate_materialization.v1.json"
-    )
-    if not materialization_path.is_file():
-        return
-    try:
-        materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
-        patch = materialization["patch"][0]
-    except (OSError, ValueError, KeyError, IndexError, TypeError):
+    patch = _candidate_patch(workspace)
+    if patch is None:
         return
     knob_id = patch.get("knob_id")
-    key_by_knob = {
-        "place.target_density": ("target_density", "dreamplace.density_objective"),
-        "place.target_overflow": ("stop_overflow", "dreamplace.overflow_predicate"),
-        "place.cell_padding_x": ("cell_padding_x", "dreamplace.cell_size_expansion"),
-        "place.routability_opt": ("routability_opt_flag", "dreamplace.routability_branch"),
-        "place.density_weight": ("density_weight", "dreamplace.density_preconditioner"),
+    consumer_by_knob = {
+        "place.target_density": "dreamplace.density_objective",
+        "place.target_overflow": "dreamplace.overflow_predicate",
+        "place.cell_padding_x": "dreamplace.cell_size_expansion",
+        "place.routability_opt": "dreamplace.routability_branch",
+        "place.density_weight": "dreamplace.density_preconditioner",
     }
-    if knob_id not in key_by_knob:
+    if knob_id not in consumer_by_knob:
         return
-    key, consumer_id = key_by_knob[knob_id]
-    value = getattr(params, key, None)
-    status = "used" if value is not None and engine_succeeded else "unknown"
-    branch_round_count = None
-    if knob_id == "place.routability_opt":
-        branch_round_count = _routability_branch_round_count(workspace)
-        if value in (False, 0):
-            status = "not_activated"
-        elif not engine_succeeded:
-            status = "unknown"
-        else:
-            status = "used" if branch_round_count else "not_activated"
+    consumer_id = consumer_by_knob[knob_id]
+    observation = _consumer_observation(workspace, knob_id, patch.get("value"), params, engine, ppa)
+    value = _effective_value(knob_id, params, observation)
+    status = _activation_status(knob_id, value, observation, engine_succeeded=engine_succeeded)
+    outcome = "evaluated" if knob_id == "place.target_overflow" or status != "used" else "entered"
+    evidence_payload = {
+        "consumer_id": consumer_id,
+        "outcome": outcome,
+        "consumer_observation": observation,
+    }
     evidence = {
         "consumer_id": consumer_id,
-        "outcome": "entered" if status == "used" else "evaluated",
+        "outcome": outcome,
         "evidence_ref": "analysis/parameter_runtime_report.v1.json",
+        "evidence_sha256": _payload_sha256(evidence_payload),
     }
-    evidence["evidence_sha256"] = (
-        "sha256:"
-        + hashlib.sha256(
-            json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
-    )
     report = {
         "application_status": "applied" if value is not None else "unknown",
-        "effective_initial": {
-            "value": value,
-            "unit": _runtime_unit(knob_id),
-        },
-        "effective_final": {
-            "value": value,
-            "unit": _runtime_unit(knob_id),
-        },
+        "effective_initial": {"value": value, "unit": _runtime_unit(knob_id)},
+        "effective_final": {"value": value, "unit": _runtime_unit(knob_id)},
         "activation": {"status": status, "consumers": [evidence] if status != "unknown" else []},
-        "transitions": [],
+        "transitions": (
+            _runtime_transitions(knob_id, patch.get("value"), value, evidence)
+            if status == "used"
+            else []
+        ),
+        "consumer_observation": observation,
     }
-    if knob_id == "place.routability_opt":
-        report["consumer_observation"] = {
-            "branch_round_count": branch_round_count,
-            "evidence_complete": isinstance(branch_round_count, int),
-        }
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = report_path.with_suffix(report_path.suffix + ".tmp")
+    report_path = Path(workspace.directory) / "analysis" / "parameter_runtime_report.v1.json"
+    _write_json_atomic(report_path, report)
+
+
+def _candidate_patch(workspace: Workspace) -> dict | None:
+    path = Path(workspace.directory) / "analysis" / "candidate_materialization.v1.json"
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))["patch"][0]
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return None
+
+
+def _write_json_atomic(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(
-        json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+        json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8"
     )
-    os.replace(temporary, report_path)
+    os.replace(temporary, path)
+
+
+def _consumer_observation(workspace, knob_id, requested, params, engine, ppa) -> dict:
+    ppa = ppa if isinstance(ppa, dict) else {}
+    iterations = ppa.get("iteration")
+    valid_iterations = type(iterations) is int and iterations > 0
+    if knob_id == "place.target_density":
+        data = getattr(
+            getattr(getattr(engine, "placer", None), "data_collections", None),
+            "target_density",
+            None,
+        )
+        tensor_value = _scalar_value(data)
+        effective = _scalar_value(getattr(params, "target_density", None))
+        return {
+            "requested_target_density": requested,
+            "effective_target_density": effective,
+            "density_tensor_value": tensor_value,
+            "placement_iteration_count": iterations,
+            "evidence_complete": valid_iterations and tensor_value == effective,
+        }
+    if knob_id == "place.target_overflow":
+        return {
+            "effective_stop_overflow": _scalar_value(getattr(params, "stop_overflow", None)),
+            "final_overflow": _scalar_value(ppa.get("overflow")),
+            "placement_iteration_count": iterations,
+            "evidence_complete": valid_iterations
+            and _scalar_value(ppa.get("overflow")) is not None,
+        }
+    if knob_id == "place.cell_padding_x":
+        placedb = getattr(engine, "placedb", None)
+        effective = _scalar_value(getattr(placedb, "cell_padding_x", None))
+        movable = getattr(placedb, "num_movable_nodes", None)
+        return {
+            "requested_padding_site": requested,
+            "effective_padding_dbu": effective,
+            "movable_node_count": movable,
+            "placement_iteration_count": iterations,
+            "evidence_complete": valid_iterations
+            and effective is not None
+            and type(movable) is int,
+        }
+    if knob_id == "place.density_weight":
+        return {
+            "configured_density_weight": _scalar_value(getattr(params, "density_weight", None)),
+            "final_objective": _scalar_value(ppa.get("objective")),
+            "placement_iteration_count": iterations,
+            "evidence_complete": valid_iterations
+            and _scalar_value(ppa.get("objective")) is not None,
+        }
+    rounds = _routability_branch_round_count(workspace)
+    return {"branch_round_count": rounds, "evidence_complete": isinstance(rounds, int)}
+
+
+def _effective_value(knob_id: str, params, observation: dict):
+    if knob_id == "place.target_density":
+        return observation["effective_target_density"]
+    if knob_id == "place.cell_padding_x":
+        return observation["effective_padding_dbu"]
+    key = {
+        "place.target_overflow": "stop_overflow",
+        "place.routability_opt": "routability_opt_flag",
+        "place.density_weight": "density_weight",
+    }[knob_id]
+    return _scalar_value(getattr(params, key, None))
+
+
+def _activation_status(knob_id: str, value, observation: dict, *, engine_succeeded: bool) -> str:
+    if knob_id == "place.routability_opt" and value in (False, 0):
+        return "not_activated"
+    if not engine_succeeded or not observation.get("evidence_complete"):
+        return "unknown"
+    if knob_id == "place.routability_opt" and not observation.get("branch_round_count"):
+        return "not_activated"
+    if knob_id == "place.cell_padding_x" and value == 0:
+        return "not_activated"
+    return "used"
+
+
+def _runtime_transitions(knob_id: str, requested, effective, evidence: dict) -> list[dict]:
+    if knob_id != "place.target_density" or not isinstance(requested, (int, float)):
+        return []
+    if not isinstance(effective, (int, float)) or effective <= requested:
+        return []
+    return [
+        {
+            "sequence": 0,
+            "from": "materialized",
+            "to": "overridden",
+            "value": effective,
+            "reason": "DREAMPlace utilization lower bound",
+            "rule_id": "dreamplace.target_density.utilization_floor",
+            "evidence_ref": evidence["evidence_ref"],
+            "evidence_sha256": evidence["evidence_sha256"],
+        }
+    ]
+
+
+def _scalar_value(value):
+    with suppress(AttributeError):
+        value = value.item()
+    return value if type(value) in {bool, int, float} else None
+
+
+def _payload_sha256(payload: dict) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _routability_branch_round_count(workspace: Workspace) -> int | None:

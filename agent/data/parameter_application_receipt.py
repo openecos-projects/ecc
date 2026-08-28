@@ -59,6 +59,8 @@ def build_parameter_application_receipt(
             "effective_final", {"value": None, "unit": requested.get("unit", "")}
         ),
     }
+    if "consumer_observation" in runtime_report:
+        payload["consumer_observation"] = runtime_report["consumer_observation"]
     payload["evidence_sha256"] = _sha256(payload)
     if destination is not None:
         destination = Path(destination)
