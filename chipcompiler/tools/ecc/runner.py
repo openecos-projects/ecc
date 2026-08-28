@@ -49,6 +49,10 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
 )
 
 
+def _runner_source_sha256() -> str:
+    return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
 def temperature_token(temperature) -> str:
     try:
         numeric = float(temperature)
@@ -823,6 +827,11 @@ def _write_floorplan_parameter_runtime_report(
         ).hexdigest()
     )
     report = {
+        "tool": {
+            "name": "ECC-Floorplan",
+            "revision": "ecc.floorplan.parameter_runtime_report.v2",
+            "source_sha256": _runner_source_sha256(),
+        },
         "application_status": "applied" if matches_request else "unknown",
         "effective_initial": {"value": value, "unit": "ratio"},
         "effective_final": {"value": value, "unit": "ratio"},

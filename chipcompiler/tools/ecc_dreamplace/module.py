@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import sys
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -19,6 +18,7 @@ _LEGALIZE_OWNERS = frozenset(
         StepEnum.TIMING_OPT.value,
     }
 )
+DREAMPLACE_RUNTIME_REPORT_REVISION = "ecc.dreamplace.parameter_runtime_report.v2"
 
 
 class DreamplaceModule:
@@ -118,7 +118,9 @@ class DreamplaceModule:
 
             engine = PlacementEngine(params)
             engine.setup_rawdb(ecc_module=self.ecc_module)
-            ppa = engine.run()
+            with _capture_native_runtime() as native_runtime_probe:
+                ppa = engine.run()
+            engine.native_runtime_probe = native_runtime_probe
 
             if ppa.get("hpwl") == float("inf"):
                 if not legalize_only:
@@ -200,6 +202,11 @@ def _write_parameter_runtime_report(
         "evidence_sha256": _payload_sha256(evidence_payload),
     }
     report = {
+        "tool": {
+            "name": "DREAMPlace",
+            "revision": DREAMPLACE_RUNTIME_REPORT_REVISION,
+            "source_sha256": _source_sha256(),
+        },
         "application_status": "applied" if value is not None else "unknown",
         "effective_initial": {"value": value, "unit": _runtime_unit(knob_id)},
         "effective_final": {"value": value, "unit": _runtime_unit(knob_id)},
@@ -254,12 +261,19 @@ def _consumer_observation(workspace, knob_id, requested, params, engine, ppa) ->
             "evidence_complete": valid_iterations and tensor_value == effective,
         }
     if knob_id == "place.target_overflow":
+        overflows = _native_overflow_values(engine)
+        threshold = _scalar_value(getattr(params, "stop_overflow", None))
+        minimum = min(overflows) if overflows else None
         return {
-            "effective_stop_overflow": _scalar_value(getattr(params, "stop_overflow", None)),
+            "effective_stop_overflow": threshold,
             "final_overflow": _scalar_value(ppa.get("overflow")),
             "placement_iteration_count": iterations,
-            "evidence_complete": valid_iterations
-            and _scalar_value(ppa.get("overflow")) is not None,
+            "comparison_count": len(overflows),
+            "minimum_observed_overflow": minimum,
+            "threshold_reached": minimum <= threshold
+            if minimum is not None and threshold is not None
+            else None,
+            "evidence_complete": valid_iterations and bool(overflows) and threshold is not None,
         }
     if knob_id == "place.cell_padding_x":
         placedb = getattr(engine, "placedb", None)
@@ -275,14 +289,26 @@ def _consumer_observation(workspace, knob_id, requested, params, engine, ppa) ->
             and type(movable) is int,
         }
     if knob_id == "place.density_weight":
+        probe = _native_runtime_probe(engine)
+        initializations = probe.get("density_weight_initializations", [])
+        updates = probe.get("density_weight_updates", [])
+        initial = initializations[0] if initializations else None
+        final = (
+            updates[-1]["after"] if updates else initializations[-1] if initializations else None
+        )
         return {
             "configured_density_weight": _scalar_value(getattr(params, "density_weight", None)),
+            "internal_initial_density_weight": initial,
+            "density_weight_updates": updates,
+            "density_weight_update_count": len(updates),
+            "final_internal_density_weight": final,
             "final_objective": _scalar_value(ppa.get("objective")),
             "placement_iteration_count": iterations,
             "evidence_complete": valid_iterations
+            and initial is not None
             and _scalar_value(ppa.get("objective")) is not None,
         }
-    rounds = _routability_branch_round_count(workspace)
+    rounds = _native_runtime_probe(engine).get("routability_branch_round_count")
     return {"branch_round_count": rounds, "evidence_complete": isinstance(rounds, int)}
 
 
@@ -341,11 +367,87 @@ def _payload_sha256(payload: dict) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
-def _routability_branch_round_count(workspace: Workspace) -> int | None:
-    """Count native routability rounds emitted by the placement engine."""
-    log_path = Path(workspace.directory) / "place_dreamplace" / "log" / "place.log"
+def _source_sha256() -> str:
+    return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def _native_runtime_probe(engine) -> dict:
+    probe = getattr(engine, "native_runtime_probe", None)
+    return probe if isinstance(probe, dict) else {}
+
+
+def _native_overflow_values(engine) -> list[float]:
+    metrics = getattr(engine, "metrics", None)
+    values = metrics.get("overflow", []) if isinstance(metrics, dict) else []
+    return [value for item in values if (value := _scalar_value(item)) is not None]
+
+
+def _native_numeric(value):
+    for operation in ("detach", "cpu", "tolist"):
+        with suppress(AttributeError):
+            value = getattr(value, operation)()
+    if type(value) in {int, float}:
+        return value
+    if isinstance(value, list) and value and all(type(item) in {int, float} for item in value):
+        return value
+    return None
+
+
+@contextmanager
+def _capture_native_runtime():
+    from dreamplace.PlaceObj import PlaceObj
+
+    probe = {
+        "density_weight_initializations": [],
+        "density_weight_updates": [],
+        "routability_branch_round_count": 0,
+    }
+    original_init = PlaceObj.__init__
+
+    def observed_init(model, *args, **kwargs):
+        original_init(model, *args, **kwargs)
+        _observe_native_model(model, probe)
+
+    PlaceObj.__init__ = observed_init
     try:
-        text = log_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    return len(re.findall(r"routability optimization round \d+:", text))
+        yield probe
+    finally:
+        PlaceObj.__init__ = original_init
+
+
+def _observe_native_model(model, probe: dict) -> None:
+    initialize = model.initialize_density_weight
+
+    def observed_initialize(*args, **kwargs):
+        result = initialize(*args, **kwargs)
+        if (value := _native_numeric(result)) is not None:
+            probe["density_weight_initializations"].append(value)
+        return result
+
+    model.initialize_density_weight = observed_initialize
+    operations = model.op_collections
+    update = getattr(operations, "update_density_weight_op", None)
+    if callable(update):
+
+        def observed_update(*args, **kwargs):
+            before = _native_numeric(model.density_weight)
+            result = update(*args, **kwargs)
+            after = _native_numeric(model.density_weight)
+            probe["density_weight_updates"].append(
+                {
+                    "sequence": len(probe["density_weight_updates"]),
+                    "before": before,
+                    "after": after,
+                }
+            )
+            return result
+
+        operations.update_density_weight_op = observed_update
+    adjust_area = getattr(operations, "adjust_node_area_op", None)
+    if callable(adjust_area):
+
+        def observed_adjust_area(*args, **kwargs):
+            probe["routability_branch_round_count"] += 1
+            return adjust_area(*args, **kwargs)
+
+        operations.adjust_node_area_op = observed_adjust_area

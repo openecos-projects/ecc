@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,6 +33,12 @@ def test_runtime_report_records_native_core_utilization_consumer(tmp_path):
     _write_floorplan_parameter_runtime_report(SimpleNamespace(directory=tmp_path), config_path)
 
     report = json.loads((tmp_path / "analysis" / "parameter_runtime_report.v1.json").read_text())
+    source_path = Path(_write_floorplan_parameter_runtime_report.__code__.co_filename)
+    assert report["tool"] == {
+        "name": "ECC-Floorplan",
+        "revision": "ecc.floorplan.parameter_runtime_report.v2",
+        "source_sha256": "sha256:" + hashlib.sha256(source_path.read_bytes()).hexdigest(),
+    }
     assert report["activation"]["status"] == "used"
     assert report["activation"]["consumers"][0]["consumer_id"] == (
         "ifp.die_builder.die_utilization"
