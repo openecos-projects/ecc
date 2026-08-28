@@ -192,6 +192,47 @@ class TestRunFlowPreset:
         assert rc == 0
         assert flow_mocks.flow.instances[0].added_steps == markers["build_harden_flow"]
 
+    def test_run_preset_flag_overrides_toml(
+        self, tmp_path, monkeypatch, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+        markers = _patch_all_flow_builders(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--preset", "harden"])
+
+        assert rc == 0
+        assert flow_mocks.flow.instances[0].added_steps == markers["build_harden_flow"]
+
+    def test_run_preset_flag_does_not_edit_toml(
+        self, tmp_path, monkeypatch, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            before = f.read()
+        _patch_all_flow_builders(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--preset", "syn_sta"])
+
+        assert rc == 0
+        with open(toml_path) as f:
+            assert f.read() == before
+
+    def test_run_preset_flag_rejects_unknown_preset(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+        _patch_all_flow_builders(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--preset", "bogus", "--json"])
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 1
+        assert record["error"] == "unsupported_preset"
+        assert record["preset"] == "bogus"
+        assert "rtl2gds" in record["presets"]
+        assert flow_mocks.capture["create_kwargs"] is None
+
     def test_run_forwards_pdk_overrides(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
@@ -423,6 +464,7 @@ class TestWorkspaceRun:
             (["--project", "p", "--workspace", "w"], "project_workspace_conflict"),
             (["--run-id", "r", "--workspace", "w"], "project_workspace_conflict"),
             (["--workspace", "w", "--overwrite"], "overwrite_requires_project"),
+            (["--workspace", "w", "--preset", "rtl2gds"], "preset_requires_project"),
             (["--workspace", "w", "--set", "place.target_density=0.6"], "set_requires_project"),
             (["--workspace", "w", "--resume", "--only", "place"], "selector_conflict"),
             (["--workspace", "w", "--from", "place", "--only", "CTS"], "selector_conflict"),

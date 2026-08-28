@@ -140,6 +140,19 @@ def mock_pdk_validation(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_run_preflight(monkeypatch):
+    """CLI tests must not depend on host tools: stub the run preflight probes.
+
+    Tests that exercise doctor/preflight logic patch probe_environment (or
+    the individual probe functions) themselves, which overrides this stub.
+    """
+    monkeypatch.setattr(
+        "chipcompiler.cli.inspection.env_probe.probe_environment",
+        lambda components, *, cfg=None, include_slang=True: [],
+    )
+
+
 @pytest.fixture(name="create_cli_project")
 def create_cli_project_fixture(tmp_path):
     def factory(name="gcd", pdk_root=None, freq=100.0):

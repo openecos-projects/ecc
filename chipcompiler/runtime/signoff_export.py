@@ -197,6 +197,8 @@ def export_signoff_package_archive(
     workspace,
     output_path: str,
     additional_files: list[dict[str, str]] | None = None,
+    *,
+    include_debug: bool = False,
 ) -> str:
     raw_destination = Path(output_path).expanduser()
     destination = raw_destination.parent.resolve() / raw_destination.name
@@ -206,6 +208,7 @@ def export_signoff_package_archive(
             SignoffPackageOptions(
                 output_dir=temporary_root,
                 archive=False,
+                include_debug=include_debug,
                 refresh_analysis=True,
             )
         )

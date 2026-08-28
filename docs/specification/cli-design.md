@@ -195,11 +195,13 @@ ecc --version
 ecc version
 ecc init
 ecc check
+ecc doctor
 ecc run
 ecc status
 ecc log
 ecc config
 ecc param
+ecc signoff
 ecc rpc
 ```
 
@@ -211,12 +213,20 @@ Responsibilities:
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc init` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
-| `ecc run` | Execute the configured default flow |
+| `ecc doctor` | Probe host environment (PDK, yosys+slang, bundled tools); optional failures do not exit non-zero |
+| `ecc run` | Execute the configured flow (`--preset` overrides `[flow] preset` for one run) |
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
 | `ecc config` | Show user or resolved configuration |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
+| `ecc signoff` | Inspect package readiness, export the tar.gz package, write the text design summary |
 | `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |
+
+`ecc run` preflights the tools its preset needs (yosys for synthesis,
+dreamplace for placement/legalization, ecc-tools always) and fails with
+`env_not_ready` before creating a workspace. `ecc signoff inspect` is
+advisory — a blocked readiness review still exits 0; `ecc signoff export`
+enforces completeness (`signoff_incomplete` on missing required resources).
 
 The former standalone metrics, artifact listing, and diagnosis commands are no
 longer part of the public root command surface. Metrics files and generated

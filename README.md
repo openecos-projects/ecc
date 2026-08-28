@@ -130,11 +130,13 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | --- | --- |
 | `ecc init <name>` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
-| `ecc run` | Run the configured RTL-to-GDS flow |
+| `ecc doctor` | Probe host environment: PDK, yosys (+slang), bundled tools |
+| `ecc run` | Run the configured RTL-to-GDS flow (`--preset` overrides for one run) |
 | `ecc status` | Show run and step status |
 | `ecc log [step]` | Show available logs or step log content |
 | `ecc config [step] --resolved` | Show resolved project or step configuration |
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
+| `ecc signoff` | Inspect readiness, export the signoff package, write the text report |
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc layout-image` | Render a GDS file into a layout image |
 

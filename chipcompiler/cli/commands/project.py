@@ -86,6 +86,13 @@ def run_cmd(
         bool,
         typer.Option("--force", help="Re-execute an already successful --only step"),
     ] = False,
+    preset: Annotated[
+        str | None,
+        typer.Option(
+            "--preset",
+            help="Flow preset for this run only, e.g. --preset harden (does not edit ecc.toml)",
+        ),
+    ] = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     param_set: Annotated[
@@ -107,6 +114,7 @@ def run_cmd(
         from_step=from_step,
         only=only,
         force=force,
+        preset=preset,
     )
     execute_command("run", command_input, project_handlers.run)
 

@@ -28,6 +28,12 @@ class CheckInput:
 
 
 @dataclass(frozen=True)
+class DoctorInput:
+    output: OutputOptions
+    project: ProjectOptions
+
+
+@dataclass(frozen=True)
 class RunInput:
     output: OutputOptions
     project: ProjectOptions
@@ -38,6 +44,7 @@ class RunInput:
     from_step: str | None = None
     only: str | None = None
     force: bool = False
+    preset: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,30 @@ class ConfigInput:
     project: ProjectOptions
     step: str | None = None
     resolved: bool = False
+
+
+@dataclass(frozen=True)
+class SignoffInspectInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
+class SignoffExportInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    workspace: str | None = None
+    output_path: str = ""
+    include_debug: bool = False
+
+
+@dataclass(frozen=True)
+class SignoffReportInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    workspace: str | None = None
+    output_path: str | None = None
 
 
 @dataclass(frozen=True)
