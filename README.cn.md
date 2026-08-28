@@ -30,18 +30,25 @@ GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-s
 
 ## 安装
 
-### 预构建 CLI 包（推荐）
+### 安装脚本（推荐）
 
-从 [GitHub Releases](https://github.com/openecos-projects/ecc/releases) 下载
-`ecc-cli-linux-x86_64.tar.gz`（PyInstaller 打包，Linux x86_64）并解压：
+安装 `ecc` CLI（Linux x86_64，glibc 2.34+）：
 
-```bash
-mkdir -p ~/.local/ecc
-tar -xzf ecc-cli-linux-x86_64.tar.gz -C ~/.local/ecc
-~/.local/ecc/ecc --help
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
 ```
 
-将 `~/.local/ecc` 加入 `PATH` 后即可在任意位置运行 `ecc`。
+同时安装 Yosys（OSS CAD Suite）和 ICS55 PDK：
+
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
+```
+
+wrapper 默认安装到 `~/.local/bin`。如果该目录不在 `PATH` 中，请加入：
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
 
 ### Nix
 
@@ -71,29 +78,9 @@ git submodule update --init --recursive
 以下命令使用已安装的 `ecc`。未安装时，在每条命令前加 `nix run . --`
 （例如 `nix run . -- init gcd`）。
 
-### 前置准备
-
-运行流程需要 Yosys 和 PDK：
-
-**Yosys** —— 从 [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build/releases)
-下载适用于你平台的最新 release，解压后将 ECC 指向解压目录：
-
-```bash
-export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
-```
-
-（通过 Nix flake 运行时不需要——flake 已自带 Yosys。）
-
-**PDK** —— 克隆 [icsprout55-pdk](https://github.com/openecos-projects/icsprout55-pdk)
-并运行 `make unzip` 下载 liberty 文件：
-
-```bash
-git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git
-cd icsprout55-pdk && make unzip && cd ..
-```
-
-然后在 `ecc.toml` 中将 `pdk.root` 设为 PDK 路径（或导出
-`CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/icsprout55-pdk`）。
+如果安装时加了 `--with-toolchain`，Yosys 和 ICS55 PDK 已由 `ecc` wrapper
+配置好。否则请带 `--with-toolchain` 重新运行安装脚本。Nix flake 已自带
+Yosys；未使用安装脚本工具链时需要设置 `pdk.root`。
 
 创建项目并添加 RTL：
 
@@ -102,7 +89,9 @@ ecc init gcd
 cp /path/to/gcd.v gcd/rtl/gcd.v  # 示例设计：docs/examples/gcd/gcd.v
 ```
 
-`ecc init` 会生成 `gcd/ecc.toml`——编辑它并设置你的 PDK 路径：
+`ecc init` 会生成 `gcd/ecc.toml`，按需编辑。未设置
+`CHIPCOMPILER_ICS55_PDK_ROOT` 时必须填写 `pdk.root`（安装脚本
+`--with-toolchain` 的 wrapper 会设置该环境变量）：
 
 ```toml
 [design]
@@ -158,7 +147,7 @@ ecc log --project gcd
 - **完整 RTL-to-GDS 流程** - 综合、布局、布线、时序优化
 - **开源 EDA 集成** - Yosys（综合）、ECC-DreamPlace（布局）、ECC-Tools（布线、签核）、KLayout（查看器）
 - **CLI 自动化** - 可脚本化的命令行流程执行
-- **便携部署** - 预构建 CLI 包或 Nix
+- **便携部署** - 安装脚本或 Nix
 
 ## 🛠️ 集成工具
 

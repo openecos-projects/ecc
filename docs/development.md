@@ -298,18 +298,13 @@ Runtime handling:
 - `get_yosys_runtime()` returns `(command, env)` for subprocess use.
 - `check_slang_plugin()` runs the preflight check `yosys -p "plugin -i slang"`.
 
-If Yosys is not found, download the
-[OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build/releases)
-pre-built package for your platform, extract it, and set:
+If Yosys is not found, install the managed toolchain with the ECC installer
+`--with-toolchain` flag (see the [README](../README.md#installation)). The
+installer wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and
+`CHIPCOMPILER_ICS55_PDK_ROOT`. To point at an existing OSS CAD Suite instead:
 
 ```bash
 export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
-```
-
-Or add Yosys to PATH directly:
-
-```bash
-source /path/to/oss-cad-suite/environment
 ```
 
 ### Sizer

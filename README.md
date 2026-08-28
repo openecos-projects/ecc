@@ -30,19 +30,26 @@ The GUI (ECOS Studio) has been moved to the [ecos-studio](https://github.com/0xh
 
 ## Installation
 
-### Pre-built CLI bundle (recommended)
+### Installer (recommended)
 
-Download `ecc-cli-linux-x86_64.tar.gz` (PyInstaller bundle, Linux x86_64) from
-[GitHub Releases](https://github.com/openecos-projects/ecc/releases) and
-extract it:
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+):
 
-```bash
-mkdir -p ~/.local/ecc
-tar -xzf ecc-cli-linux-x86_64.tar.gz -C ~/.local/ecc
-~/.local/ecc/ecc --help
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
 ```
 
-Add `~/.local/ecc` to your `PATH` to run `ecc` from anywhere.
+To also install Yosys (OSS CAD Suite) and the ICS55 PDK:
+
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
+```
+
+The wrapper is installed to `~/.local/bin` by default. If that directory is not
+on `PATH`, add it:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
 
 ### Nix
 
@@ -73,31 +80,10 @@ set up the workspace.
 The commands below use the installed `ecc`. Without installing, prefix each
 command with `nix run . --` (e.g. `nix run . -- init gcd`).
 
-### Prerequisites
-
-A flow run needs Yosys and a PDK:
-
-**Yosys** — download the latest
-[OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build/releases)
-release for your platform, extract it, and point ECC at the extracted
-directory:
-
-```bash
-export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
-```
-
-(Not needed when running through the Nix flake — it provides Yosys itself.)
-
-**PDK** — clone [icsprout55-pdk](https://github.com/openecos-projects/icsprout55-pdk)
-and run `make unzip` to download the liberty files:
-
-```bash
-git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git
-cd icsprout55-pdk && make unzip && cd ..
-```
-
-Then set `pdk.root` in your `ecc.toml` to the PDK path (or export
-`CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/icsprout55-pdk`).
+If you installed with `--with-toolchain`, Yosys and the ICS55 PDK are already
+configured by the `ecc` wrapper. Otherwise re-run the installer with
+`--with-toolchain`. The Nix flake provides Yosys itself; set `pdk.root` if you
+are not using the installer toolchain.
 
 Create a project and add your RTL:
 
@@ -106,7 +92,9 @@ ecc init gcd
 cp /path/to/gcd.v gcd/rtl/gcd.v  # example design: docs/examples/gcd/gcd.v
 ```
 
-`ecc init` generates `gcd/ecc.toml` — edit it and set your PDK path:
+`ecc init` generates `gcd/ecc.toml`. Edit it as needed. `pdk.root` is required
+unless `CHIPCOMPILER_ICS55_PDK_ROOT` is already set (the installer
+`--with-toolchain` wrapper does this):
 
 ```toml
 [design]
@@ -162,7 +150,7 @@ rerun (`--resume`, `--from`, `--only`), and parameter overrides — see the
 - **Complete RTL-to-GDS Flow** - Synthesis, placement, routing, timing optimization
 - **Open-Source EDA Integration** - Yosys (synthesis), ECC-DreamPlace (placement), ECC-Tools (CTS, routing, signoff), KLayout (viewer)
 - **CLI Automation** - Scriptable flow execution from command line
-- **Portable Deployment** - Pre-built CLI bundles or Nix
+- **Portable Deployment** - Installer or Nix
 
 ## 🛠️ Integrated Tools
 

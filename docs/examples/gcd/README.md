@@ -2,7 +2,7 @@
 
 ## Installation
 
-Ensure you have installed all dependencies as described in the **[README](../../../README.md#Install-All-Dependencies)**.
+Ensure you have installed ECC as described in the **[README](../../../README.md#installation)**.
 
 ## Usage Example
 
