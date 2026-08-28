@@ -21,6 +21,16 @@ def build_rtl2gds_flow() -> list:
     return steps
 
 
+def build_macro_rtl2gds_flow() -> list:
+    steps = build_rtl2gds_flow()
+    macro_placement = (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart)
+    placement_index = next(
+        index for index, (step, _tool, _state) in enumerate(steps) if step is StepEnum.PLACEMENT
+    )
+    steps.insert(placement_index, macro_placement)
+    return steps
+
+
 def build_syn_sta_flow() -> list:
     steps = []
 

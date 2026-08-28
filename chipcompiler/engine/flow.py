@@ -61,6 +61,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
         StepEnum.FLOORPLAN.value,
         StepEnum.NETLIST_OPT.value,
+        StepEnum.MACRO_PLACEMENT.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
         StepEnum.TIMING_OPT.value,

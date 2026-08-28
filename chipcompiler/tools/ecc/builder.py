@@ -87,6 +87,7 @@ def build_step(
             dir=data_dir,
             steps={
                 StepEnum.FLOORPLAN.value: data_dir / "fp",
+                StepEnum.MACRO_PLACEMENT.value: data_dir / "macro_pl",
                 StepEnum.PLACEMENT.value: data_dir / "pl",
                 StepEnum.LEGALIZATION.value: data_dir / "pl",
                 StepEnum.FILLER.value: data_dir / "pl",

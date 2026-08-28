@@ -160,6 +160,7 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
     (StepEnum.RCX, "ecc"): ("flow", "db", StepEnum.RCX.value),
     (StepEnum.STA, "ecc"): ("flow", "db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
+    (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
 }
 
@@ -339,6 +340,8 @@ def _normalize_flow_step_name(value) -> str:
         "floorplan": StepEnum.FLOORPLAN.value,
         "fanout": StepEnum.NETLIST_OPT.value,
         "fixfanout": StepEnum.NETLIST_OPT.value,
+        "macroplace": StepEnum.MACRO_PLACEMENT.value,
+        "macroplacement": StepEnum.MACRO_PLACEMENT.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
         "cts": StepEnum.CTS.value,

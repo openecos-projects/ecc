@@ -461,6 +461,7 @@ def test_step_config_keys_return_workspace_config_keys():
         StepEnum.STA.value,
     )
     assert data_api.step_config_keys("place", "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys("macroPlacement", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("synthesis", "yosys") == ()
     assert data_api.step_config_keys("place", None) == ()
@@ -492,6 +493,17 @@ def test_step_config_keys_accept_exact_internal_step_names_only():
 
     assert data_api.step_config_keys("place", "ECC") == ()
     assert data_api.step_config_keys("place", "DreamPlace") == ()
+
+
+def test_dynamic_flow_normalizes_macro_placement_aliases(monkeypatch):
+    canonical = [
+        (StepEnum.MACRO_PLACEMENT.value, "dreamplace", "Unstart"),
+    ]
+    monkeypatch.setattr(workspace_data, "_canonical_harden_flow_entries", lambda: canonical)
+
+    for alias in ("macroplace", "macroplacement", "macro_placement"):
+        flow = workspace_data.build_dynamic_flow_data({"steps": [alias]})
+        assert [step["name"] for step in flow["steps"]] == [StepEnum.MACRO_PLACEMENT.value]
 
 
 def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
