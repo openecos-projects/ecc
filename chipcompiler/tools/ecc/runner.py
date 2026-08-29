@@ -742,9 +742,6 @@ def run_floorplan(
 
         ecc_module.init_fp(config=workspace.config.get(StepEnum.FLOORPLAN.value, ""))
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value, state=StateEnum.Success)
-        _write_floorplan_parameter_runtime_report(
-            workspace, workspace.config.get(StepEnum.FLOORPLAN.value, "")
-        )
 
         ecc_module.run_fp()
         sub_flow.update_step(step_name=EccSubFlowEnum.create_tracks.value, state=StateEnum.Success)
@@ -812,8 +809,14 @@ def _write_floorplan_parameter_runtime_report(
     requested = patch.get("value")
     mode = die_builder.get("mode")
     matches_request = value == requested
-    status = "used" if mode == "die_util" and value is not None and matches_request else "unknown"
-    if mode != "die_util" and value is not None and matches_request:
+    observation = _floorplan_geometry_observation(feature_path, report_path)
+    complete = _floorplan_observation_complete(observation)
+    status = (
+        "used"
+        if complete and mode == "die_util" and value is not None and matches_request
+        else "unknown"
+    )
+    if complete and mode != "die_util" and value is not None and matches_request:
         status = "not_activated"
     evidence = {
         "consumer_id": consumer_id,
@@ -827,12 +830,14 @@ def _write_floorplan_parameter_runtime_report(
         ).hexdigest()
     )
     report = {
+        "knob_id": knob_id,
+        "requested_value": requested,
         "tool": {
             "name": "ECC-Floorplan",
             "revision": "ecc.floorplan.parameter_runtime_report.v2",
             "source_sha256": _runner_source_sha256(),
         },
-        "application_status": "applied" if matches_request else "unknown",
+        "application_status": "applied" if complete and matches_request else "unknown",
         "effective_initial": {"value": value, "unit": "ratio"},
         "effective_final": {"value": value, "unit": "ratio"},
         "activation": {
@@ -841,7 +846,6 @@ def _write_floorplan_parameter_runtime_report(
         },
         "transitions": [],
     }
-    observation = _floorplan_geometry_observation(feature_path, report_path)
     if observation is not None:
         report["consumer_observation"] = observation
     if feature_path is not None and not _floorplan_observation_complete(observation):

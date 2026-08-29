@@ -35,6 +35,7 @@ class CandidateRerunRequest:
     execution_scope: str
     idempotency_key: str
     context_sha256: str
+    seed: int
     parent_candidate_root_ref: str | None = None
 
 

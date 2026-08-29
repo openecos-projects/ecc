@@ -5,6 +5,7 @@ import shutil
 from hashlib import sha256
 from pathlib import Path
 
+import chipcompiler
 from chipcompiler.runtime.operations import RuntimeOperationConflict, RuntimeOperationFailed
 from chipcompiler.runtime.requests import WorkspaceIdRequest
 from chipcompiler.runtime.workspace_api import (
@@ -288,6 +289,8 @@ def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
         or re.fullmatch(r"sha256:[0-9a-f]{64}", request.context_sha256) is None
     ):
         raise RuntimeApiError("invalid_request", "candidate rerun context_sha256 is invalid")
+    if type(request.seed) is not int:
+        raise RuntimeApiError("invalid_request", "candidate rerun seed is invalid")
     if request.parent_candidate_root_ref is not None:
         _validate_parent_candidate_root_ref(request.parent_candidate_root_ref)
 
@@ -597,6 +600,14 @@ def _candidate_rerun_result(
     }
     if parameter_receipt is not None:
         result["parameterApplicationReceipt"] = parameter_receipt
+        receipt_ref = f"{candidate_root_ref}/analysis/parameter_application_receipt.v1.json"
+        receipt_sha256 = sha256_path(
+            Path(workspace.directory) / "analysis" / "parameter_application_receipt.v1.json"
+        )
+        if receipt_sha256 is None:
+            raise RuntimeApiError("command_failed", "candidate application receipt is unavailable")
+        result["parameterApplicationReceiptRef"] = receipt_ref
+        result["parameterApplicationReceiptSha256"] = receipt_sha256
     if evidence_error is not None:
         result["evidenceError"] = evidence_error
     return result
@@ -641,6 +652,7 @@ def _candidate_parameter_receipt(
         runtime_report = json.loads(runtime_report_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise RuntimeApiError("command_failed", "candidate runtime report is unavailable") from exc
+    _validate_runtime_report_binding(runtime_report, patch, materialization)
     runtime_tool = runtime_report.get("tool") if isinstance(runtime_report, dict) else None
     if (
         not isinstance(runtime_tool, dict)
@@ -653,15 +665,9 @@ def _candidate_parameter_receipt(
         raise RuntimeApiError("command_failed", "candidate runtime report tool binding is invalid")
     tool = {key: runtime_tool[key] for key in ("name", "revision", "source_sha256")}
     receipt_path = Path(workspace.directory) / "analysis" / "parameter_application_receipt.v1.json"
-    context = (
-        _parameter_receipt_context(workspace, request, parent_flow_sha256)
-        if parent_flow_sha256 is not None
-        else {
-            "run_id": request.candidate_id,
-            "stage": request.target_step,
-            "lattice_version": "ecos.optimization_lattice.v1",
-        }
-    )
+    if parent_flow_sha256 is None:
+        raise RuntimeApiError("command_failed", "candidate parent flow fingerprint is unavailable")
+    context = _parameter_receipt_context(workspace, request, parent_flow_sha256)
     context["tool_revision"] = tool["revision"]
     context["context_sha256"] = request.context_sha256
     requested_value = patch["value"]
@@ -745,6 +751,12 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
     )
     knob_name = str(request.patch[0].get("knob_id"))
     unit = _parameter_unit(knob_name)
+    ecc_revision = getattr(chipcompiler, "__version__", None)
+    if not isinstance(ecc_revision, str):
+        raise RuntimeApiError("command_failed", "candidate ECC revision is unavailable")
+    ecc_revision = ecc_revision.strip()
+    if not ecc_revision or ecc_revision == "unknown":
+        raise RuntimeApiError("command_failed", "candidate ECC revision is unavailable")
     context = {
         "run_id": request.candidate_id,
         "design_sha256": design_sha256,
@@ -760,7 +772,8 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         ),
         "pdk_sha256": pdk_sha256,
         "parent_lineage_sha256": parent_flow_sha256,
-        "seed": 0,
+        "seed": request.seed,
+        "ecc_revision": ecc_revision,
         "site_width_dbu": site_width_dbu,
         "unit": unit,
     }
@@ -768,6 +781,7 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
 
 
 def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest) -> None:
+    _remove_stale_parameter_receipts(Path(workspace.directory))
     source_step = _candidate_source_step(flow, request.target_step)
     bind_candidate_input(
         workspace,
@@ -782,6 +796,55 @@ def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest
         request.patch,
         request.candidate_id,
     )
+
+
+def _remove_stale_parameter_receipts(workspace_root: Path) -> None:
+    analysis = workspace_root / "analysis"
+    for name in ("parameter_runtime_report.v1.json", "parameter_application_receipt.v1.json"):
+        path = analysis / name
+        if path.is_symlink():
+            raise RuntimeApiError("command_failed", "candidate parameter receipt path is unsafe")
+        if path.is_file():
+            path.unlink()
+
+
+_RUNTIME_CONSUMERS_BY_KNOB = {
+    "floorplan.core_util": {"ifp.die_builder.die_utilization"},
+    "floorplan.aspect_ratio": {"ifp.die_builder.die_aspect_ratio"},
+    "synth.max_fanout": {"fixfanout.threshold_compare"},
+    "place.target_density": {"dreamplace.density_objective"},
+    "place.target_overflow": {"dreamplace.overflow_predicate"},
+    "place.cell_padding_x": {"dreamplace.cell_size_expansion"},
+    "place.routability_opt": {"dreamplace.routability_branch"},
+    "place.density_weight": {"dreamplace.density_preconditioner"},
+}
+
+
+def _validate_runtime_report_binding(
+    runtime_report: object,
+    patch: dict,
+    materialization: dict,
+) -> None:
+    if not isinstance(runtime_report, dict):
+        raise RuntimeApiError("command_failed", "candidate runtime report is invalid")
+    knob_id = patch["knob_id"]
+    written_patch = materialization["patch"][0]
+    if runtime_report.get("knob_id") != knob_id or runtime_report.get(
+        "requested_value"
+    ) != written_patch.get("value"):
+        raise RuntimeApiError("command_failed", "candidate runtime report binding is invalid")
+    activation = runtime_report.get("activation")
+    consumers = activation.get("consumers", []) if isinstance(activation, dict) else []
+    if not isinstance(consumers, list):
+        raise RuntimeApiError("command_failed", "candidate runtime report consumers are invalid")
+    allowed = _RUNTIME_CONSUMERS_BY_KNOB.get(knob_id, set())
+    if any(
+        not isinstance(consumer, dict) or consumer.get("consumer_id") not in allowed
+        for consumer in consumers
+    ):
+        raise RuntimeApiError(
+            "command_failed", "candidate runtime report consumer binding is invalid"
+        )
 
 
 def _candidate_source_step(flow, target_step: str) -> str:

@@ -26,11 +26,36 @@ def _write_config(tmp_path: Path, *, mode: str, field: str, value: float) -> Pat
     return config_path
 
 
+def _write_geometry_evidence(tmp_path: Path) -> tuple[Path, Path]:
+    feature_path = tmp_path / "feature.json"
+    feature_path.write_text(
+        json.dumps(
+            {
+                "Design Layout": {
+                    "core_area": 800.0,
+                    "core_bounding_width": 40.0,
+                    "core_bounding_height": 20.0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_path = tmp_path / "report.rpt"
+    report_path.write_text("Number - Site | 120\nNumber - Row | 30\n", encoding="utf-8")
+    return feature_path, report_path
+
+
 def test_runtime_report_records_native_core_utilization_consumer(tmp_path):
     _write_candidate(tmp_path, "floorplan.core_util", 0.8)
     config_path = _write_config(tmp_path, mode="die_util", field="utilization", value=0.8)
+    feature_path, report_path = _write_geometry_evidence(tmp_path)
 
-    _write_floorplan_parameter_runtime_report(SimpleNamespace(directory=tmp_path), config_path)
+    _write_floorplan_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        config_path,
+        feature_path=feature_path,
+        report_path=report_path,
+    )
 
     report = json.loads((tmp_path / "analysis" / "parameter_runtime_report.v1.json").read_text())
     source_path = Path(_write_floorplan_parameter_runtime_report.__code__.co_filename)
@@ -49,8 +74,14 @@ def test_runtime_report_records_native_core_utilization_consumer(tmp_path):
 def test_runtime_report_records_native_aspect_ratio_consumer(tmp_path):
     _write_candidate(tmp_path, "floorplan.aspect_ratio", 1.25)
     config_path = _write_config(tmp_path, mode="die_util", field="aspect_ratio", value=1.25)
+    feature_path, report_path = _write_geometry_evidence(tmp_path)
 
-    _write_floorplan_parameter_runtime_report(SimpleNamespace(directory=tmp_path), config_path)
+    _write_floorplan_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        config_path,
+        feature_path=feature_path,
+        report_path=report_path,
+    )
 
     report = json.loads((tmp_path / "analysis" / "parameter_runtime_report.v1.json").read_text())
     assert report["activation"]["status"] == "used"
@@ -59,11 +90,28 @@ def test_runtime_report_records_native_aspect_ratio_consumer(tmp_path):
     )
 
 
+def test_runtime_report_does_not_claim_used_without_geometry_evidence(tmp_path):
+    _write_candidate(tmp_path, "floorplan.core_util", 0.8)
+    config_path = _write_config(tmp_path, mode="die_util", field="utilization", value=0.8)
+
+    _write_floorplan_parameter_runtime_report(SimpleNamespace(directory=tmp_path), config_path)
+
+    report = json.loads((tmp_path / "analysis" / "parameter_runtime_report.v1.json").read_text())
+    assert report["application_status"] == "unknown"
+    assert report["activation"] == {"status": "unknown", "consumers": []}
+
+
 def test_runtime_report_marks_die_size_mode_not_activated(tmp_path):
     _write_candidate(tmp_path, "floorplan.core_util", 0.8)
     config_path = _write_config(tmp_path, mode="die_size", field="utilization", value=0.8)
+    feature_path, report_path = _write_geometry_evidence(tmp_path)
 
-    _write_floorplan_parameter_runtime_report(SimpleNamespace(directory=tmp_path), config_path)
+    _write_floorplan_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        config_path,
+        feature_path=feature_path,
+        report_path=report_path,
+    )
 
     report = json.loads((tmp_path / "analysis" / "parameter_runtime_report.v1.json").read_text())
     assert report["activation"]["status"] == "not_activated"

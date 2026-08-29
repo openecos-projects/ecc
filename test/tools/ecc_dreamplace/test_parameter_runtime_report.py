@@ -195,11 +195,11 @@ def test_runtime_report_preserves_consumed_cell_padding_after_restore(tmp_path):
         "evidence_complete": True,
         "movable_node_count": 12,
         "placement_iteration_count": 3,
-        "requested_padding_site": 400,
+        "requested_padding_dbu": 400,
     }
 
 
-def test_runtime_report_marks_disabled_routability_not_activated(tmp_path):
+def test_runtime_report_does_not_mark_disabled_routability_without_gate_evidence(tmp_path):
     analysis = tmp_path / "analysis"
     analysis.mkdir()
     (analysis / "candidate_materialization.v1.json").write_text(
@@ -213,7 +213,28 @@ def test_runtime_report_marks_disabled_routability_not_activated(tmp_path):
         ppa={"iteration": 3},
     )
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
+    assert report["activation"]["status"] == "unknown"
+    assert report["consumer_observation"]["evidence_complete"] is False
+
+
+def test_runtime_report_marks_disabled_routability_not_activated_with_gate_evidence(tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.routability_opt", "value": False}]}),
+        encoding="utf-8",
+    )
+    _write_parameter_runtime_report(
+        SimpleNamespace(directory=tmp_path),
+        SimpleNamespace(routability_opt_flag=False),
+        engine=SimpleNamespace(native_runtime_probe={"routability_branch_round_count": 0}),
+        ppa={"iteration": 3},
+        engine_succeeded=True,
+    )
+    report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
     assert report["activation"]["status"] == "not_activated"
+    assert report["application_status"] == "applied"
+    assert report["consumer_observation"]["evidence_complete"] is True
 
 
 def test_runtime_report_requires_a_native_routability_round(tmp_path):

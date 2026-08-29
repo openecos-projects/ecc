@@ -13,6 +13,7 @@ from agent.data.candidate_materialization import (
 )
 from agent.data.parameter_application_receipt import build_parameter_application_receipt
 from agent.workspace_api import _candidate_parameter_receipt
+from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 HASH = "sha256:" + "a" * 64
 PRODUCER = Path(__file__).parents[2] / "chipcompiler/tools/ecc_dreamplace/module.py"
@@ -23,10 +24,12 @@ TOOL = {
 }
 
 
-def _write_unknown_runtime_report(analysis: Path) -> None:
+def _write_unknown_runtime_report(analysis: Path, *, knob_id: str, requested_value: object) -> None:
     (analysis / "parameter_runtime_report.v1.json").write_text(
         json.dumps(
             {
+                "knob_id": knob_id,
+                "requested_value": requested_value,
                 "tool": TOOL,
                 "application_status": "unknown",
                 "activation": {"status": "unknown", "consumers": []},
@@ -46,10 +49,21 @@ def _materialized_workspace(
     before: object,
     written: object,
 ) -> tuple[SimpleNamespace, Path]:
-    tech = tmp_path / "pdk" / "tech.lef"
+    tech = tmp_path / "pdk" / "prtech" / "techLEF" / "N551P6M_ecos.lef"
     tech.parent.mkdir(parents=True)
     tech.write_text(
         "UNITS\n  DATABASE MICRONS 1000 ;\nEND UNITS\nSITE core7\n  SIZE 0.2 BY 1.4 ;\nEND core7\n",
+        encoding="utf-8",
+    )
+    origin = tmp_path / "origin"
+    (origin / "rtl").mkdir(parents=True)
+    (origin / "rtl" / "top.v").write_text("module top; endmodule\n", encoding="utf-8")
+    (origin / "constraints.sdc").write_text("create_clock clk\n", encoding="utf-8")
+    (origin / "filelist.f").write_text("rtl/top.v\n", encoding="utf-8")
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "parameters.json").write_text(
+        json.dumps({"PDK Root": str(tmp_path / "pdk")}),
         encoding="utf-8",
     )
     config = tmp_path / "config" / "dreamplace.json"
@@ -79,12 +93,17 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
         written=0.85,
     )
     analysis = tmp_path / "analysis"
-    _write_unknown_runtime_report(analysis)
+    _write_unknown_runtime_report(
+        analysis,
+        knob_id="place.target_density",
+        requested_value=0.85,
+    )
     request = SimpleNamespace(
         candidate_id="candidate-1",
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
+        seed=17,
     )
 
     receipt = _candidate_parameter_receipt(
@@ -92,6 +111,7 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
         request,
         ".agent/candidates/candidate-1",
         materialization,
+        parent_flow_sha256=HASH,
     )
 
     receipt_path = analysis / "parameter_application_receipt.v1.json"
@@ -120,12 +140,17 @@ def test_cell_padding_receipt_preserves_surface_site_value(tmp_path: Path, monke
         target_step="place",
         patch=[{"knob_id": "place.cell_padding_x", "value": 1}],
         context_sha256=HASH,
+        seed=17,
     )
     monkeypatch.setattr(
         "agent.workspace_api._parameter_receipt_context",
         lambda *_args: {"site_width_dbu": 200},
     )
-    _write_unknown_runtime_report(tmp_path / "analysis")
+    _write_unknown_runtime_report(
+        tmp_path / "analysis",
+        knob_id="place.cell_padding_x",
+        requested_value=200,
+    )
     receipt = _candidate_parameter_receipt(
         workspace,
         request,
@@ -150,6 +175,8 @@ def test_candidate_parameter_receipt_rejects_incomplete_l1(tmp_path: Path) -> No
         candidate_id="candidate-1",
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
+        context_sha256=HASH,
+        seed=17,
     )
 
     with pytest.raises(CandidateMaterializationError):
@@ -158,6 +185,7 @@ def test_candidate_parameter_receipt_rejects_incomplete_l1(tmp_path: Path) -> No
             request,
             ".agent/candidates/candidate-1",
             materialization,
+            parent_flow_sha256=HASH,
         )
 
 
@@ -192,6 +220,8 @@ def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
     (analysis / "parameter_runtime_report.v1.json").write_text(
         json.dumps(
             {
+                "knob_id": "place.target_density",
+                "requested_value": 0.2,
                 "tool": TOOL,
                 "application_status": "applied",
                 "effective_initial": {"value": 0.8, "unit": "ratio"},
@@ -218,6 +248,7 @@ def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.2}],
         context_sha256=HASH,
+        seed=17,
     )
 
     receipt = _candidate_parameter_receipt(
@@ -225,10 +256,132 @@ def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
         request,
         ".agent/candidates/candidate-floor",
         materialization,
+        parent_flow_sha256=HASH,
     )
 
     assert receipt["consumer_observation"] == observation
     assert receipt["transitions"] == [transition]
+
+
+def test_candidate_parameter_receipt_rejects_runtime_report_for_another_knob(
+    tmp_path: Path,
+) -> None:
+    workspace, materialization = _materialized_workspace(
+        tmp_path,
+        candidate_id="candidate-density",
+        knob_id="place.target_density",
+        before=0.5,
+        written=0.85,
+    )
+    (tmp_path / "analysis" / "parameter_runtime_report.v1.json").write_text(
+        json.dumps(
+            {
+                "knob_id": "place.density_weight",
+                "requested_value": 0.001,
+                "tool": TOOL,
+                "application_status": "applied",
+                "effective_initial": {"value": 0.001, "unit": "objective_weight"},
+                "effective_final": {"value": 0.001, "unit": "objective_weight"},
+                "activation": {
+                    "status": "used",
+                    "consumers": [
+                        {
+                            "consumer_id": "dreamplace.density_preconditioner",
+                            "outcome": "entered",
+                            "evidence_ref": "analysis/parameter_runtime_report.v1.json",
+                            "evidence_sha256": HASH,
+                        }
+                    ],
+                },
+                "consumer_observation": {"evidence_complete": True},
+                "transitions": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    request = SimpleNamespace(
+        candidate_id="candidate-density",
+        target_step="place",
+        patch=[{"knob_id": "place.target_density", "value": 0.85}],
+        context_sha256=HASH,
+        seed=17,
+    )
+
+    with pytest.raises(RuntimeApiError, match="runtime report"):
+        _candidate_parameter_receipt(
+            workspace,
+            request,
+            ".agent/candidates/candidate-density",
+            materialization,
+            parent_flow_sha256=HASH,
+        )
+
+
+def test_candidate_parameter_receipt_requires_parent_flow_sha256(
+    tmp_path: Path,
+) -> None:
+    workspace, materialization = _materialized_workspace(
+        tmp_path,
+        candidate_id="candidate-no-parent",
+        knob_id="place.target_density",
+        before=0.5,
+        written=0.85,
+    )
+    _write_unknown_runtime_report(
+        tmp_path / "analysis",
+        knob_id="place.target_density",
+        requested_value=0.85,
+    )
+    request = SimpleNamespace(
+        candidate_id="candidate-no-parent",
+        target_step="place",
+        patch=[{"knob_id": "place.target_density", "value": 0.85}],
+        context_sha256=HASH,
+        seed=17,
+    )
+
+    with pytest.raises(RuntimeApiError, match="parent flow"):
+        _candidate_parameter_receipt(
+            workspace,
+            request,
+            ".agent/candidates/candidate-no-parent",
+            materialization,
+        )
+
+
+def test_candidate_parameter_receipt_rejects_stripped_unknown_ecc_revision(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace, materialization = _materialized_workspace(
+        tmp_path,
+        candidate_id="candidate-unknown-revision",
+        knob_id="place.target_density",
+        before=0.5,
+        written=0.85,
+    )
+    _write_unknown_runtime_report(
+        tmp_path / "analysis",
+        knob_id="place.target_density",
+        requested_value=0.85,
+    )
+    request = SimpleNamespace(
+        candidate_id="candidate-unknown-revision",
+        target_step="place",
+        patch=[{"knob_id": "place.target_density", "value": 0.85}],
+        context_sha256=HASH,
+        seed=17,
+    )
+    monkeypatch.setattr("agent.workspace_api.chipcompiler.__version__", " unknown ")
+
+    with pytest.raises(RuntimeApiError, match="ECC revision"):
+        _candidate_parameter_receipt(
+            workspace,
+            request,
+            ".agent/candidates/candidate-unknown-revision",
+            materialization,
+            parent_flow_sha256=HASH,
+        )
 
 
 def test_parameter_receipt_rejects_unbound_tool_metadata() -> None:

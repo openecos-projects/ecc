@@ -12,6 +12,7 @@ from agent.workspace_api import (
     FlowAgentRuntimeApi,
     _candidate_rerun_steps,
     _candidate_step_artifact_dirs,
+    _materialize_candidate_rerun,
     _reject_workspace_symlinks,
     build_agent_flow_for_workspace,
 )
@@ -189,6 +190,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
             context_sha256=CONTEXT_SHA256,
+            seed=17,
         )
     )
 
@@ -207,6 +209,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
             context_sha256=CONTEXT_SHA256,
+            seed=17,
         )
     )
     assert duplicate["operationId"] == result["operationId"]
@@ -278,6 +281,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-2",
             context_sha256=CONTEXT_SHA256,
+            seed=17,
             parent_candidate_root_ref=candidate_root_ref,
         )
     )
@@ -315,6 +319,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-3",
             context_sha256=CONTEXT_SHA256,
+            seed=17,
             parent_candidate_root_ref=candidate_root_ref,
         )
     )
@@ -389,6 +394,8 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     def run_candidate_step(_flow, step, **_kwargs):
         if step.name == "place":
             report = {
+                "knob_id": "place.target_density",
+                "requested_value": 0.6,
                 "tool": tool,
                 "application_status": "applied",
                 "effective_initial": {"value": 0.6, "unit": "ratio"},
@@ -435,6 +442,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
             execution_scope="full_flow",
             idempotency_key="episode-1.failed",
             context_sha256=CONTEXT_SHA256,
+            seed=17,
         )
     )
 
@@ -466,6 +474,42 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
         execution_receipt["candidate_manifest_sha256"]
         == terminal["result"]["candidateManifestSha256"]
     )
+    assert terminal["result"]["parameterApplicationReceiptRef"] == (
+        ".agent/candidates/candidate-failed/analysis/parameter_application_receipt.v1.json"
+    )
+    assert terminal["result"]["parameterApplicationReceiptSha256"] == sha256_path(
+        candidate / "analysis" / "parameter_application_receipt.v1.json"
+    )
+
+
+def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch, tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    for name in ("parameter_runtime_report.v1.json", "parameter_application_receipt.v1.json"):
+        (analysis / name).write_text('{"stale": true}', encoding="utf-8")
+    flow = SimpleNamespace(
+        workspace=SimpleNamespace(
+            flow=SimpleNamespace(data={"steps": [{"name": "fixFanout"}, {"name": "place"}]})
+        )
+    )
+    request = CandidateRerunRequest(
+        workspace_id="workspace-1",
+        target_step="place",
+        end_step="Harden",
+        candidate_id="candidate-1",
+        patch=[{"knob_id": "place.target_density", "value": 0.6}],
+        execution_scope="full_flow",
+        idempotency_key="episode-1.intervention-1",
+        context_sha256=CONTEXT_SHA256,
+        seed=17,
+    )
+    monkeypatch.setattr("agent.workspace_api.bind_candidate_input", lambda *_args: None)
+    monkeypatch.setattr("agent.workspace_api.materialize_candidate_config", lambda *_args: None)
+
+    _materialize_candidate_rerun(SimpleNamespace(directory=tmp_path), flow, request)
+
+    assert not (analysis / "parameter_runtime_report.v1.json").exists()
+    assert not (analysis / "parameter_application_receipt.v1.json").exists()
 
 
 def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(tmp_path):
@@ -487,6 +531,7 @@ def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(t
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256=CONTEXT_SHA256,
+                seed=17,
             )
         )
 
@@ -508,6 +553,7 @@ def test_candidate_rerun_rejects_invalid_context_hash_before_starting_an_operati
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256="sha256:invalid",
+                seed=17,
             )
         )
 
@@ -529,6 +575,7 @@ def test_candidate_rerun_rejects_non_harden_end_step_before_starting_an_operatio
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256=CONTEXT_SHA256,
+                seed=17,
             )
         )
 
@@ -550,6 +597,7 @@ def test_candidate_rerun_rejects_unsafe_candidate_id_before_starting_an_operatio
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256=CONTEXT_SHA256,
+                seed=17,
             )
         )
 
@@ -573,6 +621,7 @@ def test_candidate_rerun_rejects_unsafe_parent_candidate_ref_before_starting_an_
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256=CONTEXT_SHA256,
+                seed=17,
                 parent_candidate_root_ref="../outside",
             )
         )
@@ -597,6 +646,7 @@ def test_candidate_rerun_rejects_parent_workspace_symlinks(tmp_path):
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
             context_sha256=CONTEXT_SHA256,
+            seed=17,
         )
     )
 
@@ -634,6 +684,7 @@ def test_candidate_rerun_removes_partial_clone_on_copy_failure(monkeypatch, tmp_
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
             context_sha256=CONTEXT_SHA256,
+            seed=17,
         )
     )
 

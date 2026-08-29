@@ -202,6 +202,8 @@ def _write_parameter_runtime_report(
         "evidence_sha256": _payload_sha256(evidence_payload),
     }
     report = {
+        "knob_id": knob_id,
+        "requested_value": patch.get("value"),
         "tool": {
             "name": "DREAMPlace",
             "revision": DREAMPLACE_RUNTIME_REPORT_REVISION,
@@ -280,7 +282,7 @@ def _consumer_observation(workspace, knob_id, requested, params, engine, ppa) ->
         effective = _scalar_value(getattr(placedb, "cell_padding_x", None))
         movable = getattr(placedb, "num_movable_nodes", None)
         return {
-            "requested_padding_site": requested,
+            "requested_padding_dbu": requested,
             "effective_padding_dbu": effective,
             "movable_node_count": movable,
             "placement_iteration_count": iterations,
@@ -326,10 +328,10 @@ def _effective_value(knob_id: str, params, observation: dict):
 
 
 def _activation_status(knob_id: str, value, observation: dict, *, engine_succeeded: bool) -> str:
-    if knob_id == "place.routability_opt" and value in (False, 0):
-        return "not_activated"
     if not engine_succeeded or not observation.get("evidence_complete"):
         return "unknown"
+    if knob_id == "place.routability_opt" and value in (False, 0):
+        return "not_activated"
     if knob_id == "place.routability_opt" and not observation.get("branch_round_count"):
         return "not_activated"
     if knob_id == "place.cell_padding_x" and value == 0:
