@@ -12,7 +12,11 @@ from agent.data.candidate_materialization import (
     materialize_candidate_config,
 )
 from agent.data.parameter_application_receipt import build_parameter_application_receipt
-from agent.workspace_api import _candidate_parameter_receipt
+from agent.workspace_api import (
+    _candidate_parameter_receipt,
+    _parameter_receipt_context,
+    _stable_hash,
+)
 from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 HASH = "sha256:" + "a" * 64
@@ -125,6 +129,45 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
     assert materialization_ref["before_snapshot_ref"].endswith("dreamplace.before.json")
     assert materialization_ref["after_snapshot_ref"].endswith("dreamplace.after.json")
     assert materialization_ref["receipt_sha256"] != materialization_ref["registry_sha256"]
+
+
+def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(tmp_path: Path) -> None:
+    workspace, _ = _materialized_workspace(
+        tmp_path,
+        candidate_id="candidate-multifile",
+        knob_id="place.target_density",
+        before=0.5,
+        written=0.85,
+    )
+    origin = tmp_path / "origin"
+    (origin / "rtl" / "worker.v").write_text("module worker; endmodule\n", encoding="utf-8")
+    (origin / "timing.sdc").write_text("set_input_delay 1 clk\n", encoding="utf-8")
+    (origin / "filelist.f").write_text("rtl/top.v\nrtl/worker.v\n", encoding="utf-8")
+    request = SimpleNamespace(
+        candidate_id="candidate-multifile",
+        target_step="place",
+        patch=[{"knob_id": "place.target_density", "value": 0.85}],
+        seed=17,
+    )
+
+    context = _parameter_receipt_context(workspace, request, HASH)
+
+    rtl_sha256 = _stable_hash(
+        {"files": [sha256_path(path) for path in sorted((origin / "rtl").glob("*"))]}
+    )
+    sdc_sha256 = _stable_hash(
+        {"files": [sha256_path(path) for path in sorted(origin.glob("*.sdc"))]}
+    )
+    filelist_sha256 = sha256_path(origin / "filelist.f")
+    assert context["rtl_sha256"] == rtl_sha256
+    assert context["sdc_sha256"] == sdc_sha256
+    assert context["design_sha256"] == _stable_hash(
+        {
+            "rtl_sha256": rtl_sha256,
+            "filelist_sha256": filelist_sha256,
+            "sdc_sha256": sdc_sha256,
+        }
+    )
 
 
 def test_cell_padding_receipt_preserves_surface_site_value(tmp_path: Path, monkeypatch) -> None:

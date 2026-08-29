@@ -520,6 +520,21 @@ def _candidate_workspace_receipt(
                 "ref": relative,
                 "sha256": _required_file_sha256(artifact, key),
             }
+    if terminal_state == "succeeded":
+        design_name = getattr(getattr(workspace, "design", None), "name", None)
+        if not isinstance(design_name, str) or not design_name:
+            raise RuntimeApiError("command_failed", "candidate design name is unavailable")
+        for key, suffix in (
+            ("harden_gds", "gds"),
+            ("harden_lef", "lef"),
+            ("harden_lib", "lib"),
+        ):
+            relative = f"Harden_ecc/output/{design_name}_Harden.{suffix}"
+            artifact = candidate_root / relative
+            artifacts[key] = {
+                "ref": relative,
+                "sha256": _required_file_sha256(artifact, key),
+            }
     manifest["artifacts"] = artifacts
     try:
         write_json_atomic(manifest_path, manifest)
@@ -742,11 +757,13 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
     if not filelist.is_file():
         raise RuntimeApiError("command_failed", "candidate filelist fingerprint is unavailable")
     filelist_sha256 = f"sha256:{sha256(filelist.read_bytes()).hexdigest()}"
+    rtl_sha256 = rtl_hashes[0] if len(rtl_hashes) == 1 else _stable_hash({"files": rtl_hashes})
+    sdc_sha256 = sdc_hashes[0] if len(sdc_hashes) == 1 else _stable_hash({"files": sdc_hashes})
     design_sha256 = _stable_hash(
         {
-            "rtl_sha256": rtl_hashes[0],
+            "rtl_sha256": rtl_sha256,
             "filelist_sha256": filelist_sha256,
-            "sdc_sha256": sdc_hashes[0],
+            "sdc_sha256": sdc_sha256,
         }
     )
     knob_name = str(request.patch[0].get("knob_id"))
@@ -763,13 +780,9 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         "stage": request.target_step,
         "backend": "ecc",
         "lattice_version": "ecos.optimization_lattice.v1",
-        "rtl_sha256": (
-            rtl_hashes[0] if len(rtl_hashes) == 1 else _stable_hash({"files": rtl_hashes})
-        ),
+        "rtl_sha256": rtl_sha256,
         "filelist_sha256": filelist_sha256,
-        "sdc_sha256": (
-            sdc_hashes[0] if len(sdc_hashes) == 1 else _stable_hash({"files": sdc_hashes})
-        ),
+        "sdc_sha256": sdc_sha256,
         "pdk_sha256": pdk_sha256,
         "parent_lineage_sha256": parent_flow_sha256,
         "seed": request.seed,
@@ -790,6 +803,15 @@ def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest
         source_step,
         request.candidate_id,
     )
+    dreamplace_path = Path(workspace.config["dreamplace"])
+    try:
+        dreamplace_config = json.loads(dreamplace_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeApiError("command_failed", "candidate DREAMPlace config is invalid") from exc
+    if not isinstance(dreamplace_config, dict):
+        raise RuntimeApiError("command_failed", "candidate DREAMPlace config is invalid")
+    dreamplace_config["random_seed"] = request.seed
+    write_json_atomic(dreamplace_path, dreamplace_config)
     materialize_candidate_config(
         workspace,
         request.target_step,

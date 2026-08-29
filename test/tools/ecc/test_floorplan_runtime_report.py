@@ -68,6 +68,7 @@ def test_runtime_report_records_native_core_utilization_consumer(tmp_path):
     assert report["activation"]["consumers"][0]["consumer_id"] == (
         "ifp.die_builder.die_utilization"
     )
+    assert report["activation"]["consumers"][0]["outcome"] == "geometry_constructed"
     assert report["effective_final"] == {"value": 0.8, "unit": "ratio"}
 
 
@@ -88,6 +89,7 @@ def test_runtime_report_records_native_aspect_ratio_consumer(tmp_path):
     assert report["activation"]["consumers"][0]["consumer_id"] == (
         "ifp.die_builder.die_aspect_ratio"
     )
+    assert report["activation"]["consumers"][0]["outcome"] == "geometry_constructed"
 
 
 def test_runtime_report_does_not_claim_used_without_geometry_evidence(tmp_path):

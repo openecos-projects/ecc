@@ -140,7 +140,12 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
                 SimpleNamespace(
                     name="Harden",
                     tool="ecc",
-                    output={"dir": root / "Harden_ecc" / "output"},
+                    output=EccOutput(
+                        dir=root / "Harden_ecc" / "output",
+                        gds=root / "Harden_ecc" / "output" / "gcd_Harden.gds",
+                        lef=root / "Harden_ecc" / "output" / "gcd_Harden.lef",
+                        lib=root / "Harden_ecc" / "output" / "gcd_Harden.lib",
+                    ),
                 ),
             ),
         )
@@ -240,13 +245,14 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     assert (tmp_path / "place_dreamplace" / "analysis" / "stale").is_file()
     assert (tmp_path / "CTS_ecc" / "output" / "stale").is_file()
     assert (tmp_path / "Harden_ecc" / "output" / "stale").is_file()
-    assert (candidate_root / "config" / "dreamplace.json").read_text(encoding="utf-8") == (
-        '{"target_density": 0.6}\n'
-    )
+    assert json.loads(
+        (candidate_root / "config" / "dreamplace.json").read_text(encoding="utf-8")
+    ) == {"random_seed": 17, "target_density": 0.6}
+    assert flows[0].observed_random_seeds == [17]
     assert not list((candidate_root / "place_dreamplace" / "output").iterdir())
     assert not list((candidate_root / "place_dreamplace" / "analysis").iterdir())
     assert not list((candidate_root / "CTS_ecc" / "output").iterdir())
-    assert not list((candidate_root / "Harden_ecc" / "output").iterdir())
+    assert not (candidate_root / "Harden_ecc" / "output" / "stale").exists()
     candidate_manifest = candidate_root / "analysis" / "candidate_workspace.v1.json"
     result = terminal["result"]
     assert {key: value for key, value in result.items() if key != "candidateManifestSha256"} == {
@@ -264,6 +270,23 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     assert first_manifest["terminal_state"] == "succeeded"
     assert first_manifest["candidate_state_sha256"].startswith("sha256:")
     assert "candidate_execution_receipt" not in first_manifest["artifacts"]
+    assert {
+        key: first_manifest["artifacts"].get(key)
+        for key in ("harden_gds", "harden_lef", "harden_lib")
+    } == {
+        "harden_gds": {
+            "ref": "Harden_ecc/output/gcd_Harden.gds",
+            "sha256": sha256_path(candidate_root / "Harden_ecc/output/gcd_Harden.gds"),
+        },
+        "harden_lef": {
+            "ref": "Harden_ecc/output/gcd_Harden.lef",
+            "sha256": sha256_path(candidate_root / "Harden_ecc/output/gcd_Harden.lef"),
+        },
+        "harden_lib": {
+            "ref": "Harden_ecc/output/gcd_Harden.lib",
+            "sha256": sha256_path(candidate_root / "Harden_ecc/output/gcd_Harden.lib"),
+        },
+    }
     execution_receipt = json.loads(
         (candidate_root / "analysis" / "candidate_execution_receipt.v1.json").read_text(
             encoding="utf-8"
@@ -291,7 +314,11 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             tmp_path / ".agent" / "candidates" / "candidate-2" / "config" / "dreamplace.json"
         ).read_text(encoding="utf-8")
     )
-    assert second_config == {"routability_opt": True, "target_density": 0.6}
+    assert second_config == {
+        "random_seed": 17,
+        "routability_opt": True,
+        "target_density": 0.6,
+    }
     second_manifest = json.loads(
         (
             tmp_path
@@ -485,6 +512,9 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
 def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch, tmp_path):
     analysis = tmp_path / "analysis"
     analysis.mkdir()
+    dreamplace = tmp_path / "config" / "dreamplace.json"
+    dreamplace.parent.mkdir()
+    dreamplace.write_text('{"random_seed": 3000}', encoding="utf-8")
     for name in ("parameter_runtime_report.v1.json", "parameter_application_receipt.v1.json"):
         (analysis / name).write_text('{"stale": true}', encoding="utf-8")
     flow = SimpleNamespace(
@@ -506,10 +536,13 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
     monkeypatch.setattr("agent.workspace_api.bind_candidate_input", lambda *_args: None)
     monkeypatch.setattr("agent.workspace_api.materialize_candidate_config", lambda *_args: None)
 
-    _materialize_candidate_rerun(SimpleNamespace(directory=tmp_path), flow, request)
+    _materialize_candidate_rerun(
+        SimpleNamespace(directory=tmp_path, config={"dreamplace": dreamplace}), flow, request
+    )
 
     assert not (analysis / "parameter_runtime_report.v1.json").exists()
     assert not (analysis / "parameter_application_receipt.v1.json").exists()
+    assert json.loads(dreamplace.read_text(encoding="utf-8"))["random_seed"] == 17
 
 
 def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(tmp_path):
@@ -708,6 +741,8 @@ class _EccApi:
         flow_path = root / "home" / "flow.json"
         return SimpleNamespace(
             directory=root,
+            config={"dreamplace": root / "config" / "dreamplace.json"},
+            design=SimpleNamespace(name="gcd"),
             flow=SimpleNamespace(
                 data=json.loads(flow_path.read_text(encoding="utf-8")), path=flow_path
             ),
@@ -732,6 +767,7 @@ class _Flow:
         self.created = False
         self.initialize_config = None
         self.run_calls = []
+        self.observed_random_seeds = []
 
     def create_step_workspaces(self, *, initialize_config=True):
         self.workspace_steps = self._workspace_steps
@@ -754,6 +790,14 @@ class _Flow:
 
     def run_step(self, step, *, rerun, observer=None):
         self.run_calls.append((step.name, rerun))
+        if step.name == "place":
+            config = json.loads(
+                Path(self.workspace.config["dreamplace"]).read_text(encoding="utf-8")
+            )
+            self.observed_random_seeds.append(config.get("random_seed"))
+        if step.name == "Harden":
+            for artifact in (step.output.gds, step.output.lef, step.output.lib):
+                Path(artifact).write_text(step.name, encoding="utf-8")
         if observer is not None:
             observer.on_step_started(step)
             observer.on_step_completed(step, StateEnum.Success)

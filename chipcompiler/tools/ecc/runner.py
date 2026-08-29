@@ -820,7 +820,7 @@ def _write_floorplan_parameter_runtime_report(
         status = "not_activated"
     evidence = {
         "consumer_id": consumer_id,
-        "outcome": "entered" if status == "used" else "evaluated",
+        "outcome": "geometry_constructed" if status == "used" else "evaluated",
         "evidence_ref": "analysis/parameter_runtime_report.v1.json",
     }
     evidence["evidence_sha256"] = (
