@@ -364,6 +364,7 @@ class SignoffPackageCollector:
             required=True,
         )
 
+        synthesis_verilog = None
         if not flow_starts_at_floorplan:
             synthesis_verilog = self._synthesis_output_verilog()
             add_file(
@@ -378,6 +379,7 @@ class SignoffPackageCollector:
         }
         lec_dir = workspace_dir / self._step_dirs()[StepEnum.POST_ROUTE_LEC.value]
         lec_result = lec_dir / "output" / f"{design}_{StepEnum.POST_ROUTE_LEC.value}_result.json"
+        filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
         if require_lec:
             add_file(
                 role="lec.result",
@@ -409,7 +411,11 @@ class SignoffPackageCollector:
             )
             from chipcompiler.tools.yosys_lec.utility import lec_result_status
 
-            lec_status = lec_result_status(lec_result)
+            lec_status = lec_result_status(
+                lec_result,
+                golden_verilog=synthesis_verilog or self._synthesis_output_verilog(),
+                gate_verilog=filler_verilog,
+            )
             if lec_result.is_file() and lec_status != "proven":
                 missing_required.append("final/reports/postRouteLec/result.json")
                 issues.append(
@@ -433,7 +439,7 @@ class SignoffPackageCollector:
 
         add_file(
             role="final.design.verilog",
-            source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz",
+            source=filler_verilog,
             destination=f"final/design/{design}.v.gz",
             required=True,
         )

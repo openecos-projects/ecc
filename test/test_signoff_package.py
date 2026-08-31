@@ -311,6 +311,44 @@ def test_collect_signoff_package_rejects_stale_post_route_lec_proof(tmp_path):
     )
 
 
+def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    old_golden = tmp_path / "old" / "gcd_Synthesis.v.gz"
+    old_gate = tmp_path / "old" / "gcd_filler.v.gz"
+    current_golden = workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
+    current_gate = workspace_dir / "filler_ecc" / "output" / "gcd_filler.v.gz"
+    _write(old_golden, current_golden.read_text())
+    _write(old_gate, current_gate.read_text())
+    golden_digest = file_digest(old_golden)
+    gate_digest = file_digest(old_gate)
+    _write_json(
+        workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
+        {
+            "status": "proven",
+            "golden_verilog": str(old_golden),
+            "gate_verilog": str(old_gate),
+            "golden_sha256": golden_digest[0],
+            "gate_sha256": gate_digest[0],
+            "golden_size_bytes": golden_digest[1],
+            "gate_size_bytes": gate_digest[1],
+        },
+    )
+    current_gate.write_text("module gcd; current\n")
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert any(
+        issue.label == "lec.result"
+        and issue.destination == "final/reports/postRouteLec/result.json"
+        and "stale" in issue.reason
+        and issue.required
+        for issue in result.issues
+    )
+
+
 def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     _write_json(
