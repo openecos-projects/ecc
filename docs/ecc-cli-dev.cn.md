@@ -14,6 +14,7 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── project.py                  # init/check/run/status/log/config 的注册与参数声明
   ├── doctor.py                   # doctor 顶层命令（环境体检）
   ├── param.py                    # param 子应用（list/show/set/unset/diff）
+  ├── pdk.py                      # pdk 子应用（setup/set-root/show/unset）
   ├── signoff.py                  # signoff 子应用（inspect/export/report）
   ├── report.py                   # report 子应用（qor/checklist）
   └── rpc.py                      # rpc 子应用（serve）
@@ -21,6 +22,7 @@ chipcompiler/cli/command_handlers/  # 业务处理层（有状态/重逻辑）
   ├── project.py                  # init / check / run（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor（组装 env_probe 结果为 records）
+  ├── pdk.py                      # pdk 三子命令（TOML 定点改写 + root 来源解析）
   ├── signoff.py                  # signoff 三子命令 + inspect 的 TEXT 渲染
   └── report.py                   # report 两子命令（写文件 + 记录汇总）
 chipcompiler/cli/handlers/param.py  # param 子命令处理 + param 的 TEXT 渲染
@@ -230,7 +232,7 @@ ecc --help            # 验证 doctor / signoff / report 已列出
 tar -cf /tmp/ecc.tar -C dist/ecc . && gzip -n -9 -c /tmp/ecc.tar > dist/release/ecc-cli-linux-x86_64.tar.gz
 ```
 
-回退官方发行版：`bash .claude/ecc-cli-setup.sh --force`。
+回退官方发行版：`bash docs/ecc-cli-setup.sh --force`（见 [ecc-cli-setup.sh](ecc-cli-setup.sh)）。
 
 ## 7. 约束与注意事项（来自仓库约定）
 

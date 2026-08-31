@@ -8,19 +8,24 @@ def doctor(command_input, ctx: CommandContext) -> CommandResult:
 
     failed = [r for r in results if r.status == env_probe.FAIL]
     failed_required = [r for r in failed if r.required]
+    failed_optional = [r for r in failed if not r.required]
     if failed_required:
         status = "failed"
-    elif failed:
+    elif failed_optional:
         status = "attention"
     else:
         status = "ok"
 
+    # `failed` counts only required failures (the ones that block `ecc run`);
+    # optional failures are surfaced separately as `attention` so the summary
+    # never reads worse than the exit status suggests.
     records = [
         {
             "doctor": "environment",
             "status": status,
             "checked": len(results),
-            "failed": len(failed),
+            "failed": len(failed_required),
+            "attention": len(failed_optional),
             "run": disclosure_cmd("ecc run", ctx.project),
         }
     ]

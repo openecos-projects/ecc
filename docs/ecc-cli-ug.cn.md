@@ -10,7 +10,7 @@
 
 ### 一键安装（推荐）
 
-安装脚本 `ecc-cli-setup.sh`（位于 ecos-studio 仓库的 `.claude/` 目录）：下载安装 ecc CLI、配置 PATH、自检环境、并补齐缺失的 PDK（icsprout55-pdk + liberty/GDS）与 Yosys（OSS CAD Suite 最新版）。幂等可重复运行，已就绪的部件自动跳过：
+仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)（本目录）：下载安装 ecc CLI、配置 PATH、自检环境、并补齐缺失的 PDK（icsprout55-pdk + liberty/GDS）与 Yosys（OSS CAD Suite 最新版）。幂等可重复运行，已就绪的部件自动跳过：
 
 ```bash
 bash ecc-cli-setup.sh                 # 一键安装 + 自检 + 补齐
@@ -110,6 +110,7 @@ Commands:
   config        Show resolved project or step configuration
   doctor        Check host environment: PDK, tools, and components
   param         Manage EDA parameters
+  pdk           Show and configure the PDK path used by this project
   signoff       Inspect and export signoff packages
   report        Generate QoR score and signoff checklist reports
   rpc           Run the private ECC JSON-RPC runtime
@@ -216,7 +217,8 @@ $ ecc doctor          # 在项目目录内执行（PDK 探测需要 ecc.toml 或
   doctor: environment
   status: attention          # ok=全过 / attention=仅可选项失败(rc=0) / failed=必需项失败(rc=1)
   checked: 7
-  failed: 1
+  failed: 0                  # failed 只统计必需项失败；可选项失败计入 attention
+  attention: 1
   run: ecc run
   component: yosys
   status: pass
@@ -244,7 +246,7 @@ rc=1
 
 - PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。
 - 综合步骤内部仍有 slang fail-fast（日志报 `yosys slang frontend check failed`），事后排查用 `ecc log synthesis`。
-- 安装/补齐环境的脚本：`bash ecc-cli-setup.sh`（见第 0 节，`--check-only` 只体检）。
+- 安装/补齐环境的脚本：`bash docs/ecc-cli-setup.sh`（见第 0 节，`--check-only` 只体检）。
 
 ### 手动排查清单（无 doctor 时备用）
 
@@ -522,11 +524,35 @@ target_density = 0.65
 
 优先级：CLI `--set` > `ecc.toml` `[params.*]` > 默认值。
 
-## 10. signoff — 签核包与设计报告
+## 10. pdk — PDK 路径配置
+
+接入 PDK 有两条路：`ecc pdk setup` 一条到位（自动 clone + `make unzip`，已就绪的目录则跳过下载只接入），或对已就绪的 PDK 用 `ecc pdk set-root` 直接接入（写入 `ecc.toml` 的 `[pdk] root`，自动展开为绝对路径；目录必须已存在）。内容不完整（如还没 `make unzip`）不阻断设置，会给出提示：
+
+```bash
+ecc pdk setup [~/pdk/icsprout55-pdk]     # 一条到位：clone（缺时）→ make unzip（缺 liberty 时，支持 GH_PROXY+重试）→ 接入；缺省装到 ~/.local/icsprout55-pdk
+ecc pdk set-root ~/pdk/icsprout55-pdk   # 仅设置（已就绪的 PDK）
+ecc pdk show                             # 查看生效 root 与来源（ecc.toml / 环境变量 / 仓库默认）及内容校验
+ecc pdk unset                            # 清空 root，回落环境变量 / 仓库默认
+ecc pdk set-root /bad/path               # → [error] invalid_pdk_path（目录不存在）
+```
+
+```console
+$ ecc pdk set-root ~/pdk/icsprout55-pdk
+[status]
+  pdk: set-root
+  status: set
+  path: /home/user/pdk/icsprout55-pdk
+  config: ecc.toml
+  check: ecc check
+```
+
+解析优先级不变：`ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库内置默认。`[pdk.overrides]` 的内容级覆盖仍需手改 ecc.toml。
+
+## 11. signoff — 签核包与设计报告
 
 flow 跑完（harden preset 全部步骤 Success）后使用。三个子命令都接受 `--project DIR`/`--run-id ID`（定位 `runs/<id>`）或 `--workspace PATH`（直接指定 workspace），以及 `--json/--jsonl/--plain`。
 
-### 10.1 inspect — 就绪度审阅（不改任何东西）
+### 11.1 inspect — 就绪度审阅（不改任何东西）
 
 ```bash
 ecc signoff inspect [--project DIR | --workspace PATH]
@@ -554,7 +580,7 @@ $ ecc signoff inspect --workspace runs/default
               Current-output analysis refresh failed: ...
 ```
 
-### 10.2 export — 导出签核包 tar.gz（有门禁）
+### 11.2 export — 导出签核包 tar.gz（有门禁）
 
 ```bash
 ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR | --workspace PATH]
@@ -576,7 +602,7 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # 就绪后
   path: /abs/path/gcd.tar.gz
 ```
 
-### 10.3 report — 文本设计总结报告
+### 11.3 report — 文本设计总结报告
 
 ```bash
 ecc signoff report [-o PATH] [--project DIR | --workspace PATH]
@@ -613,14 +639,14 @@ PDK / Node         : ics55
 
 说明：inspect/export 会先刷新各步 analysis（与 GUI 一致）；report 默认按现状抽取（可用引擎 API `generate_text_report(workspace, refresh_analysis=True)` 要求刷新）。报告不要求 flow 完成——跑到哪一步就总结到哪一步。
 
-## 11. report — QoR 总分与 checklist 报告
+## 12. report — QoR 总分与 checklist 报告
 
 ```bash
 ecc report qor        [-o PATH] [--project DIR | --run-id ID | --workspace PATH]
 ecc report checklist  [-o PATH] [同上]
 ```
 
-### 11.1 qor — QoR 总体计分报告
+### 12.1 qor — QoR 总体计分报告
 
 按 GUI 项目看板的计分规则给当前 workspace 打分：每条 v3 `qor_metrics.json` 指标按固定失败阈值折算 0-100 分（slack 类线性、core_utilization 目标区间 [0.45,0.70]、lower/higher_is_better 比例），维度内取平均，再按权重（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1）加权出总分——**缺项维度不重归一化**（与 GUI 一致，缺项会拉低总分）；60 分为通过线。默认写 `<workspace>/signoff/<design>_qor_report.txt`：
 
@@ -634,7 +660,7 @@ report=qor path=.../signoff/gcd_qor_report.txt bytes=1717 design=gcd \
 
 报告含：总分与判定（PASS/BELOW THRESHOLD/NOT RATED）、Flow 状态色（Green/Yellow/Orange/Red/Blocked）与 gate（DRC/LVS/RCX/STA 步骤状态）、Area 计分步（最后一个成功的 area 指标步）、维度表、逐指标明细分（corner 维度独立计分）。
 
-### 11.2 checklist — 签核清单报告
+### 12.2 checklist — 签核清单报告
 
 读取 `home/checklist.json`（schema v3 签核清单，由 flow 步骤/`ecc signoff inspect` 维护）渲染状态报告：总览（passed/blocked/attention/unavailable）、**BLOCKED 项明细**（含失败原因与 evidence 路径）、ATTENTION 项、全量表。清单不存在时返回 `checklist_unavailable`。默认写 `<workspace>/signoff/checklist_report.txt`。
 
@@ -643,7 +669,7 @@ ecc signoff inspect --project gcd    # 先刷新 checklist（若还没有）
 ecc report checklist --project gcd
 ```
 
-## 12. rpc — JSON-RPC runtime sidecar（私有）
+## 13. rpc — JSON-RPC runtime sidecar（私有）
 
 ```bash
 ecc rpc serve --stdio [--persistent-db]
@@ -659,7 +685,7 @@ ecc rpc serve --stdio [--persistent-db]
 ← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
 ```
 
-## 13. layout-image — GDS 渲染为图片
+## 14. layout-image — GDS 渲染为图片
 
 ```bash
 ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
@@ -671,11 +697,12 @@ ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
 ecc layout-image --gds runs/default/GDS_ecc/result.gds --image layout.png --width 2560 --height 1600
 ```
 
-## 14. 端到端典型工作流
+## 15. 端到端典型工作流
 
 ```bash
 ecc init gcd && cd gcd
 # 放入 RTL，编辑 ecc.toml（top/clock/frequency、pdk.root、flow.preset）
+ecc pdk set-root ~/pdk/icsprout55-pdk   # （可选）手动下载的 PDK 用这条接入
 ecc doctor                         # 环境体检（PDK/yosys/slang/组件）
 ecc check                          # 项目配置校验通过再运行
 ecc run --preset harden            # 一次性跑完整链（Synthesis→…→Harden）

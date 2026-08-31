@@ -14,6 +14,7 @@ chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── project.py                  # registration and option declarations for init/check/run/status/log/config
   ├── doctor.py                   # doctor top-level command (environment check)
   ├── param.py                    # param sub-app (list/show/set/unset/diff)
+  ├── pdk.py                      # pdk sub-app (setup/set-root/show/unset)
   ├── signoff.py                  # signoff sub-app (inspect/export/report)
   ├── report.py                   # report sub-app (qor/checklist)
   └── rpc.py                      # rpc sub-app (serve)
@@ -21,6 +22,7 @@ chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
   ├── project.py                  # init / check / run (preset resolution and environment preflight)
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor (assembles env_probe results into records)
+  ├── pdk.py                      # the three pdk subcommands (surgical TOML edit + root source resolution)
   ├── signoff.py                  # the three signoff subcommands + inspect TEXT rendering
   └── report.py                   # the two report subcommands (file writing + record summary)
 chipcompiler/cli/handlers/param.py  # param subcommand handlers + param TEXT rendering
@@ -230,7 +232,7 @@ ecc --help            # verify doctor / signoff / report are listed
 tar -cf /tmp/ecc.tar -C dist/ecc . && gzip -n -9 -c /tmp/ecc.tar > dist/release/ecc-cli-linux-x86_64.tar.gz
 ```
 
-To roll back to the official release: `bash ecc-cli-setup.sh --force` (the script lives in the ecos-studio repository).
+To roll back to the official release: `bash docs/ecc-cli-setup.sh --force` (see [ecc-cli-setup.sh](ecc-cli-setup.sh)).
 
 ## 7. Constraints and caveats (from the repository conventions)
 
