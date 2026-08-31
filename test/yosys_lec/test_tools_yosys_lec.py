@@ -3,11 +3,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.data import (
+    PDK,
     HomeData,
     OriginDesign,
     OutputPaths,
     Parameters,
-    PDK,
     StateEnum,
     StepEnum,
     Workspace,
@@ -17,7 +17,6 @@ from chipcompiler.data import (
 )
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.utility import json_write
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GCD_RTL = REPO_ROOT / "test" / "fixtures" / "gcd" / "gcd.v"

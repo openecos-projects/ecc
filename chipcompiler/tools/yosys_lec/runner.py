@@ -20,7 +20,7 @@ def _status_is_proven(path: Path | str | None) -> bool:
     )
 
 
-def _write_result(step: YosysLecStep, proven: bool) -> None:
+def _write_result(step: YosysLecStep, *, proven: bool) -> None:
     payload = {
         "status": "proven" if proven else "incomplete",
         "equiv_status": str(step.report.equiv_status or ""),
