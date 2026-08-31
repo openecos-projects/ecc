@@ -1,6 +1,7 @@
+from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
+from chipcompiler.data import EccData, EccStep, LogPaths, OriginDesign, StepEnum, Workspace
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
 from chipcompiler.tools.ecc_dreamplace.service import get_step_info
 from chipcompiler.utility import json_write
@@ -104,3 +105,159 @@ def test_dreamplace_step_info_stringifies_path_config(tmp_path):
     assert get_step_info(workspace, step, "config") == {
         "config": str(workspace.config["dreamplace"]),
     }
+
+
+def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:
+    config_path = tmp_path / "dreamplace_ecc.json"
+    json_write(config_path, {})
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    result_dir = tmp_path / "data" / "to"
+    step = EccStep(
+        name=step_name,
+        data=EccData(dir=tmp_path / "data", steps={step_name: result_dir}),
+        log=LogPaths(file=tmp_path / "step.log"),
+    )
+    return DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=None,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+        output_def=tmp_path / "output.def",
+        output_verilog=tmp_path / "output.v",
+    )
+
+
+def test_run_legalization_allows_timing_opt_and_legalization_owners(tmp_path, monkeypatch):
+    seen: list[str] = []
+
+    def fake_run(self, *, legalize_only: bool) -> bool:
+        seen.append(self.step.name)
+        assert legalize_only is True
+        return True
+
+    monkeypatch.setattr(DreamplaceModule, "_run", fake_run)
+
+    legalization = _module_for_owner(tmp_path, StepEnum.LEGALIZATION.value)
+    timing_opt = _module_for_owner(tmp_path, StepEnum.TIMING_OPT.value)
+    placement = _module_for_owner(tmp_path, StepEnum.PLACEMENT.value)
+
+    assert legalization.run_legalization() is True
+    assert timing_opt.run_legalization() is True
+    assert placement.run_legalization() is False
+    assert seen == [StepEnum.LEGALIZATION.value, StepEnum.TIMING_OPT.value]
+
+
+def test_timing_opt_legalize_log_does_not_reuse_step_log(tmp_path):
+    legalization = _module_for_owner(tmp_path, StepEnum.LEGALIZATION.value)
+    timing_opt = _module_for_owner(tmp_path, StepEnum.TIMING_OPT.value)
+
+    assert legalization._file_handler_path(legalize_only=True) == str(tmp_path / "step.log")
+    assert timing_opt._file_handler_path(legalize_only=True) == str(
+        Path(timing_opt.result_dir) / "dreamplace_legalization.log"
+    )
+
+
+def test_dreamplace_run_step_ignores_timing_opt(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
+
+    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(dreamplace_runner, "run_placement", lambda **kwargs: True)
+    monkeypatch.setattr(dreamplace_runner, "run_legalization", lambda **kwargs: True)
+
+    workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
+    step = EccStep(name=StepEnum.TIMING_OPT.value)
+
+    assert dreamplace_runner.run_step(workspace, step) is False
+
+
+def test_legalize_layout_rebuilds_from_sources_and_closes_on_failure(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
+    from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
+
+    module = _module_for_owner(tmp_path, StepEnum.TIMING_OPT.value)
+    staging_def = tmp_path / "sizer.def.gz"
+    staging_verilog = tmp_path / "sizer.v.gz"
+    created = []
+    closed = []
+
+    class LocalEcc:
+        def close(self):
+            closed.append(True)
+
+    def fake_create_db_engine(
+        workspace,
+        owner_step,
+        *,
+        source_def=None,
+        source_verilog=None,
+        skip_input_db=False,
+    ):
+        created.append((source_def, source_verilog, skip_input_db, owner_step.name, workspace))
+        return LocalEcc()
+
+    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(dreamplace_runner.ecc_runner, "create_db_engine", fake_create_db_engine)
+    monkeypatch.setattr(DreamplaceModule, "run_legalization", lambda self: False)
+
+    assert (
+        dreamplace_runner.legalize_layout(
+            module.workspace,
+            module.step,
+            staging_def,
+            staging_verilog,
+        )
+        is None
+    )
+    assert created == [
+        (staging_def, staging_verilog, True, StepEnum.TIMING_OPT.value, module.workspace)
+    ]
+    assert closed == [True]
+
+
+def test_legalize_layout_returns_none_without_dreamplace_config(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
+
+    workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
+    step = EccStep(name=StepEnum.TIMING_OPT.value)
+    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
+
+    assert (
+        dreamplace_runner.legalize_layout(
+            workspace,
+            step,
+            tmp_path / "sizer.def.gz",
+            tmp_path / "sizer.v.gz",
+        )
+        is None
+    )
+
+
+def test_legalize_layout_returns_engine_when_legalize_succeeds(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
+    from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
+
+    module = _module_for_owner(tmp_path, StepEnum.TIMING_OPT.value)
+    engine = SimpleNamespace(close=lambda: (_ for _ in ()).throw(AssertionError("closed")))
+
+    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "create_db_engine",
+        lambda *args, **kwargs: engine,
+    )
+    monkeypatch.setattr(DreamplaceModule, "run_legalization", lambda self: True)
+
+    assert (
+        dreamplace_runner.legalize_layout(
+            module.workspace,
+            module.step,
+            tmp_path / "sizer.def.gz",
+            tmp_path / "sizer.v.gz",
+        )
+        is engine
+    )

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from pathlib import Path
+
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
@@ -130,3 +132,62 @@ def run_legalization(
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
 
     return reslut
+
+
+def legalize_layout(
+    workspace: Workspace,
+    owner_step: EccStep,
+    input_def: Path | None,
+    input_verilog: Path | None,
+) -> ECCToolsModule | None:
+    """Legalize a layout for an owning step without owning that step's subflow."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    if not is_eda_exist():
+        logger.error(
+            "DreamPlace tools not available for inner legalization of %s",
+            owner_step.name,
+        )
+        return None
+
+    if not workspace.config.get("dreamplace"):
+        logger.error(
+            "DreamPlace config is missing for inner legalization of %s",
+            owner_step.name,
+        )
+        return None
+
+    ecc_module = ecc_runner.create_db_engine(
+        workspace,
+        owner_step,
+        source_def=input_def,
+        source_verilog=input_verilog,
+        skip_input_db=True,
+    )
+    if ecc_module is None:
+        logger.error(
+            "Failed to rebuild ECC database for inner legalization of %s",
+            owner_step.name,
+        )
+        return None
+
+    keep_engine = False
+    try:
+        dreamplace_module = DreamplaceModule(
+            workspace=workspace,
+            step=owner_step,
+            ecc_module=ecc_module,
+            input_def=input_def,
+            input_verilog=input_verilog,
+            output_def=None,
+            output_verilog=None,
+        )
+        if not dreamplace_module.run_legalization():
+            logger.error("DreamPlace legalization failed for %s", owner_step.name)
+            return None
+        keep_engine = True
+        return ecc_module
+    finally:
+        if not keep_engine:
+            ecc_module.close()

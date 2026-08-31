@@ -11,6 +11,13 @@ from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility.path import optional_path, path_text
 
+_LEGALIZE_OWNERS = frozenset(
+    {
+        StepEnum.LEGALIZATION.value,
+        StepEnum.TIMING_OPT.value,
+    }
+)
+
 
 class DreamplaceModule:
     def __init__(
@@ -64,13 +71,18 @@ class DreamplaceModule:
         log_name = "dreamplace_legalization.log" if legalize_only else "dreamplace_placement.log"
         return os.path.join(self.result_dir, log_name)
 
+    def _file_handler_path(self, *, legalize_only: bool) -> str:
+        if legalize_only and self.step.name != StepEnum.LEGALIZATION.value:
+            return self._log_path(legalize_only=True)
+        return str(self.step.log.file or self._log_path(legalize_only=legalize_only))
+
     @contextmanager
     def _configure_root_logging(self, *, legalize_only: bool):
         root_logger = logging.getLogger()
         original_handlers = root_logger.handlers[:]
         original_level = root_logger.level
 
-        log_file = self.step.log.file or self._log_path(legalize_only=legalize_only)
+        log_file = self._file_handler_path(legalize_only=legalize_only)
         os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
 
         formatter = logging.Formatter("[%(levelname)-7s] %(message)s")
@@ -117,7 +129,7 @@ class DreamplaceModule:
         return self._run(legalize_only=False)
 
     def run_legalization(self) -> bool:
-        if self.step.name != StepEnum.LEGALIZATION.value:
+        if self.step.name not in _LEGALIZE_OWNERS:
             return False
         return self._run(legalize_only=True)
 

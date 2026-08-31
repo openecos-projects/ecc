@@ -182,8 +182,18 @@ def _existing_input_path(path: Path | None) -> str | None:
     return None
 
 
-def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModule:
-    """"""
+def create_db_engine(
+    workspace: Workspace,
+    step: WorkspaceStep,
+    *,
+    source_def: Path | None = None,
+    source_verilog: Path | None = None,
+    skip_input_db: bool = False,
+) -> ECCToolsModule | None:
+    """Load an ECC engine from the step input, or from explicit design files."""
+
+    def_source = source_def if source_def is not None else step.input.def_
+    verilog_source = source_verilog if source_verilog is not None else step.input.verilog
 
     def load_data():
         ecc_module = ECCToolsModule()
@@ -216,12 +226,6 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
             return None
 
     def load_design():
-        def def_exist() -> str | None:
-            return _existing_input_path(step.input.def_)
-
-        def verilog_exist() -> str | None:
-            return _existing_input_path(step.input.verilog)
-
         ecc_module = ECCToolsModule()
 
         ecc_module.init_config(
@@ -234,8 +238,8 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
         ecc_module.init_lefs(workspace.pdk.lefs)
 
         # if db def exist, read db def
-        def_path = def_exist()
-        verilog_path = verilog_exist()
+        def_path = _existing_input_path(def_source)
+        verilog_path = _existing_input_path(verilog_source)
 
         if step.name == StepEnum.LVS.value:
             if def_path is None:
@@ -258,14 +262,15 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
             return False
 
         return (
-            _existing_input_path(step.input.def_) is not None
-            or _existing_input_path(step.input.verilog) is not None
+            _existing_input_path(def_source) is not None
+            or _existing_input_path(verilog_source) is not None
         )
 
     if not is_eda_exist() or not is_enable_setup():
         return None
+    skip_db = skip_input_db or step.name == StepEnum.LVS.value
     try:
-        ecc_module = None if step.name == StepEnum.LVS.value else load_data()
+        ecc_module = None if skip_db else load_data()
         if ecc_module is None:
             ecc_module = load_design()
     except Exception as e:
