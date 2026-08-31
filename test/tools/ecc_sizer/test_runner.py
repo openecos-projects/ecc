@@ -375,6 +375,88 @@ def test_sizer_closes_engine_when_published_cleanup_fails(tmp_path, monkeypatch)
     assert legalize_module.closed is True
 
 
+def test_sizer_does_not_legalize_when_staging_cleanup_fails(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import runner as sizer_runner
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+    _write_staging(step)
+
+    legalize_calls = []
+    original_delete = sizer_runner._delete_path
+
+    def fail_staging_delete(path):
+        if Path(path).name.startswith("sizer."):
+            raise OSError("cannot unlink staging")
+        original_delete(path)
+
+    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/sizer"])
+    monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "_delete_path", fail_staging_delete)
+
+    def record_legalize(*args, **kwargs):
+        del args, kwargs
+        legalize_calls.append(1)
+
+    monkeypatch.setattr(sizer_runner, "legalize_layout", record_legalize)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
+    )
+
+    with pytest.raises(OSError, match="cannot unlink staging"):
+        sizer_runner.run_step(workspace, step)
+    assert legalize_calls == []
+
+
+def test_sizer_rerun_resets_previous_subflow_success(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import runner as sizer_runner
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    _patch_success_legalize(monkeypatch, sizer_runner, step)
+    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/sizer"])
+    monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
+    monkeypatch.setattr(subprocess, "run", _fake_sizer_run(step))
+
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Success
+    assert _subflow_states(step)["run legalization"] == StateEnum.Success.value
+    assert _subflow_states(step)["save data"] == StateEnum.Success.value
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
+    )
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    states = _subflow_states(step)
+    assert states["run sizer"] == StateEnum.Imcomplete.value
+    assert states["run legalization"] == StateEnum.Unstart.value
+    assert states["save data"] == StateEnum.Unstart.value
+
+
 def test_sizer_rerun_does_not_legalize_stale_staging_when_sizer_writes_nothing(
     tmp_path,
     monkeypatch,

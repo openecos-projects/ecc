@@ -48,18 +48,22 @@ def _published_paths(step: EccStep) -> list[Path]:
 
 
 def _delete_path(path: Path) -> None:
-    try:
-        if path.is_symlink() or path.is_file():
-            path.unlink()
-        elif path.is_dir():
-            shutil.rmtree(path)
-    except OSError:
-        logger.warning("Failed to delete Timing Opt artifact %s", path, exc_info=True)
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
 
 
 def _delete_published_outputs(step: EccStep) -> None:
+    errors: list[OSError] = []
     for path in _published_paths(step):
-        _delete_path(path)
+        try:
+            _delete_path(path)
+        except OSError as exc:
+            logger.warning("Failed to delete Timing Opt artifact %s", path, exc_info=True)
+            errors.append(exc)
+    if errors:
+        raise errors[0]
 
 
 def _delete_staging_outputs(step: EccStep) -> None:
@@ -79,6 +83,7 @@ def run_step(
     run_legalization_step = SizerSubFlowEnum.run_legalization.value
     save_data_step = SizerSubFlowEnum.save_data.value
 
+    sub_flow.reset_stages()
     _delete_published_outputs(step)
 
     if not is_eda_exist() or not is_sizer_runtime_exist():
@@ -109,6 +114,7 @@ def run_step(
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     os.makedirs(os.path.dirname(step.output.def_ or ""), exist_ok=True)
     _delete_staging_outputs(step)
+    sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Ongoing)
 
     command = get_sizer_command() + ["-env", str(env_path), "-f", str(cmd_path)]
     with open(log_path, "w", encoding="utf-8") as log_file:
@@ -131,6 +137,7 @@ def run_step(
         return StateEnum.Imcomplete
 
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
+    sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Ongoing)
 
     ecc = legalize_layout(
         workspace,
@@ -145,6 +152,7 @@ def run_step(
             return StateEnum.Imcomplete
 
         sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Success)
+        sub_flow.update_step(step_name=save_data_step, state=StateEnum.Ongoing)
         try:
             saved = ecc_runner.save_data(
                 workspace=workspace,

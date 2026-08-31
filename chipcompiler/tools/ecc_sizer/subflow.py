@@ -42,13 +42,24 @@ class SizerSubFlow:
     def build_sub_flow(self) -> list[dict]:
         expected = [stage.value for stage in SizerSubFlowEnum]
         current = [step_dict.get("name") for step_dict in self.workspace_step.subflow.steps or []]
-        if current == expected:
-            return self.workspace_step.subflow.steps
+        if current != expected:
+            self.workspace_step.subflow.steps = self._canonical_steps()
+            self.save()
+        return self.workspace_step.subflow.steps
 
-        steps = self._canonical_steps()
-        self.workspace_step.subflow.steps = steps
+    def reset_stages(self) -> list[dict]:
+        expected = [stage.value for stage in SizerSubFlowEnum]
+        current = [step_dict.get("name") for step_dict in self.workspace_step.subflow.steps or []]
+        if current != expected:
+            self.workspace_step.subflow.steps = self._canonical_steps()
+        else:
+            for step_dict in self.workspace_step.subflow.steps or []:
+                step_dict["state"] = StateEnum.Unstart.value
+                step_dict["runtime"] = ""
+                step_dict["peak memory (mb)"] = 0
+                step_dict["info"] = {}
         self.save()
-        return steps
+        return self.workspace_step.subflow.steps
 
     def save(self) -> bool:
         from chipcompiler.utility import json_write
