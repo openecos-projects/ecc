@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import hashlib
 import logging
 import os
 import time
@@ -14,6 +13,7 @@ from chipcompiler.engine.signoff import (
     SignoffPackageResult,
 )
 from chipcompiler.engine.step_execution import execute_tool_step, record_tool_failure
+from chipcompiler.utility import file_digest
 
 logger = logging.getLogger(__name__)
 
@@ -242,7 +242,6 @@ class EngineFlow:
         """
         check step output exist
         """
-        import os
 
         success = False
         output = workspace_step.output
@@ -254,7 +253,12 @@ class EngineFlow:
         ):
             from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
 
-            return lec_result_is_proven(output.json)
+            step_input = workspace_step.input
+            return lec_result_is_proven(
+                output.json,
+                golden_verilog=getattr(step_input, "golden_verilog", None),
+                gate_verilog=getattr(step_input, "gate_verilog", None),
+            )
         match workspace_step.name:
             case StepEnum.SYNTHESIS.value:
                 if os.path.exists(output.verilog or ""):
@@ -419,19 +423,13 @@ class EngineFlow:
         if sdc_path is None:
             return {"availability": "missing_source"}
 
-        try:
-            path = os.fspath(sdc_path)
-            size_bytes = os.path.getsize(path)
-            digest = hashlib.sha256()
-            with open(path, "rb") as sdc_file:
-                for chunk in iter(lambda: sdc_file.read(1024 * 1024), b""):
-                    digest.update(chunk)
-        except OSError:
+        digest = file_digest(sdc_path)
+        if digest is None:
             return {"availability": "unreadable"}
-
+        sha256, size_bytes = digest
         return {
             "availability": "available",
-            "sha256": digest.hexdigest(),
+            "sha256": sha256,
             "size_bytes": size_bytes,
         }
 

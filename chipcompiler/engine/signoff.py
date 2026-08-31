@@ -1,5 +1,4 @@
 import glob
-import hashlib
 import importlib
 import json
 import os
@@ -17,6 +16,7 @@ from chipcompiler.tools.ecc.sta_qor import (
     STA_TIMING_PATHS_FILENAME,
     sta_artifact_directory,
 )
+from chipcompiler.utility import file_digest
 from chipcompiler.utility.filelist import (
     FILELIST_SUFFIXES,
     parse_filelist,
@@ -373,54 +373,63 @@ class SignoffPackageCollector:
                 required=True,
             )
 
+        require_lec = StepEnum.POST_ROUTE_LEC.value in {
+            step.get("name") for step in flow_data.get("steps", []) if isinstance(step, dict)
+        }
         lec_dir = workspace_dir / self._step_dirs()[StepEnum.POST_ROUTE_LEC.value]
         lec_result = lec_dir / "output" / f"{design}_{StepEnum.POST_ROUTE_LEC.value}_result.json"
-        add_file(
-            role="lec.result",
-            source=lec_result,
-            destination="final/reports/postRouteLec/result.json",
-            required=True,
-        )
-        add_file(
-            role="lec.equiv_status",
-            source=lec_dir / "report" / "equiv_status.rpt",
-            destination="final/reports/postRouteLec/report/equiv_status.rpt",
-            required=True,
-        )
-        add_file(
-            role="lec.status_report",
-            source=lec_dir / "report" / "run_lec_status.rpt",
-            destination="final/reports/postRouteLec/report/run_lec_status.rpt",
-            required=True,
-        )
-        add_file(
-            role="lec.failed_rtlil",
-            source=lec_dir / "report" / "equiv_failed.il",
-            destination="final/reports/postRouteLec/report/equiv_failed.il",
-        )
-        add_file(
-            role="lec.failed_verilog",
-            source=lec_dir / "report" / "equiv_failed.v",
-            destination="final/reports/postRouteLec/report/equiv_failed.v",
-        )
-        from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
-
-        if lec_result.is_file() and not lec_result_is_proven(lec_result):
-            missing_required.append("final/reports/postRouteLec/result.json")
-            issues.append(
-                SignoffPackageIssue(
-                    kind="resource",
-                    label="lec.result",
-                    location=self._review_source_path(
-                        workspace_dir,
-                        lec_result,
-                        "final/reports/postRouteLec/result.json",
-                    ),
-                    reason="Yosys LEC did not prove equivalence",
-                    required=True,
-                    destination="final/reports/postRouteLec/result.json",
-                )
+        if require_lec:
+            add_file(
+                role="lec.result",
+                source=lec_result,
+                destination="final/reports/postRouteLec/result.json",
+                required=True,
             )
+            add_file(
+                role="lec.equiv_status",
+                source=lec_dir / "report" / "equiv_status.rpt",
+                destination="final/reports/postRouteLec/report/equiv_status.rpt",
+                required=True,
+            )
+            add_file(
+                role="lec.status_report",
+                source=lec_dir / "report" / "run_lec_status.rpt",
+                destination="final/reports/postRouteLec/report/run_lec_status.rpt",
+                required=True,
+            )
+            add_file(
+                role="lec.failed_rtlil",
+                source=lec_dir / "report" / "equiv_failed.il",
+                destination="final/reports/postRouteLec/report/equiv_failed.il",
+            )
+            add_file(
+                role="lec.failed_verilog",
+                source=lec_dir / "report" / "equiv_failed.v",
+                destination="final/reports/postRouteLec/report/equiv_failed.v",
+            )
+            from chipcompiler.tools.yosys_lec.utility import lec_result_status
+
+            lec_status = lec_result_status(lec_result)
+            if lec_result.is_file() and lec_status != "proven":
+                missing_required.append("final/reports/postRouteLec/result.json")
+                issues.append(
+                    SignoffPackageIssue(
+                        kind="resource",
+                        label="lec.result",
+                        location=self._review_source_path(
+                            workspace_dir,
+                            lec_result,
+                            "final/reports/postRouteLec/result.json",
+                        ),
+                        reason=(
+                            "Yosys LEC proof is stale; golden or gate netlist changed"
+                            if lec_status == "stale"
+                            else "Yosys LEC did not prove equivalence"
+                        ),
+                        required=True,
+                        destination="final/reports/postRouteLec/result.json",
+                    )
+                )
 
         add_file(
             role="final.design.verilog",
@@ -600,7 +609,6 @@ class SignoffPackageCollector:
             warnings.append("home checklist requires attention; see final/reports/checklist.json")
 
         qor_metrics = self._read_json(workspace_dir / "drc_ecc" / "analysis" / "qor_metrics.json")
-        lec_payload = self._read_json(lec_result)
         ok = len(blocked_items) == 0
         flow_success = all(state == StateEnum.Success.value for state in required_steps.values())
         summary = {
@@ -634,18 +642,20 @@ class SignoffPackageCollector:
             },
             "qor_metrics": qor_metrics,
             "sta_matrix": sta_matrix,
-            "lec": {
+            "missing_required": missing_required,
+            "missing_optional": missing_optional,
+            "warnings": warnings,
+        }
+        if require_lec:
+            lec_payload = self._read_json(lec_result)
+            summary["lec"] = {
                 "status": lec_payload.get("status", ""),
                 "result": "final/reports/postRouteLec/result.json",
                 "equiv_status": "final/reports/postRouteLec/report/equiv_status.rpt",
                 "status_report": "final/reports/postRouteLec/report/run_lec_status.rpt",
                 "golden_verilog": lec_payload.get("golden_verilog", ""),
                 "gate_verilog": lec_payload.get("gate_verilog", ""),
-            },
-            "missing_required": missing_required,
-            "missing_optional": missing_optional,
-            "warnings": warnings,
-        }
+            }
         if not flow_starts_at_floorplan:
             summary["synthesis"] = {"verilog": f"synthesis/{design}.v.gz"}
         summary_path = package_dir / "summary.json"
@@ -760,7 +770,8 @@ class SignoffPackageCollector:
             else:
                 target.write_text(content, encoding="utf-8")
             size_bytes = target.stat().st_size
-            sha256 = self._sha256(target)
+            digest = file_digest(target)
+            sha256 = digest[0] if digest else None
         else:
             size_bytes = len(content.encode()) if content is not None else source.stat().st_size
             sha256 = None
@@ -864,13 +875,6 @@ class SignoffPackageCollector:
             return {}
         return data if isinstance(data, dict) else {}
 
-    def _sha256(self, path: Path) -> str:
-        digest = hashlib.sha256()
-        with open(path, "rb") as file:
-            for chunk in iter(lambda: file.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return digest.hexdigest()
-
     def _path_from_config(self, workspace_dir: Path, path_text: str) -> Path | None:
         if not path_text:
             return None
@@ -944,7 +948,6 @@ class SignoffPackageCollector:
             StepEnum.DRC.value,
             StepEnum.LVS.value,
             StepEnum.FILLER.value,
-            StepEnum.POST_ROUTE_LEC.value,
             StepEnum.ROUTING.value,
         ]
         state_by_step = {
@@ -952,6 +955,8 @@ class SignoffPackageCollector:
             for step in flow_data.get("steps", [])
             if isinstance(step, dict)
         }
+        if StepEnum.POST_ROUTE_LEC.value in state_by_step:
+            required.append(StepEnum.POST_ROUTE_LEC.value)
         return {step: state_by_step.get(step, "") for step in required}
 
     def _flow_starts_at_floorplan(self, flow_data: dict) -> bool:

@@ -1,5 +1,5 @@
 from .csv import csv_write
-from .file import chmod_folder, find_files
+from .file import chmod_folder, file_digest, find_files
 from .filelist import (
     get_filelist_info,
     parse_filelist,
@@ -45,4 +45,5 @@ __all__ = [
     "csv_write",
     "parse_incdir_directives",
     "find_files",
+    "file_digest",
 ]

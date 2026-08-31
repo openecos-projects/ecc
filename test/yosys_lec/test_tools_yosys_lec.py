@@ -200,6 +200,8 @@ def test_lec_runner_marks_success_from_yosys_status(tmp_path, monkeypatch):
     payload = json.loads(step.output.json.read_text())
     assert payload["status"] == "proven"
     assert payload["gate_verilog"] == str(gate)
+    assert payload["golden_sha256"]
+    assert payload["gate_sha256"]
 
 
 def test_lec_runner_writes_incomplete_result_on_failure(tmp_path, monkeypatch):
@@ -238,15 +240,131 @@ def test_lec_runner_writes_incomplete_result_on_failure(tmp_path, monkeypatch):
 
 
 def test_engine_flow_accepts_lec_result_json(tmp_path):
+    from chipcompiler.utility import file_digest
+
+    golden = tmp_path / "golden.v"
+    gate = tmp_path / "gate.v"
+    golden.write_text("module golden; endmodule\n")
+    gate.write_text("module gate; endmodule\n")
+    golden_digest = file_digest(golden)
+    gate_digest = file_digest(gate)
     result_json = tmp_path / "lec_result.json"
-    result_json.write_text('{"status": "proven"}\n')
-    step = YosysLecStep(name=StepEnum.LEC.value, output=OutputPaths(json=result_json))
+    result_json.write_text(
+        json.dumps(
+            {
+                "status": "proven",
+                "golden_verilog": str(golden),
+                "gate_verilog": str(gate),
+                "golden_sha256": golden_digest[0],
+                "gate_sha256": gate_digest[0],
+                "golden_size_bytes": golden_digest[1],
+                "gate_size_bytes": gate_digest[1],
+            }
+        )
+    )
+    step = YosysLecStep(
+        name=StepEnum.LEC.value,
+        input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
+        output=OutputPaths(json=result_json),
+    )
 
     assert EngineFlow(workspace=None).check_step_result(step) is True
     incomplete = tmp_path / "lec_incomplete.json"
     incomplete.write_text('{"status": "incomplete"}\n')
     failed = YosysLecStep(name=StepEnum.LEC.value, output=OutputPaths(json=incomplete))
     assert EngineFlow(workspace=None).check_step_result(failed) is False
+
+
+def test_engine_flow_rejects_stale_lec_result_when_netlist_changes(tmp_path):
+    from chipcompiler.utility import file_digest
+
+    golden = tmp_path / "golden.v"
+    gate = tmp_path / "gate.v"
+    golden.write_text("module golden; endmodule\n")
+    gate.write_text("module gate; endmodule\n")
+    golden_digest = file_digest(golden)
+    gate_digest = file_digest(gate)
+    result_json = tmp_path / "lec_result.json"
+    result_json.write_text(
+        json.dumps(
+            {
+                "status": "proven",
+                "golden_verilog": str(golden),
+                "gate_verilog": str(gate),
+                "golden_sha256": golden_digest[0],
+                "gate_sha256": gate_digest[0],
+                "golden_size_bytes": golden_digest[1],
+                "gate_size_bytes": gate_digest[1],
+            }
+        )
+    )
+    step = YosysLecStep(
+        name=StepEnum.LEC.value,
+        input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
+        output=OutputPaths(json=result_json),
+    )
+    assert EngineFlow(workspace=None).check_step_result(step) is True
+
+    gate.write_text("module gate; /* changed */ endmodule\n")
+    assert EngineFlow(workspace=None).check_step_result(step) is False
+
+
+def test_engine_flow_rejects_legacy_proven_json_without_digests(tmp_path):
+    golden = tmp_path / "golden.v"
+    gate = tmp_path / "gate.v"
+    golden.write_text("module golden; endmodule\n")
+    gate.write_text("module gate; endmodule\n")
+    result_json = tmp_path / "lec_result.json"
+    result_json.write_text(
+        json.dumps(
+            {
+                "status": "proven",
+                "golden_verilog": str(golden),
+                "gate_verilog": str(gate),
+            }
+        )
+    )
+    step = YosysLecStep(
+        name=StepEnum.LEC.value,
+        input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
+        output=OutputPaths(json=result_json),
+    )
+    assert EngineFlow(workspace=None).check_step_result(step) is False
+
+
+def test_lec_runner_writes_incomplete_result_when_yosys_raises(tmp_path, monkeypatch):
+    from chipcompiler.tools.yosys_lec import builder, runner
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    _write_gcd_netlist_pair(gate)
+    step = builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.LEC.value,
+        input_def=None,
+        input_verilog=gate,
+    )
+    builder.build_step_space(step)
+    builder.build_step_config(workspace=workspace, step=step)
+
+    class FakeSubFlow:
+        def __init__(self, workspace, workspace_step):
+            pass
+
+        def update_step(self, step_name, state, info=None):
+            return None
+
+    def fake_run(cmd, cwd, env, stdout, stderr):
+        raise OSError("yosys exec format error")
+
+    monkeypatch.setattr(runner, "YosysLecSubFlow", FakeSubFlow)
+    monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], {"PATH": "/tmp"}))
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    assert runner.run_step(workspace=workspace, step=step) is False
+    payload = json.loads(step.output.json.read_text())
+    assert payload["status"] == "incomplete"
+    assert payload["gate_sha256"]
 
 
 def test_rtl2gds_flow_appends_post_route_lec_after_filler():

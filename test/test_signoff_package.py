@@ -4,6 +4,7 @@ from pathlib import Path
 from chipcompiler.data import OriginDesign, Parameters, StateEnum, Workspace
 from chipcompiler.engine import EngineFlow
 from chipcompiler.engine.signoff import SignoffPackageOptions
+from chipcompiler.utility import file_digest
 
 STA_REPORT_NAMES = (
     "qor_summary.rpt",
@@ -95,14 +96,26 @@ def _make_signoff_workspace(
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.gds")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.png")
     _write(workspace_dir / "RCX_ecc" / "output" / f"{top_module}_RCworst_125C.spef")
+    golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
+    gate = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
+    golden_digest = file_digest(golden)
+    gate_digest = file_digest(gate)
     _write_json(
         workspace_dir / "postRouteLec_yosys_lec" / "output" / f"{design}_postRouteLec_result.json",
         {
             "status": "proven",
-            "golden_verilog": f"Synthesis_yosys/output/{design}_Synthesis.v.gz",
-            "gate_verilog": f"filler_ecc/output/{design}_filler.v.gz",
-            "equiv_status": "postRouteLec_yosys_lec/report/equiv_status.rpt",
-            "status_report": "postRouteLec_yosys_lec/report/run_lec_status.rpt",
+            "golden_verilog": str(golden),
+            "gate_verilog": str(gate),
+            "golden_sha256": golden_digest[0],
+            "gate_sha256": gate_digest[0],
+            "golden_size_bytes": golden_digest[1],
+            "gate_size_bytes": gate_digest[1],
+            "equiv_status": str(
+                workspace_dir / "postRouteLec_yosys_lec" / "report" / "equiv_status.rpt"
+            ),
+            "status_report": str(
+                workspace_dir / "postRouteLec_yosys_lec" / "report" / "run_lec_status.rpt"
+            ),
         },
     )
     _write(
@@ -279,6 +292,25 @@ def test_collect_signoff_package_requires_synthesis_verilog(tmp_path):
     )
 
 
+def test_collect_signoff_package_rejects_stale_post_route_lec_proof(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    filler = workspace_dir / "filler_ecc" / "output" / "gcd_filler.v.gz"
+    filler.write_text("module gcd; updated\n")
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert any(
+        issue.label == "lec.result"
+        and issue.destination == "final/reports/postRouteLec/result.json"
+        and "stale" in issue.reason
+        and issue.required
+        for issue in result.issues
+    )
+
+
 def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     _write_json(
@@ -312,6 +344,7 @@ def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
         0,
         {"name": "Floorplan", "tool": "ecc", "state": StateEnum.Success.value},
     )
+    flow["steps"] = [step for step in flow["steps"] if step.get("name") != "postRouteLec"]
     _write_json(workspace_dir / "home" / "flow.json", flow)
     engine_flow = _make_engine_flow(workspace_dir)
     external_rtl = tmp_path / "external" / "gcd.v"

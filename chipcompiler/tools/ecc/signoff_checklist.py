@@ -425,11 +425,22 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
     elif step.name == StepEnum.SYNTHESIS.value:
         artifacts = (("netlist", "Mapped synthesis netlist", step.output.verilog),)
     elif step.name in {StepEnum.LEC.value, StepEnum.POST_ROUTE_LEC.value}:
-        from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
+        from chipcompiler.tools.yosys_lec.utility import lec_result_status
 
         result_json = getattr(step.output, "json", None)
-        if lec_result_is_proven(result_json):
+        step_input = getattr(step, "input", None)
+        status = lec_result_status(
+            result_json,
+            golden_verilog=getattr(step_input, "golden_verilog", None),
+            gate_verilog=getattr(step_input, "gate_verilog", None),
+        )
+        if status == "proven":
             state, summary = "pass", "Yosys LEC proved equivalence."
+        elif status == "stale":
+            state, summary = (
+                "failed",
+                "Yosys LEC proof is stale; golden or gate netlist changed.",
+            )
         elif result_json and Path(result_json).is_file():
             state, summary = "failed", "Yosys LEC did not prove equivalence."
         else:
@@ -504,6 +515,8 @@ def _flow_items(workspace: Workspace) -> list[dict]:
     }
     items = []
     for step in _REQUIRED_FLOW_STEPS:
+        if step == StepEnum.POST_ROUTE_LEC.value and step not in states:
+            continue
         state = "pass" if states.get(step) == StateEnum.Success.value else "failed"
         items.append(
             _item(

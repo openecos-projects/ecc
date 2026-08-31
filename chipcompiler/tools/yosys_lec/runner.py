@@ -7,6 +7,7 @@ from pathlib import Path
 from chipcompiler.data import StateEnum, Workspace, YosysLecStep
 from chipcompiler.tools.yosys.utility import get_yosys_runtime
 from chipcompiler.tools.yosys_lec.subflow import YosysLecSubFlow
+from chipcompiler.utility import file_digest
 
 
 def _status_is_proven(path: Path | str | None) -> bool:
@@ -20,13 +21,28 @@ def _status_is_proven(path: Path | str | None) -> bool:
     )
 
 
+def _netlist_fields(path: Path | str | None) -> dict:
+    digest = file_digest(path)
+    return {
+        "path": str(path or ""),
+        "sha256": digest[0] if digest else "",
+        "size_bytes": digest[1] if digest else 0,
+    }
+
+
 def _write_result(step: YosysLecStep, *, proven: bool) -> None:
     if not step.output.json:
         return
+    golden = _netlist_fields(step.input.golden_verilog)
+    gate = _netlist_fields(step.input.gate_verilog)
     payload = {
         "status": "proven" if proven else "incomplete",
-        "golden_verilog": str(step.input.golden_verilog or ""),
-        "gate_verilog": str(step.input.gate_verilog or ""),
+        "golden_verilog": golden["path"],
+        "gate_verilog": gate["path"],
+        "golden_sha256": golden["sha256"],
+        "gate_sha256": gate["sha256"],
+        "golden_size_bytes": golden["size_bytes"],
+        "gate_size_bytes": gate["size_bytes"],
         "equiv_status": str(step.report.equiv_status or ""),
         "status_report": str(step.report.status or ""),
     }
@@ -55,14 +71,24 @@ def run_step(workspace: Workspace, step: YosysLecStep, ecc_module=None) -> bool:
             return False
 
     cmd = yosys_cmd + ["-Q", "-c", Path(step.script.main).name]
-    with open(log_path, "w", encoding="utf-8") as log_file:
-        result = subprocess.run(
-            cmd,
-            cwd=str(step.script.dir or step.directory),
-            env=yosys_env,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-        )
+    try:
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            result = subprocess.run(
+                cmd,
+                cwd=str(step.script.dir or step.directory),
+                env=yosys_env,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        try:
+            with open(log_path, "a", encoding="utf-8") as log_file:
+                log_file.write(f"Error running yosys LEC: {exc}\n")
+        except OSError:
+            pass
+        _write_result(step, proven=False)
+        sub_flow.update_step(step_name="run lec", state=StateEnum.Imcomplete)
+        return False
 
     proven = result.returncode == 0 and _status_is_proven(step.report.equiv_status)
     _write_result(step, proven=proven)
