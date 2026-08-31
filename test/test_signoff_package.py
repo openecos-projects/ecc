@@ -370,6 +370,20 @@ def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     )
 
 
+def test_collect_signoff_package_requires_post_route_lec_even_if_flow_omits_it(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
+    flow["steps"] = [step for step in flow["steps"] if step.get("name") != "postRouteLec"]
+    _write_json(workspace_dir / "home" / "flow.json", flow)
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert any(issue.location == "postRouteLec" and issue.required for issue in result.issues)
+
+
 def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     (workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz").unlink()

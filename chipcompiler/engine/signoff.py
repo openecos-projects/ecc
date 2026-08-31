@@ -141,7 +141,11 @@ class SignoffPackageCollector:
         flow_data = self.workspace.flow.data or self._read_json(flow_path)
         checklist_data = self._read_json(checklist_path)
 
-        required_steps = self._required_step_states(flow_data)
+        flow_starts_at_floorplan = self._flow_starts_at_floorplan(flow_data)
+        synthesis_verilog = None if flow_starts_at_floorplan else self._synthesis_output_verilog()
+        filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
+        require_lec = self._requires_post_route_lec(flow_data, synthesis_verilog, filler_verilog)
+        required_steps = self._required_step_states(flow_data, require_lec=require_lec)
         for step_name, state in required_steps.items():
             if state != StateEnum.Success.value:
                 missing_required.append(f"flow step {step_name} is {state or 'missing'}")
@@ -198,7 +202,6 @@ class SignoffPackageCollector:
                     )
 
         db_config = self._read_json(config_dir / "db_ecc.json")
-        flow_starts_at_floorplan = self._flow_starts_at_floorplan(flow_data)
         configured_filelist = (
             None
             if flow_starts_at_floorplan
@@ -364,9 +367,7 @@ class SignoffPackageCollector:
             required=True,
         )
 
-        synthesis_verilog = None
         if not flow_starts_at_floorplan:
-            synthesis_verilog = self._synthesis_output_verilog()
             add_file(
                 role="synthesis.verilog",
                 source=synthesis_verilog,
@@ -374,12 +375,8 @@ class SignoffPackageCollector:
                 required=True,
             )
 
-        require_lec = StepEnum.POST_ROUTE_LEC.value in {
-            step.get("name") for step in flow_data.get("steps", []) if isinstance(step, dict)
-        }
         lec_dir = workspace_dir / self._step_dirs()[StepEnum.POST_ROUTE_LEC.value]
         lec_result = lec_dir / "output" / f"{design}_{StepEnum.POST_ROUTE_LEC.value}_result.json"
-        filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
         if require_lec:
             add_file(
                 role="lec.result",
@@ -946,7 +943,7 @@ class SignoffPackageCollector:
         verilog = getattr(output, "verilog", None)
         return Path(verilog) if verilog else None
 
-    def _required_step_states(self, flow_data: dict) -> dict:
+    def _required_step_states(self, flow_data: dict, *, require_lec: bool) -> dict:
         required = [
             StepEnum.HARDEN.value,
             StepEnum.RCX.value,
@@ -961,9 +958,21 @@ class SignoffPackageCollector:
             for step in flow_data.get("steps", [])
             if isinstance(step, dict)
         }
-        if StepEnum.POST_ROUTE_LEC.value in state_by_step:
+        if require_lec:
             required.append(StepEnum.POST_ROUTE_LEC.value)
         return {step: state_by_step.get(step, "") for step in required}
+
+    def _requires_post_route_lec(
+        self,
+        flow_data: dict,
+        synthesis_verilog: Path | None,
+        filler_verilog: Path | None,
+    ) -> bool:
+        if self._flow_starts_at_floorplan(flow_data):
+            return False
+        if synthesis_verilog is None or not Path(synthesis_verilog).is_file():
+            return False
+        return bool(filler_verilog and Path(filler_verilog).is_file())
 
     def _flow_starts_at_floorplan(self, flow_data: dict) -> bool:
         """Whether this workspace intentionally omits synthesis before Floorplan."""

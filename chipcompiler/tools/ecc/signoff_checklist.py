@@ -498,6 +498,19 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     return not any(item["blocked"] for item in step.checklist.checklist)
 
 
+def _requires_post_route_lec(workspace: Workspace, states: dict) -> bool:
+    if StepEnum.FLOORPLAN.value in states and StepEnum.SYNTHESIS.value not in states:
+        return False
+    workspace_directory = getattr(workspace, "directory", None)
+    if not workspace_directory:
+        return StepEnum.FILLER.value in states
+    workspace_dir = Path(workspace_directory)
+    design = getattr(getattr(workspace, "design", None), "name", "") or ""
+    synthesis = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
+    filler = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
+    return synthesis.is_file() and filler.is_file()
+
+
 def _flow_items(workspace: Workspace) -> list[dict]:
     flow_data = getattr(getattr(workspace, "flow", None), "data", {})
     if not isinstance(flow_data, dict) or not flow_data.get("steps"):
@@ -515,7 +528,9 @@ def _flow_items(workspace: Workspace) -> list[dict]:
     }
     items = []
     for step in _REQUIRED_FLOW_STEPS:
-        if step == StepEnum.POST_ROUTE_LEC.value and step not in states:
+        if step == StepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
+            workspace, states
+        ):
             continue
         state = "pass" if states.get(step) == StateEnum.Success.value else "failed"
         items.append(
