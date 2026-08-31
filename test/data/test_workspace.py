@@ -445,6 +445,8 @@ def test_step_config_keys_return_workspace_config_keys():
     )
     assert data_api.step_config_keys("place", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys("Timing optimization", "sizer") == ("db", "dreamplace")
+    assert data_api.step_config_keys(StepEnum.TIMING_OPT, "sizer") == ("db", "dreamplace")
     assert data_api.step_config_keys("synthesis", "yosys") == ()
     assert data_api.step_config_keys("place", None) == ()
 
@@ -492,6 +494,10 @@ def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
         config_dir / "dreamplace_ecc.json",
     )
     assert data_api.step_config_paths(workspace_dir, "legalization", "dreamplace") == (
+        config_dir / "dreamplace_ecc.json",
+    )
+    assert data_api.step_config_paths(workspace_dir, StepEnum.TIMING_OPT, "sizer") == (
+        config_dir / "db_ecc.json",
         config_dir / "dreamplace_ecc.json",
     )
     assert data_api.step_config_paths(workspace_dir, "place", "ECC") == ()

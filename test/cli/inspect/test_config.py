@@ -297,6 +297,49 @@ class TestConfigStepResolved:
         ]
         assert data["records"][0]["source"] == "workspace_config"
 
+    def test_config_sizer_timing_opt_uses_db_and_dreamplace_configs(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        create_flow_json,
+        create_step_dir,
+        create_workspace_config,
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(
+            run_dir,
+            [
+                {
+                    "name": "Timing optimization",
+                    "tool": "sizer",
+                    "state": "Success",
+                    "runtime": "0:00:04",
+                },
+            ],
+        )
+        create_step_dir(run_dir, "Timing optimization", "sizer", subdirs=["output"])
+        create_workspace_config(
+            run_dir,
+            {
+                "db_ecc.json": "{}",
+                "dreamplace_ecc.json": "{}",
+            },
+        )
+
+        rc = cli_main.run(
+            ["config", "timing optimization", "--resolved", "--json", "--project", project_dir]
+        )
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert [item["path"] for item in data["records"]] == [
+            "runs/default/config/db_ecc.json",
+            "runs/default/config/dreamplace_ecc.json",
+        ]
+        assert all(item["source"] == "workspace_config" for item in data["records"])
+        assert all(item["step"] == "timing optimization" for item in data["records"])
+
     def test_config_cli_tokens_use_internal_flow_step_names(
         self,
         capsys,
