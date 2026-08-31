@@ -26,12 +26,11 @@ from chipcompiler.data import StepEnum
 STEP_TYPE_MAP: dict[StepEnum, int] = {member: i for i, member in enumerate(StepEnum)}
 STEP_TYPE_COUNT: int = len(STEP_TYPE_MAP)
 
-# Steps that only require a non-physical output (not def/gds).
-SYNTHESIS_ONLY_STEPS: set[StepEnum] = {
-    StepEnum.SYNTHESIS,
-    StepEnum.LEC,
-    StepEnum.POST_ROUTE_LEC,
-}
+# Steps that only require a mapped netlist (not def/gds).
+SYNTHESIS_ONLY_STEPS: set[StepEnum] = {StepEnum.SYNTHESIS}
+
+# Steps whose success contract is a proven result JSON, not physical outputs.
+JSON_ONLY_STEPS: set[StepEnum] = {StepEnum.LEC, StepEnum.POST_ROUTE_LEC}
 
 
 def _expected_output_keys(
@@ -39,20 +38,25 @@ def _expected_output_keys(
     has_def: BoolRef,
     has_verilog: BoolRef,
     has_gds: BoolRef,
+    has_json: BoolRef,
 ) -> BoolRef:
     """Encode: for a given step type, are the expected output keys present?
 
     Synthesis: requires has_verilog only.
+    LEC: requires has_json only.
     All others: requires has_def AND has_verilog AND has_gds.
     """
     synthesis_ids: list[int] = [STEP_TYPE_MAP[s] for s in SYNTHESIS_ONLY_STEPS]
+    json_ids: list[int] = [STEP_TYPE_MAP[s] for s in JSON_ONLY_STEPS]
 
     is_synthesis: BoolRef = Or(*[step_type_id == sid for sid in synthesis_ids])
+    is_json_only: BoolRef = Or(*[step_type_id == sid for sid in json_ids])
 
     synthesis_ok: BoolRef = has_verilog
+    json_ok: BoolRef = has_json
     other_ok: BoolRef = And(has_def, has_verilog, has_gds)
 
-    return If(is_synthesis, synthesis_ok, other_ok)
+    return If(is_synthesis, synthesis_ok, If(is_json_only, json_ok, other_ok))
 
 
 def test_output_keys_present_for_all_step_types() -> None:
@@ -67,6 +71,7 @@ def test_output_keys_present_for_all_step_types() -> None:
     has_def: BoolRef = Bool("has_def")
     has_verilog: BoolRef = Bool("has_verilog")
     has_gds: BoolRef = Bool("has_gds")
+    has_json: BoolRef = Bool("has_json")
 
     solver = Solver()
 
@@ -75,19 +80,23 @@ def test_output_keys_present_for_all_step_types() -> None:
 
     # There must exist a configuration where the step passes (satisfiability).
     solver.push()
-    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds))
+    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds, has_json))
     result = solver.check()
     assert result == sat, "No step type can satisfy output key requirements (should be SAT)"
     solver.pop()
 
-    # Verify: for non-synthesis steps, missing def should cause failure.
+    physical_ids: list[int] = [
+        STEP_TYPE_MAP[s]
+        for s in StepEnum
+        if s not in SYNTHESIS_ONLY_STEPS and s not in JSON_ONLY_STEPS
+    ]
+    # Verify: for physical steps, missing def should cause failure.
     solver.push()
-    non_synth_ids: list[int] = [STEP_TYPE_MAP[s] for s in StepEnum if s not in SYNTHESIS_ONLY_STEPS]
-    solver.add(Or(*[step_type == sid for sid in non_synth_ids]))
+    solver.add(Or(*[step_type == sid for sid in physical_ids]))
     solver.add(Not(has_def))  # def is missing
-    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds))
+    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds, has_json))
     result = solver.check()
-    assert result == unsat, "Non-synthesis step should FAIL check_step_result when def is missing"
+    assert result == unsat, "Physical step should FAIL check_step_result when def is missing"
     solver.pop()
 
     # Verify: for synthesis steps, missing def should NOT cause failure.
@@ -96,9 +105,20 @@ def test_output_keys_present_for_all_step_types() -> None:
     solver.add(Or(*[step_type == sid for sid in synth_ids]))
     solver.add(Not(has_def))  # def is missing
     solver.add(has_verilog)  # but verilog is present
-    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds))
+    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds, has_json))
     result = solver.check()
     assert result == sat, "Synthesis step should PASS check_step_result even without def"
+    solver.pop()
+
+    # Verify: for LEC steps, missing json should cause failure even with verilog.
+    solver.push()
+    json_ids: list[int] = [STEP_TYPE_MAP[s] for s in JSON_ONLY_STEPS]
+    solver.add(Or(*[step_type == sid for sid in json_ids]))
+    solver.add(has_verilog)
+    solver.add(Not(has_json))
+    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds, has_json))
+    result = solver.check()
+    assert result == unsat, "LEC step should FAIL check_step_result when result JSON is missing"
     solver.pop()
 
 
@@ -178,24 +198,30 @@ def test_check_step_result_completeness() -> None:
     For each StepEnum, verify the match statement in check_step_result()
     routes to the correct check:
     - Synthesis -> verilog only
+    - LEC -> result JSON only
     - Everything else -> def + verilog + gds
     """
     step_type: ArithRef = Int("step_type")
     has_def: BoolRef = Bool("has_def")
     has_verilog: BoolRef = Bool("has_verilog")
     has_gds: BoolRef = Bool("has_gds")
+    has_json: BoolRef = Bool("has_json")
 
     solver = Solver()
     solver.add(And(step_type >= 0, step_type < STEP_TYPE_COUNT))
 
-    # For every non-synthesis step: check requires def AND verilog AND gds.
-    non_synth_ids: list[int] = [STEP_TYPE_MAP[s] for s in StepEnum if s not in SYNTHESIS_ONLY_STEPS]
+    physical_ids: list[int] = [
+        STEP_TYPE_MAP[s]
+        for s in StepEnum
+        if s not in SYNTHESIS_ONLY_STEPS and s not in JSON_ONLY_STEPS
+    ]
+    # For every physical step: check requires def AND verilog AND gds.
     solver.push()
-    solver.add(Or(*[step_type == sid for sid in non_synth_ids]))
-    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds))
+    solver.add(Or(*[step_type == sid for sid in physical_ids]))
+    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds, has_json))
     solver.add(Or(Not(has_def), Not(has_verilog), Not(has_gds)))  # at least one missing
     result = solver.check()
-    assert result == unsat, "Non-synthesis step must require all of def, verilog, gds"
+    assert result == unsat, "Physical step must require all of def, verilog, gds"
     solver.pop()
 
     # For synthesis: check requires only verilog.
@@ -203,9 +229,19 @@ def test_check_step_result_completeness() -> None:
     solver.push()
     solver.add(Or(*[step_type == sid for sid in synth_ids]))
     solver.add(Not(has_verilog))
-    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds))
+    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds, has_json))
     result = solver.check()
     assert result == unsat, "Synthesis step must require verilog"
+    solver.pop()
+
+    # For LEC: check requires only result JSON.
+    json_ids: list[int] = [STEP_TYPE_MAP[s] for s in JSON_ONLY_STEPS]
+    solver.push()
+    solver.add(Or(*[step_type == sid for sid in json_ids]))
+    solver.add(Not(has_json))
+    solver.add(_expected_output_keys(step_type, has_def, has_verilog, has_gds, has_json))
+    result = solver.check()
+    assert result == unsat, "LEC step must require result JSON"
     solver.pop()
 
 
