@@ -15,6 +15,7 @@ from chipcompiler.data import (
 )
 from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_payload
 from chipcompiler.tools.ecc.signoff_checklist import (
+    _flow_items,
     _workspace_items,
     rebuild_home_checklist,
     refresh_step_checklist,
@@ -588,3 +589,64 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
     assert home_items["flow.harden.completed"]["summary"] == (
         "Required flow stage completed successfully."
     )
+
+
+def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
+    origin = tmp_path / "origin" / "gcd.v"
+    origin.parent.mkdir()
+    origin.write_text("module gcd; imported mapped netlist\nendmodule\n", encoding="utf-8")
+    leftover = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
+    leftover.parent.mkdir(parents=True)
+    leftover.write_text("module gcd; leftover synthesis\nendmodule\n", encoding="utf-8")
+    filler = tmp_path / "filler_ecc" / "output" / "gcd_filler.v.gz"
+    filler.parent.mkdir(parents=True)
+    filler.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", origin_verilog=origin),
+    )
+    workspace.flow.data = {
+        "steps": [
+            {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
+            for step in (
+                StepEnum.NETLIST_OPT,
+                StepEnum.ROUTING,
+                StepEnum.DRC,
+                StepEnum.LVS,
+                StepEnum.FILLER,
+                StepEnum.POST_ROUTE_LEC,
+                StepEnum.RCX,
+                StepEnum.STA,
+                StepEnum.HARDEN,
+            )
+        ]
+    }
+    workspace.flow.data["steps"][5]["tool"] = "yosys_lec"
+
+    items = {item["id"]: item for item in _flow_items(workspace)}
+    assert "flow.postroutelec.completed" in items
+    assert items["flow.postroutelec.completed"]["state"] == "pass"
+
+
+def test_home_checklist_ignores_leftover_synthesis_dir_without_synthesis_step(tmp_path):
+    leftover = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
+    leftover.parent.mkdir(parents=True)
+    leftover.write_text("module gcd; leftover synthesis\nendmodule\n", encoding="utf-8")
+    filler = tmp_path / "filler_ecc" / "output" / "gcd_filler.v.gz"
+    filler.parent.mkdir(parents=True)
+    filler.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    workspace.flow.data = {
+        "steps": [
+            {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
+            for step in (
+                StepEnum.NETLIST_OPT,
+                StepEnum.FILLER,
+                StepEnum.HARDEN,
+            )
+        ]
+    }
+
+    items = {item["id"]: item for item in _flow_items(workspace)}
+    assert leftover.is_file()
+    assert "flow.postroutelec.completed" not in items

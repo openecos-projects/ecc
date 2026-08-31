@@ -48,6 +48,32 @@ class Flow:
     path: Path | None = None  # flow file path
     data: dict = field(default_factory=dict)  # flow steps
 
+    def steps(self) -> list[dict]:
+        data = self.data if isinstance(self.data, dict) else {}
+        if not data and self.path is not None:
+            from chipcompiler.utility import json_read
+
+            loaded = json_read(self.path)
+            if isinstance(loaded, dict):
+                self.data = loaded
+                data = loaded
+        raw_steps = data.get("steps", [])
+        if not isinstance(raw_steps, list):
+            return []
+        return [step for step in raw_steps if isinstance(step, dict)]
+
+    def get_step(self, name: str | StepEnum, tool: str | None = None) -> dict | None:
+        step_name = name.value if isinstance(name, StepEnum) else name
+        for step in self.steps():
+            if step.get("name") != step_name:
+                continue
+            if tool is None or step.get("tool") == tool:
+                return step
+        return None
+
+    def has_step(self, name: str | StepEnum, tool: str | None = None) -> bool:
+        return self.get_step(name, tool) is not None
+
 
 @dataclass
 class Workspace:

@@ -361,6 +361,37 @@ def test_engine_flow_rejects_legacy_proven_json_without_sizes(tmp_path):
     assert EngineFlow(workspace=None).check_step_result(step) is False
 
 
+def test_engine_flow_rejects_bool_size_fields(tmp_path):
+    from chipcompiler.utility import file_digest
+
+    golden = tmp_path / "golden.v"
+    gate = tmp_path / "gate.v"
+    golden.write_text("m")
+    gate.write_text("module gate; endmodule\n")
+    golden_digest = file_digest(golden)
+    gate_digest = file_digest(gate)
+    result_json = tmp_path / "lec_result.json"
+    result_json.write_text(
+        json.dumps(
+            {
+                "status": "proven",
+                "golden_verilog": str(golden),
+                "gate_verilog": str(gate),
+                "golden_sha256": golden_digest[0],
+                "gate_sha256": gate_digest[0],
+                "golden_size_bytes": True,
+                "gate_size_bytes": gate_digest[1],
+            }
+        )
+    )
+    step = YosysLecStep(
+        name=StepEnum.LEC.value,
+        input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
+        output=OutputPaths(json=result_json),
+    )
+    assert EngineFlow(workspace=None).check_step_result(step) is False
+
+
 def test_lec_runner_writes_incomplete_result_when_yosys_raises(tmp_path, monkeypatch):
     from chipcompiler.tools.yosys_lec import builder, runner
 

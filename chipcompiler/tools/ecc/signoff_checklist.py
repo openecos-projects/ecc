@@ -498,44 +498,35 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     return not any(item["blocked"] for item in step.checklist.checklist)
 
 
-def _requires_post_route_lec(workspace: Workspace, states: dict) -> bool:
-    if StepEnum.FILLER.value not in states:
+def _requires_post_route_lec(workspace: Workspace) -> bool:
+    flow = getattr(workspace, "flow", None)
+    if flow is None or not flow.has_step(StepEnum.FILLER):
         return False
     workspace_directory = getattr(workspace, "directory", None)
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
     origin = getattr(getattr(workspace, "design", None), "origin_verilog", None)
     filler = None
-    synthesis = None
+    golden = origin
     if workspace_directory:
         workspace_dir = Path(workspace_directory)
-        synthesis = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
         filler = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
-    golden = synthesis if synthesis and synthesis.is_file() else origin
+        if flow.has_step(StepEnum.SYNTHESIS):
+            golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
     if golden is None or not Path(golden).is_file():
         return False
     return bool(filler and Path(filler).is_file())
 
 
 def _flow_items(workspace: Workspace) -> list[dict]:
-    flow_data = getattr(getattr(workspace, "flow", None), "data", {})
-    if not isinstance(flow_data, dict) or not flow_data.get("steps"):
-        workspace_directory = getattr(workspace, "directory", None)
-        flow_data = (
-            json_read(Path(workspace_directory) / "home" / "flow.json")
-            if workspace_directory
-            else {}
-        )
-    flow_steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+    flow = getattr(workspace, "flow", None)
     states = {
         item.get("name"): item.get("state")
-        for item in flow_steps
-        if isinstance(item, dict) and isinstance(item.get("name"), str)
+        for item in (flow.steps() if flow is not None else [])
+        if isinstance(item.get("name"), str)
     }
     items = []
     for step in _REQUIRED_FLOW_STEPS:
-        if step == StepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
-            workspace, states
-        ):
+        if step == StepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(workspace):
             continue
         state = "pass" if states.get(step) == StateEnum.Success.value else "failed"
         items.append(

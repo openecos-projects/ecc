@@ -138,15 +138,16 @@ class SignoffPackageCollector:
 
         flow_path = workspace_dir / "home" / "flow.json"
         checklist_path = workspace_dir / "home" / "checklist.json"
-        flow_data = self.workspace.flow.data or self._read_json(flow_path)
+        if self.workspace.flow.path is None:
+            self.workspace.flow.path = flow_path
         checklist_data = self._read_json(checklist_path)
 
-        flow_starts_at_floorplan = self._flow_starts_at_floorplan(flow_data)
-        synthesis_verilog = None if flow_starts_at_floorplan else self._synthesis_output_verilog()
+        has_synthesis = self.workspace.flow.has_step(StepEnum.SYNTHESIS)
+        synthesis_verilog = self._synthesis_output_verilog() if has_synthesis else None
         lec_golden = synthesis_verilog or getattr(self.workspace.design, "origin_verilog", None)
         filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
         require_lec = self._requires_post_route_lec(lec_golden, filler_verilog)
-        required_steps = self._required_step_states(flow_data, require_lec=require_lec)
+        required_steps = self._required_step_states(require_lec=require_lec)
         for step_name, state in required_steps.items():
             if state != StateEnum.Success.value:
                 missing_required.append(f"flow step {step_name} is {state or 'missing'}")
@@ -204,17 +205,11 @@ class SignoffPackageCollector:
 
         db_config = self._read_json(config_dir / "db_ecc.json")
         configured_filelist = (
-            None
-            if flow_starts_at_floorplan
-            else getattr(self.workspace.design, "input_filelist", None)
+            None if not has_synthesis else getattr(self.workspace.design, "input_filelist", None)
         )
         origin_rtl = resolve_initial_rtl(
             configured_filelist,
-            (
-                None
-                if flow_starts_at_floorplan
-                else getattr(self.workspace.design, "origin_verilog", None)
-            ),
+            getattr(self.workspace.design, "origin_verilog", None),
             workspace_dir / "origin",
         )
         if origin_rtl is not None:
@@ -368,7 +363,7 @@ class SignoffPackageCollector:
             required=True,
         )
 
-        if not flow_starts_at_floorplan:
+        if has_synthesis:
             add_file(
                 role="synthesis.verilog",
                 source=synthesis_verilog,
@@ -660,7 +655,7 @@ class SignoffPackageCollector:
                 "golden_verilog": lec_payload.get("golden_verilog", ""),
                 "gate_verilog": lec_payload.get("gate_verilog", ""),
             }
-        if not flow_starts_at_floorplan:
+        if has_synthesis:
             summary["synthesis"] = {"verilog": f"synthesis/{design}.v.gz"}
         summary_path = package_dir / "summary.json"
 
@@ -689,10 +684,10 @@ class SignoffPackageCollector:
 
             readme_path = package_dir / "README.md"
             input_verilog_description = "- Mapped synthesis netlist is under `synthesis/`.\n"
-            if flow_starts_at_floorplan:
+            if not has_synthesis:
                 input_verilog_description = (
-                    "- Original imported RTL is under `initial/` because this flow "
-                    "starts at Floorplan.\n"
+                    "- Original imported netlist is under `initial/` because this flow "
+                    "has no Synthesis step.\n"
                 )
             readme_path.write_text(
                 f"# {design} Signoff Package\n\n"
@@ -944,7 +939,7 @@ class SignoffPackageCollector:
         verilog = getattr(output, "verilog", None)
         return Path(verilog) if verilog else None
 
-    def _required_step_states(self, flow_data: dict, *, require_lec: bool) -> dict:
+    def _required_step_states(self, *, require_lec: bool) -> dict:
         required = [
             StepEnum.HARDEN.value,
             StepEnum.RCX.value,
@@ -954,14 +949,13 @@ class SignoffPackageCollector:
             StepEnum.FILLER.value,
             StepEnum.ROUTING.value,
         ]
-        state_by_step = {
-            step.get("name"): step.get("state", "")
-            for step in flow_data.get("steps", [])
-            if isinstance(step, dict)
-        }
         if require_lec:
             required.append(StepEnum.POST_ROUTE_LEC.value)
-        return {step: state_by_step.get(step, "") for step in required}
+        states = {}
+        for step in required:
+            entry = self.workspace.flow.get_step(step)
+            states[step] = entry.get("state", "") if entry else ""
+        return states
 
     def _requires_post_route_lec(
         self,
@@ -972,31 +966,14 @@ class SignoffPackageCollector:
             return False
         return bool(filler_verilog and Path(filler_verilog).is_file())
 
-    def _flow_starts_at_floorplan(self, flow_data: dict) -> bool:
-        """Whether this workspace intentionally omits synthesis before Floorplan."""
-        steps = flow_data.get("steps", [])
-        if not isinstance(steps, list):
-            return False
-        first_step = next(
-            (step for step in steps if isinstance(step, dict) and step.get("name")),
-            None,
-        )
-        return bool(
-            first_step
-            and str(first_step.get("name", "")).strip().lower() == StepEnum.FLOORPLAN.value.lower()
-        )
-
     def _refresh_workspace_analysis(self, workspace_dir: Path) -> list[SignoffPackageIssue]:
         """Rebuild current V3 analysis and checklist snapshots for completed steps."""
-        flow_data = self.workspace.flow.data or self._read_json(
-            workspace_dir / "home" / "flow.json"
-        )
+        if self.workspace.flow.path is None:
+            self.workspace.flow.path = workspace_dir / "home" / "flow.json"
         issues: list[SignoffPackageIssue] = []
         previous_step = None
 
-        for flow_step in flow_data.get("steps", []):
-            if not isinstance(flow_step, dict):
-                continue
+        for flow_step in self.workspace.flow.steps():
             step_name = str(flow_step.get("name", ""))
             tool = str(flow_step.get("tool", ""))
             if not step_name or not tool:
