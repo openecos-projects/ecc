@@ -10,7 +10,6 @@ def test_discovery_includes_current_presets():
         "harden",
         "syn_sta",
         "synthesis_lec",
-        "post_route_lec",
     } <= set(get_flow_builders())
 
 
@@ -65,4 +64,5 @@ def test_build_rtl2gds_flow_includes_lvs_after_drc():
         (StepEnum.DRC, "ecc", StateEnum.Unstart),
         (StepEnum.LVS, "ecc", StateEnum.Unstart),
         (StepEnum.FILLER, "ecc", StateEnum.Unstart),
+        (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart),
     ]

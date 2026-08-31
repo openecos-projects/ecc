@@ -366,7 +366,8 @@ class EngineFlow:
                 ):
                     eda_step.output.spef = pre_step.output.spef
                 self.workspace_steps.append(eda_step)
-                pre_step = eda_step
+                if eda_step.tool != "yosys_lec":
+                    pre_step = eda_step
                 if eda_step.name == StepEnum.SYNTHESIS.value:
                     synthesis_gate_verilog = eda_step.output.verilog
                     synthesis_golden_verilog = getattr(eda_step.output, "golden_verilog", None)

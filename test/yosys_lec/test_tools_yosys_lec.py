@@ -207,12 +207,12 @@ def test_engine_flow_accepts_lec_result_json(tmp_path):
     assert EngineFlow(workspace=None).check_step_result(step) is True
 
 
-def test_post_route_lec_flow_appends_lec_after_route():
-    from chipcompiler.rtl2gds import build_post_route_lec_flow
+def test_rtl2gds_flow_appends_post_route_lec_after_filler():
+    from chipcompiler.rtl2gds import build_rtl2gds_flow
 
-    steps = build_post_route_lec_flow()
+    steps = build_rtl2gds_flow()
 
-    assert steps[-2][0] == StepEnum.ROUTING
+    assert steps[-2][0] == StepEnum.FILLER
     assert steps[-1] == (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart)
 
 

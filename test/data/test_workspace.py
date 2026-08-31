@@ -193,6 +193,7 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "drc",
         "lvs",
         "filler",
+        "postRouteLec",
         "RCX",
         "sta",
         "Harden",
