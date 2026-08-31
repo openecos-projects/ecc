@@ -25,26 +25,46 @@ def _published_paths(step: EccStep) -> list[Path]:
     if not isinstance(output, EccOutput):
         return []
 
-    paths: list[Path] = []
-    for value in (
+    candidates = [
         output.def_,
         output.verilog,
         output.gds,
         output.db,
         output.geometry,
         output.geometry_manifest,
-    ):
-        if value:
-            paths.append(Path(value))
-    return paths
+        output.image,
+        output.json,
+        output.view_json,
+        output.view_json_edits,
+        output.lef,
+        output.lib,
+        step.feature.db,
+        step.feature.step,
+        step.feature.map,
+        step.report.db,
+        step.report.step,
+    ]
+    return [Path(value) for value in candidates if value]
 
 
-def _delete_published_outputs(step: EccStep) -> None:
-    for path in _published_paths(step):
+def _delete_path(path: Path) -> None:
+    try:
         if path.is_symlink() or path.is_file():
             path.unlink()
         elif path.is_dir():
             shutil.rmtree(path)
+    except OSError:
+        logger.warning("Failed to delete Timing Opt artifact %s", path, exc_info=True)
+
+
+def _delete_published_outputs(step: EccStep) -> None:
+    for path in _published_paths(step):
+        _delete_path(path)
+
+
+def _delete_staging_outputs(step: EccStep) -> None:
+    _delete_path(sizer_staging_def(step))
+    _delete_path(sizer_staging_verilog(step))
 
 
 def run_step(
@@ -88,6 +108,7 @@ def run_step(
     log_path = step.log.file or ""
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     os.makedirs(os.path.dirname(step.output.def_ or ""), exist_ok=True)
+    _delete_staging_outputs(step)
 
     command = get_sizer_command() + ["-env", str(env_path), "-f", str(cmd_path)]
     with open(log_path, "w", encoding="utf-8") as log_file:
@@ -117,25 +138,34 @@ def run_step(
         sizer_staging_def(step),
         sizer_staging_verilog(step),
     )
+    published = False
     try:
         if ecc is None:
             sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Imcomplete)
             return StateEnum.Imcomplete
 
         sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Success)
-        saved = ecc_runner.save_data(
-            workspace=workspace,
-            step=step,
-            ecc_module=ecc,
-            feature_step=False,
-        )
+        try:
+            saved = ecc_runner.save_data(
+                workspace=workspace,
+                step=step,
+                ecc_module=ecc,
+                feature_step=False,
+            )
+        except Exception:
+            logger.exception("Failed to publish Timing Opt outputs for %s", step.name)
+            saved = False
         if not saved:
-            _delete_published_outputs(step)
             sub_flow.update_step(step_name=save_data_step, state=StateEnum.Imcomplete)
             return StateEnum.Imcomplete
 
+        published = True
         sub_flow.update_step(step_name=save_data_step, state=StateEnum.Success)
         return StateEnum.Success
     finally:
-        if ecc is not None:
-            ecc.close()
+        try:
+            if not published:
+                _delete_published_outputs(step)
+        finally:
+            if ecc is not None:
+                ecc.close()
