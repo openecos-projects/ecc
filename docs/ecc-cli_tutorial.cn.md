@@ -1,0 +1,594 @@
+# ECC CLI 入门教程：从零跑通 RTL → Harden 并产出签核包
+
+本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 时序签核 → Harden** 全流程，最终拿到：
+
+- **Harden 交付物**：GDS 版图、抽象 LEF、时序 LIB、版图快照 PNG；
+- **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/报告等 200+ 文件）；
+- **三份报告**：设计总结（文本）、QoR 总分、签核清单。
+
+全程以官方 [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk)（开源 55nm 工艺）为目标工艺。教程中所有命令输出均为真实执行结果（基于 v0.1.0-alpha.11，示例路径统一写作 `~/ecc-demo`）。
+
+> 参考耗时：首次安装（下载 CLI 包 / OSS CAD Suite / PDK 数据，共约 3 GB 下载量）20–60 分钟，视网络而定；gcd 全流程运行约 **5 分钟**。
+
+## 全流程一览
+
+```mermaid
+graph LR
+    A[安装 ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>建项目放 RTL]
+    B --> C[ecc doctor / check<br/>环境与配置体检]
+    C --> D[ecc run --preset harden<br/>13 步全流程]
+    D --> E[ecc status / log<br/>查看结果与日志]
+    E --> F[ecc signoff export<br/>签核包 tar.gz]
+    E --> G[ecc signoff report<br/>设计总结报告]
+    E --> H[ecc report qor / checklist<br/>QoR 与签核清单]
+```
+
+## 1. 环境要求
+
+| 项 | 要求 |
+|---|---|
+| 操作系统 | Linux x86_64（其他架构需自行交叉验证） |
+| 基础命令 | `bash`、`curl` 或 `wget`、`tar`、`git`、`make`、`bzip2` |
+| 磁盘空间 | ≥ 10 GB 空闲（安装后实测：ecc CLI ≈ 3.6 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB） |
+| 网络 | 能访问 GitHub（下载 CLI / PDK / OSS CAD Suite；受限环境见 §2.1 的 `GH_PROXY`） |
+| Python / 依赖 | **无需**。ecc-tools、DreamPlace 等已捆绑在 CLI 包内 |
+
+## 2. 安装 ecc CLI（从零）
+
+### 2.1 一键安装（推荐）
+
+仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)，一条命令完成：下载安装 ecc CLI → 配置 PATH → 环境自检 → 补齐 ICS55 PDK（clone + `make unzip` 下载 liberty/GDS）与 Yosys（OSS CAD Suite 最新版，内置 slang 前端）。幂等可重复运行，已就绪的部件自动跳过。
+
+```bash
+# 获取脚本（clone 仓库可同时拿到本教程用的 gcd 示例 RTL）
+git clone --depth 1 https://github.com/openecos-projects/ecc.git
+cd ecc
+
+bash docs/ecc-cli-setup.sh
+```
+
+安装完成后**当前终端立即生效**（新终端自动生效）：
+
+```bash
+source ~/.ecc-env.sh
+```
+
+脚本产出一览：
+
+| 产物 | 位置 | 说明 |
+|---|---|---|
+| ecc CLI | `~/.local/ecc/` | PyInstaller 打包的 `ecc` + `_internal/`，两者须保持在一起 |
+| PDK | `~/.local/icsprout55-pdk/` | 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` 指向它 |
+| Yosys | `~/.local/oss-cad-suite/` | 环境变量 `CHIPCOMPILER_OSS_CAD_DIR` 指向它 |
+| 环境文件 | `~/.ecc-env.sh` | PATH + 上述变量，已幂等写入 `~/.bashrc`（zsh 则 `~/.zshrc`） |
+| 便利软链接 | `~/.local/bin/ecc` | 多数发行版该目录已在 PATH |
+
+常用变体：
+
+```bash
+bash docs/ecc-cli-setup.sh --check-only    # 只做环境体检，不安装任何东西
+bash docs/ecc-cli-setup.sh --force         # 强制重装 ecc CLI（升级同理）
+bash docs/ecc-cli-setup.sh --skip-pdk --skip-tools   # 只装 ecc CLI 本体
+GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh   # 网络受限走代理
+```
+
+### 2.2 手动安装（可选）
+
+不想用脚本时，三步手动完成同样的事：
+
+```bash
+# ① ecc CLI：从 Releases 下载预编译包
+mkdir -p ~/.local/ecc
+curl -fL -o ecc-cli.tar.gz \
+  https://github.com/openecos-projects/ecc/releases/latest/download/ecc-cli-linux-x86_64.tar.gz
+tar -xzf ecc-cli.tar.gz -C ~/.local/ecc
+mkdir -p ~/.local/bin && ln -sf ~/.local/ecc/ecc ~/.local/bin/ecc   # ~/.local/bin 需在 PATH 中
+
+# ② PDK：icsprout55-pdk，liberty/GDS 需 make unzip（约 1 GB，来自 PDK 官方 Releases）
+git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git ~/.local/icsprout55-pdk
+make -C ~/.local/icsprout55-pdk unzip
+export CHIPCOMPILER_ICS55_PDK_ROOT=~/.local/icsprout55-pdk   # 建议写入 ~/.bashrc
+
+# ③ Yosys：OSS CAD Suite（需 yosys ≥ v0.67，内置 slang 前端）
+#    从 https://github.com/YosysHQ/oss-cad-suite-build/releases 下载 linux-x64 包后：
+tar -xzf oss-cad-suite-*.tgz -C ~/.local && mv ~/.local/oss-cad-suite* ~/.local/oss-cad-suite
+export CHIPCOMPILER_OSS_CAD_DIR=~/.local/oss-cad-suite
+```
+
+也可以在建项目后用 CLI 自带的 PDK 子命令接入（二选一）：
+
+```bash
+ecc pdk setup                    # clone + make unzip + 接入，一条到位
+ecc pdk set-root ~/pdk/icsprout55-pdk   # 已就绪的 PDK 直接接入（写入 ecc.toml）
+ecc pdk show                     # 查看生效的 PDK root 与来源
+```
+
+### 2.3 验证安装
+
+```console
+$ ecc version
+ecc 0.1.0a11
+dreamplace 0.1.0a7
+ecc_tools 0.1.0a12
+runtime ECC CLI
+```
+
+再做一次环境体检（在任意目录均可；只有**必需项**失败才返回非零）：
+
+```console
+$ ecc doctor
+[status]
+  doctor: environment
+  status: attention          # ok=全过 / attention=仅可选项失败(rc=0) / failed=必需项失败(rc=1)
+  checked: 7
+  failed: 0
+  attention: 1
+  run: ecc run
+  component: yosys
+  status: pass
+  required: True
+  detail: ~/.local/oss-cad-suite/bin/yosys
+  component: yosys-slang
+  status: pass
+  required: True
+  detail: read_slang frontend available
+  component: ecc-tools       # dreamplace / klayout / pdk 同理，逐项列出
+  ...
+  component: sizer
+  status: fail
+  required: False            # 可选组件，仅时序优化步骤需要，本教程不依赖
+  ...
+```
+
+必需项（yosys、yosys-slang、ecc-tools、dreamplace、pdk）全部 `pass` 即可继续；可选的 `sizer` 失败只会让状态显示 `attention`，不影响本教程。
+
+## 3. 创建第一个项目
+
+### 3.1 初始化
+
+```console
+$ mkdir ~/ecc-demo && cd ~/ecc-demo
+$ ecc init gcd
+[init]
+  project: gcd
+  status: created
+  path: gcd
+  check: ecc check --project gcd
+  run: ecc run --project gcd
+
+$ cd gcd
+```
+
+生成项目骨架：
+
+```
+gcd/
+├── ecc.toml       # 项目配置（下一步按需修改）
+├── rtl/           # 放 Verilog 源码或 filelist
+├── constraints/   # 约束预留目录（本教程无需手写约束，见 §3.3）
+└── runs/          # 每次运行的 workspace 落在 runs/<run-id>/
+```
+
+### 3.2 放入 RTL
+
+本教程用仓库自带的 gcd 示例——一个 16/16 bit 减法型 GCD 计算单元（FSM 控制器 + 数据通路，综合后数百个标准单元），小而完整，是验证后端流程的经典教学设计：
+
+```bash
+# 从克隆的 ecc 仓库拷贝（或任意你自己的 .v 文件）
+cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
+
+# 没有 clone 仓库时，直接下载单文件也可以：
+# curl -fL -o rtl/gcd.v \
+#   https://raw.githubusercontent.com/openecos-projects/ecc/main/docs/examples/gcd/gcd.v
+```
+
+多文件设计请改用 filelist（`rtl = ["rtl/filelist.f"]`），语法见 [examples/gcd/README.md](examples/gcd/README.md#using-filelist) 与 [filelist 语法](specification/filelist-grammar.md)。
+
+### 3.3 认识 ecc.toml
+
+```toml
+[design]
+name = "gcd"
+top = "gcd"              # 顶层模块名
+rtl = ["rtl/gcd.v"]      # 单个 Verilog 文件，或多源时指向 filelist
+clock_port = "clk"       # 时钟端口名
+frequency_mhz = 100.0    # 目标频率（MHz）
+
+[pdk]
+name = "ics55"           # 目前支持 ics55
+root = ""                # 留空则用 CHIPCOMPILER_ICS55_PDK_ROOT 环境变量
+
+[flow]
+# preset: rtl2gds | rcx | harden | syn_sta
+preset = "rtl2gds"       # 本教程用 harden（也可不改这里，运行时 --preset 覆盖）
+run = "default"          # run id，对应 runs/<id>/
+```
+
+对 gcd 示例来说，`init` 生成的默认值恰好全部正确（顶层就叫 `gcd`，时钟端口 `clk`），**一个字都不用改**。换你自己的设计时，需要核对 `top`、`rtl`、`clock_port`、`frequency_mhz` 四项。
+
+两个要点：
+
+- **无需手写 SDC**：flow 会根据 `clock_port` 与 `frequency_mhz` 自动生成约束（`create_clock` + I/O 延迟比例），生成的 SDC 落在 `runs/<id>/origin/gcd.sdc`；
+- **PDK 解析优先级**：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。用了一键安装脚本则环境变量已就绪，`root` 留空即可。
+
+### 3.4 校验
+
+```console
+$ ecc check
+[check]
+  project: gcd
+  status: checked
+  config: ecc.toml
+  inspect: ecc status
+  run: ecc run
+  rtl: pass
+    path: rtl/gcd.v
+  inspect: ecc check --json
+rc=0
+```
+
+`ecc check` 校验配置必填项、RTL 路径与 PDK 内容（tech LEF / LEF / liberty）。**先 check 再 run**——配置错误在这里就能发现，不必等到 flow 中途失败。
+
+## 4. 运行 RTL → Harden 全流程
+
+### 4.1 启动
+
+`harden` preset 是完整 13 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）：
+
+```bash
+ecc run --preset harden
+```
+
+（把 `ecc.toml` 里 `preset` 改成 `"harden"` 效果相同；`--preset` 只对本次运行生效，不写回配置。）
+
+交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。harden 的 13 步依次为：
+
+| # | 步骤 | 工具 | 作用 |
+|---|------|------|------|
+| 1 | synthesis | yosys | RTL 综合、工艺映射（slang 前端读入 SystemVerilog） |
+| 2 | floorplan | ecc | 布局规划：die/core 区域、IO pin 排布 |
+| 3 | fixfanout | ecc | 高扇出网络修复 |
+| 4 | placement | dreamplace | 全局布局 |
+| 5 | cts | ecc | 时钟树综合 |
+| 6 | legalization | dreamplace | 布局合法化 |
+| 7 | routing | ecc | 布线 |
+| 8 | drc | ecc | 物理规则检查 |
+| 9 | lvs | ecc | 版图与原理图一致性检查 |
+| 10 | filler | ecc | 填充单元插入 |
+| 11 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
+| 12 | sta | ecc | 多 corner 静态时序分析 |
+| 13 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
+
+```mermaid
+graph LR
+    A[Synthesis<br/>yosys] --> B[Floorplan] --> C[FixFanout] --> D[Placement<br/>dreamplace]
+    D --> E[CTS] --> F[Legalization<br/>dreamplace] --> G[Routing] --> H[DRC] --> I[LVS]
+    I --> J[Filler] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
+```
+
+`ecc run` 启动前还会自动预检该 preset 必需的工具（yosys、dreamplace 等），缺失则 fail-fast 并提示 `ecc doctor`。
+
+### 4.2 观察进度（另开一个终端）
+
+```bash
+ecc status                 # 概览：run 状态 + 每步状态与耗时
+ecc log                    # 列出全部日志文件（含尾部预览）
+ecc log placement          # 直接查看某步日志内容（自动高亮 ERROR/WARNING 行）
+```
+
+```console
+$ ecc status
+[status]
+  run: default
+  status: ongoing
+  workspace: /home/user/ecc-demo/gcd/runs/default
+  inspect: ecc status
+  log: ecc log
+
+  steps:
+    synthesis (yosys) success 0:0:16
+      log: ecc log synthesis
+    floorplan (ecc) success 0:0:1
+    fixfanout (ecc) success 0:0:1
+    placement (dreamplace) ongoing 0:0:47
+      log: ecc log placement
+    cts (ecc) unstart
+    ...
+```
+
+### 4.3 完成
+
+运行结束时（本文参考机器：流程总耗时 **5 分 14 秒**，峰值内存约 1.4 GB，大头是 DreamPlace 布局与多 corner STA）：
+
+```console
+$ ecc status
+[status]
+  run: default
+  status: success
+  workspace: /home/user/ecc-demo/gcd/runs/default
+  inspect: ecc status
+  log: ecc log
+
+  steps:
+    synthesis (yosys) success 0:0:16
+    floorplan (ecc) success 0:0:1
+    fixfanout (ecc) success 0:0:1
+    placement (dreamplace) success 0:1:24
+    cts (ecc) success 0:0:38
+    legalization (dreamplace) success 0:0:1
+    routing (ecc) success 0:0:6
+    drc (ecc) success 0:0:2
+    lvs (ecc) success 0:0:1
+    filler (ecc) success 0:0:2
+    rcx (ecc) success 0:0:0
+    sta (ecc) success 0:2:31
+    harden (ecc) success 0:0:11
+rc=0
+```
+
+某步失败时 `status` 为 `failed`，用 `ecc log <step>` 定位原因，处理方式见 §6 与 §7。
+
+### 4.4 结果都放在哪
+
+每次运行落在一个独立 workspace（`runs/<run-id>/`），每个步骤一个子目录，互不干扰：
+
+```
+runs/default/
+├── home/               # flow.json（步骤状态）+ parameters.json + checklist.json
+├── origin/             # 冻结的输入：gcd.v + 自动生成的 gcd.sdc
+├── config/             # 各步骤实际生效的配置（ecc config <step> --resolved 查看）
+├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
+├── Floorplan_ecc/
+├── ...
+├── Harden_ecc/
+│   └── output/
+│       ├── gcd_Harden.gds     # 最终版图
+│       ├── gcd_Harden.lef     # 抽象 LEF（供上层集成做布线阻挡）
+│       ├── gcd_Harden.lib     # 时序 LIB（供上层集成做 STA）
+│       └── gcd_Harden.png     # 版图快照
+├── log/                # 全局日志
+└── signoff/            # §5 生成的报告落在这里
+```
+
+Harden 交付物（真实产物）：
+
+```console
+$ ls -la runs/default/Harden_ecc/output/
+gcd_Harden.gds    7.3 KB   # GDSII 版图
+gcd_Harden.lef     14 KB   # 抽象 LEF
+gcd_Harden.lib    7.7 KB   # 时序 LIB
+gcd_Harden.png    211 KB   # 版图快照
+```
+
+## 5. 产出签核包与报告
+
+flow 全部步骤 Success 后，用 `signoff` / `report` 两组命令收尾。
+
+### 5.1 检查签核就绪度：ecc signoff inspect
+
+先看一眼交付物齐不齐（纯检查，不改任何东西；即使 `blocked` 也返回 rc=0，真正的门禁在 export）：
+
+```console
+$ ecc signoff inspect
+[signoff]
+  status    : attention
+  workspace : runs/default
+  export    : ecc signoff export -o <path>
+  report    : ecc signoff report
+
+  groups:
+    initial        ready      (2/2)     # 原始 RTL + SDC
+    config         attention  (4/5)     # 各步骤配置
+    harden         ready      (4/4)     # GDS / LEF / LIB / PNG
+    final_design   ready      (10/10)   # 最终 DEF/GDS/网表 + 各步报告
+    sta            ready      (6/6)     # 多 corner 时序报告
+    spef           ready      (4/4)     # 寄生参数文件
+    reports        ready      (2/2)
+
+  risks:
+    [warning] Config signoff attention
+              Optional file is missing or empty
+```
+
+`attention` 来自一个**可选**配置文件缺失（如 `config.macro_locations`，纯数字设计不需要），不阻断导出；只有 `blocked`（必需项缺失）才会在 export 时被拒绝。
+
+### 5.2 导出签核包：ecc signoff export
+
+```console
+$ ecc signoff export -o gcd_signoff_package.tar.gz
+[status]
+  signoff: export
+  status: exported
+  path: /home/user/ecc-demo/gcd/gcd_signoff_package.tar.gz
+  inspect: ecc signoff inspect
+rc=0
+```
+
+包内 223 个文件，按交付逻辑分组：
+
+```
+gcd_signoff_package/
+├── README.md / manifest.json / summary.json   # 包说明与清单
+├── initial/          # 设计输入：gcd.v、gcd.sdc、parameters.json
+├── config/           # 全部步骤配置（db/flow/route/sta/... 共 11 个 json）
+├── harden/           # Harden 交付物：gcd.gds / gcd.lef / gcd.lib / gcd.png
+├── synthesis/        # 综合网表等中间交付
+└── final/
+    ├── design/       # 最终 DEF、GDS、网表、版图快照
+    ├── timing/       # STA 各 corner 报告 + spef/（多 corner 寄生参数）
+    └── reports/      # 各步骤 QoR 指标（qor_metrics.json 等）
+```
+
+### 5.3 设计总结报告：ecc signoff report
+
+与 GUI「导出报告（文本）」同源，8 个分区（物理面积 / 时序收敛 / 时钟树 / 多 corner / 布线 / 功耗 / 物理验证 / 执行成本）：
+
+```console
+$ ecc signoff report
+[status]
+  signoff: report
+  status: written
+  path: /home/user/ecc-demo/gcd/runs/default/signoff/gcd_design_summary.txt
+  design: gcd
+  bytes: 5894
+  view: cat runs/default/signoff/gcd_design_summary.txt
+```
+
+本次 gcd 运行的报告节选（完整报告 `cat` 上面那个文件）：
+
+```
+[ 1. PHYSICAL & AREA METRICS ]
+  Die Area                2199.36 um² (0.0022 mm²)
+  Core Utilization        39 %
+  Total Instances         430                  Cells placed
+
+[ 2. TIMING CLOSURE & PERFORMANCE ]
+  Target Clock Period     10 ns                Target freq: 100 MHz
+  Achieved Fmax           444 MHz              Max operating frequency
+  Setup Slack (WNS / TNS) 7.75 ns / 0 ns       TIMING MET
+  Hold Slack (WNS / TNS)  0.11 ns / 0 ns       TIMING MET
+
+[ 4. MULTI-CORNER TIMING ]
+  Corner                     Setup WNS   Setup TNS    Hold WNS    Hold TNS  Status
+  MAX_125/Cworst               7.75 ns        0 ns     0.34 ns        0 ns  PASS
+  ...（共 13 个 corner，全部 PASS）
+
+[ 7. PHYSICAL VERIFICATION ]
+  DRC Status               CLEAN (0 violations)  PASS
+  LVS Status               MATCHED (Clean)       PASS
+
+[ 8. FLOW EXECUTION COST ]
+  Total Runtime            5m 14s
+  Peak Memory Usage        1446.23 MB
+```
+
+> 报告不要求 flow 跑完——跑到哪一步就总结到哪一步，缺数据的指标显示 `—`。
+
+### 5.4 QoR 总分：ecc report qor
+
+按 GUI 项目看板同一套规则打分：每条指标折算 0–100 分，按维度加权（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1），60 分为通过线；缺项维度不重归一化（缺项会拉低总分）：
+
+```console
+$ ecc report qor
+[status]
+  report: qor
+  path: runs/default/signoff/gcd_qor_report.txt
+  bytes: 9661
+  view: cat runs/default/signoff/gcd_qor_report.txt
+  design: gcd
+  overall score: 58.7
+  qor status: Green
+  gate status: pass
+  dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
+               {'dimension': 'Routability / Physical', 'score': 58.8, 'weight': 0.2, 'metrics': 15},
+               {'dimension': 'Area', 'score': 46.6, 'weight': 0.1, 'metrics': 3},
+               {'dimension': 'Clock / DFM', 'score': 73.0, 'weight': 0.1, 'metrics': 8}]
+  status: written
+```
+
+怎么读这个结果：
+
+- **Flow status: Green、gate: pass** 是核心结论——DRC/LVS/RCX/STA 四个质量门全部通过，时序维度满分，设计可签核交付；
+- 总分 58.7 略低于 60 通过线，主要因为小规模教学设计在 **Area / 绕线长度类绝对值指标**上天然吃亏（如 core 面积、时钟线长度按固定阈值折算），且 **Power 维度缺项**（本流程未含功耗分析步骤，该维度 0.25 权重直接落空）。这是 gcd 这类小设计的常见现象，不代表 flow 有问题；
+- 逐指标明细在报告文件的 `[ METRIC SCORES ]` 区。
+
+### 5.5 签核清单：ecc report checklist
+
+渲染 `home/checklist.json`（v3 签核清单）为状态报告，聚焦 **BLOCKED 项**：
+
+```console
+$ ecc report checklist
+[status]
+  report: checklist
+  path: runs/default/signoff/checklist_report.txt
+  bytes: 3334
+  checklist status: attention
+  items: 33
+  blocked: 0
+  attention: 1
+  summary counts: {'passed': 32, 'blocked': 0, 'attention': 1, 'unavailable': 0}
+  status: written
+```
+
+本次 33 项中 32 项 PASS（映射网表、DRC clean、LVS clean、SPEF 完整性、setup/hold 收敛、Harden GDS/LEF/LIB……），1 项 ATTENTION 仍是那个可选配置文件缺失。
+
+### 5.6 渲染版图图片（可选）：ecc layout-image
+
+环境里有 KLayout 时，可把任意 GDS 渲染成快照（Harden 步骤其实已自动生成 `gcd_Harden.png`，此命令用于渲染其他 GDS 或自定义尺寸）：
+
+```bash
+ecc layout-image --gds runs/default/Harden_ecc/output/gcd_Harden.gds \
+                 --image gcd_layout.png --width 2560 --height 1600
+```
+
+## 6. 调参与重跑
+
+跑通只是起点，后端迭代的日常是「改参数 → 重跑 → 对比」。
+
+### 6.1 查看与修改参数
+
+```bash
+ecc param list                          # 全部参数（按组，标注来源）
+ecc param show place.target_density     # 单个参数：值/默认/范围/映射到哪个工具
+ecc param diff                          # 只看与默认值不同的
+ecc param set place.target_density 0.55 # 写入 ecc.toml（保留注释与格式）
+ecc param unset place.target_density    # 恢复默认
+```
+
+常用参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`……完整表见[用户指南 §9](ecc-cli-ug.cn.md#9-param--参数管理)。
+
+### 6.2 多 run 对比
+
+每个 `--run-id` 一个独立 workspace，互不覆盖，方便横向对比：
+
+```bash
+ecc run --run-id exp1 --preset harden --set place.target_density=0.55
+ecc run --run-id exp2 --preset harden --set place.target_density=0.65
+ecc status --run-id exp1
+ecc report qor --run-id exp1     # 报告类命令同样接受 --run-id
+```
+
+`--set KEY=VALUE` 只对本次运行生效并记入 provenance，不改 `ecc.toml`。
+
+### 6.3 重跑
+
+```bash
+ecc run --overwrite --preset harden       # 整个 run 推倒重来（删除该 run 目录，有安全校验）
+ecc run --workspace runs/default --from CTS        # 从 CTS 起重跑其后所有步骤
+ecc run --workspace runs/default --only place --force   # 只重跑一步（已成功时需 --force）
+ecc run --workspace runs/default --resume   # 从第一个非成功步骤继续
+```
+
+注意 `--from`/`--only` 的步骤名要用 `home/flow.json` 中的原始名（如 `place`、`CTS`），不是展示层的小写名。
+
+### 6.4 查看某步实际生效的配置
+
+```bash
+ecc config placement --resolved    # 该步在 runs/<id>/config/ 下实际用的配置文件
+ecc config --resolved --plain      # 项目级配置（键值 + 解析后绝对路径）
+```
+
+## 7. 常见问题
+
+| 症状 | 原因 | 处理 |
+|---|---|---|
+| `ecc: command not found` | PATH 未生效 | `source ~/.ecc-env.sh`；重开终端；或检查 `~/.local/bin` 在 PATH |
+| `[error] env_not_ready`（run 时） | preset 必需工具缺失 | 按 `ecc doctor` 输出补齐；通常是 yosys/slang，重跑 `bash docs/ecc-cli-setup.sh` |
+| `[error] run_exists` | 同名 run 目录已存在 | `ecc run --overwrite`，或换 `--run-id` |
+| `[error] signoff_incomplete`（export 时） | 必需交付物缺失（如某步失败） | `ecc signoff inspect` 看 blocked 项；`ecc status`/`ecc log` 排查失败步骤后重跑 |
+| `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk setup` 或 `ecc pdk set-root <路径>`，或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
+| PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |
+| 下载 GitHub 资源超时 | 网络受限 | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
+| doctor 显示 `sizer: fail` | 可选组件未构建 | 不影响本教程；需要时按 remediation 提示构建 ecc-sizer |
+| synthesis 日志报 `yosys slang frontend check failed` | yosys 无 slang 前端 | 换 OSS CAD Suite ≥ v0.67 的 yosys，`ecc log synthesis` 排查 |
+
+## 8. 下一步
+
+- 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](examples/gcd/README.md#using-filelist)；
+- 了解 preset 差异：`rtl2gds`（10 步到 DRC/LVS/Filler）、`rcx`（+寄生提取与 STA）、`harden`（+硬化交付）、`syn_sta`（仅综合）；
+- 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**；CLI 扩展开发见 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)；
+- 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py)。
+
+---
+
+*本教程的示例输出采集自 v0.1.0-alpha.11 + ICS55 PDK 在 Linux x86_64 上的真实运行。*
