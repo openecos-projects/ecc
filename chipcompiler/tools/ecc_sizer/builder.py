@@ -9,6 +9,9 @@ from chipcompiler.tools.ecc import builder as ecc_builder
 
 from .utility import find_sizer_root
 
+SIZER_STAGING_DEF_NAME = "sizer.def.gz"
+SIZER_STAGING_VERILOG_NAME = "sizer.v.gz"
+
 
 def build_step(
     workspace: Workspace,
@@ -41,11 +44,6 @@ def build_step(
         tool="sizer",
         step_directory=step_directory,
     )
-    step.output.db = ""
-    # Sizer produces no geometry snapshot; leave the destination undeclared so
-    # it is not part of this step's success contract (see EngineFlow.check_step_result).
-    step.output.geometry = None
-    step.output.geometry_manifest = None
     script_dir = step.script.dir or step_directory / "script"
     step.script.sizer_env = script_dir / f"{workspace.design.name}.env_file"
     step.script.sizer_cmd = script_dir / f"{workspace.design.name}.cmd_file"
@@ -117,6 +115,20 @@ def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspa
         command.option("max_route_layer", top)
 
 
+def sizer_staging_def(step: EccStep) -> Path:
+    workdir = step.data.workdir_for(step.name)
+    if workdir is None:
+        raise ValueError("sizer step is missing a Timing optimization workdir")
+    return Path(workdir) / SIZER_STAGING_DEF_NAME
+
+
+def sizer_staging_verilog(step: EccStep) -> Path:
+    workdir = step.data.workdir_for(step.name)
+    if workdir is None:
+        raise ValueError("sizer step is missing a Timing optimization workdir")
+    return Path(workdir) / SIZER_STAGING_VERILOG_NAME
+
+
 def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     output_dir = step.data.workdir_for(step.name) or ""
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
@@ -150,12 +162,12 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     command.option("outputPath", ".")
     command.option(
         "def_out_path",
-        os.path.relpath(step.output.def_ or "", output_dir),
+        os.path.relpath(sizer_staging_def(step), output_dir),
         value_type=cmdfile.ValueType.PATH,
     )
     command.option(
         "verilog_out_path",
-        os.path.relpath(step.output.verilog or "", output_dir),
+        os.path.relpath(sizer_staging_verilog(step), output_dir),
         value_type=cmdfile.ValueType.PATH,
     )
     _append_route_layer_options(command, workspace)

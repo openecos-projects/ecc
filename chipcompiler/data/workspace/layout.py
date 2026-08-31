@@ -38,7 +38,8 @@ class OutputPaths:
     json: Path | None = None
     image: Path | None = None
     # Part of the cross-tool read contract (def/verilog/db): a Path for
-    # place-and-route steps, `""` for sizer, and None for synthesis.
+    # place-and-route steps, `""` for a step that publishes no DB, and None
+    # for synthesis.
     db: Path | str | None = None
 
 

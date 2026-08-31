@@ -61,7 +61,7 @@ def test_def_keyword_is_exposed_as_def_attribute():
 
 
 def test_no_value_coercion_str_stays_str():
-    # `db` legitimately holds a str (sizer uses ""); the layout must not coerce it.
+    # `db` legitimately holds a str; the layout must not coerce it.
     output = EccOutput(db="/some/str/path")
     assert output.db == "/some/str/path"
     assert isinstance(output.db, str)
@@ -222,7 +222,7 @@ def test_log_projection_sizer_shape_includes_sizer_script_keys(tmp_path):
     keys = _shape_keys(step)
     # sizer is the only shape that populates sizer_env/sizer_cmd.
     assert keys["script"] == sorted(["dir", "main", "sizer_env", "sizer_cmd"])
-    assert step.output.db == ""
+    assert isinstance(step.output.db, Path)
 
 
 class _CapturingLogger(Logger):

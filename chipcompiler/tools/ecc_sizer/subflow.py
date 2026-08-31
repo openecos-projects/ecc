@@ -7,6 +7,8 @@ from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 
 class SizerSubFlowEnum(Enum):
     run_sizer = "run sizer"
+    run_legalization = "run legalization"
+    save_data = "save data"
 
 
 class SizerSubFlow:
@@ -23,23 +25,27 @@ class SizerSubFlow:
         data = json_read(self.workspace_step.subflow.path or "")
         if len(data) > 0:
             self.workspace_step.subflow.steps = data.get("steps", [])
-        else:
-            self.build_sub_flow()
+        self.build_sub_flow()
 
-    def build_sub_flow(self) -> list[dict]:
-        if len(self.workspace_step.subflow.steps or []) > 0:
-            return self.workspace_step.subflow.steps
-
-        steps = [
+    def _canonical_steps(self) -> list[dict]:
+        return [
             {
-                "name": SizerSubFlowEnum.run_sizer.value,
+                "name": stage.value,
                 "state": StateEnum.Unstart.value,
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
             }
+            for stage in SizerSubFlowEnum
         ]
 
+    def build_sub_flow(self) -> list[dict]:
+        expected = [stage.value for stage in SizerSubFlowEnum]
+        current = [step_dict.get("name") for step_dict in self.workspace_step.subflow.steps or []]
+        if current == expected:
+            return self.workspace_step.subflow.steps
+
+        steps = self._canonical_steps()
         self.workspace_step.subflow.steps = steps
         self.save()
         return steps

@@ -1,32 +1,74 @@
 import logging
 import os
+import shutil
 import subprocess
+from pathlib import Path
 
-from chipcompiler.data import EccStep, StateEnum, Workspace
+from chipcompiler.data import EccOutput, EccStep, StateEnum, Workspace
+from chipcompiler.tools.ecc import runner as ecc_runner
+from chipcompiler.tools.ecc_dreamplace.runner import legalize_layout
+from chipcompiler.tools.ecc_dreamplace.utility import is_eda_exist as is_dreamplace_exist
 
+from .builder import sizer_staging_def, sizer_staging_verilog
 from .subflow import SizerSubFlow, SizerSubFlowEnum
 from .utility import get_sizer_command, is_eda_exist, is_sizer_runtime_exist
 
 logger = logging.getLogger(__name__)
 
 
-def _has_required_outputs(step: EccStep) -> bool:
-    return os.path.exists(step.output.def_ or "") and os.path.exists(step.output.verilog or "")
+def _has_staging_outputs(step: EccStep) -> bool:
+    return os.path.exists(sizer_staging_def(step)) and os.path.exists(sizer_staging_verilog(step))
+
+
+def _published_paths(step: EccStep) -> list[Path]:
+    output = step.output
+    if not isinstance(output, EccOutput):
+        return []
+
+    paths: list[Path] = []
+    for value in (
+        output.def_,
+        output.verilog,
+        output.gds,
+        output.db,
+        output.geometry,
+        output.geometry_manifest,
+    ):
+        if value:
+            paths.append(Path(value))
+    return paths
+
+
+def _delete_published_outputs(step: EccStep) -> None:
+    for path in _published_paths(step):
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
 
 
 def run_step(
     workspace: Workspace,
     step: EccStep,
-    ecc_module=None,
+    ecc_module: object | None = None,
 ) -> StateEnum:
     del ecc_module
 
     sub_flow = SizerSubFlow(workspace=workspace, workspace_step=step)
     run_sizer_step = SizerSubFlowEnum.run_sizer.value
+    run_legalization_step = SizerSubFlowEnum.run_legalization.value
+    save_data_step = SizerSubFlowEnum.save_data.value
+
+    _delete_published_outputs(step)
 
     if not is_eda_exist() or not is_sizer_runtime_exist():
         logger.error("Sizer tools not available for step %s", step.name)
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
+        return StateEnum.Invalid
+
+    if not is_dreamplace_exist():
+        logger.error("DreamPlace tools not available for inner legalization of %s", step.name)
+        sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
 
     env_path = step.script.sizer_env or ""
@@ -57,14 +99,43 @@ def run_step(
             check=False,
         )
 
-    if result.returncode == 0 and _has_required_outputs(step):
-        sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
-        return StateEnum.Success
-    logger.error(
-        "Sizer failed for step %s: exit code=%d, outputs present=%s",
-        step.name,
-        result.returncode,
-        _has_required_outputs(step),
+    if result.returncode != 0 or not _has_staging_outputs(step):
+        logger.error(
+            "Sizer failed for step %s: exit code=%d, staging present=%s",
+            step.name,
+            result.returncode,
+            _has_staging_outputs(step),
+        )
+        sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
+        return StateEnum.Imcomplete
+
+    sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
+
+    ecc = legalize_layout(
+        workspace,
+        step,
+        sizer_staging_def(step),
+        sizer_staging_verilog(step),
     )
-    sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
-    return StateEnum.Imcomplete
+    try:
+        if ecc is None:
+            sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Imcomplete)
+            return StateEnum.Imcomplete
+
+        sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Success)
+        saved = ecc_runner.save_data(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc,
+            feature_step=False,
+        )
+        if not saved:
+            _delete_published_outputs(step)
+            sub_flow.update_step(step_name=save_data_step, state=StateEnum.Imcomplete)
+            return StateEnum.Imcomplete
+
+        sub_flow.update_step(step_name=save_data_step, state=StateEnum.Success)
+        return StateEnum.Success
+    finally:
+        if ecc is not None:
+            ecc.close()

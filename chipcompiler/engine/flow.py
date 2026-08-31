@@ -410,7 +410,8 @@ class EngineFlow:
         return self.engine_db.create_db_engine(step=workspace_step)
 
     def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
-        if workspace_step.tool == "sizer" and state == StateEnum.Success:
+        _ = state
+        if workspace_step.tool == "sizer":
             engine_db = self.engine_db
             self.engine_db = None
             if engine_db is not None:
