@@ -387,21 +387,31 @@ def test_collect_signoff_package_requires_post_route_lec_even_if_flow_omits_it(t
 def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     (workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz").unlink()
-    _write(
-        workspace_dir / "origin" / "gcd.v",
-        "module gcd; // original imported RTL\nendmodule\n",
-    )
+    origin = workspace_dir / "origin" / "gcd.v"
+    _write(origin, "module gcd; // original imported RTL\nendmodule\n")
     flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
     flow["steps"].insert(
         0,
         {"name": "Floorplan", "tool": "ecc", "state": StateEnum.Success.value},
     )
-    flow["steps"] = [step for step in flow["steps"] if step.get("name") != "postRouteLec"]
     _write_json(workspace_dir / "home" / "flow.json", flow)
     engine_flow = _make_engine_flow(workspace_dir)
-    external_rtl = tmp_path / "external" / "gcd.v"
-    _write(external_rtl, "module gcd; // outside the workspace\nendmodule\n")
-    engine_flow.workspace.design.origin_verilog = external_rtl
+    engine_flow.workspace.design.origin_verilog = origin
+    gate = workspace_dir / "filler_ecc" / "output" / "gcd_filler.v.gz"
+    origin_digest = file_digest(origin)
+    gate_digest = file_digest(gate)
+    _write_json(
+        workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
+        {
+            "status": "proven",
+            "golden_verilog": str(origin),
+            "gate_verilog": str(gate),
+            "golden_sha256": origin_digest[0],
+            "gate_sha256": gate_digest[0],
+            "golden_size_bytes": origin_digest[1],
+            "gate_size_bytes": gate_digest[1],
+        },
+    )
 
     result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
 
@@ -414,6 +424,7 @@ def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
     summary = json.loads((package_dir / "summary.json").read_text())
     assert summary["initial"]["verilog"] == "initial/gcd.v"
     assert "synthesis" not in summary
+    assert summary["lec"]["status"] == "proven"
 
 
 def test_collect_signoff_package_tolerates_missing_sta_power_report(tmp_path):

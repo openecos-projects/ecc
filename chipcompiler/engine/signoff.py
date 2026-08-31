@@ -143,8 +143,9 @@ class SignoffPackageCollector:
 
         flow_starts_at_floorplan = self._flow_starts_at_floorplan(flow_data)
         synthesis_verilog = None if flow_starts_at_floorplan else self._synthesis_output_verilog()
+        lec_golden = synthesis_verilog or getattr(self.workspace.design, "origin_verilog", None)
         filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
-        require_lec = self._requires_post_route_lec(flow_data, synthesis_verilog, filler_verilog)
+        require_lec = self._requires_post_route_lec(lec_golden, filler_verilog)
         required_steps = self._required_step_states(flow_data, require_lec=require_lec)
         for step_name, state in required_steps.items():
             if state != StateEnum.Success.value:
@@ -410,7 +411,7 @@ class SignoffPackageCollector:
 
             lec_status = lec_result_status(
                 lec_result,
-                golden_verilog=synthesis_verilog or self._synthesis_output_verilog(),
+                golden_verilog=lec_golden,
                 gate_verilog=filler_verilog,
             )
             if lec_result.is_file() and lec_status != "proven":
@@ -964,13 +965,10 @@ class SignoffPackageCollector:
 
     def _requires_post_route_lec(
         self,
-        flow_data: dict,
-        synthesis_verilog: Path | None,
+        golden_verilog: Path | None,
         filler_verilog: Path | None,
     ) -> bool:
-        if self._flow_starts_at_floorplan(flow_data):
-            return False
-        if synthesis_verilog is None or not Path(synthesis_verilog).is_file():
+        if golden_verilog is None or not Path(golden_verilog).is_file():
             return False
         return bool(filler_verilog and Path(filler_verilog).is_file())
 

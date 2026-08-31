@@ -480,3 +480,62 @@ def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monke
     assert lec_step.input.gate_verilog == route_step.output.verilog
     assert lec_step.input.golden_verilog == synth_step.output.verilog
     assert rcx_step.input.verilog == route_step.output.verilog
+
+
+def test_engine_flow_wires_post_route_lec_to_origin_without_synthesis(tmp_path, monkeypatch):
+    import chipcompiler.tools as tools
+
+    workspace = _workspace(tmp_path)
+    workspace.flow.path = tmp_path / "flow.json"
+    workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
+            {"name": StepEnum.ROUTING.value, "tool": "ecc", "state": StateEnum.Unstart.value},
+            {
+                "name": StepEnum.POST_ROUTE_LEC.value,
+                "tool": "yosys_lec",
+                "state": StateEnum.Unstart.value,
+            },
+        ]
+    }
+    json_write(workspace.flow.path, workspace.flow.data)
+
+    def fake_create_step(
+        workspace,
+        step,
+        eda,
+        input_def,
+        input_verilog,
+        input_db=None,
+        **kwargs,
+    ):
+        if eda == "yosys_lec":
+            return YosysLecStep(
+                name=step,
+                tool=eda,
+                input=SimpleNamespace(
+                    gate_verilog=input_verilog,
+                    golden_verilog=input_db,
+                    db=input_db,
+                ),
+            )
+        return SimpleNamespace(
+            name=step,
+            tool=eda,
+            input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
+            output=SimpleNamespace(
+                def_=tmp_path / step / "output" / f"gcd_{step}.def.gz",
+                verilog=tmp_path / step / "output" / f"gcd_{step}.v",
+                db=tmp_path / step / "output" / f"gcd_{step}_db",
+            ),
+        )
+
+    monkeypatch.setattr(tools, "create_step", fake_create_step)
+
+    engine_flow = EngineFlow(workspace=workspace)
+    engine_flow.create_step_workspaces()
+
+    floorplan_step, route_step, lec_step = engine_flow.workspace_steps
+    assert lec_step.input.gate_verilog == route_step.output.verilog
+    assert lec_step.input.golden_verilog == workspace.design.origin_verilog
+    assert floorplan_step.name == StepEnum.FLOORPLAN.value

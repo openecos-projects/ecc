@@ -346,7 +346,7 @@ class EngineFlow:
                 if explicit_golden:
                     input_db = explicit_golden
                 elif step["name"] == StepEnum.POST_ROUTE_LEC.value:
-                    input_db = synthesis_gate_verilog or None
+                    input_db = synthesis_gate_verilog or self.workspace.design.origin_verilog
                 elif pre_step is not None and pre_step.name == StepEnum.SYNTHESIS.value:
                     input_db = synthesis_golden_verilog or None
 

@@ -499,16 +499,21 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
 
 
 def _requires_post_route_lec(workspace: Workspace, states: dict) -> bool:
-    if StepEnum.FLOORPLAN.value in states and StepEnum.SYNTHESIS.value not in states:
+    if StepEnum.FILLER.value not in states:
         return False
     workspace_directory = getattr(workspace, "directory", None)
-    if not workspace_directory:
-        return StepEnum.FILLER.value in states
-    workspace_dir = Path(workspace_directory)
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
-    synthesis = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
-    filler = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
-    return synthesis.is_file() and filler.is_file()
+    origin = getattr(getattr(workspace, "design", None), "origin_verilog", None)
+    filler = None
+    synthesis = None
+    if workspace_directory:
+        workspace_dir = Path(workspace_directory)
+        synthesis = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
+        filler = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
+    golden = synthesis if synthesis and synthesis.is_file() else origin
+    if golden is None or not Path(golden).is_file():
+        return False
+    return bool(filler and Path(filler).is_file())
 
 
 def _flow_items(workspace: Workspace) -> list[dict]:
