@@ -150,6 +150,7 @@ def test_lec_build_step_config_writes_models_and_repo_local_script(tmp_path):
 
     config = step.data.config.read_text()
     script = step.script.main.read_text()
+    packaged = Path(builder.__file__).resolve().parent / "scripts" / "run_lec.tcl"
 
     assert str(gate) in config
     assert str(gate.with_name("gcd_Synthesis_golden.v")) in config
@@ -157,9 +158,7 @@ def test_lec_build_step_config_writes_models_and_repo_local_script(tmp_path):
         assert lib.is_file()
         assert str(lib) in config
     assert "set use_undef true" in config
-    assert "splitnets -ports -format __v" in script
-    assert "equiv_make" in script
-    assert "/home/zhaoxueyan/code/yosys-flow1" not in script
+    assert script == packaged.read_text()
 
 
 def test_lec_runner_marks_success_from_yosys_status(tmp_path, monkeypatch):
