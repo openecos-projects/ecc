@@ -472,7 +472,7 @@ def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
     assert summary["lec"]["status"] == "proven"
 
 
-def test_collect_signoff_package_ignores_leftover_synthesis_for_fixfanout_start(tmp_path):
+def test_collect_signoff_package_ignores_leftover_synthesis_for_floorplan_start(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     leftover = workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
     leftover.write_text("module gcd; leftover mapped netlist\nendmodule\n")
@@ -480,7 +480,7 @@ def test_collect_signoff_package_ignores_leftover_synthesis_for_fixfanout_start(
     _write(origin, "module gcd; // imported mapped netlist\nendmodule\n")
     _rewrite_flow_without_synthesis(
         workspace_dir,
-        {"name": "fixFanout", "tool": "ecc", "state": StateEnum.Success.value},
+        {"name": "Floorplan", "tool": "ecc", "state": StateEnum.Success.value},
     )
     engine_flow = _make_engine_flow(workspace_dir)
     engine_flow.workspace.design.origin_verilog = origin

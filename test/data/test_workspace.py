@@ -45,23 +45,23 @@ def test_flow_has_step_uses_cached_data_and_path(tmp_path):
         data={
             "steps": [
                 {"name": StepEnum.SYNTHESIS.value, "tool": "yosys"},
-                {"name": StepEnum.NETLIST_OPT.value, "tool": "ecc"},
+                {"name": StepEnum.FLOORPLAN.value, "tool": "ecc"},
             ]
         }
     )
     assert flow.has_step(StepEnum.SYNTHESIS)
     assert flow.has_step("Synthesis", "yosys")
     assert not flow.has_step(StepEnum.SYNTHESIS, "ecc")
-    assert flow.get_step(StepEnum.NETLIST_OPT)["tool"] == "ecc"
-    assert flow.get_step(StepEnum.FLOORPLAN) is None
+    assert flow.get_step(StepEnum.FLOORPLAN)["tool"] == "ecc"
+    assert flow.get_step(StepEnum.PLACEMENT) is None
 
     path = tmp_path / "flow.json"
     path.write_text(
-        json.dumps({"steps": [{"name": StepEnum.NETLIST_OPT.value, "tool": "ecc"}]}),
+        json.dumps({"steps": [{"name": StepEnum.FLOORPLAN.value, "tool": "ecc"}]}),
         encoding="utf-8",
     )
     loaded = Flow(path=path)
-    assert loaded.has_step(StepEnum.NETLIST_OPT)
+    assert loaded.has_step(StepEnum.FLOORPLAN)
     assert not loaded.has_step(StepEnum.SYNTHESIS)
 
 

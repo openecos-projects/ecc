@@ -610,7 +610,7 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
         "steps": [
             {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
             for step in (
-                StepEnum.NETLIST_OPT,
+                StepEnum.FLOORPLAN,
                 StepEnum.ROUTING,
                 StepEnum.DRC,
                 StepEnum.LVS,
@@ -641,7 +641,7 @@ def test_home_checklist_ignores_leftover_synthesis_dir_without_synthesis_step(tm
         "steps": [
             {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
             for step in (
-                StepEnum.NETLIST_OPT,
+                StepEnum.FLOORPLAN,
                 StepEnum.FILLER,
                 StepEnum.HARDEN,
             )
