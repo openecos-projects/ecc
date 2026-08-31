@@ -55,7 +55,7 @@ def _netlist_is_current(
     recorded_path = data.get(f"{role}_verilog")
     recorded_sha = data.get(f"{role}_sha256")
     recorded_size = data.get(f"{role}_size_bytes")
-    if not recorded_path or not recorded_sha:
+    if not recorded_path or not recorded_sha or not isinstance(recorded_size, int):
         return False
     if expected_path and not _same_path(recorded_path, expected_path):
         return False
@@ -63,9 +63,7 @@ def _netlist_is_current(
     if digest is None:
         return False
     sha256, size_bytes = digest
-    if sha256 != recorded_sha:
-        return False
-    return recorded_size is None or recorded_size == size_bytes
+    return sha256 == recorded_sha and recorded_size == size_bytes
 
 
 def _same_path(left: Path | str, right: Path | str) -> bool:
