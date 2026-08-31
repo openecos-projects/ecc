@@ -20,6 +20,7 @@ from chipcompiler.tools.ecc.signoff_checklist import (
     rebuild_home_checklist,
     refresh_step_checklist,
 )
+from chipcompiler.utility import file_digest
 
 
 def _record(metric_id, value, path="feature/step.json"):
@@ -650,3 +651,75 @@ def test_home_checklist_ignores_leftover_synthesis_dir_without_synthesis_step(tm
     items = {item["id"]: item for item in _flow_items(workspace)}
     assert leftover.is_file()
     assert "flow.postroutelec.completed" not in items
+
+
+def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tmp_path):
+    origin = tmp_path / "origin" / "gcd.v"
+    origin.parent.mkdir()
+    origin.write_text("module gcd; imported mapped netlist\nendmodule\n", encoding="utf-8")
+    filler = tmp_path / "filler_ecc" / "output" / "gcd_filler.v.gz"
+    filler.parent.mkdir(parents=True)
+    filler.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
+    result_json = tmp_path / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json"
+    result_json.parent.mkdir(parents=True)
+    origin_digest = file_digest(origin)
+    filler_digest = file_digest(filler)
+    result_json.write_text(
+        json.dumps(
+            {
+                "status": "proven",
+                "golden_verilog": str(origin),
+                "gate_verilog": str(filler),
+                "golden_sha256": origin_digest[0],
+                "gate_sha256": filler_digest[0],
+                "golden_size_bytes": origin_digest[1],
+                "gate_size_bytes": filler_digest[1],
+            }
+        ),
+        encoding="utf-8",
+    )
+    stale = tmp_path / "postRouteLec_yosys_lec" / "checklist.json"
+    stale.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "kind": "signoff_checklist",
+                "checklist": [
+                    {
+                        "id": "artifact.postroutelec.result",
+                        "step": "postRouteLec",
+                        "category": "artifact",
+                        "owner": "checklist",
+                        "policy": "block",
+                        "state": "failed",
+                        "blocked": True,
+                        "title": "Yosys LEC result",
+                        "summary": "Yosys LEC did not prove equivalence.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "home").mkdir()
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", origin_verilog=origin),
+    )
+    workspace.home.init(tmp_path / "home" / "home.json")
+    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
+    workspace.flow.data = {
+        "steps": [
+            {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
+            for step in (
+                StepEnum.FILLER,
+                StepEnum.POST_ROUTE_LEC,
+                StepEnum.HARDEN,
+            )
+        ]
+    }
+    workspace.flow.data["steps"][1]["tool"] = "yosys_lec"
+
+    home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
+    assert home_items["artifact.postroutelec.result"]["state"] == "pass"
+    assert home_items["artifact.postroutelec.result"]["blocked"] is False

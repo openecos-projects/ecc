@@ -350,6 +350,39 @@ def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_
     )
 
 
+def test_collect_signoff_package_ignores_stale_post_route_lec_checklist(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    _write_json(
+        workspace_dir / "postRouteLec_yosys_lec" / "checklist.json",
+        {
+            "schema_version": 3,
+            "kind": "signoff_checklist",
+            "checklist": [
+                {
+                    "id": "artifact.postroutelec.result",
+                    "step": "postRouteLec",
+                    "category": "artifact",
+                    "owner": "checklist",
+                    "policy": "block",
+                    "state": "failed",
+                    "blocked": True,
+                    "title": "Yosys LEC result",
+                    "summary": "Yosys LEC did not prove equivalence.",
+                    "source": {},
+                    "evidence": [],
+                }
+            ],
+        },
+    )
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is True
+    assert "artifact.postroutelec.result" not in result.missing_required
+
+
 def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     _write_json(
