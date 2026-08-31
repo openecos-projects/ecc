@@ -79,7 +79,7 @@ class TestNativeTomlTypeValidation:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.synth]\nmax_fanout = 16\n"
+        content += "\n[params.cts]\nmax_fanout = 16\n"
         with open(toml_path, "w") as f:
             f.write(content)
         monkeypatch.setattr(
@@ -112,7 +112,7 @@ class TestParamHandlersRejectInvalidToml:
     def test_param_show_rejects_invalid_toml(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         self._write_invalid_toml(project_dir)
-        rc = cli_main.run(["param", "show", "synth.max_fanout", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "show", "cts.max_fanout", "--project", project_dir, "--json"])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["error"] == "invalid_param_config"

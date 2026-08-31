@@ -379,13 +379,11 @@ def test_create_workspace_with_inline_pdk_json_uses_real_data_api(monkeypatch, t
     assert pdk_config_path.is_file()
     parameters = json.loads((workspace_dir / "home" / "parameters.json").read_text())
     assert parameters["PDK Config"] == str(pdk_config_path.resolve())
-    fixfanout = json.loads((workspace_dir / "config" / "fixfanout_ecc.json").read_text())
     session = api.sessions.get_session(result["workspaceId"])
     assert session.workspace.pdk.tech == tech
     assert session.workspace.pdk.lefs == [lef]
     assert session.workspace.pdk.libs == [liberty]
     assert session.workspace.pdk.buffers
-    assert fixfanout["insert_buffer"] == session.workspace.pdk.buffers[0]
     assert session.directory == workspace_dir.resolve()
 
 

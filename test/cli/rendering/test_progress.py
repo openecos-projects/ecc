@@ -289,11 +289,11 @@ class TestIncrementalLogTail:
     def test_reports_stale_status_without_losing_last_line(self, tmp_path):
         log = tmp_path / "step.log"
         log.write_text("StaDataPropagation.cc:710] data bwd propagation start\n")
-        tail = progress._IncrementalLogTail(str(log), "fixfanout", stale_after=5.0)
+        tail = progress._IncrementalLogTail(str(log), "floorplan", stale_after=5.0)
         assert tail.poll(now=10.0) == "StaDataPropagation.cc:710] data bwd propagation start"
 
         assert (
-            tail.poll(now=16.0) == "running fixfanout, last log 6s ago: "
+            tail.poll(now=16.0) == "running floorplan, last log 6s ago: "
             "StaDataPropagation.cc:710] data bwd propagation start"
         )
         assert tail.last_line == "StaDataPropagation.cc:710] data bwd propagation start"
@@ -331,7 +331,7 @@ class TestMonitorLogProgress:
         stop_event = threading.Event()
         monitor = threading.Thread(
             target=progress._monitor_log_progress,
-            args=(renderer, str(log), "fixfanout", stop_event),
+            args=(renderer, str(log), "floorplan", stop_event),
             kwargs={"interval": 0.01, "stale_after": 0.03},
             daemon=True,
         )
@@ -340,7 +340,7 @@ class TestMonitorLogProgress:
         try:
             assert _wait_until(lambda: renderer.has_line_containing("|_| |_"), timeout=1.0)
             assert _wait_until(lambda: renderer.has_line_containing("last log"), timeout=1.0)
-            assert renderer.has_line_containing("running fixfanout")
+            assert renderer.has_line_containing("running floorplan")
         finally:
             stop_event.set()
             monitor.join(timeout=1.0)
@@ -355,7 +355,7 @@ class TestMonitorLogProgress:
             stop_event, monitor = progress._start_log_monitor(
                 renderer,
                 str(log),
-                "fixfanout",
+                "floorplan",
                 isolated=True,
                 interval=0.01,
                 stale_after=0.03,
@@ -371,7 +371,7 @@ class TestMonitorLogProgress:
                 stop_event.set()
                 monitor.join(timeout=1.0)
 
-        assert "running fixfanout, last log" in output.read_text()
+        assert "running floorplan, last log" in output.read_text()
 
 
 # -- RunProgressRenderer --

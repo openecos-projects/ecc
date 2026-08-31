@@ -36,9 +36,6 @@ parameters = get_design_parameters("ics55", "gcd")
 # ├── filler_ecc
 # │   ...
 # │   └── script
-# ├── fixFanout_ecc
-# │   ...
-# │   └── script
 # ├── Floorplan_ecc
 # │   ...
 # │   └── script
@@ -76,7 +73,6 @@ if not engine_flow.has_init():
     # Use `add_step` to add steps to the flow
     engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="Yosys", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="ecc", state=StateEnum.Unstart)

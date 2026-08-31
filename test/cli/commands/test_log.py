@@ -627,7 +627,6 @@ class TestLogListingFlowOrder:
         tool_map = {
             "Synthesis": "yosys",
             "Floorplan": "ecc",
-            "fixFanout": "ecc",
             "place": "ecc",
             "CTS": "ecc",
             "legalization": "ecc",

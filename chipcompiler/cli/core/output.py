@@ -14,7 +14,6 @@ def normalize_step_name(internal: str) -> str:
     mapping = {
         "Synthesis": "synthesis",
         "Floorplan": "floorplan",
-        "fixFanout": "fixfanout",
         "place": "placement",
         "CTS": "cts",
         "legalization": "legalization",

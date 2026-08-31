@@ -183,12 +183,12 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
 
     monkeypatch.setattr("chipcompiler.cli.command_handlers.project.run", fake_run)
 
-    rc = cli_main.run(["run", "--set", "place.target_density=0.65", "--set", "synth.max_fanout=16"])
+    rc = cli_main.run(["run", "--set", "place.target_density=0.65", "--set", "cts.max_fanout=16"])
 
     assert rc == 0
     assert seen == {
         "input_type": "RunInput",
-        "param_set": ("place.target_density=0.65", "synth.max_fanout=16"),
+        "param_set": ("place.target_density=0.65", "cts.max_fanout=16"),
     }
 
 

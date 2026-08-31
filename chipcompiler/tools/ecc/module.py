@@ -847,12 +847,6 @@ class ECCToolsModule:
     def eval_overflow(self):
         return self.ecc.eval_overflow()
 
-    ########################################################################
-    # net optimization
-    ########################################################################
-    def run_net_opt(self, config: str):
-        return self.ecc.fix_fanout(path_text(config))
-
     def build_rc_tree_from_flat_data(
         self,
         netName: str,

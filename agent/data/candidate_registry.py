@@ -40,7 +40,6 @@ def _cts_uint(name: str, minimum: int = 1) -> CandidateKnob:
 
 CANDIDATE_TARGET_BACKENDS: dict[str, CandidateTargetBackend] = {
     "Floorplan": CandidateTargetBackend("ecc"),
-    "fixFanout": CandidateTargetBackend("ecc"),
     "place": CandidateTargetBackend("dreamplace"),
     "CTS": CandidateTargetBackend("ecc"),
     "legalization": CandidateTargetBackend("dreamplace", "legalization_dreamplace"),
@@ -86,22 +85,6 @@ CANDIDATE_KNOBS = (
         ("Floorplan", "Tap distance"),
         "uint",
         0,
-    ),
-    CandidateKnob(
-        "synth.max_fanout",
-        "fixFanout",
-        "fixFanout",
-        ("max_fanout",),
-        "uint",
-        1,
-    ),
-    CandidateKnob(
-        "fixfanout.insert_buffer",
-        "fixFanout",
-        "fixFanout",
-        ("insert_buffer",),
-        "pdk_string",
-        pdk_attribute="buffers",
     ),
     CandidateKnob(
         "place.target_density",

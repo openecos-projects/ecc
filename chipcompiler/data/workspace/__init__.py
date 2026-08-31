@@ -123,7 +123,6 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
-    StepEnum.NETLIST_OPT.value: "fixfanout_ecc.json",
     StepEnum.ROUTING.value: "route_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
@@ -136,7 +135,6 @@ _LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.CTS.value: "cts_default_config.json",
     StepEnum.DRC.value: "drc_default_config.json",
     StepEnum.FLOORPLAN.value: "fp_default_config.json",
-    StepEnum.NETLIST_OPT.value: "no_default_config_fixfanout.json",
     StepEnum.ROUTING.value: "rt_default_config.json",
     StepEnum.FILLER.value: "pl_default_config.json",
     StepEnum.RCX.value: "rcx.json",
@@ -148,7 +146,6 @@ _STEP_BY_VALUE: Final[dict[str, StepEnum]] = {step.value: step for step in StepE
 
 _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
     (StepEnum.FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
-    (StepEnum.NETLIST_OPT, "ecc"): ("db", StepEnum.NETLIST_OPT.value),
     (StepEnum.PLACEMENT, "ecc"): ("db",),
     (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
     (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
@@ -302,8 +299,6 @@ def _normalize_flow_step_name(value) -> str:
         "synthesis": StepEnum.SYNTHESIS.value,
         "floor": StepEnum.FLOORPLAN.value,
         "floorplan": StepEnum.FLOORPLAN.value,
-        "fanout": StepEnum.NETLIST_OPT.value,
-        "fixfanout": StepEnum.NETLIST_OPT.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
         "cts": StepEnum.CTS.value,
@@ -356,11 +351,6 @@ def _flag_to_int(value: Any) -> int:
 
 
 PARAMETER_CONFIG_FIELD_MAPPINGS = (
-    WorkspaceConfigParameterMapping(
-        "Max fanout",
-        StepEnum.NETLIST_OPT.value,
-        ("max_fanout",),
-    ),
     WorkspaceConfigParameterMapping(
         "Max fanout",
         StepEnum.CTS.value,
@@ -683,16 +673,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     if not json_write(workspace.config["db"], db):
         raise OSError(f"Failed to write DB config: {workspace.config['db']}")
 
-    fixfanout = json_read(workspace.config[f"{StepEnum.NETLIST_OPT.value}"])
-    if not fixfanout:
-        raise FileNotFoundError(
-            f"Netlist opt config missing or corrupt: "
-            f"{workspace.config[f'{StepEnum.NETLIST_OPT.value}']}"
-        )
     max_fanout = workspace.parameters.data.get("Max fanout", 32)
-    fixfanout["insert_buffer"] = workspace.pdk.buffers[0] if len(workspace.pdk.buffers) > 0 else ""
-    fixfanout["max_fanout"] = max_fanout
-    json_write(workspace.config[f"{StepEnum.NETLIST_OPT.value}"], fixfanout)
 
     filler_path = workspace.config[f"{StepEnum.FILLER.value}"]
     filler = json_read(filler_path)

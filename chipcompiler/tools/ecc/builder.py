@@ -91,7 +91,6 @@ def build_step(
                 StepEnum.LEGALIZATION.value: data_dir / "pl",
                 StepEnum.FILLER.value: data_dir / "pl",
                 StepEnum.CTS.value: data_dir / "cts",
-                StepEnum.NETLIST_OPT.value: data_dir / "no",
                 StepEnum.TIMING_OPT.value: data_dir / "to",
                 StepEnum.ROUTING.value: data_dir / "rt",
                 StepEnum.STA.value: sta_dir,

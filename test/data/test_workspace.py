@@ -24,7 +24,6 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
-    StepEnum.NETLIST_OPT.value: "fixfanout_ecc.json",
     StepEnum.ROUTING.value: "route_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
@@ -135,16 +134,15 @@ def test_create_workspace_persists_dynamic_flow_steps(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "Fanout",
+            "start_step": "Placement",
             "end_step": "DRC",
-            "steps": ["Fanout", "Placement", "CTS", "legal", "Route", "DRC"],
+            "steps": ["Placement", "CTS", "legal", "Route", "DRC"],
         },
     )
 
     assert workspace is not None
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
-        "fixFanout",
         "place",
         "CTS",
         "legalization",
@@ -152,7 +150,6 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "drc",
     ]
     assert [step["tool"] for step in flow_data["steps"]] == [
-        "ecc",
         "dreamplace",
         "ecc",
         "dreamplace",
@@ -182,14 +179,13 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "fixFanout",
+            "start_step": "Placement",
             "end_step": "Harden",
         },
     )
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
-        "fixFanout",
         "place",
         "CTS",
         "legalization",
@@ -233,7 +229,7 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "fixFanout",
+            "start_step": "Placement",
             "end_step": "legalization",
         },
     )
@@ -247,7 +243,6 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
-        "fixFanout",
         "place",
         "CTS",
         "legalization",
@@ -430,7 +425,6 @@ def test_step_config_keys_return_workspace_config_keys():
 def test_step_config_keys_accept_exact_internal_step_names_only():
     cases = [
         (StepEnum.FLOORPLAN.value, StepEnum.FLOORPLAN.value),
-        (StepEnum.NETLIST_OPT.value, StepEnum.NETLIST_OPT.value),
         (StepEnum.ROUTING.value, StepEnum.ROUTING.value),
         (StepEnum.RCX.value, StepEnum.RCX.value),
         ("sta", StepEnum.STA.value),
@@ -443,7 +437,6 @@ def test_step_config_keys_accept_exact_internal_step_names_only():
 
     for cli_token in (
         "floorplan",
-        "fixfanout",
         "placement",
         "routing",
         "cts",
@@ -650,9 +643,7 @@ def test_workspace_config_refresh_uses_updated_parameters(
 
     init_workspace_config(workspace)
 
-    fixfanout = json_read(workspace.config["fixFanout"])
     filler = json_read(workspace.config["filler"])
-    assert fixfanout["max_fanout"] == 88
     assert filler == {"-min_filler_width": 1}
 
 
@@ -692,7 +683,6 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
 
     refresh_workspace_config(workspace)
 
-    fixfanout = json_read(workspace.config["fixFanout"])
     filler = json_read(workspace.config["filler"])
     db = json_read(workspace.config["db"])
     floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
@@ -700,7 +690,6 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     cts = json_read(workspace.config[StepEnum.CTS.value])
     dreamplace = json_read(workspace.config["dreamplace"])
 
-    assert fixfanout["max_fanout"] == 91
     assert cts["max_fanout"] == 91
     assert cts["buffer_type"] == workspace.pdk.buffers
     assert cts["skew_bound"] == "0.13"
@@ -825,10 +814,8 @@ def test_sync_workspace_config_to_parameters_propagates_cts_max_fanout(
     refresh_workspace_config(workspace)
 
     parameters = json_read(workspace_dir / "home" / "parameters.json")
-    fixfanout = json_read(workspace.config[StepEnum.NETLIST_OPT.value])
     cts = json_read(cts_path)
     assert parameters["Max fanout"] == 48
-    assert fixfanout["max_fanout"] == 48
     assert cts["max_fanout"] == 48
 
 

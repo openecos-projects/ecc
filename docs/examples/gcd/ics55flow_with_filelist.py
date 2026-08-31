@@ -52,9 +52,6 @@ parameters = get_design_parameters("ics55", "gcd")
 # ├── filler_ecc      # Filler cell insertion step
 # │   ...
 # │   └── script
-# ├── fixFanout_ecc   # Netlist optimization step
-# │   ...
-# │   └── script
 # ├── Floorplan_ecc   # Floorplanning step
 # │   ...
 # │   └── script
@@ -119,13 +116,8 @@ if not engine_flow.has_init():
     # Output: Floorplan definition
     engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
 
-    # NETLIST_OPT step: Optimize netlist (buffering, fanout fixing)
-    # Input: Synthesized netlist
-    # Output: Optimized netlist
-    engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="ecc", state=StateEnum.Unstart)
-
     # PLACEMENT step: Place cells on the die
-    # Input: Optimized netlist, floorplan
+    # Input: Synthesized netlist, floorplan
     # Output: DEF with cell placement
     engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
 

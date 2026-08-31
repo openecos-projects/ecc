@@ -24,13 +24,6 @@ class EccChecklist:
             ("PDN", "check PDN grid and stripes"),
             ("Clock", "check clock net type"),
         ],
-        StepEnum.NETLIST_OPT: [
-            ("Fanout", "check max fanout constraint"),
-            ("Fanout", "check high fanout nets"),
-            ("Buffer", "check inserted buffer type"),
-            ("Tie", "check tie cell usage"),
-            ("Netlist", "check netlist and DEF consistency"),
-        ],
         StepEnum.PLACEMENT: [
             ("Density", "check target density"),
             ("Density", "check placement overflow"),
@@ -331,100 +324,6 @@ class EccFloorplanChecklist(EccChecklist):
         ]
 
         warning_items = {"check macro placement"}
-        return self.apply_checks(step, checks, warning_items)
-
-
-class EccNetlistOptChecklist(EccChecklist):
-    def check(self) -> bool:
-        return refresh_step_checklist(self.workspace, self.workspace_step)
-
-        step = StepEnum.NETLIST_OPT.value
-        metrics = self.qor_metrics()
-        db = json_read(self.workspace_step.feature.db or "")
-        config = json_read(self.workspace.config.get(StepEnum.NETLIST_OPT.value, ""))
-
-        try:
-            with open(
-                self.workspace_step.output.verilog or "",
-                encoding="utf-8",
-                errors="ignore",
-            ) as file:
-                netlist_text = file.read()
-        except OSError:
-            netlist_text = ""
-
-        statis = db.get("Design Statis", {})
-        buffer_cells = getattr(self.workspace.pdk, "buffers", []) or []
-        tie_high = getattr(self.workspace.pdk, "tie_high_cell", "")
-        tie_low = getattr(self.workspace.pdk, "tie_low_cell", "")
-        max_fanout_limit = self.to_float(
-            config.get("max_fanout", self.workspace.parameters.data.get("Max fanout")),
-            0.0,
-        )
-        actual_max_fanout, fanout_error = metrics.number("fanout_max")
-        total_nets, net_count_error = metrics.number("net_count")
-        db_nets = self.to_float(statis.get("num_nets"), 0.0)
-        output_success = all(
-            [
-                self.check_file(self.workspace_step.output.def_ or ""),
-                self.check_file(self.workspace_step.output.verilog or ""),
-                self.check_file(self.workspace_step.output.gds or ""),
-            ]
-        )
-
-        buffer_success = len(buffer_cells) > 0 and (
-            any(buffer in netlist_text for buffer in buffer_cells)
-            or config.get("insert_buffer") in buffer_cells
-        )
-        tie_success = bool(tie_high and tie_low)
-        if (tie_high and tie_high in netlist_text) or (tie_low and tie_low in netlist_text):
-            tie_success = True
-
-        checks = [
-            (
-                "Fanout",
-                "check max fanout constraint",
-                max_fanout_limit > 0,
-                "max_fanout is missing or invalid in fixFanout configuration",
-            ),
-            (
-                "Fanout",
-                "check high fanout nets",
-                actual_max_fanout is not None
-                and max_fanout_limit > 0
-                and actual_max_fanout <= max_fanout_limit,
-                fanout_error
-                or f"fanout_max={actual_max_fanout} exceeds configured limit {max_fanout_limit}",
-            ),
-            (
-                "Buffer",
-                "check inserted buffer type",
-                buffer_success,
-                "Configured buffer type is absent from the repaired netlist",
-            ),
-            (
-                "Tie",
-                "check tie cell usage",
-                tie_success,
-                "Tie high/low cells are neither configured nor present in the repaired netlist",
-            ),
-            (
-                "Netlist",
-                "check netlist and DEF consistency",
-                output_success
-                and total_nets is not None
-                and total_nets > 0
-                and db_nets > 0
-                and int(total_nets) == int(db_nets),
-                net_count_error
-                or (
-                    f"Output DEF/verilog/GDS is missing or net_count={total_nets} "
-                    f"does not match feature net count {db_nets}"
-                ),
-            ),
-        ]
-
-        warning_items = {"check high fanout nets", "check tie cell usage"}
         return self.apply_checks(step, checks, warning_items)
 
 

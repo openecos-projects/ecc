@@ -21,7 +21,7 @@ REQUIRED_KEYS = [
     "floorplan.core_util",
     "floorplan.core_margin",
     "floorplan.aspect_ratio",
-    "synth.max_fanout",
+    "cts.max_fanout",
     "place.target_density",
     "place.target_overflow",
     "place.global_right_padding",
@@ -67,7 +67,7 @@ class TestSchemaRegistry:
         density = lookup_schema("place.target_density")
         assert density.maps_to == {"DreamPlace": "target_density"}
 
-        fanout = lookup_schema("synth.max_fanout")
+        fanout = lookup_schema("cts.max_fanout")
         assert fanout.maps_to == "Max fanout"
 
         util = lookup_schema("floorplan.core_util")
@@ -100,7 +100,7 @@ class TestSchemaRegistry:
         groups = list_groups()
         assert "design" in groups
         assert "floorplan" in groups
-        assert "synth" in groups
+        assert "cts" in groups
         assert "place" in groups
         assert "route" in groups
 
@@ -199,7 +199,7 @@ class TestValueParsing:
         assert len(errors) > 0
 
     def test_type_mismatch_rejected(self):
-        result, errors = parse_cli_overrides(["synth.max_fanout=abc"])
+        result, errors = parse_cli_overrides(["cts.max_fanout=abc"])
         assert len(errors) > 0
 
 
@@ -236,17 +236,17 @@ class TestSourceAwareResolution:
         assert density.source == "cli"
 
     def test_invalid_toml_type_produces_error(self):
-        toml = {"synth.max_fanout": "not_int"}
+        toml = {"cts.max_fanout": "not_int"}
         resolved, errors = resolve_parameters(toml_overrides=toml)
         assert len(errors) > 0
 
     def test_float_rejected_for_int_schema(self):
-        toml = {"synth.max_fanout": 16.5}
+        toml = {"cts.max_fanout": 16.5}
         resolved, errors = resolve_parameters(toml_overrides=toml)
         assert len(errors) > 0
 
     def test_bool_rejected_for_int_schema(self):
-        toml = {"synth.max_fanout": True}
+        toml = {"cts.max_fanout": True}
         resolved, errors = resolve_parameters(toml_overrides=toml)
         assert len(errors) > 0
 
@@ -269,7 +269,7 @@ class TestSourceAwareResolution:
         assert len(errors) > 0
 
     def test_str_rejected_for_int_schema(self):
-        toml = {"synth.max_fanout": "abc"}
+        toml = {"cts.max_fanout": "abc"}
         resolved, errors = resolve_parameters(toml_overrides=toml)
         assert len(errors) > 0
 
@@ -347,11 +347,11 @@ class TestCliOverrides:
         result, errors = parse_cli_overrides(
             [
                 "place.target_density=0.65",
-                "synth.max_fanout=16",
+                "cts.max_fanout=16",
             ]
         )
         assert errors == []
-        assert result == {"place.target_density": 0.65, "synth.max_fanout": 16}
+        assert result == {"place.target_density": 0.65, "cts.max_fanout": 16}
 
     def test_malformed_rejected(self):
         result, errors = parse_cli_overrides(["noequals"])

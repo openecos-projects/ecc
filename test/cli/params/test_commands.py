@@ -105,7 +105,7 @@ class TestParamSet:
 
     def test_param_set_preserves_other_sections(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        cli_main.run(["param", "set", "synth.max_fanout", "16", "--project", project_dir])
+        cli_main.run(["param", "set", "cts.max_fanout", "16", "--project", project_dir])
 
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:

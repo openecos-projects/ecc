@@ -529,7 +529,6 @@ class TestCreateStepFailureBreaksChain:
             "steps": [
                 {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
                 {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
-                {"name": "NETLIST_OPT", "tool": "ecc", "state": "Unstart"},
             ]
         }
         flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
@@ -551,17 +550,14 @@ class TestCreateStepFailureBreaksChain:
         monkeypatch.setattr(tools_mod, "create_step", fake_create_step)
         engine_flow.create_step_workspaces()
 
-        # Only SYNTHESIS should be created; FLOORPLAN fails, NETLIST_OPT never attempted
+        # Only SYNTHESIS should be created; FLOORPLAN fails and the chain stops.
         assert len(engine_flow.workspace_steps) == 1
         assert engine_flow.workspace_steps[0].name == "SYNTHESIS"
-        assert call_count[0] == 2  # SYNTHESIS + FLOORPLAN (NETLIST_OPT skipped)
+        assert call_count[0] == 2  # SYNTHESIS + FLOORPLAN
 
         # FLOORPLAN should be marked Incomplete in flow data
         fp_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "FLOORPLAN")
         assert fp_step["state"] == StateEnum.Imcomplete.value
-        # NETLIST_OPT should stay Unstart (never reached)
-        no_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "NETLIST_OPT")
-        assert no_step["state"] == "Unstart"
 
     def test_run_steps_returns_false_when_steps_skipped(self, monkeypatch, tmp_path):
         """run_steps must return False when create_step skipped steps."""

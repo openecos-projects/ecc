@@ -11,7 +11,7 @@ class TestScopedTomlEdit:
         with open(toml_path) as f:
             original = f.read()
 
-        cli_main.run(["param", "set", "synth.max_fanout", "16", "--project", project_dir])
+        cli_main.run(["param", "set", "cts.max_fanout", "16", "--project", project_dir])
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -28,7 +28,7 @@ class TestScopedTomlEdit:
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "synth.max_fanout", "16", "--project", project_dir])
+        cli_main.run(["param", "set", "cts.max_fanout", "16", "--project", project_dir])
         capsys.readouterr()
 
         with open(toml_path) as f:

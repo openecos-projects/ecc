@@ -52,10 +52,6 @@ def _workspace(tmp_path: Path):
         {"Floorplan": {"Tap distance": 58}},
     )
     _write_json(
-        tmp_path / "config" / "fixfanout_ecc.json",
-        {"insert_buffer": "BUF_1", "max_fanout": 32},
-    )
-    _write_json(
         tmp_path / "config" / "dreamplace_ecc.json",
         {
             "target_density": 0.8,
@@ -82,7 +78,6 @@ def _workspace(tmp_path: Path):
         config={
             "CTS": cts_path,
             "Floorplan": tmp_path / "config" / "floorplan_ecc.json",
-            "fixFanout": tmp_path / "config" / "fixfanout_ecc.json",
             "dreamplace": tmp_path / "config" / "dreamplace_ecc.json",
             "legalization": pl_path,
             "filler": pl_path,
@@ -94,7 +89,6 @@ def _workspace(tmp_path: Path):
             data={
                 "steps": [
                     {"name": "Floorplan", "tool": "ecc"},
-                    {"name": "fixFanout", "tool": "ecc"},
                     {"name": "place", "tool": "dreamplace"},
                     {"name": "CTS", "tool": "ecc"},
                     {"name": "legalization", "tool": "dreamplace"},
@@ -113,8 +107,7 @@ def test_registry_covers_the_declared_public_physical_knobs():
         "floorplan.core_util",
         "floorplan.aspect_ratio",
         "floorplan.core_margin",
-        "synth.max_fanout",
-        "fixfanout.insert_buffer",
+        "cts.max_fanout",
         "place.target_density",
         "place.target_overflow",
         "place.cell_padding_x",

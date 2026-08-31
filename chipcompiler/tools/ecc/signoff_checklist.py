@@ -23,7 +23,6 @@ from chipcompiler.utility.filelist import resolve_initial_rtl
 _STEP_DIRECTORIES = {
     StepEnum.SYNTHESIS.value: "Synthesis_yosys",
     StepEnum.FLOORPLAN.value: "Floorplan_ecc",
-    StepEnum.NETLIST_OPT.value: "fixFanout_ecc",
     StepEnum.PLACEMENT.value: "place_dreamplace",
     StepEnum.CTS.value: "CTS_ecc",
     StepEnum.LEGALIZATION.value: "legalization_dreamplace",

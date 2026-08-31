@@ -2979,13 +2979,6 @@ class FoundationExtractor:
         )
         if dreamplace:
             knobs["dreamplace"] = dreamplace
-        fix_fanout = self._first_config_values(
-            [stage for stage in stages if stage.name == "fixFanout"],
-            "fixfanout_ecc.json",
-            {"insert_buffer": ("insert_buffer",)},
-        )
-        if fix_fanout:
-            knobs["fix_fanout"] = fix_fanout
         cts = self._first_config_values(
             [stage for stage in stages if stage.name == "CTS"],
             "cts_ecc.json",
@@ -6630,11 +6623,9 @@ def _attach_net_progressive_metadata(stages: list[StageInfo], nets_dir: Path) ->
             )
             record["progressive_metadata"] = {
                 "available_from": first,
-                "created_stage": "Synthesis"
-                if first in {"Floorplan", "fixFanout", "place"}
-                else first,
+                "created_stage": "Synthesis" if first in {"Floorplan", "place"} else first,
                 "created_stage_source": "def_net"
-                if first in {"Floorplan", "fixFanout", "place"}
+                if first in {"Floorplan", "place"}
                 else "first_observed",
                 "exists_in_prev_stage": previous is not None,
                 "exists_in_place": key in place_keys,
@@ -6709,11 +6700,9 @@ def _attach_net_progressive_metadata_in_memory(
             )
             record["progressive_metadata"] = {
                 "available_from": first,
-                "created_stage": "Synthesis"
-                if first in {"Floorplan", "fixFanout", "place"}
-                else first,
+                "created_stage": "Synthesis" if first in {"Floorplan", "place"} else first,
                 "created_stage_source": "def_net"
-                if first in {"Floorplan", "fixFanout", "place"}
+                if first in {"Floorplan", "place"}
                 else "first_observed",
                 "exists_in_prev_stage": previous is not None,
                 "exists_in_place": key in place_keys,
@@ -7889,7 +7878,6 @@ def _workspace_relative_artifact_path(value: Any) -> str:
     for marker in (
         "Synthesis_yosys",
         "Floorplan_ecc",
-        "fixFanout_ecc",
         "place_dreamplace",
         "CTS_ecc",
         "legalization_dreamplace",
@@ -8012,7 +8000,6 @@ def _stage_directory_name(stage_name: str) -> str:
     mapping = {
         "Synthesis": "Synthesis_yosys",
         "Floorplan": "Floorplan_ecc",
-        "fixFanout": "fixFanout_ecc",
         "place": "place_dreamplace",
         "CTS": "CTS_ecc",
         "legalization": "legalization_dreamplace",
@@ -9142,7 +9129,6 @@ def _attach_timing_progressive_metadata(
     stage_order = [
         "Synthesis",
         "Floorplan",
-        "fixFanout",
         "place",
         "CTS",
         "legalization",
@@ -9820,7 +9806,6 @@ def _workspace_relative_from_parsed_def(parsed_def: DefData) -> str:
         "route_ecc",
         "drc_ecc",
         "filler_ecc",
-        "fixFanout_ecc",
         "legalization_dreamplace",
     ):
         if marker in parts:

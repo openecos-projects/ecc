@@ -16,7 +16,6 @@ from chipcompiler.tools.ecc.metrics import (
     build_metrics_drc,
     build_metrics_legalization,
     build_metrics_lvs,
-    build_metrics_net_opt,
     build_metrics_placement,
     build_metrics_routing,
 )
@@ -422,7 +421,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.eval_macro_connection(Path("/ws/eval/macro_conn.png"), 1, 1)
     module.eval_macro_pin_connection(Path("/ws/eval/macro_pin.png"), 1, 1)
     module.eval_macro_io_pin_connection(Path("/ws/eval/macro_io.png"), 1, 1)
-    module.run_net_opt(Path("/ws/config/fixfanout.json"))
 
     _assert_no_path_values(module.ecc.calls)
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
@@ -494,184 +492,6 @@ def test_ecc_metrics_qor_summary_marks_blocking_lvs_violations(tmp_path):
             ],
         }
     ]
-
-
-def test_ecc_metrics_accept_path_feature_paths(tmp_path):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", top_module="gcd"),
-    )
-    step = build_step(
-        workspace=workspace,
-        step_name=StepEnum.NETLIST_OPT.value,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-    )
-    build_step_space(step)
-
-    metrics = build_metrics_net_opt(workspace, step)
-
-    assert metrics.report == [
-        (str(step.feature.step).replace(".json", ".png"), f"{step.name} step metrics:\n")
-    ]
-
-
-def test_ecc_metrics_write_standard_qor_metrics_json(tmp_path):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", top_module="gcd"),
-    )
-    workspace.parameters.data["Max fanout"] = 20
-    step = build_step(
-        workspace=workspace,
-        step_name=StepEnum.NETLIST_OPT.value,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-    )
-    build_step_space(step)
-    assert step.feature.db is not None
-    step.feature.db.write_text(
-        json.dumps(
-            {
-                "Design Layout": {
-                    "die_area": 2259.861,
-                    "core_area": 1778.432,
-                    "die_bounding_width": 47.538,
-                    "die_bounding_height": 47.538,
-                    "die_usage": 0.34,
-                    "core_usage": 0.42,
-                },
-                "Design Statis": {
-                    "num_iopins": 58,
-                    "num_instances": 615,
-                    "num_nets": 361,
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    metrics = build_metrics_net_opt(workspace, step)
-
-    assert metrics is not None
-    assert step.analysis.qor_metrics is not None
-    assert step.analysis.qor_metrics.exists()
-    qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
-    assert qor_metrics["schema_version"] == 3
-    assert qor_metrics["tool"] == "ecc"
-    assert qor_metrics["step"] == StepEnum.NETLIST_OPT.value
-    assert qor_metrics["design"] == "gcd"
-
-    records = {record["id"]: record for record in qor_metrics["metrics"]}
-    assert records["fanout_max"] == {
-        "id": "fanout_max",
-        "display_name": "Max Fanout",
-        "value": 20,
-        "unit": "count",
-        "category": "routability_physical",
-        "direction": "lower_is_better",
-        "scope": "fanout_repair",
-        "corner": None,
-        "project_role": "trend",
-        "step_role": "primary",
-        "analysis_group": "fixfanout_metrics",
-        "rating": {"gate": False, "score": True, "trend": True},
-        "confidence": "high",
-        "source": {
-            "kind": "feature",
-            "path": "feature/fixFanout.db.json",
-            "selector": "/Pins/max_fanout",
-        },
-    }
-    assert records["core_utilization"]["value"] == 0.42
-    assert records["core_utilization"]["direction"] == "target_range"
-    assert records["core_area"]["value"] == 1778.432
-    assert records["die_area"]["unit"] == "um^2"
-
-
-def test_ecc_metrics_uses_actual_db_max_fanout_before_configured_target(tmp_path):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", top_module="gcd"),
-    )
-    workspace.parameters.data["Max fanout"] = 20
-    step = build_step(
-        workspace=workspace,
-        step_name=StepEnum.NETLIST_OPT.value,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-    )
-    build_step_space(step)
-    assert step.feature.db is not None
-    step.feature.db.write_text(
-        json.dumps({"Pins": {"max_fanout": 37}}),
-        encoding="utf-8",
-    )
-
-    metrics = build_metrics_net_opt(workspace, step)
-
-    assert metrics.data["Max fanout"] == 37
-    assert step.analysis.qor_metrics is not None
-    records = {
-        record["id"]: record
-        for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
-    }
-    assert records["fanout_max"]["value"] == 37
-
-
-def test_ecc_metrics_write_standard_qor_summary_json(tmp_path):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", top_module="gcd"),
-    )
-    workspace.parameters.data["Max fanout"] = 20
-    step = build_step(
-        workspace=workspace,
-        step_name=StepEnum.NETLIST_OPT.value,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-    )
-    build_step_space(step)
-    assert step.feature.db is not None
-    step.feature.db.write_text(
-        json.dumps(
-            {
-                "Design Layout": {
-                    "die_area": 2259.861,
-                    "die_bounding_width": 47.538,
-                    "die_bounding_height": 47.538,
-                    "die_usage": 0.34,
-                    "core_usage": 0.42,
-                },
-                "Design Statis": {
-                    "num_iopins": 58,
-                    "num_instances": 615,
-                    "num_nets": 361,
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    metrics = build_metrics_net_opt(workspace, step)
-
-    assert metrics is not None
-    assert step.analysis.qor_summary is not None
-    assert step.analysis.qor_summary.exists()
-    summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
-    assert step.analysis.qor_metrics is not None
-    qor_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
-    assert summary["schema_version"] == 4
-    assert summary["tool"] == "ecc"
-    assert summary["step"] == StepEnum.NETLIST_OPT.value
-    assert summary["design"] == "gcd"
-    assert summary["analysis_status"] == "valid"
-    assert summary["quality_status"] == "pass"
-    assert summary["metric_count"] == len(qor_metrics["metrics"])
-    assert summary["metrics_file"] == "qor_metrics.json"
-    assert summary["gates"] == []
-    assert summary["missing_metrics"] == []
-    assert summary["dimensions"]["routability_physical"]["metric_count"] >= 1
 
 
 def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
@@ -2374,7 +2194,7 @@ def test_ecc_plot_step_metrics_accepts_path_metrics(tmp_path, monkeypatch):
     )
     step = build_step(
         workspace=workspace,
-        step_name=StepEnum.NETLIST_OPT.value,
+        step_name=StepEnum.FLOORPLAN.value,
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
     )
@@ -2401,7 +2221,7 @@ def test_ecc_plot_instance_distribution_accepts_path_feature_db(tmp_path, monkey
     )
     step = build_step(
         workspace=workspace,
-        step_name=StepEnum.NETLIST_OPT.value,
+        step_name=StepEnum.FLOORPLAN.value,
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
     )

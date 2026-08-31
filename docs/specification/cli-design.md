@@ -326,7 +326,7 @@ ecc param show place.target_density
 ecc param set place.target_density 0.65
 ecc param unset place.target_density
 ecc param diff
-ecc run --set synth.max_fanout=16
+ecc run --set cts.max_fanout=16
 ```
 
 ### Version Information

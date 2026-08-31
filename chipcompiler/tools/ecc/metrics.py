@@ -145,13 +145,6 @@ QOR_METRIC_MAP = {
         "dimension": "routability_physical",
         "polarity": "trend_only",
     },
-    "Max fanout": {
-        "name": "fanout_max",
-        "display_name": "Max Fanout",
-        "unit": "count",
-        "dimension": "routability_physical",
-        "polarity": "lower_is_better",
-    },
     "GP HPWL": {
         "name": "place_hpwl",
         "display_name": "Place HPWL",
@@ -576,17 +569,6 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "io_pin_count",
         "instance_count",
         "net_count",
-    ],
-    StepEnum.NETLIST_OPT.value: [
-        "die_area",
-        "die_width",
-        "die_height",
-        "die_utilization",
-        "core_utilization",
-        "io_pin_count",
-        "instance_count",
-        "net_count",
-        "fanout_max",
     ],
     StepEnum.PLACEMENT.value: [
         "place_hpwl",
@@ -1730,9 +1712,6 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
     elif step.name == StepEnum.FLOORPLAN.value:
         scope = "floorplan"
         step_role = "primary"
-    elif step.name == StepEnum.NETLIST_OPT.value:
-        scope = "fanout_repair"
-        step_role = "primary" if metric_id == "fanout_max" else "secondary"
     elif step.name == StepEnum.PLACEMENT.value:
         scope = "placement"
         step_role = "primary" if metric_id.startswith("place_") else "secondary"
@@ -2012,9 +1991,6 @@ def _metric_feature_source(
     elif metric_id in _DB_FEATURE_SELECTORS:
         feature_path = getattr(step.feature, "db", None)
         selector = _DB_FEATURE_SELECTORS[metric_id]
-    elif metric_id == "fanout_max":
-        feature_path = getattr(step.feature, "db", None)
-        selector = "/Pins/max_fanout"
     elif metric_id.startswith("place_"):
         feature_path = (
             getattr(step.feature, "map", None)
@@ -2845,7 +2821,6 @@ def _gate_state(*, available: bool, passed: bool) -> str:
 
 _MPC_AREA_SOURCE_STEPS = {
     StepEnum.FLOORPLAN.value,
-    StepEnum.NETLIST_OPT.value,
     StepEnum.PLACEMENT.value,
     StepEnum.CTS.value,
     StepEnum.LEGALIZATION.value,
@@ -3426,8 +3401,6 @@ def build_step_metrics(
     match step.name:
         case StepEnum.FLOORPLAN.value:
             metrics = build_metrics_floorplan(workspace, step)
-        case StepEnum.NETLIST_OPT.value:
-            metrics = build_metrics_net_opt(workspace, step)
         case StepEnum.PLACEMENT.value:
             metrics = build_metrics_placement(workspace, step)
         case StepEnum.CTS.value:
@@ -3555,40 +3528,6 @@ def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics:
     if len(data) > 0:
         # Add floorplan specific metrics here
         pass
-
-    step_metrics.data = metrics
-
-    # generate report image and dscription
-    image_path = str(json_path).replace(".json", ".png")
-    report = f"{step.name} step metrics:\n"
-
-    step_metrics.report.append((image_path, report))
-
-    if save_step_metrics(workspace, step, step_metrics):
-        return step_metrics
-    else:
-        return None
-
-
-def build_metrics_net_opt(workspace: Workspace, step: EccStep) -> StepMetrics:
-    """
-    Build and return net operation metrics dictionary.
-    """
-    step_metrics = StepMetrics()
-    step_metrics.path = step.analysis.metrics or ""
-
-    metrics = {}
-
-    # db summary matrics
-    metrics.update(build_metrics_db(workspace, step))
-
-    json_path = getattr(step.feature, "step", "") or ""
-    db_data = json_read(getattr(step.feature, "db", "") or "")
-    pins = db_data.get("Pins", {}) if isinstance(db_data, dict) else {}
-    fanout = pins.get("max_fanout") if isinstance(pins, dict) else None
-    if fanout is None:
-        fanout = workspace.parameters.data.get("Max fanout")
-    _add_number_metric(metrics, "Max fanout", fanout)
 
     step_metrics.data = metrics
 
