@@ -202,6 +202,7 @@ ecc log
 ecc config
 ecc param
 ecc signoff
+ecc report
 ecc rpc
 ```
 
@@ -220,6 +221,7 @@ Responsibilities:
 | `ecc config` | Show user or resolved configuration |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
 | `ecc signoff` | Inspect package readiness, export the tar.gz package, write the text design summary |
+| `ecc report` | QoR overall score report (GUI scoring rules) and signoff checklist report |
 | `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |
 
 `ecc run` preflights the tools its preset needs (yosys for synthesis,

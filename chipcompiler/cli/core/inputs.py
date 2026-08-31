@@ -77,6 +77,22 @@ class ConfigInput:
 
 
 @dataclass(frozen=True)
+class ReportQorInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    workspace: str | None = None
+    output_path: str | None = None
+
+
+@dataclass(frozen=True)
+class ReportChecklistInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    workspace: str | None = None
+    output_path: str | None = None
+
+
+@dataclass(frozen=True)
 class SignoffInspectInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()
