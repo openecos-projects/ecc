@@ -409,15 +409,9 @@ def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
 
 def test_step_config_keys_return_workspace_config_keys():
     assert data_api.step_config_keys("CTS", "ecc") == ("db", StepEnum.CTS.value)
-    assert data_api.step_config_keys("place", "ecc") == (
-        "db",
-    )
-    assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == (
-        "db",
-    )
-    assert data_api.step_config_keys("legalization", "ecc") == (
-        "db",
-    )
+    assert data_api.step_config_keys("place", "ecc") == ("db",)
+    assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == ("db",)
+    assert data_api.step_config_keys("legalization", "ecc") == ("db",)
     assert data_api.step_config_keys("filler", "ecc") == (
         "db",
         StepEnum.FILLER.value,
