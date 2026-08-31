@@ -551,12 +551,14 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
                 StepEnum.DRC,
                 StepEnum.LVS,
                 StepEnum.FILLER,
+                StepEnum.POST_ROUTE_LEC,
                 StepEnum.RCX,
                 StepEnum.STA,
             )
         ]
         + [{"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Ongoing.value}]
     }
+    workspace.flow.data["steps"][-3]["tool"] = "yosys_lec"
     step = EccStep(
         name=StepEnum.HARDEN.value,
         directory=tmp_path / "Harden_ecc",

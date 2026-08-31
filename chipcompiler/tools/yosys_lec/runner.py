@@ -21,8 +21,12 @@ def _status_is_proven(path: Path | str | None) -> bool:
 
 
 def _write_result(step: YosysLecStep, *, proven: bool) -> None:
+    if not step.output.json:
+        return
     payload = {
         "status": "proven" if proven else "incomplete",
+        "golden_verilog": str(step.input.golden_verilog or ""),
+        "gate_verilog": str(step.input.gate_verilog or ""),
         "equiv_status": str(step.report.equiv_status or ""),
         "status_report": str(step.report.status or ""),
     }
@@ -37,6 +41,7 @@ def run_step(workspace: Workspace, step: YosysLecStep, ecc_module=None) -> bool:
     if not yosys_cmd:
         sub_flow.update_step(step_name="run lec", state=StateEnum.Invalid)
         Path(log_path).write_text("Error: yosys is not available.\n", encoding="utf-8")
+        _write_result(step, proven=False)
         return False
 
     for label, path in (
@@ -46,6 +51,7 @@ def run_step(workspace: Workspace, step: YosysLecStep, ecc_module=None) -> bool:
         if not path or not os.path.exists(path):
             sub_flow.update_step(step_name="run lec", state=StateEnum.Invalid)
             Path(log_path).write_text(f"Error: missing {label}: {path}\n", encoding="utf-8")
+            _write_result(step, proven=False)
             return False
 
     cmd = yosys_cmd + ["-Q", "-c", Path(step.script.main).name]
@@ -59,8 +65,8 @@ def run_step(workspace: Workspace, step: YosysLecStep, ecc_module=None) -> bool:
         )
 
     proven = result.returncode == 0 and _status_is_proven(step.report.equiv_status)
+    _write_result(step, proven=proven)
     if proven:
-        _write_result(step, proven=True)
         sub_flow.update_step(step_name="run lec", state=StateEnum.Success)
         sub_flow.update_step(step_name="analysis", state=StateEnum.Success)
         return True

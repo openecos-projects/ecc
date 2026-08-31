@@ -252,7 +252,9 @@ class EngineFlow:
             StepEnum.LEC.value,
             StepEnum.POST_ROUTE_LEC.value,
         ):
-            return os.path.exists(output.json or "")
+            from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
+
+            return lec_result_is_proven(output.json)
         match workspace_step.name:
             case StepEnum.SYNTHESIS.value:
                 if os.path.exists(output.verilog or ""):

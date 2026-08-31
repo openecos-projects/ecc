@@ -67,6 +67,7 @@ def _make_signoff_workspace(
                 {"name": "drc", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "lvs", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "filler", "tool": "ecc", "state": StateEnum.Success.value},
+                {"name": "postRouteLec", "tool": "yosys_lec", "state": StateEnum.Success.value},
                 {"name": "RCX", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "sta", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "Harden", "tool": "ecc", "state": StateEnum.Success.value},
@@ -94,6 +95,24 @@ def _make_signoff_workspace(
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.gds")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.png")
     _write(workspace_dir / "RCX_ecc" / "output" / f"{top_module}_RCworst_125C.spef")
+    _write_json(
+        workspace_dir / "postRouteLec_yosys_lec" / "output" / f"{design}_postRouteLec_result.json",
+        {
+            "status": "proven",
+            "golden_verilog": f"Synthesis_yosys/output/{design}_Synthesis.v.gz",
+            "gate_verilog": f"filler_ecc/output/{design}_filler.v.gz",
+            "equiv_status": "postRouteLec_yosys_lec/report/equiv_status.rpt",
+            "status_report": "postRouteLec_yosys_lec/report/run_lec_status.rpt",
+        },
+    )
+    _write(
+        workspace_dir / "postRouteLec_yosys_lec" / "report" / "equiv_status.rpt",
+        "Equivalence successfully proven!\n",
+    )
+    _write(
+        workspace_dir / "postRouteLec_yosys_lec" / "report" / "run_lec_status.rpt",
+        "Yosys LEC completed with proven equivalence.\n",
+    )
 
     sta_dir = workspace_dir / "sta_ecc" / "report" / "MAX_125" / "RCworst"
     for report_name in STA_REPORT_NAMES:
@@ -199,6 +218,10 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     assert (package_dir / "final" / "design" / "gcd.png").is_file()
     assert (package_dir / "final" / "timing" / "spef" / "gcd_RCworst_125C.spef").is_file()
     assert (package_dir / "final" / "reports" / "flow.json").is_file()
+    assert (package_dir / "final" / "reports" / "postRouteLec" / "result.json").is_file()
+    assert (
+        package_dir / "final" / "reports" / "postRouteLec" / "report" / "equiv_status.rpt"
+    ).is_file()
     assert not (package_dir / "signoff").exists()
     assert not (package_dir / "final" / "final").exists()
 
@@ -206,6 +229,8 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     assert summary["initial"]["verilog"] == "initial/gcd.v"
     assert summary["synthesis"]["verilog"] == "synthesis/gcd.v.gz"
     assert summary["final"]["verilog"] == "final/design/gcd.v.gz"
+    assert summary["lec"]["status"] == "proven"
+    assert summary["lec"]["result"] == "final/reports/postRouteLec/result.json"
     assert summary["qor_metrics"]["schema_version"] == 3
     assert (
         summary["sta_matrix"][0]["report"]
@@ -249,6 +274,27 @@ def test_collect_signoff_package_requires_synthesis_verilog(tmp_path):
         issue.label == "synthesis.verilog"
         and issue.location == "Synthesis_yosys/output/gcd_Synthesis.v.gz"
         and issue.destination == "synthesis/gcd.v.gz"
+        and issue.required
+        for issue in result.issues
+    )
+
+
+def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    _write_json(
+        workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
+        {"status": "incomplete"},
+    )
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert any(
+        issue.label == "lec.result"
+        and issue.destination == "final/reports/postRouteLec/result.json"
+        and issue.reason == "Yosys LEC did not prove equivalence"
         and issue.required
         for issue in result.issues
     )

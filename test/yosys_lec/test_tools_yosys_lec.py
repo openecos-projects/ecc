@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -196,7 +197,44 @@ def test_lec_runner_marks_success_from_yosys_status(tmp_path, monkeypatch):
 
     assert runner.run_step(workspace=workspace, step=step) is True
     assert ("run lec", StateEnum.Success) in updates
-    assert step.output.json.exists()
+    payload = json.loads(step.output.json.read_text())
+    assert payload["status"] == "proven"
+    assert payload["gate_verilog"] == str(gate)
+
+
+def test_lec_runner_writes_incomplete_result_on_failure(tmp_path, monkeypatch):
+    from chipcompiler.tools.yosys_lec import builder, runner
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    _write_gcd_netlist_pair(gate)
+    step = builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.LEC.value,
+        input_def=None,
+        input_verilog=gate,
+    )
+    builder.build_step_space(step)
+    builder.build_step_config(workspace=workspace, step=step)
+
+    class FakeSubFlow:
+        def __init__(self, workspace, workspace_step):
+            pass
+
+        def update_step(self, step_name, state, info=None):
+            return None
+
+    def fake_run(cmd, cwd, env, stdout, stderr):
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(runner, "YosysLecSubFlow", FakeSubFlow)
+    monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], {"PATH": "/tmp"}))
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    assert runner.run_step(workspace=workspace, step=step) is False
+    payload = json.loads(step.output.json.read_text())
+    assert payload["status"] == "incomplete"
+    assert EngineFlow(workspace=None).check_step_result(step) is False
 
 
 def test_engine_flow_accepts_lec_result_json(tmp_path):
@@ -205,6 +243,10 @@ def test_engine_flow_accepts_lec_result_json(tmp_path):
     step = YosysLecStep(name=StepEnum.LEC.value, output=OutputPaths(json=result_json))
 
     assert EngineFlow(workspace=None).check_step_result(step) is True
+    incomplete = tmp_path / "lec_incomplete.json"
+    incomplete.write_text('{"status": "incomplete"}\n')
+    failed = YosysLecStep(name=StepEnum.LEC.value, output=OutputPaths(json=incomplete))
+    assert EngineFlow(workspace=None).check_step_result(failed) is False
 
 
 def test_rtl2gds_flow_appends_post_route_lec_after_filler():
@@ -230,6 +272,7 @@ def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monke
                 "tool": "yosys_lec",
                 "state": StateEnum.Unstart.value,
             },
+            {"name": StepEnum.RCX.value, "tool": "ecc", "state": StateEnum.Unstart.value},
         ]
     }
     json_write(workspace.flow.path, workspace.flow.data)
@@ -282,9 +325,11 @@ def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monke
     engine_flow = EngineFlow(workspace=workspace)
     engine_flow.create_step_workspaces()
 
-    synth_step, route_step, lec_step = engine_flow.workspace_steps
+    synth_step, route_step, lec_step, rcx_step = engine_flow.workspace_steps
     assert synth_step.name == StepEnum.SYNTHESIS.value
     assert route_step.name == StepEnum.ROUTING.value
     assert lec_step.name == StepEnum.POST_ROUTE_LEC.value
+    assert rcx_step.name == StepEnum.RCX.value
     assert lec_step.input.gate_verilog == route_step.output.verilog
     assert lec_step.input.golden_verilog == synth_step.output.verilog
+    assert rcx_step.input.verilog == route_step.output.verilog

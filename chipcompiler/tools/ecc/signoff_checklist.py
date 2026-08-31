@@ -30,6 +30,7 @@ _STEP_DIRECTORIES = {
     StepEnum.DRC.value: "drc_ecc",
     StepEnum.LVS.value: "lvs_ecc",
     StepEnum.FILLER.value: "filler_ecc",
+    StepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
     StepEnum.RCX.value: "RCX_ecc",
     StepEnum.STA.value: "sta_ecc",
     StepEnum.HARDEN.value: "Harden_ecc",
@@ -57,6 +58,7 @@ _REQUIRED_FLOW_STEPS = (
     StepEnum.DRC.value,
     StepEnum.LVS.value,
     StepEnum.FILLER.value,
+    StepEnum.POST_ROUTE_LEC.value,
     StepEnum.RCX.value,
     StepEnum.STA.value,
     StepEnum.HARDEN.value,
@@ -422,6 +424,34 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         ]
     elif step.name == StepEnum.SYNTHESIS.value:
         artifacts = (("netlist", "Mapped synthesis netlist", step.output.verilog),)
+    elif step.name in {StepEnum.LEC.value, StepEnum.POST_ROUTE_LEC.value}:
+        from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
+
+        result_json = getattr(step.output, "json", None)
+        if lec_result_is_proven(result_json):
+            state, summary = "pass", "Yosys LEC proved equivalence."
+        elif result_json and Path(result_json).is_file():
+            state, summary = "failed", "Yosys LEC did not prove equivalence."
+        else:
+            state, summary = _file_state(result_json)
+        return [
+            _item(
+                item_id=f"artifact.{step.name.lower()}.result",
+                step=step.name,
+                category="artifact",
+                owner="checklist",
+                policy="block",
+                state=state,
+                title="Yosys LEC result",
+                summary=summary,
+                source={"kind": "output", "path": _path_text(workspace, result_json)},
+                evidence=(
+                    [{"kind": "output", "path": _path_text(workspace, result_json)}]
+                    if result_json
+                    else []
+                ),
+            )
+        ]
     else:
         return []
 

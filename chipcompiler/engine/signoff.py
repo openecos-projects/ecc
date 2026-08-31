@@ -373,6 +373,55 @@ class SignoffPackageCollector:
                 required=True,
             )
 
+        lec_dir = workspace_dir / self._step_dirs()[StepEnum.POST_ROUTE_LEC.value]
+        lec_result = lec_dir / "output" / f"{design}_{StepEnum.POST_ROUTE_LEC.value}_result.json"
+        add_file(
+            role="lec.result",
+            source=lec_result,
+            destination="final/reports/postRouteLec/result.json",
+            required=True,
+        )
+        add_file(
+            role="lec.equiv_status",
+            source=lec_dir / "report" / "equiv_status.rpt",
+            destination="final/reports/postRouteLec/report/equiv_status.rpt",
+            required=True,
+        )
+        add_file(
+            role="lec.status_report",
+            source=lec_dir / "report" / "run_lec_status.rpt",
+            destination="final/reports/postRouteLec/report/run_lec_status.rpt",
+            required=True,
+        )
+        add_file(
+            role="lec.failed_rtlil",
+            source=lec_dir / "report" / "equiv_failed.il",
+            destination="final/reports/postRouteLec/report/equiv_failed.il",
+        )
+        add_file(
+            role="lec.failed_verilog",
+            source=lec_dir / "report" / "equiv_failed.v",
+            destination="final/reports/postRouteLec/report/equiv_failed.v",
+        )
+        from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
+
+        if lec_result.is_file() and not lec_result_is_proven(lec_result):
+            missing_required.append("final/reports/postRouteLec/result.json")
+            issues.append(
+                SignoffPackageIssue(
+                    kind="resource",
+                    label="lec.result",
+                    location=self._review_source_path(
+                        workspace_dir,
+                        lec_result,
+                        "final/reports/postRouteLec/result.json",
+                    ),
+                    reason="Yosys LEC did not prove equivalence",
+                    required=True,
+                    destination="final/reports/postRouteLec/result.json",
+                )
+            )
+
         add_file(
             role="final.design.verilog",
             source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz",
@@ -493,6 +542,8 @@ class SignoffPackageCollector:
         add_file("status.flow", flow_path, "final/reports/flow.json", required=True)
 
         for step_name, step_dir in self._step_dirs().items():
+            if step_name == StepEnum.POST_ROUTE_LEC.value:
+                continue
             for kind in ("analysis", "report"):
                 self._copy_tree_files(
                     workspace_dir=workspace_dir,
@@ -549,6 +600,7 @@ class SignoffPackageCollector:
             warnings.append("home checklist requires attention; see final/reports/checklist.json")
 
         qor_metrics = self._read_json(workspace_dir / "drc_ecc" / "analysis" / "qor_metrics.json")
+        lec_payload = self._read_json(lec_result)
         ok = len(blocked_items) == 0
         flow_success = all(state == StateEnum.Success.value for state in required_steps.values())
         summary = {
@@ -582,6 +634,14 @@ class SignoffPackageCollector:
             },
             "qor_metrics": qor_metrics,
             "sta_matrix": sta_matrix,
+            "lec": {
+                "status": lec_payload.get("status", ""),
+                "result": "final/reports/postRouteLec/result.json",
+                "equiv_status": "final/reports/postRouteLec/report/equiv_status.rpt",
+                "status_report": "final/reports/postRouteLec/report/run_lec_status.rpt",
+                "golden_verilog": lec_payload.get("golden_verilog", ""),
+                "gate_verilog": lec_payload.get("gate_verilog", ""),
+            },
             "missing_required": missing_required,
             "missing_optional": missing_optional,
             "warnings": warnings,
@@ -627,6 +687,7 @@ class SignoffPackageCollector:
                 + input_verilog_description
                 + "- Harden outputs are under `harden/`.\n"
                 + "- Final physical resources are under `final/`.\n"
+                + "- Post-route LEC evidence is under `final/reports/postRouteLec/`.\n"
             )
 
             if options.archive and (ok or options.allow_incomplete):
@@ -883,6 +944,7 @@ class SignoffPackageCollector:
             StepEnum.DRC.value,
             StepEnum.LVS.value,
             StepEnum.FILLER.value,
+            StepEnum.POST_ROUTE_LEC.value,
             StepEnum.ROUTING.value,
         ]
         state_by_step = {
@@ -944,8 +1006,11 @@ class SignoffPackageCollector:
             ):
                 workspace_step.output.spef = previous_step.output.spef
 
-            previous_step = workspace_step
+            if tool != "yosys_lec":
+                previous_step = workspace_step
             if flow_step.get("state") != StateEnum.Success.value:
+                continue
+            if tool == "yosys_lec":
                 continue
 
             try:
@@ -1217,6 +1282,7 @@ class SignoffPackageCollector:
             StepEnum.DRC.value: "drc_ecc",
             StepEnum.LVS.value: "lvs_ecc",
             StepEnum.FILLER.value: "filler_ecc",
+            StepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
             StepEnum.RCX.value: "RCX_ecc",
             StepEnum.STA.value: "sta_ecc",
             StepEnum.HARDEN.value: "Harden_ecc",
