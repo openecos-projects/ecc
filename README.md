@@ -136,6 +136,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc log [step]` | Show available logs or step log content |
 | `ecc config [step] --resolved` | Show resolved project or step configuration |
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
+| `ecc pdk` | PDK path setup (`setup` clones + unzips, `set-root`, `show`, `unset`) |
 | `ecc signoff` | Inspect readiness, export the signoff package, write the text report |
 | `ecc report` | QoR overall score and signoff checklist reports |
 | `ecc version` | Show ECC runtime and component versions |

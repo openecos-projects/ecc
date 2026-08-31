@@ -273,6 +273,21 @@ uv run ecc doctor                  # inside a project for the PDK probe
 uv run ecc doctor --project gcd --json
 ```
 
+### PDK Path
+
+`ecc pdk setup [path]` does everything: clone icsprout55-pdk when missing,
+`make unzip` when liberty files are missing (honors `GH_PROXY`, retries 3x), then
+writes the root. `ecc pdk set-root <path>` wires an already-ready ics55 PDK into the
+project (writes `[pdk] root` in `ecc.toml` as an absolute path; incomplete
+contents are advisory). `ecc pdk show` reports the effective root, which
+resolver won (ecc.toml / `CHIPCOMPILER_ICS55_PDK_ROOT` / `ICS55_PDK_ROOT` /
+repo default), and a contents check; `ecc pdk unset` clears the override:
+
+```bash
+uv run ecc pdk set-root ~/pdk/icsprout55-pdk
+uv run ecc pdk show
+```
+
 ### Flow Preset Override
 
 `ecc run --preset <name>` overrides `[flow] preset` for a single run without

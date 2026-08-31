@@ -10,7 +10,7 @@
 
 ### One-shot setup (recommended)
 
-The repository ships an install script, `ecc-cli-setup.sh` (in the ecos-studio repository): it downloads and installs the ecc CLI, configures PATH, runs an environment self-check, and fills in any missing dependencies — the PDK (icsprout55-pdk + liberty/GDS) and Yosys (latest OSS CAD Suite). It is idempotent: re-running skips anything already in place.
+The repository ships an install script, [ecc-cli-setup.sh](ecc-cli-setup.sh) (in this directory): it downloads and installs the ecc CLI, configures PATH, runs an environment self-check, and fills in any missing dependencies — the PDK (icsprout55-pdk + liberty/GDS) and Yosys (latest OSS CAD Suite). It is idempotent: re-running skips anything already in place.
 
 ```bash
 bash ecc-cli-setup.sh                 # install + self-check + fill in dependencies
@@ -110,6 +110,7 @@ Commands:
   config        Show resolved project or step configuration
   doctor        Check host environment: PDK, tools, and components
   param         Manage EDA parameters
+  pdk           Show and configure the PDK path used by this project
   signoff       Inspect and export signoff packages
   report        Generate QoR score and signoff checklist reports
   rpc           Run the private ECC JSON-RPC runtime
@@ -216,7 +217,8 @@ $ ecc doctor          # run inside the project (the PDK probe needs ecc.toml or 
   doctor: environment
   status: attention          # ok = all pass / attention = only optional failures (rc=0) / failed = required failure (rc=1)
   checked: 7
-  failed: 1
+  failed: 0                  # `failed` counts required failures only; optional ones go to `attention`
+  attention: 1
   run: ecc run
   component: yosys
   status: pass
@@ -244,7 +246,7 @@ Notes:
 
 - PDK root resolution priority: `pdk.root` in `ecc.toml` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`.
 - The synthesis step still fails fast internally on slang problems (the log reports `yosys slang frontend check failed`); inspect afterwards with `ecc log synthesis`.
-- Setup/repair script: `bash ecc-cli-setup.sh` (see section 0; `--check-only` checks only).
+- Setup/repair script: `bash docs/ecc-cli-setup.sh` (see section 0; `--check-only` checks only).
 
 ### Manual checklist (fallback when doctor is unavailable)
 
@@ -522,11 +524,39 @@ All registered parameters (13):
 
 Priority: CLI `--set` > `ecc.toml` `[params.*]` > defaults.
 
-## 10. signoff — signoff package and design report
+## 10. pdk — PDK path configuration
+
+Two ways to attach a PDK: `ecc pdk setup` does everything (auto clone + `make unzip`,
+skipping downloads for an already-complete checkout), or `ecc pdk set-root` wires in
+a ready-made checkout directly — `[pdk] root` in `ecc.toml` (the path is expanded to
+absolute form; the directory must already exist). Incomplete contents (e.g.
+`make unzip` not run yet) do not block the setting — a hint is emitted instead:
+
+```bash
+ecc pdk setup [~/pdk/icsprout55-pdk]     # all-in-one: clone (if missing) -> make unzip (if liberty missing, honors GH_PROXY + retries) -> wire in; defaults to ~/.local/icsprout55-pdk
+ecc pdk set-root ~/pdk/icsprout55-pdk   # wire in only (for an already-ready PDK)
+ecc pdk show                             # effective root, its source (ecc.toml / env / repo default), contents check
+ecc pdk unset                            # clear root; falls back to env vars / repo default
+ecc pdk set-root /bad/path               # -> [error] invalid_pdk_path (not a directory)
+```
+
+```console
+$ ecc pdk set-root ~/pdk/icsprout55-pdk
+[status]
+  pdk: set-root
+  status: set
+  path: /home/user/pdk/icsprout55-pdk
+  config: ecc.toml
+  check: ecc check
+```
+
+The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the in-repo default. Content-level overrides via `[pdk.overrides]` remain ecc.toml-only.
+
+## 11. signoff — signoff package and design report
 
 Use after the flow completes (all steps of the harden preset in Success). All three subcommands accept `--project DIR`/`--run-id ID` (locating `runs/<id>`) or `--workspace PATH` (pointing at a workspace directly), plus `--json/--jsonl/--plain`.
 
-### 10.1 inspect — readiness review (changes nothing)
+### 11.1 inspect — readiness review (changes nothing)
 
 ```bash
 ecc signoff inspect [--project DIR | --workspace PATH]
@@ -554,7 +584,7 @@ $ ecc signoff inspect --workspace runs/default
               Current-output analysis refresh failed: ...
 ```
 
-### 10.2 export — export the signoff package tar.gz (gated)
+### 11.2 export — export the signoff package tar.gz (gated)
 
 ```bash
 ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR | --workspace PATH]
@@ -576,7 +606,7 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # once ready
   path: /abs/path/gcd.tar.gz
 ```
 
-### 10.3 report — text design summary
+### 11.3 report — text design summary
 
 ```bash
 ecc signoff report [-o PATH] [--project DIR | --workspace PATH]
@@ -613,14 +643,14 @@ PDK / Node         : ics55
 
 Notes: inspect/export refresh each step's analysis first (matching the GUI); report extracts the current state by default (the engine API `generate_text_report(workspace, refresh_analysis=True)` requests a refresh). The report does not require a completed flow — it summarizes whatever has run so far.
 
-## 11. report — QoR score and checklist reports
+## 12. report — QoR score and checklist reports
 
 ```bash
 ecc report qor        [-o PATH] [--project DIR | --run-id ID | --workspace PATH]
 ecc report checklist  [-o PATH] [same options]
 ```
 
-### 11.1 qor — overall QoR score report
+### 12.1 qor — overall QoR score report
 
 Scores the current workspace by the GUI project-dashboard rules: every v3 `qor_metrics.json` metric is converted to 0-100 against fixed fail thresholds (slack metrics linearly, core_utilization against the [0.45, 0.70] target window, lower/higher_is_better proportionally), averaged per dimension, then combined with the dimension weights (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1) into the overall score — **absent dimensions are not renormalized** (matching the GUI; missing dimensions lower the score); 60 is the pass line. By default written to `<workspace>/signoff/<design>_qor_report.txt`:
 
@@ -634,7 +664,7 @@ report=qor path=.../signoff/gcd_qor_report.txt bytes=1717 design=gcd \
 
 The report contains: the overall score and verdict (PASS/BELOW THRESHOLD/NOT RATED), the flow status color (Green/Yellow/Orange/Red/Blocked) and gate (DRC/LVS/RCX/STA step states), the area scoring step (the last successful step carrying area metrics), the dimension table, and the per-metric detail (corners scored independently).
 
-### 11.2 checklist — signoff checklist report
+### 12.2 checklist — signoff checklist report
 
 Reads `home/checklist.json` (the schema-v3 signoff checklist maintained by flow steps / `ecc signoff inspect`) and renders a status report: the overview (passed/blocked/attention/unavailable), **BLOCKED item details** (with failure reasons and evidence paths), ATTENTION items, and the full table. When the checklist does not exist it returns `checklist_unavailable`. By default written to `<workspace>/signoff/checklist_report.txt`.
 
@@ -643,7 +673,7 @@ ecc signoff inspect --project gcd    # refresh the checklist first (if not prese
 ecc report checklist --project gcd
 ```
 
-## 12. rpc — JSON-RPC runtime sidecar (private)
+## 13. rpc — JSON-RPC runtime sidecar (private)
 
 ```bash
 ecc rpc serve --stdio [--persistent-db]
@@ -659,7 +689,7 @@ A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Leng
 ← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
 ```
 
-## 13. layout-image — render a GDS to an image
+## 14. layout-image — render a GDS to an image
 
 ```bash
 ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
@@ -671,11 +701,12 @@ Renders a GDS layout snapshot via KLayout (default 1920×1920; KLayout must be a
 ecc layout-image --gds runs/default/GDS_ecc/result.gds --image layout.png --width 2560 --height 1600
 ```
 
-## 14. Typical end-to-end workflow
+## 15. Typical end-to-end workflow
 
 ```bash
 ecc init gcd && cd gcd
 # drop in RTL, edit ecc.toml (top/clock/frequency, pdk.root, flow.preset)
+ecc pdk set-root ~/pdk/icsprout55-pdk   # (optional) wire in a manually downloaded PDK
 ecc doctor                         # environment check (PDK/yosys/slang/components)
 ecc check                          # validate the project config before running
 ecc run --preset harden            # run the full chain in one shot (Synthesis→…→Harden)

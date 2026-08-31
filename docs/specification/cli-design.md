@@ -201,6 +201,7 @@ ecc status
 ecc log
 ecc config
 ecc param
+ecc pdk
 ecc signoff
 ecc report
 ecc rpc
@@ -220,6 +221,7 @@ Responsibilities:
 | `ecc log` | Show available logs or complete step log content |
 | `ecc config` | Show user or resolved configuration |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
+| `ecc pdk` | `setup` clones + `make unzip`s + wires in a PDK checkout; also `set-root`/`show`/`unset` for the `[pdk] root` path |
 | `ecc signoff` | Inspect package readiness, export the tar.gz package, write the text design summary |
 | `ecc report` | QoR overall score report (GUI scoring rules) and signoff checklist report |
 | `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |

@@ -77,6 +77,32 @@ class ConfigInput:
 
 
 @dataclass(frozen=True)
+class PdkSetRootInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    path: str = ""
+
+
+@dataclass(frozen=True)
+class PdkSetupInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    path: str | None = None
+
+
+@dataclass(frozen=True)
+class PdkShowInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
+class PdkUnsetInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class ReportQorInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()

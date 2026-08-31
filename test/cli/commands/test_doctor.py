@@ -43,6 +43,7 @@ class TestDoctorCommand:
         assert summary["status"] == "ok"
         assert summary["checked"] == 2
         assert summary["failed"] == 0
+        assert summary["attention"] == 0
         assert {r["component"] for r in data["records"][1:]} == {"yosys", "ecc-tools"}
 
     def test_doctor_required_failure_exits_nonzero(
@@ -65,6 +66,8 @@ class TestDoctorCommand:
         data = json.loads(capsys.readouterr().out)
         assert rc == 1
         assert data["records"][0]["status"] == "failed"
+        assert data["records"][0]["failed"] == 1
+        assert data["records"][0]["attention"] == 0
         assert data["records"][1]["remediation"] == "install yosys"
 
     def test_doctor_optional_failure_stays_zero(
@@ -88,7 +91,10 @@ class TestDoctorCommand:
 
         data = json.loads(capsys.readouterr().out)
         assert rc == 0
-        assert data["records"][0]["status"] == "attention"
+        summary = data["records"][0]
+        assert summary["status"] == "attention"
+        assert summary["failed"] == 0  # optional failure never inflates `failed`
+        assert summary["attention"] == 1
 
     def test_doctor_without_project_skips_pdk(self, tmp_path, capsys, monkeypatch):
         monkeypatch.chdir(tmp_path)

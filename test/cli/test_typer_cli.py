@@ -24,6 +24,7 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "config",
         "doctor",
         "param",
+        "pdk",
         "signoff",
         "report",
         "rpc",
