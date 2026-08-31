@@ -237,6 +237,49 @@ def test_legalize_layout_returns_none_without_dreamplace_config(tmp_path, monkey
     )
 
 
+def test_legalize_layout_fills_missing_dreamplace_config_without_clobbering(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
+    from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
+
+    workspace_dir = tmp_path / "workspace"
+    config_path = workspace_dir / "config" / "dreamplace_ecc.json"
+    config_path.parent.mkdir(parents=True)
+    json_write(config_path, {})
+    workspace = Workspace(
+        directory=str(workspace_dir),
+        design=OriginDesign(name="gcd"),
+        config={"db": workspace_dir / "config" / "db_ecc.json"},
+    )
+    step = EccStep(
+        name=StepEnum.TIMING_OPT.value,
+        data=EccData(
+            dir=tmp_path / "data",
+            steps={StepEnum.TIMING_OPT.value: tmp_path / "data" / "to"},
+        ),
+        log=LogPaths(file=tmp_path / "step.log"),
+    )
+    engine = SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "create_db_engine",
+        lambda *args, **kwargs: engine,
+    )
+    monkeypatch.setattr(DreamplaceModule, "run_legalization", lambda self: True)
+
+    assert (
+        dreamplace_runner.legalize_layout(
+            workspace,
+            step,
+            tmp_path / "sizer.def.gz",
+            tmp_path / "sizer.v.gz",
+        )
+        is engine
+    )
+    assert workspace.config["db"] == workspace_dir / "config" / "db_ecc.json"
+    assert workspace.config["dreamplace"] == config_path
+
+
 def test_legalize_layout_returns_engine_when_legalize_succeeds(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
     from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule

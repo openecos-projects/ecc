@@ -152,6 +152,11 @@ def legalize_layout(
         return None
 
     if not workspace.config.get("dreamplace"):
+        from chipcompiler.data import build_workspace_config_paths
+
+        workspace.config["dreamplace"] = build_workspace_config_paths(workspace)["dreamplace"]
+    dreamplace_config = workspace.config.get("dreamplace")
+    if not dreamplace_config or not Path(dreamplace_config).is_file():
         logger.error(
             "DreamPlace config is missing for inner legalization of %s",
             owner_step.name,
