@@ -8,6 +8,7 @@ import typer
 from chipcompiler.cli.commands.doctor import register_doctor_commands
 from chipcompiler.cli.commands.param import param_app
 from chipcompiler.cli.commands.project import register_project_commands
+from chipcompiler.cli.commands.report import report_app
 from chipcompiler.cli.commands.rpc import rpc_app
 from chipcompiler.cli.commands.signoff import signoff_app
 from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
@@ -70,6 +71,7 @@ register_project_commands(app)
 register_doctor_commands(app)
 app.add_typer(param_app, name="param")
 app.add_typer(signoff_app, name="signoff")
+app.add_typer(report_app, name="report")
 app.add_typer(rpc_app, name="rpc")
 
 

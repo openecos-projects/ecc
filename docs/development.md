@@ -285,6 +285,20 @@ emits GDS + abstract LEF + timing LIB):
 uv run ecc run --project gcd --preset harden
 ```
 
+### QoR & Checklist Reports
+
+`ecc report qor` scores the workspace the same way the GUI project dashboard
+does (per-metric scores against fixed fail thresholds, dimension averages,
+weighted overall — weights are not renormalized over missing dimensions);
+`ecc report checklist` renders the signoff checklist status. Both write to
+`<workspace>/signoff/` by default and accept `-o` plus the usual
+`--project/--run-id/--workspace` selectors:
+
+```bash
+uv run ecc report qor --project gcd
+uv run ecc report checklist --workspace runs/default
+```
+
 ### Signoff
 
 After a completed flow, inspect and export the signoff package and write the

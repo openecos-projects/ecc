@@ -144,3 +144,55 @@ def listing_step_order(run_dir: str) -> list[str]:
         return result
 
     return sorted(step_dirs)
+
+
+def resolve_command_workspace(workspace_arg, project, run_id, run_dir):
+    """Load the workspace a command should operate on.
+
+    `workspace_arg` (--workspace) wins and conflicts with --project/--run-id;
+    otherwise the project run directory (`run_dir`, already resolved by the
+    command context) is loaded. Returns (workspace, error-record-or-None);
+    the caller maps a non-None record to a CommandResult.err.
+    """
+    import os
+
+    from chipcompiler.data import load_workspace
+
+    if workspace_arg is not None:
+        if project is not None or run_id is not None:
+            return None, {"kind": "error", "error": "project_workspace_conflict"}
+        path = os.path.abspath(os.path.expanduser(workspace_arg))
+        try:
+            workspace = load_workspace(path)
+        except Exception as exc:
+            return None, {
+                "kind": "error",
+                "error": "invalid_workspace",
+                "workspace": path,
+                "reason": str(exc),
+            }
+        if workspace is None:
+            return None, {"kind": "error", "error": "invalid_workspace", "workspace": path}
+        return workspace, None
+
+    if not os.path.isdir(run_dir):
+        from chipcompiler.cli.core.output import disclosure_cmd
+
+        return None, {
+            "kind": "error",
+            "error": "missing_workspace",
+            "run_dir": run_dir,
+            "run": disclosure_cmd("ecc run", project, run_id),
+        }
+    try:
+        workspace = load_workspace(run_dir)
+    except Exception as exc:
+        return None, {
+            "kind": "error",
+            "error": "invalid_workspace",
+            "workspace": run_dir,
+            "reason": str(exc),
+        }
+    if workspace is None:
+        return None, {"kind": "error", "error": "invalid_workspace", "workspace": run_dir}
+    return workspace, None

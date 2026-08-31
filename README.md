@@ -137,6 +137,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc config [step] --resolved` | Show resolved project or step configuration |
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
 | `ecc signoff` | Inspect readiness, export the signoff package, write the text report |
+| `ecc report` | QoR overall score and signoff checklist reports |
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc layout-image` | Render a GDS file into a layout image |
 

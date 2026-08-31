@@ -8,42 +8,13 @@ from chipcompiler.cli.core.types import CommandContext, CommandResult
 
 def _resolve_workspace(command_input, ctx: CommandContext):
     """Return (workspace, None) or (None, error CommandResult)."""
-    from chipcompiler.data import load_workspace
+    from chipcompiler.cli.inspection.discovery import resolve_command_workspace
 
-    project = ctx.project
-
-    if command_input.workspace is not None:
-        if project is not None or command_input.project.run_id is not None:
-            return None, CommandResult.err([error_record("project_workspace_conflict")])
-        path = os.path.abspath(os.path.expanduser(command_input.workspace))
-        try:
-            workspace = load_workspace(path)
-        except Exception as exc:
-            return None, CommandResult.err(
-                [error_record("invalid_workspace", workspace=path, reason=str(exc))]
-            )
-        if workspace is None:
-            return None, CommandResult.err([error_record("invalid_workspace", workspace=path)])
-        return workspace, None
-
-    if not os.path.isdir(ctx.run_dir):
-        return None, CommandResult.err(
-            [
-                error_record(
-                    "missing_workspace",
-                    run_dir=ctx.run_dir,
-                    run=disclosure_cmd("ecc run", project, ctx.run_id),
-                )
-            ]
-        )
-    try:
-        workspace = load_workspace(ctx.run_dir)
-    except Exception as exc:
-        return None, CommandResult.err(
-            [error_record("invalid_workspace", workspace=ctx.run_dir, reason=str(exc))]
-        )
-    if workspace is None:
-        return None, CommandResult.err([error_record("invalid_workspace", workspace=ctx.run_dir)])
+    workspace, error = resolve_command_workspace(
+        command_input.workspace, ctx.project, command_input.project.run_id, ctx.run_dir
+    )
+    if error is not None:
+        return None, CommandResult.err([error])
     return workspace, None
 
 
