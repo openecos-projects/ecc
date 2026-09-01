@@ -215,6 +215,7 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "place",
         "CTS",
         "legalization",
+        "Timing optimization",
         "route",
         "drc",
         "lvs",

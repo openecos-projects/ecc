@@ -77,6 +77,50 @@ jobs:
           yosys -V
           yosys -p "plugin -i slang"
 
+      - name: Setup Sizer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          run_id="$(
+            gh api "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=20" \
+              --jq '[.workflow_runs[] | select(.conclusion == "success") | .id][0] // empty'
+          )"
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful ecc-sizer CI artifact found on main"
+            exit 1
+          fi
+
+          install_root="${RUNNER_TEMP}/ecc-sizer"
+          mkdir -p "$install_root"
+          echo "Downloading ecc-sizer-linux-x64 from openecos-projects/ecc-sizer CI run ${run_id}"
+          gh run download "$run_id" \
+            --repo openecos-projects/ecc-sizer \
+            --name ecc-sizer-linux-x64 \
+            --dir "$install_root"
+
+          archive="$(find "$install_root" -name 'ecc-sizer-linux-x64.tar.gz' -print -quit)"
+          if [ -z "$archive" ]; then
+            echo "::error::ecc-sizer-linux-x64.tar.gz was not in the downloaded artifact"
+            exit 1
+          fi
+          tar -xzf "$archive" -C "$install_root"
+
+          sizer_root="$(find "$install_root" -type f -path '*/src/sizer_os.tcl' -printf '%h\n' | sed 's#/src$##' | head -n 1)"
+          if [ -z "$sizer_root" ] || [ ! -x "${sizer_root}/bin/Sizer" ]; then
+            echo "::error::Downloaded ecc-sizer artifact is missing bin/Sizer or src/sizer_os.tcl"
+            exit 1
+          fi
+
+          echo "${sizer_root}/bin" >> "$GITHUB_PATH"
+          echo "CHIPCOMPILER_ECC_SIZER_ROOT=${sizer_root}" >> "$GITHUB_ENV"
+
+      - name: Verify Sizer
+        run: |
+          command -v Sizer
+          test -f "${CHIPCOMPILER_ECC_SIZER_ROOT}/src/sizer_os.tcl"
+
       - name: Pytest
         run: uv run --no-sync pytest test/ --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report=
 
