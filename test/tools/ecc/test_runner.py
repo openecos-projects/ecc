@@ -228,7 +228,7 @@ def test_create_db_engine_uses_def_input_for_lvs_even_when_db_exists(tmp_path, m
     assert not any(call[0] == "read_lvs_verilog" for call in module.calls)
 
 
-def test_create_db_engine_skip_input_db_reads_explicit_sources(tmp_path, monkeypatch):
+def test_create_db_engine_reads_replaced_step_input_without_db(tmp_path, monkeypatch):
     step_def = tmp_path / "step" / "old.def"
     staging_def = tmp_path / "data" / "to" / "sizer.def.gz"
     staging_verilog = tmp_path / "data" / "to" / "sizer.v.gz"
@@ -247,9 +247,9 @@ def test_create_db_engine_skip_input_db_reads_explicit_sources(tmp_path, monkeyp
     step = EccStep(
         name=StepEnum.TIMING_OPT.value,
         input=StepInput(
-            def_=step_def,
-            verilog=tmp_path / "step" / "old.v",
-            db=tmp_path / "input_db",
+            def_=staging_def,
+            verilog=staging_verilog,
+            db=None,
         ),
         data=EccData(dir=tmp_path / "timing_optimization_sizer" / "data"),
         feature=EccFeature(dir=tmp_path / "timing_optimization_sizer" / "feature"),
@@ -260,13 +260,7 @@ def test_create_db_engine_skip_input_db_reads_explicit_sources(tmp_path, monkeyp
     monkeypatch.setattr(FakeEccModule, "is_db_data_exists", lambda self, path: True)
     monkeypatch.setattr(FakeEccModule, "load_data", lambda self, path: True)
 
-    module = ecc_runner.create_db_engine(
-        workspace,
-        step,
-        source_def=staging_def,
-        source_verilog=staging_verilog,
-        skip_input_db=True,
-    )
+    module = ecc_runner.create_db_engine(workspace, step)
 
     assert module is FakeEccModule.instances[-1]
     assert not any(call[0] == "load_data" for call in module.calls)
@@ -301,7 +295,7 @@ def test_create_db_engine_returns_none_and_closes_when_read_def_fails(tmp_path, 
 
     monkeypatch.setattr(FakeEccModule, "read_def", failing_read_def)
 
-    module = ecc_runner.create_db_engine(workspace, step, skip_input_db=True)
+    module = ecc_runner.create_db_engine(workspace, step)
 
     assert module is None
     constructed = FakeEccModule.instances[-1]
@@ -309,7 +303,7 @@ def test_create_db_engine_returns_none_and_closes_when_read_def_fails(tmp_path, 
     assert constructed.calls[-1] == ("close",)
 
 
-def test_create_db_engine_skip_input_db_does_not_retry_load_design(tmp_path, monkeypatch):
+def test_create_db_engine_without_input_db_does_not_retry_load_design(tmp_path, monkeypatch):
     design_def = tmp_path / "origin" / "gcd.def"
     design_def.parent.mkdir()
     design_def.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
@@ -323,7 +317,7 @@ def test_create_db_engine_skip_input_db_does_not_retry_load_design(tmp_path, mon
     )
     step = EccStep(
         name=StepEnum.TIMING_OPT.value,
-        input=StepInput(def_=design_def, db=tmp_path / "input_db"),
+        input=StepInput(def_=design_def, db=None),
         data=EccData(dir=tmp_path / "timing_optimization_sizer" / "data"),
         feature=EccFeature(dir=tmp_path / "timing_optimization_sizer" / "feature"),
     )
@@ -338,7 +332,7 @@ def test_create_db_engine_skip_input_db_does_not_retry_load_design(tmp_path, mon
     monkeypatch.setattr(ecc_runner, "ECCToolsModule", ExplodingModule)
 
     with pytest.raises(RuntimeError, match="native init failed"):
-        ecc_runner.create_db_engine(workspace, step, skip_input_db=True)
+        ecc_runner.create_db_engine(workspace, step)
 
     assert constructions == [1]
     assert workspace.logger.warnings == []

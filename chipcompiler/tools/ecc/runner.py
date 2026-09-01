@@ -182,18 +182,8 @@ def _existing_input_path(path: Path | None) -> str | None:
     return None
 
 
-def create_db_engine(
-    workspace: Workspace,
-    step: WorkspaceStep,
-    *,
-    source_def: Path | None = None,
-    source_verilog: Path | None = None,
-    skip_input_db: bool = False,
-) -> ECCToolsModule | None:
-    """Load an ECC engine from the step input, or from explicit design files."""
-
-    def_source = source_def if source_def is not None else step.input.def_
-    verilog_source = source_verilog if source_verilog is not None else step.input.verilog
+def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModule | None:
+    """Load an ECC engine from the step input."""
 
     def _close_engine(ecc_module: ECCToolsModule | None) -> None:
         if ecc_module is None:
@@ -249,8 +239,8 @@ def create_db_engine(
             ecc_module.init_techlef(workspace.pdk.tech)
             ecc_module.init_lefs(workspace.pdk.lefs)
 
-            def_path = _existing_input_path(def_source)
-            verilog_path = _existing_input_path(verilog_source)
+            def_path = _existing_input_path(step.input.def_)
+            verilog_path = _existing_input_path(step.input.verilog)
 
             if step.name == StepEnum.LVS.value:
                 if def_path is None or not ecc_module.read_def(def_path):
@@ -277,15 +267,14 @@ def create_db_engine(
             return False
 
         return (
-            _existing_input_path(def_source) is not None
-            or _existing_input_path(verilog_source) is not None
+            _existing_input_path(step.input.def_) is not None
+            or _existing_input_path(step.input.verilog) is not None
         )
 
     if not is_eda_exist() or not is_enable_setup():
         return None
 
-    skip_db = skip_input_db or step.name == StepEnum.LVS.value
-    if skip_db:
+    if step.name == StepEnum.LVS.value or not step.input.db:
         return load_design()
 
     ecc_module = None

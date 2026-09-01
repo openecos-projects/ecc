@@ -189,15 +189,16 @@ def test_legalize_layout_rebuilds_from_sources_and_closes_on_failure(tmp_path, m
         def close(self):
             closed.append(True)
 
-    def fake_create_db_engine(
-        workspace,
-        owner_step,
-        *,
-        source_def=None,
-        source_verilog=None,
-        skip_input_db=False,
-    ):
-        created.append((source_def, source_verilog, skip_input_db, owner_step.name, workspace))
+    def fake_create_db_engine(workspace, load_step):
+        created.append(
+            (
+                load_step.input.def_,
+                load_step.input.verilog,
+                load_step.input.db,
+                load_step.name,
+                workspace,
+            )
+        )
         return LocalEcc()
 
     monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
@@ -214,7 +215,7 @@ def test_legalize_layout_rebuilds_from_sources_and_closes_on_failure(tmp_path, m
         is None
     )
     assert created == [
-        (staging_def, staging_verilog, True, StepEnum.TIMING_OPT.value, module.workspace)
+        (staging_def, staging_verilog, None, StepEnum.TIMING_OPT.value, module.workspace)
     ]
     assert closed == [True]
 

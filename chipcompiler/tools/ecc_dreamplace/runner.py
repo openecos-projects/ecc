@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
+from dataclasses import replace
 from pathlib import Path
 
-from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
+from chipcompiler.data import EccStep, StateEnum, StepEnum, StepInput, Workspace
 from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
 
@@ -163,13 +164,11 @@ def legalize_layout(
         )
         return None
 
-    ecc_module = ecc_runner.create_db_engine(
-        workspace,
+    load_step = replace(
         owner_step,
-        source_def=input_def,
-        source_verilog=input_verilog,
-        skip_input_db=True,
+        input=StepInput(def_=input_def, verilog=input_verilog, db=None),
     )
+    ecc_module = ecc_runner.create_db_engine(workspace, load_step)
     if ecc_module is None:
         logger.error(
             "Failed to rebuild ECC database for inner legalization of %s",
