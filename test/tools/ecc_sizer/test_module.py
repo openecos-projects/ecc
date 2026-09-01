@@ -76,6 +76,60 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert checklist["checklist"] == []
 
 
+def test_sizer_metrics_write_qor_files_from_db_summary(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import metrics as sizer_metrics
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_sub_flow(workspace, step)
+    assert step.feature.db is not None
+    step.feature.db.write_text(
+        json.dumps(
+            {
+                "Design Layout": {
+                    "die_area": 1200.5,
+                    "die_bounding_width": 40,
+                    "die_bounding_height": 30,
+                    "die_usage": 0.4,
+                    "core_area": 900.25,
+                    "core_usage": 0.5,
+                },
+                "Design Statis": {
+                    "num_iopins": 12,
+                    "num_instances": 100,
+                    "num_nets": 80,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = sizer_metrics.build_step_metrics(workspace, step)
+
+    assert metrics is not None
+    assert step.analysis.qor_metrics is not None
+    assert step.analysis.qor_metrics.is_file()
+    assert step.analysis.qor_summary is not None
+    assert step.analysis.qor_summary.is_file()
+    payload = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
+    assert payload["step"] == StepEnum.TIMING_OPT.value
+    assert any(record.get("id") == "die_area" for record in payload["metrics"])
+    with open(str(step.subflow.path), encoding="utf-8") as file:
+        subflow = json.load(file)
+    assert [item["name"] for item in subflow["steps"]] == [
+        "run sizer",
+        "run legalization",
+        "save data",
+    ]
+
+
 def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 

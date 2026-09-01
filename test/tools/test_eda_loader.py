@@ -42,3 +42,21 @@ def test_build_step_metrics_returns_none_when_tool_dependency_missing(monkeypatc
     metrics = eda.build_step_metrics(SimpleNamespace(), SimpleNamespace(tool="missing_eda"))
 
     assert metrics is None
+
+
+def test_build_step_metrics_loads_sizer_without_binary_dependency(monkeypatch):
+    seen = {}
+
+    def build_metrics(workspace, step):
+        seen["workspace"] = workspace
+        seen["step"] = step
+        return StepMetrics(path="analysis/qor_metrics.json", data={"die_area": 1})
+
+    _install_tool_module(monkeypatch, "ecc_sizer", exists=False, build_metrics=build_metrics)
+    workspace = SimpleNamespace(name="workspace")
+    step = SimpleNamespace(tool="sizer")
+
+    metrics = eda.build_step_metrics(workspace, step)
+
+    assert metrics == StepMetrics(path="analysis/qor_metrics.json", data={"die_area": 1})
+    assert seen == {"workspace": workspace, "step": step}

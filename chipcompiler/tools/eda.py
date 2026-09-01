@@ -125,7 +125,7 @@ def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics
     """
     build step metrics
     """
-    eda_module = load_eda_module(step.tool)
+    eda_module = load_eda_module(step.tool, check_dependency=step.tool != "sizer")
     build_metrics = getattr(eda_module, "build_step_metrics", None)
     if build_metrics is None:
         return None
