@@ -6,9 +6,14 @@ from pathlib import Path
 from chipcompiler.data import StepEnum, Workspace
 from chipcompiler.utility import json_read
 
+# ecc-tools splits each corner's setup report by path type
+# (in2out/in2reg/reg2out/reg2reg); hold (timing_min_*) reports stay optional.
 STA_REPORT_FILENAMES = (
     "qor_summary.rpt",
-    "timing_max.rpt",
+    "timing_max_in2out.rpt",
+    "timing_max_in2reg.rpt",
+    "timing_max_reg2out.rpt",
+    "timing_max_reg2reg.rpt",
 )
 STA_QOR_SUMMARY_FILENAME = "qor_summary.json"
 STA_TIMING_PATHS_FILENAME = "timing_paths.json"

@@ -25,7 +25,6 @@ from chipcompiler.utility.json import json_read
 FLOW_STEP_DIRS = {
     "Synth": "Synthesis_yosys",
     "Floor": "Floorplan_ecc",
-    "Fanout": "fixFanout_ecc",
     "Place": "place_dreamplace",
     "CTS": "CTS_ecc",
     "Legal": "legalization_dreamplace",
@@ -380,7 +379,6 @@ def _flow_states(workspace) -> dict[str, str]:
 _STEP_ENUM_TO_LABEL = {
     StepEnum.SYNTHESIS.value: "Synth",
     StepEnum.FLOORPLAN.value: "Floor",
-    StepEnum.NETLIST_OPT.value: "Fanout",
     StepEnum.PLACEMENT.value: "Place",
     StepEnum.CTS.value: "CTS",
     StepEnum.LEGALIZATION.value: "Legal",

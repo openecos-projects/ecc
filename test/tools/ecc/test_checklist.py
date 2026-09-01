@@ -67,7 +67,8 @@ def test_sta_checklist_references_v4_quality_gates_and_current_artifacts(tmp_pat
     report_root = tmp_path / "sta_ecc" / "report" / "MAX_125" / "RCworst"
     feature_root = tmp_path / "sta_ecc" / "feature" / "MAX_125" / "RCworst"
     _write(report_root / "qor_summary.rpt", "current STA report\n")
-    _write(report_root / "timing_max.rpt", "current STA report\n")
+    for path_type in ("in2out", "in2reg", "reg2out", "reg2reg"):
+        _write(report_root / f"timing_max_{path_type}.rpt", "current STA report\n")
     _write(feature_root / "qor_summary.json", _sta_qor_summary())
     _write(feature_root / "timing_paths.json", _sta_timing_paths())
     summary_path = _write(
@@ -105,15 +106,15 @@ def test_sta_checklist_references_v4_quality_gates_and_current_artifacts(tmp_pat
     assert items["artifact.sta.timing_paths"]["state"] == "pass"
     assert {entry["path"] for entry in items["report.sta.timing_reports"]["evidence"]} == {
         str(report_root / "qor_summary.rpt"),
-        str(report_root / "timing_max.rpt"),
+        *(str(report_root / f"timing_max_{path_type}.rpt")
+          for path_type in ("in2out", "in2reg", "reg2out", "reg2reg")),
     }
 
 
-def test_sta_checklist_rejects_obsolete_report_names_and_missing_current_artifacts(tmp_path):
+def test_sta_checklist_blocks_missing_current_sta_reports(tmp_path):
     report_root = tmp_path / "sta_ecc" / "report" / "MAX_125" / "RCworst"
     feature_root = tmp_path / "sta_ecc" / "feature" / "MAX_125" / "RCworst"
     _write(report_root / "qor_summary.rpt", "current STA report\n")
-    _write(report_root / "timing_max_in2out.rpt", "obsolete STA report\n")
     _write(feature_root / "qor_summary.json", _sta_qor_summary())
     _write(feature_root / "timing_paths.json", {})
     summary_path = _write(
@@ -146,13 +147,9 @@ def test_sta_checklist_rejects_obsolete_report_names_and_missing_current_artifac
     }
     assert items["report.sta.timing_reports"]["state"] == "failed"
     assert items["report.sta.timing_reports"]["blocked"] is True
-    assert "MAX_125/RCworst/timing_max.rpt" in items["report.sta.timing_reports"]["summary"]
+    assert "MAX_125/RCworst/timing_max_in2out.rpt" in items["report.sta.timing_reports"]["summary"]
     assert items["artifact.sta.timing_paths"]["state"] == "failed"
     assert items["artifact.sta.timing_paths"]["blocked"] is True
-    assert all(
-        not entry["path"].endswith("timing_max_in2out.rpt")
-        for entry in items["report.sta.timing_reports"]["evidence"]
-    )
 
 
 def test_sta_checklist_blocks_missing_v4_gate_summary(tmp_path):

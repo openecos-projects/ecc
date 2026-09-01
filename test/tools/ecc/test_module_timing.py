@@ -12,6 +12,17 @@ from chipcompiler.tools.ecc.module import ECCToolsModule
 class FakeStaEcc:
     def __init__(self):
         self.calls = []
+        self.text_report_filenames = (
+            "qor_summary.rpt",
+            "timing_max_in2out.rpt",
+            "timing_max_in2reg.rpt",
+            "timing_max_reg2out.rpt",
+            "timing_max_reg2reg.rpt",
+            "timing_min_in2out.rpt",
+            "timing_min_in2reg.rpt",
+            "timing_min_reg2out.rpt",
+            "timing_min_reg2reg.rpt",
+        )
         self.structured_timing_filenames = (
             "qor_summary.json",
             "timing_paths.json",
@@ -48,8 +59,8 @@ class FakeStaEcc:
         report_dir = Path(config_dict["-temp_directory_path"]) / "timing_reporter"
         report_dir.mkdir(parents=True, exist_ok=True)
         if config_dict.get("-output_timing_reports") == "1":
-            (report_dir / "qor_summary.rpt").write_text("report\n", encoding="utf-8")
-            (report_dir / "timing_max.rpt").write_text("report\n", encoding="utf-8")
+            for filename in self.text_report_filenames:
+                (report_dir / filename).write_text("report\n", encoding="utf-8")
         if config_dict.get("-output_timing_features") == "1":
             for filename in self.structured_timing_filenames:
                 (report_dir / filename).write_text("{}\n", encoding="utf-8")
@@ -95,9 +106,9 @@ def test_run_timing_splits_text_reports_and_structured_artifacts(tmp_path):
         corner="MAX_125/RCworst",
     )
 
-    assert (report_dir / "qor_summary.rpt").is_file()
-    assert (report_dir / "timing_max.rpt").is_file()
-    assert (report_dir / "power.rpt").is_file()
+    assert sorted(path.name for path in report_dir.iterdir()) == sorted(
+        ["gcd.sdf", "power.rpt", *module.ecc.text_report_filenames]
+    )
     assert (feature_dir / "qor_summary.json").is_file()
     assert (feature_dir / "timing_paths.json").is_file()
     assert not (feature_dir / "power.rpt").exists()
@@ -146,11 +157,11 @@ def test_run_timing_publishes_nothing_when_power_report_missing(tmp_path):
     report_dir.mkdir(parents=True)
     feature_dir.mkdir(parents=True)
     # Stale artifacts from a previous successful run: the failed rerun must
-    # not leave any of them visible as current outputs. timing_max.rpt is
-    # emitted when iSTA reports with start_end_type=all, and notes.txt is
+    # not leave any of them visible as current outputs. timing_max_in2out.rpt
+    # is one of iSTA's per-path-type setup reports, and notes.txt is
     # not owned by run_timing and must survive.
     (report_dir / "qor_summary.rpt").write_text("stale\n", encoding="utf-8")
-    (report_dir / "timing_max.rpt").write_text("stale\n", encoding="utf-8")
+    (report_dir / "timing_max_in2out.rpt").write_text("stale\n", encoding="utf-8")
     (report_dir / "power.rpt").write_text("stale\n", encoding="utf-8")
     (report_dir / "gcd.sdf").write_text("stale\n", encoding="utf-8")
     (report_dir / "notes.txt").write_text("keep\n", encoding="utf-8")
@@ -211,7 +222,14 @@ def test_run_timing_publishes_sdf_alongside_text_reports(tmp_path):
         "gcd.sdf",
         "power.rpt",
         "qor_summary.rpt",
-        "timing_max.rpt",
+        "timing_max_in2out.rpt",
+        "timing_max_in2reg.rpt",
+        "timing_max_reg2out.rpt",
+        "timing_max_reg2reg.rpt",
+        "timing_min_in2out.rpt",
+        "timing_min_in2reg.rpt",
+        "timing_min_reg2out.rpt",
+        "timing_min_reg2reg.rpt",
     ]
 
 
