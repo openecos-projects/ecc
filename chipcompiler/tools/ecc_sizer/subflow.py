@@ -45,7 +45,34 @@ class SizerSubFlow:
         if current != expected:
             self.workspace_step.subflow.steps = self._canonical_steps()
             self.save()
+            self._invalidate_owner_and_suffix()
         return self.workspace_step.subflow.steps
+
+    def _invalidate_owner_and_suffix(self) -> None:
+        steps = self.workspace.flow.data.get("steps", [])
+        start = next(
+            (
+                index
+                for index, step in enumerate(steps)
+                if isinstance(step, dict)
+                and step.get("name") == self.workspace_step.name
+                and step.get("tool") == self.workspace_step.tool
+            ),
+            None,
+        )
+        if start is None:
+            return
+        for step in steps[start:]:
+            if not isinstance(step, dict):
+                continue
+            step["state"] = StateEnum.Unstart.value
+            step["runtime"] = ""
+            step["peak memory (mb)"] = 0
+        if self.workspace.flow.path is None:
+            return
+        from chipcompiler.utility import json_write
+
+        json_write(self.workspace.flow.path, self.workspace.flow.data)
 
     def reset_stages(self) -> list[dict]:
         expected = [stage.value for stage in SizerSubFlowEnum]

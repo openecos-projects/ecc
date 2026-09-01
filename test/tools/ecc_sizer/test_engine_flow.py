@@ -1,9 +1,11 @@
+import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.data import EccOutput, EccStep, StateEnum, StepEnum, Workspace
 
-from ._sizer_helpers import _workspace
+from ._sizer_helpers import _sizer_runtime, _subflow_states, _workspace
 
 
 def test_timing_opt_step_result_does_not_require_gds(tmp_path):
@@ -197,3 +199,85 @@ def test_engine_flow_clears_cached_db_after_incomplete_sizer_step(tmp_path, monk
     assert engine_flow.run_steps() is False
     assert closed == [True]
     assert engine_flow.engine_db is None
+
+
+def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypatch):
+    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))
+    workspace = _workspace(tmp_path)
+    workspace.flow.path = Path(workspace.directory) / "home" / "flow.json"
+    workspace.flow.path.parent.mkdir(parents=True, exist_ok=True)
+    flow_data = {
+        "steps": [
+            {
+                "name": StepEnum.TIMING_OPT.value,
+                "tool": "sizer",
+                "state": StateEnum.Success.value,
+            },
+            {
+                "name": StepEnum.ROUTING.value,
+                "tool": "ecc",
+                "state": StateEnum.Success.value,
+            },
+        ]
+    }
+    workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
+    workspace.flow.data = flow_data
+
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
+    )
+    sizer_builder.build_step_space(step)
+    output_def = Path(step.output.def_)
+    output_verilog = Path(step.output.verilog)
+    output_def.parent.mkdir(parents=True, exist_ok=True)
+    output_def.write_text("unlegalized def\n", encoding="utf-8")
+    output_verilog.write_text("module gcd; endmodule\n", encoding="utf-8")
+    assert step.subflow.path is not None
+    step.subflow.path.write_text(
+        json.dumps(
+            {
+                "path": str(step.subflow.path),
+                "steps": [
+                    {
+                        "name": "run sizer",
+                        "state": StateEnum.Success.value,
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "info": {},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    sizer_builder.build_step_config(workspace, step)
+    assert list(_subflow_states(step)) == [
+        "run sizer",
+        "run legalization",
+        "save data",
+    ]
+    assert set(_subflow_states(step).values()) == {StateEnum.Unstart.value}
+    persisted = json.loads(workspace.flow.path.read_text(encoding="utf-8"))
+    assert [item["state"] for item in persisted["steps"]] == [
+        StateEnum.Unstart.value,
+        StateEnum.Unstart.value,
+    ]
+
+    engine_flow = EngineFlow(workspace)
+    assert not engine_flow.check_state(
+        name=StepEnum.TIMING_OPT.value,
+        tool="sizer",
+        state=StateEnum.Success,
+    )
+    assert not engine_flow.check_state(
+        name=StepEnum.ROUTING.value,
+        tool="ecc",
+        state=StateEnum.Success,
+    )
