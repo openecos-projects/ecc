@@ -93,7 +93,7 @@ uv run ecc --help
 - Project location: most commands accept `--project <dir>` (defaults to the current directory, which must contain `ecc.toml`) and `--run-id <id>` (defaults to `[flow] run` from `ecc.toml`, then `default`, mapping to `runs/<id>/`; absolute paths and relative paths containing `/` are also accepted).
 - Output modes (shared by inspection commands): `--json` (`{"records":[...]}`), `--jsonl` (one JSON record per line), `--plain` (`key=value`, for scripting), and human-readable TEXT by default.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
-- Step tokens are normalized to lowercase in display: `synthesis / floorplan / fixfanout / placement / cts / legalization / routing / drc / filler`; `--from`/`--only` require the exact names from `home/flow.json` (e.g. `place`, `CTS`).
+- Step tokens are normalized to lowercase in display: `synthesis / floorplan / placement / cts / legalization / routing / drc / lvs / filler / postroutelec / rcx / sta / harden`; `--from`/`--only` require the exact names from `home/flow.json` (e.g. `place`, `CTS`).
 
 Command overview:
 
@@ -292,7 +292,7 @@ ecc run [OPTIONS]
   --json / --jsonl / --plain
 ```
 
-Pipeline: read `ecc.toml` → resolve RTL/PDK/parameters → preflight the preset's required tools → create the workspace under `runs/<run-id>/` → build and execute the steps for the preset (`rtl2gds | rcx | harden | syn_sta`; progress rendering on a TTY). `harden` is the full 13-step chain (Synthesis→…→DRC→LVS→filler→RCX→sta→Harden; Harden emits GDS + abstract LEF + timing LIB).
+Pipeline: read `ecc.toml` → resolve RTL/PDK/parameters → preflight the preset's required tools → create the workspace under `runs/<run-id>/` → build and execute the steps for the preset (`rtl2gds | rcx | harden | syn_sta | synthesis_lec`; progress rendering on a TTY). `harden` is the full 13-step chain (Synthesis→…→DRC→LVS→filler→postRouteLec (Yosys equivalence check)→RCX→sta→Harden; Harden emits GDS + abstract LEF + timing LIB).
 
 ```console
 $ ecc run                # refuses to overwrite an existing run
@@ -307,7 +307,7 @@ $ ecc run --preset bogus  # invalid preset (ecc.toml is not modified)
 [error]
   unsupported_preset
   preset: bogus
-  presets: harden, rcx, rtl2gds, syn_sta
+  presets: harden, rcx, rtl2gds, syn_sta, synthesis_lec
   inspect: ecc config --resolved
 rc=1
 ```
@@ -430,11 +430,11 @@ config=pdk.name scope=project value=ics55 resolved=ics55 source=ecc.toml
 $ ecc config floorplan --resolved  # step level
 [config]
   step:
-    flow_ecc.json (config)
-      path: runs/default/config/flow_ecc.json
-  inspect: ecc config floorplan --resolved --json
     db_ecc.json (config)
       path: runs/default/config/db_ecc.json
+  inspect: ecc config floorplan --resolved --json
+    floorplan_ecc.json (config)
+      path: runs/default/config/floorplan_ecc.json
   inspect: ecc config floorplan --resolved --json
 ```
 
@@ -458,8 +458,8 @@ $ ecc param list
     floorplan.core_util            0.4
     floorplan.core_margin          [2, 2]
     floorplan.aspect_ratio         1.0
-  synth
-    synth.max_fanout               20
+  cts
+    cts.max_fanout                 20
   place
     place.target_density           0.2
     place.target_overflow          0.1
@@ -512,7 +512,7 @@ All registered parameters (13):
 | `floorplan.core_util` | float | 0.4 | [0.01, 1.0] | floorplan |
 | `floorplan.core_margin` | list[int] | [2, 2] | — | floorplan |
 | `floorplan.aspect_ratio` | float | 1.0 | [0.1, 10.0] | floorplan |
-| `synth.max_fanout` | int | 20 | [1, 200] | fixfanout |
+| `cts.max_fanout` | int | 20 | [1, 200] | cts |
 | `place.target_density` | float | 0.2 | [0.1, 0.95] | placement |
 | `place.target_overflow` | float | 0.1 | [0.0, 1.0] | placement |
 | `place.global_right_padding` | int | 0 | [0, 100] | placement |

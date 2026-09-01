@@ -1,14 +1,14 @@
 # ECC CLI Tutorial: From Zero to RTL → Harden with a Signoff Package
 
-This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → timing signoff → Harden** flow, ending up with:
+This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → logic equivalence check (LEC) → timing signoff → Harden** flow, ending up with:
 
 - **Harden deliverables**: GDS layout, abstract LEF, timing LIB, and a layout snapshot PNG;
-- A **signoff package** `gcd_signoff_package.tar.gz` (200+ files: RTL / configs / deliverables / reports);
+- A **signoff package** `gcd_signoff_package.tar.gz` (300+ files: RTL / configs / deliverables / LEC proof / reports);
 - **Three reports**: design summary (text), QoR score, and signoff checklist.
 
 The target process is the official [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk) (an open-source 55 nm educational PDK). Every command output in this tutorial is a real execution result (captured on v0.1.0-alpha.11; example paths are written as `~/ecc-demo`).
 
-> Reference timing: first-time install (downloads the PDK and OSS CAD Suite, roughly 3 GB total) takes 20–60 minutes depending on network; the gcd flow itself runs in about **5 minutes**.
+> Reference timing: first-time install (downloads the PDK and OSS CAD Suite, roughly 3 GB total) takes 20–60 minutes depending on network; the gcd flow itself runs in about **4–5 minutes**.
 
 ## The Big Picture
 
@@ -247,23 +247,23 @@ In an interactive terminal the CLI renders live per-step progress and log tails;
 |---|------|------|--------------|
 | 1 | synthesis | yosys | RTL synthesis and technology mapping (slang frontend reads SystemVerilog) |
 | 2 | floorplan | ecc | Floorplan: die/core regions, IO pin placement |
-| 3 | fixfanout | ecc | High-fanout net repair |
-| 4 | placement | dreamplace | Global placement |
-| 5 | cts | ecc | Clock tree synthesis |
-| 6 | legalization | dreamplace | Placement legalization |
-| 7 | routing | ecc | Routing |
-| 8 | drc | ecc | Design rule check |
-| 9 | lvs | ecc | Layout-vs-schematic check |
-| 10 | filler | ecc | Filler cell insertion |
+| 3 | placement | dreamplace | Global placement |
+| 4 | cts | ecc | Clock tree synthesis (incl. fanout limits) |
+| 5 | legalization | dreamplace | Placement legalization |
+| 6 | routing | ecc | Routing |
+| 7 | drc | ecc | Design rule check |
+| 8 | lvs | ecc | Layout-vs-schematic check |
+| 9 | filler | ecc | Filler cell insertion |
+| 10 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
 | 11 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
 | 12 | sta | ecc | Multi-corner static timing analysis |
 | 13 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> B[Floorplan] --> C[FixFanout] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> B[Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> G[Routing] --> H[DRC] --> I[LVS]
-    I --> J[Filler] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
+    I --> J[Filler] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
 Before starting, `ecc run` also pre-checks the tools required by the chosen preset (yosys, dreamplace, ...) and fails fast with a pointer to `ecc doctor` if any are missing.
@@ -286,11 +286,10 @@ $ ecc status
   log: ecc log
 
   steps:
-    synthesis (yosys) success 0:0:16
+    synthesis (yosys) success 0:0:17
       log: ecc log synthesis
     floorplan (ecc) success 0:0:1
-    fixfanout (ecc) success 0:0:1
-    placement (dreamplace) ongoing 0:0:47
+    placement (dreamplace) ongoing 0:0:40
       log: ecc log placement
     cts (ecc) unstart
     ...
@@ -298,7 +297,7 @@ $ ecc status
 
 ### 4.3 Completion
 
-When the run finishes (reference machine for this article: total flow time **5 min 14 s**, peak memory ~1.4 GB, dominated by DreamPlace placement and multi-corner STA):
+When the run finishes (reference machine for this article: total flow time **4 min 23 s**, peak memory ~1.5 GB, dominated by DreamPlace placement and multi-corner STA):
 
 ```console
 $ ecc status
@@ -310,18 +309,18 @@ $ ecc status
   log: ecc log
 
   steps:
-    synthesis (yosys) success 0:0:16
+    synthesis (yosys) success 0:0:17
     floorplan (ecc) success 0:0:1
-    fixfanout (ecc) success 0:0:1
-    placement (dreamplace) success 0:1:24
-    cts (ecc) success 0:0:38
+    placement (dreamplace) success 0:0:47
+    cts (ecc) success 0:0:19
     legalization (dreamplace) success 0:0:1
     routing (ecc) success 0:0:6
     drc (ecc) success 0:0:2
     lvs (ecc) success 0:0:1
     filler (ecc) success 0:0:2
+    postroutelec (yosys_lec) success 0:0:1
     rcx (ecc) success 0:0:0
-    sta (ecc) success 0:2:31
+    sta (ecc) success 0:2:35
     harden (ecc) success 0:0:11
 rc=0
 ```
@@ -340,6 +339,7 @@ runs/default/
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
 ├── Floorplan_ecc/
 ├── ...
+├── postRouteLec_yosys_lec/   # LEC equivalence check (output/ holds result.json)
 ├── Harden_ecc/
 │   └── output/
 │       ├── gcd_Harden.gds     # final layout
@@ -378,19 +378,21 @@ $ ecc signoff inspect
 
   groups:
     initial        ready      (2/2)     # original RTL + SDC
-    config         attention  (4/5)     # per-step configs
+    config         attention  (3/4)     # per-step configs
     harden         ready      (4/4)     # GDS / LEF / LIB / PNG
     final_design   ready      (10/10)   # final DEF/GDS/netlist + per-step reports
     sta            ready      (6/6)     # multi-corner timing reports
     spef           ready      (4/4)     # parasitic files
-    reports        ready      (2/2)
+    reports        attention  (4/6)
 
   risks:
     [warning] Config signoff attention
               Optional file is missing or empty
+    [warning] Reports signoff attention
+              Optional file is missing or empty
 ```
 
-The `attention` comes from one **optional** config file being absent (`config.macro_locations` — not needed for a pure digital design); it does not block export. Only `blocked` (a missing *required* item) gets rejected at export time.
+Both `attention` items come from **optional** files being absent: `config.macro_locations` (not needed for a pure digital design) and the LEC debug dumps (`lec.failed_rtlil` / `lec.failed_verilog`, which only exist when LEC *fails* — their absence after a proven run is expected). They do not block export; only `blocked` (a missing *required* item) gets rejected at export time.
 
 ### 5.2 Export the signoff package: ecc signoff export
 
@@ -404,19 +406,19 @@ $ ecc signoff export -o gcd_signoff_package.tar.gz
 rc=0
 ```
 
-The package contains 223 files, grouped by handoff logic:
+The package contains 356 files, grouped by handoff logic:
 
 ```
 gcd_signoff_package/
 ├── README.md / manifest.json / summary.json   # package readme & manifests
 ├── initial/          # design inputs: gcd.v, gcd.sdc, parameters.json
-├── config/           # all step configs (db/flow/route/sta/... — 11 json files)
+├── config/           # all step configs (db/floorplan/cts/route/sta/... — 9 json files)
 ├── harden/           # Harden deliverables: gcd.gds / gcd.lef / gcd.lib / gcd.png
 ├── synthesis/        # intermediate handoffs such as the mapped netlist
 └── final/
     ├── design/       # final DEF, GDS, netlist, layout snapshot
     ├── timing/       # per-corner STA reports + spef/ (multi-corner parasitics)
-    └── reports/      # per-step QoR metrics (qor_metrics.json, ...)
+    └── reports/      # per-step QoR metrics + postRouteLec/ (LEC equivalence proof)
 ```
 
 ### 5.3 Design summary report: ecc signoff report
@@ -438,19 +440,19 @@ Excerpts from this gcd run (full report: `cat` the file above):
 
 ```
 [ 1. PHYSICAL & AREA METRICS ]
-  Die Area                2199.36 um² (0.0022 mm²)
-  Core Utilization        39 %
-  Total Instances         430                  Cells placed
+  Die Area                2342.40 um² (0.0023 mm²)
+  Core Utilization        40 %
+  Total Instances         457                  Cells placed
 
 [ 2. TIMING CLOSURE & PERFORMANCE ]
   Target Clock Period     10 ns                Target freq: 100 MHz
-  Achieved Fmax           444 MHz              Max operating frequency
-  Setup Slack (WNS / TNS) 7.75 ns / 0 ns       TIMING MET
+  Achieved Fmax           562 MHz              Max operating frequency
+  Setup Slack (WNS / TNS) 8.22 ns / 0 ns       TIMING MET
   Hold Slack (WNS / TNS)  0.11 ns / 0 ns       TIMING MET
 
 [ 4. MULTI-CORNER TIMING ]
   Corner                     Setup WNS   Setup TNS    Hold WNS    Hold TNS  Status
-  MAX_125/Cworst               7.75 ns        0 ns     0.34 ns        0 ns  PASS
+  MAX_125/Cworst               8.22 ns        0 ns     0.34 ns        0 ns  PASS
   ...(13 corners in total, all PASS)
 
 [ 7. PHYSICAL VERIFICATION ]
@@ -458,8 +460,8 @@ Excerpts from this gcd run (full report: `cat` the file above):
   LVS Status               MATCHED (Clean)       PASS
 
 [ 8. FLOW EXECUTION COST ]
-  Total Runtime            5m 14s
-  Peak Memory Usage        1446.23 MB
+  Total Runtime            4m 23s
+  Peak Memory Usage        1501.14 MB
 ```
 
 > The report does not require the flow to be complete — it summarizes whatever has run so far; metrics without data show `—`.
@@ -476,20 +478,20 @@ $ ecc report qor
   bytes: 9661
   view: cat runs/default/signoff/gcd_qor_report.txt
   design: gcd
-  overall score: 58.7
+  overall score: 58.1
   qor status: Green
   gate status: pass
   dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
-               {'dimension': 'Routability / Physical', 'score': 58.8, 'weight': 0.2, 'metrics': 15},
-               {'dimension': 'Area', 'score': 46.6, 'weight': 0.1, 'metrics': 3},
-               {'dimension': 'Clock / DFM', 'score': 73.0, 'weight': 0.1, 'metrics': 8}]
+               {'dimension': 'Routability / Physical', 'score': 56.8, 'weight': 0.2, 'metrics': 14},
+               {'dimension': 'Area', 'score': 44.0, 'weight': 0.1, 'metrics': 3},
+               {'dimension': 'Clock / DFM', 'score': 73.5, 'weight': 0.1, 'metrics': 8}]
   status: written
 ```
 
 How to read this:
 
 - **Flow status: Green, gate: pass** is the key conclusion — all four quality gates (DRC/LVS/RCX/STA) passed and Timing scored full marks; the design is signoff-ready;
-- The overall 58.7 sits slightly below the 60 pass line, mostly because small teaching designs lose out on **absolute Area / wirelength metrics** (core area and clock wirelength are scored against fixed thresholds) and because the **Power dimension is absent** (this flow has no power analysis step, so that 0.25 weight goes to waste). This is normal for a design the size of gcd, not a flow problem;
+- The overall 58.1 sits slightly below the 60 pass line, mostly because small designs lose out on **absolute Area / wirelength metrics** (core area and clock wirelength are scored against fixed thresholds) and because the **Power dimension is absent** (this flow has no power analysis step, so that 0.25 weight goes to waste). This is normal for a design the size of gcd, not a flow problem;
 - Per-metric details are in the `[ METRIC SCORES ]` section of the report file.
 
 ### 5.5 Signoff checklist: ecc report checklist
@@ -503,14 +505,14 @@ $ ecc report checklist
   path: runs/default/signoff/checklist_report.txt
   bytes: 3334
   checklist status: attention
-  items: 33
+  items: 36
   blocked: 0
-  attention: 1
-  summary counts: {'passed': 32, 'blocked': 0, 'attention': 1, 'unavailable': 0}
+  attention: 3
+  summary counts: {'passed': 33, 'blocked': 0, 'attention': 3, 'unavailable': 0}
   status: written
 ```
 
-Of the 33 items, 32 PASS (mapped netlist, DRC clean, LVS clean, SPEF integrity, setup/hold closure, Harden GDS/LEF/LIB, ...) and 1 ATTENTION — again the missing optional config file.
+Of the 36 items, 33 PASS (mapped netlist, DRC clean, LVS clean, **LEC equivalence proven**, SPEF integrity, setup/hold closure, Harden GDS/LEF/LIB, ...); the 3 ATTENTION items are all missing optional files (`config.macro_locations` and the LEC debug dumps `lec.failed_rtlil`/`lec.failed_verilog`, which only exist when LEC fails).
 
 ### 5.6 Render a layout image (optional): ecc layout-image
 
@@ -581,11 +583,12 @@ ecc config --resolved --plain      # project-level config (key=value + resolved 
 | GitHub downloads time out | restricted network | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
 | doctor shows `sizer: fail` | optional component not built | harmless for this tutorial; build ecc-sizer per the remediation hint if you need it |
 | synthesis log says `yosys slang frontend check failed` | yosys lacks the slang frontend | use an OSS CAD Suite yosys ≥ v0.67; debug with `ecc log synthesis` |
+| synthesis aborts at DFFLIBMAP with `uncaught exception during Yosys command invoked from TCL` | the current shell never loaded the ecc env (e.g. a non-interactive terminal), so ecc fell back to an old yosys on system PATH, which crashes parsing the ics55 liberty (the TCL wrapper swallows the exception detail) | verify `which yosys` points at the OSS CAD Suite; `source ~/.ecc-env.sh` and rerun |
 
 ## 8. Next Steps
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](examples/gcd/README.md#using-filelist) for multi-file designs;
-- Preset differences: `rtl2gds` (10 steps through DRC/LVS/Filler), `rcx` (+ extraction and STA), `harden` (+ hardened handoff), `syn_sta` (synthesis only);
+- Preset differences: `rtl2gds` (10 steps: synthesis → … → DRC/LVS/Filler/LEC), `rcx` (+ extraction and STA), `harden` (+ hardened handoff, 13 steps in total), `syn_sta` (synthesis only), `synthesis_lec` (synthesis + LEC, two steps);
 - Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [ecc-cli-dev.en.md](ecc-cli-dev.en.md);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py).
 

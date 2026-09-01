@@ -93,7 +93,7 @@ uv run ecc --help
 - 项目定位：多数命令接受 `--project <dir>`（缺省为当前目录，需含 `ecc.toml`）与 `--run-id <id>`（缺省用 `ecc.toml` 里 `[flow] run`，再缺省为 `default`，对应 `runs/<id>/`；也接受绝对路径或含 `/` 的相对路径）。
 - 输出模式（inspect 类命令通用）：`--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）、`--plain`（`key=value`，便于脚本解析）、默认人类可读 TEXT。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
-- 步骤名（step token）在展示层统一为小写：`synthesis / floorplan / fixfanout / placement / cts / legalization / routing / drc / filler`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`）。
+- 步骤名（step token）在展示层统一为小写：`synthesis / floorplan / placement / cts / legalization / routing / drc / lvs / filler / postroutelec / rcx / sta / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`）。
 
 命令总览：
 
@@ -292,7 +292,7 @@ ecc run [OPTIONS]
   --json / --jsonl / --plain
 ```
 
-流程：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检 preset 必需工具 → 在 `runs/<run-id>/` 创建 workspace → 按 preset（`rtl2gds | rcx | harden | syn_sta`）构建步骤并执行（TTY 下有进度渲染）。`harden` 是完整 13 步链（Synthesis→…→DRC→LVS→filler→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
+流程：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检 preset 必需工具 → 在 `runs/<run-id>/` 创建 workspace → 按 preset（`rtl2gds | rcx | harden | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。`harden` 是完整 13 步链（Synthesis→…→DRC→LVS→filler→postRouteLec（Yosys 等价性检查）→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
 
 ```console
 $ ecc run                # 该 run 已存在时拒绝覆盖
@@ -307,7 +307,7 @@ $ ecc run --preset bogus  # 非法 preset（不修改 ecc.toml）
 [error]
   unsupported_preset
   preset: bogus
-  presets: harden, rcx, rtl2gds, syn_sta
+  presets: harden, rcx, rtl2gds, syn_sta, synthesis_lec
   inspect: ecc config --resolved
 rc=1
 ```
@@ -430,11 +430,11 @@ config=pdk.name scope=project value=ics55 resolved=ics55 source=ecc.toml
 $ ecc config floorplan --resolved  # 步骤级
 [config]
   step:
-    flow_ecc.json (config)
-      path: runs/default/config/flow_ecc.json
-  inspect: ecc config floorplan --resolved --json
     db_ecc.json (config)
       path: runs/default/config/db_ecc.json
+  inspect: ecc config floorplan --resolved --json
+    floorplan_ecc.json (config)
+      path: runs/default/config/floorplan_ecc.json
   inspect: ecc config floorplan --resolved --json
 ```
 
@@ -458,8 +458,8 @@ $ ecc param list
     floorplan.core_util            0.4
     floorplan.core_margin          [2, 2]
     floorplan.aspect_ratio         1.0
-  synth
-    synth.max_fanout               20
+  cts
+    cts.max_fanout                 20
   place
     place.target_density           0.2
     place.target_overflow          0.1
@@ -512,7 +512,7 @@ target_density = 0.65
 | `floorplan.core_util` | float | 0.4 | [0.01, 1.0] | floorplan |
 | `floorplan.core_margin` | list[int] | [2, 2] | — | floorplan |
 | `floorplan.aspect_ratio` | float | 1.0 | [0.1, 10.0] | floorplan |
-| `synth.max_fanout` | int | 20 | [1, 200] | fixfanout |
+| `cts.max_fanout` | int | 20 | [1, 200] | cts |
 | `place.target_density` | float | 0.2 | [0.1, 0.95] | placement |
 | `place.target_overflow` | float | 0.1 | [0.0, 1.0] | placement |
 | `place.global_right_padding` | int | 0 | [0, 100] | placement |
