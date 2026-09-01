@@ -1,14 +1,14 @@
 # ECC CLI 入门教程：从零跑通 RTL → Harden 并产出签核包
 
-本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 时序签核 → Harden** 全流程，最终拿到：
+本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → Harden** 全流程，最终拿到：
 
 - **Harden 交付物**：GDS 版图、抽象 LEF、时序 LIB、版图快照 PNG；
-- **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/报告等 200+ 文件）；
+- **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/LEC 证明/报告等 300+ 文件）；
 - **三份报告**：设计总结（文本）、QoR 总分、签核清单。
 
 全程以官方 [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk)（开源 55nm 工艺）为目标工艺。教程中所有命令输出均为真实执行结果（基于 v0.1.0-alpha.11，示例路径统一写作 `~/ecc-demo`）。
 
-> 参考耗时：首次安装（下载 CLI 包 / OSS CAD Suite / PDK 数据，共约 3 GB 下载量）20–60 分钟，视网络而定；gcd 全流程运行约 **5 分钟**。
+> 参考耗时：首次安装（下载 CLI 包 / OSS CAD Suite / PDK 数据，共约 3 GB 下载量）20–60 分钟，视网络而定；gcd 全流程运行约 **4–5 分钟**。
 
 ## 全流程一览
 
@@ -247,23 +247,23 @@ ecc run --preset harden
 |---|------|------|------|
 | 1 | synthesis | yosys | RTL 综合、工艺映射（slang 前端读入 SystemVerilog） |
 | 2 | floorplan | ecc | 布局规划：die/core 区域、IO pin 排布 |
-| 3 | fixfanout | ecc | 高扇出网络修复 |
-| 4 | placement | dreamplace | 全局布局 |
-| 5 | cts | ecc | 时钟树综合 |
-| 6 | legalization | dreamplace | 布局合法化 |
-| 7 | routing | ecc | 布线 |
-| 8 | drc | ecc | 物理规则检查 |
-| 9 | lvs | ecc | 版图与原理图一致性检查 |
-| 10 | filler | ecc | 填充单元插入 |
+| 3 | placement | dreamplace | 全局布局 |
+| 4 | cts | ecc | 时钟树综合（含扇出约束） |
+| 5 | legalization | dreamplace | 布局合法化 |
+| 6 | routing | ecc | 布线 |
+| 7 | drc | ecc | 物理规则检查 |
+| 8 | lvs | ecc | 版图与原理图一致性检查 |
+| 9 | filler | ecc | 填充单元插入 |
+| 10 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
 | 11 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
 | 12 | sta | ecc | 多 corner 静态时序分析 |
 | 13 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> B[Floorplan] --> C[FixFanout] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> B[Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> G[Routing] --> H[DRC] --> I[LVS]
-    I --> J[Filler] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
+    I --> J[Filler] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
 `ecc run` 启动前还会自动预检该 preset 必需的工具（yosys、dreamplace 等），缺失则 fail-fast 并提示 `ecc doctor`。
@@ -286,11 +286,10 @@ $ ecc status
   log: ecc log
 
   steps:
-    synthesis (yosys) success 0:0:16
+    synthesis (yosys) success 0:0:17
       log: ecc log synthesis
     floorplan (ecc) success 0:0:1
-    fixfanout (ecc) success 0:0:1
-    placement (dreamplace) ongoing 0:0:47
+    placement (dreamplace) ongoing 0:0:40
       log: ecc log placement
     cts (ecc) unstart
     ...
@@ -298,7 +297,7 @@ $ ecc status
 
 ### 4.3 完成
 
-运行结束时（本文参考机器：流程总耗时 **5 分 14 秒**，峰值内存约 1.4 GB，大头是 DreamPlace 布局与多 corner STA）：
+运行结束时（本文参考机器：流程总耗时 **4 分 23 秒**，峰值内存约 1.5 GB，大头是 DreamPlace 布局与多 corner STA）：
 
 ```console
 $ ecc status
@@ -310,18 +309,18 @@ $ ecc status
   log: ecc log
 
   steps:
-    synthesis (yosys) success 0:0:16
+    synthesis (yosys) success 0:0:17
     floorplan (ecc) success 0:0:1
-    fixfanout (ecc) success 0:0:1
-    placement (dreamplace) success 0:1:24
-    cts (ecc) success 0:0:38
+    placement (dreamplace) success 0:0:47
+    cts (ecc) success 0:0:19
     legalization (dreamplace) success 0:0:1
     routing (ecc) success 0:0:6
     drc (ecc) success 0:0:2
     lvs (ecc) success 0:0:1
     filler (ecc) success 0:0:2
+    postroutelec (yosys_lec) success 0:0:1
     rcx (ecc) success 0:0:0
-    sta (ecc) success 0:2:31
+    sta (ecc) success 0:2:35
     harden (ecc) success 0:0:11
 rc=0
 ```
@@ -340,6 +339,7 @@ runs/default/
 ├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
 ├── Floorplan_ecc/
 ├── ...
+├── postRouteLec_yosys_lec/   # LEC 等价性检查（output/ 下有 result.json）
 ├── Harden_ecc/
 │   └── output/
 │       ├── gcd_Harden.gds     # 最终版图
@@ -378,19 +378,21 @@ $ ecc signoff inspect
 
   groups:
     initial        ready      (2/2)     # 原始 RTL + SDC
-    config         attention  (4/5)     # 各步骤配置
+    config         attention  (3/4)     # 各步骤配置
     harden         ready      (4/4)     # GDS / LEF / LIB / PNG
     final_design   ready      (10/10)   # 最终 DEF/GDS/网表 + 各步报告
     sta            ready      (6/6)     # 多 corner 时序报告
     spef           ready      (4/4)     # 寄生参数文件
-    reports        ready      (2/2)
+    reports        attention  (4/6)
 
   risks:
     [warning] Config signoff attention
               Optional file is missing or empty
+    [warning] Reports signoff attention
+              Optional file is missing or empty
 ```
 
-`attention` 来自一个**可选**配置文件缺失（如 `config.macro_locations`，纯数字设计不需要），不阻断导出；只有 `blocked`（必需项缺失）才会在 export 时被拒绝。
+两处 `attention` 都来自**可选**文件缺失：`config.macro_locations`（纯数字设计不需要）与 LEC 的调试转储文件（`lec.failed_rtlil` / `lec.failed_verilog`，只在 LEC **未通过**时才会产生，等价性已证明时不存在属正常），不阻断导出；只有 `blocked`（必需项缺失）才会在 export 时被拒绝。
 
 ### 5.2 导出签核包：ecc signoff export
 
@@ -404,19 +406,19 @@ $ ecc signoff export -o gcd_signoff_package.tar.gz
 rc=0
 ```
 
-包内 223 个文件，按交付逻辑分组：
+包内 356 个文件，按交付逻辑分组：
 
 ```
 gcd_signoff_package/
 ├── README.md / manifest.json / summary.json   # 包说明与清单
 ├── initial/          # 设计输入：gcd.v、gcd.sdc、parameters.json
-├── config/           # 全部步骤配置（db/flow/route/sta/... 共 11 个 json）
+├── config/           # 全部步骤配置（db/floorplan/cts/route/sta/... 共 9 个 json）
 ├── harden/           # Harden 交付物：gcd.gds / gcd.lef / gcd.lib / gcd.png
 ├── synthesis/        # 综合网表等中间交付
 └── final/
     ├── design/       # 最终 DEF、GDS、网表、版图快照
     ├── timing/       # STA 各 corner 报告 + spef/（多 corner 寄生参数）
-    └── reports/      # 各步骤 QoR 指标（qor_metrics.json 等）
+    └── reports/      # 各步骤 QoR 指标 + postRouteLec/（LEC 等价性证明）
 ```
 
 ### 5.3 设计总结报告：ecc signoff report
@@ -438,19 +440,19 @@ $ ecc signoff report
 
 ```
 [ 1. PHYSICAL & AREA METRICS ]
-  Die Area                2199.36 um² (0.0022 mm²)
-  Core Utilization        39 %
-  Total Instances         430                  Cells placed
+  Die Area                2342.40 um² (0.0023 mm²)
+  Core Utilization        40 %
+  Total Instances         457                  Cells placed
 
 [ 2. TIMING CLOSURE & PERFORMANCE ]
   Target Clock Period     10 ns                Target freq: 100 MHz
-  Achieved Fmax           444 MHz              Max operating frequency
-  Setup Slack (WNS / TNS) 7.75 ns / 0 ns       TIMING MET
+  Achieved Fmax           562 MHz              Max operating frequency
+  Setup Slack (WNS / TNS) 8.22 ns / 0 ns       TIMING MET
   Hold Slack (WNS / TNS)  0.11 ns / 0 ns       TIMING MET
 
 [ 4. MULTI-CORNER TIMING ]
   Corner                     Setup WNS   Setup TNS    Hold WNS    Hold TNS  Status
-  MAX_125/Cworst               7.75 ns        0 ns     0.34 ns        0 ns  PASS
+  MAX_125/Cworst               8.22 ns        0 ns     0.34 ns        0 ns  PASS
   ...（共 13 个 corner，全部 PASS）
 
 [ 7. PHYSICAL VERIFICATION ]
@@ -458,8 +460,8 @@ $ ecc signoff report
   LVS Status               MATCHED (Clean)       PASS
 
 [ 8. FLOW EXECUTION COST ]
-  Total Runtime            5m 14s
-  Peak Memory Usage        1446.23 MB
+  Total Runtime            4m 23s
+  Peak Memory Usage        1501.14 MB
 ```
 
 > 报告不要求 flow 跑完——跑到哪一步就总结到哪一步，缺数据的指标显示 `—`。
@@ -476,20 +478,20 @@ $ ecc report qor
   bytes: 9661
   view: cat runs/default/signoff/gcd_qor_report.txt
   design: gcd
-  overall score: 58.7
+  overall score: 58.1
   qor status: Green
   gate status: pass
   dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
-               {'dimension': 'Routability / Physical', 'score': 58.8, 'weight': 0.2, 'metrics': 15},
-               {'dimension': 'Area', 'score': 46.6, 'weight': 0.1, 'metrics': 3},
-               {'dimension': 'Clock / DFM', 'score': 73.0, 'weight': 0.1, 'metrics': 8}]
+               {'dimension': 'Routability / Physical', 'score': 56.8, 'weight': 0.2, 'metrics': 14},
+               {'dimension': 'Area', 'score': 44.0, 'weight': 0.1, 'metrics': 3},
+               {'dimension': 'Clock / DFM', 'score': 73.5, 'weight': 0.1, 'metrics': 8}]
   status: written
 ```
 
 怎么读这个结果：
 
 - **Flow status: Green、gate: pass** 是核心结论——DRC/LVS/RCX/STA 四个质量门全部通过，时序维度满分，设计可签核交付；
-- 总分 58.7 略低于 60 通过线，主要因为小规模教学设计在 **Area / 绕线长度类绝对值指标**上天然吃亏（如 core 面积、时钟线长度按固定阈值折算），且 **Power 维度缺项**（本流程未含功耗分析步骤，该维度 0.25 权重直接落空）。这是 gcd 这类小设计的常见现象，不代表 flow 有问题；
+- 总分 58.1 略低于 60 通过线，主要因为小规模设计在 **Area / 绕线长度类绝对值指标**上天然吃亏（如 core 面积、时钟线长度按固定阈值折算），且 **Power 维度缺项**（本流程未含功耗分析步骤，该维度 0.25 权重直接落空）。这是 gcd 这类小设计的常见现象，不代表 flow 有问题；
 - 逐指标明细在报告文件的 `[ METRIC SCORES ]` 区。
 
 ### 5.5 签核清单：ecc report checklist
@@ -503,14 +505,14 @@ $ ecc report checklist
   path: runs/default/signoff/checklist_report.txt
   bytes: 3334
   checklist status: attention
-  items: 33
+  items: 36
   blocked: 0
-  attention: 1
-  summary counts: {'passed': 32, 'blocked': 0, 'attention': 1, 'unavailable': 0}
+  attention: 3
+  summary counts: {'passed': 33, 'blocked': 0, 'attention': 3, 'unavailable': 0}
   status: written
 ```
 
-本次 33 项中 32 项 PASS（映射网表、DRC clean、LVS clean、SPEF 完整性、setup/hold 收敛、Harden GDS/LEF/LIB……），1 项 ATTENTION 仍是那个可选配置文件缺失。
+本次 36 项中 33 项 PASS（映射网表、DRC clean、LVS clean、**LEC 等价性 proven**、SPEF 完整性、setup/hold 收敛、Harden GDS/LEF/LIB……），3 项 ATTENTION 均为可选文件缺失（`config.macro_locations` 与 LEC 调试转储 `lec.failed_rtlil`/`lec.failed_verilog`，后者仅 LEC 失败时才存在）。
 
 ### 5.6 渲染版图图片（可选）：ecc layout-image
 
@@ -581,11 +583,12 @@ ecc config --resolved --plain      # 项目级配置（键值 + 解析后绝对�
 | 下载 GitHub 资源超时 | 网络受限 | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
 | doctor 显示 `sizer: fail` | 可选组件未构建 | 不影响本教程；需要时按 remediation 提示构建 ecc-sizer |
 | synthesis 日志报 `yosys slang frontend check failed` | yosys 无 slang 前端 | 换 OSS CAD Suite ≥ v0.67 的 yosys，`ecc log synthesis` 排查 |
+| synthesis 在 DFFLIBMAP 报 `uncaught exception during Yosys command invoked from TCL` 后退出 | 当前 shell 未加载 ecc 环境（如非交互终端），ecc 回落到系统 PATH 里的旧版 yosys（解析 ics55 liberty 会直接崩溃，异常详情被 TCL 吞掉） | `which yosys` 确认指向 OSS CAD Suite；`source ~/.ecc-env.sh` 后重跑 |
 
 ## 8. 下一步
 
 - 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](examples/gcd/README.md#using-filelist)；
-- 了解 preset 差异：`rtl2gds`（10 步到 DRC/LVS/Filler）、`rcx`（+寄生提取与 STA）、`harden`（+硬化交付）、`syn_sta`（仅综合）；
+- 了解 preset 差异：`rtl2gds`（10 步：综合 → … → DRC/LVS/Filler/LEC）、`rcx`（+寄生提取与 STA）、`harden`（+硬化交付，共 13 步）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC 两步）；
 - 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**；CLI 扩展开发见 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)；
 - 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py)。
 
