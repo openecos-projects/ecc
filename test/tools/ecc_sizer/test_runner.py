@@ -32,7 +32,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     calls = []
 
     def fake_run(command, cwd, stdout, stderr, check):
-        calls.append((command, cwd, stderr, check))
+        calls.append((command, cwd, stdout, stderr, check))
         _write_staging(step)
         return SimpleNamespace(returncode=0)
 
@@ -69,6 +69,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
                 str(step.script.sizer_cmd),
             ],
             str(step.data.steps[StepEnum.TIMING_OPT.value]),
+            None,
             subprocess.STDOUT,
             False,
         )
@@ -163,6 +164,43 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
 
     assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
     assert _subflow_states(step)["run sizer"] == StateEnum.Imcomplete.value
+
+
+def test_sizer_runner_inherits_captured_stdio_instead_of_truncating_step_log(
+    tmp_path,
+    monkeypatch,
+):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import runner as sizer_runner
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+    Path(step.log.file).write_text("preface\n", encoding="utf-8")
+    seen = {}
+
+    def fake_run(command, cwd, stdout, stderr, check):
+        del command, cwd, check
+        seen["stdout"] = stdout
+        seen["stderr"] = stderr
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/sizer"])
+    monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert seen["stdout"] is None
+    assert seen["stderr"] is subprocess.STDOUT
+    assert Path(step.log.file).read_text(encoding="utf-8") == "preface\n"
 
 
 def test_public_sizer_run_marks_invalid_when_tool_missing(tmp_path, monkeypatch):

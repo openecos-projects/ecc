@@ -117,14 +117,13 @@ def run_step(
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Ongoing)
 
     command = get_sizer_command() + ["-env", str(env_path), "-f", str(cmd_path)]
-    with open(log_path, "w", encoding="utf-8") as log_file:
-        result = subprocess.run(
-            command,
-            cwd=str(output_dir),
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            check=False,
-        )
+    result = subprocess.run(
+        command,
+        cwd=str(output_dir),
+        stdout=None,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
 
     if result.returncode != 0 or not _has_staging_outputs(step):
         logger.error(
