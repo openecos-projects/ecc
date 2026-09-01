@@ -60,6 +60,7 @@ def test_build_rtl2gds_flow_includes_lvs_after_drc():
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
+        (StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
         (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
         (StepEnum.DRC, "ecc", StateEnum.Unstart),
         (StepEnum.LVS, "ecc", StateEnum.Unstart),

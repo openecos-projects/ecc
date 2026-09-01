@@ -90,6 +90,7 @@ class EngineFlow:
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.ROUTING, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
         # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
