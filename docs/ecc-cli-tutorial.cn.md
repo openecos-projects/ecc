@@ -530,14 +530,18 @@ ecc layout-image --gds runs/default/Harden_ecc/output/gcd_Harden.gds \
 ### 6.1 查看与修改参数
 
 ```bash
-ecc param list                          # 全部参数（按组，标注来源）
+ecc param list                          # 简明列表：旧参数与已显式覆盖项
+ecc param list --step cts               # CTS 的全部已审核字段
+ecc param list --all                    # 所有步骤的完整 schema
 ecc param show place.target_density     # 单个参数：值/默认/范围/映射到哪个工具
 ecc param diff                          # 只看与默认值不同的
 ecc param set place.target_density 0.55 # 写入 ecc.toml（保留注释与格式）
+ecc param set cts.skew_bound 0.05       # 直接修改 CTS 配置字段
+ecc param set cts.routing_layer '[4, 5]' # 列表使用 JSON 字面量
 ecc param unset place.target_density    # 恢复默认
 ```
 
-常用参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`……完整表见[用户指南 §9](ecc-cli-ug.cn.md#9-param--参数管理)。
+常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；只有 PDK 内容路径可用 `ecc param set KEY VALUE` 设置，`KEY` 可为 `pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 或 `pdk.spef`，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-cli-ug.cn.md#9-param--参数管理)。
 
 ### 6.2 多 run 对比
 

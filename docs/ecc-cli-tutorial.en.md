@@ -530,14 +530,18 @@ Getting through once is only the start — the daily backend loop is "tweak → 
 ### 6.1 Viewing and changing parameters
 
 ```bash
-ecc param list                          # all parameters (grouped, source-annotated)
+ecc param list                          # concise list: legacy parameters and explicit overrides
+ecc param list --step cts               # all reviewed CTS fields
+ecc param list --all                    # complete schema for every step
 ecc param show place.target_density     # one parameter: value/default/range/tool mapping
 ecc param diff                          # only those differing from defaults
 ecc param set place.target_density 0.55 # written to ecc.toml (comments & formatting preserved)
+ecc param set cts.skew_bound 0.05       # change a direct CTS configuration field
+ecc param set cts.routing_layer '[4, 5]' # lists use JSON literals
 ecc param unset place.target_density    # back to default
 ```
 
-Frequently used parameters: `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, `sta.max_paths`, ... — the full table is in [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management).
+Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. Only PDK content paths use `ecc param set KEY VALUE`, where `KEY` is one of `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, or `pdk.spef`; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management) for the full contract.
 
 ### 6.2 Comparing runs
 
