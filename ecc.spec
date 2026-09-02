@@ -24,6 +24,7 @@ ECC_DIR = Path(SPECPATH)
 HOOKS_DIR = ECC_DIR / "hooks"
 CODESIGN_IDENTITY = os.environ.get("APPLE_SIGNING_IDENTITY")
 BUNDLE_MODE = os.environ.get("ECOS_PYINSTALLER_MODE", "onedir").strip().lower()
+STRIP_BINARIES = sys.platform.startswith("linux")
 
 if BUNDLE_MODE not in {"onedir", "onefile"}:
     raise SystemExit(f"Unsupported ECOS_PYINSTALLER_MODE={BUNDLE_MODE!r}; use onedir or onefile.")
@@ -263,7 +264,7 @@ if BUNDLE_MODE == "onedir":
         [],
         exclude_binaries=True,
         name="ecc",
-        strip=False,
+        strip=STRIP_BINARIES,
         upx=False,
         console=True,
         codesign_identity=CODESIGN_IDENTITY,
@@ -274,7 +275,7 @@ if BUNDLE_MODE == "onedir":
         a.binaries,
         a.zipfiles,
         a.datas,
-        strip=False,
+        strip=STRIP_BINARIES,
         upx=False,
         name="ecc",
     )
@@ -287,7 +288,7 @@ else:
         a.datas,
         [],
         name="ecc",
-        strip=False,
+        strip=STRIP_BINARIES,
         upx=True,
         console=True,
         codesign_identity=CODESIGN_IDENTITY,

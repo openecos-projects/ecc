@@ -31,6 +31,17 @@ runs:
             ;;
         esac
 
+    # The manylinux_2_34 image's binutils 2.41 breaks ELF alignment when
+    # stripping .so files (https://sourceware.org/bugzilla/show_bug.cgi?id=31208);
+    # install a fixed strip (>= 2.43) from conda-forge.
+    - name: Install fixed binutils (strip >= 2.43)
+      shell: bash
+      run: |
+        mkdir -p /tmp/micromamba
+        curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp/micromamba
+        /tmp/micromamba/bin/micromamba create -y -p /opt/bf -c conda-forge binutils=2.44
+        echo "/opt/bf/bin" >> "$GITHUB_PATH"
+
     - name: Build PyInstaller bundle
       shell: bash
       run: |
