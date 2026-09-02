@@ -280,11 +280,6 @@ def _consumer_observation(workspace, knob_id, requested, params, engine, ppa) ->
     if knob_id == "place.cell_padding_x":
         placedb = getattr(engine, "placedb", None)
         effective = _scalar_value(getattr(placedb, "cell_padding_x", None))
-        site_width_dbu = _scalar_value(getattr(placedb, "origin_site_width", None))
-        if effective is not None and site_width_dbu is not None and site_width_dbu > 0:
-            effective = round(effective * site_width_dbu)
-        else:
-            effective = None
         movable = getattr(placedb, "num_movable_nodes", None)
         return {
             "requested_padding_dbu": requested,
