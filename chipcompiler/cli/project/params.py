@@ -308,6 +308,10 @@ class ResolvedParam:
     source: str
     schema: ParamSchema
 
+    @property
+    def is_explicit(self) -> bool:
+        return self.source != "default"
+
 
 def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str | None]:
     ptype = schema.type
@@ -469,14 +473,11 @@ def build_backend_overrides(resolved: list[ResolvedParam]) -> dict:
     return overrides
 
 
-CONFIG_OVERRIDES_KEY = "Config Overrides"
-
-
 def build_config_overrides(resolved: list[ResolvedParam]) -> dict[str, object]:
     overrides: dict[str, object] = {}
     for rp in resolved:
         target = rp.schema.config_target
-        if target is None or rp.source == "default":
+        if target is None or not rp.is_explicit:
             continue
         config_overrides = overrides.setdefault(target.config_key, {})
         _set_nested_value(config_overrides, target.json_path, rp.value)
@@ -487,7 +488,7 @@ def build_pdk_overrides(resolved: list[ResolvedParam]) -> dict[str, object]:
     return {
         rp.schema.pdk_target: rp.value
         for rp in resolved
-        if rp.schema.pdk_target is not None and rp.source != "default"
+        if rp.schema.pdk_target is not None and rp.is_explicit
     }
 
 

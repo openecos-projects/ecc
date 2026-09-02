@@ -221,6 +221,7 @@ def execute_fresh_run(
     )
     from chipcompiler.data import create_workspace
     from chipcompiler.data.parameter import save_parameter, update_parameters
+    from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
     from chipcompiler.engine import EngineFlow
 
     project = ctx.project
@@ -269,7 +270,7 @@ def execute_fresh_run(
         update_parameters(build_backend_overrides(resolved), parameters)
         config_overrides = build_config_overrides(resolved)
         if config_overrides:
-            update_parameters({"Config Overrides": config_overrides}, parameters)
+            update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
         pdk_cli_overrides = build_pdk_overrides(resolved)
     else:
         pdk_cli_overrides = {}

@@ -48,12 +48,7 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
         s = rp.schema
         if selected_step and selected_step not in {s.group.casefold(), s.applies.casefold()}:
             continue
-        if (
-            not selected_step
-            and not show_all
-            and (s.config_target is not None or s.pdk_target is not None)
-            and rp.source == "default"
-        ):
+        if not selected_step and not show_all and s.has_direct_target and not rp.is_explicit:
             continue
         record = {
             "param": s.param,

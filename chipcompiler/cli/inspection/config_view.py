@@ -174,9 +174,7 @@ def build_project_config_items(
     from chipcompiler.cli.handlers.param import _maps_to_str
 
     for rp in resolved_params:
-        if (
-            rp.schema.config_target is not None or rp.schema.pdk_target is not None
-        ) and rp.source == "default":
+        if rp.schema.has_direct_target and not rp.is_explicit:
             continue
         items.append(
             {

@@ -502,8 +502,8 @@ max_paths = 1000
 [params.cts]
 skew_bound = "0.05"
 
-[params.floorplan.die_builder.margin]
-left_micron = 4.0
+[params.floorplan.phy_placer.well_tap]
+distance_micron = 30.0
 
 [pdk.overrides]
 tech = "prtech/techLEF/N551P6M_ecos.lef"

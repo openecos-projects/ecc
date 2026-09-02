@@ -24,6 +24,10 @@ class ParamSchema:
     unit: str | None = None
     example: str | None = None
 
+    @property
+    def has_direct_target(self) -> bool:
+        return self.config_target is not None or self.pdk_target is not None
+
 
 _CONFIG_KEYS = {
     "cts": "CTS",
