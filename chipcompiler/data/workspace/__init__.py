@@ -360,6 +360,7 @@ def _normalize_flow_step_name(value) -> str:
         "lvs": StepEnum.LVS.value,
         "filler": StepEnum.FILLER.value,
         "lec": StepEnum.LEC.value,
+        "postlec": StepEnum.POST_ROUTE_LEC.value,
         "postroutelec": StepEnum.POST_ROUTE_LEC.value,
         "rcx": StepEnum.RCX.value,
         "sta": StepEnum.STA.value,

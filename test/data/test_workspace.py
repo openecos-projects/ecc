@@ -2,6 +2,8 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
 import chipcompiler.data as data_api
 import chipcompiler.data.workspace as workspace_data
 from chipcompiler.data import (
@@ -274,6 +276,77 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "RCX",
         "sta",
         "Harden",
+    ]
+
+
+POST_ROUTE_LEC_STEP_ALIAS_CASES = (
+    ["filler", "postRouteLec", "RCX"],
+    ["filler", "postlec", "RCX"],
+    ["filler", "postroutelec", "RCX"],
+    ["filler", "post_route_lec", "RCX"],
+    ["filler", "Post-Route-LEC", "RCX"],
+)
+
+
+@pytest.mark.parametrize("steps", POST_ROUTE_LEC_STEP_ALIAS_CASES)
+def test_create_workspace_normalizes_post_route_lec_step_aliases(
+    steps, tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=netlist_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={
+            "start_step": "filler",
+            "end_step": "RCX",
+            "steps": steps,
+        },
+    )
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
+        ("filler", "ecc"),
+        ("postRouteLec", "yosys_lec"),
+        ("RCX", "ecc"),
+    ]
+
+
+def test_create_workspace_normalizes_post_route_lec_boundary_aliases(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=netlist_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={
+            "start_step": "postlec",
+            "end_step": "post route lec",
+        },
+    )
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
+        ("postRouteLec", "yosys_lec"),
     ]
 
 
