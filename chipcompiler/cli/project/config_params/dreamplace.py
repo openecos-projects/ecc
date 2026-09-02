@@ -1,9 +1,135 @@
 from .common import config_param
 
+DREAMPLACE_PARAMETER_DESCRIPTIONS = {
+    "RePlAce_LOWER_PCOF": "lower bound ratio used in RePlAce for updating density weight",
+    "RePlAce_UPPER_PCOF": "upper bound ratio used in RePlAce for updating density weight",
+    "RePlAce_ref_hpwl": "reference HPWL used in RePlAce for updating density weight",
+    "RePlAce_skip_energy_flag": (
+        "whether skip density energy computation for fast mode, may not work with some solvers"
+    ),
+    "adjust_nctugr_area_flag": ("whether use ECC/iRT EGR congestion map to guide area adjustment"),
+    "adjust_pin_area_flag": "whether use pin utilization map to guide area adjustment",
+    "adjust_rudy_area_flag": "whether use RUDY/RISA map to guide area adjustment",
+    "area_adjust_stop_ratio": "area_adjust_stop_ratio",
+    "auto_adjust_bins": (
+        "automatically derive num_bins_x and num_bins_y from the number of physical nodes"
+    ),
+    "bndry_padding_x": "horizontal padding around the edges of the floorplan",
+    "bndry_padding_y": "vertical padding around the edges of the floorplan",
+    "density_weight": "initial weight of density cost",
+    "detailed_place_command": "commands for external detailed placement engine",
+    "detailed_place_engine": "external detailed placement engine to be called after placement",
+    "detailed_place_flag": "whether use internal detailed placement",
+    "deterministic_flag": "whether require run-to-run determinism, may have efficiency overhead",
+    "differentiable_timing_obj": (
+        "compatibility flag for differentiable timing objective configuration"
+    ),
+    "dtype": "data type, float32 | float64",
+    "dump_global_place_solution_flag": (
+        "whether dump intermediate global placement solution as a compressed pickle object"
+    ),
+    "dump_legalize_solution_flag": (
+        "whether dump intermediate legalization solution as a compressed pickle object"
+    ),
+    "enable_fillers": "enable filler cells",
+    "enable_net_weighting": "enable timing-aware net weighting during global placement",
+    "evaluate_pl": "evaluate .pl file without running anything (e.g., to get baseline PPA)",
+    "gamma": (
+        "base coefficient for log-sum-exp and weighted-average wirelength, a relative value "
+        "to bin size"
+    ),
+    "get_congestion_map": "compute congestion map after placement complete",
+    "global_place_flag": "whether use global placement",
+    "global_place_stages": (
+        "global placement configurations of each stage, a dictionary of "
+        '{"num_bins_x", "num_bins_y", "iteration", "learning_rate", '
+        '"learning_rate_decay", "wirelength", "optimizer", '
+        '"Llambda_density_weight_iteration", "Lsub_iteration"}'
+    ),
+    "gp_noise_ratio": "noise to initial positions for global placement",
+    "gpu": "enable gpu or not",
+    "gpu_id": "which gpu to use",
+    "ignore_net_degree": "ignore net degree larger than some value",
+    "ignore_net_weight": "ignore net weight larger than some value for weight_hpwl reporting",
+    "init_loc_perc_x": (
+        "initial horizontal location of cells for global placement (% of layout width)"
+    ),
+    "init_loc_perc_y": (
+        "initial vertical location of cells for global placement (% of layout height)"
+    ),
+    "legalize_flag": "whether use internal legalization",
+    "macro_halo_x": "horizontal halo around movable macros",
+    "macro_halo_y": "vertical halo around movable macros",
+    "macro_overlap_flag": "whether enable MFP macro overlap",
+    "macro_overlap_mult_weight": "weight multiplier for MFP macro overlap",
+    "macro_overlap_weight": "initial weight of macro overlap cost",
+    "macro_pin_halo_x": "horizontal halo applied to macro pins for pin-aware macro shaping",
+    "macro_pin_halo_y": "vertical halo applied to macro pins for pin-aware macro shaping",
+    "macro_place_flag": "whether enable two-stage macro placement",
+    "max_net_weight": (
+        'maximum net weight for timing optimization; negative values or "inf" mean no limit'
+    ),
+    "max_num_area_adjust": "maximum times to adjust node area",
+    "max_pin_opt_adjust_rate": "max_pin_opt_adjust_rate",
+    "max_route_opt_adjust_rate": "max_route_opt_adjust_rate",
+    "momentum_decay_factor": "momentum decay factor used in timing-aware net-weight updates",
+    "net_weighting_scheme": (
+        "net-weighting scheme for timing-aware optimization, e.g. adam | lilith"
+    ),
+    "node_area_adjust_overflow": "the overflow where to adjust node area",
+    "num_bins_x": "number of bins in horizontal direction",
+    "num_bins_y": "number of bins in vertical direction",
+    "num_threads": "number of CPU threads",
+    "pin2pin_accumulate_weight": "increment added when accumulating an extra critical path",
+    "pin2pin_max_weight": "maximum pin-to-pin timing weight",
+    "pin2pin_min_weight": "minimum pin-to-pin timing weight",
+    "pin2pin_net_weighting": "enable pin-to-pin net weighting for timing optimization",
+    "pin2pin_weight": "base multiplier for pin-to-pin net weights",
+    "pin_area_adjust_stop_ratio": "pin_area_adjust_stop_ratio",
+    "pin_density": "target pin density for cells inflation",
+    "pin_stretch_ratio": "pin_stretch_ratio",
+    "plot_flag": "whether plot solution or not",
+    "random_center_init_flag": "whether perform random initialization for global placement",
+    "random_seed": "random seed",
+    "risa_weights": "whether use weighted smooth HPWL with RISA net weights",
+    "route_area_adjust_stop_ratio": "route_area_adjust_stop_ratio",
+    "route_info_input": (
+        "route information file (w. total H/V routing length & macro routing length contribution)"
+    ),
+    "route_num_bins_x": "number of routing grids/tiles",
+    "route_num_bins_y": "number of routing grids/tiles",
+    "route_opt_adjust_exponent": "exponent to adjust the routing utilization map",
+    "scale_factor": "scale factor to avoid numerical overflow; 0.0 means not set",
+    "shift_factor": (
+        "shift factor to avoid numerical issues when the lower-left origin of rows is not (0, 0);"
+    ),
+    "sort_nets_by_degree": "whether sort nets by degree or not",
+    "start_iter": "iteration to start pin-to-pin timing weighting",
+    "timing_eval_flag": "enable timing evaluation reporting",
+    "timing_opt_flag": (
+        "legacy timing-driven global placement flag; enabling it raises an error because "
+        "OpenTimer integration has been removed"
+    ),
+    "two_stage_density_scaler": "scale density weight after the macro placement stage",
+    "unit_horizontal_capacity": "number of horizontal routing tracks per unit distance",
+    "unit_pin_capacity": "number of pins per unit area",
+    "unit_vertical_capacity": "number of vertical routing tracks per unit distance",
+    "use_bb": "whether use the Barzilai-Borwein step size in Nesterov optimization",
+    "with_sta": (
+        "enable integrated STA initialization and differentiable timing updates during placement"
+    ),
+}
+
 
 def _place(param: str, default: object, *, type: str | None = None):
     return config_param(
-        f"place.{param}", "dreamplace", (param,), default, applies="placement", type=type
+        f"place.{param}",
+        "dreamplace",
+        (param,),
+        default,
+        applies="placement",
+        description=DREAMPLACE_PARAMETER_DESCRIPTIONS[param],
+        type=type,
     )
 
 

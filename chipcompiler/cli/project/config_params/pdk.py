@@ -3,7 +3,7 @@
 from .common import ParamSchema
 
 
-def _pdk_path(param: str, default: object, type: str) -> ParamSchema:
+def _pdk_path(param: str, default: object, type: str, description: str) -> ParamSchema:
     return ParamSchema(
         param=f"pdk.{param}",
         group="pdk",
@@ -11,16 +11,46 @@ def _pdk_path(param: str, default: object, type: str) -> ParamSchema:
         type=type,
         default=default,
         applies="pdk",
-        description=f"PDK {param.replace('_', ' ')} override",
+        description=description,
         pdk_target=param,
     )
 
 
 SCHEMAS = (
-    _pdk_path("tech", "", "str"),
-    _pdk_path("lefs", [], "list[str]"),
-    _pdk_path("libs", [], "list[str]"),
-    _pdk_path("mapping_file", "", "str"),
-    _pdk_path("sdc", "", "str"),
-    _pdk_path("spef", "", "str"),
+    _pdk_path(
+        "tech",
+        "",
+        "str",
+        "Technology LEF path, resolved relative to pdk.root when relative.",
+    ),
+    _pdk_path(
+        "lefs",
+        [],
+        "list[str]",
+        "Standard-cell LEF paths, resolved relative to pdk.root when relative.",
+    ),
+    _pdk_path(
+        "libs",
+        [],
+        "list[str]",
+        "Standard-cell Liberty timing-library paths, resolved relative to pdk.root when relative.",
+    ),
+    _pdk_path(
+        "mapping_file",
+        "",
+        "str",
+        "PDK layer-mapping file path, resolved relative to pdk.root when relative.",
+    ),
+    _pdk_path(
+        "sdc",
+        "",
+        "str",
+        "PDK SDC constraints path, resolved relative to pdk.root when relative.",
+    ),
+    _pdk_path(
+        "spef",
+        "",
+        "str",
+        "PDK SPEF path, resolved relative to pdk.root when relative.",
+    ),
 )
