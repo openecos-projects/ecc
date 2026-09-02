@@ -40,8 +40,8 @@ def config_param(
     default: object,
     *,
     applies: str,
+    description: str,
     type: str | None = None,
-    description: str | None = None,
     range: tuple[float, float] | None = None,
     choices: tuple[str, ...] | None = None,
 ) -> ParamSchema:
@@ -55,7 +55,7 @@ def config_param(
         type=type,
         default=default,
         applies=applies,
-        description=description or f"{applies} configuration field {'.'.join(json_path)}",
+        description=description,
         config_target=ConfigTarget(
             config_key=_CONFIG_KEYS.get(config_key, config_key),
             json_path=json_path,

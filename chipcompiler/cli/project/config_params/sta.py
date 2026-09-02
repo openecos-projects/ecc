@@ -15,6 +15,7 @@ SCHEMAS = (
             }
         ],
         applies="sta",
+        description="Liberty-corner to RC-corner combinations analyzed for timing signoff.",
         type="json",
     ),
 )
