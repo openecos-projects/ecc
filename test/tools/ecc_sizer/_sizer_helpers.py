@@ -72,8 +72,8 @@ def _write_staging(step: EccStep) -> None:
 
 
 def _fake_sizer_run(step: EccStep):
-    def fake_run(command, cwd, stdout, stderr, check):
-        del command, cwd, stdout, stderr, check
+    def fake_run(command, cwd, stdout, stderr, check, env):
+        del command, cwd, stdout, stderr, check, env
         _write_staging(step)
         return SimpleNamespace(returncode=0)
 

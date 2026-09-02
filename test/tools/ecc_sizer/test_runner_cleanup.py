@@ -206,7 +206,7 @@ def test_sizer_does_not_legalize_when_staging_cleanup_fails(tmp_path, monkeypatc
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
+        lambda command, cwd, stdout, stderr, check, env: SimpleNamespace(returncode=0),
     )
 
     with pytest.raises(OSError, match="cannot unlink staging"):
@@ -242,7 +242,7 @@ def test_sizer_rerun_resets_previous_subflow_success(tmp_path, monkeypatch):
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
+        lambda command, cwd, stdout, stderr, check, env: SimpleNamespace(returncode=0),
     )
     assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
     states = _subflow_states(step)
@@ -283,7 +283,7 @@ def test_sizer_rerun_does_not_legalize_stale_staging_when_sizer_writes_nothing(
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
+        lambda command, cwd, stdout, stderr, check, env: SimpleNamespace(returncode=0),
     )
     monkeypatch.setattr(sizer_runner, "legalize_layout", fake_legalize)
 

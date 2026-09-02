@@ -5,6 +5,13 @@ from pathlib import Path
 _SIZER_RUNTIME_SENTINEL = Path("src") / "sizer_os.tcl"
 
 
+def get_sizer_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.pop("LD_LIBRARY_PATH", None)
+    env.pop("LD_PRELOAD", None)
+    return env
+
+
 def _is_sizer_root(path: Path) -> bool:
     return (path / _SIZER_RUNTIME_SENTINEL).is_file()
 

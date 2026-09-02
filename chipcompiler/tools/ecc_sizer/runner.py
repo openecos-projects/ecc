@@ -11,7 +11,12 @@ from chipcompiler.tools.ecc_dreamplace.utility import is_eda_exist as is_dreampl
 
 from .builder import sizer_staging_def, sizer_staging_verilog
 from .subflow import SizerSubFlow, SizerSubFlowEnum
-from .utility import get_sizer_command, is_eda_exist, is_sizer_runtime_exist
+from .utility import (
+    get_sizer_command,
+    get_sizer_subprocess_env,
+    is_eda_exist,
+    is_sizer_runtime_exist,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +128,7 @@ def run_step(
         stdout=None,
         stderr=subprocess.STDOUT,
         check=False,
+        env=get_sizer_subprocess_env(),
     )
 
     if result.returncode != 0 or not _has_staging_outputs(step):
