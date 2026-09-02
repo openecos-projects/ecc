@@ -64,8 +64,8 @@ jobs:
 
       - name: Setup PDK
         run: |
-          git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git chipcompiler/thirdparty/icsprout55-pdk
-          cd chipcompiler/thirdparty/icsprout55-pdk && make unzip
+          git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git ../pdk/icsprout55-pdk
+          cd ../pdk/icsprout55-pdk && make unzip
 
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
