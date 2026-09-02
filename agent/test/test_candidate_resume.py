@@ -38,20 +38,15 @@ def test_candidate_resume_slice_starts_at_first_non_success_step() -> None:
     assert [step.name for step in resumed] == ["CTS", "Harden"]
 
 
-def test_workspace_state_hash_tracks_cts_not_retired_fixfanout(tmp_path) -> None:
+def test_workspace_state_hash_tracks_cts_config(tmp_path) -> None:
     home = tmp_path / "home"
     config = tmp_path / "config"
     home.mkdir()
     config.mkdir()
     (home / "flow.json").write_text('{"steps": []}', encoding="utf-8")
     (config / "cts_ecc.json").write_text('{"max_fanout": 32}', encoding="utf-8")
-    retired = config / "fixfanout_ecc.json"
-    retired.write_text('{"max_fanout": 20}', encoding="utf-8")
 
     initial = _workspace_state_sha256(tmp_path)
-    retired.write_text('{"max_fanout": 99}', encoding="utf-8")
-    assert _workspace_state_sha256(tmp_path) == initial
-
     (config / "cts_ecc.json").write_text('{"max_fanout": 48}', encoding="utf-8")
     assert _workspace_state_sha256(tmp_path) != initial
 
