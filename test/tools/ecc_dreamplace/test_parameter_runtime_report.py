@@ -17,11 +17,15 @@ class _Scalar:
         return self.value
 
 
-def _engine(*, target_density=None, cell_padding_x=None):
+def _engine(*, target_density=None, cell_padding_x=None, origin_site_width=None):
     data_collections = SimpleNamespace(target_density=_Scalar(target_density))
     return SimpleNamespace(
         placer=SimpleNamespace(data_collections=data_collections),
-        placedb=SimpleNamespace(cell_padding_x=cell_padding_x, num_movable_nodes=12),
+        placedb=SimpleNamespace(
+            cell_padding_x=cell_padding_x,
+            num_movable_nodes=12,
+            origin_site_width=origin_site_width,
+        ),
     )
 
 
@@ -182,16 +186,16 @@ def test_runtime_report_preserves_consumed_cell_padding_after_restore(tmp_path):
     _write_parameter_runtime_report(
         SimpleNamespace(directory=tmp_path),
         SimpleNamespace(cell_padding_x=0),
-        engine=_engine(target_density=0.8, cell_padding_x=200),
+        engine=_engine(target_density=0.8, cell_padding_x=2, origin_site_width=200),
         ppa={"iteration": 3},
         engine_succeeded=True,
     )
 
     report = json.loads((analysis / "parameter_runtime_report.v1.json").read_text())
-    assert report["effective_initial"] == {"unit": "dbu", "value": 200}
+    assert report["effective_initial"] == {"unit": "dbu", "value": 400}
     assert report["activation"]["status"] == "used"
     assert report["consumer_observation"] == {
-        "effective_padding_dbu": 200,
+        "effective_padding_dbu": 400,
         "evidence_complete": True,
         "movable_node_count": 12,
         "placement_iteration_count": 3,
