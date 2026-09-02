@@ -379,6 +379,22 @@ def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
     assert is_eda_exist() is False
 
 
+def test_sizer_command_resolves_from_runtime_root_without_path(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer.utility import get_sizer_command, is_eda_exist
+
+    runtime_root = _sizer_runtime(tmp_path)
+    sizer = runtime_root / "bin" / "Sizer"
+    sizer.parent.mkdir(parents=True)
+    sizer.write_text("#!/bin/sh\n", encoding="utf-8")
+    sizer.chmod(0o755)
+
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+
+    assert get_sizer_command() == [str(sizer.resolve())]
+    assert is_eda_exist() is True
+
+
 def test_sizer_runtime_root_resolves_from_path_binary(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_sizer.utility import find_sizer_root, get_sizer_root
 

@@ -46,8 +46,28 @@ def get_sizer_root() -> Path | None:
 
 
 def get_sizer_command() -> list[str]:
+    candidates: list[Path] = []
+    override = os.environ.get("CHIPCOMPILER_ECC_SIZER_ROOT", "").strip()
+    if override:
+        root = Path(override).expanduser()
+        candidates.extend(
+            root / relative
+            for relative in (
+                Path("bin") / "Sizer",
+                Path("build") / "src" / "Sizer",
+                Path("build") / "Sizer",
+                Path("Sizer"),
+            )
+        )
+
     sizer = shutil.which("Sizer")
-    return [str(Path(sizer).resolve())] if sizer else []
+    if sizer:
+        candidates.append(Path(sizer))
+
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return [str(candidate.resolve())]
+    return []
 
 
 def is_eda_exist() -> bool:
