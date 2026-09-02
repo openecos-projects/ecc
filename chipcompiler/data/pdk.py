@@ -287,7 +287,7 @@ def get_pdk(
 
 def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
     root = Path(__file__).resolve().parents[2]
-    default_pdk_root = root / "chipcompiler" / "thirdparty" / "icsprout55-pdk"
+    default_pdk_root = root.parent / "pdk" / "icsprout55-pdk"
 
     # Resolve: explicit arg > env vars > default
     root_text = (
