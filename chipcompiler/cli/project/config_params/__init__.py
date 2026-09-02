@@ -1,5 +1,4 @@
 from .cts import SCHEMAS as CTS_SCHEMAS
-from .db import SCHEMAS as DB_SCHEMAS
 from .dreamplace import SCHEMAS as DREAMPLACE_SCHEMAS
 from .filler import SCHEMAS as FILLER_SCHEMAS
 from .floorplan import SCHEMAS as FLOORPLAN_SCHEMAS
@@ -9,7 +8,6 @@ from .route import SCHEMAS as ROUTE_SCHEMAS
 from .sta import SCHEMAS as STA_SCHEMAS
 
 CONFIG_PARAM_SCHEMAS = (
-    *DB_SCHEMAS,
     *CTS_SCHEMAS,
     *FLOORPLAN_SCHEMAS,
     *DREAMPLACE_SCHEMAS,

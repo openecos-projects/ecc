@@ -3,17 +3,19 @@ from pathlib import Path
 
 from . import CONFIG_PARAM_SCHEMAS
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
+_PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 TEMPLATES = {
-    "db": _REPO_ROOT / "chipcompiler/tools/ecc/configs/db_ecc.json",
-    "CTS": _REPO_ROOT / "chipcompiler/tools/ecc/configs/cts_ecc.json",
-    "Floorplan": _REPO_ROOT / "chipcompiler/tools/ecc/configs/floorplan_ecc.json",
-    "dreamplace": _REPO_ROOT / "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json",
-    "route": _REPO_ROOT / "chipcompiler/tools/ecc/configs/route_ecc.json",
-    "filler": _REPO_ROOT / "chipcompiler/tools/ecc/configs/filler_ecc.json",
-    "RCX": _REPO_ROOT / "chipcompiler/tools/ecc/configs/rcx_ecc.json",
-    "sta": _REPO_ROOT / "chipcompiler/tools/ecc/configs/sta_ecc.json",
+    "db": _PACKAGE_ROOT / "tools/ecc/configs/db_ecc.json",
+    "CTS": _PACKAGE_ROOT / "tools/ecc/configs/cts_ecc.json",
+    "Floorplan": _PACKAGE_ROOT / "tools/ecc/configs/floorplan_ecc.json",
+    "dreamplace": _PACKAGE_ROOT / "tools/ecc_dreamplace/configs/dreamplace_ecc.json",
+    "route": _PACKAGE_ROOT / "tools/ecc/configs/route_ecc.json",
+    "filler": _PACKAGE_ROOT / "tools/ecc/configs/filler_ecc.json",
+    "RCX": _PACKAGE_ROOT / "tools/ecc/configs/rcx_ecc.json",
+    "sta": _PACKAGE_ROOT / "tools/ecc/configs/sta_ecc.json",
 }
+# drc_ecc.json is empty today; add it here once it grows static fields so the
+# coverage test starts pinning them.
 
 LEGACY_FIELDS = {
     "db": {("LayerSettings", "routing_layer_1st")},

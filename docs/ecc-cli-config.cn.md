@@ -107,7 +107,7 @@ ecc param list --step cts
 ecc param list --step floorplan
 ecc param list --all
 ecc param set cts.skew_bound 0.05
-ecc param set floorplan.die_builder.margin.left_micron 4.0
+ecc param set floorplan.phy_placer.well_tap.distance_micron 30.0
 ecc param set cts.routing_layer '[4, 5]'
 ecc run --set place.num_threads=12
 ```
@@ -115,12 +115,14 @@ ecc run --set place.num_threads=12
 标量按 schema 类型解析；列表和对象值使用 JSON 字面量，数组整体替换。持久化值写入嵌套 TOML 表，例如：
 
 ```toml
-[params.floorplan.die_builder.margin]
-left_micron = 4.0
+[params.floorplan.phy_placer.well_tap]
+distance_micron = 30.0
 
 [pdk.overrides]
 tech = "prtech/techLEF/N551P6M_ecos.lef"
 ```
+
+`die_builder` 的 `die_util`/`margin` 等旧字段不在此列，仍通过 §1.1 的语义参数（`floorplan.core_util`、`floorplan.core_margin`、`floorplan.aspect_ratio`）设置。
 
 允许的 PDK 内容路径为 `pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef`；它们复用 PDK 的相对路径解析和文件存在校验。`pdk.root` 仍使用 `ecc pdk set-root`。workspace 内置路径（DB 的 DEF/网表/输出、DreamPlace 的输入/结果目录、步骤临时目录和 STA 多 corner liberty 结构）均不提供 CLI 参数。
 
