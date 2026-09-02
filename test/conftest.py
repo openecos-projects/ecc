@@ -22,7 +22,7 @@ FILELIST_INTEGRATION_PREFIX = "test/data/test_workspace_filelist.py::TestCreateW
 PDK_REQUIRED_TESTS = {
     f"{FILELIST_INTEGRATION_PREFIX}::test_workspace_with_filelist": "",
     f"{FILELIST_INTEGRATION_PREFIX}::test_workspace_with_nested_filelist": "",
-    "test/integration/test_harden_flow.py::test_ics55_gcd": "../icsprout55-pdk",
+    "test/integration/test_harden_flow.py::test_ics55_gcd": "../pdk/icsprout55-pdk",
     "test/integration/test_rcx_flow.py::test_ics55_gcd": "",
     "test/integration/test_rtl2gds_flow.py::test_ics55_gcd": "",
 }

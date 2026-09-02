@@ -60,11 +60,10 @@ def _resolve_root_source(cfg, project_dir: str) -> tuple[str, str]:
         value = os.environ.get(var, "").strip()
         if value and os.path.isdir(os.path.abspath(value)):
             return os.path.abspath(value), var
-    return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "thirdparty",
-        "icsprout55-pdk",
-    ), "repo-default"
+    repo_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
+    return os.path.join(os.path.dirname(repo_root), "pdk", "icsprout55-pdk"), "repo-default"
 
 
 def set_root(command_input, ctx: CommandContext) -> CommandResult:

@@ -436,7 +436,8 @@ Resolution priority for `get_pdk("ics55")` in `chipcompiler/data/pdk.py`:
 1. Explicit `pdk_root` argument.
 2. `CHIPCOMPILER_ICS55_PDK_ROOT` environment variable.
 3. Legacy `ICS55_PDK_ROOT` environment variable.
-4. In-repo default: `chipcompiler/thirdparty/icsprout55-pdk`.
+4. Default: `../pdk/icsprout55-pdk` next to the ecc checkout (the ecos-studio
+   workspace location).
 
 Backend supports `POST /api/workspace/set_pdk_root` to set runtime path.
 Workspace creation persists the resolved root in `home/params.toml` as `pdk_root`.
