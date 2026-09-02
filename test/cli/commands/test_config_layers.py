@@ -51,7 +51,7 @@ class TestDivergenceProjectionFields:
             '[design]\nname = "other"\ntop = "gcd"\n'
             'rtl = ["rtl/other.v"]\nclock_port = "clk"\nfrequency_mhz = 250.0\n'
             '\n[pdk]\nname = "ics55"\nroot = "{ROOT}"\n'
-            '\n[flow]\npreset = "rtl2gds"\n\n[params.synth]\nmax_fanout = 32\n',
+            '\n[flow]\npreset = "rtl2gds"\n\n[params.cts]\nmax_fanout = 32\n',
             patch={"max_fanout": {"from": 20, "to": 24}},
         )
         (project_dir / "rtl" / "other.v").write_text("module other; endmodule\n")
@@ -232,7 +232,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 0},
-            entry_range=("Synth", "Filler"),
+            entry_range=("Synth", "PostRouteLEC"),
         )
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
@@ -250,7 +250,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 0},
-            entry_range=("Synth", "Filler"),
+            entry_range=("Synth", "PostRouteLEC"),
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
@@ -305,7 +305,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 100},
-            entry_range=("Synth", "Filler"),
+            entry_range=("Synth", "PostRouteLEC"),
         )
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
@@ -321,7 +321,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 100},
-            entry_range=("Synth", "Filler"),
+            entry_range=("Synth", "PostRouteLEC"),
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
@@ -338,7 +338,7 @@ class TestOrderedRtlDivergence:
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        entry["start_step"], entry["end_step"] = "Synth", "Filler"
+        entry["start_step"], entry["end_step"] = "Synth", "PostRouteLEC"
         manifest_stubs.write(
             project_dir,
             [entry],
@@ -507,7 +507,7 @@ class TestSetDivergence:
         )
 
         rc = cli_main.run(
-            ["run", "--project", str(project_dir), "--set", "synth.max_fanout=32", "--json"]
+            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=32", "--json"]
         )
 
         assert rc == 0
@@ -539,7 +539,7 @@ class TestSetDivergence:
         )
 
         rc = cli_main.run(
-            ["run", "--project", str(project_dir), "--set", "synth.max_fanout=20", "--json"]
+            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=20", "--json"]
         )
 
         assert rc == 0

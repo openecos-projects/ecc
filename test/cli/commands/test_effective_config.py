@@ -324,7 +324,7 @@ class TestEffectiveConfigValidation:
         # The entry declares the same range rtl2gds maps to, isolating the
         # path-spelling comparison.
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        entry["start_step"], entry["end_step"] = "Synth", "Filler"
+        entry["start_step"], entry["end_step"] = "Synth", "PostRouteLEC"
         manifest_stubs.write(project_dir, [entry])
         (project_dir / "ecc.toml").write_text(
             '[design]\nname = "gcd"\ntop = "gcd"\n'
@@ -658,7 +658,7 @@ class TestManifestFlatGeometryValidation:
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
-        assert "project.json: value 'abc' is not numeric for synth.max_fanout" in reasons
+        assert "project.json: value 'abc' is not numeric for cts.max_fanout" in reasons
 
     def test_check_accepts_valid_gui_flat_geometry(
         self, tmp_path, capsys, monkeypatch, manifest_stubs

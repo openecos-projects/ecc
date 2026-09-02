@@ -283,7 +283,7 @@ def test_resolved_base_parameters_gui_flat_vocabulary():
         design_top="gcd",
         design_clock_port="clk",
         design_frequency_mhz=200.0,
-        params_overrides={"floorplan.core_util": 0.45, "synth.max_fanout": 16},
+        params_overrides={"floorplan.core_util": 0.45, "cts.max_fanout": 16},
     )
 
     parameters = resolved_base_parameters(cfg)

@@ -11,14 +11,15 @@ from chipcompiler.engine.reconcile import (
 RTL2GDS_STEPS = [
     ("Synthesis", "yosys"),
     ("Floorplan", "ecc"),
-    ("fixFanout", "ecc"),
     ("place", "dreamplace"),
     ("CTS", "ecc"),
     ("legalization", "dreamplace"),
+    ("Timing optimization", "sizer"),
     ("route", "ecc"),
     ("drc", "ecc"),
     ("lvs", "ecc"),
     ("filler", "ecc"),
+    ("postRouteLec", "yosys_lec"),
 ]
 RCX_SUFFIX = [("RCX", "ecc"), ("sta", "ecc")]
 
@@ -98,7 +99,7 @@ class TestReconcile:
         assert _flow_section(workspace_dir) == {"preset": "rcx"}
 
     def test_extension_resumes_from_first_non_success(self, tmp_path):
-        states = ["Success"] * 9 + ["Ongoing"]
+        states = ["Success"] * 10 + ["Ongoing"]
         workspace_dir = _write_workspace(
             tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
         )
@@ -118,7 +119,7 @@ class TestReconcile:
         assert result.outcome == "no_op"
 
     def test_equal_with_non_success_is_resume(self, tmp_path):
-        states = ["Success"] * 9 + ["Imcomplete"]
+        states = ["Success"] * 10 + ["Imcomplete"]
         workspace_dir = _write_workspace(
             tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
         )
@@ -145,7 +146,7 @@ class TestReconcile:
     def test_target_prefix_noop_even_with_unfinished_extras(self, tmp_path):
         # Extra steps beyond the target are never the run's business, and
         # the workspace's [flow] is never widened to cover them.
-        states = ["Success"] * 10 + ["Unstart", "Unstart"]
+        states = ["Success"] * 11 + ["Unstart", "Unstart"]
         workspace_dir = _write_workspace(
             tmp_path,
             RTL2GDS_STEPS + RCX_SUFFIX,
@@ -163,7 +164,7 @@ class TestReconcile:
 
     def test_crash_window_repair_then_resume(self, tmp_path):
         # flow.json appended (suffix Unstart) but [flow] never adopted.
-        states = ["Success"] * 10 + ["Unstart", "Unstart"]
+        states = ["Success"] * 11 + ["Unstart", "Unstart"]
         workspace_dir = _write_workspace(
             tmp_path,
             RTL2GDS_STEPS + RCX_SUFFIX,
@@ -213,7 +214,7 @@ class TestReconcile:
         # Absent [flow] derives from the persisted ledger at load; the
         # derived range matches the persisted flow, so the run no-ops.
         assert result.outcome == "no_op"
-        assert _flow_section(workspace_dir) == {"start": "Synthesis", "end": "filler"}
+        assert _flow_section(workspace_dir) == {"start": "Synthesis", "end": "postRouteLec"}
 
     def test_unknown_persisted_steps_are_a_mismatch_not_a_crash(self, tmp_path):
         workspace_dir = _write_workspace(

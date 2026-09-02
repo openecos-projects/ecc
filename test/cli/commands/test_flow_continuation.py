@@ -50,14 +50,15 @@ def _set_flow_preset(project_dir, preset):
 RTL2GDS_NAMES = [
     "Synthesis",
     "Floorplan",
-    "fixFanout",
     "place",
     "CTS",
     "legalization",
+    "Timing optimization",
     "route",
     "drc",
     "lvs",
     "filler",
+    "postRouteLec",
 ]
 
 
@@ -178,9 +179,7 @@ class TestFlowContinuation:
         _write_existing_workspace(run_dir, RTL2GDS_NAMES)
         flow_before = Path(run_dir, "home", "flow.json").read_bytes()
 
-        rc = cli_main.run(
-            ["run", "--project", project_dir, "--set", "synth.max_fanout=16", "--json"]
-        )
+        rc = cli_main.run(["run", "--project", project_dir, "--set", "cts.max_fanout=16", "--json"])
 
         assert rc != 0
         record, hint = _records(capsys)
@@ -204,7 +203,7 @@ class TestFlowContinuation:
         )
         os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
-            f.write("\n[params.synth]\nmax_fanout = 16\n")
+            f.write("\n[params.cts]\nmax_fanout = 16\n")
         run_dir = os.path.join(project_dir, "runs", "default")
         _write_existing_workspace(run_dir, RTL2GDS_NAMES)
 
@@ -589,7 +588,15 @@ class TestWorkspaceRunLockAndTargetBound:
         rc = cli_main.run(["run", "--workspace", run_dir, "--json"])
 
         assert rc == 0
-        assert captured["through"] == "filler"
+        assert captured["through"] == "postRouteLec"
         # Synthesis..place are Success; the bounded selection starts at CTS
         # and never reaches RCX/sta beyond the target end.
-        assert captured["executable"] == {"CTS", "legalization", "route", "drc", "lvs", "filler"}
+        assert captured["executable"] == {
+            "legalization",
+            "Timing optimization",
+            "route",
+            "drc",
+            "lvs",
+            "filler",
+            "postRouteLec",
+        }

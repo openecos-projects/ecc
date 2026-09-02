@@ -211,9 +211,10 @@ def test_canonical_chain_and_preset_ranges():
     assert chain[-1] == "Harden"
     assert "RCX" in chain and "sta" in chain
 
-    assert flow_range_for_preset("rtl2gds") == ("Synthesis", "filler")
+    assert flow_range_for_preset("rtl2gds") == ("Synthesis", "postRouteLec")
     assert flow_range_for_preset("rcx") == ("Synthesis", "sta")
     assert flow_range_for_preset("harden") == ("Synthesis", "Harden")
+    assert flow_range_for_preset("synthesis_lec") == ("Synthesis", "lec")
 
 
 def test_flow_range_of_section_forms():

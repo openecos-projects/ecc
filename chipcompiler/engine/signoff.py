@@ -875,9 +875,21 @@ class SignoffPackageCollector:
         try:
             with open(path, encoding="utf-8") as file:
                 data = json.load(file)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             return {}
         return data if isinstance(data, dict) else {}
+
+    def _read_parameters(self, path: Path) -> dict:
+        """Read the workspace configuration's [params] section; {} when unreadable."""
+        import tomllib
+
+        try:
+            with open(path, "rb") as file:
+                data = tomllib.load(file)
+        except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+            return {}
+        params = data.get("params", {})
+        return params if isinstance(params, dict) else {}
 
     def _path_from_config(self, workspace_dir: Path, path_text: str) -> Path | None:
         if not path_text:

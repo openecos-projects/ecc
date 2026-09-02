@@ -530,42 +530,6 @@ def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     checklist.check()
 
 
-def run_net_opt(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """
-    run net optimization
-    """
-    reslut = False
-
-    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
-
-    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
-    if ecc_module is not None:
-        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-
-        clock_name = workspace.parameters.data.get("clock", "")
-        if clock_name:
-            ecc_module.set_net(net_name=clock_name, net_type="CLOCK")
-            sub_flow.update_step(
-                step_name=EccSubFlowEnum.set_clock_net.value, state=StateEnum.Success
-            )
-
-        ecc_module.run_net_opt(config=workspace.config.get(f"{StepEnum.NETLIST_OPT.value}"))
-
-        sub_flow.update_step(
-            step_name=EccSubFlowEnum.run_net_optimization.value, state=StateEnum.Success
-        )
-
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
-
-        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
-
-    return reslut
-
-
 def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None) -> bool:
     """
     run CTS

@@ -306,7 +306,7 @@ class TestLegacyHintBoundary:
         project_dir = create_cli_project(pdk_root=pdk_root)
         os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
-            f.write("\n[params.synth]\nmax_fanout = 0\n")
+            f.write("\n[params.cts]\nmax_fanout = 0\n")
 
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
 
@@ -374,7 +374,7 @@ class TestParamManifestMode:
         project_dir = self._manifest_project(manifest_stubs, tmp_path)
 
         rc = cli_main.run(
-            ["param", "set", "synth.max_fanout", "16", "--project", str(project_dir), "--json"]
+            ["param", "set", "cts.max_fanout", "16", "--project", str(project_dir), "--json"]
         )
 
         assert rc != 0

@@ -36,10 +36,10 @@ def _workspace(tmp_path: Path, *, use_undef: bool = True) -> Workspace:
         pdk=PDK(name="ics55", libs=[lib]),
         parameters=Parameters(
             data={
-                "Design": "gcd",
-                "Top module": "gcd",
-                "Frequency max [MHz]": 100,
-                "LEC": {"use_undef": use_undef},
+                "design": "gcd",
+                "top_module": "gcd",
+                "frequency_max": 100,
+                "lec": {"use_undef": use_undef},
             }
         ),
         home=HomeData(),

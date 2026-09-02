@@ -63,6 +63,8 @@ def test_flow_has_step_uses_cached_data_and_path(tmp_path):
     loaded = Flow(path=path)
     assert loaded.has_step(StepEnum.FLOORPLAN)
     assert not loaded.has_step(StepEnum.SYNTHESIS)
+
+
 def _read_parameters(path):
     """Read a workspace config (home/ecc.toml) as a flat parameter dict."""
     from chipcompiler.data.parameter import load_parameter
@@ -184,6 +186,7 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "place",
         "CTS",
         "legalization",
+        "Timing optimization",
         "route",
         "drc",
     ]
@@ -191,6 +194,7 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "dreamplace",
         "ecc",
         "dreamplace",
+        "sizer",
         "ecc",
         "ecc",
     ]
@@ -226,7 +230,6 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
     assert [step["name"] for step in flow_data["steps"]] == [
         "Synthesis",
         "Floorplan",
-        "fixFanout",
         "place",
         "CTS",
     ]
@@ -897,10 +900,8 @@ def test_sync_workspace_config_to_parameters_propagates_cts_max_fanout(
     from chipcompiler.data.parameter import load_parameter
 
     parameters = load_parameter(workspace_dir / "home" / "ecc.toml")
-    fixfanout = json_read(workspace.config[StepEnum.NETLIST_OPT.value])
     cts = json_read(cts_path)
     assert parameters.data["max_fanout"] == 48
-    assert fixfanout["max_fanout"] == 48
     assert cts["max_fanout"] == 48
 
 
@@ -979,7 +980,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     )
 
     parameters_before = _read_parameters(workspace_dir / "home" / "ecc.toml")
-    config_before = (workspace_dir / "config" / "flow_ecc.json").read_text()
+    config_before = (workspace_dir / "config" / "filler_ecc.json").read_text()
     origin_before = (workspace_dir / "origin" / "gcd.v").read_text()
 
     step_dir = workspace_dir / "floorplan_ecc"

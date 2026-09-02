@@ -240,7 +240,7 @@ class TestMigrate:
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
         with open(f"{project_dir}/ecc.toml", "a") as f:
-            f.write('\n[params.synth]\nmax_fanout = "loud"\n')
+            f.write('\n[params.cts]\nmax_fanout = "loud"\n')
 
         rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
 

@@ -465,10 +465,10 @@ class TestWorkspaceNoOp:
         ]
         steps = [
             {"name": name, "tool": tool, "state": "Success"}
-            for name, tool in chain[:10]  # full rtl2gds prefix
+            for name, tool in chain[:11]  # the full rtl2gds target
         ] + [
-            {"name": chain[10][0], "tool": chain[10][1], "state": "Unstart"},
             {"name": chain[11][0], "tool": chain[11][1], "state": "Unstart"},
+            {"name": chain[12][0], "tool": chain[12][1], "state": "Unstart"},
         ]
         (home / "flow.json").write_text(_json.dumps({"steps": steps}))
         assert save_workspace_config(

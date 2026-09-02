@@ -32,24 +32,27 @@ MANIFEST_FILENAME = "project.json"
 MANIFEST_FLOW_STEPS = (
     "Synth",
     "Floor",
-    "Fanout",
     "Place",
     "CTS",
     "Legal",
+    "TimingOpt",
     "Route",
     "DRC",
     "LVS",
     "Filler",
+    "PostRouteLEC",
     "RCX",
     "STA",
     "Harden",
+    "LEC",
 )
 
 PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
-    "rtl2gds": ("Synth", "Filler"),
+    "rtl2gds": ("Synth", "PostRouteLEC"),
     "rcx": ("Synth", "STA"),
     "harden": ("Synth", "Harden"),
+    "synthesis_lec": ("Synth", "LEC"),
 }
 
 _WORKSPACE_STATUSES = frozenset(

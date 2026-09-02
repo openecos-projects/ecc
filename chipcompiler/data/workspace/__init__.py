@@ -206,6 +206,11 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
     }
 
 
+@deprecated(
+    "legacy parameters.json -> ecc.toml migration; slated for removal once "
+    "legacy workspaces are phased out",
+    category=None,
+)
 def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
     """Rename legacy workspace configs before resolving their canonical paths."""
     config_dir = Path(workspace_dir) / "config"
@@ -341,11 +346,15 @@ def _normalize_flow_step_name(value) -> str:
         "cts": StepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
         "legalization": StepEnum.LEGALIZATION.value,
+        "timingopt": StepEnum.TIMING_OPT.value,
+        "timingoptimization": StepEnum.TIMING_OPT.value,
         "route": StepEnum.ROUTING.value,
         "routing": StepEnum.ROUTING.value,
         "drc": StepEnum.DRC.value,
         "lvs": StepEnum.LVS.value,
         "filler": StepEnum.FILLER.value,
+        "lec": StepEnum.LEC.value,
+        "postroutelec": StepEnum.POST_ROUTE_LEC.value,
         "rcx": StepEnum.RCX.value,
         "sta": StepEnum.STA.value,
         "harden": StepEnum.HARDEN.value,
@@ -388,11 +397,6 @@ def _flag_to_int(value: Any) -> int:
 
 
 PARAMETER_CONFIG_FIELD_MAPPINGS = (
-    WorkspaceConfigParameterMapping(
-        "max_fanout",
-        StepEnum.NETLIST_OPT.value,
-        ("max_fanout",),
-    ),
     WorkspaceConfigParameterMapping(
         "max_fanout",
         StepEnum.CTS.value,
@@ -721,16 +725,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     if not json_write(workspace.config["db"], db):
         raise OSError(f"Failed to write DB config: {workspace.config['db']}")
 
-    fixfanout = json_read(workspace.config[f"{StepEnum.NETLIST_OPT.value}"])
-    if not fixfanout:
-        raise FileNotFoundError(
-            f"Netlist opt config missing or corrupt: "
-            f"{workspace.config[f'{StepEnum.NETLIST_OPT.value}']}"
-        )
     max_fanout = workspace.parameters.data.get("max_fanout", 32)
-    fixfanout["insert_buffer"] = workspace.pdk.buffers[0] if len(workspace.pdk.buffers) > 0 else ""
-    fixfanout["max_fanout"] = max_fanout
-    json_write(workspace.config[f"{StepEnum.NETLIST_OPT.value}"], fixfanout)
 
     filler_path = workspace.config[f"{StepEnum.FILLER.value}"]
     filler = json_read(filler_path)

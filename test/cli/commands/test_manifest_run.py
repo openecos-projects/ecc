@@ -33,7 +33,7 @@ class TestVirginFirstRun:
         assert entry["workspace_id"] == "default"
         assert entry["workspace_path"] == run_dir
         assert entry["start_step"] == "Synth"
-        assert entry["end_step"] == "Filler"
+        assert entry["end_step"] == "PostRouteLEC"
         # The DummyFlow run succeeds, so the D4 write-back finalizes the
         # initial "running" status.
         assert entry["status"] == "success"
@@ -60,9 +60,7 @@ class TestVirginFirstRun:
     ):
         project_dir = create_cli_project()
 
-        rc = cli_main.run(
-            ["run", "--project", project_dir, "--set", "synth.max_fanout=16", "--json"]
-        )
+        rc = cli_main.run(["run", "--project", project_dir, "--set", "cts.max_fanout=16", "--json"])
 
         assert rc == 0
         manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
