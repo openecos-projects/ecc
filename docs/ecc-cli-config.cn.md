@@ -2,7 +2,7 @@
 
 本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
 
-- 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)；从零上手 → [入门教程](ecc-cli_tutorial.cn.md)
+- 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)；从零上手 → [入门教程](ecc-cli-tutorial.cn.md)
 - 配置查看命令：`ecc config <step> --resolved`（列出该步骤实际生效的配置文件）
 
 ## 0. 配置体系总览
@@ -40,7 +40,7 @@ runs/<run-id>/
 
 ```mermaid
 graph LR
-    A["ecc.toml [params]<br/>/ ecc run --set"] -->|"13 个注册参数<br/>(cli/project/params.py)"| B["home/parameters.json<br/>(legacy 参数键)"]
+    A["ecc.toml [params]<br/>/ ecc run --set"] -->|"旧语义参数 + 每步骤直配 schema"| B["home/parameters.json<br/>(legacy 参数键 + Config Overrides)"]
     C["PDK 描述<br/>(data/pdk.py)"] -->|"buffers / tap / endcap<br/>site / liberty corners"| B
     B -->|"参数→字段映射<br/>PARAMETER_CONFIG_FIELD_MAPPINGS"| D["config/*.json"]
     E["模板 tools/ecc/configs/*.json"] -->|复制缺省文件| D
@@ -50,11 +50,11 @@ graph LR
 | 来源 | 决定的内容 | 举例 |
 |---|---|---|
 | 模板默认值 | 算法类参数的出厂值 | CTS `skew_bound=0.08` |
-| 用户参数 | 可调参数（§1 的 13 个） | `floorplan.core_util` → `die_util.utilization` |
+| 用户参数 | 旧语义参数 + 全部已审核静态工具字段 | `floorplan.core_util` → `die_util.utilization`；`cts.skew_bound` → CTS JSON |
 | PDK | 工艺相关单元与库 | `buffer_type` ← PDK buffers 列表；STA liberty corners |
 | 步骤调度 | 输入/输出路径（链式传递） | `db_ecc.json` 的 `def_path` 每步指向上一步输出 |
 
-> ⚠️ **不要直接手改 `config/*.json`**：其中参数化字段在每次步骤运行前会按 `parameters.json` + PDK 重新刷新，手改会被覆盖。正确的修改入口是 `ecc param set`（或 `ecc.toml [params]`、`ecc run --set`）；DreamPlace 的高级参数可通过 `parameters.json` 的 `DreamPlace` 组覆盖（见 §1.2）。
+> ⚠️ **不要直接手改 `config/*.json`**：其中参数化字段在每次步骤运行前会按 `parameters.json` + PDK 重新刷新，手改会被覆盖。正确入口是 `ecc param set`、`ecc.toml [params.*]` 或一次性 `ecc run --set`。workspace 的输入、输出、临时和生成文件路径不会作为 CLI 参数暴露；PDK 内容路径使用 `pdk.*` 参数（见 §1.2）。
 
 ### 0.3 每个步骤用到哪些配置
 
@@ -78,9 +78,9 @@ graph LR
 
 ## 1. 参数传递链（用户可调参数）
 
-### 1.1 CLI 注册参数（13 个）
+### 1.1 旧语义参数（13 个）
 
-来源：[chipcompiler/cli/project/params.py](../chipcompiler/cli/project/params.py) 的 `PARAM_REGISTRY`。优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
+来源：[chipcompiler/cli/project/params.py](../chipcompiler/cli/project/params.py) 的 `PARAM_REGISTRY`。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
 
 | 参数 | 类型 / 范围 | 默认 | 写入位置（config 字段） | 含义 |
 |---|---|---|---|---|
@@ -98,13 +98,35 @@ graph LR
 | `route.top_layer` | MET2–MET6 | MET5 | route `RT.-top_routing_layer` | 绕线最高层 |
 | `sta.max_paths` | int [1, 100000] | 1000 | STA 引擎参数（不落 JSON，运行时传入） | 每份 STA 时序报告的最大路径数 |
 
-### 1.2 DreamPlace 高级覆盖组
+### 1.2 每步骤直配 schema 与 PDK 路径
 
-`parameters.json` 中名为 `DreamPlace` 的字典会整体覆盖 `dreamplace_ecc.json` 的同名字段（`apply_parameter_overrides`），可用来调 §5 表中任意 DreamPlace 参数；`Core`/`Die` 组同理可覆盖面积参数。`ecc param` 不直接管理这两组，属引擎级入口（GUI / Python API / 手改 parameters.json）。
+`chipcompiler/cli/project/config_params/` 为每个配置 owner 保留一个人工审核的 Python schema 文件。所有静态工具字段均可由 `ecc param` 修改；默认 `ecc param list` 只保留旧参数和已覆盖字段，使用以下命令检查完整字段、类型和 JSON 目标：
+
+```bash
+ecc param list --step cts
+ecc param list --step floorplan
+ecc param list --all
+ecc param set cts.skew_bound 0.05
+ecc param set floorplan.die_builder.margin.left_micron 4.0
+ecc param set cts.routing_layer '[4, 5]'
+ecc run --set place.num_threads=12
+```
+
+标量按 schema 类型解析；列表和对象值使用 JSON 字面量，数组整体替换。持久化值写入嵌套 TOML 表，例如：
+
+```toml
+[params.floorplan.die_builder.margin]
+left_micron = 4.0
+
+[pdk.overrides]
+tech = "prtech/techLEF/N551P6M_ecos.lef"
+```
+
+允许的 PDK 内容路径为 `pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef`；它们复用 PDK 的相对路径解析和文件存在校验。`pdk.root` 仍使用 `ecc pdk set-root`。workspace 内置路径（DB 的 DEF/网表/输出、DreamPlace 的输入/结果目录、步骤临时目录和 STA 多 corner liberty 结构）均不提供 CLI 参数。
 
 ### 1.3 参数中枢 parameters.json
 
-`home/parameters.json` 同时保存用户参数与 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率），签核包 `initial/parameters.json` 收集的就是它。用户参数键为 legacy 命名（`"Target density"`、`"Max fanout"`、`"Bottom layer"`……），与 §1.1 的映射关系见源码 `PARAMETER_CONFIG_FIELD_MAPPINGS`。
+`home/parameters.json` 同时保存用户参数、`Config Overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`Config Overrides` 是由 CLI 从审核 schema 生成的嵌套 JSON 补丁；每次 workspace 刷新都会在 PDK 和旧参数映射之后重新应用。用户参数键为 legacy 命名（`"Target density"`、`"Max fanout"`、`"Bottom layer"`……），与 §1.1 的映射关系见源码 `PARAMETER_CONFIG_FIELD_MAPPINGS`。
 
 ## 2. 公共配置：db_ecc.json
 
@@ -413,12 +435,15 @@ ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=
 ```bash
 ecc config floorplan --resolved          # 看 floorplan 实际用的配置文件列表
 ecc config --resolved --plain            # 项目级配置（ecc.toml 解析后）
-ecc param list / show KEY / diff         # 参数总览 / 单参数 / 与默认差异
+ecc param list --step cts                 # 查看 CTS 全部可调字段
+ecc param list --all                      # 查看完整审核 schema
+ecc param show KEY / diff                 # 单参数 / 与默认差异
 ecc param set place.target_density 0.55  # 改参数（写入 ecc.toml，下次 run 生效）
+ecc param set cts.skew_bound 0.05         # 直配 CTS JSON 字段
 ecc run --set place.target_density=0.55  # 只对本次 run 生效
 ```
 
-修改层级建议：**常规调优走 `ecc param`（13 个注册参数）→ 高级调优走 `parameters.json` 的 `DreamPlace`/`Core` 覆盖组 → 不要直接改 `config/*.json`**（会被刷新覆盖）。
+修改层级建议：**统一走 `ecc param`；用 `--step` / `--all` 发现字段；不要直接改 `parameters.json` 或 `config/*.json`**（刷新会覆盖手改）。
 
 ---
 

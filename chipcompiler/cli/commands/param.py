@@ -39,6 +39,8 @@ def _finish_param(
 def list_cmd(
     *,
     project: ProjectOption = None,
+    step: Annotated[str | None, typer.Option("--step")] = None,
+    all_params: Annotated[bool, typer.Option("--all")] = False,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
@@ -46,6 +48,8 @@ def list_cmd(
     command_input = ParamListInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
+        step=step,
+        all=all_params,
     )
     _finish_param("list", command_input, param_list_handler)
 

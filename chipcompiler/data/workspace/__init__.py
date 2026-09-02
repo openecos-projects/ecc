@@ -800,6 +800,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     _coerce_legacy_dreamplace_routability_flag(workspace, dreamplace)
     json_write(workspace.config["dreamplace"], dreamplace)
 
+    from .config_overrides import apply_config_overrides
+
+    apply_config_overrides(workspace.config, workspace.parameters.data)
+
 
 def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path) -> bool:
     """Sync managed fields from one workspace config file back into the workspace configuration."""

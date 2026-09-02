@@ -257,6 +257,8 @@ def execute_fresh_run(
     if cfg.params_overrides or cli_overrides:
         from chipcompiler.cli.project.params import (
             build_backend_overrides,
+            build_config_overrides,
+            build_pdk_overrides,
             resolve_parameters,
         )
 
@@ -265,6 +267,12 @@ def execute_fresh_run(
             cli_overrides=cli_overrides,
         )
         update_parameters(build_backend_overrides(resolved), parameters)
+        config_overrides = build_config_overrides(resolved)
+        if config_overrides:
+            update_parameters({"Config Overrides": config_overrides}, parameters)
+        pdk_cli_overrides = build_pdk_overrides(resolved)
+    else:
+        pdk_cli_overrides = {}
 
     from chipcompiler.cli.project import migrate_fs
     from chipcompiler.engine.reconcile import _workspace_lock
@@ -291,7 +299,7 @@ def execute_fresh_run(
                     parameters=parameters,
                     input_filelist=input_filelist,
                     pdk_root=pdk_root,
-                    pdk_overrides=resolve_pdk_overrides(cfg),
+                    pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
                     flow_config=flow_config,
                 )
             except Exception as exc:

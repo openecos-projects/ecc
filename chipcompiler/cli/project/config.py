@@ -340,7 +340,9 @@ def _resolve_pdk_root(cfg: ProjectConfig) -> str:
     return _resolve_path(cfg.project_dir, cfg.pdk_root)
 
 
-def resolve_pdk_overrides(cfg: ProjectConfig) -> dict[str, object]:
+def resolve_pdk_overrides(
+    cfg: ProjectConfig, additional_overrides: dict[str, object] | None = None
+) -> dict[str, object]:
     """Return pdk_overrides with path-field values resolved to absolute paths.
 
     PDK-content paths (PDK_CONTENT_PATH_FIELDS) resolve against the PDK root;
@@ -350,6 +352,8 @@ def resolve_pdk_overrides(cfg: ProjectConfig) -> dict[str, object]:
     from chipcompiler.data.pdk import PATH_LIST_FIELDS, PATH_SCALAR_FIELDS, PDK_CONTENT_PATH_FIELDS
 
     resolved = dict(cfg.pdk_overrides)
+    if additional_overrides:
+        resolved.update(additional_overrides)
     pdk_root = _resolve_pdk_root(cfg)
     for key, value in resolved.items():
         base = pdk_root if key in PDK_CONTENT_PATH_FIELDS else cfg.project_dir

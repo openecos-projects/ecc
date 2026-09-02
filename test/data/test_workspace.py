@@ -921,6 +921,44 @@ def test_refresh_workspace_config_preserves_nested_dreamplace_override_precedenc
     assert dreamplace["routability_opt_flag"] == 0
 
 
+def test_refresh_workspace_config_reapplies_direct_config_overrides(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={
+            **default_ics55_parameters,
+            "Config Overrides": {
+                "CTS": {"skew_bound": "0.05"},
+                "dreamplace": {"num_threads": 12},
+            },
+        },
+        pdk_root=str(pdk_root),
+    )
+
+    cts = json_read(workspace.config[StepEnum.CTS.value])
+    dreamplace = json_read(workspace.config["dreamplace"])
+    assert cts["skew_bound"] == "0.05"
+    assert dreamplace["num_threads"] == 12
+
+    cts["skew_bound"] = "0.20"
+    dreamplace["num_threads"] = 1
+    json_write(workspace.config[StepEnum.CTS.value], cts)
+    json_write(workspace.config["dreamplace"], dreamplace)
+
+    refresh_workspace_config(workspace)
+
+    assert json_read(workspace.config[StepEnum.CTS.value])["skew_bound"] == "0.05"
+    assert json_read(workspace.config["dreamplace"])["num_threads"] == 12
+
+
 def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

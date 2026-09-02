@@ -146,6 +146,8 @@ class SignoffReportInput:
 class ParamListInput:
     output: OutputOptions
     project: ProjectOptions
+    step: str | None = None
+    all: bool = False
 
 
 @dataclass(frozen=True)

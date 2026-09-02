@@ -441,9 +441,11 @@ $ ecc config floorplan --resolved  # step level
 ## 9. param — parameter management
 
 ```bash
-ecc param list                      # list all parameters (grouped, with source)
+ecc param list                      # concise list: legacy parameters and explicit direct overrides
+ecc param list --step cts           # list the reviewed schemas for one step
+ecc param list --all                # list the complete schema registry
 ecc param show KEY                  # show one parameter (value/default/source/type/range/mapping)
-ecc param set KEY VALUE             # write into [params.<group>] in ecc.toml (comments and formatting preserved)
+ecc param set KEY VALUE             # write into ecc.toml (comments and formatting preserved)
 ecc param unset KEY                 # remove the override, restoring the default
 ecc param diff                      # show only parameters that differ from their defaults
 ```
@@ -475,6 +477,12 @@ $ ecc param list
 $ ecc param set place.target_density 0.65
   set place.target_density = 0.65 (ecc.toml)
 
+$ ecc param set cts.skew_bound 0.05
+  set cts.skew_bound = 0.05 (ecc.toml)
+
+$ ecc param set pdk.tech prtech/techLEF/N551P6M_ecos.lef
+  set pdk.tech = prtech/techLEF/N551P6M_ecos.lef (ecc.toml)
+
 $ ecc param diff
   place.target_density           0.65 (was 0.2, ecc.toml)
 
@@ -502,9 +510,17 @@ rc=1
 ```toml
 [params.place]
 target_density = 0.65
+
+[params.floorplan.die_builder]
+mode = "die_size"
+
+[pdk.overrides]
+tech = "prtech/techLEF/N551P6M_ecos.lef"
 ```
 
-All registered parameters (13):
+The 13 legacy semantic parameters retain their names and behavior. Every reviewed static tool-template field is supplied by a per-step `config_params/*.py` schema. Use `ecc param list --step <step>` or `ecc param list --all` for the version-specific complete list and types. List and object values use JSON literals, for example `ecc param set cts.routing_layer '[4, 5]'`.
+
+Legacy semantic parameters:
 
 | Parameter | Type | Default | Constraint | Effective step |
 |---|---|---|---|---|
@@ -522,7 +538,7 @@ All registered parameters (13):
 | `route.top_layer` | str | MET5 | MET2–MET6 | routing |
 | `sta.max_paths` | int | 1000 | [1, 100000] | sta |
 
-Priority: CLI `--set` > `ecc.toml` `[params.*]` > defaults.
+Priority: CLI `--set` > `ecc.toml` `[params.*]` > template defaults. `pdk.*` path parameters write to `[pdk.overrides]` and retain the PDK's relative-path resolution and file validation.
 
 ## 10. pdk — PDK path configuration
 
@@ -550,7 +566,7 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
   check: ecc check
 ```
 
-The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the in-repo default. Content-level overrides via `[pdk.overrides]` remain ecc.toml-only.
+The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the in-repo default. Keep `pdk.root` on `ecc pdk set-root`; `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef` use `ecc param set KEY VALUE`, which writes `[pdk.overrides]`.
 
 ## 11. signoff — signoff package and design report
 

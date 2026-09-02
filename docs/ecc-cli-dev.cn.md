@@ -167,26 +167,26 @@ uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package
 
 ### 5.1 新增可调参数（param 体系）
 
-参数注册表在 `cli/project/params.py::PARAM_REGISTRY`（`cli/project/params.py`）。新增一项 `ParamSchema` 即可同时获得：`ecc param list/show/set/unset/diff` 支持、`ecc run --set key=value` 支持、`ecc.toml` 中 `[params.<group>]` 表的读写与校验：
+旧的语义参数仍在 `cli/project/params.py::_LEGACY_PARAM_REGISTRY`。工具 JSON 的直配字段按 owner 分别放在 `cli/project/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 只能拥有一种目标：旧的 `maps_to`、JSON `config_target` 或白名单 PDK `pdk_target`。
+
+已审核的静态模板字段使用 `config_param()` 声明：
 
 ```python
-ParamSchema(
-    param="place.target_density",        # 唯一键 = "<group>.<name>"
-    group="place",                       # 对应 ecc.toml 的 [params.place]
-    name="target_density",
-    type="float",                        # int/float/bool/str/list[int]/list[float]/list[str]
-    default=0.2,
-    applies="placement",                 # 生效的 flow step（展示用）
-    maps_to={"DreamPlace": "target_density"},  # 后端参数键：str=顶层键，dict=嵌套键
-    description="Target placement density",
-    range=(0.1, 0.95),                   # 可选：数值范围
-    choices=("MET2", ...),               # 可选：枚举
-    unit="MHz",                          # 可选：单位
-    example="0.65",                      # 可选：示例值
+# cli/project/config_params/cts.py
+config_param(
+    "cts.skew_bound",
+    "cts",
+    ("skew_bound",),
+    "0.08",
+    applies="cts",
 )
 ```
 
-`maps_to` 的展开规则见 `build_backend_overrides()`（`cli/project/params.py`）：非默认值会被翻译成后端 `parameters` 覆盖项，在 `run` 时经 `update_parameters` 合入。`ecc param set` 对 `ecc.toml` 的定点改写由 `_apply_scoped_param_edit()`（`cli/project/params.py`）用文本正则完成（保留注释与格式），新增参数无需为此写代码。注册表测试在 `test/cli/params/test_registry.py`。
+该声明会同时启用 `ecc param list/show/set/unset/diff`、重复的 `ecc run --set key=value`，以及嵌套 `[params.*]` TOML 的读写与校验。默认 `ecc param list` 保持简明；用 `--step <owner>` 或 `--all` 查看直配 schema。命令行列表和对象值使用 JSON 字面量。
+
+项目 run 创建时，非默认 `config_target` 会以结构化 `Config Overrides` 存入 `home/parameters.json`；每次刷新 workspace 配置后由 `data.workspace.config_overrides` 重放。PDK 路径 schema 在 `config_params/pdk.py`，写入 `[pdk.overrides]`；`pdk.root` 始终使用 `ecc pdk set-root`。不得将 workspace 的输入、输出、临时、生成产物或 STA 多 corner liberty 路径暴露为 CLI 参数。
+
+`config_params/coverage.py` 会把每个 JSON 模板字段与唯一一个直配 schema、旧映射或受保护路径清单比对。模板变化时必须同步更新该清单和 `test/cli/params/test_config_coverage.py`。解析和定点 TOML 编辑仍在 `params.py`，命令测试仍放在 `test/cli/params/`。
 
 ### 5.2 扩展 `ecc run`
 
@@ -222,7 +222,7 @@ ParamSchema(
 
 ```bash
 cd ecc
-.venv/bin/python -m PyInstaller ecc.spec --clean --noconfirm   # 产物 dist/ecc/（onedir，~1.8G；首跑会触发 dreamplace 的 cmake 安装，属正常）
+.venv/bin/python -m PyInstaller ecc.spec --clean --noconfirm   # 产物 dist/ecc/（onedir，~3.6G；首跑会触发 dreamplace 的 cmake 安装，属正常）
 
 # 安装到本机（ecc-cli-setup.sh 的默认安装位；~/.local/bin/ecc 软链与 ~/.ecc-env.sh 均无需改动）
 rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/

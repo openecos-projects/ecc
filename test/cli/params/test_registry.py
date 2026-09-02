@@ -5,6 +5,7 @@ from chipcompiler.cli.project.params import (
     ParamSchema,
     ResolvedParam,
     build_backend_overrides,
+    build_config_overrides,
     is_known_key,
     list_groups,
     lookup_schema,
@@ -46,19 +47,23 @@ class TestSchemaRegistry:
             "type",
             "default",
             "applies",
-            "maps_to",
             "description",
         )
         for schema in PARAM_REGISTRY:
             for field_name in required:
                 val = getattr(schema, field_name, None)
-                assert val is not None and val != "", (
-                    f"{schema.param} missing required field: {field_name}"
-                )
+                assert val is not None, f"{schema.param} missing required field: {field_name}"
+            assert (
+                schema.maps_to or schema.config_target is not None or schema.pdk_target is not None
+            )
 
     def test_optional_fields_present_when_relevant(self):
         for schema in PARAM_REGISTRY:
-            if schema.type in ("float", "int") and schema.choices is None:
+            if (
+                schema.config_target is None
+                and schema.type in ("float", "int")
+                and schema.choices is None
+            ):
                 assert schema.range is not None, (
                     f"{schema.param}: numeric param without range or choices should have range"
                 )
@@ -96,6 +101,13 @@ class TestSchemaRegistry:
     def test_lookup_schema_returns_none_for_unknown(self):
         assert lookup_schema("nonexistent.key") is None
 
+    def test_config_schema_has_direct_target(self):
+        schema = lookup_schema("cts.skew_bound")
+        assert schema is not None
+        assert schema.config_target is not None
+        assert schema.config_target.config_key == "CTS"
+        assert schema.config_target.json_path == ("skew_bound",)
+
     def test_list_groups_returns_ordered_groups(self):
         groups = list_groups()
         assert "design" in groups
@@ -117,6 +129,7 @@ class TestValueParsing:
             ("1.5,2.5", "list[float]", [1.5, 2.5]),
             ("1,2,3", "list[int]", [1, 2, 3]),
             ("a,b,c", "list[str]", ["a", "b", "c"]),
+            ('["MET3", "MET4"]', "list[str]", ["MET3", "MET4"]),
         ],
     )
     def test_parse_value_correct_types(self, raw, ptype, expected):
@@ -133,6 +146,18 @@ class TestValueParsing:
         )
         result = parse_value(raw, schema)
         assert result == expected
+
+    def test_parse_json_value(self):
+        schema = ParamSchema(
+            param="test",
+            group="test",
+            name="test",
+            type="json",
+            default=[],
+            applies="test",
+            description="test",
+        )
+        assert parse_value('[{"name": "stage"}]', schema) == [{"name": "stage"}]
 
     def test_parse_int_rejects_alpha(self):
         schema = ParamSchema(
@@ -328,6 +353,11 @@ class TestBackendMapping:
         result = build_backend_overrides(resolved)
         assert result == {}
 
+    def test_config_overrides_omit_defaults(self):
+        resolved, errors = resolve_parameters(toml_overrides={"cts.skew_bound": "0.05"})
+        assert errors == []
+        assert build_config_overrides(resolved) == {"CTS": {"skew_bound": "0.05"}}
+
     def test_mapping_does_not_mutate_schema_defaults(self):
         schema = lookup_schema("place.target_density")
         original_default = schema.default
@@ -377,6 +407,11 @@ class TestTomlParams:
         flat, errors = parse_toml_params(table)
         assert errors == []
         assert flat == {"place.target_density": 0.65}
+
+    def test_nested_toml_parsing(self):
+        flat, errors = parse_toml_params({"floorplan": {"die_builder": {"mode": "die_size"}}})
+        assert errors == []
+        assert flat == {"floorplan.die_builder.mode": "die_size"}
 
     def test_unknown_toml_key_rejected(self):
         table = {"bogus": {"key": 5}}
