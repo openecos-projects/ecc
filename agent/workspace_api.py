@@ -353,7 +353,7 @@ def _workspace_state_sha256(root: Path) -> str:
         "home/flow.json",
         "home/parameters.json",
         "config/floorplan_ecc.json",
-        "config/fixfanout_ecc.json",
+        "config/cts_ecc.json",
         "config/dreamplace_ecc.json",
         "config/dreamplace.json",
     )
@@ -664,8 +664,8 @@ def _candidate_parameter_receipt(
     tool_name = (
         "ECC-Floorplan"
         if knob_id.startswith("floorplan.")
-        else "ECC-fixFanout"
-        if knob_id == "synth.max_fanout"
+        else "ECC-CTS"
+        if knob_id == "cts.max_fanout"
         else "DREAMPlace"
     )
     runtime_report_path = (
@@ -841,7 +841,7 @@ def _remove_stale_parameter_receipts(workspace_root: Path) -> None:
 _RUNTIME_CONSUMERS_BY_KNOB = {
     "floorplan.core_util": {"ifp.die_builder.die_utilization"},
     "floorplan.aspect_ratio": {"ifp.die_builder.die_aspect_ratio"},
-    "synth.max_fanout": {"fixfanout.threshold_compare"},
+    "cts.max_fanout": {"icts.synthesis.topology.max_fanout"},
     "place.target_density": {"dreamplace.density_objective"},
     "place.target_overflow": {"dreamplace.overflow_predicate"},
     "place.cell_padding_x": {"dreamplace.cell_size_expansion"},

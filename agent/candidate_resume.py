@@ -361,7 +361,7 @@ def _candidate_resume_config_backups(workspace) -> dict[Path, bytes]:
     relatives = (
         "home/parameters.json",
         "config/floorplan_ecc.json",
-        "config/fixfanout_ecc.json",
+        "config/cts_ecc.json",
         "config/dreamplace_ecc.json",
         "config/dreamplace.json",
     )

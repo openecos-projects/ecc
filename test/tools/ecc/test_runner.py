@@ -98,12 +98,14 @@ class FakeSubFlow:
 
 
 class FakeCtsModule:
-    def __init__(self, timing_quality):
+    def __init__(self, timing_quality, *, succeeded=True):
         self.calls = []
         self.timing_quality = timing_quality
+        self.succeeded = succeeded
 
     def run_cts(self, **kwargs):
         self.calls.append(("run_cts", kwargs))
+        return self.succeeded
 
     def update_step_paths(self, **kwargs):
         self.calls.append(("update_step_paths", kwargs))
@@ -394,6 +396,29 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
         "feature_cts_map",
         "feature_cts_timing",
     ]
+
+
+def test_run_cts_stops_when_native_flow_fails(tmp_path, monkeypatch):
+    config = tmp_path / "config" / "cts.json"
+    config.parent.mkdir()
+    config.write_text('{"max_fanout": 48}', encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        config={StepEnum.CTS.value: config},
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.CTS.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    module = FakeCtsModule({}, succeeded=False)
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+
+    assert ecc_runner.run_cts(workspace, step, module) is False
+    assert [call[0] for call in module.calls] == ["update_step_paths", "run_cts"]
 
 
 def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_feature(

@@ -39,14 +39,23 @@ def test_candidate_artifact_dirs_support_typed_step_outputs(tmp_path):
     "target_step,expected_first",
     [
         ("Floorplan", "Floorplan"),
-        ("fixFanout", "fixFanout"),
         ("place", "place"),
+        ("Timing optimization", "Timing optimization"),
+        ("CTS", "CTS"),
     ],
 )
 def test_candidate_rerun_slice_starts_at_the_modified_stage(
     target_step: str, expected_first: str
 ) -> None:
-    names = ("Synthesis", "Floorplan", "fixFanout", "place", "CTS", "Harden")
+    names = (
+        "Synthesis",
+        "Floorplan",
+        "place",
+        "CTS",
+        "legalization",
+        "Timing optimization",
+        "Harden",
+    )
     flow = SimpleNamespace(workspace_steps=tuple(SimpleNamespace(name=name) for name in names))
 
     steps = _candidate_rerun_steps(flow, target_step, "Harden", "full_flow")
@@ -519,7 +528,7 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
         (analysis / name).write_text('{"stale": true}', encoding="utf-8")
     flow = SimpleNamespace(
         workspace=SimpleNamespace(
-            flow=SimpleNamespace(data={"steps": [{"name": "fixFanout"}, {"name": "place"}]})
+            flow=SimpleNamespace(data={"steps": [{"name": "Floorplan"}, {"name": "place"}]})
         )
     )
     request = CandidateRerunRequest(

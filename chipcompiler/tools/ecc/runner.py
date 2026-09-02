@@ -551,10 +551,16 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.run_cts(
-            config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
+        config_path = workspace.config.get(f"{StepEnum.CTS.value}", "")
+        engine_succeeded = ecc_module.run_cts(
+            config=config_path,
             output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
         )
+        _write_cts_parameter_runtime_report(
+            workspace, config_path, engine_succeeded=bool(engine_succeeded)
+        )
+        if not engine_succeeded:
+            return False
 
         ecc_module.report_cts(output=(step.data.steps or {}).get(StepEnum.CTS.value, ""))
 
@@ -573,6 +579,59 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
 
     return reslut
+
+
+def _write_cts_parameter_runtime_report(
+    workspace: Workspace,
+    config_path: str | Path,
+    *,
+    engine_succeeded: bool,
+) -> None:
+    """Record CTS config effectiveness without claiming unobserved activation."""
+    workspace_dir = getattr(workspace, "directory", None)
+    if workspace_dir is None:
+        return
+    materialization_path = Path(workspace_dir) / "analysis" / "candidate_materialization.v1.json"
+    if not materialization_path.is_file():
+        return
+    try:
+        materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
+        patch = next(
+            item for item in materialization["patch"] if item.get("knob_id") == "cts.max_fanout"
+        )
+        value = json.loads(Path(config_path).read_text(encoding="utf-8"))["max_fanout"]
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        return
+
+    requested = patch.get("value")
+    matches_request = type(value) is int and value == requested
+    effective = value if engine_succeeded else None
+    report = {
+        "knob_id": "cts.max_fanout",
+        "requested_value": requested,
+        "tool": {
+            "name": "ECC-CTS",
+            "revision": "ecc.cts.parameter_runtime_report.v1",
+            "source_sha256": _runner_source_sha256(),
+        },
+        "application_status": ("applied" if engine_succeeded and matches_request else "unknown"),
+        "effective_initial": {"value": effective, "unit": "fanout"},
+        "effective_final": {"value": effective, "unit": "fanout"},
+        "activation": {"status": "unknown", "consumers": []},
+        "consumer_observation": {
+            "config_value": value,
+            "engine_succeeded": engine_succeeded,
+            "activation_evidence_complete": False,
+        },
+        "transitions": [],
+    }
+    output_path = Path(workspace_dir) / "analysis" / "parameter_runtime_report.v1.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_name(output_path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+    )
+    os.replace(temporary, output_path)
 
 
 def run_routing(
