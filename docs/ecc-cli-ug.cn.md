@@ -60,6 +60,8 @@ source ~/.bashrc
 # 方式 B：软链接到已在 PATH 的 ~/.local/bin（Ubuntu 默认含此目录）
 mkdir -p ~/.local/bin
 ln -s ~/.local/ecc/ecc ~/.local/bin/ecc
+已存在则覆盖
+ln -snf ~/.local/ecc/ecc ~/.local/bin/ecc
 
 # 方式 C：系统级安装（多用户共享）
 sudo tar -xzf ecc-cli-linux-x86_64.tar.gz -C /opt/ecc
@@ -441,9 +443,11 @@ $ ecc config floorplan --resolved  # 步骤级
 ## 9. param — 参数管理
 
 ```bash
-ecc param list                      # 列出全部参数（按组，标注来源）
+ecc param list                      # 简明列表：旧参数 + 已显式覆盖的直配参数
+ecc param list --step cts           # 查看一个步骤的完整已审核 schema
+ecc param list --all                # 查看完整 schema（含所有模板直配字段）
 ecc param show KEY                  # 查看单个参数（值/默认/来源/类型/范围/映射）
-ecc param set KEY VALUE             # 写入 ecc.toml 的 [params.<group>]（保留注释与格式）
+ecc param set KEY VALUE             # 写入 ecc.toml（保留注释与格式）
 ecc param unset KEY                 # 移除覆盖，恢复默认值
 ecc param diff                      # 只显示与默认值不同的参数
 ```
@@ -475,6 +479,12 @@ $ ecc param list
 $ ecc param set place.target_density 0.65
   set place.target_density = 0.65 (ecc.toml)
 
+$ ecc param set cts.skew_bound 0.05
+  set cts.skew_bound = 0.05 (ecc.toml)
+
+$ ecc param set pdk.tech prtech/techLEF/N551P6M_ecos.lef
+  set pdk.tech = prtech/techLEF/N551P6M_ecos.lef (ecc.toml)
+
 $ ecc param diff
   place.target_density           0.65 (was 0.2, ecc.toml)
 
@@ -502,9 +512,17 @@ rc=1
 ```toml
 [params.place]
 target_density = 0.65
+
+[params.floorplan.die_builder]
+mode = "die_size"
+
+[pdk.overrides]
+tech = "prtech/techLEF/N551P6M_ecos.lef"
 ```
 
-当前注册的全部参数（13 个）：
+旧的语义参数（13 个）保持原有名称和含义；所有工具模板中经过审核的静态字段均由每个步骤的 `config_params/*.py` schema 提供。用 `ecc param list --step <step>` 或 `ecc param list --all` 获取当前版本的完整清单和类型；列表与对象值必须使用 JSON 字面量，例如 `ecc param set cts.routing_layer '[4, 5]'`。
+
+以下是旧的语义参数：
 
 | 参数 | 类型 | 默认值 | 约束 | 生效步骤 |
 |---|---|---|---|---|
@@ -522,7 +540,7 @@ target_density = 0.65
 | `route.top_layer` | str | MET5 | MET2–MET6 | routing |
 | `sta.max_paths` | int | 1000 | [1, 100000] | sta |
 
-优先级：CLI `--set` > `ecc.toml` `[params.*]` > 默认值。
+优先级：CLI `--set` > `ecc.toml` `[params.*]` > 模板默认值。`pdk.*` 路径参数写入 `[pdk.overrides]`，并沿用 PDK 的相对路径解析和文件校验。
 
 ## 10. pdk — PDK 路径配置
 
@@ -546,7 +564,7 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
   check: ecc check
 ```
 
-解析优先级不变：`ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库内置默认。`[pdk.overrides]` 的内容级覆盖仍需手改 ecc.toml。
+解析优先级不变：`ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库内置默认。除 root 使用 `ecc pdk set-root` 外，`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef` 可由 `ecc param set KEY VALUE` 管理，写入 `[pdk.overrides]`。
 
 ## 11. signoff — 签核包与设计报告
 

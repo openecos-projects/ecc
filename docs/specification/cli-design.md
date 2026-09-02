@@ -330,14 +330,22 @@ Run tags and `ecc diff` remain planned work.
 
 ### Parameter Management
 
-Parameters are part of the implemented CLI surface. Project-level overrides can
-be stored in `ecc.toml` under `[params]`, set persistently with `ecc param set`,
-or applied to a single run with repeated `ecc run --set key=value` flags.
+Parameters are part of the implemented CLI surface. Legacy semantic parameters
+and reviewed static tool-template fields share `ecc param`. Project-level
+overrides are stored in `ecc.toml` under nested `[params.*]` tables, set
+persistently with `ecc param set`, or applied to a single run with repeated
+`ecc run --set key=value` flags. The concise default listing shows legacy
+parameters and explicit overrides; `--step <owner>` and `--all` enumerate the
+reviewed direct schemas.
 
 ```bash
 ecc param list
+ecc param list --step cts
+ecc param list --all
 ecc param show place.target_density
 ecc param set place.target_density 0.65
+ecc param set cts.skew_bound 0.05
+ecc param set cts.routing_layer '[4, 5]'
 ecc param unset place.target_density
 ecc param diff
 ecc run --set cts.max_fanout=16
@@ -490,6 +498,15 @@ target_density = 0.65
 
 [params.sta]
 max_paths = 1000
+
+[params.cts]
+skew_bound = "0.05"
+
+[params.floorplan.die_builder.margin]
+left_micron = 4.0
+
+[pdk.overrides]
+tech = "prtech/techLEF/N551P6M_ecos.lef"
 ```
 
 Current validation supports the `ics55` PDK. `flow.run` selects the run
@@ -515,7 +532,10 @@ filelist (`.f`, `.fl`, or `.filelist`) for multi-source RTL designs. If
 ### PDK Field Overrides
 
 Users can override individual fields of a built-in PDK (such as `ics55`) directly
-from `ecc.toml` without authoring a complete external PDK JSON:
+from `ecc.toml` without authoring a complete external PDK JSON. The CLI exposes
+the allowed content paths as `pdk.tech`, `pdk.lefs`, `pdk.libs`,
+`pdk.mapping_file`, `pdk.sdc`, and `pdk.spef`; these commands write the same
+`[pdk.overrides]` fields. `pdk.root` remains `ecc pdk set-root`.
 
 ```toml
 [pdk]
@@ -559,6 +579,14 @@ The override delta reaches the Yosys builder and other tool steps within a singl
 
 The primary use case is tuning cell lists (`dont_use`) and synthesis parameters
 (`abc_load`), which are scalar/list fields consumed within a run.
+
+Direct tool configuration is deliberately schema-bound: every JSON template
+field is either represented by one reviewed per-step schema, covered by an
+existing legacy mapping, or listed as a protected workspace path. Workspace
+input, output, temporary, generated-artifact, and STA multi-corner liberty
+paths are not valid `ecc param` keys. Direct overrides are persisted as a
+structured `Config Overrides` patch in `home/parameters.json` and replayed
+after each workspace configuration refresh.
 
 Overrides are validated at `ecc check` time — unknown keys, type mismatches, and
 path-existence failures are caught before any run begins. Relative path values in

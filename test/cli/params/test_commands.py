@@ -37,6 +37,12 @@ class TestParamList:
         assert "\033[" not in out
         assert "place.target_density" in out
 
+    def test_param_list_step_includes_config_schemas(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
+        rc = cli_main.run(["param", "list", "--step", "cts", "--project", project_dir])
+        assert rc == 0
+        assert "cts.skew_bound" in capsys.readouterr().out
+
 
 class TestParamShow:
     def test_param_show_known_key(self, tmp_path, capsys, create_cli_project):
@@ -113,6 +119,55 @@ class TestParamSet:
         assert "[design]" in content
         assert "[pdk]" in content
         assert "[flow]" in content
+
+    def test_param_set_nested_config_writes_toml(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
+        rc = cli_main.run(
+            [
+                "param",
+                "set",
+                "floorplan.die_builder.mode",
+                "die_size",
+                "--project",
+                project_dir,
+            ]
+        )
+        assert rc == 0
+        content = (tmp_path / "gcd" / "ecc.toml").read_text()
+        assert "[params.floorplan.die_builder]" in content
+        assert 'mode = "die_size"' in content
+
+    def test_pdk_path_param_writes_pdk_overrides(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(
+            ["param", "set", "pdk.tech", "prtech/custom.lef", "--project", project_dir]
+        )
+        assert rc == 0
+
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        assert "[pdk.overrides]" in content
+        assert 'tech = "prtech/custom.lef"' in content
+        capsys.readouterr()
+
+        rc = cli_main.run(["param", "show", "pdk.tech", "--project", project_dir, "--json"])
+        assert rc == 0
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert record["value"] == "prtech/custom.lef"
+        assert record["pdk_target"] == "pdk.overrides:tech"
+
+        rc = cli_main.run(["param", "unset", "pdk.tech", "--project", project_dir])
+        assert rc == 0
+        with open(toml_path) as f:
+            assert "tech =" not in f.read()
 
 
 class TestParamUnset:
@@ -215,6 +270,63 @@ class TestRunSet:
 
         params = capture["kwargs"]["parameters"]
         assert params.get("dreamplace", {}).get("target_density") == 0.65
+
+    def test_run_set_direct_config_and_pdk_overrides(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
+        from types import SimpleNamespace
+
+        project_dir = create_cli_project()
+        capture = {"kwargs": None}
+
+        def fake_create(**kwargs):
+            capture["kwargs"] = kwargs
+            return SimpleNamespace(name="workspace")
+
+        monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create)
+        monkeypatch.setattr(
+            "chipcompiler.engine.EngineFlow",
+            type(
+                "DummyFlow",
+                (),
+                {
+                    "__init__": lambda self, workspace: None,
+                    "has_init": lambda self: False,
+                    "add_step": lambda self, **kw: None,
+                    "create_step_workspaces": lambda self: None,
+                    "run_steps": lambda self: True,
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
+            lambda: [("Synthesis", "yosys", "Unstart")],
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.rendering.progress.should_enable_run_progress",
+            lambda *a, **kw: False,
+        )
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--set",
+                "cts.skew_bound=0.05",
+                "--set",
+                "pdk.tech=prtech/custom.lef",
+            ]
+        )
+        assert rc == 0
+
+        params = capture["kwargs"]["parameters"]
+        assert params["Config Overrides"] == {"CTS": {"skew_bound": "0.05"}}
+        assert capture["kwargs"]["pdk_overrides"]["tech"].endswith("prtech/custom.lef")
 
     def test_run_set_rejects_unknown_key(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()

@@ -9,6 +9,7 @@ from chipcompiler.cli.project.params import (
     lookup_schema,
     parse_value,
     resolve_parameters,
+    validate_pdk_target,
     validate_value,
 )
 
@@ -40,9 +41,20 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides)
     project = ctx.project
 
+    selected_step = (getattr(args, "step", None) or "").casefold()
+    show_all = bool(getattr(args, "all", False))
     records = []
     for rp in resolved:
         s = rp.schema
+        if selected_step and selected_step not in {s.group.casefold(), s.applies.casefold()}:
+            continue
+        if (
+            not selected_step
+            and not show_all
+            and (s.config_target is not None or s.pdk_target is not None)
+            and rp.source == "default"
+        ):
+            continue
         record = {
             "param": s.param,
             "group": s.group,
@@ -56,6 +68,10 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             "description": s.description,
             "inspect": disclosure_cmd(f"ecc param show {s.param}", project),
         }
+        if s.config_target is not None:
+            record["config_target"] = _config_target_str(s.config_target)
+        if s.pdk_target is not None:
+            record["pdk_target"] = _pdk_target_str(s.pdk_target)
         if s.range is not None:
             record["range"] = f"[{s.range[0]}, {s.range[1]}]"
         if s.choices is not None:
@@ -105,6 +121,10 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
         "set": disclosure_cmd(f"ecc param set {rp.param}", ctx.project),
         "run": disclosure_cmd(f"ecc run --set {rp.param}=<value>", ctx.project),
     }
+    if schema.config_target is not None:
+        record["config_target"] = _config_target_str(schema.config_target)
+    if schema.pdk_target is not None:
+        record["pdk_target"] = _pdk_target_str(schema.pdk_target)
     if schema.range is not None:
         record["range"] = f"[{schema.range[0]}, {schema.range[1]}]"
     if schema.choices is not None:
@@ -172,7 +192,16 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
             exit_code=1,
         )
 
-    _write_param_to_toml(config_path, key, value)
+    if schema.pdk_target is not None:
+        from chipcompiler.cli.project.config import load_project_config
+
+        problem = validate_pdk_target(schema, value, load_project_config(config_path))
+        if problem is not None:
+            return CommandResult.err(
+                [error_record("invalid_value", param=key, reason=problem)], exit_code=1
+            )
+
+    _write_param_to_toml(config_path, schema, value)
 
     return CommandResult.ok(
         [
@@ -216,7 +245,7 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    removed = _remove_param_from_toml(config_path, key)
+    removed = _remove_param_from_toml(config_path, schema)
 
     if removed:
         return CommandResult.ok(
@@ -327,6 +356,8 @@ def render_param_show_text(records, file=None):
         "type",
         "applies",
         "maps_to",
+        "config_target",
+        "pdk_target",
         "description",
         "range",
         "choices",
@@ -372,10 +403,20 @@ def render_param_diff_text(records, file=None):
 
 
 def _maps_to_str(maps_to):
+    if maps_to is None:
+        return ""
     if isinstance(maps_to, str):
         return maps_to
     parts = [f"{k}.{v}" for k, v in maps_to.items()]
     return ", ".join(parts)
+
+
+def _config_target_str(target) -> str:
+    return f"{target.config_key}:{'.'.join(target.json_path)}"
+
+
+def _pdk_target_str(target: str) -> str:
+    return f"pdk.overrides:{target}"
 
 
 def _find_config_path(project_dir: str) -> str | None:
@@ -396,6 +437,10 @@ def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]
     if toml_error:
         errors.insert(0, f"malformed ecc.toml: {toml_error}")
     overrides = dict(cfg.params_overrides)
+    for pdk_key, value in cfg.pdk_overrides.items():
+        schema = lookup_schema(f"pdk.{pdk_key}")
+        if schema is not None and schema.pdk_target == pdk_key:
+            overrides[schema.param] = value
     if "design.frequency_mhz" not in overrides and cfg.design_frequency_mhz > 0:
         overrides["design.frequency_mhz"] = cfg.design_frequency_mhz
     return overrides, errors
@@ -404,25 +449,33 @@ def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]
 # TODO: Move ecc.toml parameter editing into chipcompiler.data.project_config_edit
 # or the future EccTomlConfig owner. CLI should only call the edit operation and
 # translate its result into command records.
-def _write_param_to_toml(config_path: str, key: str, value: object) -> None:
-    group, _, name = key.partition(".")
+def _write_param_to_toml(config_path: str, schema, value: object) -> None:
+    if schema.pdk_target is not None:
+        target_table, name = "pdk.overrides", schema.pdk_target
+    else:
+        group, _, name = schema.param.rpartition(".")
+        target_table = f"params.{group}"
 
     with open(config_path) as f:
         original = f.read()
 
-    new_text = _apply_scoped_param_edit(original, group, name, value)
+    new_text = _apply_scoped_param_edit(original, target_table, name, value)
 
     with open(config_path, "w") as f:
         f.write(new_text)
 
 
-def _remove_param_from_toml(config_path: str, key: str) -> bool:
-    group, _, name = key.partition(".")
+def _remove_param_from_toml(config_path: str, schema) -> bool:
+    if schema.pdk_target is not None:
+        target_table, name = "pdk.overrides", schema.pdk_target
+    else:
+        group, _, name = schema.param.rpartition(".")
+        target_table = f"params.{group}"
 
     with open(config_path) as f:
         original = f.read()
 
-    result = _remove_scoped_param_key(original, group, name)
+    result = _remove_scoped_param_key(original, target_table, name)
     if result is None:
         return False
 
@@ -485,9 +538,8 @@ def _extend_multiline_value(text: str, match_end: int) -> int:
     return pos
 
 
-def _apply_scoped_param_edit(text: str, group: str, name: str, value: object) -> str:
+def _apply_scoped_param_edit(text: str, target_table: str, name: str, value: object) -> str:
     value_str = _format_toml_value(value)
-    target_table = f"params.{group}"
 
     span = _find_table_span(text, target_table)
     if span is None:
@@ -520,9 +572,7 @@ def _apply_scoped_param_edit(text: str, group: str, name: str, value: object) ->
         return text[:body_start] + insert + text[body_start:]
 
 
-def _remove_scoped_param_key(text: str, group: str, name: str) -> str | None:
-    target_table = f"params.{group}"
-
+def _remove_scoped_param_key(text: str, target_table: str, name: str) -> str | None:
     span = _find_table_span(text, target_table)
     if span is None:
         return None
@@ -566,4 +616,7 @@ def _format_toml_value(val: object) -> str:
     if isinstance(val, (list, tuple)):
         items = ", ".join(_format_toml_value(v) for v in val)
         return f"[{items}]"
+    if isinstance(val, dict):
+        items = ", ".join(f'"{key}" = {_format_toml_value(value)}' for key, value in val.items())
+        return f"{{{items}}}"
     return str(val)

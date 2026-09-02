@@ -167,26 +167,26 @@ uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package
 
 ### 5.1 Adding a tunable parameter (the param system)
 
-The parameter registry lives in `cli/project/params.py::PARAM_REGISTRY` (`cli/project/params.py`). Adding one `ParamSchema` entry simultaneously enables: support in `ecc param list/show/set/unset/diff`, support for `ecc run --set key=value`, and read/write plus validation of the `[params.<group>]` table in `ecc.toml`:
+Legacy semantic parameters remain in `cli/project/params.py::_LEGACY_PARAM_REGISTRY`. Direct tool configuration belongs in one reviewed module per owner under `cli/project/config_params/` (`cts.py`, `floorplan.py`, `dreamplace.py`, and so on). `ParamSchema` has one target: legacy `maps_to`, a JSON `config_target`, or a whitelisted PDK `pdk_target`.
+
+Use `config_param()` for a reviewed static template field:
 
 ```python
-ParamSchema(
-    param="place.target_density",        # unique key = "<group>.<name>"
-    group="place",                       # corresponds to [params.place] in ecc.toml
-    name="target_density",
-    type="float",                        # int/float/bool/str/list[int]/list[float]/list[str]
-    default=0.2,
-    applies="placement",                 # the flow step it affects (display only)
-    maps_to={"DreamPlace": "target_density"},  # backend parameter key: str = top-level key, dict = nested key
-    description="Target placement density",
-    range=(0.1, 0.95),                   # optional: numeric range
-    choices=("MET2", ...),               # optional: enumeration
-    unit="MHz",                          # optional: unit
-    example="0.65",                      # optional: example value
+# cli/project/config_params/cts.py
+config_param(
+    "cts.skew_bound",
+    "cts",
+    ("skew_bound",),
+    "0.08",
+    applies="cts",
 )
 ```
 
-The `maps_to` expansion rules are in `build_backend_overrides()` (`cli/project/params.py`): non-default values are translated into backend `parameters` overrides and merged in via `update_parameters` at run time. The surgical `ecc.toml` edit done by `ecc param set` is performed by `_apply_scoped_param_edit()` (`cli/project/params.py`) using textual regexes (comments and formatting preserved) — new parameters need no code for this. Registry tests live in `test/cli/params/test_registry.py`.
+This enables `ecc param list/show/set/unset/diff`, repeated `ecc run --set key=value`, and recursive `[params.*]` TOML parsing/writing. `ecc param list` stays concise; use `--step <owner>` or `--all` to enumerate direct schemas. List and object values use JSON literals on the command line.
+
+At project-run creation, non-default `config_target` values are saved as structured `Config Overrides` in `home/parameters.json`; `data.workspace.config_overrides` replays them after every workspace configuration refresh. PDK path schemas live in `config_params/pdk.py` and write `[pdk.overrides]`; keep `pdk.root` on `ecc pdk set-root`. Never add workspace input, output, temporary, generated-artifact, or STA multi-corner liberty paths as CLI parameters.
+
+`config_params/coverage.py` compares each JSON template field with exactly one direct schema, legacy mapping, or protected-path entry. Update that manifest and `test/cli/params/test_config_coverage.py` whenever a template changes. Parsing and surgical TOML editing remain in `params.py`; command tests remain in `test/cli/params/`.
 
 ### 5.2 Extending `ecc run`
 
@@ -222,7 +222,7 @@ The command itself can be verified directly with `.venv/bin/ecc` or `uv run ecc`
 
 ```bash
 cd ecc
-.venv/bin/python -m PyInstaller ecc.spec --clean --noconfirm   # output: dist/ecc/ (onedir, ~1.8G; the first run triggers dreamplace's cmake install, which is normal)
+.venv/bin/python -m PyInstaller ecc.spec --clean --noconfirm   # output: dist/ecc/ (onedir, ~3.6G; the first run triggers dreamplace's cmake install, which is normal)
 
 # Install locally (the default install location of ecc-cli-setup.sh; the ~/.local/bin/ecc symlink and ~/.ecc-env.sh need no changes)
 rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
