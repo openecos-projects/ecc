@@ -106,8 +106,10 @@ def test_sta_checklist_references_v4_quality_gates_and_current_artifacts(tmp_pat
     assert items["artifact.sta.timing_paths"]["state"] == "pass"
     assert {entry["path"] for entry in items["report.sta.timing_reports"]["evidence"]} == {
         str(report_root / "qor_summary.rpt"),
-        *(str(report_root / f"timing_max_{path_type}.rpt")
-          for path_type in ("in2out", "in2reg", "reg2out", "reg2reg")),
+        *(
+            str(report_root / f"timing_max_{path_type}.rpt")
+            for path_type in ("in2out", "in2reg", "reg2out", "reg2reg")
+        ),
     }
 
 
