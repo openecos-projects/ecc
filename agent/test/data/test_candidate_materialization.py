@@ -297,8 +297,10 @@ def test_receipt_target_mismatch_is_fail_closed(tmp_path):
 
     with pytest.raises(CandidateMaterializationError, match="target step mismatch"):
         validate_candidate_materialization_receipt(workspace, "route")
-    with pytest.raises(CandidateMaterializationError, match="target step mismatch"):
-        reapply_materialized_candidate_config(workspace, "route")
+    before = _read_json(workspace.config["dreamplace"])
+
+    assert reapply_materialized_candidate_config(workspace, "route") is None
+    assert _read_json(workspace.config["dreamplace"]) == before
 
 
 @pytest.mark.parametrize(
@@ -485,8 +487,7 @@ def test_reapply_after_refresh_restores_only_matching_target_and_updates_hashes(
     current[path[-1]] = reset_value
     _write_json(config_path, refreshed_config)
 
-    with pytest.raises(CandidateMaterializationError, match="target step mismatch"):
-        reapply_materialized_candidate_config(workspace, "route")
+    assert reapply_materialized_candidate_config(workspace, "route") is None
     unchanged = _read_json(config_path)
     current = unchanged
     for key in path:

@@ -76,6 +76,8 @@ def reapply_materialized_candidate_config(
     if not receipt_path.exists():
         return None
     receipt = _read_receipt(receipt_path)
+    if receipt["target_step"] != target_step:
+        return None
     _validate_receipt_binding(workspace, target_step, receipt)
     _verify_config_snapshot_hashes(workspace, receipt["snapshots"])
     snapshots = {entry["config_key"]: entry for entry in receipt["snapshots"]}

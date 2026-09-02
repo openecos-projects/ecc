@@ -7,6 +7,7 @@ from .requests import (
     CandidateBindInputRequest,
     CandidateMaterializeRequest,
     CandidateRerunRequest,
+    CandidateResumeRequest,
     WorkspaceExtractFoundationRequest,
 )
 
@@ -35,6 +36,11 @@ AGENT_RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="candidate.rerun",
         request_model=CandidateRerunRequest,
         handler_name="candidate_rerun",
+    ),
+    RuntimeMethodSpec(
+        method_name="candidate.resume",
+        request_model=CandidateResumeRequest,
+        handler_name="candidate_resume",
     ),
 )
 

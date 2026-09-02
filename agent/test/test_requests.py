@@ -5,7 +5,7 @@ import sys
 import pytest
 
 from agent.methods import agent_method_names
-from agent.requests import CandidateRerunRequest, parse_agent_request_model
+from agent.requests import CandidateRerunRequest, CandidateResumeRequest, parse_agent_request_model
 from agent.server import AgentRuntimeServer
 from chipcompiler.runtime.requests import RequestValidationError
 from chipcompiler.runtime.transport import ContentLengthDecoder, encode_content_length_frame
@@ -20,6 +20,7 @@ def test_agent_methods_keep_the_original_rpc_names():
         "candidate.bind_input",
         "candidate.materialize",
         "candidate.rerun",
+        "candidate.resume",
     )
 
 
@@ -74,6 +75,42 @@ def test_candidate_rerun_request_requires_context_hash():
                 "idempotencyKey": "episode-1.intervention-1",
             },
         )
+
+
+def test_candidate_resume_request_accepts_only_execution_binding_fields():
+    request = parse_agent_request_model(
+        CandidateResumeRequest,
+        {
+            "workspaceId": "workspace-1",
+            "candidateId": "candidate-1",
+            "idempotencyKey": "episode-1.resume-1",
+            "contextSha256": CONTEXT_SHA256,
+            "seed": 17,
+        },
+    )
+
+    assert request == CandidateResumeRequest(
+        workspace_id="workspace-1",
+        candidate_id="candidate-1",
+        idempotency_key="episode-1.resume-1",
+        context_sha256=CONTEXT_SHA256,
+        seed=17,
+    )
+
+
+@pytest.mark.parametrize("extra", ["targetStep", "path", "patch", "command"])
+def test_candidate_resume_request_rejects_execution_authority_fields(extra):
+    params = {
+        "workspaceId": "workspace-1",
+        "candidateId": "candidate-1",
+        "idempotencyKey": "episode-1.resume-1",
+        "contextSha256": CONTEXT_SHA256,
+        "seed": 17,
+        extra: "untrusted",
+    }
+
+    with pytest.raises(RequestValidationError, match="unknown field"):
+        parse_agent_request_model(CandidateResumeRequest, params)
 
 
 def test_candidate_rerun_request_requires_seed():

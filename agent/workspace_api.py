@@ -22,6 +22,7 @@ from .data import (
     export_candidate_capabilities,
     materialize_candidate_config,
     reapply_candidate_input_binding,
+    reapply_materialized_candidate_config,
     validate_candidate_step_contract,
 )
 from .data.candidate_artifacts import sha256_path, validate_candidate_id, write_json_atomic
@@ -35,6 +36,7 @@ from .requests import (
     CandidateBindInputRequest,
     CandidateMaterializeRequest,
     CandidateRerunRequest,
+    CandidateResumeRequest,
     WorkspaceExtractFoundationRequest,
 )
 
@@ -134,6 +136,11 @@ class FlowAgentRuntimeApi:
             )
         except RuntimeOperationConflict as exc:
             raise RuntimeApiError("command_failed", str(exc)) from exc
+
+    def candidate_resume(self, request: CandidateResumeRequest) -> dict:
+        from .candidate_resume import candidate_resume
+
+        return candidate_resume(self, request)
 
     def _candidate_rerun(self, session, request: CandidateRerunRequest, observer) -> dict:
         candidate_workspace, candidate_root_ref, parent = _create_candidate_workspace(
@@ -585,6 +592,7 @@ def _candidate_rerun_result(
     evidence_error = None
     if materialization_path.is_file():
         try:
+            reapply_materialized_candidate_config(workspace, request.target_step)
             parameter_receipt = _candidate_parameter_receipt(
                 workspace,
                 request,

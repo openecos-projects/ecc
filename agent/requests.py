@@ -39,6 +39,15 @@ class CandidateRerunRequest:
     parent_candidate_root_ref: str | None = None
 
 
+@dataclass(frozen=True)
+class CandidateResumeRequest:
+    workspace_id: str
+    candidate_id: str
+    idempotency_key: str
+    context_sha256: str
+    seed: int
+
+
 _FIELD_ALIASES = {
     "workspaceId": "workspace_id",
     "targetStep": "target_step",
