@@ -61,7 +61,7 @@ def workspace_config_path(workspace_dir: str | Path) -> Path:
 
 
 @deprecated(
-    "legacy parameters.json -> ecc.toml migration; slated for removal once "
+    "legacy parameters.json -> params.toml migration; slated for removal once "
     "legacy workspaces are phased out",
     category=None,
 )
@@ -241,7 +241,7 @@ def _merge_payload(sections: dict[str, Any]) -> dict:
     """Inverse of _split_payload: flatten TOML sections back to one dict.
 
     The merged payload is normalized to the canonical flat vocabulary:
-    a hand-written ecc.toml with legacy long keys (or GUI geometry
+    a hand-written params.toml with legacy long keys (or GUI geometry
     aliases) never leaks non-canonical keys into a loaded Parameters
     payload.
     """
@@ -508,7 +508,7 @@ def resolve_flow_selection(
 
 
 @deprecated(
-    "legacy parameters.json -> ecc.toml migration; slated for removal once "
+    "legacy parameters.json -> params.toml migration; slated for removal once "
     "legacy workspaces are phased out",
     category=None,
 )
@@ -618,7 +618,7 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
 
 
 @deprecated(
-    "legacy parameters.json -> ecc.toml migration; slated for removal once "
+    "legacy parameters.json -> params.toml migration; slated for removal once "
     "legacy workspaces are phased out",
     category=None,
 )

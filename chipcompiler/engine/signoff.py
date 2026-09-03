@@ -89,7 +89,9 @@ class SignoffPackageCollector:
             self._refresh_workspace_analysis(workspace_dir) if options.refresh_analysis else []
         )
 
-        parameters = self._read_parameters(workspace_dir / "home" / "params.toml")
+        from chipcompiler.data.workspace_config import workspace_config_path
+
+        parameters = self._read_parameters(workspace_config_path(workspace_dir))
         design = (
             self.workspace.design.name
             or parameters.get("design", "")
