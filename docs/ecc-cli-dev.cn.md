@@ -184,7 +184,7 @@ config_param(
 
 该声明会同时启用 `ecc param list/show/set/unset/diff`、重复的 `ecc run --set key=value`，以及嵌套 `[params.*]` TOML 的读写与校验。默认 `ecc param list` 保持简明；用 `--step <owner>` 或 `--all` 查看直配 schema。命令行列表和对象值使用 JSON 字面量。
 
-项目 run 创建时，非默认 `config_target` 会以结构化 `Config Overrides` 存入 `home/parameters.json`；每次刷新 workspace 配置后由 `data.workspace.config_overrides` 重放。PDK 路径 schema 在 `config_params/pdk.py`，写入 `[pdk.overrides]`；`pdk.root` 始终使用 `ecc pdk set-root`。不得将 workspace 的输入、输出、临时、生成产物或 STA 多 corner liberty 路径暴露为 CLI 参数。
+项目 run 创建时，非默认 `config_target` 会以结构化 `config_overrides` 存入 `home/params.toml`；每次刷新 workspace 配置后由 `data.workspace.config_overrides` 重放。PDK 路径 schema 在 `config_params/pdk.py`，写入 `[pdk.overrides]`；`pdk.root` 始终使用 `ecc pdk set-root`。不得将 workspace 的输入、输出、临时、生成产物或 STA 多 corner liberty 路径暴露为 CLI 参数。
 
 `config_params/coverage.py` 会把每个 JSON 模板字段与唯一一个直配 schema、旧映射或受保护路径清单比对。模板变化时必须同步更新该清单和 `test/cli/params/test_config_coverage.py`。解析和定点 TOML 编辑仍在 `params.py`，命令测试仍放在 `test/cli/params/`。
 
@@ -192,7 +192,7 @@ config_param(
 
 `run` 有两条互斥路径（`cli/command_handlers/project.py` 的 `run()` / `_run_workspace()`）：
 
-- **项目模式**（默认）：读 `ecc.toml` → 解析 RTL/PDK/参数与 `--preset` 覆盖 → **环境预检**（`_preflight_environment`：按 preset 所需工具调用 `inspection/env_probe.py`，缺失 → `env_not_ready` fail-fast）→ `runs/<run-id>/` 下 `create_workspace` → 从 `rtl2gds.get_flow_builders()` 取步骤构建 `EngineFlow` → 运行（TTY 下走 `rendering/progress.py::run_flow_with_progress` 的进度渲染，否则直接 `run_steps`）。`--overwrite` 会先做安全校验（只删真正的 ECC run 目录）；`--preset` 不写回 `ecc.toml`，与 `--workspace` 互斥。
+- **项目模式**（默认）：读 `ecc.toml` → 解析 RTL/PDK/参数与 `--preset` 覆盖 → 对新建或 `--overwrite` 的目标执行**环境预检**（`_preflight_environment`：按 preset 所需工具调用 `inspection/env_probe.py`，缺失 → `env_not_ready` fail-fast）→ `runs/<run-id>/` 下 `create_workspace` → 从 `rtl2gds.get_flow_builders()` 取步骤构建 `EngineFlow` → 运行（TTY 下走 `rendering/progress.py::run_flow_with_progress` 的进度渲染，否则直接 `run_steps`）。已有 workspace 直接按持久化 flow 对账和续跑，不做 preset 预检。`--overwrite` 会先做安全校验（只删真正的 ECC run 目录）；`--preset` 不写回 `ecc.toml`，与 `--workspace` 互斥。
 - **workspace 模式**（`--workspace`）：`load_workspace` 后用 `chipcompiler.engine.rerun` 的 `run_resume / run_from / run_only` 原地复跑；`--resume/--from/--only` 三个选择器互斥且仅在该模式合法；该模式不做环境预检。
 
 改 flow 步骤序列本身在 `chipcompiler/engine`（`EngineFlow.build_default_steps()` / `add_step()`），不在 CLI 层；CLI 只负责参数解析、进度渲染选择与结果映射。

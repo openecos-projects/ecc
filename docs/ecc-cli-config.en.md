@@ -14,7 +14,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 ```
 runs/<run-id>/
 ├── home/
-│   ├── parameters.json    # parameter hub: user params + PDK-derived values (see §1)
+│   ├── params.toml        # parameter hub: user params + PDK-derived values (see §1)
 │   └── flow.json          # step status
 ├── config/                # ← this document's focus: 9 JSON files + macro_locations.txt
 │   ├── db_ecc.json        # database build (loads LEF/DEF/netlist/LIB/SDC; shared by every ecc step)
@@ -40,7 +40,7 @@ Configuration files are copied from templates when the workspace is created, the
 
 ```mermaid
 graph LR
-    A["ecc.toml [params]<br/>/ ecc run --set"] -->|"legacy params + per-step direct-config schema"| B["home/parameters.json<br/>(legacy param keys + Config Overrides)"]
+    A["ecc.toml [params]<br/>/ ecc run --set"] -->|"canonical params + per-step direct-config schema"| B["home/params.toml<br/>(params + config_overrides)"]
     C["PDK description<br/>(data/pdk.py)"] -->|"buffers / tap / endcap<br/>site / liberty corners"| B
     B -->|"param→field mapping<br/>PARAMETER_CONFIG_FIELD_MAPPINGS"| D["config/*.json"]
     E["templates tools/ecc/configs/*.json"] -->|copies default files| D
@@ -54,7 +54,7 @@ graph LR
 | PDK | Process-specific cells and libraries | `buffer_type` ← PDK buffers list; STA liberty corners |
 | Step scheduling | Input/output paths (chained between steps) | `db_ecc.json`'s `def_path` points to the previous step's output at every step |
 
-> ⚠️ **Do not hand-edit `config/*.json`**: parameterized fields are re-refreshed from `parameters.json` + PDK before every step run, so manual edits get overwritten. The proper entry points are `ecc param set`, `ecc.toml [params.*]`, or a one-off `ecc run --set`. Workspace input, output, temporary, and generated file paths are not exposed as CLI parameters; PDK content paths use the `pdk.*` parameters (see §1.2).
+> ⚠️ **Do not hand-edit `config/*.json`**: parameterized fields are re-refreshed from `params.toml` + PDK before every step run, so manual edits get overwritten. The proper entry points are `ecc param set`, `ecc.toml [params.*]`, or a one-off `ecc run --set`. Workspace input, output, temporary, and generated file paths are not exposed as CLI parameters; PDK content paths use the `pdk.*` parameters (see §1.2).
 
 ### 0.3 Which configurations each step uses
 
@@ -91,7 +91,7 @@ Source: `PARAM_REGISTRY` in [chipcompiler/cli/project/params.py](../chipcompiler
 | `cts.max_fanout` | int [1, 200] | 20 | cts `max_fanout` | Max fanout of clock tree buffers (taken over by CTS after the fixfanout step was removed) |
 | `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | Global placement target density |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | Global placement overflow convergence target |
-| `place.global_right_padding` | int [0, 100] | 0 | recorded only in parameters.json | Global padding on the right side of placement sites (not yet wired into a tool config field in the current version) |
+| `place.global_right_padding` | int [0, 100] | 0 | recorded only in params.toml | Global padding on the right side of placement sites (not yet wired into a tool config field in the current version) |
 | `place.cell_padding_x` | int [0, 10000] (dbu) | 300 | dreamplace `cell_padding_x` | Cell padding in X (routing congestion relief) |
 | `place.routability_opt` | {0, 1} | 1 | dreamplace `routability_opt_flag` | Enable routability (congestion-driven) optimization during placement |
 | `route.bottom_layer` | MET1–MET5 | MET2 | route `RT.-bottom_routing_layer` + db `LayerSettings.routing_layer_1st` | Lowest routing layer |
@@ -107,7 +107,7 @@ ecc param list --step cts
 ecc param list --step floorplan
 ecc param list --all
 ecc param set cts.skew_bound 0.05
-ecc param set floorplan.die_builder.margin.left_micron 4.0
+ecc param set floorplan.phy_placer.well_tap.distance_micron 30.0
 ecc param set cts.routing_layer '[4, 5]'
 ecc run --set place.num_threads=12
 ```
@@ -115,18 +115,18 @@ ecc run --set place.num_threads=12
 Scalars are parsed according to the schema type; list and object values use JSON literals, and arrays are replaced wholesale. Persisted values are written to nested TOML tables, for example:
 
 ```toml
-[params.floorplan.die_builder.margin]
-left_micron = 4.0
+[params.floorplan.phy_placer.well_tap]
+distance_micron = 30.0
 
 [pdk.overrides]
 tech = "prtech/techLEF/N551P6M_ecos.lef"
 ```
 
-The allowed PDK content paths are `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef`; they reuse the PDK's relative-path resolution and file-existence validation. `pdk.root` still uses `ecc pdk set-root`. Workspace built-in paths (the DB's DEF/netlist/output, DreamPlace's input/result directories, per-step temporary directories, and the STA multi-corner liberty structure) are not exposed as CLI parameters.
+`die_builder` fields such as `die_util` and `margin` remain semantic parameters in §1.1 (`floorplan.core_util`, `floorplan.core_margin`, and `floorplan.aspect_ratio`). The allowed PDK content paths are `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef`; they reuse the PDK's relative-path resolution and file-existence validation. `pdk.root` still uses `ecc pdk set-root`. Workspace built-in paths (the DB's DEF/netlist/output, DreamPlace's input/result directories, per-step temporary directories, and the STA multi-corner liberty structure) are not exposed as CLI parameters.
 
-### 1.3 The parameter hub: parameters.json
+### 1.3 The parameter hub: params.toml
 
-`home/parameters.json` holds the user parameters, `Config Overrides`, and **result values back-filled after a flow run** (e.g. actual die/core dimensions, utilization). `Config Overrides` is a nested JSON patch generated by the CLI from the reviewed schemas; it is re-applied after the PDK and legacy parameter mappings on every workspace refresh. User parameter keys use legacy naming (`"Target density"`, `"Max fanout"`, `"Bottom layer"`, …); their mapping to §1.1 is defined in the source `PARAMETER_CONFIG_FIELD_MAPPINGS`.
+`home/params.toml` holds canonical workspace parameters, `config_overrides`, and **result values back-filled after a flow run** (for example actual die/core dimensions and utilization). `config_overrides` is a nested TOML patch generated by the CLI from reviewed schemas and reapplied after PDK and semantic parameter mappings on each workspace refresh. `home/parameters.json` is read only when migrating a legacy workspace.
 
 ## 2. Shared configuration: db_ecc.json
 
@@ -443,7 +443,7 @@ ecc param set cts.skew_bound 0.05         # set a CTS JSON field directly
 ecc run --set place.target_density=0.55  # effective for this run only
 ```
 
-Recommended practice for making changes: **always go through `ecc param`; use `--step` / `--all` to discover fields; never edit `parameters.json` or `config/*.json` directly** (refresh will overwrite manual edits).
+Recommended practice for making changes: **always go through `ecc param`; use `--step` / `--all` to discover fields; never edit `params.toml` or `config/*.json` directly** (refresh will overwrite manual edits).
 
 ---
 
