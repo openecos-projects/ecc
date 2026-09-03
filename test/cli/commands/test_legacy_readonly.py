@@ -136,3 +136,51 @@ def test_shadowed_workspace_config_warns_without_touching_files(
     assert "delete" in warning["reason"]
     assert Path(params_path).read_bytes() == params_before
     assert Path(legacy_path).read_bytes() == legacy_before
+
+
+def test_shadow_warning_probes_the_explicit_workspace_target(tmp_path, capsys):
+    """run --workspace 探测的是显式目标，不是项目推导的 run_dir。"""
+    ws = tmp_path / "ws"
+    home = ws / "home"
+    home.mkdir(parents=True)
+    (home / "flow.json").write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {
+                        "name": "Synthesis",
+                        "tool": "yosys",
+                        "state": "Success",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "info": {},
+                    }
+                ]
+            }
+        )
+    )
+    (home / "params.toml").write_text('[params]\ndesign = "gcd"\n')
+    (home / "parameters.json").write_text('{"Design": "gcd"}')
+
+    # The workspace lacks PDK assets so the run fails validation — the
+    # boundary warning is appended on EVERY outcome, including this one.
+    rc = cli_main.run(["run", "--workspace", str(ws), "--json"])
+
+    assert rc != 0
+    records = json.loads(capsys.readouterr().out)["records"]
+    assert any(r.get("warning") == "workspace_config_shadowed" for r in records)
+
+
+def test_shadow_warning_fires_on_dangling_legacy_symlink(tmp_path, capsys):
+    """lexists 语义：悬挂的 parameters.json 链接同样构成并存。"""
+    ws = tmp_path / "ws"
+    home = ws / "home"
+    home.mkdir(parents=True)
+    (home / "flow.json").write_text(json.dumps({"steps": []}))
+    (home / "params.toml").write_text('[params]\ndesign = "gcd"\n')
+    os.symlink(tmp_path / "gone.json", home / "parameters.json")
+
+    cli_main.run(["run", "--workspace", str(ws), "--json"])
+
+    records = json.loads(capsys.readouterr().out)["records"]
+    assert any(r.get("warning") == "workspace_config_shadowed" for r in records)

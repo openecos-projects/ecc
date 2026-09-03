@@ -5606,3 +5606,18 @@ def test_engineer_settable_parameters_normalizes_legacy_vocabulary():
     )
 
     assert projected == {"core": {"utilitization": 0.6, "margin": [2, 2]}}
+
+
+def test_workspace_config_path_prefers_params_toml(tmp_path: Path):
+    from agent.data.foundation.extractor import FoundationExtractor
+
+    ws = tmp_path / "ws"
+    home = ws / "home"
+    home.mkdir(parents=True)
+    (home / "params.toml").write_text('[params]\ndesign = "gcd"\n')
+    (home / "parameters.json").write_text('{"Design": "gcd"}')
+
+    assert FoundationExtractor(ws)._workspace_config_path() == home / "params.toml"
+
+    (home / "params.toml").unlink()
+    assert FoundationExtractor(ws)._workspace_config_path() == home / "parameters.json"

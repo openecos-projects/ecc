@@ -499,7 +499,9 @@ class WorkspaceRuntimeApi:
         if not str(home_data.get("parameters", "")).strip():
             parameter_path = getattr(session.workspace.parameters, "path", None)
             if parameter_path is None:
-                parameter_path = Path(session.directory) / "home" / "params.toml"
+                from chipcompiler.data.workspace_config import workspace_config_path
+
+                parameter_path = workspace_config_path(session.directory)
             home_data["parameters"] = str(parameter_path)
 
         return {

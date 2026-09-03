@@ -576,9 +576,11 @@ class FoundationExtractor:
         return [by_name[name] for name in requested_names]
 
     def _workspace_config_path(self) -> Path:
-        """The workspace's persisted configuration: home/ecc.toml preferred,
-        legacy home/parameters.json as the fallback."""
-        toml_path = self.workspace_dir / "home" / "ecc.toml"
+        """The workspace's persisted configuration: home/params.toml
+        preferred, legacy home/parameters.json as the fallback."""
+        from chipcompiler.data.workspace_config import workspace_config_path
+
+        toml_path = workspace_config_path(self.workspace_dir)
         if toml_path.exists():
             return toml_path
         return self.workspace_dir / "home" / "parameters.json"
@@ -588,8 +590,8 @@ class FoundationExtractor:
 
     def _read_workspace_parameters(self) -> dict[str, Any]:
         """Read workspace parameters in whichever format the workspace
-        persists them: canonical flat keys from home/ecc.toml, or the legacy
-        display-key JSON with display/flat fallback reads downstream."""
+        persists them: canonical flat keys from home/params.toml, or the
+        legacy display-key JSON with display/flat fallback reads downstream."""
         config_path = self._workspace_config_path()
         if config_path.suffix == ".json":
             return self._read_json(config_path)

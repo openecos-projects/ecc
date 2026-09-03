@@ -356,7 +356,9 @@ class SignoffPackageCollector:
                 add_file("initial.verilog", origin_rtl, rtl_destination, required=True)
         if origin_sdc is not None:
             add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
-        parameters_config = workspace_dir / "home" / "params.toml"
+        from chipcompiler.data.workspace_config import workspace_config_path
+
+        parameters_config = workspace_config_path(workspace_dir)
         if not parameters_config.exists():
             # A read-only legacy workspace (TOML migration deferred) runs on
             # its parameters.json — package the file it actually runs on.

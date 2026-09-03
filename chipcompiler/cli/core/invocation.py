@@ -171,14 +171,16 @@ def _with_legacy_hint(command: str, command_input, result, ctx):
     )
 
 
-def _with_config_shadow_hint(command: str, result, ctx):
+def _with_config_shadow_hint(command: str, command_input, result, ctx):
     """Append the shadowed-config warning at the command-result boundary.
 
     run/check/status on a workspace whose home/ holds BOTH the canonical
     params.toml and a legacy parameters.json carry the warning on every
     outcome: the JSON is inert, and a user editing it would otherwise see
-    nothing happen. One lexists pair per command; no workspace load, no
-    file mutation — deleting the JSON stays the user's call.
+    nothing happen. One lexists pair per command (lexists, not isfile: a
+    dangling link still shadows); no workspace load, no file mutation —
+    deleting the JSON stays the user's call. ``run --workspace`` probes
+    the explicit target, not the project-derived run dir.
     """
     if command not in ("run", "check", "status"):
         return result
@@ -188,10 +190,14 @@ def _with_config_shadow_hint(command: str, result, ctx):
         WORKSPACE_CONFIG_FILENAME,
     )
 
-    home = os.path.join(ctx.run_dir, "home")
+    explicit = getattr(command_input, "workspace", None)
+    workspace_dir = (
+        os.path.abspath(os.path.expanduser(explicit)) if explicit is not None else ctx.run_dir
+    )
+    home = os.path.join(workspace_dir, "home")
     if not (
-        os.path.isfile(os.path.join(home, WORKSPACE_CONFIG_FILENAME))
-        and os.path.isfile(os.path.join(home, LEGACY_PARAMETERS_FILENAME))
+        os.path.lexists(os.path.join(home, WORKSPACE_CONFIG_FILENAME))
+        and os.path.lexists(os.path.join(home, LEGACY_PARAMETERS_FILENAME))
     ):
         return result
     return CommandResult(
@@ -215,7 +221,7 @@ def execute_command(
 ) -> None:
     ctx = build_context(command_input)
     result = _with_legacy_hint(command, command_input, handler(command_input, ctx), ctx)
-    result = _with_config_shadow_hint(command, result, ctx)
+    result = _with_config_shadow_hint(command, command_input, result, ctx)
     color = _should_colorize()
     selected_render_key = render_key or command
 

@@ -365,7 +365,7 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
             target=probe.target,
             error=(
                 "flow_adopt_failed: failed to adopt flow target into "
-                f"{workspace_dir / 'home' / 'ecc.toml'}"
+                f"{_config_path_text(workspace_dir)}"
             ),
         )
 
@@ -396,3 +396,10 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         appended=tuple(appended),
         adopted_flow=adopted_flow,
     )
+
+
+def _config_path_text(workspace_dir) -> str:
+    """The workspace config path for messages — single-sourced name."""
+    from chipcompiler.data.workspace_config import workspace_config_path
+
+    return str(workspace_config_path(workspace_dir))
