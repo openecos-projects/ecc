@@ -331,14 +331,14 @@ class TestFlowMismatchZeroMutation:
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
     ):
         """AC-14 with a legacy-parameters workspace: the mismatch refusal must
-        not migrate parameters.json, create ecc.toml/lock/home.json, or touch
+        not migrate parameters.json, create params.toml/lock/home.json, or touch
         any other path."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = os.path.join(project_dir, "ws_0001")
         home = os.path.join(run_dir, "home")
         os.makedirs(home)
-        # Legacy shape: long-key parameters.json, no ecc.toml, and a ledger
+        # Legacy shape: long-key parameters.json, no params.toml, and a ledger
         # that diverges from the project preset at step one.
         with open(os.path.join(home, "parameters.json"), "w") as f:
             json.dump(

@@ -268,7 +268,7 @@ def test_save_replace_and_cleanup_failure_returns_false(
 
 
 def test_load_normalizes_legacy_long_keys(tmp_path):
-    """AC-1: a hand-written ecc.toml with legacy long keys loads canonical."""
+    """AC-1: a hand-written params.toml with legacy long keys loads canonical."""
     from chipcompiler.data.workspace_config import load_workspace_config
 
     home = tmp_path / "home"

@@ -169,7 +169,7 @@ class TestCreateWorkspaceIntegration:
         assert lines[0] == "+incdir+include"
         assert (workspace_dir / "origin" / "include" / "defs.svh").exists()
 
-    def test_load_workspace_rejects_symlinked_ecc_toml(self, tmp_path, test_parameters, pdk):
+    def test_load_workspace_rejects_symlinked_params_toml(self, tmp_path, test_parameters, pdk):
         from chipcompiler.data.workspace import load_workspace
         from chipcompiler.data.workspace_config import WorkspaceConfigError, save_workspace_config
 
