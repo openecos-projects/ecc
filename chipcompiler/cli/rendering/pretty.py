@@ -150,7 +150,7 @@ def render_check(records, file=None, *, color=True):
     target.write(f"  project: {r.get('project', '')}\n")
     target.write(f"  status: {status_style(r.get('status', ''), color=color)}\n")
     target.write(f"  config: {r.get('config', '')}\n")
-    _render_disclosure_fields(target, r, color)
+    _render_disclosure_fields(target, r, color, skip=("config",))
 
     for r in records[1:]:
         label = r.get("check", "")
@@ -191,7 +191,7 @@ def render_status(records, file=None, *, color=True):
     target.write(f"  status: {status_style(st, color=color)}\n")
     if first.get("workspace"):
         target.write(f"  workspace: {first['workspace']}\n")
-    _render_disclosure_fields(target, first, color)
+    _render_disclosure_fields(target, first, color, skip=("run",))
 
     step_records = [r for r in records if "step" in r]
     if step_records:
@@ -295,8 +295,10 @@ def render_error(records, file=None, *, color=True):
 # --- Internal helpers ---
 
 
-def _render_disclosure_fields(target, record, color):
+def _render_disclosure_fields(target, record, color, *, skip=()):
     for key in sorted(record.keys()):
+        if key in skip:
+            continue
         if not key.endswith("_cmd") and key not in (
             "inspect",
             "check",
