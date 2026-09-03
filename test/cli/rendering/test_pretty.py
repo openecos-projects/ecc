@@ -192,6 +192,7 @@ class TestPrettyDefaultOutput:
         assert rc == 0
         out = capsys.readouterr().out
         assert "[check]" in out
+        assert out.count("  config:") == 1
 
     def test_status_has_header(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
@@ -200,6 +201,7 @@ class TestPrettyDefaultOutput:
         assert rc == 0
         out = capsys.readouterr().out
         assert "[status]" in out
+        assert out.count("  run:") == 1
 
     def test_status_groups_steps(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()

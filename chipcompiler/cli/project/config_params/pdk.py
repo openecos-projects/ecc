@@ -45,12 +45,12 @@ SCHEMAS = (
         "sdc",
         "",
         "str",
-        "PDK SDC constraints path, resolved relative to pdk.root when relative.",
+        "PDK SDC constraints path, resolved relative to the project directory when relative.",
     ),
     _pdk_path(
         "spef",
         "",
         "str",
-        "PDK SPEF path, resolved relative to pdk.root when relative.",
+        "PDK SPEF path, resolved relative to the project directory when relative.",
     ),
 )
