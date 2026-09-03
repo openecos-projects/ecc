@@ -226,9 +226,9 @@ class ECCToolsModule:
         """init def"""
         return self.ecc.def_init(def_path=path_text(path))
 
-    def read_verilog(self, verilog: PathArg, top_module: str):
+    def read_verilog(self, verilog: PathArg, top_module: str) -> bool:
         """init verilog"""
-        self.ecc.verilog_init(path_text(verilog), top_module)
+        return self.ecc.verilog_init(path_text(verilog), top_module)
 
     def read_lvs_verilog(self, verilog: PathArg, top_module: str) -> bool:
         """init verilog for iLVS"""

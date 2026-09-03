@@ -361,7 +361,7 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     timing_work_dir = tmp_path / "sta"
 
     assert module.read_def(Path("/ws/input.def")) is True
-    module.read_verilog(Path("/ws/input.v"), "gcd")
+    assert module.read_verilog(Path("/ws/input.v"), "gcd") is True
     assert module.read_lvs_verilog(Path("/ws/input_lvs.v"), "gcd") is True
     module.def_save(Path("/ws/output/gcd.def.gz"))
     module.gds_save(Path("/ws/output/gcd.gds.gz"), is_harden=True)

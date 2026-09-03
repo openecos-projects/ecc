@@ -13,6 +13,7 @@ class EngineDB:
     def __init__(self, workspace: Workspace, ecc_module: ECCToolsModule = None):
         self.workspace = workspace
         self.ecc_module = ecc_module
+        self.initialization_error: Exception | None = None
 
     def has_init(self) -> bool:
         return self.ecc_module is not None and self.ecc_module.ecc is not None
@@ -22,6 +23,7 @@ class EngineDB:
         return self.ecc_module
 
     def close(self) -> None:
+        self.initialization_error = None
         if self.ecc_module is None:
             return
 
@@ -52,8 +54,17 @@ class EngineDB:
             return False
 
         from chipcompiler.tools.ecc import create_db_engine
+        from chipcompiler.tools.ecc.runner import EccDesignReadError
 
-        self.ecc_module = create_db_engine(self.workspace, step)
+        self.initialization_error = None
+        try:
+            self.ecc_module = create_db_engine(self.workspace, step)
+        except EccDesignReadError as error:
+            self.initialization_error = error
+            self.workspace.logger.error(
+                f"ecc db initialization failed for step {step.name}: {error}"
+            )
+            return False
         if self.ecc_module is not None:
             self.workspace.logger.info(f"ecc db initialize success for step {step.name}.")
             return True
