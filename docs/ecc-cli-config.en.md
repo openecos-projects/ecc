@@ -67,20 +67,21 @@ Distilled from real `ecc config <step> --resolved` output (maps to the source `_
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | `def_input`/`result_dir` etc. rewritten per step |
+| timing optimization | ✓ | `dreamplace_ecc.json` | sizer step (between legalization and routing), input/output fields rewritten per step |
 | routing | ✓ | `route_ecc.json` | |
-| drc | ✓ | `drc_ecc.json` (empty) | rules come from the tech LEF |
-| lvs | — | none | tool default behavior |
 | filler | ✓ | `filler_ecc.json` | |
+| lvs | — | none | tool default behavior |
+| drc | ✓ | `drc_ecc.json` (empty) | rules come from the tech LEF |
 | postroutelec | — | none (Tcl) | Yosys LEC, see §10 |
 | rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §11) |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | reads the rcx config to align SPEFs |
-| harden | ✓ (reused) | no step-specific config | borrows `db_ecc.json` to locate inputs/outputs |
+| harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not in `_STEP_CONFIG_KEYS`; `ecc config harden --resolved` prints nothing |
 
 ## 1. The Parameter Chain (user-tunable parameters)
 
 ### 1.1 Legacy-semantic parameters (13)
 
-Source: `PARAM_REGISTRY` in [chipcompiler/cli/project/params.py](../chipcompiler/cli/project/params.py). These parameters are kept for compatibility; precedence: `--set` > `ecc.toml [params]` > defaults. The "Written to" column shows the tool configuration field each parameter ultimately lands in.
+Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/cli/project/params.py](../chipcompiler/cli/project/params.py) (the compatibility section of `PARAM_REGISTRY`; the direct-config parameters are the `config_params/` schemas in §1.2). These parameters are kept for compatibility; precedence: `--set` > `ecc.toml [params]` > defaults. The "Written to" column shows the tool configuration field each parameter ultimately lands in.
 
 | Parameter | Type / range | Default | Written to (config field) | Meaning |
 |---|---|---|---|---|
@@ -122,7 +123,7 @@ distance_micron = 30.0
 tech = "prtech/techLEF/N551P6M_ecos.lef"
 ```
 
-`die_builder` fields such as `die_util` and `margin` remain semantic parameters in §1.1 (`floorplan.core_util`, `floorplan.core_margin`, and `floorplan.aspect_ratio`). The allowed PDK content paths are `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef`; they reuse the PDK's relative-path resolution and file-existence validation. `pdk.root` still uses `ecc pdk set-root`. Workspace built-in paths (the DB's DEF/netlist/output, DreamPlace's input/result directories, per-step temporary directories, and the STA multi-corner liberty structure) are not exposed as CLI parameters.
+`die_builder` fields such as `die_util` and `margin` remain semantic parameters in §1.1 (`floorplan.core_util`, `floorplan.core_margin`, and `floorplan.aspect_ratio`). The allowed PDK path parameters are `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef`; `tech/lefs/libs/mapping_file` are PDK content paths resolved against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the **project directory**; all six get file-existence validation. `pdk.root` still uses `ecc pdk set-root`. Workspace built-in paths (the DB's DEF/netlist/output, DreamPlace's input/result directories, per-step temporary directories, and the STA multi-corner liberty structure) are not exposed as CLI parameters.
 
 ### 1.3 The parameter hub: params.toml
 
@@ -288,7 +289,7 @@ The two steps share `config/dreamplace_ecc.json`; before each step runs, `def_in
 | `max_num_area_adjust` | 3 | Maximum number of area-adjustment rounds |
 | `adjust_nctugr_area_flag` / `adjust_rudy_area_flag` / `adjust_pin_area_flag` | 1 / 0 / 0 | Enable NCTUgr/RUDY/pin area adjustment |
 | `area_adjust_stop_ratio` / `route_area_adjust_stop_ratio` / `pin_area_adjust_stop_ratio` | 0.01 / 0.01 / 0.05 | Stop ratios for each kind of area adjustment |
-| `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.05 | Unit routing/pin capacities |
+| `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.058 | Unit routing/pin capacities |
 | `max_route_opt_adjust_rate` / `route_opt_adjust_exponent` | 2.0 / 2.0 | Max multiplier / exponent for routing-area adjustment |
 | `pin_stretch_ratio` / `max_pin_opt_adjust_rate` | 1.4142 / 1.5 | Pin stretch ratio / max adjustment multiplier |
 | `risa_weights` | 0 | Use RISA congestion weights |
@@ -387,7 +388,7 @@ No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normaliz
 | Item | Content |
 |---|---|
 | Input (golden) | Synthesis mapped netlist (e.g. `Synthesis_yosys/output/gcd_Synthesis.v.gz`) |
-| Input (gate) | Final post-routing netlist (`filler_ecc/output/gcd_filler.v.gz`) |
+| Input (gate) | Previous (DRC) step's output netlist (`drc_ecc/output/gcd_drc.v.gz`; chaining uses `pre_step.output.verilog`) |
 | Output | `output/<design>_postRouteLec_result.json`: `status` (`proven` / failure) + both sides' `sha256` + report paths; `report/equiv_status.rpt`, `report/run_lec_status.rpt` |
 | Signoff | `status=proven` counts toward the signoff checklist (LEC results go into the signoff package `final/reports/postRouteLec/`) |
 

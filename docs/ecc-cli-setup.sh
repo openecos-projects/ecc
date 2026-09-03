@@ -152,12 +152,13 @@ pick_yosys() {
   return 1
 }
 
-# yosys slang 前端探测（等价于 ecc 内部 check_slang_support 的内置分支）
+# yosys slang 前端探测（等价于 ecc 内部 check_slang_support：内置 read_slang 或 plugin -i slang 均可）
 slang_ok() {
-  local ybin="$1" out
-  out=$(cd "$(dirname "$ybin")" && PATH="$(dirname "$ybin"):$PATH" \
-        "$ybin" -Q -T -p "help read_slang" 2>&1) || return 1
-  [[ "$out" != *"No such command"* ]]
+  local ybin="$1" dir out
+  dir=$(dirname "$ybin")
+  out=$(cd "$dir" && PATH="$dir:$PATH" "$ybin" -Q -T -p "help read_slang" 2>&1) \
+    && [[ "$out" != *"No such command"* ]] && return 0
+  (cd "$dir" && PATH="$dir:$PATH" "$ybin" -Q -T -p "plugin -i slang" >/dev/null 2>&1)
 }
 
 # 与 chipcompiler/tools/ecc_sizer/utility.py 的解析规则保持一致：

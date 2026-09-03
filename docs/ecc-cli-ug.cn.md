@@ -10,13 +10,13 @@
 
 ### 一键安装（推荐）
 
-仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)（本目录）：下载安装 ecc CLI、配置 PATH、自检环境、并补齐缺失的 PDK（icsprout55-pdk + liberty/GDS）与 Yosys（OSS CAD Suite 最新版）。幂等可重复运行，已就绪的部件自动跳过：
+仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)（本目录）：下载安装 ecc CLI、配置 PATH、自检环境、并补齐缺失的 PDK（icsprout55-pdk + liberty/GDS）、Yosys（OSS CAD Suite 最新版，含 slang 前端；LEC 等价性检查复用该 yosys）与可选的 Sizer（ecc-sizer 预编译包，官方发布后自动安装）。幂等可重复运行，已就绪的部件自动跳过：
 
 ```bash
 bash ecc-cli-setup.sh                 # 一键安装 + 自检 + 补齐
 bash ecc-cli-setup.sh --check-only    # 只做环境体检，不安装任何东西
 bash ecc-cli-setup.sh --force         # 强制重装 ecc CLI
-bash ecc-cli-setup.sh --skip-pdk --skip-tools   # 只装 ecc CLI 本体
+bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体
 bash ecc-cli-setup.sh --no-shell-rc   # 不修改 shell rc（默认会幂等地写入加载行）
 ```
 
@@ -32,9 +32,12 @@ bash ecc-cli-setup.sh --no-shell-rc   # 不修改 shell rc（默认会幂等地�
 | `ECC_PDK_DIR` | `~/.local/icsprout55-pdk` | PDK 目录（仓库地址固定为 https://github.com/openecos-projects/icsprout55-pdk.git） |
 | `ECC_OSS_CAD_DIR` | `~/.local/oss-cad-suite` | OSS CAD Suite 目录（Yosys） |
 | `OSS_CAD_URL` | 空 | OSS CAD Suite 完整直链覆盖（默认自动取最新发行版） |
+| `OSS_ARCH_PATTERN` | `linux-x64` | OSS CAD Suite 资产架构匹配串（非 x86_64 时改） |
+| `ECC_SIZER_DIR` | `~/.local/ecc-sizer` | Sizer 安装根目录（含 `bin/Sizer` 与 `src/sizer_os.tcl`） |
+| `ECC_SIZER_URL` | 空 | ecc-sizer 预编译包完整直链覆盖（官方无 Release 时可手动指定） |
 | `GH_PROXY` | 空 | GitHub 下载代理前缀（如 `https://gh-proxy.org/`），直连不畅时使用 |
 
-脚本产出 `~/.ecc-env.sh`（PATH + `CHIPCOMPILER_ICS55_PDK_ROOT` + `CHIPCOMPILER_OSS_CAD_DIR`），并幂等地让 `~/.bashrc`/`~/.zshrc` 加载它；另建 `~/.local/bin/ecc` 软链接。网络受限环境示例：
+脚本产出 `~/.ecc-env.sh`（PATH（含 Sizer 的 bin）+ `CHIPCOMPILER_ICS55_PDK_ROOT` + `CHIPCOMPILER_OSS_CAD_DIR` + 装有 Sizer 时的 `CHIPCOMPILER_ECC_SIZER_ROOT`），并幂等地让 `~/.bashrc`/`~/.zshrc`（以及 bash 登录 shell 的 `~/.profile`）加载它；另建 `~/.local/bin/ecc` 软链接。网络受限环境示例：
 
 ```bash
 GH_PROXY=https://gh-proxy.org/ bash ecc-cli-setup.sh
@@ -59,9 +62,7 @@ source ~/.bashrc
 
 # 方式 B：软链接到已在 PATH 的 ~/.local/bin（Ubuntu 默认含此目录）
 mkdir -p ~/.local/bin
-ln -s ~/.local/ecc/ecc ~/.local/bin/ecc
-已存在则覆盖
-ln -snf ~/.local/ecc/ecc ~/.local/bin/ecc
+ln -snf ~/.local/ecc/ecc ~/.local/bin/ecc   # -n 已存在时覆盖
 
 # 方式 C：系统级安装（多用户共享）
 sudo tar -xzf ecc-cli-linux-x86_64.tar.gz -C /opt/ecc
@@ -92,17 +93,17 @@ uv run ecc --help
 ## 1. 通用约定
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
-- 项目定位：多数命令接受 `--project <dir>`（缺省为当前目录，需含 `ecc.toml`）与 `--run-id <id>`（缺省用 `ecc.toml` 里 `[flow] run`，再缺省为 `default`，对应 `runs/<id>/`；也接受绝对路径或含 `/` 的相对路径）。
+- 项目定位：多数命令接受 `--project <dir>`（缺省为当前目录）与 `--run-id <id>`（也接受绝对路径或含 `/` 的相对路径）。workspace 布局按项目形态解析：**新项目**（无 `project.json`、无 `runs/`）首个 run 建在 `<project>/<run-id>`，并自动写入 `project.json` 登记该 workspace；**manifest 项目**（有 `project.json`）按登记的 workspace 表解析 run；**legacy 项目**（已有 `runs/` 目录）继续用 `runs/<run-id>`，可用 `ecc migrate` 升级。配置层三种形态都可带 `ecc.toml`；仅「无 `ecc.toml` 的纯 manifest 项目」会被 `ecc param` 拒绝（`param_requires_ecc_toml`）。
 - 输出模式（inspect 类命令通用）：`--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）、`--plain`（`key=value`，便于脚本解析）、默认人类可读 TEXT。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
-- 步骤名（step token）在展示层统一为小写：`synthesis / floorplan / placement / cts / legalization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`）。
+- 步骤名（step token）在展示层统一为小写：`synthesis / floorplan / placement / cts / legalization / timing optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`、`Timing optimization`）。
 
 命令总览：
 
 ```
 $ ecc --help
 Commands:
-  version       Show ECC runtime and component versions
+  version       Show ECC runtime, component, and installed tool versions
   layout-image  Render a GDS file into a layout image
   init          Create a new ECC project
   check         Validate the current project setup
@@ -110,6 +111,7 @@ Commands:
   status        Show run and step status
   log           Show available logs or step log content
   config        Show resolved project or step configuration
+  migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
@@ -132,16 +134,16 @@ ecc --version        # 仅一行 ecc 版本
 
 ```console
 $ ecc version
-ecc 0.1.0-alpha.11
+ecc 0.1.0a11
 dreamplace 0.1.0a7
-ecc_tools 0.1.0a11
+ecc_tools 0.1.0a12
 runtime ECC CLI
 yosys 0.68+132
 sizer not installed
 klayout 0.30.2
 
 $ ecc version --json
-{"schema_version": 1, "runtime": "ECC CLI", "ecc": "0.1.0-alpha.11", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a11", "tools": {"yosys": "0.68+132", "sizer": "not installed", "klayout": "0.30.2"}}
+{"schema_version": 1, "runtime": "ECC CLI", "ecc": "0.1.0a11", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a12", "tools": {"yosys": "0.68+132", "sizer": "not installed", "klayout": "0.30.2"}}
 ```
 
 ## 3. init — 创建项目
@@ -150,7 +152,7 @@ $ ecc version --json
 ecc init <NAME> [--plain]
 ```
 
-在 `NAME/` 下生成 `ecc.toml`、`rtl/`、`constraints/`、`runs/` 骨架：
+在 `NAME/` 下生成 `ecc.toml`、`rtl/`、`constraints/` 骨架（workspace 由首个 `ecc run` 创建）：
 
 ```console
 $ ecc init gcd
@@ -179,7 +181,7 @@ root = ""                # icsprout55-pdk 路径；留空则用 CHIPCOMPILER_ICS
 [flow]
 # preset: rtl2gds | rcx | harden | syn_sta
 preset = "rtl2gds"
-run = "default"          # run id，对应 runs/<id>/
+run = "default"          # run id（workspace 默认 <项目>/<id>；legacy 项目为 runs/<id>）
 ```
 
 ## 4. check — 校验项目配置
@@ -253,7 +255,7 @@ rc=1
 
 补充说明：
 
-- PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。
+- PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（ecos-studio workspace 布局；数据层与 `ecc pdk show` 使用。`ecc check`/`ecc run` 仍要求前三者之一，未设置时报 `pdk.root is required`）。
 - 综合步骤内部仍有 slang fail-fast（日志报 `yosys slang frontend check failed`），事后排查用 `ecc log synthesis`。
 - 安装/补齐环境的脚本：`bash docs/ecc-cli-setup.sh`（见第 0 节，`--check-only` 只体检）。
 
@@ -268,7 +270,7 @@ rc=1
 | Yosys（综合） | `which yosys && yosys -V`，或 `echo $CHIPCOMPILER_OSS_CAD_DIR` | 二者其一可用（优先 `CHIPCOMPILER_OSS_CAD_DIR` 指向 OSS CAD Suite） |
 | Yosys slang 前端 | `yosys -Q -T -p "help read_slang"` | 输出**不含** `No such command`（yosys ≥ v0.67 内置；旧版需可加载的 slang 插件） |
 | KLayout（仅 `layout-image` 需要） | `python3 -c "from klayout import lay"` | 无 ImportError |
-| Sizer（仅部分 flow 需要） | `which Sizer` | 输出路径 |
+| Sizer（Timing optimization 步骤需要，默认 rtl2gds/rcx/harden 链均含） | `which Sizer`，或 `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | 二者其一有效（root 需含 `src/sizer_os.tcl`）。注意 `ecc run` 预检**不含** sizer，缺失会在流中段 fail |
 
 可整体复制的一段自检脚本：
 
@@ -284,7 +286,7 @@ yosys -Q -T -p "help read_slang" 2>&1 | grep -q "No such command" \
 
 说明：
 
-- PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。
+- PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（`ecc check`/`ecc run` 仍要求前三者之一）。
 - ECC-Tools / DreamPlace 以 Python wheel（`ecc-tools-bin`、`ecc-dreamplace`）形式捆绑在 CLI 包内，正常安装即就绪。
 
 ## 5. run — 执行 flow
@@ -301,14 +303,14 @@ ecc run [OPTIONS]
   --json / --jsonl / --plain
 ```
 
-新建或 `--overwrite` 的 run 会按以下流程执行：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检 preset 必需工具 → 在 `runs/<run-id>/` 创建 workspace → 按 preset（`rtl2gds | rcx | harden | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。已有 workspace 直接按持久化 flow 续跑，不做 preset 预检。`harden` 是完整 13 步链（Synthesis→…→route→filler→LVS→DRC→postRouteLec（Yosys 等价性检查）→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
+新建或 `--overwrite` 的 run 会按以下流程执行：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检 preset 必需工具 → 在解析出的 run 目标下创建 workspace（新项目为 `<project>/<run-id>` 并写入 `project.json` 登记；legacy 项目为 `runs/<run-id>`）→ 按 preset（`rtl2gds | rcx | harden | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。已有 workspace 直接按持久化 flow 续跑，不做 preset 预检。`harden` 是完整 14 步链（Synthesis→Floorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→LVS→DRC→postRouteLec（Yosys 等价性检查）→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB；`rtl2gds`/`rcx` 为其前缀子链）。
 
 ```console
 $ ecc run                # 该 run 已存在时拒绝覆盖
 [error]
   run_exists
   run: default
-  workspace: /path/gcd/runs/default
+  workspace: /path/gcd/default
   overwrite: ecc run --overwrite
 rc=1
 
@@ -343,9 +345,9 @@ ecc run --workspace <dir> [--resume | --from STEP | --only STEP [--force]]
 - 原地修改 workspace：被重跑步骤的 `output/` 会被替换，下游步骤标记为 `Unstart`。
 
 ```bash
-ecc run --workspace runs/default --resume
-ecc run --workspace runs/default --from CTS
-ecc run --workspace runs/default --only place --force
+ecc run --workspace default --resume
+ecc run --workspace default --from CTS
+ecc run --workspace default --only place --force
 ```
 
 误在项目模式使用选择器会得到明确报错：
@@ -356,6 +358,14 @@ $ ecc run --resume
   selector_requires_workspace
 rc=1
 ```
+
+### 5.3 migrate — 旧布局迁移（过渡期命令）
+
+```bash
+ecc migrate [--project DIR] [--yes]
+```
+
+把 legacy `runs/` 布局的项目迁移到 manifest 布局（生成 `project.json`，workspace 登记后仍指向原目录，数据不搬动）。缺省先输出迁移计划，确认后才执行；`--yes` 跳过确认。该命令为过渡期保留（代码标注 deprecated），存量项目迁完即可弃用。`run`/`check`/`status` 在 legacy 项目上会自动附带迁移提示记录。
 
 ## 6. status — 查看 run 与步骤状态
 
@@ -368,7 +378,7 @@ $ ecc status
 [status]
   run: default
   status: failed
-  workspace: /tmp/gcd/runs/default
+  workspace: /tmp/gcd/default
   inspect: ecc status
   log: ecc log
 
@@ -382,7 +392,7 @@ $ ecc status
     cts (ecc) unstart
 
 $ ecc status --jsonl
-{"run": "default", "status": "failed", "workspace": "/tmp/gcd/runs/default", "inspect_cmd": "ecc status", "log_cmd": "ecc log"}
+{"run": "default", "status": "failed", "workspace": "/tmp/gcd/default", "inspect_cmd": "ecc status", "log_cmd": "ecc log"}
 {"step": "synthesis", "tool": "yosys", "status": "success", "runtime": "0:00:18", "log_cmd": "ecc log synthesis"}
 {"step": "floorplan", "tool": "ecc", "status": "success", "runtime": "0:00:04", "log_cmd": "ecc log floorplan"}
 ...
@@ -396,19 +406,24 @@ run 级状态取全部步骤的聚合：`success / failed / ongoing / unstart / 
 ecc log [STEP] [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
 ```
 
-不带 STEP 列出全部日志文件（含尾部预览）；带 STEP 打印该步骤日志内容（TEXT 模式高亮 ERROR/WARNING 行）。
+不带 STEP 列出全部日志文件（run 级 flow 日志 + 各步骤日志，含尾部预览）；带 STEP 打印该步骤日志内容（TEXT 模式高亮 ERROR/WARNING 行）。
 
 ```console
 $ ecc log
 [logs]
-  synthesis  Synthesis_yosys/log/synthesis.log
+  run  log/gcd.2026-09-03_17-34-35
+    tail:
+      flow : /path/gcd/default/home/flow.json
+      name | tool | state | runtime
+      Synthesis | yosys | Success | 0:0:15
+  synthesis  Synthesis_yosys/log/Synthesis.log
     tail:
       synthesizing gcd...
   inspect: ecc log synthesis
 
 $ ecc log synthesis
 [log] step=synthesis
-  source: Synthesis_yosys/log/synthesis.log
+  source: Synthesis_yosys/log/Synthesis.log
         synthesizing gcd...
   inspect: ecc log synthesis
 
@@ -427,7 +442,7 @@ rc=1
 ecc config [STEP] --resolved [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
 ```
 
-`--resolved` 必选。不带 STEP 输出项目级配置（`ecc.toml` 键 + 解析后的绝对路径）；带 STEP 列出该步骤在 `runs/<id>/config/` 下实际生效的配置文件。
+`--resolved` 必选。不带 STEP 输出项目级配置（`ecc.toml` 键 + 解析后的绝对路径）；带 STEP 列出该步骤在 workspace `config/` 下实际生效的配置文件。
 
 ```console
 $ ecc config --resolved --plain    # 项目级（节选）
@@ -440,10 +455,10 @@ $ ecc config floorplan --resolved  # 步骤级
 [config]
   step:
     db_ecc.json (config)
-      path: runs/default/config/db_ecc.json
+      path: default/config/db_ecc.json
   inspect: ecc config floorplan --resolved --json
     floorplan_ecc.json (config)
-      path: runs/default/config/floorplan_ecc.json
+      path: default/config/floorplan_ecc.json
   inspect: ecc config floorplan --resolved --json
 ```
 
@@ -571,11 +586,11 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
   check: ecc check
 ```
 
-解析优先级不变：`ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库内置默认。除 root 使用 `ecc pdk set-root` 外，`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef` 可由 `ecc param set KEY VALUE` 管理，写入 `[pdk.overrides]`。
+解析优先级不变：`ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（ecos-studio workspace 布局）。除 root 使用 `ecc pdk set-root` 外，`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef` 可由 `ecc param set KEY VALUE` 管理，写入 `[pdk.overrides]`。
 
 ## 11. signoff — 签核包与设计报告
 
-flow 跑完（harden preset 全部步骤 Success）后使用。三个子命令都接受 `--project DIR`/`--run-id ID`（定位 `runs/<id>`）或 `--workspace PATH`（直接指定 workspace），以及 `--json/--jsonl/--plain`。
+flow 跑完（harden preset 全部步骤 Success）后使用。三个子命令都接受 `--project DIR`/`--run-id ID`（定位 workspace）或 `--workspace PATH`（直接指定 workspace），以及 `--json/--jsonl/--plain`。
 
 ### 11.1 inspect — 就绪度审阅（不改任何东西）
 
@@ -586,10 +601,10 @@ ecc signoff inspect [--project DIR | --workspace PATH]
 输出签核包的就绪状态（`ready / attention / blocked`）、七个分组（initial/config/harden/final_design/sta/spef/reports）与风险清单。**blocked 也返回 rc=0**（检查是建议性的，门禁在 export）：
 
 ```console
-$ ecc signoff inspect --workspace runs/default
+$ ecc signoff inspect --workspace default
 [signoff]
   status    : blocked
-  workspace : runs/default
+  workspace : default
   export    : ecc signoff export -o <path>
   report    : ecc signoff report
 
@@ -640,7 +655,7 @@ $ ecc signoff report --project gcd
 [status]
   signoff: report
   status: written
-  path: /path/gcd/runs/default/signoff/gcd_design_summary.txt
+  path: /path/gcd/default/signoff/gcd_design_summary.txt
   design: gcd
   bytes: 3789
   view: cat /path/.../gcd_design_summary.txt
@@ -700,11 +715,11 @@ ecc report checklist --project gcd
 ecc rpc serve --stdio [--persistent-db]
 ```
 
-供 GUI 等前端使用的 JSON-RPC 2.0 服务，`Content-Length` 帧封装于 stdio。`--persistent-db` 额外开放 `db.ensure` / `db.release` 方法。握手与调用示例（完整方法列表和参数见 [workspace-cli.md](workspace-cli.md)）：
+供 GUI 等前端使用的 JSON-RPC 2.0 服务，`Content-Length` 帧封装于 stdio。`--persistent-db` 额外开放 `db.ensure` / `db.release` 与 `layout.edit.*` / `floorplan.edit.*` 系列方法。握手与调用示例（完整方法列表和参数见 [workspace-cli.md](workspace-cli.md)）：
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}
-← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0-alpha.11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot"]},"id":"hello-1"}
+← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0a11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
 
 → {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
 ← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
@@ -719,7 +734,7 @@ ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
 基于 KLayout 把 GDS 版图渲染为快照图片（默认 1920×1920；需要环境中有 KLayout）：
 
 ```bash
-ecc layout-image --gds runs/default/GDS_ecc/result.gds --image layout.png --width 2560 --height 1600
+ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.png --width 2560 --height 1600
 ```
 
 ## 15. 端到端典型工作流
@@ -735,14 +750,14 @@ ecc status                         # 看步骤状态；失败时：
 ecc log place                      # 看出错步骤日志（TEXT 模式自动高亮错误行）
 ecc param set place.target_density 0.55   # 调参数后重跑
 ecc run --overwrite --preset harden
-ecc run --workspace runs/default --only place --force   # 或原地单步复跑
+ecc run --workspace default --only place --force   # 或原地单步复跑
 ecc config place --resolved        # 查看该步实际生效的配置文件
 ecc signoff inspect                # 签核就绪度（blocked 也 rc=0）
 ecc signoff export -o gcd_signoff.tar.gz    # 就绪后导出签核包
 ecc signoff report                 # 生成文本设计总结（signoff/<design>_design_summary.txt）
 ecc report qor                     # QoR 总分报告（signoff/<design>_qor_report.txt）
 ecc report checklist               # 签核清单报告（signoff/checklist_report.txt）
-ecc layout-image --gds runs/default/Harden_ecc/result.gds --image gcd.png
+ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
 ```
 
 多 run 对比：

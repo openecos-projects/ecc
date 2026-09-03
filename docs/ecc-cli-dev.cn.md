@@ -9,9 +9,9 @@
 ```
 pyproject.toml                    # scripts.ecc = "chipcompiler.cli.main:main"
 chipcompiler/cli/main.py          # run(argv) / main()，仅做薄封装
-chipcompiler/cli/app.py           # 根 typer app；invoke_typer_app() 统一执行与退出码
+chipcompiler/cli/app.py           # 根 typer app；invoke_typer_app() 统一执行与退出码；version / layout-image 两命令直接注册于此
 chipcompiler/cli/commands/        # typer 命令定义层（薄）
-  ├── project.py                  # init/check/run/status/log/config 的注册与参数声明
+  ├── project.py                  # init/check/run/status/log/config/migrate 的注册与参数声明
   ├── doctor.py                   # doctor 顶层命令（环境体检）
   ├── param.py                    # param 子应用（list/show/set/unset/diff）
   ├── pdk.py                      # pdk 子应用（setup/set-root/show/unset）
@@ -19,10 +19,10 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── report.py                   # report 子应用（qor/checklist）
   └── rpc.py                      # rpc 子应用（serve）
 chipcompiler/cli/command_handlers/  # 业务处理层（有状态/重逻辑）
-  ├── project.py                  # init / check / run（含 preset 解析与环境预检）
+  ├── project.py                  # init / check / run / migrate（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor（组装 env_probe 结果为 records）
-  ├── pdk.py                      # pdk 三子命令（TOML 定点改写 + root 来源解析）
+  ├── pdk.py                      # pdk 四子命令（TOML 定点改写 + root 来源解析）
   ├── signoff.py                  # signoff 三子命令 + inspect 的 TEXT 渲染
   └── report.py                   # report 两子命令（写文件 + 记录汇总）
 chipcompiler/cli/handlers/param.py  # param 子命令处理 + param 的 TEXT 渲染
@@ -33,11 +33,12 @@ chipcompiler/cli/core/            # 框架层
   ├── output.py                   # disclosure_cmd() / step 名与状态归一化
   ├── records.py                  # error_record()
   ├── types.py                    # CommandContext / CommandResult / OutputMode
-  └── version_info.py             # version 命令的版本信息
+  └── version_info.py             # version 命令的包元数据版本（环境工具版本见 inspection/tool_versions.py）
 chipcompiler/cli/inspection/      # 只读探查逻辑
   ├── discovery.py / config_view.py / log_view.py
-  └── env_probe.py                # doctor/run 预检的环境探查（ProbeResult 体系）
-chipcompiler/cli/project/         # ecc.toml 解析校验（config.py）、参数注册表（params.py）
+  ├── env_probe.py                # doctor/run 预检的环境探查（ProbeResult 体系）
+  └── tool_versions.py            # ecc version 的环境工具版本（yosys/sizer/klayout）
+chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ params.py（参数注册表）/ manifest.py（项目形态分类）/ effective_config.py / config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
 chipcompiler/cli/rendering/       # 输出渲染（render / renderers / pretty / progress）
 chipcompiler/engine/signoff/      # 签核收集器 + 设计/checklist 报告（包，见 §5.4）
 chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §5.5）
@@ -55,8 +56,9 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()`（`cli/core/invocation.py`）依次：
-   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读 `ecc.toml` 得 `ProjectConfig` → 解析 run 目录（`--run-id` > 配置的 `[flow] run` > `runs/default`，见 `cli/project/config.py` 与 `cli/inspection/discovery.py`）→ 由 `--json/--jsonl/--plain` 推导 `OutputMode`，组装成 `CommandContext`（`cli/core/types.py`）。
+   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目按 `project.json` 的 workspace 表解析 run 目录（唯一活跃 workspace 自动选中；未声明 id → `workspace_not_declared`，清单损坏 → `manifest_invalid`）；legacy/virgin 项目走 `--run-id` > 配置的 `[flow] run` > `runs/default`（`cli/inspection/discovery.py`）→ 由 `--json/--jsonl/--plain` 推导 `OutputMode`，组装成带 `project_state` / `manifest_error` 字段的 `CommandContext`（`cli/core/types.py`）。
    - 调 handler：`handler(command_input, ctx) -> CommandResult`。
+   - handler 返回后按需追加记录（`_with_legacy_hint` / `_with_config_shadow_hint`）：legacy 项目的 `run/check/status` 附加迁移提示（指向 `ecc migrate`）；workspace 的 `home/` 同时存在 `params.toml` 与旧 `parameters.json` 时打 `workspace_config_shadowed` 警告（旧 JSON 已失效）。
    - 渲染：`rendering/renderers.py::render_command_result()` 先查 `RENDERERS[(render_key, output_mode)]` 定制渲染器，没有则落到通用 `rendering/render.py::render_result()`。
    - `raise typer.Exit(code=result.exit_code)` 把退出码透传给 `invoke_typer_app`。
 4. `invoke_typer_app` 以 `standalone_mode=False` 运行 click 命令，捕获 `click.exceptions.Exit` / `ClickException` 并转换成进程退出码，保证测试里 `cli_main.run([...])` 能拿到返回值。
@@ -169,7 +171,7 @@ uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package
 
 旧的语义参数仍在 `cli/project/params.py::_LEGACY_PARAM_REGISTRY`。工具 JSON 的直配字段按 owner 分别放在 `cli/project/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 只能拥有一种目标：旧的 `maps_to`、JSON `config_target` 或白名单 PDK `pdk_target`。
 
-已审核的静态模板字段使用 `config_param()` 声明：
+已审核的静态模板字段使用 `config_param()` 声明（`description` 为必填关键字参数，逐参数人工撰写，`test/cli/params/test_descriptions.py` 会校验）：
 
 ```python
 # cli/project/config_params/cts.py
@@ -179,6 +181,7 @@ config_param(
     ("skew_bound",),
     "0.08",
     applies="cts",
+    description="Allowed clock skew upper bound in ns.",
 )
 ```
 
@@ -192,7 +195,7 @@ config_param(
 
 `run` 有两条互斥路径（`cli/command_handlers/project.py` 的 `run()` / `_run_workspace()`）：
 
-- **项目模式**（默认）：读 `ecc.toml` → 解析 RTL/PDK/参数与 `--preset` 覆盖 → 对新建或 `--overwrite` 的目标执行**环境预检**（`_preflight_environment`：按 preset 所需工具调用 `inspection/env_probe.py`，缺失 → `env_not_ready` fail-fast）→ `runs/<run-id>/` 下 `create_workspace` → 从 `rtl2gds.get_flow_builders()` 取步骤构建 `EngineFlow` → 运行（TTY 下走 `rendering/progress.py::run_flow_with_progress` 的进度渲染，否则直接 `run_steps`）。已有 workspace 直接按持久化 flow 对账和续跑，不做 preset 预检。`--overwrite` 会先做安全校验（只删真正的 ECC run 目录）；`--preset` 不写回 `ecc.toml`，与 `--workspace` 互斥。
+- **项目模式**（默认）：读 `ecc.toml` → 解析 RTL/PDK/参数与 `--preset` 覆盖 → 对新建或 `--overwrite` 的目标执行**环境预检**（`_preflight_environment`：按 preset 所需工具调用 `inspection/env_probe.py`，缺失 → `env_not_ready` fail-fast）→ 在解析出的 run 目标下 `create_workspace`（manifest/virgin 项目默认 `<project>/<run-id>`，或 `project.json` 声明的 workspace 路径；`runs/<run-id>` 是 legacy 布局，`ecc migrate` 可升级）→ 从 `rtl2gds.get_flow_builders()` 取步骤构建 `EngineFlow` → 运行（TTY 下走 `rendering/progress.py::run_flow_with_progress` 的进度渲染，否则直接 `run_steps`）。已有 workspace 直接按持久化 flow 对账和续跑，不做 preset 预检。`--overwrite` 会先做安全校验（只删真正的 ECC run 目录）；`--preset` 不写回 `ecc.toml`，与 `--workspace` 互斥。
 - **workspace 模式**（`--workspace`）：`load_workspace` 后用 `chipcompiler.engine.rerun` 的 `run_resume / run_from / run_only` 原地复跑；`--resume/--from/--only` 三个选择器互斥且仅在该模式合法；该模式不做环境预检。
 
 改 flow 步骤序列本身在 `chipcompiler/engine`（`EngineFlow.build_default_steps()` / `add_step()`），不在 CLI 层；CLI 只负责参数解析、进度渲染选择与结果映射。

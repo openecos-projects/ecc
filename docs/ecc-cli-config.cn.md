@@ -67,20 +67,21 @@ graph LR
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
+| timing optimization | ✓ | `dreamplace_ecc.json` | sizer 步骤（legalization 与 routing 之间），每步重写输入输出字段 |
 | routing | ✓ | `route_ecc.json` | |
-| drc | ✓ | `drc_ecc.json`（空） | 规则来自 tech LEF |
-| lvs | — | 无 | 工具默认行为 |
 | filler | ✓ | `filler_ecc.json` | |
+| lvs | — | 无 | 工具默认行为 |
+| drc | ✓ | `drc_ecc.json`（空） | 规则来自 tech LEF |
 | postroutelec | — | 无（Tcl） | Yosys LEC，见 §10 |
 | rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §11） |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | 读 rcx 配置以对齐 SPEF |
-| harden | ✓（复用） | 无专属配置 | 借 `db_ecc.json` 定位输入输出 |
+| harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但不在 `_STEP_CONFIG_KEYS` 中，`ecc config harden --resolved` 输出为空 |
 
 ## 1. 参数传递链（用户可调参数）
 
 ### 1.1 旧语义参数（13 个）
 
-来源：[chipcompiler/cli/project/params.py](../chipcompiler/cli/project/params.py) 的 `PARAM_REGISTRY`。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
+来源：[chipcompiler/cli/project/params.py](../chipcompiler/cli/project/params.py) 的 `_LEGACY_PARAM_REGISTRY`（`PARAM_REGISTRY` 的兼容段；直配参数见 §1.2 的 `config_params/` schema）。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
 
 | 参数 | 类型 / 范围 | 默认 | 写入位置（config 字段） | 含义 |
 |---|---|---|---|---|
@@ -124,7 +125,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 `die_builder` 的 `die_util`/`margin` 等旧字段不在此列，仍通过 §1.1 的语义参数（`floorplan.core_util`、`floorplan.core_margin`、`floorplan.aspect_ratio`）设置。
 
-允许的 PDK 内容路径为 `pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef`；它们复用 PDK 的相对路径解析和文件存在校验。`pdk.root` 仍使用 `ecc pdk set-root`。workspace 内置路径（DB 的 DEF/网表/输出、DreamPlace 的输入/结果目录、步骤临时目录和 STA 多 corner liberty 结构）均不提供 CLI 参数。
+允许的 PDK 路径参数为 `pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef`；其中 `tech/lefs/libs/mapping_file` 是 PDK 内容路径，相对 `pdk.root` 解析，而 `pdk.sdc`/`pdk.spef` 是设计数据，相对**项目目录**解析；六者都做文件存在校验。`pdk.root` 仍使用 `ecc pdk set-root`。workspace 内置路径（DB 的 DEF/网表/输出、DreamPlace 的输入/结果目录、步骤临时目录和 STA 多 corner liberty 结构）均不提供 CLI 参数。
 
 ### 1.3 参数中枢 params.toml
 
@@ -290,7 +291,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `max_num_area_adjust` | 3 | 最大面积调整轮数 |
 | `adjust_nctugr_area_flag` / `adjust_rudy_area_flag` / `adjust_pin_area_flag` | 1 / 0 / 0 | 启用 NCTUgr/RUDY/引脚面积调整 |
 | `area_adjust_stop_ratio` / `route_area_adjust_stop_ratio` / `pin_area_adjust_stop_ratio` | 0.01 / 0.01 / 0.05 | 各类面积调整停止比例 |
-| `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.05 | 单位绕线/引脚容量 |
+| `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.058 | 单位绕线/引脚容量 |
 | `max_route_opt_adjust_rate` / `route_opt_adjust_exponent` | 2.0 / 2.0 | 绕线面积调整倍率上限/指数 |
 | `pin_stretch_ratio` / `max_pin_opt_adjust_rate` | 1.4142 / 1.5 | 引脚拉伸比 / 调整倍率上限 |
 | `risa_weights` | 0 | 使用 RISA 拥塞权重 |
@@ -389,7 +390,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | 项 | 内容 |
 |---|---|
 | 输入（golden） | 综合映射网表（如 `Synthesis_yosys/output/gcd_Synthesis.v.gz`） |
-| 输入（gate） | 布线后最终网表（`filler_ecc/output/gcd_filler.v.gz`） |
+| 输入（gate） | 上一步（DRC）输出网表（`drc_ecc/output/gcd_drc.v.gz`，链式取 `pre_step.output.verilog`） |
 | 输出 | `output/<设计>_postRouteLec_result.json`：`status`（`proven` / 失败）+ 双方 `sha256` + 报告路径；`report/equiv_status.rpt`、`report/run_lec_status.rpt` |
 | 签核 | `status=proven` 计入签核清单（LEC 结果进签核包 `final/reports/postRouteLec/`） |
 
