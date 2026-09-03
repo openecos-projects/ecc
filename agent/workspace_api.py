@@ -733,7 +733,14 @@ def _candidate_parameter_receipt(
 def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> dict[str, object]:
     root = Path(workspace.directory)
     origin = root / "origin"
-    rtl_files = sorted(path for path in (origin / "rtl").glob("*") if path.is_file())
+    rtl_files = sorted(
+        path
+        for path in origin.rglob("*")
+        if path.is_file()
+        and path.name.casefold()
+        .removesuffix(".gz")
+        .endswith((".v", ".sv", ".vh", ".svh", ".vhd", ".vhdl"))
+    )
     sdc_files = sorted(origin.glob("*.sdc"))
     if not rtl_files or not sdc_files:
         raise RuntimeApiError("command_failed", "candidate input fingerprints are unavailable")
@@ -761,8 +768,11 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         raise RuntimeApiError("command_failed", "candidate PDK fingerprint is unavailable") from exc
     rtl_hashes = [f"sha256:{sha256(path.read_bytes()).hexdigest()}" for path in rtl_files]
     sdc_hashes = [f"sha256:{sha256(path.read_bytes()).hexdigest()}" for path in sdc_files]
-    filelist = origin / "filelist.f"
-    if not filelist.is_file():
+    filelist = next(
+        (path for path in (origin / "filelist", origin / "filelist.f") if path.is_file()),
+        None,
+    )
+    if filelist is None:
         raise RuntimeApiError("command_failed", "candidate filelist fingerprint is unavailable")
     filelist_sha256 = f"sha256:{sha256(filelist.read_bytes()).hexdigest()}"
     rtl_sha256 = rtl_hashes[0] if len(rtl_hashes) == 1 else _stable_hash({"files": rtl_hashes})

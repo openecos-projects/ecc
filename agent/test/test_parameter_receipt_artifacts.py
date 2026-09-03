@@ -60,10 +60,10 @@ def _materialized_workspace(
         encoding="utf-8",
     )
     origin = tmp_path / "origin"
-    (origin / "rtl").mkdir(parents=True)
-    (origin / "rtl" / "top.v").write_text("module top; endmodule\n", encoding="utf-8")
+    origin.mkdir()
+    (origin / "top.v").write_text("module top; endmodule\n", encoding="utf-8")
     (origin / "constraints.sdc").write_text("create_clock clk\n", encoding="utf-8")
-    (origin / "filelist.f").write_text("rtl/top.v\n", encoding="utf-8")
+    (origin / "filelist").write_text("top.v\n", encoding="utf-8")
     home = tmp_path / "home"
     home.mkdir()
     (home / "parameters.json").write_text(
@@ -140,9 +140,9 @@ def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(tmp_path: Pa
         written=0.85,
     )
     origin = tmp_path / "origin"
-    (origin / "rtl" / "worker.v").write_text("module worker; endmodule\n", encoding="utf-8")
+    (origin / "worker.v").write_text("module worker; endmodule\n", encoding="utf-8")
     (origin / "timing.sdc").write_text("set_input_delay 1 clk\n", encoding="utf-8")
-    (origin / "filelist.f").write_text("rtl/top.v\nrtl/worker.v\n", encoding="utf-8")
+    (origin / "filelist").write_text("top.v\nworker.v\n", encoding="utf-8")
     request = SimpleNamespace(
         candidate_id="candidate-multifile",
         target_step="place",
@@ -152,13 +152,11 @@ def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(tmp_path: Pa
 
     context = _parameter_receipt_context(workspace, request, HASH)
 
-    rtl_sha256 = _stable_hash(
-        {"files": [sha256_path(path) for path in sorted((origin / "rtl").glob("*"))]}
-    )
+    rtl_sha256 = _stable_hash({"files": [sha256_path(path) for path in sorted(origin.glob("*.v"))]})
     sdc_sha256 = _stable_hash(
         {"files": [sha256_path(path) for path in sorted(origin.glob("*.sdc"))]}
     )
-    filelist_sha256 = sha256_path(origin / "filelist.f")
+    filelist_sha256 = sha256_path(origin / "filelist")
     assert context["rtl_sha256"] == rtl_sha256
     assert context["sdc_sha256"] == sdc_sha256
     assert context["design_sha256"] == _stable_hash(
