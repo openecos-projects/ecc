@@ -45,26 +45,40 @@ def test_root_version_returns_single_line(capsys):
     assert len(out.splitlines()) == 1
 
 
-def test_version_command_returns_stable_text_lines(capsys):
+def test_version_command_returns_stable_text_lines(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "not installed", "klayout": "0.30.2"},
+    )
+
     rc = cli_main.run(["version"])
 
     lines = capsys.readouterr().out.splitlines()
     assert rc == 0
-    assert len(lines) == 4
+    assert len(lines) == 7
     assert lines[0].startswith("ecc ")
     assert lines[1].startswith("dreamplace ")
     assert lines[2].startswith("ecc_tools ")
     assert lines[3] == "runtime ECC CLI"
+    assert lines[4] == "yosys 0.68"
+    assert lines[5] == "sizer not installed"
+    assert lines[6] == "klayout 0.30.2"
 
 
-def test_version_command_returns_json_payload(capsys):
+def test_version_command_returns_json_payload(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
+    )
+
     rc = cli_main.run(["version", "--json"])
 
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
-    assert set(data) == {"schema_version", "runtime", "ecc", "dreamplace", "ecc_tools"}
+    assert set(data) == {"schema_version", "runtime", "ecc", "dreamplace", "ecc_tools", "tools"}
     assert data["schema_version"] == 1
     assert data["runtime"] == "ECC CLI"
+    assert data["tools"] == {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"}
 
 
 def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
@@ -73,6 +87,10 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
 
     monkeypatch.setattr("chipcompiler.cli.core.version_info.metadata.version", missing_version)
     monkeypatch.setattr("chipcompiler.__version__", "source-fallback")
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
+    )
 
     rc = cli_main.run(["version", "--json"])
 
@@ -84,6 +102,7 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
         "ecc": "source-fallback",
         "dreamplace": "unknown",
         "ecc_tools": "unknown",
+        "tools": {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
     }
 
 
