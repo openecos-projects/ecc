@@ -253,11 +253,11 @@ def _load_parameters_config(path: Path) -> dict:
 
 def _write_parameters_config(workspace: Any, path: Path, config: dict) -> Path:
     """Persist candidate parameters through the canonical save boundary
-    (home/ecc.toml), keeping the workspace's [flow] section.
+    (home/params.toml), keeping the workspace's [flow] section.
 
     Returns the path that was actually written: when the workspace still
     references a legacy parameters.json path, the save lands on the
-    canonical home/ecc.toml target, and receipts must hash THAT file.
+    canonical home/params.toml target, and receipts must hash THAT file.
     """
     from chipcompiler.data.parameter import Parameters, save_parameter
     from chipcompiler.data.workspace_config import workspace_config_path

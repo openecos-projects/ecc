@@ -213,7 +213,7 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
 
 
 @deprecated(
-    "legacy parameters.json -> ecc.toml migration; slated for removal once "
+    "legacy parameters.json -> params.toml migration; slated for removal once "
     "legacy workspaces are phased out",
     category=None,
 )

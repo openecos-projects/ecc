@@ -62,7 +62,7 @@ def test_readonly_commands_never_migrate_legacy_workspace(
     command, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, create_flow_json
 ):
     """status/log/check/config on a legacy workspace rewrite nothing: they
-    never call load_workspace, so no ecc.toml appears, the legacy JSON is
+    never call load_workspace, so no params.toml appears, the legacy JSON is
     not deleted, and home.json keeps its legacy pointer byte-identical."""
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     project_dir = create_cli_project(pdk_root=pdk_root)
@@ -72,14 +72,14 @@ def test_readonly_commands_never_migrate_legacy_workspace(
     home = os.path.join(run_dir, "home")
     watched = [os.path.join(home, name) for name in ("parameters.json", "home.json")]
     snapshots = {path: Path(path).read_bytes() for path in watched}
-    ecc_toml = os.path.join(home, "params.toml")
-    assert not os.path.exists(ecc_toml)
+    params_toml = os.path.join(home, "params.toml")
+    assert not os.path.exists(params_toml)
 
     rc = cli_main.run([*command, "--project", project_dir, "--json"])
 
     assert rc == 0
     assert {path: Path(path).read_bytes() for path in watched} == snapshots
-    assert not os.path.exists(ecc_toml)
+    assert not os.path.exists(params_toml)
 
 
 def test_shadowed_workspace_config_warns_without_touching_files(
