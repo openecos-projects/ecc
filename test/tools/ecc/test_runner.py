@@ -291,6 +291,7 @@ def test_create_db_engine_raises_and_closes_when_def_master_resolution_fails(tmp
     FakeEccModule.instances = []
     monkeypatch.setattr(ecc_runner, "is_eda_exist", lambda: True)
     monkeypatch.setattr(ecc_runner, "ECCToolsModule", FakeEccModule)
+
     def failing_read_def(self, path):
         self.calls.append(("read_def", path))
         return False
