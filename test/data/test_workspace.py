@@ -66,14 +66,14 @@ def test_flow_has_step_uses_cached_data_and_path(tmp_path):
 
 
 def _read_parameters(path):
-    """Read a workspace config (home/ecc.toml) as a flat parameter dict."""
+    """Read a workspace config (home/params.toml) as a flat parameter dict."""
     from chipcompiler.data.parameter import load_parameter
 
     return load_parameter(Path(path)).data
 
 
 def _write_parameters(path, data):
-    """Write a flat parameter dict back to a workspace config (home/ecc.toml)."""
+    """Write a flat parameter dict back to a workspace config (home/params.toml)."""
     from chipcompiler.data.parameter import Parameters, save_parameter
 
     assert save_parameter(Parameters(path=Path(path), data=dict(data)))
@@ -405,7 +405,7 @@ def test_load_workspace_restores_path_fields_from_existing_json(
     assert loaded.design.origin_verilog == workspace_dir.resolve() / "origin" / "gcd.v"
     assert loaded.design.origin_def == workspace_dir.resolve() / "origin" / "gcd.def"
     assert loaded.flow.path == workspace_dir.resolve() / "home" / "flow.json"
-    assert loaded.parameters.path == workspace_dir.resolve() / "home" / "ecc.toml"
+    assert loaded.parameters.path == workspace_dir.resolve() / "home" / "params.toml"
     assert loaded.home.path == workspace_dir.resolve() / "home" / "home.json"
     assert all(isinstance(path, Path) for path in loaded.config.values())
 
@@ -618,7 +618,7 @@ def test_create_workspace_persists_pdk_root_in_parameters(
     assert workspace.pdk.root == resolved_root
     assert workspace.parameters.data.get("pdk_root") == str(resolved_root)
 
-    parameters_data = _read_parameters(workspace_dir / "home" / "ecc.toml")
+    parameters_data = _read_parameters(workspace_dir / "home" / "params.toml")
     assert parameters_data.get("pdk_root") == str(resolved_root)
 
 
@@ -719,7 +719,7 @@ def test_workspace_config_refresh_uses_updated_parameters(
     )
 
     workspace = load_workspace(str(workspace_dir))
-    parameter_path = workspace_dir / "home" / "ecc.toml"
+    parameter_path = workspace_dir / "home" / "params.toml"
     params = _read_parameters(parameter_path)
     params["max_fanout"] = 88
     params["global_right_padding"] = 13
@@ -749,7 +749,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     )
 
     workspace = load_workspace(str(workspace_dir))
-    parameter_path = workspace_dir / "home" / "ecc.toml"
+    parameter_path = workspace_dir / "home" / "params.toml"
     params = _read_parameters(parameter_path)
     params["max_fanout"] = 91
     params["global_right_padding"] = 17
@@ -810,7 +810,7 @@ def test_refresh_workspace_config_preserves_routability_flag_string_coercion(
             minimal_ics55_pdk_factory,
             default_ics55_parameters,
         )
-        parameter_path = workspace_dir / "home" / "ecc.toml"
+        parameter_path = workspace_dir / "home" / "params.toml"
         params = _read_parameters(parameter_path)
         params["routability_opt_flag"] = raw_value
         _write_parameters(parameter_path, params)
@@ -830,7 +830,7 @@ def test_refresh_workspace_config_preserves_nested_dreamplace_override_precedenc
         minimal_ics55_pdk_factory,
         default_ics55_parameters,
     )
-    parameter_path = workspace_dir / "home" / "ecc.toml"
+    parameter_path = workspace_dir / "home" / "params.toml"
     params = _read_parameters(parameter_path)
     params["target_density"] = 0.25
     params["routability_opt_flag"] = "true"
@@ -873,7 +873,7 @@ def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshe
     assert sync_workspace_config_to_parameters(workspace, workspace.config["route"]) is True
     refresh_workspace_config(workspace)
 
-    params = _read_parameters(workspace_dir / "home" / "ecc.toml")
+    params = _read_parameters(workspace_dir / "home" / "params.toml")
     db = json_read(workspace.config["db"])
     assert params["bottom_layer"] == "MET4"
     assert params["top_layer"] == "MET7"
@@ -899,7 +899,7 @@ def test_sync_workspace_config_to_parameters_propagates_cts_max_fanout(
 
     from chipcompiler.data.parameter import load_parameter
 
-    parameters = load_parameter(workspace_dir / "home" / "ecc.toml")
+    parameters = load_parameter(workspace_dir / "home" / "params.toml")
     cts = json_read(cts_path)
     assert parameters.data["max_fanout"] == 48
     assert cts["max_fanout"] == 48
@@ -915,7 +915,7 @@ def test_sync_workspace_config_to_parameters_preserves_routability_flag_string_c
             minimal_ics55_pdk_factory,
             default_ics55_parameters,
         )
-        parameter_path = workspace_dir / "home" / "ecc.toml"
+        parameter_path = workspace_dir / "home" / "params.toml"
         params = _read_parameters(parameter_path)
         params["routability_opt_flag"] = -1
         _write_parameters(parameter_path, params)
@@ -953,7 +953,7 @@ def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
     cts = json_read(workspace.config["CTS"])
     cts["skew_bound"] = 0.12
     json_write(workspace.config["CTS"], cts)
-    parameter_path = workspace_dir / "home" / "ecc.toml"
+    parameter_path = workspace_dir / "home" / "params.toml"
     before = _read_parameters(parameter_path)
 
     assert sync_workspace_config_to_parameters(workspace, workspace.config["CTS"]) is False
@@ -979,7 +979,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
         pdk_root=str(pdk_root),
     )
 
-    parameters_before = _read_parameters(workspace_dir / "home" / "ecc.toml")
+    parameters_before = _read_parameters(workspace_dir / "home" / "params.toml")
     config_before = (workspace_dir / "config" / "filler_ecc.json").read_text()
     origin_before = (workspace_dir / "origin" / "gcd.v").read_text()
 
@@ -1068,7 +1068,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert (workspace_dir / "origin" / "gcd.v").read_text() == origin_before
     assert (workspace_dir / "log").exists()
 
-    reset_parameters = _read_parameters(workspace_dir / "home" / "ecc.toml")
+    reset_parameters = _read_parameters(workspace_dir / "home" / "params.toml")
     parameters_before_json = parameters_before
     assert reset_parameters["pdk"] == parameters_before_json["pdk"]
     assert reset_parameters["design"] == parameters_before_json["design"]
@@ -1089,7 +1089,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert reset_parameters["core"]["bounding_box"] == ""
 
     reset_home = json_read(home_path)
-    assert reset_home["parameters"] == str(workspace_dir / "home" / "ecc.toml")
+    assert reset_home["parameters"] == str(workspace_dir / "home" / "params.toml")
     assert reset_home["flow"] == str(flow_path)
     assert reset_home["checklist"] == str(checklist_path)
     assert reset_home["layout"] == ""
@@ -1108,7 +1108,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert engine_flow.clear_calls == 1
     assert engine_flow.create_calls == 1
 
-    parameter_path = workspace_dir / "home" / "ecc.toml"
+    parameter_path = workspace_dir / "home" / "params.toml"
     preserved_parameters = _read_parameters(parameter_path)
     preserved_parameters["die"] = {"size": [120.0, 80.0], "area": 9600.0}
     preserved_parameters["core"] = {
@@ -1157,7 +1157,7 @@ def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(
     assert workspace.pdk.root == resolved_root
     assert workspace.parameters.data.get("pdk_root") == str(resolved_root)
 
-    parameters_data = _read_parameters(workspace_dir / "home" / "ecc.toml")
+    parameters_data = _read_parameters(workspace_dir / "home" / "params.toml")
     assert parameters_data.get("pdk_root") == str(resolved_root)
 
 

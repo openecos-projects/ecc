@@ -369,7 +369,7 @@ Resolution priority for `get_pdk("ics55")` in `chipcompiler/data/pdk.py`:
 4. In-repo default: `chipcompiler/thirdparty/icsprout55-pdk`.
 
 Backend supports `POST /api/workspace/set_pdk_root` to set runtime path.
-Workspace creation persists the resolved root in `home/ecc.toml` as `pdk_root`.
+Workspace creation persists the resolved root in `home/params.toml` as `pdk_root`.
 
 Example:
 
@@ -409,7 +409,7 @@ exactly.
 Workspace mode mutates the workspace in place: each executed step's `output/`
 is replaced, and steps downstream of a re-executed step are marked `Unstart`
 so a later resume re-runs them. Rerunning a step regenerates
-`workspace/config/*.json` from `home/ecc.toml`, so adjust parameters
+`workspace/config/*.json` from `home/params.toml`, so adjust parameters
 instead of hand-editing generated configs; keep a copy of a reported workspace
 if it must stay immutable.
 

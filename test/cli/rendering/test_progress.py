@@ -702,7 +702,7 @@ class TestRunFlowWithProgress:
             home=home,
             logger=logger,
             flow=SimpleNamespace(data={"steps": []}, path=home_dir / "flow.json"),
-            parameters=SimpleNamespace(path=home_dir / "ecc.toml"),
+            parameters=SimpleNamespace(path=home_dir / "params.toml"),
             directory=str(tmp_path),
         )
 
@@ -716,7 +716,7 @@ class TestRunFlowWithProgress:
         result = run_flow_with_progress(flow, _make_ctx(), None, buf)
 
         assert result is True
-        assert home.data["parameters"] == str(home_dir / "ecc.toml")
+        assert home.data["parameters"] == str(home_dir / "params.toml")
         assert home.data["flow"] == str(home_dir / "flow.json")
         assert home.data["checklist"] == str(home_dir / "checklist.json")
 

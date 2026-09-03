@@ -178,7 +178,7 @@ class TestCreateWorkspaceIntegration:
         workspace_dir = tmp_path / "linked-ws"
         (workspace_dir / "home").mkdir(parents=True)
         (workspace_dir / "home" / "flow.json").write_text('{"steps": []}')
-        (workspace_dir / "home" / "ecc.toml").symlink_to(real_dir / "home" / "ecc.toml")
+        (workspace_dir / "home" / "params.toml").symlink_to(real_dir / "home" / "params.toml")
 
         import pytest
 

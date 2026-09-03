@@ -60,7 +60,7 @@ def _make_signoff_workspace(
 
     save_parameter(
         Parameters(
-            path=workspace_dir / "home" / "ecc.toml",
+            path=workspace_dir / "home" / "params.toml",
             data={"design": design, "top_module": top_module, "pdk": "ics55"},
         )
     )
@@ -215,7 +215,7 @@ def _make_engine_flow(
     workspace.flow.path = workspace_dir / "home" / "flow.json"
     workspace.flow.data = json.loads(workspace.flow.path.read_text(encoding="utf-8"))
     workspace.parameters = Parameters(
-        path=str(workspace_dir / "home" / "ecc.toml"),
+        path=str(workspace_dir / "home" / "params.toml"),
         data={"design": design, "top_module": top_module, "pdk": "ics55"},
     )
     return EngineFlow(workspace=workspace)
@@ -805,7 +805,7 @@ def test_collect_signoff_package_packages_legacy_parameters_when_toml_absent(tmp
     workspace_dir = _make_signoff_workspace(tmp_path)
     # A read-only legacy workspace whose TOML migration was deferred runs
     # on parameters.json: the package carries the file it actually runs on.
-    (workspace_dir / "home" / "ecc.toml").unlink()
+    (workspace_dir / "home" / "params.toml").unlink()
     _write_json(
         workspace_dir / "home" / "parameters.json",
         {"design": "gcd", "top_module": "gcd", "pdk": "ics55"},

@@ -273,7 +273,7 @@ def test_load_normalizes_legacy_long_keys(tmp_path):
 
     home = tmp_path / "home"
     home.mkdir()
-    (home / "ecc.toml").write_text(
+    (home / "params.toml").write_text(
         '[design]\nname = "gcd"\ntop = "gcd"\nclock_port = "clk"\n'
         '\n[pdk]\nname = "ics55"\nroot = "/pdk"\n'
         '\n[params]\n"Max fanout" = 48\n"Target density" = 0.7\n'
@@ -311,7 +311,7 @@ def test_save_refuses_symlinked_config_target(tmp_path):
     (workspace_dir / "home").mkdir(parents=True)
     external = tmp_path / "external.toml"
     external.write_text('[params]\ndesign = "external"\n')
-    (workspace_dir / "home" / "ecc.toml").symlink_to(external)
+    (workspace_dir / "home" / "params.toml").symlink_to(external)
 
     ok = save_workspace_config(str(workspace_dir), {"design": "gcd"}, None)
 
@@ -332,7 +332,7 @@ def test_save_refuses_symlinked_home_parent(tmp_path):
     ok = save_workspace_config(str(workspace_dir), {"design": "gcd"}, None)
 
     assert ok is False
-    assert not (external_home / "ecc.toml").exists()
+    assert not (external_home / "params.toml").exists()
 
 
 def test_migration_refuses_symlinked_home_parent(tmp_path):
@@ -348,7 +348,7 @@ def test_migration_refuses_symlinked_home_parent(tmp_path):
     migrate_legacy_parameters(workspace_dir)
 
     assert (external_home / "parameters.json").exists()
-    assert not (external_home / "ecc.toml").exists()
+    assert not (external_home / "params.toml").exists()
 
 
 def test_migration_refuses_symlinked_legacy_parameters_file(tmp_path):
@@ -362,7 +362,7 @@ def test_migration_refuses_symlinked_legacy_parameters_file(tmp_path):
 
     migrate_legacy_parameters(workspace_dir)
 
-    assert not (workspace_dir / "home" / "ecc.toml").exists()
+    assert not (workspace_dir / "home" / "params.toml").exists()
     assert (workspace_dir / "home" / "parameters.json").is_symlink()
 
 

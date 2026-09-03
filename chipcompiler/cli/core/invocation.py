@@ -171,6 +171,42 @@ def _with_legacy_hint(command: str, command_input, result, ctx):
     )
 
 
+def _with_config_shadow_hint(command: str, result, ctx):
+    """Append the shadowed-config warning at the command-result boundary.
+
+    run/check/status on a workspace whose home/ holds BOTH the canonical
+    params.toml and a legacy parameters.json carry the warning on every
+    outcome: the JSON is inert, and a user editing it would otherwise see
+    nothing happen. One lexists pair per command; no workspace load, no
+    file mutation — deleting the JSON stays the user's call.
+    """
+    if command not in ("run", "check", "status"):
+        return result
+    from chipcompiler.cli.core.records import warning_record
+    from chipcompiler.data.workspace_config import (
+        LEGACY_PARAMETERS_FILENAME,
+        WORKSPACE_CONFIG_FILENAME,
+    )
+
+    home = os.path.join(ctx.run_dir, "home")
+    if not (
+        os.path.isfile(os.path.join(home, WORKSPACE_CONFIG_FILENAME))
+        and os.path.isfile(os.path.join(home, LEGACY_PARAMETERS_FILENAME))
+    ):
+        return result
+    return CommandResult(
+        records=(
+            *result.records,
+            warning_record(
+                "workspace_config_shadowed",
+                reason="home/params.toml wins over home/parameters.json; "
+                "the legacy JSON is inert — delete it to silence this",
+            ),
+        ),
+        exit_code=result.exit_code,
+    )
+
+
 def execute_command(
     command: str,
     command_input: CommandInputT,
@@ -179,6 +215,7 @@ def execute_command(
 ) -> None:
     ctx = build_context(command_input)
     result = _with_legacy_hint(command, command_input, handler(command_input, ctx), ctx)
+    result = _with_config_shadow_hint(command, result, ctx)
     color = _should_colorize()
     selected_render_key = render_key or command
 

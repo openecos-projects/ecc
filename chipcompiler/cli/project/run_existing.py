@@ -56,7 +56,7 @@ def run_existing_workspace(
             warning_record(
                 "params_ignored_on_existing_run",
                 reason="[params] in ecc.toml apply only to fresh runs; "
-                "the workspace reuses its persisted home/ecc.toml",
+                "the workspace reuses its persisted home/params.toml",
             )
         )
 

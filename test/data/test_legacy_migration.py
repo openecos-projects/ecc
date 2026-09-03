@@ -72,7 +72,7 @@ def test_loaded_parameters_contain_only_canonical_keys(
 
     for source in (
         load_workspace(str(workspace_dir)).parameters.data,
-        load_parameter(workspace_dir / "home" / "ecc.toml").data,
+        load_parameter(workspace_dir / "home" / "params.toml").data,
     ):
         keys = set(_walk_keys(source))
         assert keys.isdisjoint(LEGACY_LONG_KEYS)
@@ -102,7 +102,7 @@ def _write_legacy_workspace(tmp_path, minimal_ics55_pdk_factory, monkeypatch):
         "PDK Root": str(pdk_root.resolve()),
         "Core": {"Utilitization": 0.55, "Margin": [3, 3]},
     }
-    (workspace_dir / "home" / "ecc.toml").unlink()
+    (workspace_dir / "home" / "params.toml").unlink()
     (workspace_dir / "home" / "parameters.json").write_text(json.dumps(legacy))
     return workspace_dir, pdk_root
 
@@ -115,7 +115,7 @@ def test_legacy_parameters_migrate_on_open(tmp_path, minimal_ics55_pdk_factory, 
     loaded = load_workspace(str(workspace_dir))
 
     assert loaded is not None
-    config_path = workspace_dir / "home" / "ecc.toml"
+    config_path = workspace_dir / "home" / "params.toml"
     assert config_path.is_file()
     assert not (workspace_dir / "home" / "parameters.json").exists()
     assert loaded.parameters.data["frequency_max"] == 250
@@ -166,7 +166,7 @@ def test_rewrite_failure_falls_back_to_in_memory_copy(
     assert loaded.parameters.data["core"]["utilitization"] == 0.55
     # Nothing rewritten; the legacy file stays for the next open to retry.
     assert (workspace_dir / "home" / "parameters.json").is_file()
-    assert not (workspace_dir / "home" / "ecc.toml").exists()
+    assert not (workspace_dir / "home" / "params.toml").exists()
 
 
 def test_malformed_toml_never_falls_back_to_legacy_json(
@@ -177,7 +177,7 @@ def test_malformed_toml_never_falls_back_to_legacy_json(
     )
     # Both files present, TOML malformed: the workspace must not silently
     # load the stale JSON values — the invalid config surfaces loudly.
-    (workspace_dir / "home" / "ecc.toml").write_text("[params\nbroken =")
+    (workspace_dir / "home" / "params.toml").write_text("[params\nbroken =")
 
     from chipcompiler.data.workspace_config import WorkspaceConfigError
 
@@ -273,7 +273,7 @@ def test_verify_failure_installs_no_toml_and_next_open_retries(
     workspace_dir, _pdk_root = _write_legacy_workspace(
         tmp_path, minimal_ics55_pdk_factory, monkeypatch
     )
-    config_path = workspace_dir / "home" / "ecc.toml"
+    config_path = workspace_dir / "home" / "params.toml"
     legacy_path = workspace_dir / "home" / "parameters.json"
 
     _fail_first_decode(monkeypatch)
@@ -306,7 +306,7 @@ def test_legacy_unlink_failure_still_opens_verified_toml(
     workspace_dir, _pdk_root = _write_legacy_workspace(
         tmp_path, minimal_ics55_pdk_factory, monkeypatch
     )
-    config_path = workspace_dir / "home" / "ecc.toml"
+    config_path = workspace_dir / "home" / "params.toml"
     legacy_path = workspace_dir / "home" / "parameters.json"
 
     real_unlink = Path.unlink
@@ -342,7 +342,7 @@ def test_verify_failure_with_stubborn_candidate_still_retries(
     workspace_dir, _pdk_root = _write_legacy_workspace(
         tmp_path, minimal_ics55_pdk_factory, monkeypatch
     )
-    config_path = workspace_dir / "home" / "ecc.toml"
+    config_path = workspace_dir / "home" / "params.toml"
     legacy_path = workspace_dir / "home" / "parameters.json"
 
     _fail_first_decode(monkeypatch)

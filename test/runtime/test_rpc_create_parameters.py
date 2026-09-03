@@ -52,7 +52,7 @@ def test_gui_flat_parameters_are_effective_at_creation(monkeypatch, tmp_path):
         {"frequency_max": 200, "top_module": "gcd", "design": "gcd", "clock": "clk"},
     )
 
-    persisted = load_parameter(workspace_dir / "home" / "ecc.toml").data
+    persisted = load_parameter(workspace_dir / "home" / "params.toml").data
     assert persisted["frequency_max"] == 200
     assert persisted["top_module"] == "gcd"
     assert persisted["design"] == "gcd"
@@ -79,7 +79,7 @@ def test_gui_geometry_aliases_fold_into_subtrees(monkeypatch, tmp_path):
         },
     )
 
-    persisted = load_parameter(workspace_dir / "home" / "ecc.toml").data
+    persisted = load_parameter(workspace_dir / "home" / "params.toml").data
     assert persisted["die"]["size"] == [150, 160]
     assert persisted["core"]["utilitization"] == 0.5
     assert persisted["core"]["margin"] == [3, 3]
@@ -99,7 +99,7 @@ def test_legacy_long_keys_in_rpc_payload_are_normalized(monkeypatch, tmp_path):
         {"Design": "gcd", "Top module": "gcd", "Clock": "clk", "Frequency max [MHz]": 300},
     )
 
-    persisted = load_parameter(workspace_dir / "home" / "ecc.toml").data
+    persisted = load_parameter(workspace_dir / "home" / "params.toml").data
     assert persisted["frequency_max"] == 300
     assert "Frequency max [MHz]" not in persisted
 

@@ -197,14 +197,14 @@ class TestReconcile:
             tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
         )
         flow_before = (workspace_dir / "home" / "flow.json").read_bytes()
-        config_before = (workspace_dir / "home" / "ecc.toml").read_bytes()
+        config_before = (workspace_dir / "home" / "params.toml").read_bytes()
 
         result = reconcile_workspace(workspace_dir, {"start": "place", "end": "route"})
 
         assert result.outcome == "mismatch"
         assert result.error == "flow_mismatch"
         assert (workspace_dir / "home" / "flow.json").read_bytes() == flow_before
-        assert (workspace_dir / "home" / "ecc.toml").read_bytes() == config_before
+        assert (workspace_dir / "home" / "params.toml").read_bytes() == config_before
 
     def test_missing_flow_section_derives_target_from_persisted(self, tmp_path):
         workspace_dir = _write_workspace(tmp_path, RTL2GDS_STEPS, flow_section=None)
@@ -233,7 +233,7 @@ class TestReconcile:
 
     def test_undecodable_config_is_a_mismatch_not_a_crash(self, tmp_path):
         workspace_dir = _write_workspace(tmp_path, RTL2GDS_STEPS, flow_section=None)
-        (workspace_dir / "home" / "ecc.toml").write_bytes(b"\xff")
+        (workspace_dir / "home" / "params.toml").write_bytes(b"\xff")
         flow_before = (workspace_dir / "home" / "flow.json").read_bytes()
 
         result = reconcile_workspace(workspace_dir)

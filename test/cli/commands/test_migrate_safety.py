@@ -43,9 +43,9 @@ def _external_workspace(tmp_path):
         json.dumps({"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Success"}]})
     )
     (home / "home.json").write_text(
-        json.dumps({"parameters": str(home / "ecc.toml"), "flow": str(home / "flow.json")})
+        json.dumps({"parameters": str(home / "params.toml"), "flow": str(home / "flow.json")})
     )
-    (home / "ecc.toml").write_text('[design]\nname = "gcd"\n[pdk]\nname = "ics55"\n')
+    (home / "params.toml").write_text('[design]\nname = "gcd"\n[pdk]\nname = "ics55"\n')
     (external / "keep.txt").write_text("precious\n")
     os.symlink("keep.txt", external / "keep-link.txt")
     return external
@@ -158,7 +158,7 @@ def _external_runs_with_workspace(tmp_path):
     (home / "flow.json").write_text(
         json.dumps({"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Success"}]})
     )
-    (home / "ecc.toml").write_text('[design]\nname = "gcd"\n[pdk]\nname = "ics55"\n')
+    (home / "params.toml").write_text('[design]\nname = "gcd"\n[pdk]\nname = "ics55"\n')
     return tmp_path / "external-runs"
 
 

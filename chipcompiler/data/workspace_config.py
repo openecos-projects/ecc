@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""Workspace configuration persistence: ``home/ecc.toml``.
+"""Workspace configuration persistence: ``home/params.toml``.
 
 The workspace's resolved configuration snapshot lives in TOML so a workspace
 is self-describing in the same vocabulary as the project-level ``ecc.toml``.
@@ -27,7 +27,7 @@ from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
-WORKSPACE_CONFIG_FILENAME = "ecc.toml"
+WORKSPACE_CONFIG_FILENAME = "params.toml"
 LEGACY_PARAMETERS_FILENAME = "parameters.json"
 
 _IDENTITY_FIELDS = ("pdk", "design", "top_module", "clock")
@@ -49,7 +49,7 @@ _PDK_SECTION_KEYS = {
 
 
 class WorkspaceConfigError(ValueError):
-    """Invalid ``home/ecc.toml`` content (parse failure or rule violation)."""
+    """Invalid ``home/params.toml`` content (parse failure or rule violation)."""
 
 
 class WorkspaceFlowTargetError(ValueError):
@@ -302,7 +302,7 @@ def _decode_workspace_config(path: Path, workspace_dir: str | Path) -> dict:
 
 
 def load_workspace_config(workspace_dir: str | Path) -> dict:
-    """Load ``home/ecc.toml`` as a canonical flat parameter payload.
+    """Load ``home/params.toml`` as a canonical flat parameter payload.
 
     The returned dict always carries a ``_flow`` entry with the validated
     ``[flow]`` section (empty dict when absent). ``pdk_config`` is resolved
@@ -513,7 +513,7 @@ def resolve_flow_selection(
     category=None,
 )
 def migrate_legacy_parameters(workspace_dir: Path) -> None:
-    """Rewrite a legacy ``home/parameters.json`` into ``home/ecc.toml``.
+    """Rewrite a legacy ``home/parameters.json`` into ``home/params.toml``.
 
     Runs at workspace open, the single choke point for loading workspaces.
     When both files exist the TOML wins and the JSON is left untouched. The

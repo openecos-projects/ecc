@@ -124,7 +124,7 @@ def test_get_design_parameters_sg13g2_returns_base_template():
 def test_load_parameter_reads_workspace_config(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    config_path = home / "ecc.toml"
+    config_path = home / "params.toml"
     config_path.write_text('[params]\ndesign = "gcd"\n')
 
     parameters = load_parameter(config_path)
@@ -138,7 +138,7 @@ def test_load_parameter_missing_file_returns_empty(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
 
-    parameters = load_parameter(home / "ecc.toml")
+    parameters = load_parameter(home / "params.toml")
 
     assert parameters.data == {}
 
@@ -146,7 +146,7 @@ def test_load_parameter_missing_file_returns_empty(tmp_path):
 def test_get_parameters_accepts_path_and_save_writes_to_path(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    path = home / "ecc.toml"
+    path = home / "params.toml"
 
     parameters = get_parameters("ics55", path)
     parameters.data["design"] = "gcd"
@@ -177,7 +177,7 @@ def test_parameters_have_chip_identity_requires_identity_fields():
 def test_reload_parameter_keeps_identity_when_file_is_empty(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    path = home / "ecc.toml"
+    path = home / "params.toml"
     path.write_text("")
     current = Parameters(
         path=path,

@@ -6,7 +6,7 @@ from chipcompiler.cli import main as cli_main
 
 
 def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds"):
-    """A valid existing workspace: home/ecc.toml + flow.json with given steps."""
+    """A valid existing workspace: home/params.toml + flow.json with given steps."""
     from chipcompiler.data.workspace_config import save_workspace_config
     from chipcompiler.rtl2gds.builder import build_harden_flow
 
@@ -236,7 +236,7 @@ class TestFlowContinuation:
         os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "default")
         _write_existing_workspace(run_dir, RTL2GDS_NAMES)
-        Path(run_dir, "home", "ecc.toml").write_text("[params\nbroken =")
+        Path(run_dir, "home", "params.toml").write_text("[params\nbroken =")
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
 

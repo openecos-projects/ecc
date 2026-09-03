@@ -21,7 +21,13 @@ from ..parameter import (
 )
 from ..pdk import PDK, get_pdk
 from ..step import StateEnum, StepEnum
-from ..workspace_config import legacy_parameters_fallback, migrate_legacy_parameters
+from ..workspace_config import (
+    legacy_parameters_fallback,
+    migrate_legacy_parameters,
+)
+from ..workspace_config import (
+    workspace_config_path as workspace_config_toml_path,
+)
 from .filelist_copy import copy_filelist_with_sources
 from .layout import EccData, WorkspaceStepBase
 
@@ -923,7 +929,7 @@ def prepare_workspace_for_rerun(
     workspace.home.reset()
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(workspace_root / "home" / "checklist.json")
-    parameter_path = workspace.parameters.path or (workspace_root / "home" / "ecc.toml")
+    parameter_path = workspace.parameters.path or workspace_config_toml_path(workspace_root)
     workspace.parameters.path = Path(parameter_path)
     workspace.home.set_parameters(workspace.parameters.path)
     _reset_workspace_checklist(workspace)
@@ -1158,7 +1164,7 @@ def create_workspace(
     # set home data
     home_dir.mkdir(parents=True, exist_ok=True)
     workspace.flow.path = home_dir / "flow.json"
-    workspace.parameters.path = home_dir / "ecc.toml"
+    workspace.parameters.path = workspace_config_toml_path(home_dir.parent)
     workspace.home.init(path=home_dir / "home.json")
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(home_dir / "checklist.json")
@@ -1209,7 +1215,7 @@ def load_workspace(directory: str | Path) -> Workspace:
     migrate_workspace_config_filenames(workspace_dir)
     workspace.config = build_workspace_config_paths(workspace)
 
-    config_path = home_dir / "ecc.toml"
+    config_path = workspace_config_toml_path(workspace_dir)
     legacy_path = home_dir / "parameters.json"
     if config_path.is_symlink():
         # A symlinked canonical config would make the workspace execute
@@ -1218,7 +1224,7 @@ def load_workspace(directory: str | Path) -> Workspace:
         from chipcompiler.data.workspace_config import WorkspaceConfigError
 
         raise WorkspaceConfigError(f"workspace config is a symlink: {config_path}")
-    parameters = load_parameter(home_dir / "ecc.toml")
+    parameters = load_parameter(workspace_config_toml_path(workspace_dir))
     if len(parameters.data) <= 0 and not config_path.exists() and legacy_path.exists():
         # Migration was deferred (e.g. read-only dir): fall back to the
         # normalized in-memory copy so the workspace still opens. When the

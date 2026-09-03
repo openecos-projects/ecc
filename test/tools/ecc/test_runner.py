@@ -690,7 +690,7 @@ def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_nam
 
 
 def test_save_data_preserves_core_utilization_parameter(tmp_path, monkeypatch):
-    parameter_path = tmp_path / "home" / "ecc.toml"
+    parameter_path = tmp_path / "home" / "params.toml"
     parameter_path.parent.mkdir()
     workspace = Workspace(
         directory=tmp_path,

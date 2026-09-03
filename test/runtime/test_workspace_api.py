@@ -379,7 +379,7 @@ def test_create_workspace_with_inline_pdk_json_uses_real_data_api(monkeypatch, t
     assert pdk_config_path.is_file()
     from chipcompiler.data.parameter import load_parameter
 
-    parameters = load_parameter(workspace_dir / "home" / "ecc.toml").data
+    parameters = load_parameter(workspace_dir / "home" / "params.toml").data
     assert parameters["pdk_config"] == str(pdk_config_path.resolve())
     session = api.sessions.get_session(result["workspaceId"])
     assert session.workspace.pdk.tech == tech

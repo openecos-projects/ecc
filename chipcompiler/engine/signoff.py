@@ -89,7 +89,7 @@ class SignoffPackageCollector:
             self._refresh_workspace_analysis(workspace_dir) if options.refresh_analysis else []
         )
 
-        parameters = self._read_parameters(workspace_dir / "home" / "ecc.toml")
+        parameters = self._read_parameters(workspace_dir / "home" / "params.toml")
         design = (
             self.workspace.design.name
             or parameters.get("design", "")
@@ -356,7 +356,7 @@ class SignoffPackageCollector:
                 add_file("initial.verilog", origin_rtl, rtl_destination, required=True)
         if origin_sdc is not None:
             add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
-        parameters_config = workspace_dir / "home" / "ecc.toml"
+        parameters_config = workspace_dir / "home" / "params.toml"
         if not parameters_config.exists():
             # A read-only legacy workspace (TOML migration deferred) runs on
             # its parameters.json — package the file it actually runs on.

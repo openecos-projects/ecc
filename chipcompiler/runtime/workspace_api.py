@@ -499,7 +499,7 @@ class WorkspaceRuntimeApi:
         if not str(home_data.get("parameters", "")).strip():
             parameter_path = getattr(session.workspace.parameters, "path", None)
             if parameter_path is None:
-                parameter_path = Path(session.directory) / "home" / "ecc.toml"
+                parameter_path = Path(session.directory) / "home" / "params.toml"
             home_data["parameters"] = str(parameter_path)
 
         return {
@@ -2145,8 +2145,13 @@ def _looks_like_old_workspace(directory: str) -> bool:
     home = os.path.join(directory, "home")
     if not os.path.isfile(os.path.join(home, "home.json")):
         return False
-    return os.path.isfile(os.path.join(home, "ecc.toml")) or os.path.isfile(
-        os.path.join(home, "parameters.json")
+    from chipcompiler.data.workspace_config import (
+        LEGACY_PARAMETERS_FILENAME,
+        WORKSPACE_CONFIG_FILENAME,
+    )
+
+    return os.path.isfile(os.path.join(home, WORKSPACE_CONFIG_FILENAME)) or os.path.isfile(
+        os.path.join(home, LEGACY_PARAMETERS_FILENAME)
     )
 
 

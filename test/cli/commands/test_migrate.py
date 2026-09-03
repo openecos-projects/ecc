@@ -32,12 +32,12 @@ class TestMigrate:
         assert rc == 0
         target = os.path.join(project_dir, "exp1")
         assert not os.path.exists(run_dir)
-        assert os.path.isfile(os.path.join(target, "home", "ecc.toml"))
+        assert os.path.isfile(os.path.join(target, "home", "params.toml"))
         assert not os.path.exists(os.path.join(project_dir, "runs"))
 
         with open(os.path.join(target, "home", "home.json")) as f:
             home = json.load(f)
-        assert home["parameters"] == os.path.join(target, "home", "ecc.toml")
+        assert home["parameters"] == os.path.join(target, "home", "params.toml")
         assert home["flow"] == os.path.join(target, "home", "flow.json")
         assert "runs" not in home["flow"]
 
@@ -340,11 +340,11 @@ class TestMigrate:
         # Downgrade to a legacy workspace with an absolute PDK Config path.
         from chipcompiler.data.parameter import load_parameter
 
-        parameters = load_parameter(Path(run_dir, "home", "ecc.toml"))
+        parameters = load_parameter(Path(run_dir, "home", "params.toml"))
         legacy = dict(parameters.data)
         legacy["PDK Config"] = os.path.join(run_dir, "home", "pdk.json")
         Path(run_dir, "home", "pdk.json").write_text("{}")
-        os.unlink(os.path.join(run_dir, "home", "ecc.toml"))
+        os.unlink(os.path.join(run_dir, "home", "params.toml"))
         import json as _json
 
         long_keys = {"Design": "gcd", "Top module": "gcd", "Clock": "clk", "PDK": "ics55"}
@@ -356,7 +356,7 @@ class TestMigrate:
         assert rc == 0
         from chipcompiler.data.parameter import load_parameter as lp
 
-        moved = lp(Path(project_dir, "exp1", "home", "ecc.toml"))
+        moved = lp(Path(project_dir, "exp1", "home", "params.toml"))
         assert moved.data["pdk_config"] == os.path.join(project_dir, "exp1", "home", "pdk.json")
 
 

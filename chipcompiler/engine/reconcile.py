@@ -2,7 +2,7 @@
 
 """Reconcile an existing workspace's persisted flow against a target range.
 
-The flow target (``home/ecc.toml [flow]``, or the project ``ecc.toml
+The flow target (``home/params.toml [flow]``, or the project ``ecc.toml
 [flow]`` in project mode) describes intent; ``home/flow.json`` is the
 execution ledger. This module compares them and, under the workspace lock,
 appends missing suffix steps, adopts the new target, or repairs a stale
@@ -122,7 +122,7 @@ def _workspace_lock(workspace_dir: Path):
 
 
 def resolve_target_section(project_flow: dict | None, workspace_flow: dict | None) -> dict:
-    """Target precedence: project ecc.toml [flow] > home/ecc.toml [flow]."""
+    """Target precedence: project ecc.toml [flow] > home/params.toml [flow]."""
     if project_flow:
         return dict(project_flow)
     if workspace_flow:
@@ -157,7 +157,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
         return ReconcileResult(outcome="mismatch", error=f"workspace_config_invalid: {exc}"), {}
     except OSError as exc:
-        # An existing but unreadable home/ecc.toml (permissions, a directory
+        # An existing but unreadable home/params.toml (permissions, a directory
         # in its place) is invalid configuration, never an uncaught traceback.
         return ReconcileResult(outcome="mismatch", error=f"workspace_config_invalid: {exc}"), {}
     workspace_flow = config["_flow"]
@@ -289,7 +289,7 @@ def reconcile_workspace(
 
     *target_section* is the effective [flow] section (already resolved per
     the caller's precedence). When None, the workspace's own
-    ``home/ecc.toml [flow]`` is the target; when that is also absent, the
+    ``home/params.toml [flow]`` is the target; when that is also absent, the
     persisted range itself is the target (nothing to reconcile).
     """
     workspace_dir = Path(workspace_dir).resolve()

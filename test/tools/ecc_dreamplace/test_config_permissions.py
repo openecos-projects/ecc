@@ -186,7 +186,7 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
         parameters=make_ics55_parameters(initial_overrides),
     )
     (tmp_path / "workspace" / "home").mkdir(parents=True)
-    workspace.parameters.path = tmp_path / "workspace" / "home" / "ecc.toml"
+    workspace.parameters.path = tmp_path / "workspace" / "home" / "params.toml"
     step = dreamplace_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.PLACEMENT.value,

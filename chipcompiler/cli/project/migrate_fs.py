@@ -337,7 +337,7 @@ def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_pre
     """Rebase workspace-local pdk config paths BEFORE the moved workspace loads.
 
     Both the legacy parameters.json ("PDK Config") and an already-migrated
-    home/ecc.toml can carry an absolute path under the old location; the
+    home/params.toml can carry an absolute path under the old location; the
     workspace cannot load while the path points back at the old source.
     """
     legacy_path = Path(workspace_dir) / "home" / "parameters.json"
@@ -352,7 +352,9 @@ def _pre_rebase_legacy_config_paths(workspace_dir: str, old_prefix: str, new_pre
                 if not json_write(legacy_path, data):
                     raise OSError(f"failed to rebase PDK Config in {legacy_path}")
 
-    config_path = Path(workspace_dir) / "home" / "ecc.toml"
+    from chipcompiler.data.workspace_config import workspace_config_path
+
+    config_path = workspace_config_path(workspace_dir)
     if config_path.exists():
         from chipcompiler.data.parameter import load_parameter, save_parameter
 
