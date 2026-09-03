@@ -86,7 +86,7 @@ def _plain_verilog_filelist_paths(filelist: str) -> list[str] | None:
 
 def _yosys_source_config(workspace: Workspace, step: WorkspaceStep) -> tuple[bool, list[str], str]:
     """Classify RTL input as native-Verilog or Slang-required."""
-    filelist = workspace.design.input_filelist or workspace.parameters.data.get("File list", "")
+    filelist = workspace.design.input_filelist or workspace.parameters.data.get("file_list", "")
     if filelist and os.path.exists(filelist):
         plain_sources = _plain_verilog_filelist_paths(filelist)
         if plain_sources is not None:
@@ -104,7 +104,7 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     if not workspace.design.top_module:
         raise ValueError("TOP_NAME (workspace.design.top_module) not set")
 
-    freq_mhz = workspace.parameters.data.get("Frequency max [MHz]")
+    freq_mhz = workspace.parameters.data.get("frequency_max")
     if freq_mhz is None:
         raise ValueError("CLK_FREQ_MHZ (Frequency max [MHz]) not set")
     if not isinstance(freq_mhz, (int, float)) or freq_mhz <= 0:
@@ -114,7 +114,7 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     filelist = (
         workspace.design.input_filelist
         if workspace.design.input_filelist
-        else workspace.parameters.data.get("File list", "")
+        else workspace.parameters.data.get("file_list", "")
     )
 
     # Prefer filelist if available, otherwise use rtl_file --- IGNORE ---

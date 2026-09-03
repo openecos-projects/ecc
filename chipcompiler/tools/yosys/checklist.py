@@ -113,10 +113,10 @@ class YosysSynthesisChecklist(YosysChecklist):
         filelist = (
             self.workspace.design.input_filelist
             if self.workspace.design.input_filelist
-            else self.workspace.parameters.data.get("File list", "")
+            else self.workspace.parameters.data.get("file_list", "")
         )
         top_module = self.workspace.design.top_module or self.workspace.design.name
-        frequency = self.to_float(self.workspace.parameters.data.get("Frequency max [MHz]"), 0.0)
+        frequency = self.to_float(self.workspace.parameters.data.get("frequency_max"), 0.0)
         libs = getattr(self.workspace.pdk, "libs", []) or []
         modules = stat.get("modules", {})
         module_keys = {key.lstrip("\\") for key in modules}

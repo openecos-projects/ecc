@@ -133,7 +133,7 @@ def test_harden_mpc_area_gates_use_the_last_pre_route_success_db(tmp_path):
         design=OriginDesign(name="gcd"),
         parameters=Parameters(
             data={
-                "MPC": {
+                "mpc": {
                     "core_template": {
                         "minimum_area": 100,
                         "maximum_area": 105,
@@ -187,7 +187,7 @@ def test_harden_mpc_area_gates_use_the_last_pre_route_success_db(tmp_path):
 def test_harden_mpc_area_gates_are_omitted_without_a_core_template(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
-        parameters=Parameters(data={"MPC": {}}),
+        parameters=Parameters(data={"mpc": {}}),
     )
 
     assert (
@@ -205,7 +205,7 @@ def test_harden_mpc_area_gates_are_unavailable_without_a_successful_physical_db(
         directory=tmp_path,
         parameters=Parameters(
             data={
-                "MPC": {
+                "mpc": {
                     "core_template": {
                         "minimum_area": 100,
                         "maximum_area": 200,
@@ -256,7 +256,7 @@ def test_harden_qor_summary_persists_mpc_area_gate_results(tmp_path):
         design=OriginDesign(name="gcd"),
         parameters=Parameters(
             data={
-                "MPC": {
+                "mpc": {
                     "core_template": {
                         "minimum_area": 100,
                         "maximum_area": 105,
@@ -351,7 +351,7 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd"),
-        parameters=Parameters(data={"MPC": {"core_template": {}}}),
+        parameters=Parameters(data={"mpc": {"core_template": {}}}),
     )
     (tmp_path / "home").mkdir()
     workspace.home.init(tmp_path / "home" / "home.json")
@@ -723,3 +723,28 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
     home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
     assert home_items["artifact.postroutelec.result"]["state"] == "pass"
     assert home_items["artifact.postroutelec.result"]["blocked"] is False
+
+
+def test_rebuild_home_checklist_heals_empty_home_checklist_path(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    (tmp_path / "home").mkdir()
+    workspace.home.init(tmp_path / "home" / "home.json")
+    assert workspace.home.data["checklist"] == ""
+
+    data = rebuild_home_checklist(workspace)
+
+    checklist_file = tmp_path / "home" / "checklist.json"
+    assert checklist_file.is_file()
+    persisted = json.loads(checklist_file.read_text(encoding="utf-8"))
+    assert persisted["checklist"] == data["checklist"]
+
+    home_data = json.loads((tmp_path / "home" / "home.json").read_text(encoding="utf-8"))
+    assert home_data["checklist"] == str(checklist_file)
+
+    workspace.home.update_checklist(
+        step="STA", type="Timing", item="check setup timing", state="Passed"
+    )
+    healed = json.loads(checklist_file.read_text(encoding="utf-8"))
+    assert [item["id"] for item in healed["checklist"] if item["step"] == "STA"] == [
+        "sta.check.setup.timing"
+    ]

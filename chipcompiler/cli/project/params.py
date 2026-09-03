@@ -28,7 +28,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=100.0,
         applies="synthesis",
-        maps_to="Frequency max [MHz]",
+        maps_to="frequency_max",
         description="Target clock frequency in MHz",
         range=(1e-6, 10000.0),
         unit="MHz",
@@ -41,7 +41,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=0.4,
         applies="floorplan",
-        maps_to={"Core": "Utilitization"},
+        maps_to={"core": "utilitization"},
         description="Core utilization ratio",
         range=(0.01, 1.0),
         example="0.45",
@@ -53,7 +53,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="list[int]",
         default=[2, 2],
         applies="floorplan",
-        maps_to={"Core": "Margin"},
+        maps_to={"core": "margin"},
         description="Core margin in micrometers [horizontal, vertical]",
         example="[2, 2]",
     ),
@@ -64,7 +64,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=1.0,
         applies="floorplan",
-        maps_to={"Core": "Aspect ratio"},
+        maps_to={"core": "aspect_ratio"},
         description="Core aspect ratio (width/height)",
         range=(0.1, 10.0),
         example="1.0",
@@ -76,7 +76,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="int",
         default=20,
         applies="cts",
-        maps_to="Max fanout",
+        maps_to="max_fanout",
         description="Maximum fanout for clock tree synthesis",
         range=(1, 200),
         example="16",
@@ -88,7 +88,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=0.2,
         applies="placement",
-        maps_to={"DreamPlace": "target_density"},
+        maps_to={"dreamplace": "target_density"},
         description="Target placement density",
         range=(0.1, 0.95),
         example="0.65",
@@ -100,7 +100,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=0.1,
         applies="placement",
-        maps_to={"DreamPlace": "stop_overflow"},
+        maps_to={"dreamplace": "stop_overflow"},
         description="Target overflow for global placement",
         range=(0.0, 1.0),
         example="0.08",
@@ -112,7 +112,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="int",
         default=0,
         applies="placement",
-        maps_to="Global right padding",
+        maps_to="global_right_padding",
         description="Global right padding for placement sites",
         range=(0, 100),
         example="8",
@@ -124,7 +124,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="int",
         default=300,
         applies="placement",
-        maps_to={"DreamPlace": "cell_padding_x"},
+        maps_to={"dreamplace": "cell_padding_x"},
         description="Cell padding in x-direction in database units",
         range=(0, 10000),
         example="400",
@@ -136,7 +136,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="int",
         default=1,
         applies="placement",
-        maps_to={"DreamPlace": "routability_opt_flag"},
+        maps_to={"dreamplace": "routability_opt_flag"},
         description="Enable routability-driven placement optimization",
         choices=("0", "1"),
         example="1",
@@ -148,7 +148,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="str",
         default="MET2",
         applies="routing",
-        maps_to="Bottom layer",
+        maps_to="bottom_layer",
         description="Bottom routing layer",
         choices=("MET1", "MET2", "MET3", "MET4", "MET5"),
         example="MET2",
@@ -160,7 +160,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="str",
         default="MET5",
         applies="routing",
-        maps_to="Top layer",
+        maps_to="top_layer",
         description="Top routing layer",
         choices=("MET2", "MET3", "MET4", "MET5", "MET6"),
         example="MET5",
@@ -172,7 +172,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="int",
         default=1000,
         applies="sta",
-        maps_to="STA max paths",
+        maps_to="sta_max_paths",
         description="Maximum number of paths in each STA timing report",
         range=(1, 100000),
         example="1000",
@@ -274,7 +274,12 @@ def validate_value(value: object, schema: ParamSchema) -> list[str]:
 
     if schema.range is not None:
         lo, hi = schema.range
-        if isinstance(value, (int, float)) and (value < lo or value > hi):
+        if not isinstance(value, (int, float)):
+            # Raw layers (e.g. project.json parameters) reach this without
+            # the typed parsing --set/[params] get: a string must fail loud
+            # instead of silently skipping the range check.
+            errors.append(f"value {value!r} is not numeric for {schema.param}")
+        elif value < lo or value > hi:
             errors.append(f"value {value} out of range [{lo}, {hi}] for {schema.param}")
 
     if schema.choices is not None:
@@ -365,9 +370,11 @@ def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str
 def resolve_parameters(
     toml_overrides: dict[str, object] | None = None,
     cli_overrides: dict[str, object] | None = None,
+    manifest_overrides: dict[str, object] | None = None,
 ) -> tuple[list[ResolvedParam], list[str]]:
     toml_overrides = toml_overrides or {}
     cli_overrides = cli_overrides or {}
+    manifest_overrides = manifest_overrides or {}
     resolved: list[ResolvedParam] = []
     errors: list[str] = []
 
@@ -401,6 +408,20 @@ def resolve_parameters(
                     value=value,
                     default=schema.default,
                     source="ecc.toml",
+                    schema=schema,
+                )
+            )
+        elif key in manifest_overrides:
+            value = manifest_overrides[key]
+            val_errors = validate_value(value, schema)
+            if val_errors:
+                errors.extend(val_errors)
+            resolved.append(
+                ResolvedParam(
+                    param=key,
+                    value=value,
+                    default=schema.default,
+                    source="project.json",
                     schema=schema,
                 )
             )

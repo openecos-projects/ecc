@@ -633,3 +633,45 @@ def test_duplicate_workspace_target_is_fail_closed_for_candidates(tmp_path):
             [{"knob_id": "legalization.bndry_padding_x", "value": 4}],
             candidate_id="duplicate-legalization-candidate",
         )
+
+
+def test_materialize_floorplan_patch_preserves_the_canonical_core_tree(tmp_path):
+    """A parameters patch lands in the canonical core subtree: no parallel
+    Core key, and the untouched members survive the save/load round trip."""
+    workspace = _workspace(tmp_path)
+
+    materialize_candidate_config(
+        workspace,
+        "Floorplan",
+        [
+            {"knob_id": "floorplan.core_util", "value": 0.7},
+            {"knob_id": "floorplan.aspect_ratio", "value": 1.1},
+            {"knob_id": "floorplan.core_margin", "value": [3, 3]},
+            {"knob_id": "floorplan.tap_distance", "value": 5},
+        ],
+        candidate_id="floorplan-candidate",
+    )
+
+    from chipcompiler.data.parameter import load_parameter
+
+    reloaded = load_parameter(Path(workspace.parameters.path)).data
+    assert "Core" not in reloaded
+    assert reloaded["core"] == {"utilitization": 0.7, "aspect_ratio": 1.1, "margin": [3, 3]}
+    assert "Core" not in workspace.parameters.data
+    assert workspace.parameters.data["core"]["utilitization"] == 0.7
+
+
+def test_materialize_rejects_missing_parameters_base_config(tmp_path):
+    """A missing canonical config is not an empty base: patching it would
+    recreate the TOML with only the patch keys, dropping the workspace
+    identity — fail closed instead."""
+    workspace = _workspace(tmp_path)
+    Path(workspace.parameters.path).unlink()
+
+    with pytest.raises(CandidateMaterializationError, match="missing candidate base config"):
+        materialize_candidate_config(
+            workspace,
+            "Floorplan",
+            [{"knob_id": "floorplan.core_util", "value": 0.7}],
+            candidate_id="missing-base",
+        )

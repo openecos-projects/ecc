@@ -103,7 +103,7 @@ def _write_file(path: Path, content: str) -> None:
 
 def _lec_parameters(workspace: Workspace) -> dict:
     data = getattr(getattr(workspace, "parameters", None), "data", {}) or {}
-    lec = data.get("LEC", {})
+    lec = data.get("lec", {})
     return lec if isinstance(lec, dict) else {}
 
 

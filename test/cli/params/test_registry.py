@@ -65,13 +65,13 @@ class TestSchemaRegistry:
 
     def test_cli_keys_map_to_backend_names(self):
         density = lookup_schema("place.target_density")
-        assert density.maps_to == {"DreamPlace": "target_density"}
+        assert density.maps_to == {"dreamplace": "target_density"}
 
         fanout = lookup_schema("cts.max_fanout")
-        assert fanout.maps_to == "Max fanout"
+        assert fanout.maps_to == "max_fanout"
 
         util = lookup_schema("floorplan.core_util")
-        assert util.maps_to == {"Core": "Utilitization"}
+        assert util.maps_to == {"core": "utilitization"}
 
     def test_internal_keys_not_accepted_as_cli_keys(self):
         assert not is_known_key("Core.Utilitization")
@@ -285,7 +285,7 @@ class TestBackendMapping:
             schema=schema,
         )
         result = build_backend_overrides([rp])
-        assert result == {"DreamPlace": {"target_density": 0.65}}
+        assert result == {"dreamplace": {"target_density": 0.65}}
 
     def test_nested_key_mapping(self):
         schema = lookup_schema("floorplan.core_util")
@@ -297,7 +297,7 @@ class TestBackendMapping:
             schema=schema,
         )
         result = build_backend_overrides([rp])
-        assert result == {"Core": {"Utilitization": 0.45}}
+        assert result == {"core": {"utilitization": 0.45}}
 
     def test_nested_list_mapping(self):
         schema = lookup_schema("floorplan.core_margin")
@@ -309,7 +309,7 @@ class TestBackendMapping:
             schema=schema,
         )
         result = build_backend_overrides([rp])
-        assert result == {"Core": {"Margin": (3, 3)}}
+        assert result == {"core": {"margin": (3, 3)}}
 
     def test_string_key_mapping(self):
         schema = lookup_schema("route.top_layer")
@@ -321,7 +321,7 @@ class TestBackendMapping:
             schema=schema,
         )
         result = build_backend_overrides([rp])
-        assert result == {"Top layer": "MET4"}
+        assert result == {"top_layer": "MET4"}
 
     def test_default_values_excluded(self):
         resolved, _ = resolve_parameters()

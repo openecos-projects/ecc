@@ -27,9 +27,24 @@ def _config_error_result(ctx: CommandContext, reason: str) -> CommandResult:
     )
 
 
+def _manifest_error_result(ctx: CommandContext) -> CommandResult:
+    from chipcompiler.cli.core.records import manifest_error_record
+
+    return CommandResult.err(
+        [
+            manifest_error_record(
+                ctx.manifest_error or "",
+                inspect=disclosure_cmd("ecc status", ctx.project, ctx.run_id),
+            )
+        ]
+    )
+
+
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
     if ctx.config_error:
         return _config_error_result(ctx, ctx.config_error)
+    if ctx.manifest_error:
+        return _manifest_error_result(ctx)
 
     from chipcompiler.cli.inspection.discovery import (
         CORRUPT_FLOW_JSON,
@@ -96,6 +111,8 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
 def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
     if ctx.config_error:
         return _config_error_result(ctx, ctx.config_error)
+    if ctx.manifest_error:
+        return _manifest_error_result(ctx)
 
     from chipcompiler.cli.inspection.discovery import (
         discover_logs,
@@ -219,6 +236,8 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
 
 
 def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
+    if ctx.manifest_error:
+        return _manifest_error_result(ctx)
     configured = config_run_id_from(ctx.config)
     if isinstance(configured, InvalidFlowRun):
         return _config_error_result(ctx, configured.problem)
@@ -230,6 +249,20 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
 
     step_token = command_input.step
     project = ctx.project
+
+    resolved = None
+    layer_warnings: list[dict] = []
+    if ctx.project_state == "manifest":
+        # The view must show the EFFECTIVE config — the same layering
+        # check/run resolve — not the bare ecc.toml (or missing_config on
+        # a manifest-only project).
+        from chipcompiler.cli.project import effective_config
+
+        resolved_cfg = effective_config.resolve_effective_config(ctx, ctx.run_id, ctx.config)
+        if isinstance(resolved_cfg, CommandResult):
+            return resolved_cfg
+        cfg_override, flow_override, layer_warnings = resolved_cfg
+        resolved = (cfg_override, flow_override)
 
     if step_token is not None:
         items, rc = build_step_config_items(
@@ -245,6 +278,7 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
             ctx.run_dir,
             project,
             ctx.run_id,
+            resolved=resolved,
         )
 
     if rc != 0:
@@ -334,4 +368,5 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
                     "inspect": item.get("inspect_cmd"),
                 }
             )
+    records.extend(layer_warnings)
     return CommandResult.ok(records)

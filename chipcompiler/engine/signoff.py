@@ -89,14 +89,16 @@ class SignoffPackageCollector:
             self._refresh_workspace_analysis(workspace_dir) if options.refresh_analysis else []
         )
 
-        parameters = self._read_json(workspace_dir / "home" / "parameters.json")
+        from chipcompiler.data.workspace_config import workspace_config_path
+
+        parameters = self._read_parameters(workspace_config_path(workspace_dir))
         design = (
             self.workspace.design.name
-            or parameters.get("Design", "")
+            or parameters.get("design", "")
             or self._design_from_outputs(workspace_dir)
         )
-        top_module = self.workspace.design.top_module or parameters.get("Top module", "") or design
-        pdk_name = getattr(self.workspace.pdk, "name", "") or parameters.get("PDK", "")
+        top_module = self.workspace.design.top_module or parameters.get("top_module", "") or design
+        pdk_name = getattr(self.workspace.pdk, "name", "") or parameters.get("pdk", "")
         if not design:
             raise ValueError("cannot determine design name for signoff package")
 
@@ -356,10 +358,17 @@ class SignoffPackageCollector:
                 add_file("initial.verilog", origin_rtl, rtl_destination, required=True)
         if origin_sdc is not None:
             add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
+        from chipcompiler.data.workspace_config import workspace_config_path
+
+        parameters_config = workspace_config_path(workspace_dir)
+        if not parameters_config.exists():
+            # A read-only legacy workspace (TOML migration deferred) runs on
+            # its parameters.json — package the file it actually runs on.
+            parameters_config = workspace_dir / "home" / "parameters.json"
         add_file(
             "initial.parameters",
-            workspace_dir / "home" / "parameters.json",
-            "initial/parameters.json",
+            parameters_config,
+            f"initial/{parameters_config.name}",
             required=True,
         )
 
@@ -625,7 +634,7 @@ class SignoffPackageCollector:
             "initial": {
                 "verilog": rtl_destination,
                 "sdc": f"initial/{design}.sdc",
-                "parameters": "initial/parameters.json",
+                "parameters": f"initial/{parameters_config.name}",
             },
             "config": "config/",
             "harden": {
@@ -870,9 +879,21 @@ class SignoffPackageCollector:
         try:
             with open(path, encoding="utf-8") as file:
                 data = json.load(file)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             return {}
         return data if isinstance(data, dict) else {}
+
+    def _read_parameters(self, path: Path) -> dict:
+        """Read the workspace configuration's [params] section; {} when unreadable."""
+        import tomllib
+
+        try:
+            with open(path, "rb") as file:
+                data = tomllib.load(file)
+        except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+            return {}
+        params = data.get("params", {})
+        return params if isinstance(params, dict) else {}
 
     def _path_from_config(self, workspace_dir: Path, path_text: str) -> Path | None:
         if not path_text:

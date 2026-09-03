@@ -20,7 +20,7 @@ parameters = get_design_parameters("ics55", "gcd")
 # The workspace will be created from scratch, the structure is as follows:
 # gcd_workspace/
 # ├── flow.json       # Flow state file
-# ├── parameters.json # Design parameters file
+# ├── params.toml        # Workspace configuration (parameters, flow target)
 # ├── CTS_ecc         # CTS step workspace
 # │   ├── analysis    # Analysis files extract from metrics
 # │   ├── config      # Configuration files

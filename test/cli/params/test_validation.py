@@ -10,7 +10,7 @@ class TestTomlValidationErrors:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.synth]\nmax_fanout = "not_an_int"\n'
+        content += '\n[params.cts]\nmax_fanout = "not_an_int"\n'
         with open(toml_path, "w") as f:
             f.write(content)
         return project_dir
@@ -46,7 +46,7 @@ class TestNativeTomlTypeValidation:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.synth]\nmax_fanout = 16.5\n"
+        content += "\n[params.cts]\nmax_fanout = 16.5\n"
         with open(toml_path, "w") as f:
             f.write(content)
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
@@ -57,7 +57,7 @@ class TestNativeTomlTypeValidation:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.synth]\nmax_fanout = true\n"
+        content += "\n[params.cts]\nmax_fanout = true\n"
         with open(toml_path, "w") as f:
             f.write(content)
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
@@ -97,7 +97,7 @@ class TestParamHandlersRejectInvalidToml:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.synth]\nmax_fanout = 16.5\n"
+        content += "\n[params.cts]\nmax_fanout = 16.5\n"
         with open(toml_path, "w") as f:
             f.write(content)
 

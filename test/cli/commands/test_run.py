@@ -29,6 +29,7 @@ def _patch_all_flow_builders(monkeypatch):
 class TestRun:
     def test_run_calls_create_workspace(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
@@ -38,6 +39,7 @@ class TestRun:
 
     def test_run_adds_flow_steps_when_no_init(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
@@ -45,6 +47,7 @@ class TestRun:
 
     def test_run_calls_create_and_run(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
@@ -55,6 +58,7 @@ class TestRun:
         self, tmp_path, create_cli_project, create_flow_json, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir, profile="main")
 
@@ -63,6 +67,7 @@ class TestRun:
 
     def test_run_fails_if_flow_json_exists(self, tmp_path, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir, profile="main")
 
@@ -80,6 +85,7 @@ class TestRun:
         self, tmp_path, monkeypatch, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         def fake_create(**kwargs):
             return None
@@ -90,6 +96,7 @@ class TestRun:
 
     def test_run_fails_when_run_steps_false(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         flow_mocks.flow.run_steps_value = False
 
         rc = cli_main.run(["run", "--project", project_dir])
@@ -99,6 +106,7 @@ class TestRun:
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
         assert rc == 0
@@ -112,6 +120,7 @@ class TestRun:
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir, "--jsonl"])
         assert rc == 0
@@ -122,6 +131,7 @@ class TestRun:
 
     def test_run_json_no_progress_on_stderr(self, tmp_path, capsys, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
         assert rc == 0
@@ -130,6 +140,7 @@ class TestRun:
 
     def test_run_preserves_final_records(self, tmp_path, capsys, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
         assert rc == 0
@@ -157,6 +168,7 @@ class TestRunFlowPreset:
         self, tmp_path, monkeypatch, create_cli_project, flow_mocks, preset, builder_attr
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         _set_flow_preset(project_dir, preset)
         markers = _patch_all_flow_builders(monkeypatch)
 
@@ -169,6 +181,7 @@ class TestRunFlowPreset:
         self, tmp_path, monkeypatch, create_cli_project, create_flow_json, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir, profile="main")
         _set_flow_preset(project_dir, "harden")
@@ -181,6 +194,7 @@ class TestRunFlowPreset:
 
     def test_run_forwards_pdk_overrides(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path, "a") as f:
             f.write('\n[pdk.overrides]\ndont_use = ["ICG*"]\n')
@@ -195,6 +209,7 @@ class TestRunFlowPreset:
         self, tmp_path, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path, "a") as f:
             f.write(
@@ -240,7 +255,10 @@ class TestRunFlowPreset:
 
 class TestWorkspaceRun:
     @pytest.fixture
-    def workspace_mocks(self, monkeypatch):
+    def workspace_mocks(self, monkeypatch, tmp_path):
+        # The workspace must exist on disk: the locked execution path
+        # refuses to even take the sibling lock for an absent target.
+        (tmp_path / "workspace").mkdir()
         seen = SimpleNamespace(
             load_path=None,
             has_init=True,
@@ -426,3 +444,52 @@ class TestWorkspaceRun:
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 1
         assert record["error"] == error
+
+
+class TestWorkspaceNoOp:
+    def test_target_prefix_workspace_resume_is_noop_without_executing_extras(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        import json as _json
+
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        workspace = tmp_path / "workspace"
+        home = workspace / "home"
+        home.mkdir(parents=True)
+        from chipcompiler.rtl2gds.builder import build_harden_flow
+
+        chain = [
+            (step.value if hasattr(step, "value") else str(step), str(tool))
+            for step, tool, _state in build_harden_flow()
+        ]
+        steps = [
+            {"name": name, "tool": tool, "state": "Success"}
+            for name, tool in chain[:11]  # the full rtl2gds target
+        ] + [
+            {"name": chain[11][0], "tool": chain[11][1], "state": "Unstart"},
+            {"name": chain[12][0], "tool": chain[12][1], "state": "Unstart"},
+        ]
+        (home / "flow.json").write_text(_json.dumps({"steps": steps}))
+        assert save_workspace_config(
+            workspace,
+            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {"preset": "rtl2gds"},
+        )
+        monkeypatch.setattr(
+            "chipcompiler.engine.rerun.run_resume",
+            lambda flow: (_ for _ in ()).throw(
+                AssertionError("extras must not execute on a no_op reconcile")
+            ),
+        )
+
+        rc = cli_main.run(["run", "--workspace", str(workspace), "--resume", "--json"])
+
+        assert rc == 0
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert record["status"] == "success"
+        assert record["no_op"] is True
+        # The adopted narrower target replaced the stale wider one.
+        from chipcompiler.data.workspace_config import load_workspace_config
+
+        assert load_workspace_config(workspace)["_flow"] == {"preset": "rtl2gds"}

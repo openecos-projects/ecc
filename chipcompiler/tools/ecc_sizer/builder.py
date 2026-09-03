@@ -106,8 +106,8 @@ def _tech_text(workspace: Workspace) -> str:
 
 
 def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspace) -> None:
-    bottom = workspace.parameters.data.get("Bottom layer", "")
-    top = workspace.parameters.data.get("Top layer", "")
+    bottom = workspace.parameters.data.get("bottom_layer", "")
+    top = workspace.parameters.data.get("top_layer", "")
 
     if bottom:
         command.option("min_route_layer", bottom)

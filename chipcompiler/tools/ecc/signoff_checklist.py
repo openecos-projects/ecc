@@ -176,7 +176,7 @@ def _expected_quality_gate_ids(workspace: Workspace, step_name: str) -> tuple[st
         return gate_ids
 
     parameters = getattr(getattr(workspace, "parameters", None), "data", {})
-    mpc = parameters.get("MPC") if isinstance(parameters, dict) else None
+    mpc = parameters.get("mpc") if isinstance(parameters, dict) else None
     core_template = mpc.get("core_template") if isinstance(mpc, dict) else None
     return gate_ids if isinstance(core_template, dict) else ()
 
@@ -691,7 +691,13 @@ def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
     for item in items:
         if isinstance(item, dict):
             deduplicated[item.get("id")] = item
-    checklist_path = workspace.home.data.get("checklist", workspace_dir / "home" / "checklist.json")
+    checklist_path = workspace.home.data.get("checklist")
+    if not checklist_path:
+        # Recover home.json files whose checklist path was cleared by an older
+        # home.reset(); persist so later checklist updates resolve as well.
+        checklist_path = workspace_dir / "home" / "checklist.json"
+        if workspace.home.path is not None:
+            workspace.home.set_checklist(checklist_path)
     checklist = Checklist(checklist_path)
     checklist.replace(list(deduplicated.values()))
     return checklist.data

@@ -19,17 +19,18 @@ def gcd_fixture_verilog() -> Path:
 def run_workspace_flow(
     flow_builder,
     *,
+    workspace_base: Path,
     design_name="gcd",
     pdk_name="ics55",
     workspace_suffix,
     pdk_root=None,
     with_engine_db=False,
 ):
-    workspace_dir = REPO_ROOT / "test" / "examples" / workspace_suffix
+    workspace_dir = workspace_base / workspace_suffix
     parameters = get_design_parameters(pdk_name, design_name)
-    parameters.data["Design"] = design_name
-    parameters.data["Top module"] = design_name
-    parameters.data["Clock"] = "clk"
+    parameters.data["design"] = design_name
+    parameters.data["top_module"] = design_name
+    parameters.data["clock"] = "clk"
 
     if pdk_root is None:
         pdk = get_pdk(pdk_name=pdk_name)
@@ -72,8 +73,13 @@ def run_workspace_flow(
 
 
 @pytest.fixture
-def run_workspace_flow_factory():
-    return run_workspace_flow
+def run_workspace_flow_factory(tmp_path_factory):
+    base = tmp_path_factory.mktemp("examples")
+
+    def factory(flow_builder, **kwargs):
+        return run_workspace_flow(flow_builder, workspace_base=base, **kwargs)
+
+    return factory
 
 
 @pytest.fixture

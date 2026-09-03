@@ -52,7 +52,7 @@ workspace = create_workspace(
 ```
 gcd_workspace/
 ├── flow.json       # 流程状态文件
-├── parameters.json # 设计参数文件
+├── params.toml        # 工作区配置文件（设计参数、流程目标）
 ├── CTS_ecc         # CTS 步骤工作空间
 │   ├── analysis    # 从指标数据中提取的分析数据文件
 │   ├── config      # 配置文件

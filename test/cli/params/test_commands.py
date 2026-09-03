@@ -214,7 +214,7 @@ class TestRunSet:
         assert rc == 0
 
         params = capture["kwargs"]["parameters"]
-        assert params.get("DreamPlace", {}).get("target_density") == 0.65
+        assert params.get("dreamplace", {}).get("target_density") == 0.65
 
     def test_run_set_rejects_unknown_key(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()

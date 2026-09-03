@@ -1,10 +1,9 @@
 import contextlib
 import os
-import shlex
-import shutil
-import sys
 
-from chipcompiler.cli.core.inputs import CheckInput, InitInput, RunInput
+from typing_extensions import deprecated
+
+from chipcompiler.cli.core.inputs import CheckInput, InitInput, MigrateInput, RunInput
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -44,7 +43,6 @@ def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
     os.makedirs(project_dir, exist_ok=True)
     os.makedirs(os.path.join(project_dir, "rtl"), exist_ok=True)
     os.makedirs(os.path.join(project_dir, "constraints"), exist_ok=True)
-    os.makedirs(os.path.join(project_dir, "runs"), exist_ok=True)
 
     default_toml = """[design]
 name = "{name}"
@@ -81,12 +79,35 @@ run = "default"
 
 
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.project.config import validate_project_config
+    from chipcompiler.cli.project import effective_config
 
     project = ctx.project
 
+    if ctx.manifest_error:
+        # Hybrid projects also resolve the run selector through the
+        # manifest; an unresolvable selection is an error, not a warning.
+        from chipcompiler.cli.core.records import manifest_error_record
+
+        return CommandResult.err(
+            [
+                manifest_error_record(
+                    ctx.manifest_error,
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
+
+    # Both manifest-only and hybrid projects validate the effective config:
+    # manifest fallback applied, entry layer resolved, manifest relaxations
+    # honored, every declared RTL source checked.
     cfg = ctx.config
-    if cfg is None:
+    entry_warnings: list[dict] = []
+    if ctx.project_state == "manifest":
+        resolved_cfg = effective_config.resolve_effective_config(ctx, ctx.run_id, cfg)
+        if isinstance(resolved_cfg, CommandResult):
+            return resolved_cfg
+        cfg, _entry_flow_config, entry_warnings = resolved_cfg
+    elif cfg is None:
         return CommandResult.err(
             [
                 error_record(
@@ -97,7 +118,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    errors = validate_project_config(cfg)
+    errors = effective_config.validate_effective(ctx, cfg, fresh=False, flow_config=None)
 
     if errors:
         return CommandResult.err(
@@ -106,7 +127,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
                     "check": "config",
                     "status": "fail",
                     "reason": err,
-                    "source": "ecc.toml",
+                    "source": "ecc.toml" if ctx.config is not None else "project.json",
                     "inspect": disclosure_cmd("ecc check --json", project),
                 }
                 for err in errors
@@ -126,7 +147,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
         {
             "project": cfg.design_name,
             "status": "checked",
-            "config": "ecc.toml",
+            "config": "ecc.toml" if ctx.config is not None else "project.json",
             "run_dir": run_dir_display,
             "run": disclosure_cmd("ecc run", project),
             "inspect_cmd": disclosure_cmd("ecc status", project),
@@ -143,41 +164,9 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             }
         )
 
+    records.extend(entry_warnings)
+
     return CommandResult.ok(records)
-
-
-def _is_ecc_run_dir(path: str) -> bool:
-    if not os.path.isdir(path):
-        return False
-    try:
-        if not os.listdir(path):
-            return True
-    except OSError:
-        return False
-    home = os.path.join(path, "home")
-    flow_json = os.path.join(home, "flow.json")
-    return not os.path.islink(home) and not os.path.islink(flow_json) and os.path.isfile(flow_json)
-
-
-def _resolves_as_spelled(path: str, anchor: str) -> bool:
-    """Return True when path canonically resolves where its spelling claims.
-
-    For a path spelled inside anchor, the canonical resolution must equal the
-    anchor's canonical resolution plus the textual tail; for any other path
-    (external or escaping), the canonical resolution must equal the
-    normalized spelling. A symlink component that redirects the target —
-    including one hidden behind ".." segments, which os.path.normpath would
-    collapse textually — breaks the equality. The anchor itself is trusted,
-    so a project reached through a symlinked parent keeps working.
-    """
-    spelled = os.path.normpath(path)
-    base = os.path.normpath(anchor)
-    if spelled == base:
-        return os.path.realpath(path) == os.path.realpath(base)
-    if spelled.startswith(base + os.sep):
-        tail = spelled[len(base) + 1 :]
-        return os.path.realpath(path) == os.path.join(os.path.realpath(base), tail)
-    return os.path.realpath(path) == spelled
 
 
 def _canonically_inside(path: str, anchor: str) -> bool:
@@ -185,6 +174,18 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     real_base = os.path.realpath(anchor)
     real = os.path.realpath(path)
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
+
+
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
+def migrate(command_input: MigrateInput, ctx: CommandContext) -> CommandResult:
+    """Upgrade a legacy runs/ project to the manifest layout."""
+    from chipcompiler.cli.project.migrate import migrate_project
+
+    return migrate_project(command_input, ctx)
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
@@ -201,22 +202,14 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     ):
         return CommandResult.err([{"kind": "error", "error": "selector_requires_workspace"}])
 
-    from chipcompiler import rtl2gds as rtl2gds_api
-    from chipcompiler.cli.project.config import (
-        resolve_pdk_overrides,
-        resolve_pdk_root,
-        resolve_rtl,
-        to_parameters,
-        validate_project_config,
-    )
-    from chipcompiler.data import create_workspace
-    from chipcompiler.engine import EngineFlow
+    from chipcompiler.cli.project import run_dispatch, run_prepare
 
-    project = ctx.project
     project_dir = ctx.project_dir
 
     cfg = ctx.config
-    if cfg is None:
+    flow_config = None
+    layer_warnings: list[dict] = []
+    if cfg is None and ctx.project_state != "manifest":
         return CommandResult.err(
             [
                 {
@@ -227,18 +220,16 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    errors = validate_project_config(cfg)
-    if errors:
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "config_error",
-                    "reason": err,
-                }
-                for err in errors
-            ]
+    from chipcompiler.cli.project import effective_config
+
+    if ctx.project_state == "manifest":
+        resolved_cfg = effective_config.resolve_effective_config(
+            ctx, command_input.project.run_id, cfg
         )
+        if isinstance(resolved_cfg, CommandResult):
+            return resolved_cfg
+        cfg, flow_config, entry_warnings = resolved_cfg
+        layer_warnings.extend(entry_warnings)
 
     cli_overrides = {}
     raw_sets = command_input.param_set
@@ -257,13 +248,54 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     for err in set_errors
                 ]
             )
+        set_warning = (
+            effective_config.cli_divergence_warning(cfg, cli_overrides)
+            if ctx.project_state == "manifest"
+            else None
+        )
+        if set_warning is not None:
+            layer_warnings.append(set_warning)
 
     # TODO: Move non-interactive project run preparation/execution into
     # chipcompiler.runtime.project_runner.run_project or
     # chipcompiler.engine.project_run.prepare_and_run. Keep CLI ownership limited
     # to input parsing, progress renderer selection, and CommandResult mapping.
+    project_state = ctx.project_state
+    warning_records: list[dict] = []
     run_dir = ctx.run_dir
     run_name = ctx.run_id or "default"
+    workspace_registered = False
+
+    if project_state in ("virgin", "manifest"):
+        resolved = run_prepare.resolve_manifest_run_target(command_input, ctx)
+        if isinstance(resolved, CommandResult):
+            return resolved
+        run_dir, run_name, workspace_registered, warning_records = resolved
+    warning_records = layer_warnings + warning_records
+
+    flow_json = os.path.join(run_dir, "home", "flow.json")
+    errors = effective_config.validate_effective(
+        ctx,
+        cfg,
+        # An overwrite wipes and recreates the target, so it validates as a
+        # fresh run (a derivable flow target is required) even when the
+        # ledger still exists at preflight time.
+        fresh=not os.path.exists(flow_json) or command_input.overwrite,
+        flow_config=flow_config,
+        cli_overrides=cli_overrides,
+    )
+    if errors:
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "config_error",
+                    "reason": err,
+                }
+                for err in errors
+            ]
+        )
+
     protected = (project_dir, os.path.join(project_dir, "runs"))
     spelled = {os.path.normpath(p) for p in protected}
     canonical = {os.path.realpath(p) for p in protected}
@@ -279,191 +311,18 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                 }
             ]
         )
-    flow_json = os.path.join(run_dir, "home", "flow.json")
 
-    if os.path.exists(flow_json) and not command_input.overwrite:
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "run_exists",
-                    "run": run_name,
-                    "workspace": run_dir,
-                    "overwrite": disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                }
-            ]
-        )
-
-    if command_input.overwrite and os.path.lexists(run_dir):
-        if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
-            return CommandResult.err(
-                [
-                    {
-                        "kind": "error",
-                        "error": "overwrite_refused",
-                        "run": run_name,
-                        "workspace": run_dir,
-                        "reason": "target is not an ECC run directory",
-                    }
-                ]
-            )
-        for root, dirs, files in os.walk(run_dir):
-            for d in dirs:
-                dp = os.path.join(root, d)
-                if not os.path.islink(dp):
-                    os.chmod(dp, 0o755)
-            for f in files:
-                fp = os.path.join(root, f)
-                if not os.path.islink(fp):
-                    os.chmod(fp, 0o644)
-        os.chmod(run_dir, 0o755)
-        shutil.rmtree(run_dir)
-
-    # Only the process that atomically creates the target may proceed or
-    # clean up a failed create_workspace: an existing target (pre-existing
-    # or won by a concurrent run) is never written into or removed by this
-    # invocation. create_workspace re-attempts the creation, so any other
-    # error surfaces from there.
-    owns_target = False
-    try:
-        os.makedirs(run_dir)
-        owns_target = True
-    except FileExistsError:
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "run_exists",
-                    "run": run_name,
-                    "workspace": run_dir,
-                    "overwrite": disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                }
-            ]
-        )
-    except OSError:
-        pass
-
-    _, origin_verilog, input_filelist = resolve_rtl(cfg)
-    parameters = to_parameters(cfg)
-    pdk_root = resolve_pdk_root(cfg)
-
-    if cfg.params_overrides or cli_overrides:
-        from chipcompiler.cli.project.params import (
-            build_backend_overrides,
-            resolve_parameters,
-        )
-
-        resolved, _ = resolve_parameters(
-            toml_overrides=cfg.params_overrides,
-            cli_overrides=cli_overrides,
-        )
-        backend_overrides = build_backend_overrides(resolved)
-        from chipcompiler.data.parameter import update_parameters
-
-        update_parameters(backend_overrides, parameters)
-
-    try:
-        workspace = create_workspace(
-            directory=run_dir,
-            origin_def="",
-            origin_verilog=origin_verilog,
-            pdk=cfg.pdk_name,
-            parameters=parameters,
-            input_filelist=input_filelist,
-            pdk_root=pdk_root,
-            pdk_overrides=resolve_pdk_overrides(cfg),
-        )
-    except Exception as exc:
-        if owns_target:
-            shutil.rmtree(run_dir, ignore_errors=True)
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "workspace_failed",
-                    "run": run_name,
-                    "workspace": run_dir,
-                    "reason": str(exc),
-                }
-            ]
-        )
-
-    if workspace is None:
-        if owns_target:
-            shutil.rmtree(run_dir, ignore_errors=True)
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "workspace_failed",
-                    "run": run_name,
-                    "workspace": run_dir,
-                }
-            ]
-        )
-
-    if cli_overrides:
-        import json
-
-        provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
-        os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
-        with open(provenance_path, "w") as _f:
-            json.dump(cli_overrides, _f)
-
-    try:
-        engine_flow = EngineFlow(workspace=workspace)
-        flow_builders = rtl2gds_api.get_flow_builders()
-        if not engine_flow.has_init():
-            for step, tool, state in flow_builders[cfg.flow_preset]():
-                engine_flow.add_step(step=step, tool=tool, state=state)
-
-        engine_flow.create_step_workspaces()
-
-        from chipcompiler.cli.rendering.progress import (
-            run_flow_with_progress,
-            should_enable_run_progress,
-        )
-
-        if should_enable_run_progress(ctx, sys.stderr):
-            flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
-        else:
-            flow_ok = engine_flow.run_steps()
-
-        if not flow_ok:
-            return CommandResult.err(
-                [
-                    {
-                        "run": run_name,
-                        "status": "failed",
-                        "workspace": run_dir,
-                        "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                        "log": disclosure_cmd("ecc log", project, ctx.run_id),
-                    }
-                ]
-            )
-    except Exception as exc:
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "flow_failed",
-                    "run": run_name,
-                    "workspace": run_dir,
-                    "reason": str(exc),
-                }
-            ]
-        )
-
-    return CommandResult.ok(
-        [
-            {
-                "run": run_name,
-                "status": "success",
-                "workspace": run_dir,
-                "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
-            }
-        ]
+    return run_dispatch.dispatch_project_run(
+        command_input,
+        ctx,
+        cfg,
+        run_dir,
+        run_name,
+        cli_overrides,
+        flow_config,
+        project_state,
+        warning_records,
+        workspace_registered=workspace_registered,
     )
 
 
@@ -489,60 +348,6 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
     if command_input.force and command_input.only is None:
         return error("force_requires_only")
 
-    from chipcompiler.data import load_workspace
-    from chipcompiler.engine import EngineFlow, rerun
+    from chipcompiler.cli.project import run_workspace
 
-    workspace_path = os.path.abspath(os.path.expanduser(command_input.workspace))
-    try:
-        workspace = load_workspace(workspace_path)
-    except Exception as exc:
-        return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
-    if workspace is None:
-        return error("invalid_workspace", workspace=workspace_path)
-
-    try:
-        engine_flow = EngineFlow(workspace=workspace)
-    except Exception as exc:
-        return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
-    if not engine_flow.has_init():
-        return error("missing_flow", workspace=workspace_path)
-
-    try:
-        selected = rerun.selected_step_names(
-            engine_flow,
-            from_step=command_input.from_step,
-            only=command_input.only,
-            force=command_input.force,
-        )
-    except ValueError as exc:
-        return error("unknown_step", workspace=workspace_path, reason=str(exc))
-
-    from chipcompiler.cli.rendering.progress import preserve_cli_stdio
-
-    try:
-        with preserve_cli_stdio():
-            if selected:
-                engine_flow.create_step_workspaces(executable_steps=set(selected))
-            if command_input.only is not None:
-                result = rerun.run_only(engine_flow, command_input.only, force=command_input.force)
-            elif command_input.from_step is not None:
-                result = rerun.run_from(engine_flow, command_input.from_step)
-            else:
-                result = rerun.run_resume(engine_flow)
-    except ValueError as exc:
-        return error("step_unavailable", workspace=workspace_path, reason=str(exc))
-    except Exception as exc:
-        return error("flow_failed", workspace=workspace_path, reason=str(exc))
-
-    record = {
-        "run": "workspace",
-        "status": "success" if result.ok else "failed",
-        "workspace": workspace_path,
-        "executed_steps": list(result.executed),
-        "no_op": result.ok and not result.executed,
-    }
-    if result.ok:
-        return CommandResult.ok([record])
-    record["failed_step"] = result.failed
-    record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_path)} --resume"
-    return CommandResult.err([record])
+    return run_workspace.execute_workspace_run(command_input)

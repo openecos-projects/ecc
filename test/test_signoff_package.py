@@ -56,9 +56,13 @@ def _make_signoff_workspace(
         workspace_dir / "origin" / f"{top_module}.sdc",
         "create_clock -period 10 clk\n",
     )
-    _write_json(
-        workspace_dir / "home" / "parameters.json",
-        {"Design": design, "Top module": top_module, "PDK": "ics55"},
+    from chipcompiler.data.parameter import Parameters, save_parameter
+
+    save_parameter(
+        Parameters(
+            path=workspace_dir / "home" / "params.toml",
+            data={"design": design, "top_module": top_module, "pdk": "ics55"},
+        )
     )
     _write_json(
         workspace_dir / "home" / "flow.json",
@@ -211,8 +215,8 @@ def _make_engine_flow(
     workspace.flow.path = workspace_dir / "home" / "flow.json"
     workspace.flow.data = json.loads(workspace.flow.path.read_text(encoding="utf-8"))
     workspace.parameters = Parameters(
-        path=str(workspace_dir / "home" / "parameters.json"),
-        data={"Design": design, "Top module": top_module, "PDK": "ics55"},
+        path=str(workspace_dir / "home" / "params.toml"),
+        data={"design": design, "top_module": top_module, "pdk": "ics55"},
     )
     return EngineFlow(workspace=workspace)
 
@@ -795,3 +799,23 @@ def test_collect_signoff_package_rewrites_absolute_filelist_entries(tmp_path):
     assert (package_dir / "initial" / "gcd.sv").is_file()
     packaged_filelist = (package_dir / "initial" / "gcd.f").read_text(encoding="utf-8")
     assert packaged_filelist == '"gcd.sv"  # top\n'
+
+
+def test_collect_signoff_package_packages_legacy_parameters_when_toml_absent(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    # A read-only legacy workspace whose TOML migration was deferred runs
+    # on parameters.json: the package carries the file it actually runs on.
+    (workspace_dir / "home" / "params.toml").unlink()
+    _write_json(
+        workspace_dir / "home" / "parameters.json",
+        {"design": "gcd", "top_module": "gcd", "pdk": "ics55"},
+    )
+    engine_flow = _make_engine_flow(workspace_dir)
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
+
+    package_dir = Path(result.package_dir)
+    assert result.ok is True
+    assert (package_dir / "initial" / "parameters.json").is_file()
+    summary = json.loads((package_dir / "summary.json").read_text())
+    assert summary["initial"]["parameters"] == "initial/parameters.json"

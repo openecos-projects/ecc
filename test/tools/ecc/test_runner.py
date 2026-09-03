@@ -631,7 +631,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(libs=[max_lib, min_lib], sdc=sdc),
-        parameters=Parameters(data={"STA max paths": 500}),
+        parameters=Parameters(data={"sta_max_paths": 500}),
         config={StepEnum.STA.value: incorrect_sta_config, StepEnum.RCX.value: rcx_config},
         logger=logger,
     )
@@ -715,14 +715,14 @@ def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_nam
 
 
 def test_save_data_preserves_core_utilization_parameter(tmp_path, monkeypatch):
-    parameter_path = tmp_path / "home" / "parameters.json"
+    parameter_path = tmp_path / "home" / "params.toml"
     parameter_path.parent.mkdir()
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         parameters=Parameters(
             path=parameter_path,
-            data={"Core": {"Margin": [2, 3], "Utilitization": 0.61}},
+            data={"core": {"margin": [2, 3], "utilitization": 0.61}},
         ),
     )
     step = build_step(workspace, StepEnum.ROUTING.value, None, None)
@@ -744,8 +744,11 @@ def test_save_data_preserves_core_utilization_parameter(tmp_path, monkeypatch):
     )
 
     assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
-    assert workspace.parameters.data["Core"]["Utilitization"] == 0.61
-    assert json.loads(parameter_path.read_text(encoding="utf-8"))["Core"]["Utilitization"] == 0.61
+    assert workspace.parameters.data["core"]["utilitization"] == 0.61
+    import tomllib
+
+    with open(parameter_path, "rb") as f:
+        assert tomllib.load(f)["params"]["core"]["utilitization"] == 0.61
 
 
 def test_save_data_fails_when_geometry_snapshot_cannot_be_written(tmp_path):

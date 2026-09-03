@@ -27,7 +27,7 @@ def _workspace(tmp_path):
             sdc=Path("clock.sdc"),
             spef=Path("route.spef"),
         ),
-        parameters=Parameters(data={"Bottom layer": "M2", "Top layer": "M7"}),
+        parameters=Parameters(data={"bottom_layer": "M2", "top_layer": "M7"}),
     )
     workspace.home.init(tmp_path / "home.json")
     return workspace

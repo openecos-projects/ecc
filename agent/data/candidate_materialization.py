@@ -295,6 +295,46 @@ def _validate_pdk_string(knob: CandidateKnob, value: Any, workspace: Any) -> Non
         raise CandidateMaterializationError(f"{knob.knob_id} must be a workspace PDK cell")
 
 
+def _load_parameters_config(path: Path) -> dict:
+    """Load the canonical workspace parameters regardless of on-disk format."""
+    from chipcompiler.data.parameter import load_parameter
+
+    try:
+        data = dict(load_parameter(path).data)
+    except Exception as exc:
+        raise ValueError(f"invalid candidate base config: {path}: {exc}") from exc
+    if not data:
+        # load_parameter returns {} when neither the canonical TOML nor a
+        # legacy JSON exists; hashing {} would sail through the missing-base
+        # guard and let the applied patch recreate a config holding only the
+        # patch keys, dropping the workspace identity and other parameters.
+        raise ValueError(f"missing candidate base config: {path}")
+    return data
+
+
+def _write_parameters_config(workspace: Any, path: Path, config: dict) -> Path:
+    """Persist candidate parameters through the canonical save boundary
+    (home/params.toml), keeping the workspace's [flow] section.
+
+    Returns the path that was actually written: when the workspace still
+    references a legacy parameters.json path, the save lands on the
+    canonical home/params.toml target, and receipts must hash THAT file.
+    """
+    from chipcompiler.data.parameter import Parameters, save_parameter
+    from chipcompiler.data.workspace_config import workspace_config_path
+
+    parameters = Parameters()
+    parameters.path = path
+    parameters.data = dict(config)
+    if hasattr(workspace, "parameters"):
+        existing_flow = getattr(workspace.parameters, "data", {}).get("_flow")
+        if existing_flow:
+            parameters.data["_flow"] = existing_flow
+    if not save_parameter(parameters):
+        raise ValueError(f"failed to write candidate config: {path}")
+    return workspace_config_path(workspace.directory)
+
+
 def _load_configs(
     workspace: Any,
     knobs: list[CandidateKnob],
@@ -308,10 +348,13 @@ def _load_configs(
         path = _config_path(workspace, knob.config_key)
         config_paths[knob.config_key] = path
         try:
-            configs[knob.config_key] = read_json_object(path, "candidate base config")
+            if knob.config_key == "parameters":
+                configs[knob.config_key] = _load_parameters_config(path)
+            else:
+                configs[knob.config_key] = read_json_object(path, "candidate base config")
         except ValueError as error:
             raise CandidateMaterializationError(str(error)) from error
-        before = sha256_path(path)
+        before = sha256_bytes(canonical_json_bytes(configs[knob.config_key]))
         if before is None:
             raise CandidateMaterializationError(f"missing candidate base config: {path}")
         before_hashes[knob.config_key] = before
@@ -362,13 +405,23 @@ def _write_configs(
     hashes: dict[str, str] = {}
     for config_key, config in configs.items():
         path = config_paths[config_key]
-        write_json_atomic(path, config)
+        if config_key == "parameters":
+            path = _write_parameters_config(workspace, path, config)
+            config_paths[config_key] = path
+        else:
+            write_json_atomic(path, config)
         digest = sha256_path(path)
         if digest is None:
             raise CandidateMaterializationError(f"failed to write candidate config: {path}")
         hashes[config_key] = digest
         if config_key == "parameters" and hasattr(workspace, "parameters"):
-            workspace.parameters.data = config
+            # Keep the flow target attached to the live parameters: the
+            # candidate overlay never resets [flow].
+            merged = dict(config)
+            existing_flow = getattr(workspace.parameters, "data", {}).get("_flow")
+            if existing_flow and "_flow" not in merged:
+                merged["_flow"] = existing_flow
+            workspace.parameters.data = merged
     return hashes
 
 

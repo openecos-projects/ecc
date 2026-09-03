@@ -47,10 +47,23 @@ class ProjectConfig:
 
     params_overrides: dict[str, object] = field(default_factory=dict)
 
+    # Manifest-backed layers (project.json projects): the base parameter
+    # payload beneath ecc.toml/--set, and the manifest's origin DEF.
+    manifest_parameters: dict[str, object] = field(default_factory=dict)
+    manifest_origin_def: str = ""
+    # True when this config was assembled from the manifest alone (no
+    # ecc.toml): the workspace's own [flow] is then the run target source.
+    manifest_driven: bool = False
+
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _flow_run_error: str | None = field(default=None, init=False, repr=False)
+    # Parse provenance: dotted "<section>.<key>" names of every design/pdk/
+    # flow key present in ecc.toml. An absent key may fill from a lower
+    # (manifest) layer; an explicit value — even an empty/invalid one —
+    # stays explicit and faces validation.
+    _explicit_keys: frozenset = field(default_factory=frozenset, init=False, repr=False)
 
 
 def load_project_config(config_path: str) -> ProjectConfig:
@@ -112,6 +125,11 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     )
 
     cfg._flow_run_error = _flow_run_problem(raw_run)
+    cfg._explicit_keys = frozenset(
+        f"{section}.{key}"
+        for section, table in (("design", design), ("pdk", pdk), ("flow", flow))
+        for key in table
+    )
 
     if not isinstance(pdk_overrides_raw, dict):
         cfg._pdk_config_errors = [
@@ -137,19 +155,36 @@ def resolve_project_dir(project: str | None) -> str:
 
 
 def find_config_path(project_dir: str) -> str | None:
+    """The project config path when the entry lexically exists.
+
+    Lexical presence, not readability: a symlink loop, a directory, or an
+    otherwise stat-failing entry still counts as PRESENT so the read that
+    follows fails loud (ConfigUnreadableError) instead of silently
+    demoting the project to a lower-precedence configuration layer.
+    """
     path = os.path.join(project_dir, "ecc.toml")
-    return path if os.path.isfile(path) else None
+    return path if os.path.lexists(path) else None
+
+
+class ConfigUnreadableError(ValueError):
+    """The project's ecc.toml exists but cannot be read (I/O or encoding)."""
 
 
 def load_run_config(project_dir: str) -> ProjectConfig | None:
-    """Parse the project's ecc.toml; None when it is missing or unreadable."""
+    """Parse the project's ecc.toml.
+
+    None only when the file is absent. An existing but unreadable file
+    raises :class:`ConfigUnreadableError` — callers must never silently
+    fall back to defaults while a higher-precedence configuration is
+    being ignored.
+    """
     config_path = find_config_path(project_dir)
     if config_path is None:
         return None
     try:
         return load_project_config(config_path)
-    except (OSError, UnicodeDecodeError):
-        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ConfigUnreadableError(f"unreadable project config: {config_path}: {exc}") from exc
 
 
 def config_run_id_from(cfg: ProjectConfig | None) -> str | InvalidFlowRun | None:
@@ -170,7 +205,10 @@ def config_run_id(project_dir: str) -> str | InvalidFlowRun | None:
     InvalidFlowRun when the key is present but cannot name a run directory;
     otherwise the run id string.
     """
-    return config_run_id_from(load_run_config(project_dir))
+    try:
+        return config_run_id_from(load_run_config(project_dir))
+    except ConfigUnreadableError:
+        return None
 
 
 def _supported_flow_presets() -> set[str]:
@@ -251,11 +289,11 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
 
 def to_parameters(cfg: ProjectConfig) -> dict:
     return {
-        "PDK": cfg.pdk_name,
-        "Design": cfg.design_name,
-        "Top module": cfg.design_top,
-        "Clock": cfg.design_clock_port,
-        "Frequency max [MHz]": cfg.design_frequency_mhz,
+        "pdk": cfg.pdk_name,
+        "design": cfg.design_name,
+        "top_module": cfg.design_top,
+        "clock": cfg.design_clock_port,
+        "frequency_max": cfg.design_frequency_mhz,
     }
 
 

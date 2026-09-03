@@ -521,15 +521,15 @@ The override delta reaches the Yosys builder and other tool steps within a singl
   `tap_cell`, `end_cap`, `buffers`, `fillers`, `tie_high_cell`, `tie_high_port`,
   `tie_low_cell`, `tie_low_port`, `dont_use`, `abc_driver_cell`, `abc_load`):
   Applied in memory and consumed within the run (e.g., baked into generated Yosys
-  scripts). Not written to `parameters.json`. On `load_workspace` (e.g., `ecc status`
-  or subsequent run without `[pdk.overrides]` in `ecc.toml`), these fields are
+  scripts). Not written to `home/params.toml`. On `load_workspace` (e.g., a subsequent
+  `ecc run` without `[pdk.overrides]` in `ecc.toml`), these fields are
   recomputed from the base built-in PDK. Effect: single-run only, dropped on reload
   unless the override is present in `ecc.toml` for the next run. `corners` is the
   exception in this list: no tool step currently consumes it (PDK-to-RCX propagation
   is not wired in `refresh_workspace_config`), so a `corners` override only changes
   the in-memory PDK — exactly like the base PDK's own `corners`.
 
-- **`root`**: Written to `parameters.json` as `PDK Root` and re-read by `load_workspace`.
+- **`root`**: Written to `home/params.toml` as `pdk_root` and re-read by `load_workspace`.
   `root` cannot be overridden; set `pdk.root` in `[pdk]` instead.
 
 - **Path fields** (`tech`, `lefs`, `libs`): Written to `db.json` at build time and

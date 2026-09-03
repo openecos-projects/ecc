@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -683,6 +684,41 @@ class TestRunFlowWithProgress:
         output = "".join(buf.written)
         assert "✓ synthesis (yosys)" in output
         assert "status=success" not in output
+
+    def test_run_start_reestablishes_home_pointers_after_reset(self, tmp_path):
+        from chipcompiler.data.home import HomeData
+
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        home = HomeData()
+        home.init(path=home_dir / "home.json")
+
+        logger = SimpleNamespace(
+            info=lambda *a, **k: None,
+            log_section=lambda *a, **k: None,
+            log_separator=lambda *a, **k: None,
+        )
+        ws = SimpleNamespace(
+            home=home,
+            logger=logger,
+            flow=SimpleNamespace(data={"steps": []}, path=home_dir / "flow.json"),
+            parameters=SimpleNamespace(path=home_dir / "params.toml"),
+            directory=str(tmp_path),
+        )
+
+        flow = _make_flow(
+            ws,
+            [_make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(isatty_value=True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        assert result is True
+        assert home.data["parameters"] == str(home_dir / "params.toml")
+        assert home.data["flow"] == str(home_dir / "flow.json")
+        assert home.data["checklist"] == str(home_dir / "checklist.json")
 
     def test_stops_on_failure(self):
         call_count = [0]

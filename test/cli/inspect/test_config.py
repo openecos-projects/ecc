@@ -762,3 +762,39 @@ def test_config_resolved_pdk_overrides_absent(
     data = json.loads(capsys.readouterr().out)
     keys = [item["config"] for item in data["records"]]
     assert "pdk.overrides" not in keys
+
+    def test_config_resolved_renders_manifest_only_project(self, tmp_path, capsys):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / "rtl").mkdir()
+        (project_dir / "rtl" / "gcd.v").write_text("module gcd; endmodule\n")
+        manifest = {
+            "schema_version": 1,
+            "design_name": "gcd",
+            "root_path": str(project_dir),
+            "base_design": {
+                "pdk": "ics55",
+                "pdk_root": str(tmp_path / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100},
+            },
+            "workspaces": [
+                {
+                    "workspace_id": "default",
+                    "workspace_path": str(project_dir / "default"),
+                    "status": "not_started",
+                }
+            ],
+        }
+        (project_dir / "project.json").write_text(json.dumps(manifest))
+
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        by_key = {r.get("key"): r for r in records if r.get("kind") == "config"}
+        assert by_key["design.top"]["resolved"] == "gcd"
+        assert by_key["design.top"]["source"] == "project.json"
+        assert by_key["pdk.name"]["resolved"] == "ics55"

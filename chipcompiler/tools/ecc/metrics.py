@@ -2837,7 +2837,7 @@ def _mpc_area_constraints(workspace: Workspace | None) -> tuple[float | None, fl
     parameters = getattr(getattr(workspace, "parameters", None), "data", {})
     if not isinstance(parameters, dict):
         return None
-    mpc = parameters.get("MPC")
+    mpc = parameters.get("mpc")
     core_template = mpc.get("core_template") if isinstance(mpc, dict) else None
     if not isinstance(core_template, dict):
         return None
@@ -3460,7 +3460,7 @@ def build_metrics_timing(workspace: Workspace, step: EccStep) -> dict:
                 max_WNS = float(slack_item.get("WNS", 0))
 
     # frequency
-    frequency = workspace.parameters.data.get("Frequency max [MHz]", 0)
+    frequency = workspace.parameters.data.get("frequency_max", 0)
     if frequency > 0 and max_WNS is not None:
         clk_period = 1000.0 / frequency
 

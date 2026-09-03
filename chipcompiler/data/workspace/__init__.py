@@ -5,8 +5,9 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from typing_extensions import deprecated
+
 from chipcompiler.utility import Logger, create_logger, dict_to_str
-from chipcompiler.utility.filelist import parse_filelist, parse_incdir_directives, resolve_path
 from chipcompiler.utility.path import path_is_within, path_text
 
 from ..home import HomeData
@@ -20,6 +21,14 @@ from ..parameter import (
 )
 from ..pdk import PDK, get_pdk
 from ..step import StateEnum, StepEnum
+from ..workspace_config import (
+    legacy_parameters_fallback,
+    migrate_legacy_parameters,
+)
+from ..workspace_config import (
+    workspace_config_path as workspace_config_toml_path,
+)
+from .filelist_copy import copy_filelist_with_sources
 from .layout import EccData, WorkspaceStepBase
 
 # The shared step type used as the annotation/constructor across the codebase.
@@ -203,6 +212,11 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
     }
 
 
+@deprecated(
+    "legacy parameters.json -> params.toml migration; slated for removal once "
+    "legacy workspaces are phased out",
+    category=None,
+)
 def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
     """Rename legacy workspace configs before resolving their canonical paths."""
     config_dir = Path(workspace_dir) / "config"
@@ -253,12 +267,19 @@ def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:
 
 
 def build_dynamic_flow_data(flow_config: dict | None) -> dict:
-    """Build initial flow.json data from GUI-provided flow_config."""
+    """Build initial flow.json data from GUI-provided flow_config.
+
+    A non-contiguous explicit selection degrades to the contiguous
+    first..last range (with a log note) so flow.json and the [flow] target
+    always describe the same steps.
+    """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
     canonical_steps = _canonical_harden_flow_entries()
-    selected_names = _selected_dynamic_flow_step_names(flow_config, canonical_steps)
+    from ..workspace_config import resolve_flow_selection
+
+    selected_names, _degraded = resolve_flow_selection(flow_config, canonical_steps)
     if not selected_names:
         return {}
 
@@ -331,11 +352,16 @@ def _normalize_flow_step_name(value) -> str:
         "cts": StepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
         "legalization": StepEnum.LEGALIZATION.value,
+        "timingopt": StepEnum.TIMING_OPT.value,
+        "timingoptimization": StepEnum.TIMING_OPT.value,
         "route": StepEnum.ROUTING.value,
         "routing": StepEnum.ROUTING.value,
         "drc": StepEnum.DRC.value,
         "lvs": StepEnum.LVS.value,
         "filler": StepEnum.FILLER.value,
+        "lec": StepEnum.LEC.value,
+        "postlec": StepEnum.POST_ROUTE_LEC.value,
+        "postroutelec": StepEnum.POST_ROUTE_LEC.value,
         "rcx": StepEnum.RCX.value,
         "sta": StepEnum.STA.value,
         "harden": StepEnum.HARDEN.value,
@@ -379,42 +405,42 @@ def _flag_to_int(value: Any) -> int:
 
 PARAMETER_CONFIG_FIELD_MAPPINGS = (
     WorkspaceConfigParameterMapping(
-        "Max fanout",
+        "max_fanout",
         StepEnum.CTS.value,
         ("max_fanout",),
     ),
     WorkspaceConfigParameterMapping(
-        "Bottom layer",
+        "bottom_layer",
         "db",
         ("LayerSettings", "routing_layer_1st"),
     ),
     WorkspaceConfigParameterMapping(
-        "Bottom layer",
+        "bottom_layer",
         StepEnum.ROUTING.value,
         ("RT", "-bottom_routing_layer"),
     ),
     WorkspaceConfigParameterMapping(
-        "Top layer",
+        "top_layer",
         StepEnum.ROUTING.value,
         ("RT", "-top_routing_layer"),
     ),
     WorkspaceConfigParameterMapping(
-        "Target density",
+        "target_density",
         "dreamplace",
         ("target_density",),
     ),
     WorkspaceConfigParameterMapping(
-        "Target overflow",
+        "target_overflow",
         "dreamplace",
         ("stop_overflow",),
     ),
     WorkspaceConfigParameterMapping(
-        "Cell padding x",
+        "cell_padding_x",
         "dreamplace",
         ("cell_padding_x",),
     ),
     WorkspaceConfigParameterMapping(
-        "Routability opt flag",
+        "routability_opt_flag",
         "dreamplace",
         ("routability_opt_flag",),
         to_config=_flag_to_int,
@@ -485,12 +511,12 @@ def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
 
 
 def _coerce_legacy_dreamplace_routability_flag(workspace: Workspace, dreamplace: dict) -> None:
-    dreamplace_overrides = workspace.parameters.data.get("DreamPlace", {})
+    dreamplace_overrides = workspace.parameters.data.get("dreamplace", {})
     if isinstance(dreamplace_overrides, dict) and "routability_opt_flag" in dreamplace_overrides:
         return
-    if "Routability opt flag" in workspace.parameters.data:
+    if "routability_opt_flag" in workspace.parameters.data:
         dreamplace["routability_opt_flag"] = _flag_to_int(
-            workspace.parameters.data["Routability opt flag"]
+            workspace.parameters.data["routability_opt_flag"]
         )
 
 
@@ -562,8 +588,8 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
 
     default_margin = default_die_builder.get("margin", {})
     margin_config = die_builder.setdefault("margin", {})
-    core = workspace.parameters.data.get("Core", {})
-    margin = core.get("Margin", [])
+    core = workspace.parameters.data.get("core", {})
+    margin = core.get("margin", [])
     if len(margin) < 2:
         margin = [
             margin_config.get("left_micron", default_margin.get("left_micron", 10.0)),
@@ -577,16 +603,22 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     default_die_util = default_die_builder.get("die_util", {})
     die_util = die_builder.setdefault("die_util", {})
     die_util["aspect_ratio"] = core.get(
-        "Aspect ratio", die_util.get("aspect_ratio", default_die_util.get("aspect_ratio", 1.0))
+        "aspect_ratio", die_util.get("aspect_ratio", default_die_util.get("aspect_ratio", 1.0))
     )
     die_util["utilization"] = core.get(
-        "Utilitization", die_util.get("utilization", default_die_util.get("utilization", 0.5))
+        "utilitization", die_util.get("utilization", default_die_util.get("utilization", 0.5))
     )
 
     default_die_size = default_die_builder.get("die_size", {})
     die_size = die_builder.setdefault("die_size", {})
     die_size.setdefault("width_micron", default_die_size.get("width_micron", 100.1))
     die_size.setdefault("height_micron", default_die_size.get("height_micron", 246.6))
+    die = workspace.parameters.data.get("die", {})
+    die_dimensions = die.get("size") if isinstance(die, dict) else None
+    if isinstance(die_dimensions, list) and len(die_dimensions) >= 2:
+        die_size["width_micron"] = die_dimensions[0]
+        die_size["height_micron"] = die_dimensions[1]
+        die_builder["mode"] = "die_size"
     for legacy_key in (
         "core_width_to_height_ratio",
         "core_utilization",
@@ -674,7 +706,7 @@ def init_workspace_config(workspace: Workspace) -> None:
 
 
 def refresh_workspace_config(workspace: Workspace) -> None:
-    """Reload parameters.json and refresh workspace configs derived from parameters/PDK."""
+    """Reload the workspace configuration and refresh configs derived from parameters/PDK."""
     import os
 
     from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
@@ -696,11 +728,11 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     db["INPUT"]["lib_path"] = [str(path) for path in workspace.pdk.libs]
     db["INPUT"]["sdc_path"] = str(workspace.pdk.sdc or "")
     db["INPUT"]["spef"] = str(workspace.pdk.spef or "")
-    db["LayerSettings"]["routing_layer_1st"] = workspace.parameters.data.get("Bottom layer", "")
+    db["LayerSettings"]["routing_layer_1st"] = workspace.parameters.data.get("bottom_layer", "")
     if not json_write(workspace.config["db"], db):
         raise OSError(f"Failed to write DB config: {workspace.config['db']}")
 
-    max_fanout = workspace.parameters.data.get("Max fanout", 32)
+    max_fanout = workspace.parameters.data.get("max_fanout", 32)
 
     filler_path = workspace.config[f"{StepEnum.FILLER.value}"]
     filler = json_read(filler_path)
@@ -728,8 +760,8 @@ def refresh_workspace_config(workspace: Workspace) -> None:
             f"Routing config missing or corrupt (no 'RT' key): "
             f"{workspace.config[f'{StepEnum.ROUTING.value}']}"
         )
-    router["RT"]["-bottom_routing_layer"] = workspace.parameters.data.get("Bottom layer", "")
-    router["RT"]["-top_routing_layer"] = workspace.parameters.data.get("Top layer", "")
+    router["RT"]["-bottom_routing_layer"] = workspace.parameters.data.get("bottom_layer", "")
+    router["RT"]["-top_routing_layer"] = workspace.parameters.data.get("top_layer", "")
     json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 
     _refresh_floorplan_config(workspace)
@@ -770,7 +802,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
 
 
 def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path) -> bool:
-    """Sync managed fields from one workspace config file back into parameters.json."""
+    """Sync managed fields from one workspace config file back into the workspace configuration."""
     from chipcompiler.utility import json_read
 
     _reload_workspace_parameters(workspace)
@@ -828,22 +860,22 @@ def _reset_workspace_runtime_parameters(workspace: Workspace) -> None:
     from copy import deepcopy
 
     current_data = workspace.parameters.data or {}
-    pdk_name = str(current_data.get("PDK", "")).lower()
+    pdk_name = str(current_data.get("pdk", "")).lower()
     template_parameters = get_parameters(pdk_name)
     template_data = deepcopy(template_parameters.data)
 
-    die_template = template_data.get("Die")
-    if isinstance(die_template, dict) and isinstance(current_data.get("Die"), dict):
-        current_data["Die"] = deepcopy(die_template)
+    die_template = template_data.get("die")
+    if isinstance(die_template, dict) and isinstance(current_data.get("die"), dict):
+        current_data["die"] = deepcopy(die_template)
 
-    core_template = template_data.get("Core")
-    if isinstance(core_template, dict) and isinstance(current_data.get("Core"), dict):
-        current_core = current_data["Core"]
-        current_data["Core"] = {
+    core_template = template_data.get("core")
+    if isinstance(core_template, dict) and isinstance(current_data.get("core"), dict):
+        current_core = current_data["core"]
+        current_data["core"] = {
             **deepcopy(core_template),
-            "Utilitization": current_core.get("Utilitization", core_template.get("Utilitization")),
-            "Margin": deepcopy(current_core.get("Margin", core_template.get("Margin"))),
-            "Aspect ratio": current_core.get("Aspect ratio", core_template.get("Aspect ratio")),
+            "utilitization": current_core.get("utilitization", core_template.get("utilitization")),
+            "margin": deepcopy(current_core.get("margin", core_template.get("margin"))),
+            "aspect_ratio": current_core.get("aspect_ratio", core_template.get("aspect_ratio")),
         }
 
     if not save_parameter(workspace.parameters):
@@ -898,7 +930,7 @@ def prepare_workspace_for_rerun(
     workspace.home.reset()
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(workspace_root / "home" / "checklist.json")
-    parameter_path = workspace.parameters.path or (workspace_root / "home" / "parameters.json")
+    parameter_path = workspace.parameters.path or workspace_config_toml_path(workspace_root)
     workspace.parameters.path = Path(parameter_path)
     workspace.home.set_parameters(workspace.parameters.path)
     _reset_workspace_checklist(workspace)
@@ -970,146 +1002,6 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
                     for temperature in temperatures
                 ]
         json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
-
-
-def copy_filelist_with_sources(input_filelist: str, workspace_dir: str, logger=None) -> str:
-    """
-    Copy filelist and all referenced source files + include directories to workspace/origin/.
-
-    Maintains the original directory structure of source files relative to the filelist location.
-    Supports +incdir directives with smart deduplication.
-
-    Args:
-        input_filelist: Path to the filelist file
-        workspace_dir: Target workspace directory
-        logger: Optional logger instance for logging operations
-
-    Returns:
-        Path to the copied filelist in workspace/origin/
-
-    Raises:
-        FileNotFoundError: If filelist file doesn't exist
-        IOError: If file copy operations fail
-
-    Example:
-        >>> new_filelist_path = copy_filelist_with_sources(
-        ...     "/project/design.f",
-        ...     "/workspace/gcd"
-        ... )
-        >>> print(new_filelist_path)
-        '/workspace/gcd/origin/design.f'
-    """
-    import os
-    import shutil
-
-    origin_dir = os.path.join(workspace_dir, "origin")
-    os.makedirs(origin_dir, exist_ok=True)
-
-    filelist_dir = os.path.dirname(os.path.abspath(input_filelist))
-    copied_files = set()
-    stats = {"copied": 0, "missing": 0, "incdir_copied": 0, "incdir_skipped": 0}
-
-    # Copy files listed in filelist
-    try:
-        source_files = parse_filelist(input_filelist)
-    except Exception as e:
-        if logger:
-            logger.error(f"Failed to parse filelist {input_filelist}: {e}")
-        raise
-
-    for src_path in source_files:
-        abs_src = resolve_path(src_path, filelist_dir)
-
-        if not os.path.exists(abs_src):
-            if logger:
-                logger.warning(f"File not found (skipping): {abs_src}")
-            stats["missing"] += 1
-            continue
-
-        rel_path = os.path.basename(src_path) if os.path.isabs(src_path) else src_path
-
-        if rel_path in copied_files:
-            if logger:
-                logger.debug(f"Skipping duplicate: {rel_path}")
-            continue
-
-        if _copy_file_safely(abs_src, os.path.join(origin_dir, rel_path), logger, src_path):
-            copied_files.add(rel_path)
-            stats["copied"] += 1
-
-    # Copy +incdir directories
-    try:
-        incdir_paths = parse_incdir_directives(input_filelist)
-    except Exception as e:
-        if logger:
-            logger.warning(f"Failed to parse +incdir directives: {e}")
-        incdir_paths = []
-
-    for incdir_path in incdir_paths:
-        abs_incdir = resolve_path(incdir_path, filelist_dir)
-
-        if not os.path.exists(abs_incdir):
-            if logger:
-                logger.warning(f"Include directory not found: {abs_incdir}")
-            continue
-
-        if not os.path.isdir(abs_incdir):
-            if logger:
-                logger.warning(f"Include path is not a directory: {abs_incdir}")
-            continue
-
-        for root, _dirs, files in os.walk(abs_incdir):
-            for filename in files:
-                src_file = os.path.join(root, filename)
-                rel_from_filelist = os.path.relpath(src_file, filelist_dir)
-
-                if rel_from_filelist in copied_files:
-                    stats["incdir_skipped"] += 1
-                    if logger:
-                        logger.debug(f"Skipping duplicate from +incdir: {rel_from_filelist}")
-                    continue
-
-                dst_file = os.path.join(origin_dir, rel_from_filelist)
-                if _copy_file_safely(src_file, dst_file, logger, f"+incdir/{src_file}"):
-                    copied_files.add(rel_from_filelist)
-                    stats["incdir_copied"] += 1
-
-    # Copy filelist file itself
-    new_filelist = os.path.join(origin_dir, os.path.basename(input_filelist))
-    try:
-        shutil.copy2(input_filelist, new_filelist)
-    except Exception as e:
-        if logger:
-            logger.error(f"Failed to copy filelist: {e}")
-        raise
-
-    if logger:
-        logger.info(
-            f"Copied filelist and sources: "
-            f"{stats['copied']} files from filelist, "
-            f"{stats['incdir_copied']} files from +incdir, "
-            f"{stats['missing']} missing, "
-            f"{stats['incdir_skipped']} duplicates skipped"
-        )
-
-    return new_filelist
-
-
-def _copy_file_safely(src: str, dst: str, logger, context: str) -> bool:
-    """Copy a file with error handling and logging."""
-    import os
-    import shutil
-
-    try:
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        shutil.copy2(src, dst)
-        if logger:
-            logger.debug(f"Copied: {src} -> {dst}")
-        return True
-    except Exception as e:
-        if logger:
-            logger.error(f"Error copying {context}: {e}")
-        return False
 
 
 def _workspace_directory_has_existing_data(workspace_dir: Path) -> bool:
@@ -1194,8 +1086,8 @@ def create_workspace(
 
     # update config
     if isinstance(parameters, Parameters):
-        workspace.design.name = parameters.data["Design"]
-        workspace.design.top_module = parameters.data["Top module"]
+        workspace.design.name = parameters.data["design"]
+        workspace.design.top_module = parameters.data["top_module"]
         workspace.parameters = parameters
 
     if isinstance(parameters, dict):
@@ -1204,8 +1096,8 @@ def create_workspace(
         workspace.parameters = get_parameters(pdk_name)
         update_parameters(parameters_src=parameters, parameters_target=workspace.parameters.data)
 
-        workspace.design.name = workspace.parameters.data["Design"]
-        workspace.design.top_module = workspace.parameters.data["Top module"]
+        workspace.design.name = workspace.parameters.data["design"]
+        workspace.design.top_module = workspace.parameters.data["top_module"]
 
     # update path
     workspace.directory = workspace_dir
@@ -1213,7 +1105,7 @@ def create_workspace(
 
     # create logger first (needed for copy operations)
     log_dir.mkdir(parents=True, exist_ok=True)
-    workspace.logger = create_logger(name=workspace.parameters.data["Design"], log_dir=log_dir)
+    workspace.logger = create_logger(name=workspace.parameters.data["design"], log_dir=log_dir)
 
     # update orign files to workspace origin folder
     origin_dir.mkdir(parents=True, exist_ok=True)
@@ -1273,7 +1165,7 @@ def create_workspace(
     # set home data
     home_dir.mkdir(parents=True, exist_ok=True)
     workspace.flow.path = home_dir / "flow.json"
-    workspace.parameters.path = home_dir / "parameters.json"
+    workspace.parameters.path = workspace_config_toml_path(home_dir.parent)
     workspace.home.init(path=home_dir / "home.json")
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(home_dir / "checklist.json")
@@ -1286,12 +1178,18 @@ def create_workspace(
         if not json_write(workspace.flow.path, workspace.flow.data):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
 
+        from ..workspace_config import flow_section_from_flow_config
+
+        flow_section = flow_section_from_flow_config(flow_config)
+        if flow_section:
+            workspace.parameters.data["_flow"] = flow_section
+
     if workspace.pdk.root:
-        workspace.parameters.data["PDK Root"] = str(workspace.pdk.root)
+        workspace.parameters.data["pdk_root"] = str(workspace.pdk.root)
     if pdk_json:
         pdk_config_path = home_dir / "pdk.json"
         shutil.copy(pdk_json, pdk_config_path)
-        workspace.parameters.data["PDK Config"] = str(pdk_config_path)
+        workspace.parameters.data["pdk_config"] = str(pdk_config_path)
 
     # save parameter
     if not save_parameter(workspace.parameters):
@@ -1310,22 +1208,41 @@ def load_workspace(directory: str | Path) -> Workspace:
     if not workspace_dir.exists():
         return None
 
+    migrate_legacy_parameters(workspace_dir)
+
     # create workspace instance
     workspace = Workspace()
     workspace.directory = workspace_dir
     migrate_workspace_config_filenames(workspace_dir)
     workspace.config = build_workspace_config_paths(workspace)
 
-    parameters = load_parameter(home_dir / "parameters.json")
+    config_path = workspace_config_toml_path(workspace_dir)
+    legacy_path = home_dir / "parameters.json"
+    if config_path.is_symlink():
+        # A symlinked canonical config would make the workspace execute
+        # with external parameters it does not own: reject it the same way
+        # the save path refuses to write through a symlink.
+        from chipcompiler.data.workspace_config import WorkspaceConfigError
+
+        raise WorkspaceConfigError(f"workspace config is a symlink: {config_path}")
+    parameters = load_parameter(workspace_config_toml_path(workspace_dir))
+    if len(parameters.data) <= 0 and not config_path.exists() and legacy_path.exists():
+        # Migration was deferred (e.g. read-only dir): fall back to the
+        # normalized in-memory copy so the workspace still opens. When the
+        # TOML exists it wins unconditionally — a malformed config never
+        # silently falls back to stale JSON.
+        fallback = legacy_parameters_fallback(workspace_dir)
+        if fallback:
+            parameters.data = fallback
     if len(parameters.data) <= 0:
         return None
 
     workspace.parameters = parameters
 
     pdk = get_pdk(
-        pdk_name=parameters.data.get("PDK", ""),
-        pdk_root=parameters.data.get("PDK Root", ""),
-        pdk_config=parameters.data.get("PDK Config", ""),
+        pdk_name=parameters.data.get("pdk", ""),
+        pdk_root=parameters.data.get("pdk_root", ""),
+        pdk_config=parameters.data.get("pdk_config", ""),
     )
     sdc_path = list(origin_dir.rglob("*.sdc"))
     if len(sdc_path) > 0:
@@ -1347,8 +1264,8 @@ def load_workspace(directory: str | Path) -> Workspace:
     workspace.pdk = pdk
 
     # update config
-    workspace.design.name = parameters.data.get("Design", "")
-    workspace.design.top_module = parameters.data.get("Top module", "")
+    workspace.design.name = parameters.data.get("design", "")
+    workspace.design.top_module = parameters.data.get("top_module", "")
     def_path = list(origin_dir.rglob("*.def"))
     def_gz_path = list(origin_dir.rglob("*.def.gz"))
     if len(def_path) > 0:
@@ -1377,7 +1294,7 @@ def load_workspace(directory: str | Path) -> Workspace:
     workspace.home.set_parameters(workspace.parameters.path)
 
     # create logger first (needed for copy operations)
-    workspace.logger = create_logger(name=parameters.data["Design"], log_dir=workspace_dir / "log")
+    workspace.logger = create_logger(name=parameters.data["design"], log_dir=workspace_dir / "log")
 
     log_workspace(workspace)
     log_parameters(workspace)
@@ -1438,10 +1355,10 @@ def create_default_sdc(workspace: Workspace):
     sdc_content = []
     sdc_content.append("# Auto-generated SDC file\n")
     sdc_content.append("\n")
-    sdc_content.append("set clk_name {} \n".format(workspace.parameters.data.get("Clock", "")))
-    sdc_content.append("set clk_port_name {}\n".format(workspace.parameters.data.get("Clock", "")))
+    sdc_content.append("set clk_name {} \n".format(workspace.parameters.data.get("clock", "")))
+    sdc_content.append("set clk_port_name {}\n".format(workspace.parameters.data.get("clock", "")))
     sdc_content.append(
-        "set clk_freq_mhz {}\n".format(workspace.parameters.data.get("Frequency max [MHz]", 100))
+        "set clk_freq_mhz {}\n".format(workspace.parameters.data.get("frequency_max", 100))
     )
     sdc_content.append("set clk_period [expr 1000.0 / $clk_freq_mhz]\n")
     sdc_content.append("set clk_io_pct 0.2\n")
