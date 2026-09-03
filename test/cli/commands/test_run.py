@@ -266,9 +266,7 @@ class TestWorkspaceRun:
                 seen.create_calls += 1
                 seen.executable = executable_steps
 
-        def selected_step_names(
-            flow, *, from_step=None, to_step=None, only=None, force=False
-        ):
+        def selected_step_names(flow, *, from_step=None, to_step=None, only=None, force=False):
             if seen.selected_error is not None:
                 raise seen.selected_error
             seen.selected = {
