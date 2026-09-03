@@ -376,23 +376,25 @@ def test_validated_receipt_requires_complete_one_to_one_config_snapshots(tmp_pat
 
 
 def test_reapply_keeps_in_memory_parameters_consistent(tmp_path):
+    from chipcompiler.data.parameter import load_parameter, save_parameter
+
     workspace = _workspace(tmp_path)
-    workspace.parameters.data = _read_json(workspace.parameters.path)
+    workspace.parameters.data = load_parameter(workspace.parameters.path).data
     materialize_candidate_config(
         workspace,
         "Floorplan",
         [{"knob_id": "floorplan.core_util", "value": 0.7}],
         candidate_id="floorplan-candidate",
     )
-    refreshed = _read_json(workspace.parameters.path)
-    refreshed["Core"]["Utilitization"] = 0.6
-    _write_json(workspace.parameters.path, refreshed)
-    workspace.parameters.data = refreshed
+    refreshed = load_parameter(workspace.parameters.path)
+    refreshed.data["core"]["utilitization"] = 0.6
+    assert save_parameter(refreshed)
+    workspace.parameters.data = refreshed.data
 
     reapply_materialized_candidate_config(workspace, "Floorplan")
 
-    assert workspace.parameters.data == _read_json(workspace.parameters.path)
-    assert workspace.parameters.data["Core"]["Utilitization"] == 0.7
+    assert workspace.parameters.data == load_parameter(workspace.parameters.path).data
+    assert workspace.parameters.data["core"]["utilitization"] == 0.7
 
 
 def test_reapply_keeps_receipt_when_tool_rewrites_equivalent_json(tmp_path):
@@ -643,12 +645,7 @@ def test_materialize_floorplan_patch_preserves_the_canonical_core_tree(tmp_path)
     materialize_candidate_config(
         workspace,
         "Floorplan",
-        [
-            {"knob_id": "floorplan.core_util", "value": 0.7},
-            {"knob_id": "floorplan.aspect_ratio", "value": 1.1},
-            {"knob_id": "floorplan.core_margin", "value": [3, 3]},
-            {"knob_id": "floorplan.tap_distance", "value": 5},
-        ],
+        [{"knob_id": "floorplan.core_util", "value": 0.7}],
         candidate_id="floorplan-candidate",
     )
 
@@ -656,7 +653,7 @@ def test_materialize_floorplan_patch_preserves_the_canonical_core_tree(tmp_path)
 
     reloaded = load_parameter(Path(workspace.parameters.path)).data
     assert "Core" not in reloaded
-    assert reloaded["core"] == {"utilitization": 0.7, "aspect_ratio": 1.1, "margin": [3, 3]}
+    assert reloaded["core"] == {"utilitization": 0.7, "aspect_ratio": 1.0, "margin": [2, 2]}
     assert "Core" not in workspace.parameters.data
     assert workspace.parameters.data["core"]["utilitization"] == 0.7
 

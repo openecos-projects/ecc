@@ -53,6 +53,13 @@ def materialize_candidate_config(
         configs,
     )
     after_hashes = _write_configs(workspace, configs, config_paths)
+    for snapshot in snapshots:
+        config_key = snapshot["config_key"]
+        shutil.copyfile(
+            config_paths[config_key],
+            Path(workspace.directory) / snapshot["after_ref"],
+        )
+        snapshot["after_sha256"] = after_hashes[config_key]
     receipt = _build_receipt(
         workspace,
         target_step,
@@ -88,7 +95,7 @@ def reapply_materialized_candidate_config(
         shutil.copyfile(after_path, config_path)
         if config_key == "parameters" and hasattr(workspace, "parameters"):
             try:
-                workspace.parameters.data = read_json_object(config_path, "candidate parameters")
+                workspace.parameters.data = _load_parameters_config(config_path)
             except ValueError as error:
                 raise CandidateMaterializationError(str(error)) from error
     _verify_materialized_config_hashes(workspace, receipt["configs"])
@@ -332,7 +339,10 @@ def _write_parameters_config(workspace: Any, path: Path, config: dict) -> Path:
             parameters.data["_flow"] = existing_flow
     if not save_parameter(parameters):
         raise ValueError(f"failed to write candidate config: {path}")
-    return workspace_config_path(workspace.directory)
+    target = workspace_config_path(workspace.directory)
+    if hasattr(workspace, "parameters"):
+        workspace.parameters.path = target
+    return target
 
 
 def _load_configs(
@@ -354,7 +364,7 @@ def _load_configs(
                 configs[knob.config_key] = read_json_object(path, "candidate base config")
         except ValueError as error:
             raise CandidateMaterializationError(str(error)) from error
-        before = sha256_bytes(canonical_json_bytes(configs[knob.config_key]))
+        before = sha256_path(path)
         if before is None:
             raise CandidateMaterializationError(f"missing candidate base config: {path}")
         before_hashes[knob.config_key] = before
