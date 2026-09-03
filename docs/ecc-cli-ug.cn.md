@@ -1,6 +1,6 @@
 # ECC CLI 用户指南（当前支持的全部命令）
 
-`ecc` 是 ECOS Chip Compiler 的项目制命令行入口，覆盖 RTL-to-GDS 流水的建项、校验、运行、状态/日志/配置查询与参数管理。本文基于 `ecc/` 子模块当前源码（v0.1.0-alpha.11）整理，所有示例输出均为真实执行结果（示例中的 run 状态为手工构造的演示数据）。
+`ecc` 是 ECOS Chip Compiler 的项目制命令行入口，覆盖 RTL-to-GDS 流水的建项、校验、运行、状态/日志/配置查询与参数管理。本文基于 `ecc/` 子模块当前源码（v0.1.0a11）整理，所有示例输出均为真实执行结果（示例中的 run 状态为手工构造的演示数据）。
 
 - 源码位置：[chipcompiler/cli/](../chipcompiler/cli/)
 - 命令扩展开发方式见同目录 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)
@@ -10,7 +10,7 @@
 
 ### 一键安装（推荐）
 
-仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)（本目录）：下载安装 ecc CLI、配置 PATH、自检环境、并补齐缺失的 PDK（icsprout55-pdk + liberty/GDS）、Yosys（OSS CAD Suite 最新版，含 slang 前端；LEC 等价性检查复用该 yosys）与可选的 Sizer（ecc-sizer 预编译包，官方发布后自动安装）。幂等可重复运行，已就绪的部件自动跳过：
+仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)（本目录）：下载安装 ecc CLI、配置 PATH、自检环境、并补齐缺失的 PDK（icsprout55-pdk + liberty/GDS）、Yosys（OSS CAD Suite 最新版，含 slang 前端；LEC 等价性检查复用该 yosys）与 Timing optimization 所需的 Sizer（存在预编译 ecc-sizer 包时自动安装）。幂等可重复运行，已就绪的部件自动跳过：
 
 ```bash
 bash ecc-cli-setup.sh                 # 一键安装 + 自检 + 补齐
@@ -93,7 +93,7 @@ uv run ecc --help
 ## 1. 通用约定
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
-- 项目定位：多数命令接受 `--project <dir>`（缺省为当前目录）与 `--run-id <id>`（也接受绝对路径或含 `/` 的相对路径）。workspace 布局按项目形态解析：**新项目**（无 `project.json`、无 `runs/`）首个 run 建在 `<project>/<run-id>`，并自动写入 `project.json` 登记该 workspace；**manifest 项目**（有 `project.json`）按登记的 workspace 表解析 run；**legacy 项目**（已有 `runs/` 目录）继续用 `runs/<run-id>`，可用 `ecc migrate` 升级。配置层三种形态都可带 `ecc.toml`；仅「无 `ecc.toml` 的纯 manifest 项目」会被 `ecc param` 拒绝（`param_requires_ecc_toml`）。
+- 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录），其中与 run 有关的命令还接受 `--run-id <id>`。**新项目**（没有 `project.json`、没有 `runs/`）首个 workspace 落在 `<project>/<run-id>`，并自动生成 `project.json` 登记。**manifest 项目**从其中已声明的 workspace 表解析查看类命令（恰有一个活跃 workspace 时自动选中）；id 必须是非空单个路径段。`ecc run --run-id` 可以创建未声明的单路径段 workspace，但会给出 `workspace_not_registered`；之后项目级 `status`/`log`/`config` 无法选中它。**legacy 项目**（有非空 `runs/`）仍使用 `runs/<run-id>`，接受绝对路径或含 `/` 的相对路径，并可用 `ecc migrate` 升级。三种状态都可带 `ecc.toml`；只有缺少 `ecc.toml` 的 manifest 项目会被 `ecc param` 拒绝（`param_requires_ecc_toml`）。
 - 输出模式（inspect 类命令通用）：`--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）、`--plain`（`key=value`，便于脚本解析）、默认人类可读 TEXT。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）在展示层统一为小写：`synthesis / floorplan / placement / cts / legalization / timing optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`、`Timing optimization`）。
@@ -241,7 +241,7 @@ $ ecc doctor          # 在项目目录内执行（PDK 探测需要 ecc.toml 或
   ...
 ```
 
-此外 `ecc run` 启动前会自动预检所选 preset 必需的工具（yosys↔含综合、dreamplace↔含布局/合法化），缺失则 fail-fast：
+此外 `ecc run` 启动前会预检捆绑 ecc-tools、含综合的 preset 所需 Yosys、以及含布局/合法化的 preset 所需 DreamPlace；这些组件缺失时 fail-fast。Sizer 有意不在这项预检中：
 
 ```console
 $ ecc run
@@ -303,7 +303,7 @@ ecc run [OPTIONS]
   --json / --jsonl / --plain
 ```
 
-新建或 `--overwrite` 的 run 会按以下流程执行：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检 preset 必需工具 → 在解析出的 run 目标下创建 workspace（新项目为 `<project>/<run-id>` 并写入 `project.json` 登记；legacy 项目为 `runs/<run-id>`）→ 按 preset（`rtl2gds | rcx | harden | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。已有 workspace 直接按持久化 flow 续跑，不做 preset 预检。`harden` 是完整 14 步链（Synthesis→Floorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→LVS→DRC→postRouteLec（Yosys 等价性检查）→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB；`rtl2gds`/`rcx` 为其前缀子链）。
+新建或 `--overwrite` 的 run 会按以下流程执行：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检捆绑的 ecc-tools，以及 preset 选中的 Yosys 和 DreamPlace → 在解析出的 run 目标下创建 workspace（新项目为 `<project>/<run-id>` 并写入 `project.json` 登记；legacy 项目为 `runs/<run-id>`）→ 按 preset（`rtl2gds | rcx | harden | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。已有 workspace 直接按持久化 flow 续跑，不做 preset 预检。Sizer 有意不在预检范围内，缺失时会在 Timing optimization 步骤失败。`harden` 是完整 14 步链（Synthesis→Floorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→LVS→DRC→postRouteLec（Yosys 等价性检查）→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB；`rtl2gds`/`rcx` 为其前缀子链）。
 
 ```console
 $ ecc run                # 该 run 已存在时拒绝覆盖
@@ -365,7 +365,7 @@ rc=1
 ecc migrate [--project DIR] [--yes]
 ```
 
-把 legacy `runs/` 布局的项目迁移到 manifest 布局（生成 `project.json`，workspace 登记后仍指向原目录，数据不搬动）。缺省先输出迁移计划，确认后才执行；`--yes` 跳过确认。该命令为过渡期保留（代码标注 deprecated），存量项目迁完即可弃用。`run`/`check`/`status` 在 legacy 项目上会自动附带迁移提示记录。
+把 legacy `runs/` 布局项目迁移到 manifest 布局：每个安全的 `runs/<id>` workspace 都会移动到 `<project>/<id>`，重写 workspace 内部路径，并登记到新建或更新的 `project.json`。缺省先输出迁移计划，确认后才执行；`--yes` 跳过确认。该命令为过渡期保留（代码标注 deprecated），存量项目迁完即可弃用。`run`/`check`/`status` 在 legacy 项目上会自动附带迁移提示记录。
 
 ## 6. status — 查看 run 与步骤状态
 
@@ -562,7 +562,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `route.top_layer` | str | MET5 | MET2–MET6 | routing |
 | `sta.max_paths` | int | 1000 | [1, 100000] | sta |
 
-优先级：CLI `--set` > `ecc.toml` `[params.*]` > 模板默认值。`pdk.*` 路径参数写入 `[pdk.overrides]`，并沿用 PDK 的相对路径解析和文件校验。
+优先级：CLI `--set` > `ecc.toml` `[params.*]` > 模板默认值。`pdk.*` 路径参数写入 `[pdk.overrides]`：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc` 和 `pdk.spef` 相对项目目录解析；六者都会校验文件。
 
 ## 10. pdk — PDK 路径配置
 
@@ -590,15 +590,15 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
 
 ## 11. signoff — 签核包与设计报告
 
-flow 跑完（harden preset 全部步骤 Success）后使用。三个子命令都接受 `--project DIR`/`--run-id ID`（定位 workspace）或 `--workspace PATH`（直接指定 workspace），以及 `--json/--jsonl/--plain`。
+`ecc signoff export` 需要就绪的 Harden 签核包。`ecc signoff inspect` 与 `ecc signoff report` 也可用于审阅或汇总尚未完成的 workspace。三个子命令都接受 `--project DIR`（可选 `--run-id ID`），或直接指定 workspace 的 `--workspace PATH`，以及 `--json/--jsonl/--plain`。
 
-### 11.1 inspect — 就绪度审阅（不改任何东西）
+### 11.1 inspect — 就绪度审阅
 
 ```bash
-ecc signoff inspect [--project DIR | --workspace PATH]
+ecc signoff inspect [--project DIR] [--run-id ID] | --workspace PATH
 ```
 
-输出签核包的就绪状态（`ready / attention / blocked`）、七个分组（initial/config/harden/final_design/sta/spef/reports）与风险清单。**blocked 也返回 rc=0**（检查是建议性的，门禁在 export）：
+刷新已完成步骤的 analysis 与 `home/checklist.json` 后，输出签核包的就绪状态（`ready / attention / blocked`）、七个分组（initial/config/harden/final_design/sta/spef/reports）与风险清单。**blocked 也返回 rc=0**（检查是建议性的，门禁在 export）：
 
 ```console
 $ ecc signoff inspect --workspace default
@@ -623,7 +623,7 @@ $ ecc signoff inspect --workspace default
 ### 11.2 export — 导出签核包 tar.gz（有门禁）
 
 ```bash
-ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR | --workspace PATH]
+ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--run-id ID] | --workspace PATH
 ```
 
 与 GUI「导出签核包」同源：刷新分析 → 收集 initial/config/harden/final 全部交付物 → 原子落盘 `<design>_signoff_package.tar.gz`。就绪度不足时拒绝导出（不产生残档）：
@@ -645,7 +645,7 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # 就绪后
 ### 11.3 report — 文本设计总结报告
 
 ```bash
-ecc signoff report [-o PATH] [--project DIR | --workspace PATH]
+ecc signoff report [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
 ```
 
 生成与 GUI「导出报告（文本）」同版式的设计总结（8 个分区：物理/时序/时钟/多 corner/绕线/功耗/验证/执行成本），默认写入 `<workspace>/signoff/<design>_design_summary.txt`：
@@ -682,7 +682,7 @@ PDK / Node         : ics55
 ## 12. report — QoR 总分与 checklist 报告
 
 ```bash
-ecc report qor        [-o PATH] [--project DIR | --run-id ID | --workspace PATH]
+ecc report qor        [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
 ecc report checklist  [-o PATH] [同上]
 ```
 
@@ -760,11 +760,14 @@ ecc report checklist               # 签核清单报告（signoff/checklist_repo
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
 ```
 
-多 run 对比：
+选择一个可跟踪的 run：
 
 ```bash
-sed -i 's/^run = "default"/run = "exp1"/' ecc.toml   # 或直接 --run-id exp1
+# 在第一次运行前选定 id，使自动生成的 manifest 登记它。
+ecc init gcd && cd gcd
 ecc run --run-id exp1 --set place.target_density=0.65
 ecc status --run-id exp1
 ecc log --run-id exp1
 ```
+
+`project.json` 生成后，项目级查看命令只会选择已声明的 workspace。CLI 可以运行未声明的单路径段 id，但它不会被登记并会输出 `workspace_not_registered`；需要作为可跟踪的额外 run 使用时，应先通过拥有 manifest 的 UI 增加 workspace 条目。

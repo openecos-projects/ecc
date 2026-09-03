@@ -1,6 +1,6 @@
 # ECC Flow Tool Configuration Reference (by step)
 
-This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were verified against the v0.1.0-alpha.11 source (after the rebase onto main; templates live in [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
+This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were verified against the v0.1.0a11 source (after the rebase onto main; templates live in [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
 
 - For command usage, see the [ECC CLI User Guide](ecc-cli-ug.en.md); to get started from scratch, see the [Tutorial](ecc-cli-tutorial.en.md)
 - Config inspection command: `ecc config <step> --resolved` (lists the configuration files actually in effect for that step)
@@ -12,7 +12,7 @@ This document consolidates **the tool configuration files actually used by each 
 Each run's workspace has a shared `config/` directory where the JSON configurations of all steps land; **files with the same name are rewritten in place by whichever step runs later** (each step only updates the fields relevant to it):
 
 ```
-runs/<run-id>/
+<workspace>/                 # <project>/<id> for fresh/manifest projects; runs/<id> for legacy projects
 ├── home/
 │   ├── params.toml        # parameter hub: user params + PDK-derived values (see §1)
 │   └── flow.json          # step status
@@ -29,6 +29,8 @@ runs/<run-id>/
 │   └── macro_locations.txt# macro locations (initially an empty file)
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
+├── timing_optimization_sizer/
+│   └── script/<design>.{env_file,cmd_file}  # generated Sizer configuration
 └── postRouteLec_yosys_lec/  # the LEC step likewise has no JSON config (Tcl-script driven)
 ```
 
@@ -67,13 +69,13 @@ Distilled from real `ecc config <step> --resolved` output (maps to the source `_
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | `def_input`/`result_dir` etc. rewritten per step |
-| timing optimization | ✓ | `dreamplace_ecc.json` | sizer step (between legalization and routing), input/output fields rewritten per step |
+| timing optimization | ✓ | `dreamplace_ecc.json` | Sizer uses generated scripts, then runs an inner DreamPlace legalization; see §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | lvs | — | none | tool default behavior |
 | drc | ✓ | `drc_ecc.json` (empty) | rules come from the tech LEF |
-| postroutelec | — | none (Tcl) | Yosys LEC, see §10 |
-| rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §11) |
+| postroutelec | — | none (Tcl) | Yosys LEC, see §11 |
+| rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §12) |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | reads the rcx config to align SPEFs |
 | harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not in `_STEP_CONFIG_KEYS`; `ecc config harden --resolved` prints nothing |
 
@@ -334,7 +336,20 @@ The two steps share `config/dreamplace_ecc.json`; before each step runs, `def_in
 | `pin_density` | 0.6 | Pin density threshold |
 | `use_bb` | 0 | Use bounding-box wirelength |
 
-## 6. cts (ecc-tools)
+## 6. timing optimization (Sizer)
+
+Timing optimization is a three-stage subflow: run Sizer, legalize the Sizer staging DEF/netlist with DreamPlace, then publish the resulting ECC artifacts. `ecc config timing optimization --resolved` lists `db_ecc.json` and `dreamplace_ecc.json` because the inner legalization uses the normal workspace configuration mapping; **Sizer itself is driven by generated script files, not either JSON file**.
+
+| Generated file or option | Source | Meaning |
+|---|---|---|
+| `timing_optimization_sizer/script/<design>.env_file` | Sizer `submit/env_base_file` when present, otherwise `-num_vt 1`; plus PDK | Sizer environment: appends tech/cell LEFs (`-lef`), liberty files (`-lib`), and `<sizer-root>/src/sizer_os.tcl` (`-tclFile`) |
+| `timing_optimization_sizer/script/<design>.cmd_file` | workspace step + PDK | Sizer command: `-useOpenSTA`, top module, input `-def`/`-v`, `-sdc`, optional `-spef`, and staging output paths |
+| `-min_route_layer` / `-max_route_layer` | `route.bottom_layer` / `route.top_layer` when set | Routing-layer limits passed directly to Sizer |
+| `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer output | Staging artifacts consumed by the inner DreamPlace legalization; successful legalization is then saved as the Timing optimization step output |
+
+The runtime root must contain `src/sizer_os.tcl`; ECC discovers it from `CHIPCOMPILER_ECC_SIZER_ROOT` or by walking upward from the `Sizer` binary on `PATH`. Sizer is required by the `rtl2gds`, `rcx`, and `harden` chains, although `ecc run` currently does not include it in its environment preflight.
+
+## 7. cts (ecc-tools)
 
 Configuration file `cts_ecc.json`. Sub-phases: load data → run CTS → save data → analysis.
 
@@ -353,7 +368,7 @@ Configuration file `cts_ecc.json`. Sub-phases: load data → run CTS → save da
 | `buffer_type` | `[]` | PDK → `[BUFX8H7L, BUFX12H7L, BUFX16H7L, BUFX20H7L]` | Candidate clock buffer cells (increasing drive strength) |
 | `use_netlist` / `net_list` | `"OFF"` / `[]` | OFF / [] | Restrict CTS to specific nets (default: all clock nets) |
 
-## 7. routing (ecc-tools)
+## 8. routing (ecc-tools)
 
 Configuration file `route_ecc.json`; the `RT` group holds the router parameters. Sub-phases: load data → run routing → save data → analysis.
 
@@ -366,14 +381,14 @@ Configuration file `route_ecc.json`; the `RT` group holds the router parameters.
 | `RT.-output_csv` / `-output_inter_result` | `"0"` | 0 | Export CSV / intermediate results |
 | `RT.-temp_directory_path` | generated per step → `route_ecc/data/rt` | Router intermediate data directory |
 
-## 8. drc / lvs (ecc-tools)
+## 9. drc / lvs (ecc-tools)
 
 - **drc**: `drc_ecc.json` is an empty object `{}` — the check rules come from the tech LEF's layer definitions and rules; there is nothing to tune.
 - **lvs**: no configuration file; the tool compares layout against netlist with its default flow (inputs/outputs are chained via `db_ecc.json`).
 
 Both steps' sub-phases are: load data → run DRC/LVS → save data → analysis.
 
-## 9. filler (ecc-tools)
+## 10. filler (ecc-tools)
 
 Configuration file `filler_ecc.json`. Sub-phases: load data → run filler → save data → analysis.
 
@@ -381,7 +396,7 @@ Configuration file `filler_ecc.json`. Sub-phases: load data → run filler → s
 |---|---|---|
 | `-min_filler_width` | 1 | Minimum filler width allowed to fill (in sites; gaps smaller than this are left unfilled) |
 
-## 10. postroutelec (Yosys LEC)
+## 11. postroutelec (Yosys LEC)
 
 No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normalize both netlists → prove equivalence). It sits after filler and before RCX so that logical changes introduced by the routing-family steps cannot slip through undetected:
 
@@ -394,7 +409,7 @@ No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normaliz
 
 There is also a `synthesis_lec` preset (just the two steps synthesis + lec) for standalone synthesis-level equivalence checking.
 
-## 11. rcx (ecc-tools)
+## 12. rcx (ecc-tools)
 
 The `rcx_ecc.json` configuration contains only runtime parameters; **the corner set is decided internally by the PDK** (ecc-tools loads the matching extraction rules by PDK name), so no corner list appears in the config. Sub-phases: load data → run rcx.
 
@@ -405,7 +420,7 @@ The `rcx_ecc.json` configuration contains only runtime parameters; **the corner 
 
 Output SPEFs are named `<design>_<RCcorner>_<temp>C.spef` (e.g. `gcd_Cworst_125C.spef`); the corner set aligns with STA's `signoff` (the STA step validates SPEF completeness against sta_ecc.json).
 
-## 12. sta (ecc-tools)
+## 13. sta (ecc-tools)
 
 Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → liberty list) and `signoff` (the signoff corner combinations); relative liberty paths are expanded to absolute PDK paths on config refresh. Sub-phases: load data → run sta. The `STA max paths` parameter (default 1000) is passed to the engine directly at runtime and does not land in this file.
 
@@ -427,11 +442,11 @@ For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | Hold reports (same split; not required for signoff) |
 | `power.rpt` | Power report (optionally collected into the signoff package) |
 
-## 13. harden (ecc-tools)
+## 14. harden (ecc-tools)
 
 No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by STA) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Artifacts are `<design>_Harden.gds/.lef/.lib/.png` (layout / abstract LEF / timing LIB / layout snapshot).
 
-## 14. Configuration inspection and modification cheat sheet
+## 15. Configuration inspection and modification cheat sheet
 
 ```bash
 ecc config floorplan --resolved          # list the config files floorplan actually uses
@@ -448,4 +463,4 @@ Recommended practice for making changes: **always go through `ecc param`; use `-
 
 ---
 
-*Parameter defaults were verified against the v0.1.0-alpha.11 source templates (after the rebase onto main) and a real run of the gcd design under the ics55 PDK; a `*` mark means the field is driven by a user parameter.*
+*Parameter defaults were verified against the v0.1.0a11 source templates (after the rebase onto main) and a real run of the gcd design under the ics55 PDK; a `*` mark means the field is driven by a user parameter.*

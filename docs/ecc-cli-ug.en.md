@@ -1,6 +1,6 @@
 # ECC CLI User Guide (all currently supported commands)
 
-`ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, and parameter management. This guide is based on the current source tree (v0.1.0-alpha.11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
+`ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, and parameter management. This guide is based on the current source tree (v0.1.0a11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
 
 - Source code: [chipcompiler/cli/](../chipcompiler/cli/)
 - For how to extend the CLI with new commands, see [ecc-cli-dev.en.md](ecc-cli-dev.en.md)
@@ -10,7 +10,7 @@
 
 ### One-shot setup (recommended)
 
-The repository ships an install script, [ecc-cli-setup.sh](ecc-cli-setup.sh) (in this directory): it downloads and installs the ecc CLI, configures PATH, runs an environment self-check, and fills in any missing dependencies — the PDK (icsprout55-pdk + liberty/GDS), Yosys (latest OSS CAD Suite with the slang frontend; LEC reuses that yosys), and the optional Sizer (prebuilt ecc-sizer package, installed automatically once published). It is idempotent: re-running skips anything already in place.
+The repository ships an install script, [ecc-cli-setup.sh](ecc-cli-setup.sh) (in this directory): it downloads and installs the ecc CLI, configures PATH, runs an environment self-check, and fills in any missing dependencies — the PDK (icsprout55-pdk + liberty/GDS), Yosys (latest OSS CAD Suite with the slang frontend; LEC reuses that yosys), and Sizer for Timing optimization (the script installs a prebuilt ecc-sizer package when one is available). It is idempotent: re-running skips anything already in place.
 
 ```bash
 bash ecc-cli-setup.sh                 # install + self-check + fill in dependencies
@@ -93,7 +93,7 @@ uv run ecc --help
 ## 1. General conventions
 
 - Global: `ecc --version` (single version line), `ecc --help`.
-- Project location: most commands accept `--project <dir>` (defaults to the current directory) and `--run-id <id>` (absolute paths and relative paths containing `/` are also accepted). Workspace layout depends on the project state: a **fresh project** (no `project.json`, no `runs/`) puts its first run at `<project>/<run-id>` and registers it in an auto-created `project.json`; a **manifest project** (has `project.json`) resolves runs from the declared workspace table; a **legacy project** (has a populated `runs/` directory) keeps using `runs/<run-id>` and can be upgraded with `ecc migrate`. All three states may carry an `ecc.toml`; only manifest projects *without* an `ecc.toml` are rejected by `ecc param` (`param_requires_ecc_toml`).
+- Project location: project-scoped commands accept `--project <dir>` (defaults to the current directory), and the run-aware ones also accept `--run-id <id>`. A **fresh project** (no `project.json`, no `runs/`) creates its first workspace at `<project>/<run-id>` and records it in an auto-created `project.json`. A **manifest project** resolves inspection commands from that declared workspace table (one active workspace auto-selects); use a non-empty, single-segment id. `ecc run --run-id` may create an undeclared single-segment workspace, but emits `workspace_not_registered`; project-scoped `status`/`log`/`config` cannot select it afterwards. A **legacy project** (a populated `runs/` directory) keeps using `runs/<run-id>`, accepts absolute paths or relative paths containing `/`, and can be upgraded with `ecc migrate`. All three states may carry an `ecc.toml`; only manifest projects *without* an `ecc.toml` are rejected by `ecc param` (`param_requires_ecc_toml`).
 - Output modes (shared by inspection commands): `--json` (`{"records":[...]}`), `--jsonl` (one JSON record per line), `--plain` (`key=value`, for scripting), and human-readable TEXT by default.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens are normalized to lowercase in display: `synthesis / floorplan / placement / cts / legalization / timing optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`; `--from`/`--only` require the exact names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`).
@@ -242,7 +242,7 @@ $ ecc doctor          # run inside the project (the PDK probe needs ecc.toml or 
   ...
 ```
 
-In addition, `ecc run` preflights the tools required by the chosen preset (yosys ↔ presets containing synthesis, dreamplace ↔ placement/legalization) and fails fast when any is missing:
+In addition, `ecc run` preflights bundled ecc-tools plus Yosys for presets containing synthesis and DreamPlace for presets containing placement/legalization. It fails fast when any of those is missing; Sizer is intentionally not probed here:
 
 ```console
 $ ecc run
@@ -304,7 +304,7 @@ ecc run [OPTIONS]
   --json / --jsonl / --plain
 ```
 
-For a fresh or `--overwrite` run target, the pipeline reads `ecc.toml` → resolves RTL/PDK/parameters → preflights the preset's required tools → creates the workspace under the resolved run target (`<project>/<run-id>` for fresh projects, registered in an auto-created `project.json`; `runs/<run-id>` for legacy projects) → builds and executes the selected preset (`rtl2gds | rcx | harden | syn_sta | synthesis_lec`; progress rendering on a TTY). Existing workspaces resume their persisted flow without preset preflight. `harden` is the full 14-step chain (Synthesis→Floorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→LVS→DRC→postRouteLec (Yosys equivalence check)→RCX→sta→Harden; Harden emits GDS + abstract LEF + timing LIB; `rtl2gds`/`rcx` are its prefix sub-chains).
+For a fresh or `--overwrite` run target, the pipeline reads `ecc.toml` → resolves RTL/PDK/parameters → preflights bundled ecc-tools plus Yosys and DreamPlace when selected by the preset → creates the workspace under the resolved run target (`<project>/<run-id>` for fresh projects, registered in an auto-created `project.json`; `runs/<run-id>` for legacy projects) → builds and executes the selected preset (`rtl2gds | rcx | harden | syn_sta | synthesis_lec`; progress rendering on a TTY). Existing workspaces resume their persisted flow without preset preflight. Sizer is intentionally not part of the preflight, so a missing Sizer fails at the Timing optimization step. `harden` is the full 14-step chain (Synthesis→Floorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→LVS→DRC→postRouteLec (Yosys equivalence check)→RCX→sta→Harden; Harden emits GDS + abstract LEF + timing LIB; `rtl2gds`/`rcx` are its prefix sub-chains).
 
 ```console
 $ ecc run                # refuses to overwrite an existing run
@@ -366,7 +366,7 @@ rc=1
 ecc migrate [--project DIR] [--yes]
 ```
 
-Migrates a legacy `runs/`-layout project to the manifest layout (creates `project.json`; registered workspaces keep pointing at their existing directories — no data is moved). By default it prints the migration plan and asks for confirmation; `--yes` skips the prompt. The command is kept for the transition period (marked deprecated in code) and can be retired once existing projects have migrated. `run`/`check`/`status` attach a migration-hint record to their output on legacy projects.
+Migrates a legacy `runs/`-layout project to the manifest layout: each safe `runs/<id>` workspace is moved to `<project>/<id>`, its workspace-internal paths are rebased, and it is registered in a generated or updated `project.json`. By default it prints the migration plan and asks for confirmation; `--yes` skips the prompt. The command is kept for the transition period (marked deprecated in code) and can be retired once existing projects have migrated. `run`/`check`/`status` attach a migration-hint record to their output on legacy projects.
 
 ## 6. status — show run and step status
 
@@ -563,7 +563,7 @@ Legacy semantic parameters:
 | `route.top_layer` | str | MET5 | MET2–MET6 | routing |
 | `sta.max_paths` | int | 1000 | [1, 100000] | sta |
 
-Priority: CLI `--set` > `ecc.toml` `[params.*]` > template defaults. `pdk.*` path parameters write to `[pdk.overrides]` and retain the PDK's relative-path resolution and file validation.
+Priority: CLI `--set` > `ecc.toml` `[params.*]` > template defaults. `pdk.*` path parameters write to `[pdk.overrides]`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve relative to `pdk.root`, while `pdk.sdc` and `pdk.spef` resolve relative to the project directory; all are file-validated.
 
 ## 10. pdk — PDK path configuration
 
@@ -595,15 +595,15 @@ The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS5
 
 ## 11. signoff — signoff package and design report
 
-Use after the flow completes (all steps of the harden preset in Success). All three subcommands accept `--project DIR`/`--run-id ID` (locating the workspace) or `--workspace PATH` (pointing at a workspace directly), plus `--json/--jsonl/--plain`.
+`ecc signoff export` requires a ready Harden signoff package. `ecc signoff inspect` and `ecc signoff report` can also assess or summarize a partially completed workspace. All three subcommands accept `--project DIR` with an optional `--run-id ID`, or `--workspace PATH` pointing at a workspace directly, plus `--json/--jsonl/--plain`.
 
-### 11.1 inspect — readiness review (changes nothing)
+### 11.1 inspect — readiness review
 
 ```bash
-ecc signoff inspect [--project DIR | --workspace PATH]
+ecc signoff inspect [--project DIR] [--run-id ID] | --workspace PATH
 ```
 
-Prints the signoff package readiness status (`ready / attention / blocked`), the seven groups (initial/config/harden/final_design/sta/spef/reports), and the risk list. **blocked still exits with rc=0** (inspection is advisory; the gate lives in export):
+Refreshes completed-step analysis and `home/checklist.json`, then prints the signoff package readiness status (`ready / attention / blocked`), the seven groups (initial/config/harden/final_design/sta/spef/reports), and the risk list. **blocked still exits with rc=0** (inspection is advisory; the gate lives in export):
 
 ```console
 $ ecc signoff inspect --workspace default
@@ -628,7 +628,7 @@ $ ecc signoff inspect --workspace default
 ### 11.2 export — export the signoff package tar.gz (gated)
 
 ```bash
-ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR | --workspace PATH]
+ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--run-id ID] | --workspace PATH
 ```
 
 Same source as the GUI's "export signoff package": refreshes analysis → collects every deliverable under initial/config/harden/final → atomically writes `<design>_signoff_package.tar.gz`. When readiness is insufficient the export is refused (no partial archive is produced):
@@ -650,7 +650,7 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # once ready
 ### 11.3 report — text design summary
 
 ```bash
-ecc signoff report [-o PATH] [--project DIR | --workspace PATH]
+ecc signoff report [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
 ```
 
 Generates a design summary with the same layout as the GUI's "export report (text)" (8 sections: physical / timing / clock / multi-corner / routing / power / verification / execution cost), by default written to `<workspace>/signoff/<design>_design_summary.txt`:
@@ -687,7 +687,7 @@ Notes: inspect/export refresh each step's analysis first (matching the GUI); rep
 ## 12. report — QoR score and checklist reports
 
 ```bash
-ecc report qor        [-o PATH] [--project DIR | --run-id ID | --workspace PATH]
+ecc report qor        [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
 ecc report checklist  [-o PATH] [same options]
 ```
 
@@ -765,11 +765,14 @@ ecc report checklist               # signoff checklist report (signoff/checklist
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
 ```
 
-Comparing multiple runs:
+Choosing a tracked run:
 
 ```bash
-sed -i 's/^run = "default"/run = "exp1"/' ecc.toml   # or simply pass --run-id exp1
+# Choose the id before the first run so the generated manifest registers it.
+ecc init gcd && cd gcd
 ecc run --run-id exp1 --set place.target_density=0.65
 ecc status --run-id exp1
 ecc log --run-id exp1
 ```
+
+Once `project.json` exists, project-scoped inspection selects only declared workspaces. The CLI can run an undeclared single-segment id, but it remains unregistered and produces `workspace_not_registered`; add workspace entries through the manifest-owning UI before using it as a tracked additional run.

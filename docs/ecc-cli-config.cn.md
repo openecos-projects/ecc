@@ -1,6 +1,6 @@
 # ECC Flow 工具配置参考（按步骤）
 
-本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
+本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0a11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
 
 - 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)；从零上手 → [入门教程](ecc-cli-tutorial.cn.md)
 - 配置查看命令：`ecc config <step> --resolved`（列出该步骤实际生效的配置文件）
@@ -12,7 +12,7 @@
 每次运行（run）的 workspace 下有一个共享 `config/` 目录，所有步骤的 JSON 配置都落在这里，**同名文件会被后运行的步骤原地重写**（每步只更新与自己相关的字段）：
 
 ```
-runs/<run-id>/
+<workspace>/                 # 新项目/manifest 项目为 <project>/<id>；legacy 项目为 runs/<id>
 ├── home/
 │   ├── params.toml        # 参数中枢：用户参数 + PDK 派生值（见 §1）
 │   └── flow.json          # 步骤状态
@@ -29,6 +29,8 @@ runs/<run-id>/
 │   └── macro_locations.txt# 宏单元位置（初始为空文件）
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
+├── timing_optimization_sizer/
+│   └── script/<design>.{env_file,cmd_file}  # 自动生成的 Sizer 配置
 └── postRouteLec_yosys_lec/  # LEC 步骤同样无 JSON 配置（Tcl 脚本驱动）
 ```
 
@@ -67,13 +69,13 @@ graph LR
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
-| timing optimization | ✓ | `dreamplace_ecc.json` | sizer 步骤（legalization 与 routing 之间），每步重写输入输出字段 |
+| timing optimization | ✓ | `dreamplace_ecc.json` | Sizer 使用生成的脚本，随后做内部 DreamPlace 合法化；见 §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | lvs | — | 无 | 工具默认行为 |
 | drc | ✓ | `drc_ecc.json`（空） | 规则来自 tech LEF |
-| postroutelec | — | 无（Tcl） | Yosys LEC，见 §10 |
-| rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §11） |
+| postroutelec | — | 无（Tcl） | Yosys LEC，见 §11 |
+| rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §12） |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | 读 rcx 配置以对齐 SPEF |
 | harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但不在 `_STEP_CONFIG_KEYS` 中，`ecc config harden --resolved` 输出为空 |
 
@@ -336,7 +338,20 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `pin_density` | 0.6 | 引脚密度阈值 |
 | `use_bb` | 0 | 使用包围盒线长 |
 
-## 6. cts（ecc-tools）
+## 6. timing optimization（Sizer）
+
+Timing optimization 是三阶段子流程：运行 Sizer，用 DreamPlace 对 Sizer 的暂存 DEF/网表做合法化，再发布得到的 ECC 产物。`ecc config timing optimization --resolved` 会列出 `db_ecc.json` 与 `dreamplace_ecc.json`，因为内部合法化使用常规 workspace 配置映射；**Sizer 本身由生成的脚本文件驱动，不直接使用这两个 JSON**。
+
+| 生成文件或选项 | 来源 | 含义 |
+|---|---|---|
+| `timing_optimization_sizer/script/<design>.env_file` | 存在时取 Sizer 的 `submit/env_base_file`，否则为 `-num_vt 1`；再追加 PDK | Sizer 环境：追加工艺/单元 LEF（`-lef`）、liberty（`-lib`）及 `<sizer-root>/src/sizer_os.tcl`（`-tclFile`） |
+| `timing_optimization_sizer/script/<design>.cmd_file` | workspace 步骤 + PDK | Sizer 命令：`-useOpenSTA`、顶层模块、输入 `-def`/`-v`、`-sdc`、可选 `-spef` 及暂存输出路径 |
+| `-min_route_layer` / `-max_route_layer` | 设置后取 `route.bottom_layer` / `route.top_layer` | 直接传给 Sizer 的布线层限制 |
+| `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer 输出 | 被内部 DreamPlace 合法化消费的暂存产物；合法化成功后保存为 Timing optimization 步骤输出 |
+
+运行时根目录必须含 `src/sizer_os.tcl`；ECC 从 `CHIPCOMPILER_ECC_SIZER_ROOT`，或从 `PATH` 上的 `Sizer` 二进制逐级向上查找。`rtl2gds`、`rcx`、`harden` 都需要 Sizer，但当前 `ecc run` 环境预检不包含它。
+
+## 7. cts（ecc-tools）
 
 配置 `cts_ecc.json`。子阶段：load data → run CTS → save data → analysis。
 
@@ -355,7 +370,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `buffer_type` | `[]` | PDK → `[BUFX8H7L, BUFX12H7L, BUFX16H7L, BUFX20H7L]` | 可选时钟缓冲单元（驱动强度递增） |
 | `use_netlist` / `net_list` | `"OFF"` / `[]` | OFF / [] | 指定特定网络做 CTS（默认全部时钟网络） |
 
-## 7. routing（ecc-tools）
+## 8. routing（ecc-tools）
 
 配置 `route_ecc.json`，`RT` 组即绕线器参数。子阶段：load data → run routing → save data → analysis。
 
@@ -368,14 +383,14 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `RT.-output_csv` / `-output_inter_result` | `"0"` | 0 | 导出 CSV / 中间结果 |
 | `RT.-temp_directory_path` | 每步生成 → `route_ecc/data/rt` | 布线中间数据目录 |
 
-## 8. drc / lvs（ecc-tools）
+## 9. drc / lvs（ecc-tools）
 
 - **drc**：`drc_ecc.json` 为空对象 `{}`——检查规则来自 tech LEF 的层定义与规则，无可调参数。
 - **lvs**：无配置文件，工具按默认流程比对版图与网表（输入输出经 `db_ecc.json` 链式传递）。
 
 两者的子阶段均为 load data → run DRC/LVS → save data → analysis。
 
-## 9. filler（ecc-tools）
+## 10. filler（ecc-tools）
 
 配置 `filler_ecc.json`。子阶段：load data → run filler → save data → analysis。
 
@@ -383,7 +398,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 |---|---|---|
 | `-min_filler_width` | 1 | 允许填充的最小 filler 宽度（site 数；间隙小于该值不填充） |
 
-## 10. postroutelec（Yosys LEC）
+## 11. postroutelec（Yosys LEC）
 
 无 JSON 配置，由 `script/run_lec.tcl` 驱动（读 liberty → 双方网表规范化 → 等价性证明）。放在 filler 之后、RCX 之前，防止布线类步骤引入的逻辑变更漏检：
 
@@ -396,7 +411,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 另有 `synthesis_lec` preset（仅 synthesis + lec 两步）可单独做综合级等价检查。
 
-## 11. rcx（ecc-tools）
+## 12. rcx（ecc-tools）
 
 配置 `rcx_ecc.json` 仅含运行参数；**corner 组合由 PDK 内部决定**（ecc-tools 按 PDK 名加载对应提取规则），因此配置里看不到 corner 列表。子阶段：load data → run rcx。
 
@@ -407,7 +422,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 输出 SPEF 按 `<设计>_<RCcorner>_<温度>C.spef` 命名（如 `gcd_Cworst_125C.spef`），corner 集合与 STA 的 `signoff` 对齐（由 STA 步骤按 sta_ecc.json 校验 SPEF 完整性）。
 
-## 12. sta（ecc-tools）
+## 13. sta（ecc-tools）
 
 配置 `sta_ecc.json`，由 `liberty`（corner → liberty 列表）与 `signoff`（签核 corner 组合）两部分构成；liberty 相对路径在配置刷新时展开为 PDK 绝对路径。子阶段：load data → run sta。`STA max paths` 参数（默认 1000）在运行时直接传入引擎，不落此文件。
 
@@ -429,11 +444,11 @@ ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | hold 报告（同上拆分，非签核必需） |
 | `power.rpt` | 功耗报告（签核包可选收集） |
 
-## 13. harden（ecc-tools）
+## 14. harden（ecc-tools）
 
 无专属配置文件：复用 `db_ecc.json` 定位输入（STA 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。产物为 `<设计>_Harden.gds/.lef/.lib/.png`（版图 / 抽象 LEF / 时序 LIB / 版图快照）。
 
-## 14. 配置查看与修改速查
+## 15. 配置查看与修改速查
 
 ```bash
 ecc config floorplan --resolved          # 看 floorplan 实际用的配置文件列表
@@ -450,4 +465,4 @@ ecc run --set place.target_density=0.55  # 只对本次 run 生效
 
 ---
 
-*参数默认值核对自 v0.1.0-alpha.11（rebase main 后）源码模板与 ics55 PDK 下 gcd 设计的真实运行；`*` 标记表示该字段由用户参数驱动。*
+*参数默认值核对自 v0.1.0a11（rebase main 后）源码模板与 ics55 PDK 下 gcd 设计的真实运行；`*` 标记表示该字段由用户参数驱动。*

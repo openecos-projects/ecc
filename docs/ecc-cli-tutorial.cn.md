@@ -6,7 +6,7 @@
 - **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/LEC 证明/报告等 300+ 文件）；
 - **三份报告**：设计总结（文本）、QoR 总分、签核清单。
 
-全程以官方 [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk)（开源 55nm 工艺）为目标工艺。教程中所有命令输出均为真实执行结果（基于 v0.1.0-alpha.11，示例路径统一写作 `~/ecc-demo`）。
+全程以官方 [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk)（开源 55nm 工艺）为目标工艺。教程中所有命令输出均为真实执行结果（基于 v0.1.0a11，示例路径统一写作 `~/ecc-demo`）。
 
 > 参考耗时：首次安装（下载 CLI 包 / OSS CAD Suite / PDK 数据，共约 3 GB 下载量）20–60 分钟，视网络而定；gcd 全流程运行约 **4–5 分钟**。
 
@@ -140,11 +140,11 @@ $ ecc doctor
   ...
   component: sizer
   status: fail
-  required: False            # 可选组件，仅时序优化步骤需要，本教程不依赖
+  required: False            # doctor 级别可选；rtl2gds/rcx/harden 仍依赖该组件
   ...
 ```
 
-必需项（yosys、yosys-slang、ecc-tools、dreamplace、pdk）全部 `pass` 即可继续；`sizer` 是可选项（doctor 只标 `attention`），但注意：harden 链含 Timing optimization 步骤，**缺 sizer 会在流中段失败**——用 [ecc-cli-setup.sh](ecc-cli-setup.sh) 安装的默认已含 sizer，无需额外操作。
+必需项（yosys、yosys-slang、ecc-tools、dreamplace、pdk）全部 `pass` 即可继续；`sizer` 是可选项（doctor 只标 `attention`），但 `rtl2gds`、`rcx`、`harden` 都含 Timing optimization 步骤，**缺 Sizer 会在流中段失败**。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；否则，在运行这些 preset 前按 Sizer remediation 提示补齐。
 
 ## 3. 创建第一个项目
 
@@ -171,7 +171,8 @@ gcd/
 ├── rtl/           # 放 Verilog 源码或 filelist
 └── constraints/   # 约束预留目录（本教程无需手写约束，见 §3.3）
 
-# workspace 由首个 ecc run 创建：新项目落在 gcd/<run-id>/（并写入 project.json 登记）；旧布局 runs/<id>/ 由 ecc migrate 升级
+# workspace 由首个 ecc run 创建：新项目落在 gcd/<run-id>/（并写入 project.json 登记）；
+# 要使用非默认且可跟踪的 id，请在这次首次运行时传 --run-id。旧布局 runs/<id>/ 由 ecc migrate 升级
 ```
 
 ### 3.2 放入 RTL
@@ -214,7 +215,7 @@ run = "default"          # run id（workspace 默认 <项目>/<id>；legacy 项�
 两个要点：
 
 - **无需手写 SDC**：flow 会根据 `clock_port` 与 `frequency_mhz` 自动生成约束（`create_clock` + I/O 延迟比例），生成的 SDC 落在 workspace 的 `origin/gcd.sdc`；
-- **PDK 解析优先级**：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。用了一键安装脚本则环境变量已就绪，`root` 留空即可。
+- **PDK 解析优先级**：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。`ecc pdk show` 为方便查看还会显示仓库默认路径，但 `ecc check` 与 `ecc run` 必须使用前三种显式来源之一。用了一键安装脚本则环境变量已就绪，`root` 留空即可。
 
 ### 3.4 校验
 
@@ -272,7 +273,7 @@ graph LR
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-`ecc run` 启动前还会自动预检该 preset 必需的工具（yosys、dreamplace 等），缺失则 fail-fast 并提示 `ecc doctor`。
+`ecc run` 启动前会预检捆绑的 ecc-tools，以及 preset 选中的 Yosys 和 DreamPlace；缺失则 fail-fast 并提示 `ecc doctor`。Sizer 不在这项预检中；`rtl2gds`、`rcx`、`harden` 都含 Timing optimization，缺失 Sizer 时会在该步骤失败。
 
 ### 4.2 观察进度（另开一个终端）
 
@@ -347,7 +348,7 @@ default/
 ├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
 ├── Floorplan_ecc/
 ├── ...
-├── postRouteLec_yosys_lec/   # LEC 等价性检查（output/ 下有 result.json）
+├── postRouteLec_yosys_lec/   # LEC 等价性检查（output/<design>_postRouteLec_result.json）
 ├── Harden_ecc/
 │   └── output/
 │       ├── gcd_Harden.gds     # 最终版图
@@ -374,7 +375,7 @@ flow 全部步骤 Success 后，用 `signoff` / `report` 两组命令收尾。
 
 ### 5.1 检查签核就绪度：ecc signoff inspect
 
-先看一眼交付物齐不齐（纯检查，不改任何东西；即使 `blocked` 也返回 rc=0，真正的门禁在 export）：
+先刷新已完成步骤的 analysis，再查看交付物是否齐全（即使 `blocked` 也返回 rc=0，真正的门禁在 export）：
 
 ```console
 $ ecc signoff inspect
@@ -551,18 +552,17 @@ ecc param unset place.target_density    # 恢复默认
 
 常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-cli-ug.cn.md#9-param--参数管理)。
 
-### 6.2 多 run 对比
+### 6.2 选择可跟踪的 run
 
-每个 `--run-id` 一个独立 workspace，互不覆盖，方便横向对比：
+在第一次运行前选择非默认 id，使自动生成的 manifest 登记它：
 
 ```bash
 ecc run --run-id exp1 --preset harden --set place.target_density=0.55
-ecc run --run-id exp2 --preset harden --set place.target_density=0.65
 ecc status --run-id exp1
 ecc report qor --run-id exp1     # 报告类命令同样接受 --run-id
 ```
 
-`--set KEY=VALUE` 只对本次运行生效并记入 provenance，不改 `ecc.toml`。
+`--set KEY=VALUE` 只对本次运行生效并记入 provenance，不改 `ecc.toml`。`project.json` 生成后，项目级查看命令只会选择已声明的 workspace。`ecc run --run-id` 可以创建未声明的单路径段 workspace，但会输出 `workspace_not_registered`，并且之后不能用项目级 `status`、`log`、`config` 选中；需要额外可跟踪 workspace 时，应通过拥有 manifest 的 UI 增加条目。
 
 ### 6.3 重跑
 
@@ -593,7 +593,7 @@ ecc config --resolved --plain      # 项目级配置（键值 + 解析后绝对�
 | `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk setup` 或 `ecc pdk set-root <路径>`，或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |
 | 下载 GitHub 资源超时 | 网络受限 | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
-| doctor 显示 `sizer: fail` | 可选组件未安装 | harden 链含 Timing optimization 步骤，缺失会在流中段失败。重跑 [ecc-cli-setup.sh](ecc-cli-setup.sh)（官方发布预编译包后自动安装），或按 remediation 提示源码构建 |
+| doctor 显示 `sizer: fail` | 可选组件未安装 | `rtl2gds`、`rcx`、`harden` 链都含 Timing optimization 步骤，缺失会在流中段失败。重跑 [ecc-cli-setup.sh](ecc-cli-setup.sh)（官方发布预编译包后自动安装），或按 remediation 提示源码构建 |
 | synthesis 日志报 `yosys slang frontend check failed` | yosys 无 slang 前端 | 换 OSS CAD Suite ≥ v0.67 的 yosys，`ecc log synthesis` 排查 |
 | synthesis 在 DFFLIBMAP 报 `uncaught exception during Yosys command invoked from TCL` 后退出 | 当前 shell 未加载 ecc 环境（如非交互终端），ecc 回落到系统 PATH 里的旧版 yosys（解析 ics55 liberty 会直接崩溃，异常详情被 TCL 吞掉） | `which yosys` 确认指向 OSS CAD Suite；`source ~/.ecc-env.sh` 后重跑 |
 
@@ -606,4 +606,4 @@ ecc config --resolved --plain      # 项目级配置（键值 + 解析后绝对�
 
 ---
 
-*本教程的示例输出采集自 v0.1.0-alpha.11 + ICS55 PDK 在 Linux x86_64 上的真实运行。*
+*本教程的示例输出采集自 v0.1.0a11 + ICS55 PDK 在 Linux x86_64 上的真实运行。*
