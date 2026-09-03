@@ -9,7 +9,7 @@
 #   4. 补齐缺失依赖：
 #      - PDK：clone icsprout55-pdk 并 `make unzip` 下载 liberty/GDS
 #      - Yosys：下载 OSS CAD Suite 最新发行版（内置 slang 前端；LEC 等价性检查亦复用该 yosys）
-#      - Sizer（可选）：下载 ecc-sizer 预编译 Release，用于 timing 优化步骤
+#      - Sizer：下载 ecc-sizer 预编译 Release，用于 Timing optimization；rtl2gds/rcx/harden 都会执行该步骤
 #
 # 用法：
 #   bash ecc-cli-setup.sh                 # 一键安装 + 自检 + 补齐
@@ -362,14 +362,14 @@ step_tools() {
 
 # ----------------------------- 5. Sizer（可选：timing 优化步骤；LEC 复用 yosys 无需安装） -----------------------------
 step_sizer() {
-  msg "Sizer（可选组件，仅 timing 优化步骤需要）"
+  msg "Sizer（rtl2gds/rcx/harden 的 Timing optimization 步骤需要）"
   if sizer_ready; then
     ok "已就绪：$(sizer_binary)（root: $(find_sizer_root)）"
     return 0
   fi
   local url tmpdir top
   if ! url=$(resolve_sizer_url); then
-    warn "ecc-sizer 尚无预编译 Release（或 GitHub API 不可达），跳过自动安装（不影响 rtl2gds 主流程）"
+    warn "ecc-sizer 尚无预编译 Release（或 GitHub API 不可达），跳过自动安装（rtl2gds/rcx/harden 会在 Timing optimization 失败）"
     warn "需要时可源码构建（依赖 OpenROAD 子模块栈，耗时较长），完成后重跑本脚本即可自动识别："
     cat <<EOF
       git clone --recursive https://github.com/openecos-projects/ecc-sizer.git
@@ -399,7 +399,7 @@ EOF
 # ----------------------------- 6. 汇总自检 -----------------------------
 step_verify() {
   msg "汇总自检"
-  local pass=1
+  local pass=1 sizer_missing=0
 
   if ecc_installed; then
     ok "ecc CLI   : $ECC_INSTALL_DIR/ecc ($("$ECC_INSTALL_DIR/ecc" --version 2>/dev/null || echo unknown))"
@@ -425,11 +425,12 @@ step_verify() {
     fail "yosys     : 未找到"; pass=0
   fi
 
-  # sizer 是可选组件（同 ecc doctor：仅 timing 优化步骤需要），未就绪只警示不判失败
+  # ecc doctor 将 Sizer 标为可选，但默认 rtl2gds/rcx/harden 运行链会实际执行它。
   if sizer_ready; then
-    ok "sizer     : $(sizer_binary)（可选，timing 优化步骤）"
+    ok "sizer     : $(sizer_binary)（Timing optimization）"
   else
-    warn "sizer     : 未就绪（可选组件，不影响 rtl2gds；发布预编译包后重跑本脚本可自动补齐）"
+    sizer_missing=1
+    warn "sizer     : 未就绪（rtl2gds/rcx/harden 会在 Timing optimization 失败；发布预编译包后重跑本脚本可自动补齐）"
   fi
 
   # 组件级体检交给 CLI 内置的 doctor（官方旧版无此命令则跳过）
@@ -442,7 +443,7 @@ step_verify() {
   fi
 
   echo
-  if (( pass )); then
+  if (( pass && ! sizer_missing )); then
     msg "全部就绪。快速上手："
     cat <<EOF
       source "$ECC_ENV_FILE"          # 当前 shell 生效（新终端自动生效）
@@ -450,6 +451,8 @@ step_verify() {
       ecc check && ecc run            # 校验并运行 RTL-to-GDS
       ecc status && ecc log           # 查看进度与日志
 EOF
+  elif (( pass )); then
+    warn "基础环境已就绪，但 Sizer 缺失；请安装 Sizer 后再运行 rtl2gds/rcx/harden。"
   else
     warn "存在未就绪项（见上）。修复后重新运行本脚本即可增量补齐。"
     exit 1

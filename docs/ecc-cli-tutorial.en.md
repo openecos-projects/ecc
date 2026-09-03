@@ -6,7 +6,7 @@ This tutorial is for first-time ECC users: starting from a bare Linux machine, i
 - A **signoff package** `gcd_signoff_package.tar.gz` (300+ files: RTL / configs / deliverables / LEC proof / reports);
 - **Three reports**: design summary (text), QoR score, and signoff checklist.
 
-The target process is the official [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk) (an open-source 55 nm educational PDK). Every command output in this tutorial is a real execution result (captured on v0.1.0-alpha.11; example paths are written as `~/ecc-demo`).
+The target process is the official [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk) (an open-source 55 nm educational PDK). Every command output in this tutorial is a real execution result (captured on v0.1.0a11; example paths are written as `~/ecc-demo`).
 
 > Reference timing: first-time install (downloads the PDK and OSS CAD Suite, roughly 3 GB total) takes 20–60 minutes depending on network; the gcd flow itself runs in about **4–5 minutes**.
 
@@ -140,11 +140,11 @@ $ ecc doctor
   ...
   component: sizer
   status: fail
-  required: False            # optional; used only by timing optimization steps — not needed here
+  required: False            # optional at doctor level; rtl2gds/rcx/harden still require it
   ...
 ```
 
-As long as the required components (yosys, yosys-slang, ecc-tools, dreamplace, pdk) all `pass`, you are good to go. `sizer` is optional at the doctor level (it only downgrades the status to `attention`), but note: the harden chain contains a Timing optimization step, and **a missing sizer fails mid-flow** — installs done via [ecc-cli-setup.sh](ecc-cli-setup.sh) include sizer by default, so no extra action is needed.
+As long as the required components (yosys, yosys-slang, ecc-tools, dreamplace, pdk) all `pass`, you are good to go. `sizer` is optional at the doctor level (it only downgrades the status to `attention`), but `rtl2gds`, `rcx`, and `harden` all contain a Timing optimization step, and **a missing Sizer fails mid-flow**. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available; otherwise, follow the Sizer remediation hint before running those presets.
 
 ## 3. Creating Your First Project
 
@@ -172,7 +172,8 @@ gcd/
 └── constraints/   # reserved for constraints (none needed in this tutorial, see §3.3)
 
 # the workspace is created by the first `ecc run`: `gcd/<run-id>/` for fresh projects,
-# registered in an auto-created `project.json`; legacy `runs/<id>/` is upgraded by `ecc migrate`
+# registered in an auto-created `project.json`; choose --run-id on that first run when
+# you want a non-default tracked workspace. Legacy `runs/<id>/` is upgraded by `ecc migrate`
 ```
 
 ### 3.2 Add the RTL
@@ -215,7 +216,7 @@ For the gcd example, the defaults produced by `init` happen to be exactly right 
 Two things worth knowing:
 
 - **No hand-written SDC needed**: the flow generates constraints automatically from `clock_port` and `frequency_mhz` (`create_clock` + an I/O delay ratio); the generated SDC lands in the workspace's `origin/gcd.sdc`;
-- **PDK resolution order**: `pdk.root` in `ecc.toml` > env var `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`. If you used the one-shot installer, the env var is already set, so leaving `root` empty is fine.
+- **PDK resolution order**: `pdk.root` in `ecc.toml` > env var `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`. `ecc pdk show` also reports a repository-default path for convenience, but `ecc check` and `ecc run` require one of the three explicit sources. If you used the one-shot installer, the env var is already set, so leaving `root` empty is fine.
 
 ### 3.4 Validate
 
@@ -273,7 +274,7 @@ graph LR
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-Before starting, `ecc run` also pre-checks the tools required by the chosen preset (yosys, dreamplace, ...) and fails fast with a pointer to `ecc doctor` if any are missing.
+Before starting, `ecc run` pre-checks bundled ecc-tools plus Yosys and DreamPlace when selected by the preset, and fails fast with a pointer to `ecc doctor` if they are missing. Sizer is not part of this preflight; because `rtl2gds`, `rcx`, and `harden` contain Timing optimization, a missing Sizer fails at that step.
 
 ### 4.2 Watching progress (in a second terminal)
 
@@ -348,7 +349,7 @@ default/
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
 ├── Floorplan_ecc/
 ├── ...
-├── postRouteLec_yosys_lec/   # LEC equivalence check (output/ holds result.json)
+├── postRouteLec_yosys_lec/   # LEC equivalence check (output/<design>_postRouteLec_result.json)
 ├── Harden_ecc/
 │   └── output/
 │       ├── gcd_Harden.gds     # final layout
@@ -375,7 +376,7 @@ Once every step reports Success, finish with the `signoff` / `report` command gr
 
 ### 5.1 Check signoff readiness: ecc signoff inspect
 
-First take a look at deliverable completeness (a pure inspection that changes nothing; even `blocked` returns rc=0 — the real gate is at export):
+First refresh completed-step analysis and inspect deliverable completeness (even `blocked` returns rc=0 — the real gate is at export):
 
 ```console
 $ ecc signoff inspect
@@ -552,18 +553,17 @@ ecc param unset place.target_density    # back to default
 
 Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management) for the full contract.
 
-### 6.2 Comparing runs
+### 6.2 Choosing a tracked run
 
-Each `--run-id` gets an independent workspace, so runs never clobber each other:
+Choose a non-default id before the first run so the automatically generated manifest records it:
 
 ```bash
 ecc run --run-id exp1 --preset harden --set place.target_density=0.55
-ecc run --run-id exp2 --preset harden --set place.target_density=0.65
 ecc status --run-id exp1
 ecc report qor --run-id exp1     # report commands also accept --run-id
 ```
 
-`--set KEY=VALUE` applies to that run only (recorded in its provenance) and does not modify `ecc.toml`.
+`--set KEY=VALUE` applies to that run only (recorded in its provenance) and does not modify `ecc.toml`. Once `project.json` exists, project-scoped inspection selects only declared workspaces. `ecc run --run-id` can create an undeclared single-segment workspace, but it reports `workspace_not_registered` and cannot later be selected by project-scoped `status`, `log`, or `config`; add further tracked workspaces through the manifest-owning UI.
 
 ### 6.3 Rerunning
 
@@ -579,7 +579,7 @@ Note: `--from`/`--only` take the raw step names from `home/flow.json` (e.g. `pla
 ### 6.4 Inspecting a step's effective configuration
 
 ```bash
-ecc config placement --resolved    # config files actually used by that step under runs/<id>/config/
+ecc config placement --resolved    # config files actually used by that step under the workspace's config/
 ecc config --resolved --plain      # project-level config (key=value + resolved absolute paths)
 ```
 
@@ -594,7 +594,7 @@ ecc config --resolved --plain      # project-level config (key=value + resolved 
 | `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk setup` or `ecc pdk set-root <path>`, or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |
 | GitHub downloads time out | restricted network | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
-| doctor shows `sizer: fail` | optional component not installed | the harden chain contains a Timing optimization step, so a missing sizer fails mid-flow. Re-run [ecc-cli-setup.sh](ecc-cli-setup.sh) (installs the prebuilt package automatically once published), or build ecc-sizer per the remediation hint |
+| doctor shows `sizer: fail` | optional component not installed | the `rtl2gds`, `rcx`, and `harden` chains contain Timing optimization, so a missing Sizer fails mid-flow. Re-run [ecc-cli-setup.sh](ecc-cli-setup.sh) (installs the prebuilt package automatically once published), or build ecc-sizer per the remediation hint |
 | synthesis log says `yosys slang frontend check failed` | yosys lacks the slang frontend | use an OSS CAD Suite yosys ≥ v0.67; debug with `ecc log synthesis` |
 | synthesis aborts at DFFLIBMAP with `uncaught exception during Yosys command invoked from TCL` | the current shell never loaded the ecc env (e.g. a non-interactive terminal), so ecc fell back to an old yosys on system PATH, which crashes parsing the ics55 liberty (the TCL wrapper swallows the exception detail) | verify `which yosys` points at the OSS CAD Suite; `source ~/.ecc-env.sh` and rerun |
 
@@ -607,4 +607,4 @@ ecc config --resolved --plain      # project-level config (key=value + resolved 
 
 ---
 
-*Outputs in this tutorial were captured from a real run of v0.1.0-alpha.11 + the ICS55 PDK on Linux x86_64.*
+*Outputs in this tutorial were captured from a real run of v0.1.0a11 + the ICS55 PDK on Linux x86_64.*

@@ -1,6 +1,6 @@
 # ECC CLI 命令扩展开发指南
 
-本文面向需要在 `ecc` CLI 中新增/修改命令的开发者，基于 `ecc/` 子模块当前源码（`chipcompiler` 包，v0.1.0-alpha.11）整理。代码路径均相对 `ecc/` 子模块根目录。
+本文面向需要在 `ecc` CLI 中新增/修改命令的开发者，基于 `ecc/` 子模块当前源码（`chipcompiler` 包，v0.1.0a11）整理。代码路径均相对 `ecc/` 子模块根目录。
 
 相关文档：[architecture.md](architecture.md)（架构）、[development.md](development.md)（开发工作流）、[workspace-cli.md](workspace-cli.md)（RPC sidecar 协议）、[../CLAUDE.md](../CLAUDE.md)（仓库约定）。
 
@@ -56,7 +56,7 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()`（`cli/core/invocation.py`）依次：
-   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目按 `project.json` 的 workspace 表解析 run 目录（唯一活跃 workspace 自动选中；未声明 id → `workspace_not_declared`，清单损坏 → `manifest_invalid`）；legacy/virgin 项目走 `--run-id` > 配置的 `[flow] run` > `runs/default`（`cli/inspection/discovery.py`）→ 由 `--json/--jsonl/--plain` 推导 `OutputMode`，组装成带 `project_state` / `manifest_error` 字段的 `CommandContext`（`cli/core/types.py`）。
+   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目的查看类命令按 `project.json` workspace 表解析（唯一活跃 workspace 自动选中；未声明 id → `workspace_not_declared`，清单损坏 → `manifest_invalid`）。legacy/virgin 的 context 先走 `--run-id` > 配置的 `[flow] run` > `runs/default`（`cli/inspection/discovery.py`）；随后 `run_prepare.resolve_manifest_run_target()` 会把 virgin 项目的最终 run 目标改为单路径段的 `<project>/<run-id>`。`ecc run` 另有创建未声明 manifest workspace 并给 warning 的路径，而查看类命令仍只认 manifest 已声明项。随后由 `--json/--jsonl/--plain` 推导 `OutputMode`，组装成带 `project_state` / `manifest_error` 字段的 `CommandContext`（`cli/core/types.py`）。
    - 调 handler：`handler(command_input, ctx) -> CommandResult`。
    - handler 返回后按需追加记录（`_with_legacy_hint` / `_with_config_shadow_hint`）：legacy 项目的 `run/check/status` 附加迁移提示（指向 `ecc migrate`）；workspace 的 `home/` 同时存在 `params.toml` 与旧 `parameters.json` 时打 `workspace_config_shadowed` 警告（旧 JSON 已失效）。
    - 渲染：`rendering/renderers.py::render_command_result()` 先查 `RENDERERS[(render_key, output_mode)]` 定制渲染器，没有则落到通用 `rendering/render.py::render_result()`。
@@ -195,14 +195,14 @@ config_param(
 
 `run` 有两条互斥路径（`cli/command_handlers/project.py` 的 `run()` / `_run_workspace()`）：
 
-- **项目模式**（默认）：读 `ecc.toml` → 解析 RTL/PDK/参数与 `--preset` 覆盖 → 对新建或 `--overwrite` 的目标执行**环境预检**（`_preflight_environment`：按 preset 所需工具调用 `inspection/env_probe.py`，缺失 → `env_not_ready` fail-fast）→ 在解析出的 run 目标下 `create_workspace`（manifest/virgin 项目默认 `<project>/<run-id>`，或 `project.json` 声明的 workspace 路径；`runs/<run-id>` 是 legacy 布局，`ecc migrate` 可升级）→ 从 `rtl2gds.get_flow_builders()` 取步骤构建 `EngineFlow` → 运行（TTY 下走 `rendering/progress.py::run_flow_with_progress` 的进度渲染，否则直接 `run_steps`）。已有 workspace 直接按持久化 flow 对账和续跑，不做 preset 预检。`--overwrite` 会先做安全校验（只删真正的 ECC run 目录）；`--preset` 不写回 `ecc.toml`，与 `--workspace` 互斥。
+- **项目模式**（默认）：读 `ecc.toml` → 解析 RTL/PDK/参数与 `--preset` 覆盖 → 对新建或 `--overwrite` 的目标执行**环境预检**（`_preflight_environment` 预检捆绑 ecc-tools，以及 preset 使用的 Yosys/DreamPlace；缺失 → `env_not_ready` fail-fast）→ 在解析出的 run 目标下 `create_workspace`（manifest/virgin 项目默认 `<project>/<run-id>`，或 `project.json` 声明的 workspace 路径；`runs/<run-id>` 是 legacy 布局，`ecc migrate` 可升级）→ 从 `rtl2gds.get_flow_builders()` 取步骤构建 `EngineFlow` → 运行（TTY 下走 `rendering/progress.py::run_flow_with_progress` 的进度渲染，否则直接 `run_steps`）。已有 workspace 直接按持久化 flow 对账和续跑，不做 preset 预检。`--overwrite` 会先做安全校验（只删真正的 ECC run 目录）；`--preset` 不写回 `ecc.toml`，与 `--workspace` 互斥。Sizer 有意不在这项预检中，会在 Timing optimization 执行时失败。
 - **workspace 模式**（`--workspace`）：`load_workspace` 后用 `chipcompiler.engine.rerun` 的 `run_resume / run_from / run_only` 原地复跑；`--resume/--from/--only` 三个选择器互斥且仅在该模式合法；该模式不做环境预检。
 
-改 flow 步骤序列本身在 `chipcompiler/engine`（`EngineFlow.build_default_steps()` / `add_step()`），不在 CLI 层；CLI 只负责参数解析、进度渲染选择与结果映射。
+项目运行 preset 的步骤序列定义在 `chipcompiler/rtl2gds/builder.py`（`build_*_flow()` / `get_flow_builders()`），不在 CLI 层。修改序列时须同步引擎默认 flow、`StepEnum` 与 manifest 范围映射（`PRESET_MANIFEST_RANGE`）；CLI 只负责参数解析、进度渲染选择与结果映射。
 
 ### 5.3 扩展环境探查（doctor / 预检）
 
-`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定 run 预检的范围（yosys↔含 Synthesis、dreamplace↔含 place/legalization；PDK 由 `validate_project_config` 覆盖、slang 留给综合步骤）。
+`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围（始终 ecc-tools，yosys↔含 Synthesis，dreamplace↔含 place/legalization）。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 当前只在 doctor 探查，尽管默认链会执行它。
 
 ### 5.4 扩展签核（`ecc signoff` 与引擎报告）
 
