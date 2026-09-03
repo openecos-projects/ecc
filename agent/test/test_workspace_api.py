@@ -204,6 +204,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
             context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
             seed=17,
         )
     )
@@ -223,6 +224,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
             context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
             seed=17,
         )
     )
@@ -313,6 +315,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-2",
             context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
             seed=17,
             parent_candidate_root_ref=candidate_root_ref,
         )
@@ -355,6 +358,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-3",
             context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
             seed=17,
             parent_candidate_root_ref=candidate_root_ref,
         )
@@ -478,6 +482,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
             execution_scope="full_flow",
             idempotency_key="episode-1.failed",
             context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
             seed=17,
         )
     )
@@ -540,6 +545,7 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
         execution_scope="full_flow",
         idempotency_key="episode-1.intervention-1",
         context_sha256=CONTEXT_SHA256,
+        parameter_card_sha256=CONTEXT_SHA256,
         seed=17,
     )
     monkeypatch.setattr("agent.workspace_api.bind_candidate_input", lambda *_args: None)
@@ -573,6 +579,7 @@ def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(t
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256=CONTEXT_SHA256,
+                parameter_card_sha256=CONTEXT_SHA256,
                 seed=17,
             )
         )
@@ -595,6 +602,32 @@ def test_candidate_rerun_rejects_invalid_context_hash_before_starting_an_operati
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256="sha256:invalid",
+                parameter_card_sha256=CONTEXT_SHA256,
+                seed=17,
+            )
+        )
+
+    assert ecc_api.operations.workspace_snapshot("workspace-1")["operations"] == []
+
+
+def test_candidate_rerun_rejects_invalid_parameter_card_hash_before_starting_an_operation(
+    tmp_path,
+):
+    ecc_api = _EccApi(SimpleNamespace(directory=tmp_path))
+    api = FlowAgentRuntimeApi(ecc_api)
+
+    with pytest.raises(RuntimeApiError, match="parameter_card_sha256"):
+        api.candidate_rerun(
+            CandidateRerunRequest(
+                workspace_id="workspace-1",
+                target_step="place",
+                end_step="Harden",
+                candidate_id="candidate-1",
+                patch=[{"knob_id": "place.target_density", "value": 0.6}],
+                execution_scope="full_flow",
+                idempotency_key="episode-1.intervention-1",
+                context_sha256=CONTEXT_SHA256,
+                parameter_card_sha256="sha256:invalid",
                 seed=17,
             )
         )
@@ -617,6 +650,7 @@ def test_candidate_rerun_rejects_non_harden_end_step_before_starting_an_operatio
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256=CONTEXT_SHA256,
+                parameter_card_sha256=CONTEXT_SHA256,
                 seed=17,
             )
         )
@@ -639,6 +673,7 @@ def test_candidate_rerun_rejects_unsafe_candidate_id_before_starting_an_operatio
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256=CONTEXT_SHA256,
+                parameter_card_sha256=CONTEXT_SHA256,
                 seed=17,
             )
         )
@@ -663,6 +698,7 @@ def test_candidate_rerun_rejects_unsafe_parent_candidate_ref_before_starting_an_
                 execution_scope="full_flow",
                 idempotency_key="episode-1.intervention-1",
                 context_sha256=CONTEXT_SHA256,
+                parameter_card_sha256=CONTEXT_SHA256,
                 seed=17,
                 parent_candidate_root_ref="../outside",
             )
@@ -688,6 +724,7 @@ def test_candidate_rerun_rejects_parent_workspace_symlinks(tmp_path):
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
             context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
             seed=17,
         )
     )
@@ -726,6 +763,7 @@ def test_candidate_rerun_removes_partial_clone_on_copy_failure(monkeypatch, tmp_
             execution_scope="full_flow",
             idempotency_key="episode-1.intervention-1",
             context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
             seed=17,
         )
     )

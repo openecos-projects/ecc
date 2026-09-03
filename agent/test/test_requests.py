@@ -11,6 +11,7 @@ from chipcompiler.runtime.requests import RequestValidationError
 from chipcompiler.runtime.transport import ContentLengthDecoder, encode_content_length_frame
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64
+PARAMETER_CARD_SHA256 = "sha256:" + "b" * 64
 
 
 def test_agent_methods_keep_the_original_rpc_names():
@@ -42,6 +43,7 @@ def test_agent_request_normalizes_camel_case_fields():
             "executionScope": "full_flow",
             "idempotencyKey": "episode-1.intervention-1",
             "contextSha256": CONTEXT_SHA256,
+            "parameterCardSha256": PARAMETER_CARD_SHA256,
             "seed": 17,
             "parentCandidateRootRef": ".agent/candidates/candidate-0",
         },
@@ -56,6 +58,7 @@ def test_agent_request_normalizes_camel_case_fields():
         execution_scope="full_flow",
         idempotency_key="episode-1.intervention-1",
         context_sha256=CONTEXT_SHA256,
+        parameter_card_sha256=PARAMETER_CARD_SHA256,
         seed=17,
         parent_candidate_root_ref=".agent/candidates/candidate-0",
     )
@@ -85,6 +88,7 @@ def test_candidate_resume_request_accepts_only_execution_binding_fields():
             "candidateId": "candidate-1",
             "idempotencyKey": "episode-1.resume-1",
             "contextSha256": CONTEXT_SHA256,
+            "parameterCardSha256": PARAMETER_CARD_SHA256,
             "seed": 17,
         },
     )
@@ -94,6 +98,7 @@ def test_candidate_resume_request_accepts_only_execution_binding_fields():
         candidate_id="candidate-1",
         idempotency_key="episode-1.resume-1",
         context_sha256=CONTEXT_SHA256,
+        parameter_card_sha256=PARAMETER_CARD_SHA256,
         seed=17,
     )
 
@@ -126,6 +131,7 @@ def test_candidate_rerun_request_requires_seed():
                 "executionScope": "full_flow",
                 "idempotencyKey": "episode-1.intervention-1",
                 "contextSha256": CONTEXT_SHA256,
+                "parameterCardSha256": PARAMETER_CARD_SHA256,
             },
         )
 
@@ -168,6 +174,7 @@ def test_candidate_rerun_rejects_a_multi_knob_patch_as_an_invalid_request():
                         "executionScope": "full_flow",
                         "idempotencyKey": "episode-1.intervention-1",
                         "contextSha256": CONTEXT_SHA256,
+                        "parameterCardSha256": PARAMETER_CARD_SHA256,
                         "seed": 17,
                     },
                 }

@@ -120,6 +120,7 @@ def test_candidate_resume_runs_in_place_and_preserves_successful_target_artifact
             candidate_id=candidate_id,
             idempotency_key="episode-1.resume-1",
             context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
             seed=17,
         )
     )
@@ -219,6 +220,7 @@ def test_candidate_resume_restores_drifted_target_config_before_strict_validatio
                 candidate_id="candidate-1",
                 idempotency_key="episode-1.resume-invalid",
                 context_sha256=CONTEXT_SHA256,
+                parameter_card_sha256=CONTEXT_SHA256,
                 seed=18,
             ),
         )
@@ -233,6 +235,7 @@ def test_candidate_resume_restores_drifted_target_config_before_strict_validatio
             candidate_id="candidate-1",
             idempotency_key="episode-1.resume-1",
             context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
             seed=17,
         ),
     )

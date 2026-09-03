@@ -148,6 +148,13 @@ def _validate_candidate_resume_request(request: CandidateResumeRequest) -> None:
         or re.fullmatch(r"sha256:[0-9a-f]{64}", request.context_sha256) is None
     ):
         raise RuntimeApiError("invalid_request", "candidate resume context_sha256 is invalid")
+    if (
+        not isinstance(request.parameter_card_sha256, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", request.parameter_card_sha256) is None
+    ):
+        raise RuntimeApiError(
+            "invalid_request", "candidate resume parameter_card_sha256 is invalid"
+        )
     if type(request.seed) is not int:
         raise RuntimeApiError("invalid_request", "candidate resume seed is invalid")
 
@@ -268,6 +275,7 @@ def _candidate_resume_rerun_request(
         execution_scope="full_flow",
         idempotency_key=request.idempotency_key,
         context_sha256=request.context_sha256,
+        parameter_card_sha256=request.parameter_card_sha256,
         seed=request.seed,
         parent_candidate_root_ref=manifest["parent_candidate_root_ref"],
     )
@@ -348,6 +356,7 @@ def _candidate_resume_requested_patch(
         ) from exc
     if (
         context.get("context_sha256") != request.context_sha256
+        or context.get("parameter_card_sha256") != request.parameter_card_sha256
         or context.get("seed") != request.seed
         or context.get("run_id") != request.candidate_id
         or context.get("stage") != target_step

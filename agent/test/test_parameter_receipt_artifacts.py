@@ -107,6 +107,7 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
+        parameter_card_sha256=HASH,
         seed=17,
     )
 
@@ -123,6 +124,7 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
     assert json.loads(receipt_path.read_text(encoding="utf-8")) == receipt
     assert sha256_path(receipt_path) is not None
     assert receipt["tool"] == TOOL
+    assert receipt["context"]["parameter_card_sha256"] == HASH
     materialization_ref = receipt["materialization"]
     assert materialization_ref["target_step"] == "place"
     assert materialization_ref["config_ref"] == "config/dreamplace.json"
@@ -181,6 +183,7 @@ def test_cell_padding_receipt_preserves_surface_site_value(tmp_path: Path, monke
         target_step="place",
         patch=[{"knob_id": "place.cell_padding_x", "value": 1}],
         context_sha256=HASH,
+        parameter_card_sha256=HASH,
         seed=17,
     )
     monkeypatch.setattr(
@@ -217,6 +220,7 @@ def test_candidate_parameter_receipt_rejects_incomplete_l1(tmp_path: Path) -> No
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
+        parameter_card_sha256=HASH,
         seed=17,
     )
 
@@ -289,6 +293,7 @@ def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.2}],
         context_sha256=HASH,
+        parameter_card_sha256=HASH,
         seed=17,
     )
 
@@ -345,6 +350,7 @@ def test_candidate_parameter_receipt_rejects_runtime_report_for_another_knob(
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
+        parameter_card_sha256=HASH,
         seed=17,
     )
 
@@ -378,6 +384,7 @@ def test_candidate_parameter_receipt_requires_parent_flow_sha256(
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
+        parameter_card_sha256=HASH,
         seed=17,
     )
 
@@ -411,6 +418,7 @@ def test_candidate_parameter_receipt_rejects_stripped_unknown_ecc_revision(
         target_step="place",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
+        parameter_card_sha256=HASH,
         seed=17,
     )
     monkeypatch.setattr("agent.workspace_api.chipcompiler.__version__", " unknown ")

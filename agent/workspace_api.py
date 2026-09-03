@@ -296,6 +296,11 @@ def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
         or re.fullmatch(r"sha256:[0-9a-f]{64}", request.context_sha256) is None
     ):
         raise RuntimeApiError("invalid_request", "candidate rerun context_sha256 is invalid")
+    if (
+        not isinstance(request.parameter_card_sha256, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", request.parameter_card_sha256) is None
+    ):
+        raise RuntimeApiError("invalid_request", "candidate rerun parameter_card_sha256 is invalid")
     if type(request.seed) is not int:
         raise RuntimeApiError("invalid_request", "candidate rerun seed is invalid")
     if request.parent_candidate_root_ref is not None:
@@ -693,6 +698,7 @@ def _candidate_parameter_receipt(
     context = _parameter_receipt_context(workspace, request, parent_flow_sha256)
     context["tool_revision"] = tool["revision"]
     context["context_sha256"] = request.context_sha256
+    context["parameter_card_sha256"] = request.parameter_card_sha256
     requested_value = patch["value"]
     written_unit = unit
     if knob_id == "place.cell_padding_x":

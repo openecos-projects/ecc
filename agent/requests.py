@@ -35,6 +35,7 @@ class CandidateRerunRequest:
     execution_scope: str
     idempotency_key: str
     context_sha256: str
+    parameter_card_sha256: str
     seed: int
     parent_candidate_root_ref: str | None = None
 
@@ -45,6 +46,7 @@ class CandidateResumeRequest:
     candidate_id: str
     idempotency_key: str
     context_sha256: str
+    parameter_card_sha256: str
     seed: int
 
 
@@ -57,6 +59,7 @@ _FIELD_ALIASES = {
     "executionScope": "execution_scope",
     "idempotencyKey": "idempotency_key",
     "contextSha256": "context_sha256",
+    "parameterCardSha256": "parameter_card_sha256",
     "parentCandidateRootRef": "parent_candidate_root_ref",
 }
 
