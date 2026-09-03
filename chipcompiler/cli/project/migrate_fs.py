@@ -188,21 +188,16 @@ def move_back(
 
     The object at *target_path* must be the confirmed moved one
     (identity checked first), and the source name must still be free
-    (NOREPLACE enforced by the primitive). A missing target counts as
-    recovered only when the child under the anchored container provably
-    has the expected identity. Touching neither object when recovery is
-    impossible returns False.
+    (NOREPLACE enforced by the primitive). A missing target is never
+    recoverable: a fresh replacement can reuse the freed inode on
+    filesystems that recycle them (e.g. overlayfs), so identity alone
+    cannot prove anything. Touching neither object returns False.
     """
     try:
         target_stat = os.lstat(target_path)
     except OSError:
-        # Nothing at the target: recovery is real only when the anchored
-        # source child independently proves to be the moved object.
-        child = child_stat(container_fd, name)
-        if child is not None and (child.st_dev, child.st_ino) == expect_identity:
-            return True
         logger.warning(
-            "rollback incomplete: moved object missing and source identity unproven: %s",
+            "rollback incomplete: moved object missing: %s",
             target_path,
         )
         return False
