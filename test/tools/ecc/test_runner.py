@@ -50,6 +50,10 @@ class FakeEccModule:
         self.calls.append(("read_def", path))
         return True
 
+    def read_verilog(self, **kwargs):
+        self.calls.append(("read_verilog", kwargs))
+        return True
+
     def read_lvs_verilog(self, path, top_module):
         self.calls.append(("read_lvs_verilog", path, top_module))
 
@@ -270,11 +274,10 @@ def test_create_db_engine_reads_replaced_step_input_without_db(tmp_path, monkeyp
     assert not any(call[0] == "read_def" and call[1] == str(step_def) for call in module.calls)
 
 
-def test_create_db_engine_returns_none_and_closes_when_read_def_fails(tmp_path, monkeypatch):
+def test_create_db_engine_raises_and_closes_when_def_master_resolution_fails(tmp_path, monkeypatch):
     design_def = tmp_path / "origin" / "gcd.def"
     design_def.parent.mkdir()
     design_def.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
-
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -297,12 +300,47 @@ def test_create_db_engine_returns_none_and_closes_when_read_def_fails(tmp_path, 
 
     monkeypatch.setattr(FakeEccModule, "read_def", failing_read_def)
 
-    module = ecc_runner.create_db_engine(workspace, step)
+    with pytest.raises(ecc_runner.EccDesignReadError, match="DEF input"):
+        ecc_runner.create_db_engine(workspace, step)
 
-    assert module is None
     constructed = FakeEccModule.instances[-1]
     assert ("read_def", str(design_def)) in constructed.calls
     assert constructed.calls[-1] == ("close",)
+
+
+def test_create_db_engine_raises_when_verilog_master_resolution_fails(tmp_path, monkeypatch):
+    design_verilog = tmp_path / "origin" / "gcd.v"
+    design_verilog.parent.mkdir()
+    design_verilog.write_text("module gcd; endmodule\n")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
+        config={"db": tmp_path / "config" / "db_ecc.json"},
+    )
+    step = EccStep(
+        name=StepEnum.FLOORPLAN.value,
+        input=StepInput(verilog=design_verilog),
+        data=EccData(dir=tmp_path / "floorplan_ecc" / "data"),
+        feature=EccFeature(dir=tmp_path / "floorplan_ecc" / "feature"),
+    )
+    FakeEccModule.instances = []
+    monkeypatch.setattr(ecc_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(ecc_runner, "ECCToolsModule", FakeEccModule)
+    read_requests = []
+
+    def fail_read_verilog(_module, **kwargs):
+        read_requests.append(kwargs)
+        return False
+
+    monkeypatch.setattr(FakeEccModule, "read_verilog", fail_read_verilog)
+
+    with pytest.raises(ecc_runner.EccDesignReadError, match="Verilog input"):
+        ecc_runner.create_db_engine(workspace, step)
+
+    assert read_requests == [
+        {"verilog": str(design_verilog), "top_module": workspace.design.top_module}
+    ]
 
 
 def test_create_db_engine_without_input_db_does_not_retry_load_design(tmp_path, monkeypatch):

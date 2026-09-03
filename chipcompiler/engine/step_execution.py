@@ -78,6 +78,9 @@ def execute_tool_step(
 
                 if engine_db is None:
                     raise AttributeError("'NoneType' object has no attribute 'engine'")
+                initialization_error = getattr(engine_db, "initialization_error", None)
+                if initialization_error is not None:
+                    raise initialization_error
                 result = run_step(
                     workspace=workspace,
                     step=workspace_step,

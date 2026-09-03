@@ -53,6 +53,10 @@ def _runner_source_sha256() -> str:
     return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
+class EccDesignReadError(RuntimeError):
+    """Raised when ECC cannot construct a database from a design input."""
+
+
 def temperature_token(temperature) -> str:
     try:
         numeric = float(temperature)
@@ -234,6 +238,16 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
             if not keep:
                 _close_engine(ecc_module)
 
+    def require_design_read(input_kind: str, input_path: str, reader) -> None:
+        try:
+            read_ok = reader()
+        except Exception as error:
+            raise EccDesignReadError(
+                f"ECC failed to read {input_kind} input: {input_path}"
+            ) from error
+        if not read_ok:
+            raise EccDesignReadError(f"ECC failed to read {input_kind} input: {input_path}")
+
     def load_design() -> ECCToolsModule | None:
         ecc_module = ECCToolsModule()
         keep = False
@@ -251,15 +265,18 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
             verilog_path = _existing_input_path(step.input.verilog)
 
             if step.name == StepEnum.LVS.value:
-                if def_path is None or not ecc_module.read_def(def_path):
+                if def_path is None:
                     return None
+                require_design_read("DEF", def_path, lambda: ecc_module.read_def(def_path))
             elif def_path is not None:
-                if not ecc_module.read_def(def_path):
-                    return None
+                require_design_read("DEF", def_path, lambda: ecc_module.read_def(def_path))
             elif verilog_path:
-                ecc_module.read_verilog(
-                    verilog=verilog_path,
-                    top_module=workspace.design.top_module,
+                require_design_read(
+                    "Verilog",
+                    verilog_path,
+                    lambda: ecc_module.read_verilog(
+                        verilog=verilog_path, top_module=workspace.design.top_module
+                    ),
                 )
             else:
                 return None
@@ -281,7 +298,6 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
 
     if not is_eda_exist() or not is_enable_setup():
         return None
-
     if step.name == StepEnum.LVS.value or not step.input.db:
         return load_design()
 
@@ -306,6 +322,8 @@ def get_eda_instance(
     if ecc_module is None:
         try:
             ecc_module = create_db_engine(workspace=workspace, step=step)
+        except EccDesignReadError:
+            raise
         except Exception as e:
             ecc_module = None
             workspace.logger.error(f"Failed to create ECC engine for step {step.name}: {e}")
