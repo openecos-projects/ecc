@@ -1,6 +1,6 @@
 # ECC CLI Command Extension Developer Guide
 
-This guide is for developers who need to add or modify commands in the `ecc` CLI. It is based on the current source tree (the `chipcompiler` package, v0.1.0-alpha.11). All code paths are relative to the repository root.
+This guide is for developers who need to add or modify commands in the `ecc` CLI. It is based on the current source tree (the `chipcompiler` package, v0.1.0-alpha.11). All code paths are relative to the `ecc` repository root.
 
 Related documents: [architecture.md](architecture.md) (architecture), [development.md](development.md) (development workflow), [workspace-cli.md](workspace-cli.md) (RPC sidecar protocol), [../CLAUDE.md](../CLAUDE.md) (repository conventions).
 
@@ -9,9 +9,9 @@ Related documents: [architecture.md](architecture.md) (architecture), [developme
 ```
 pyproject.toml                    # scripts.ecc = "chipcompiler.cli.main:main"
 chipcompiler/cli/main.py          # run(argv) / main(), a thin wrapper
-chipcompiler/cli/app.py           # root typer app; invoke_typer_app() owns execution and exit codes
+chipcompiler/cli/app.py           # root typer app; invoke_typer_app() owns execution and exit codes; the version / layout-image commands are registered here directly
 chipcompiler/cli/commands/        # typer command definition layer (thin)
-  ├── project.py                  # registration and option declarations for init/check/run/status/log/config
+  ├── project.py                  # registration and option declarations for init/check/run/status/log/config/migrate
   ├── doctor.py                   # doctor top-level command (environment check)
   ├── param.py                    # param sub-app (list/show/set/unset/diff)
   ├── pdk.py                      # pdk sub-app (setup/set-root/show/unset)
@@ -19,10 +19,10 @@ chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── report.py                   # report sub-app (qor/checklist)
   └── rpc.py                      # rpc sub-app (serve)
 chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
-  ├── project.py                  # init / check / run (preset resolution and environment preflight)
+  ├── project.py                  # init / check / run / migrate (preset resolution and environment preflight)
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor (assembles env_probe results into records)
-  ├── pdk.py                      # the three pdk subcommands (surgical TOML edit + root source resolution)
+  ├── pdk.py                      # the four pdk subcommands (surgical TOML edit + root source resolution)
   ├── signoff.py                  # the three signoff subcommands + inspect TEXT rendering
   └── report.py                   # the two report subcommands (file writing + record summary)
 chipcompiler/cli/handlers/param.py  # param subcommand handlers + param TEXT rendering
@@ -33,11 +33,12 @@ chipcompiler/cli/core/            # framework layer
   ├── output.py                   # disclosure_cmd() / step-name and state normalization
   ├── records.py                  # error_record()
   ├── types.py                    # CommandContext / CommandResult / OutputMode
-  └── version_info.py             # version information for the version command
+  └── version_info.py             # package-metadata versions for the version command (environment tool versions live in inspection/tool_versions.py)
 chipcompiler/cli/inspection/      # read-only probing logic
   ├── discovery.py / config_view.py / log_view.py
-  └── env_probe.py                # environment probes for doctor/run preflight (the ProbeResult model)
-chipcompiler/cli/project/         # ecc.toml parsing and validation (config.py), parameter registry (params.py)
+  ├── env_probe.py                # environment probes for doctor/run preflight (the ProbeResult model)
+  └── tool_versions.py            # environment tool versions for ecc version (yosys/sizer/klayout)
+chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / params.py (parameter registry) / manifest.py (project-state classification) / effective_config.py / config_params/ (direct-config schemas) / migrate*.py (legacy-layout migration) / run_*.py (run target resolution and dispatch)
 chipcompiler/cli/rendering/       # output rendering (render / renderers / pretty / progress)
 chipcompiler/engine/signoff/      # signoff collector + design/checklist reports (package, see §5.4)
 chipcompiler/engine/qor_report.py # overall QoR scoring (port of the GUI rules, see §5.5)
@@ -55,8 +56,9 @@ Using `ecc check --project gcd --json` as the example:
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()` (`cli/core/invocation.py`) then:
-   - `build_context()`: resolves the project directory (`--project`, defaulting to cwd) → reads `ecc.toml` into a `ProjectConfig` → resolves the run directory (`--run-id` > the configured `[flow] run` > `runs/default`; see `cli/project/config.py` and `cli/inspection/discovery.py`) → derives the `OutputMode` from `--json/--jsonl/--plain` and assembles a `CommandContext` (`cli/core/types.py`).
+   - `build_context()`: resolves the project directory (`--project`, defaulting to cwd) → reads `ecc.toml` (an unreadable file is recorded in `config_error`) → classifies the project state via `cli/project/manifest.py::classify_project()` (manifest / legacy / virgin). Manifest projects resolve the run directory from the `project.json` workspaces table (a single active workspace auto-selects; an undeclared id → `workspace_not_declared`, a corrupt manifest → `manifest_invalid`); legacy/virgin projects use `--run-id` > the configured `[flow] run` > `runs/default` (`cli/inspection/discovery.py`) → derives the `OutputMode` from `--json/--jsonl/--plain` and assembles a `CommandContext` carrying `project_state` / `manifest_error` (`cli/core/types.py`).
    - Calls the handler: `handler(command_input, ctx) -> CommandResult`.
+   - After the handler, records are appended as needed (`_with_legacy_hint` / `_with_config_shadow_hint`): `run/check/status` on a legacy project carry a migration hint (pointing at `ecc migrate`); when a workspace's `home/` holds both `params.toml` and the legacy `parameters.json`, a `workspace_config_shadowed` warning is emitted (the JSON is inert).
    - Renders: `rendering/renderers.py::render_command_result()` first looks up a custom renderer in `RENDERERS[(render_key, output_mode)]`, falling back to the generic `rendering/render.py::render_result()`.
    - `raise typer.Exit(code=result.exit_code)` passes the exit code through to `invoke_typer_app`.
 4. `invoke_typer_app` runs the click command with `standalone_mode=False`, catching `click.exceptions.Exit` / `ClickException` and converting them into a process exit code, so tests can read the return value of `cli_main.run([...])`.
@@ -155,7 +157,7 @@ All CLI tests live under `ecc/test/cli/`, organized by ownership (repository CLA
 - Tests for engine-layer reports/signoff go in the top-level `test/` (e.g. `test/test_signoff_report.py`, `test/test_qor_report.py`, `test/test_signoff_package.py`), reusing their fixtures to fabricate workspaces.
 - Don't forget to register new commands in both `test/cli/test_typer_cli.py::test_root_help_returns_zero_and_lists_commands` and `test/cli/test_cli_module_layout.py` (the commands tuple).
 
-How to run (from the repository root):
+How to run (from the `ecc` repository root):
 
 ```bash
 nix develop   # optional
@@ -169,7 +171,7 @@ uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package
 
 Legacy semantic parameters remain in `cli/project/params.py::_LEGACY_PARAM_REGISTRY`. Direct tool configuration belongs in one reviewed module per owner under `cli/project/config_params/` (`cts.py`, `floorplan.py`, `dreamplace.py`, and so on). `ParamSchema` has one target: legacy `maps_to`, a JSON `config_target`, or a whitelisted PDK `pdk_target`.
 
-Use `config_param()` for a reviewed static template field:
+Use `config_param()` for a reviewed static template field (`description` is a required keyword argument, written per parameter by a human reviewer and enforced by `test/cli/params/test_descriptions.py`):
 
 ```python
 # cli/project/config_params/cts.py
@@ -179,6 +181,7 @@ config_param(
     ("skew_bound",),
     "0.08",
     applies="cts",
+    description="Allowed clock skew upper bound in ns.",
 )
 ```
 
@@ -192,7 +195,7 @@ At project-run creation, non-default `config_target` values are saved as structu
 
 `run` has two mutually exclusive paths (`run()` / `_run_workspace()` in `cli/command_handlers/project.py`):
 
-- **Project mode** (default): read `ecc.toml` → resolve RTL/PDK/parameters plus the `--preset` override → for a fresh or `--overwrite` target, **environment preflight** (`_preflight_environment`: probes the tools the preset needs via `inspection/env_probe.py`; anything missing → `env_not_ready` fail-fast) → `create_workspace` under `runs/<run-id>/` → build the `EngineFlow` from the steps in `rtl2gds.get_flow_builders()` → run (progress rendering via `rendering/progress.py::run_flow_with_progress` on a TTY, plain `run_steps` otherwise). Existing workspaces reconcile and resume their persisted flow without preset preflight. `--overwrite` runs safety checks first (only genuine ECC run directories are deleted); `--preset` is not written back to `ecc.toml` and is mutually exclusive with `--workspace`.
+- **Project mode** (default): read `ecc.toml` → resolve RTL/PDK/parameters plus the `--preset` override → for a fresh or `--overwrite` target, **environment preflight** (`_preflight_environment`: probes the tools the preset needs via `inspection/env_probe.py`; anything missing → `env_not_ready` fail-fast) → `create_workspace` under the resolved run target (manifest/virgin projects default to `<project>/<run-id>` or the workspace path declared in `project.json`; `runs/<run-id>` is the legacy layout that `ecc migrate` upgrades) → build the `EngineFlow` from the steps in `rtl2gds.get_flow_builders()` → run (progress rendering via `rendering/progress.py::run_flow_with_progress` on a TTY, plain `run_steps` otherwise). Existing workspaces reconcile and resume their persisted flow without preset preflight. `--overwrite` runs safety checks first (only genuine ECC run directories are deleted); `--preset` is not written back to `ecc.toml` and is mutually exclusive with `--workspace`.
 - **Workspace mode** (`--workspace`): after `load_workspace`, re-runs in place via `run_resume / run_from / run_only` from `chipcompiler.engine.rerun`; the `--resume/--from/--only` selectors are mutually exclusive and only legal in this mode; no environment preflight runs in this mode.
 
 Changing the flow step sequence itself happens in `chipcompiler/engine` (`EngineFlow.build_default_steps()` / `add_step()`), not in the CLI layer; the CLI only handles argument parsing, progress-renderer selection, and result mapping.

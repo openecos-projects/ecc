@@ -10,13 +10,13 @@
 
 ### One-shot setup (recommended)
 
-The repository ships an install script, [ecc-cli-setup.sh](ecc-cli-setup.sh) (in this directory): it downloads and installs the ecc CLI, configures PATH, runs an environment self-check, and fills in any missing dependencies — the PDK (icsprout55-pdk + liberty/GDS) and Yosys (latest OSS CAD Suite). It is idempotent: re-running skips anything already in place.
+The repository ships an install script, [ecc-cli-setup.sh](ecc-cli-setup.sh) (in this directory): it downloads and installs the ecc CLI, configures PATH, runs an environment self-check, and fills in any missing dependencies — the PDK (icsprout55-pdk + liberty/GDS), Yosys (latest OSS CAD Suite with the slang frontend; LEC reuses that yosys), and the optional Sizer (prebuilt ecc-sizer package, installed automatically once published). It is idempotent: re-running skips anything already in place.
 
 ```bash
 bash ecc-cli-setup.sh                 # install + self-check + fill in dependencies
 bash ecc-cli-setup.sh --check-only    # environment check only, installs nothing
 bash ecc-cli-setup.sh --force         # force reinstall of the ecc CLI
-bash ecc-cli-setup.sh --skip-pdk --skip-tools   # install only the ecc CLI itself
+bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # install only the ecc CLI itself
 bash ecc-cli-setup.sh --no-shell-rc   # do not touch shell rc files (by default a load line is added idempotently)
 ```
 
@@ -32,9 +32,12 @@ Configuration knobs (override via environment variables; change these when versi
 | `ECC_PDK_DIR` | `~/.local/icsprout55-pdk` | PDK directory (repository URL is fixed: https://github.com/openecos-projects/icsprout55-pdk.git) |
 | `ECC_OSS_CAD_DIR` | `~/.local/oss-cad-suite` | OSS CAD Suite directory (Yosys) |
 | `OSS_CAD_URL` | empty | Full direct URL override for OSS CAD Suite (defaults to the latest release) |
+| `OSS_ARCH_PATTERN` | `linux-x64` | OSS CAD Suite asset architecture pattern (change for non-x86_64 hosts) |
+| `ECC_SIZER_DIR` | `~/.local/ecc-sizer` | Sizer install root (holds `bin/Sizer` and `src/sizer_os.tcl`) |
+| `ECC_SIZER_URL` | empty | Full direct URL override for the ecc-sizer prebuilt package (set manually while no official Release exists) |
 | `GH_PROXY` | empty | GitHub download proxy prefix (e.g. `https://gh-proxy.org/`), for restricted networks |
 
-The script produces `~/.ecc-env.sh` (PATH + `CHIPCOMPILER_ICS55_PDK_ROOT` + `CHIPCOMPILER_OSS_CAD_DIR`), idempotently makes `~/.bashrc`/`~/.zshrc` load it, and creates a `~/.local/bin/ecc` symlink. Example for a restricted network:
+The script produces `~/.ecc-env.sh` (PATH (including the Sizer bin directory) + `CHIPCOMPILER_ICS55_PDK_ROOT` + `CHIPCOMPILER_OSS_CAD_DIR` + `CHIPCOMPILER_ECC_SIZER_ROOT` when Sizer is installed), idempotently makes `~/.bashrc`/`~/.zshrc` (and `~/.profile` for bash login shells) load it, and creates a `~/.local/bin/ecc` symlink. Example for a restricted network:
 
 ```bash
 GH_PROXY=https://gh-proxy.org/ bash ecc-cli-setup.sh
@@ -90,17 +93,17 @@ uv run ecc --help
 ## 1. General conventions
 
 - Global: `ecc --version` (single version line), `ecc --help`.
-- Project location: most commands accept `--project <dir>` (defaults to the current directory, which must contain `ecc.toml`) and `--run-id <id>` (defaults to `[flow] run` from `ecc.toml`, then `default`, mapping to `runs/<id>/`; absolute paths and relative paths containing `/` are also accepted).
+- Project location: most commands accept `--project <dir>` (defaults to the current directory) and `--run-id <id>` (absolute paths and relative paths containing `/` are also accepted). Workspace layout depends on the project state: a **fresh project** (no `project.json`, no `runs/`) puts its first run at `<project>/<run-id>` and registers it in an auto-created `project.json`; a **manifest project** (has `project.json`) resolves runs from the declared workspace table; a **legacy project** (has a populated `runs/` directory) keeps using `runs/<run-id>` and can be upgraded with `ecc migrate`. All three states may carry an `ecc.toml`; only manifest projects *without* an `ecc.toml` are rejected by `ecc param` (`param_requires_ecc_toml`).
 - Output modes (shared by inspection commands): `--json` (`{"records":[...]}`), `--jsonl` (one JSON record per line), `--plain` (`key=value`, for scripting), and human-readable TEXT by default.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
-- Step tokens are normalized to lowercase in display: `synthesis / floorplan / placement / cts / legalization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`; `--from`/`--only` require the exact names from `home/flow.json` (e.g. `place`, `CTS`).
+- Step tokens are normalized to lowercase in display: `synthesis / floorplan / placement / cts / legalization / timing optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`; `--from`/`--only` require the exact names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`).
 
 Command overview:
 
 ```
 $ ecc --help
 Commands:
-  version       Show ECC runtime and component versions
+  version       Show ECC runtime, component, and installed tool versions
   layout-image  Render a GDS file into a layout image
   init          Create a new ECC project
   check         Validate the current project setup
@@ -108,6 +111,7 @@ Commands:
   status        Show run and step status
   log           Show available logs or step log content
   config        Show resolved project or step configuration
+  migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
@@ -131,16 +135,16 @@ same way a flow run resolves them, and show the binary's own version, or
 
 ```console
 $ ecc version
-ecc 0.1.0-alpha.11
+ecc 0.1.0a11
 dreamplace 0.1.0a7
-ecc_tools 0.1.0a11
+ecc_tools 0.1.0a12
 runtime ECC CLI
 yosys 0.68+132
 sizer not installed
 klayout 0.30.2
 
 $ ecc version --json
-{"schema_version": 1, "runtime": "ECC CLI", "ecc": "0.1.0-alpha.11", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a11", "tools": {"yosys": "0.68+132", "sizer": "not installed", "klayout": "0.30.2"}}
+{"schema_version": 1, "runtime": "ECC CLI", "ecc": "0.1.0a11", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a12", "tools": {"yosys": "0.68+132", "sizer": "not installed", "klayout": "0.30.2"}}
 ```
 
 ## 3. init — create a project
@@ -149,7 +153,7 @@ $ ecc version --json
 ecc init <NAME> [--plain]
 ```
 
-Creates an `ecc.toml`, `rtl/`, `constraints/`, and `runs/` skeleton under `NAME/`:
+Creates an `ecc.toml`, `rtl/`, and `constraints/` skeleton under `NAME/` (the workspace is created by the first `ecc run`):
 
 ```console
 $ ecc init gcd
@@ -178,7 +182,7 @@ root = ""                # icsprout55-pdk path; empty falls back to CHIPCOMPILER
 [flow]
 # preset: rtl2gds | rcx | harden | syn_sta
 preset = "rtl2gds"
-run = "default"          # run id, maps to runs/<id>/
+run = "default"          # run id (workspace defaults to <project>/<id>; legacy projects use runs/<id>)
 ```
 
 ## 4. check — validate the project configuration
@@ -252,7 +256,7 @@ rc=1
 
 Notes:
 
-- PDK root resolution priority: `pdk.root` in `ecc.toml` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`.
+- PDK root resolution priority: `pdk.root` in `ecc.toml` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (ecos-studio workspace layout; used by the data layer and `ecc pdk show`. `ecc check`/`ecc run` still require one of the first three and report `pdk.root is required` otherwise).
 - The synthesis step still fails fast internally on slang problems (the log reports `yosys slang frontend check failed`); inspect afterwards with `ecc log synthesis`.
 - Setup/repair script: `bash docs/ecc-cli-setup.sh` (see section 0; `--check-only` checks only).
 
@@ -267,7 +271,7 @@ Notes:
 | Yosys (synthesis) | `which yosys && yosys -V`, or `echo $CHIPCOMPILER_OSS_CAD_DIR` | either works (`CHIPCOMPILER_OSS_CAD_DIR` pointing at OSS CAD Suite takes priority) |
 | Yosys slang frontend | `yosys -Q -T -p "help read_slang"` | output does **not** contain `No such command` (builtin since yosys ≥ v0.67; older builds need a loadable slang plugin) |
 | KLayout (only needed by `layout-image`) | `python3 -c "from klayout import lay"` | no ImportError |
-| Sizer (only needed by some flows) | `which Sizer` | prints a path |
+| Sizer (needed by the Timing optimization step, present in the default rtl2gds/rcx/harden chains) | `which Sizer` or `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | either resolves (the root must contain `src/sizer_os.tcl`). Note `ecc run` preflight does **not** probe sizer; a missing binary fails mid-flow |
 
 A copy-paste self-check snippet:
 
@@ -283,7 +287,7 @@ yosys -Q -T -p "help read_slang" 2>&1 | grep -q "No such command" \
 
 Notes:
 
-- PDK root resolution priority: `pdk.root` in `ecc.toml` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`.
+- PDK root resolution priority: `pdk.root` in `ecc.toml` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (`ecc check`/`ecc run` still require one of the first three).
 - ECC-Tools / DreamPlace ship as Python wheels (`ecc-tools-bin`, `ecc-dreamplace`) bundled in the CLI package; a normal install is all they need.
 
 ## 5. run — execute a flow
@@ -300,14 +304,14 @@ ecc run [OPTIONS]
   --json / --jsonl / --plain
 ```
 
-For a fresh or `--overwrite` run target, the pipeline reads `ecc.toml` → resolves RTL/PDK/parameters → preflights the preset's required tools → creates the workspace under `runs/<run-id>/` → builds and executes the selected preset (`rtl2gds | rcx | harden | syn_sta | synthesis_lec`; progress rendering on a TTY). Existing workspaces resume their persisted flow without preset preflight. `harden` is the full 13-step chain (Synthesis→…→route→filler→LVS→DRC→postRouteLec (Yosys equivalence check)→RCX→sta→Harden; Harden emits GDS + abstract LEF + timing LIB).
+For a fresh or `--overwrite` run target, the pipeline reads `ecc.toml` → resolves RTL/PDK/parameters → preflights the preset's required tools → creates the workspace under the resolved run target (`<project>/<run-id>` for fresh projects, registered in an auto-created `project.json`; `runs/<run-id>` for legacy projects) → builds and executes the selected preset (`rtl2gds | rcx | harden | syn_sta | synthesis_lec`; progress rendering on a TTY). Existing workspaces resume their persisted flow without preset preflight. `harden` is the full 14-step chain (Synthesis→Floorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→LVS→DRC→postRouteLec (Yosys equivalence check)→RCX→sta→Harden; Harden emits GDS + abstract LEF + timing LIB; `rtl2gds`/`rcx` are its prefix sub-chains).
 
 ```console
 $ ecc run                # refuses to overwrite an existing run
 [error]
   run_exists
   run: default
-  workspace: /path/gcd/runs/default
+  workspace: /path/gcd/default
   overwrite: ecc run --overwrite
 rc=1
 
@@ -342,9 +346,9 @@ ecc run --workspace <dir> [--resume | --from STEP | --only STEP [--force]]
 - the workspace is modified in place: the re-run steps' `output/` is replaced and downstream steps are marked `Unstart`.
 
 ```bash
-ecc run --workspace runs/default --resume
-ecc run --workspace runs/default --from CTS
-ecc run --workspace runs/default --only place --force
+ecc run --workspace default --resume
+ecc run --workspace default --from CTS
+ecc run --workspace default --only place --force
 ```
 
 Using a selector in project mode by mistake gives a clear error:
@@ -355,6 +359,14 @@ $ ecc run --resume
   selector_requires_workspace
 rc=1
 ```
+
+### 5.3 migrate — legacy-layout migration (transitional command)
+
+```bash
+ecc migrate [--project DIR] [--yes]
+```
+
+Migrates a legacy `runs/`-layout project to the manifest layout (creates `project.json`; registered workspaces keep pointing at their existing directories — no data is moved). By default it prints the migration plan and asks for confirmation; `--yes` skips the prompt. The command is kept for the transition period (marked deprecated in code) and can be retired once existing projects have migrated. `run`/`check`/`status` attach a migration-hint record to their output on legacy projects.
 
 ## 6. status — show run and step status
 
@@ -367,7 +379,7 @@ $ ecc status
 [status]
   run: default
   status: failed
-  workspace: /tmp/gcd/runs/default
+  workspace: /tmp/gcd/default
   inspect: ecc status
   log: ecc log
 
@@ -381,7 +393,7 @@ $ ecc status
     cts (ecc) unstart
 
 $ ecc status --jsonl
-{"run": "default", "status": "failed", "workspace": "/tmp/gcd/runs/default", "inspect_cmd": "ecc status", "log_cmd": "ecc log"}
+{"run": "default", "status": "failed", "workspace": "/tmp/gcd/default", "inspect_cmd": "ecc status", "log_cmd": "ecc log"}
 {"step": "synthesis", "tool": "yosys", "status": "success", "runtime": "0:00:18", "log_cmd": "ecc log synthesis"}
 {"step": "floorplan", "tool": "ecc", "status": "success", "runtime": "0:00:04", "log_cmd": "ecc log floorplan"}
 ...
@@ -395,19 +407,24 @@ The run-level status aggregates all steps: `success / failed / ongoing / unstart
 ecc log [STEP] [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
 ```
 
-Without STEP it lists all log files (with a tail preview); with STEP it prints that step's log content (TEXT mode highlights ERROR/WARNING lines).
+Without STEP it lists all log files (the run-level flow log plus each step's log, with tail previews); with STEP it prints that step's log content (TEXT mode highlights ERROR/WARNING lines).
 
 ```console
 $ ecc log
 [logs]
-  synthesis  Synthesis_yosys/log/synthesis.log
+  run  log/gcd.2026-09-03_17-34-35
+    tail:
+      flow : /path/gcd/default/home/flow.json
+      name | tool | state | runtime
+      Synthesis | yosys | Success | 0:0:15
+  synthesis  Synthesis_yosys/log/Synthesis.log
     tail:
       synthesizing gcd...
   inspect: ecc log synthesis
 
 $ ecc log synthesis
 [log] step=synthesis
-  source: Synthesis_yosys/log/synthesis.log
+  source: Synthesis_yosys/log/Synthesis.log
         synthesizing gcd...
   inspect: ecc log synthesis
 
@@ -426,7 +443,7 @@ rc=1
 ecc config [STEP] --resolved [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
 ```
 
-`--resolved` is required. Without STEP it prints the project-level configuration (`ecc.toml` keys + resolved absolute paths); with STEP it lists the configuration files actually in effect for that step under `runs/<id>/config/`.
+`--resolved` is required. Without STEP it prints the project-level configuration (`ecc.toml` keys + resolved absolute paths); with STEP it lists the configuration files actually in effect for that step under the workspace's `config/`.
 
 ```console
 $ ecc config --resolved --plain    # project level (excerpt)
@@ -439,10 +456,10 @@ $ ecc config floorplan --resolved  # step level
 [config]
   step:
     db_ecc.json (config)
-      path: runs/default/config/db_ecc.json
+      path: default/config/db_ecc.json
   inspect: ecc config floorplan --resolved --json
     floorplan_ecc.json (config)
-      path: runs/default/config/floorplan_ecc.json
+      path: default/config/floorplan_ecc.json
   inspect: ecc config floorplan --resolved --json
 ```
 
@@ -574,11 +591,11 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
   check: ecc check
 ```
 
-The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the in-repo default. Keep `pdk.root` on `ecc pdk set-root`; `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef` use `ecc param set KEY VALUE`, which writes `[pdk.overrides]`.
+The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (ecos-studio workspace layout). Keep `pdk.root` on `ecc pdk set-root`; `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef` use `ecc param set KEY VALUE`, which writes `[pdk.overrides]`.
 
 ## 11. signoff — signoff package and design report
 
-Use after the flow completes (all steps of the harden preset in Success). All three subcommands accept `--project DIR`/`--run-id ID` (locating `runs/<id>`) or `--workspace PATH` (pointing at a workspace directly), plus `--json/--jsonl/--plain`.
+Use after the flow completes (all steps of the harden preset in Success). All three subcommands accept `--project DIR`/`--run-id ID` (locating the workspace) or `--workspace PATH` (pointing at a workspace directly), plus `--json/--jsonl/--plain`.
 
 ### 11.1 inspect — readiness review (changes nothing)
 
@@ -589,10 +606,10 @@ ecc signoff inspect [--project DIR | --workspace PATH]
 Prints the signoff package readiness status (`ready / attention / blocked`), the seven groups (initial/config/harden/final_design/sta/spef/reports), and the risk list. **blocked still exits with rc=0** (inspection is advisory; the gate lives in export):
 
 ```console
-$ ecc signoff inspect --workspace runs/default
+$ ecc signoff inspect --workspace default
 [signoff]
   status    : blocked
-  workspace : runs/default
+  workspace : default
   export    : ecc signoff export -o <path>
   report    : ecc signoff report
 
@@ -643,7 +660,7 @@ $ ecc signoff report --project gcd
 [status]
   signoff: report
   status: written
-  path: /path/gcd/runs/default/signoff/gcd_design_summary.txt
+  path: /path/gcd/default/signoff/gcd_design_summary.txt
   design: gcd
   bytes: 3789
   view: cat /path/.../gcd_design_summary.txt
@@ -703,11 +720,11 @@ ecc report checklist --project gcd
 ecc rpc serve --stdio [--persistent-db]
 ```
 
-A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes the `db.ensure` / `db.release` methods. Handshake and call examples (full method list and parameters in [workspace-cli.md](workspace-cli.md)):
+A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. Handshake and call examples (full method list and parameters in [workspace-cli.md](workspace-cli.md)):
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}
-← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0-alpha.11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot"]},"id":"hello-1"}
+← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0a11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
 
 → {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
 ← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
@@ -722,7 +739,7 @@ ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
 Renders a GDS layout snapshot via KLayout (default 1920×1920; KLayout must be available):
 
 ```bash
-ecc layout-image --gds runs/default/GDS_ecc/result.gds --image layout.png --width 2560 --height 1600
+ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.png --width 2560 --height 1600
 ```
 
 ## 15. Typical end-to-end workflow
@@ -738,14 +755,14 @@ ecc status                         # step status; on failure:
 ecc log place                      # the failing step's log (TEXT mode highlights error lines)
 ecc param set place.target_density 0.55   # tune a parameter and re-run
 ecc run --overwrite --preset harden
-ecc run --workspace runs/default --only place --force   # or re-run a single step in place
+ecc run --workspace default --only place --force   # or re-run a single step in place
 ecc config place --resolved        # config files actually in effect for that step
 ecc signoff inspect                # signoff readiness (blocked still exits 0)
 ecc signoff export -o gcd_signoff.tar.gz    # export the signoff package once ready
 ecc signoff report                 # text design summary (signoff/<design>_design_summary.txt)
 ecc report qor                     # QoR overall score report (signoff/<design>_qor_report.txt)
 ecc report checklist               # signoff checklist report (signoff/checklist_report.txt)
-ecc layout-image --gds runs/default/Harden_ecc/result.gds --image gcd.png
+ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
 ```
 
 Comparing multiple runs:
