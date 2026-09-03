@@ -1,5 +1,6 @@
 import json
 import os
+from types import SimpleNamespace
 
 from chipcompiler.engine.qor_report import (
     QorMetricRecord,
@@ -296,6 +297,14 @@ class TestBuildQorReport:
         text = generate_qor_report(_make_workspace(tmp_path, with_metrics=False))
         assert "NOT RATED" in text
         assert "no project-level QoR metrics available" in text
+
+    def test_uses_loaded_workspace_parameters(self, tmp_path):
+        workspace = _make_workspace(tmp_path)
+        workspace.name = ""
+        workspace.design = SimpleNamespace(name="")
+        workspace.parameters = SimpleNamespace(data={"design": "from_params"})
+
+        assert build_qor_report(workspace).design == "from_params"
 
     def test_text_report_layout(self, tmp_path):
         text = generate_qor_report(_make_workspace(tmp_path))

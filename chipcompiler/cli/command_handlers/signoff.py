@@ -113,10 +113,15 @@ def _design_name(workspace) -> str:
     name = getattr(design, "name", "") if design is not None else ""
     if name:
         return name
+
+    parameters = getattr(getattr(workspace, "parameters", None), "data", None)
+    if isinstance(parameters, dict):
+        return parameters.get("design") or parameters.get("Design") or "design"
+
     from chipcompiler.utility.json import json_read
 
     parameters = json_read(os.path.join(workspace.directory or "", "home", "parameters.json"))
-    return parameters.get("Design") or "design"
+    return parameters.get("design") or parameters.get("Design") or "design"
 
 
 def report(command_input, ctx: CommandContext) -> CommandResult:

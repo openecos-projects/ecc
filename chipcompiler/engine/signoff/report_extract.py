@@ -425,7 +425,11 @@ def collect_workspace_report(workspace) -> DesignReportData:
     workspace_root = Path(workspace.directory or "")
     flow_data = workspace.flow.data if getattr(workspace, "flow", None) else {}
     flow = json_read(workspace_root / "home" / "flow.json") or flow_data
-    parameters = json_read(workspace_root / "home" / "parameters.json")
+    parameters = getattr(getattr(workspace, "parameters", None), "data", None)
+    if not isinstance(parameters, dict):
+        parameters = json_read(workspace_root / "home" / "parameters.json")
+    if not isinstance(parameters, dict):
+        parameters = {}
 
     step_metrics: dict[str, dict] = {}
     for dir_name in STEP_DIRS.values():
@@ -446,10 +450,15 @@ def collect_workspace_report(workspace) -> DesignReportData:
     from chipcompiler.engine.signoff.report import extract_design_report_data
 
     inputs = {
-        "design_name": getattr(workspace, "name", None) or (parameters or {}).get("Design"),
+        "design_name": (
+            getattr(getattr(workspace, "design", None), "name", "")
+            or getattr(workspace, "name", None)
+            or parameters.get("design")
+            or parameters.get("Design")
+        ),
         "workspace_name": getattr(workspace, "name", None),
         "workspace_path": str(workspace_root),
-        "pdk": (parameters or {}).get("PDK"),
+        "pdk": parameters.get("pdk") or parameters.get("PDK"),
         "parameters": parameters,
         "flow": flow,
         "step_metrics": step_metrics,

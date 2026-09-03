@@ -333,7 +333,7 @@ Each run gets an isolated workspace (`runs/<run-id>/`), one subdirectory per ste
 
 ```
 runs/default/
-├── home/               # flow.json (step states) + parameters.json + checklist.json
+├── home/               # flow.json (step states) + params.toml + checklist.json
 ├── origin/             # frozen inputs: gcd.v + the auto-generated gcd.sdc
 ├── config/             # configs actually in effect per step (view: ecc config <step> --resolved)
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
@@ -411,7 +411,7 @@ The package contains 356 files, grouped by handoff logic:
 ```
 gcd_signoff_package/
 ├── README.md / manifest.json / summary.json   # package readme & manifests
-├── initial/          # design inputs: gcd.v, gcd.sdc, parameters.json
+├── initial/          # design inputs: gcd.v, gcd.sdc, params.toml
 ├── config/           # all step configs (db/floorplan/cts/route/sta/... — 9 json files)
 ├── harden/           # Harden deliverables: gcd.gds / gcd.lef / gcd.lib / gcd.png
 ├── synthesis/        # intermediate handoffs such as the mapped netlist

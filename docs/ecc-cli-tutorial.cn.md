@@ -333,7 +333,7 @@ rc=0
 
 ```
 runs/default/
-├── home/               # flow.json（步骤状态）+ parameters.json + checklist.json
+├── home/               # flow.json（步骤状态）+ params.toml + checklist.json
 ├── origin/             # 冻结的输入：gcd.v + 自动生成的 gcd.sdc
 ├── config/             # 各步骤实际生效的配置（ecc config <step> --resolved 查看）
 ├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
@@ -411,7 +411,7 @@ rc=0
 ```
 gcd_signoff_package/
 ├── README.md / manifest.json / summary.json   # 包说明与清单
-├── initial/          # 设计输入：gcd.v、gcd.sdc、parameters.json
+├── initial/          # 设计输入：gcd.v、gcd.sdc、params.toml
 ├── config/           # 全部步骤配置（db/floorplan/cts/route/sta/... 共 9 个 json）
 ├── harden/           # Harden 交付物：gcd.gds / gcd.lef / gcd.lib / gcd.png
 ├── synthesis/        # 综合网表等中间交付

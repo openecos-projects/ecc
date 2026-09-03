@@ -190,6 +190,8 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "legalization",
         "Timing optimization",
         "route",
+        "filler",
+        "lvs",
         "drc",
     ]
     assert [step["tool"] for step in flow_data["steps"]] == [
@@ -197,6 +199,8 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "ecc",
         "dreamplace",
         "sizer",
+        "ecc",
+        "ecc",
         "ecc",
         "ecc",
     ]
@@ -270,9 +274,9 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "legalization",
         "Timing optimization",
         "route",
-        "drc",
-        "lvs",
         "filler",
+        "lvs",
+        "drc",
         "postRouteLec",
         "RCX",
         "sta",

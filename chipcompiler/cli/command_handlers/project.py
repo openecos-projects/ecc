@@ -324,13 +324,14 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     warning_records = layer_warnings + warning_records
 
     flow_json = os.path.join(run_dir, "home", "flow.json")
+    fresh_target = not os.path.exists(flow_json) or command_input.overwrite
     errors = effective_config.validate_effective(
         ctx,
         cfg,
         # An overwrite wipes and recreates the target, so it validates as a
         # fresh run (a derivable flow target is required) even when the
         # ledger still exists at preflight time.
-        fresh=not os.path.exists(flow_json) or command_input.overwrite,
+        fresh=fresh_target,
         flow_config=flow_config,
         cli_overrides=cli_overrides,
     )
@@ -362,9 +363,12 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    preflight = _preflight_environment(effective_preset, project)
-    if preflight is not None:
-        return preflight
+    # Manifest entries may define only a start/end range. They have no named
+    # preset to probe; EngineFlow uses the persisted range for that case.
+    if fresh_target and effective_preset:
+        preflight = _preflight_environment(effective_preset, project)
+        if preflight is not None:
+            return preflight
 
     return run_dispatch.dispatch_project_run(
         command_input,

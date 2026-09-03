@@ -14,7 +14,7 @@
 ```
 runs/<run-id>/
 ├── home/
-│   ├── parameters.json    # 参数中枢：用户参数 + PDK 派生值（见 §1）
+│   ├── params.toml        # 参数中枢：用户参数 + PDK 派生值（见 §1）
 │   └── flow.json          # 步骤状态
 ├── config/                # ← 本文档的主角：9 个 JSON + macro_locations.txt
 │   ├── db_ecc.json        # 数据库构建（读入 LEF/DEF/网表/LIB/SDC，每个 ecc 步骤共用）
@@ -40,7 +40,7 @@ runs/<run-id>/
 
 ```mermaid
 graph LR
-    A["ecc.toml [params]<br/>/ ecc run --set"] -->|"旧语义参数 + 每步骤直配 schema"| B["home/parameters.json<br/>(legacy 参数键 + Config Overrides)"]
+    A["ecc.toml [params]<br/>/ ecc run --set"] -->|"规范参数 + 每步骤直配 schema"| B["home/params.toml<br/>(params + config_overrides)"]
     C["PDK 描述<br/>(data/pdk.py)"] -->|"buffers / tap / endcap<br/>site / liberty corners"| B
     B -->|"参数→字段映射<br/>PARAMETER_CONFIG_FIELD_MAPPINGS"| D["config/*.json"]
     E["模板 tools/ecc/configs/*.json"] -->|复制缺省文件| D
@@ -54,7 +54,7 @@ graph LR
 | PDK | 工艺相关单元与库 | `buffer_type` ← PDK buffers 列表；STA liberty corners |
 | 步骤调度 | 输入/输出路径（链式传递） | `db_ecc.json` 的 `def_path` 每步指向上一步输出 |
 
-> ⚠️ **不要直接手改 `config/*.json`**：其中参数化字段在每次步骤运行前会按 `parameters.json` + PDK 重新刷新，手改会被覆盖。正确入口是 `ecc param set`、`ecc.toml [params.*]` 或一次性 `ecc run --set`。workspace 的输入、输出、临时和生成文件路径不会作为 CLI 参数暴露；PDK 内容路径使用 `pdk.*` 参数（见 §1.2）。
+> ⚠️ **不要直接手改 `config/*.json`**：其中参数化字段在每次步骤运行前会按 `params.toml` + PDK 重新刷新，手改会被覆盖。正确入口是 `ecc param set`、`ecc.toml [params.*]` 或一次性 `ecc run --set`。workspace 的输入、输出、临时和生成文件路径不会作为 CLI 参数暴露；PDK 内容路径使用 `pdk.*` 参数（见 §1.2）。
 
 ### 0.3 每个步骤用到哪些配置
 
@@ -91,7 +91,7 @@ graph LR
 | `cts.max_fanout` | int [1, 200] | 20 | cts `max_fanout` | 时钟树缓冲最大扇出（fixfanout 步骤移除后由 CTS 承接） |
 | `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | 全局布局目标密度 |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | 全局布局溢出收敛目标 |
-| `place.global_right_padding` | int [0, 100] | 0 | 仅记录于 parameters.json | 布局 site 右侧全局 padding（当前版本尚未接入工具配置字段） |
+| `place.global_right_padding` | int [0, 100] | 0 | 仅记录于 params.toml | 布局 site 右侧全局 padding（当前版本尚未接入工具配置字段） |
 | `place.cell_padding_x` | int [0, 10000]（dbu） | 300 | dreamplace `cell_padding_x` | 单元 X 方向 padding（绕线拥塞缓解） |
 | `place.routability_opt` | {0, 1} | 1 | dreamplace `routability_opt_flag` | 布局阶段开启绕线拥塞驱动优化 |
 | `route.bottom_layer` | MET1–MET5 | MET2 | route `RT.-bottom_routing_layer` + db `LayerSettings.routing_layer_1st` | 绕线最低层 |
@@ -126,9 +126,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 允许的 PDK 内容路径为 `pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef`；它们复用 PDK 的相对路径解析和文件存在校验。`pdk.root` 仍使用 `ecc pdk set-root`。workspace 内置路径（DB 的 DEF/网表/输出、DreamPlace 的输入/结果目录、步骤临时目录和 STA 多 corner liberty 结构）均不提供 CLI 参数。
 
-### 1.3 参数中枢 parameters.json
+### 1.3 参数中枢 params.toml
 
-`home/parameters.json` 同时保存用户参数、`Config Overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`Config Overrides` 是由 CLI 从审核 schema 生成的嵌套 JSON 补丁；每次 workspace 刷新都会在 PDK 和旧参数映射之后重新应用。用户参数键为 legacy 命名（`"Target density"`、`"Max fanout"`、`"Bottom layer"`……），与 §1.1 的映射关系见源码 `PARAMETER_CONFIG_FIELD_MAPPINGS`。
+`home/params.toml` 保存规范化的 workspace 参数、`config_overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`config_overrides` 是 CLI 从审核 schema 生成的嵌套 TOML 补丁；每次 workspace 刷新都会在 PDK 和语义参数映射之后重新应用。`home/parameters.json` 仅在迁移旧 workspace 时读取。
 
 ## 2. 公共配置：db_ecc.json
 
@@ -445,7 +445,7 @@ ecc param set cts.skew_bound 0.05         # 直配 CTS JSON 字段
 ecc run --set place.target_density=0.55  # 只对本次 run 生效
 ```
 
-修改层级建议：**统一走 `ecc param`；用 `--step` / `--all` 发现字段；不要直接改 `parameters.json` 或 `config/*.json`**（刷新会覆盖手改）。
+修改层级建议：**统一走 `ecc param`；用 `--step` / `--all` 发现字段；不要直接改 `params.toml` 或 `config/*.json`**（刷新会覆盖手改）。
 
 ---
 

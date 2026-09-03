@@ -95,7 +95,7 @@ uv run ecc --help
 - 项目定位：多数命令接受 `--project <dir>`（缺省为当前目录，需含 `ecc.toml`）与 `--run-id <id>`（缺省用 `ecc.toml` 里 `[flow] run`，再缺省为 `default`，对应 `runs/<id>/`；也接受绝对路径或含 `/` 的相对路径）。
 - 输出模式（inspect 类命令通用）：`--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）、`--plain`（`key=value`，便于脚本解析）、默认人类可读 TEXT。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
-- 步骤名（step token）在展示层统一为小写：`synthesis / floorplan / placement / cts / legalization / routing / drc / lvs / filler / postroutelec / rcx / sta / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`）。
+- 步骤名（step token）在展示层统一为小写：`synthesis / floorplan / placement / cts / legalization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`）。
 
 命令总览：
 
@@ -301,7 +301,7 @@ ecc run [OPTIONS]
   --json / --jsonl / --plain
 ```
 
-流程：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检 preset 必需工具 → 在 `runs/<run-id>/` 创建 workspace → 按 preset（`rtl2gds | rcx | harden | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。`harden` 是完整 13 步链（Synthesis→…→DRC→LVS→filler→postRouteLec（Yosys 等价性检查）→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
+新建或 `--overwrite` 的 run 会按以下流程执行：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检 preset 必需工具 → 在 `runs/<run-id>/` 创建 workspace → 按 preset（`rtl2gds | rcx | harden | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。已有 workspace 直接按持久化 flow 续跑，不做 preset 预检。`harden` 是完整 13 步链（Synthesis→…→route→filler→LVS→DRC→postRouteLec（Yosys 等价性检查）→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
 
 ```console
 $ ecc run                # 该 run 已存在时拒绝覆盖

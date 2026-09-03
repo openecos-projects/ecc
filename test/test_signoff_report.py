@@ -326,6 +326,16 @@ class TestCollectWorkspaceReport:
         assert data.physical.die_area_um2 is None
         assert data.verification.drc_status == "unrun"
 
+    def test_collect_uses_loaded_workspace_parameters(self, tmp_path):
+        workspace = _make_workspace(tmp_path, full=False)
+        workspace.name = ""
+        workspace.parameters = SimpleNamespace(data={"design": "from_params", "pdk": "from_pdk"})
+
+        data = collect_workspace_report(workspace)
+
+        assert data.design.design_name == "from_params"
+        assert data.design.pdk == "from_pdk"
+
     def test_generate_text_report_end_to_end(self, tmp_path):
         report = generate_text_report(_make_workspace(tmp_path, full=True))
         assert report.splitlines()[0].startswith("===")

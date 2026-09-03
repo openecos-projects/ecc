@@ -585,7 +585,7 @@ field is either represented by one reviewed per-step schema, covered by an
 existing legacy mapping, or listed as a protected workspace path. Workspace
 input, output, temporary, generated-artifact, and STA multi-corner liberty
 paths are not valid `ecc param` keys. Direct overrides are persisted as a
-structured `Config Overrides` patch in `home/parameters.json` and replayed
+structured `config_overrides` patch in `home/params.toml` and replayed
 after each workspace configuration refresh.
 
 Overrides are validated at `ecc check` time — unknown keys, type mismatches, and

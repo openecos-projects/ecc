@@ -376,6 +376,14 @@ def _flow_states(workspace) -> dict[str, str]:
     return states
 
 
+def _workspace_parameters(workspace, workspace_root: Path) -> dict:
+    parameters = getattr(getattr(workspace, "parameters", None), "data", None)
+    if isinstance(parameters, dict):
+        return parameters
+    legacy = json_read(workspace_root / "home" / "parameters.json")
+    return legacy if isinstance(legacy, dict) else {}
+
+
 _STEP_ENUM_TO_LABEL = {
     StepEnum.SYNTHESIS.value: "Synth",
     StepEnum.FLOORPLAN.value: "Floor",
@@ -439,8 +447,15 @@ def build_qor_report(workspace) -> QorScoreReport:
         else ("complete" if flow_steps_by_label else "not_started")
     )
 
-    parameters = json_read(workspace_root / "home" / "parameters.json")
-    design = getattr(workspace, "name", "") or (parameters or {}).get("Design") or ""
+    parameters = _workspace_parameters(workspace, workspace_root)
+    workspace_design = getattr(workspace, "design", None)
+    design = (
+        getattr(workspace_design, "name", "")
+        or getattr(workspace, "name", "")
+        or parameters.get("design")
+        or parameters.get("Design")
+        or ""
+    )
 
     dimension_scores = [
         QorDimensionScore(
