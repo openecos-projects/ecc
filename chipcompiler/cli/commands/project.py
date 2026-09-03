@@ -74,6 +74,10 @@ def run_cmd(
         str | None,
         typer.Option("--from", help="Re-execute a step and its persisted suffix"),
     ] = None,
+    to_step: Annotated[
+        str | None,
+        typer.Option("--to", help="Stop an --from run after this step"),
+    ] = None,
     only: Annotated[
         str | None,
         typer.Option("--only", help="Run exactly one persisted step"),
@@ -101,6 +105,7 @@ def run_cmd(
         workspace=workspace,
         resume=resume,
         from_step=from_step,
+        to_step=to_step,
         only=only,
         force=force,
     )

@@ -38,6 +38,7 @@ class RunInput:
     from_step: str | None = None
     only: str | None = None
     force: bool = False
+    to_step: str | None = None
 
 
 @dataclass(frozen=True)

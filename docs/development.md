@@ -396,15 +396,18 @@ workspace=/path/to/reported/workspace
 # Re-execute CTS and every following step in the persisted flow.
 .venv/bin/ecc run --workspace "$workspace" --from CTS
 
+# Re-execute a continuous range and stop after CTS.
+.venv/bin/ecc run --workspace "$workspace" --from Floorplan --to CTS
+
 # Run exactly one step; add --force if it already succeeded.
 .venv/bin/ecc run --workspace "$workspace" --only place
 .venv/bin/ecc run --workspace "$workspace" --only place --force
 ```
 
-`--resume`, `--from`, and `--only` are mutually exclusive, and `--force` is
-only valid with `--only`. Workspace mode cannot be combined with `--project`,
-`--run-id`, `--overwrite`, or `--set`. Step names must match `home/flow.json`
-exactly.
+`--resume`, `--from`, and `--only` are mutually exclusive, `--to` is only valid
+with `--from`, and `--force` is only valid with `--only`. Workspace mode cannot
+be combined with `--project`, `--run-id`, `--overwrite`, or `--set`. Step names
+must match `home/flow.json` exactly.
 
 Workspace mode mutates the workspace in place: each executed step's `output/`
 is replaced, and steps downstream of a re-executed step are marked `Unstart`

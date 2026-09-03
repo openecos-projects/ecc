@@ -250,6 +250,7 @@ class TestWorkspaceRun:
             executable=None,
             only=None,
             from_step=None,
+            to_step=None,
             resume=False,
             result=StepRunResult(ok=True, executed=("place",)),
         )
@@ -265,10 +266,17 @@ class TestWorkspaceRun:
                 seen.create_calls += 1
                 seen.executable = executable_steps
 
-        def selected_step_names(flow, *, from_step=None, only=None, force=False):
+        def selected_step_names(
+            flow, *, from_step=None, to_step=None, only=None, force=False
+        ):
             if seen.selected_error is not None:
                 raise seen.selected_error
-            seen.selected = {"from_step": from_step, "only": only, "force": force}
+            seen.selected = {
+                "from_step": from_step,
+                "to_step": to_step,
+                "only": only,
+                "force": force,
+            }
             if only is not None:
                 return [] if not force else [only]
             if from_step is not None:
@@ -279,8 +287,9 @@ class TestWorkspaceRun:
             seen.only = (name, force)
             return seen.result
 
-        def run_from(flow, name):
+        def run_from(flow, name, to_step=None):
             seen.from_step = name
+            seen.to_step = to_step
             return seen.result
 
         def run_resume(flow):
@@ -311,7 +320,12 @@ class TestWorkspaceRun:
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 0
         assert workspace_mocks.load_path == workspace
-        assert workspace_mocks.selected == {"from_step": None, "only": "place", "force": True}
+        assert workspace_mocks.selected == {
+            "from_step": None,
+            "to_step": None,
+            "only": "place",
+            "force": True,
+        }
         assert workspace_mocks.executable == {"place"}
         assert workspace_mocks.only == ("place", True)
         assert record["run"] == "workspace"
@@ -324,7 +338,12 @@ class TestWorkspaceRun:
         rc = cli_main.run(["run", "--workspace", str(tmp_path / "workspace"), "--plain"])
 
         assert rc == 0
-        assert workspace_mocks.selected == {"from_step": None, "only": None, "force": False}
+        assert workspace_mocks.selected == {
+            "from_step": None,
+            "to_step": None,
+            "only": None,
+            "force": False,
+        }
         assert workspace_mocks.executable == {"place", "CTS"}
         assert workspace_mocks.resume is True
 
@@ -333,7 +352,35 @@ class TestWorkspaceRun:
 
         assert rc == 0
         assert workspace_mocks.from_step == "CTS"
+        assert workspace_mocks.to_step is None
         assert workspace_mocks.executable == {"CTS"}
+
+    def test_from_to_step_wiring(self, workspace_mocks, tmp_path):
+        rc = cli_main.run(
+            [
+                "run",
+                "--workspace",
+                str(tmp_path / "workspace"),
+                "--from",
+                "place",
+                "--to",
+                "CTS",
+            ]
+        )
+
+        assert rc == 0
+        assert workspace_mocks.from_step == "place"
+        assert workspace_mocks.to_step == "CTS"
+        assert workspace_mocks.executable == {"place", "CTS"}
+
+    def test_to_requires_from(self, workspace_mocks, tmp_path, capsys):
+        rc = cli_main.run(
+            ["run", "--workspace", str(tmp_path / "workspace"), "--to", "CTS", "--json"]
+        )
+
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert rc == 1
+        assert record["error"] == "to_requires_from"
 
     def test_noop_selection_skips_workspace_rebuild(self, workspace_mocks, tmp_path, capsys):
         workspace_mocks.result = StepRunResult(ok=True, executed=())

@@ -30,7 +30,12 @@ class StepRunResult(NamedTuple):
 
 
 def selected_step_names(
-    flow: "EngineFlow", *, from_step: str = None, only: str = None, force: bool = False
+    flow: "EngineFlow",
+    *,
+    from_step: str = None,
+    to_step: str = None,
+    only: str = None,
+    force: bool = False,
 ) -> list[str]:
     """Resolve a run selector to the persisted step names it would execute."""
     steps = flow.workspace.flow.data.get("steps", [])
@@ -40,7 +45,11 @@ def selected_step_names(
             return []
         return [steps[index]["name"]]
     if from_step is not None:
-        return [step["name"] for step in steps[_require_step_index(flow, from_step) :]]
+        first_index = _require_step_index(flow, from_step)
+        last_index = len(steps) - 1 if to_step is None else _require_step_index(flow, to_step)
+        if last_index < first_index:
+            raise ValueError(f"step '{to_step}' precedes step '{from_step}'")
+        return [step["name"] for step in steps[first_index : last_index + 1]]
     for index, step in enumerate(steps):
         if step.get("state") != StateEnum.Success.value:
             return [step["name"] for step in steps[index:]]
@@ -55,15 +64,18 @@ def run_resume(flow: "EngineFlow") -> StepRunResult:
     return StepRunResult(ok=True, executed=())
 
 
-def run_from(flow: "EngineFlow", name: str) -> StepRunResult:
-    """Re-execute the named step and every following step in persisted order."""
+def run_from(flow: "EngineFlow", name: str, to_step: str = None) -> StepRunResult:
+    """Re-execute the named step through an optional end step."""
     steps = flow.workspace.flow.data.get("steps", [])
     index = _require_step_index(flow, name)
-    _require_steps_available(flow, len(steps) - 1)
-    suffix = flow.workspace_steps[index:]
-    output_dirs = _validated_output_dirs(flow.workspace, suffix)
+    last_index = len(steps) - 1 if to_step is None else _require_step_index(flow, to_step)
+    if last_index < index:
+        raise ValueError(f"step '{to_step}' precedes step '{name}'")
+    _require_steps_available(flow, last_index)
+    selected = flow.workspace_steps[index : last_index + 1]
+    output_dirs = _validated_output_dirs(flow.workspace, selected)
     _invalidate_suffix(flow, index)
-    return _run_selected(flow, list(zip(suffix, output_dirs, strict=True)))
+    return _run_selected(flow, list(zip(selected, output_dirs, strict=True)))
 
 
 def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunResult:

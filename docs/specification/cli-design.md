@@ -257,6 +257,7 @@ re-executed in place through `ecc run --workspace`:
 ecc run --workspace /path/to/workspace
 ecc run --workspace /path/to/workspace --resume
 ecc run --workspace /path/to/workspace --from CTS
+ecc run --workspace /path/to/workspace --from Floorplan --to CTS
 ecc run --workspace /path/to/workspace --only place
 ecc run --workspace /path/to/workspace --only place --force
 ```
@@ -264,16 +265,17 @@ ecc run --workspace /path/to/workspace --only place --force
 Step names and order come from the workspace's persisted `home/flow.json`.
 Omitting a selector has resume semantics: execution starts at the first step
 whose state is not `Success` and reuses the successful prefix. `--from <step>`
-re-executes the named step and its persisted suffix. `--only <step>` runs
-exactly that step; an already successful step is a no-op unless `--force` is
-given. Re-executing a step marks downstream steps `Unstart`, replaces the
-executed step's `output/`, and regenerates `workspace/config/*.json` from the
-persisted parameters.
+re-executes the named step and its persisted suffix. Adding `--to <step>` stops
+after that step; omitting `--to` retains the full-suffix behavior.
+`--only <step>` runs exactly that step; an already successful step is a no-op
+unless `--force` is given. Re-executing a step marks downstream steps
+`Unstart`, replaces the executed step's `output/`, and regenerates
+`workspace/config/*.json` from the persisted parameters.
 
-`--resume`, `--from`, and `--only` are mutually exclusive, `--force` requires
-`--only`, and workspace mode cannot be combined with `--project`, `--run-id`,
-`--overwrite`, or `--set`. Arbitrary step sequences, step ranges (`--to`,
-`--after`), and run-time parameter overlays remain planned work.
+`--resume`, `--from`, and `--only` are mutually exclusive, `--to` requires
+`--from`, `--force` requires `--only`, and workspace mode cannot be combined
+with `--project`, `--run-id`, `--overwrite`, or `--set`. Arbitrary step
+sequences, `--after`, and run-time parameter overlays remain planned work.
 
 Project mode creates a fresh `runs/<run_id>` workspace and supports:
 

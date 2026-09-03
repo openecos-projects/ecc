@@ -96,6 +96,17 @@ class TestSelectedStepNames:
 
         assert rerun.selected_step_names(flow, from_step="place") == ["place", "CTS"]
 
+    def test_from_to_selects_range(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Success"), ("CTS", "Success")],
+        )
+
+        assert rerun.selected_step_names(flow, from_step="Synthesis", to_step="place") == [
+            "Synthesis",
+            "place",
+        ]
+
     def test_only_success_step_requires_force(self, tmp_path):
         flow = _make_run_flow(tmp_path, [("place", "Success")])
 
@@ -129,6 +140,26 @@ class TestRunFrom:
         assert keep.read_text(encoding="utf-8") == "old"
         assert not stale_place.exists()
         assert not stale_cts.exists()
+
+    def test_reexecutes_through_end_step_and_invalidates_suffix(self, monkeypatch, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Success"), ("CTS", "Success")],
+        )
+        stale_synthesis = _write_output(flow, "Synthesis")
+        stale_place = _write_output(flow, "place")
+        keep_cts = _write_output(flow, "CTS")
+        calls = _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_from(flow, "Synthesis", to_step="place")
+
+        assert result.ok
+        assert result.executed == ("Synthesis", "place")
+        assert calls == [("Synthesis", True), ("place", True)]
+        assert _flow_states(flow) == ["Success", "Success", "Unstart"]
+        assert not stale_synthesis.exists()
+        assert not stale_place.exists()
+        assert keep_cts.read_text(encoding="utf-8") == "old"
 
     def test_failure_stops_suffix_and_keeps_downstream_output(self, monkeypatch, tmp_path):
         flow = _make_run_flow(

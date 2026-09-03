@@ -195,6 +195,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         (
             command_input.resume,
             command_input.from_step is not None,
+            command_input.to_step is not None,
             command_input.only is not None,
             command_input.force,
         )
@@ -488,6 +489,8 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
         return error("selector_conflict")
     if command_input.force and command_input.only is None:
         return error("force_requires_only")
+    if command_input.to_step is not None and command_input.from_step is None:
+        return error("to_requires_from")
 
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import EngineFlow, rerun
@@ -511,6 +514,7 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
         selected = rerun.selected_step_names(
             engine_flow,
             from_step=command_input.from_step,
+            to_step=command_input.to_step,
             only=command_input.only,
             force=command_input.force,
         )
@@ -526,7 +530,9 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
             if command_input.only is not None:
                 result = rerun.run_only(engine_flow, command_input.only, force=command_input.force)
             elif command_input.from_step is not None:
-                result = rerun.run_from(engine_flow, command_input.from_step)
+                result = rerun.run_from(
+                    engine_flow, command_input.from_step, to_step=command_input.to_step
+                )
             else:
                 result = rerun.run_resume(engine_flow)
     except ValueError as exc:
