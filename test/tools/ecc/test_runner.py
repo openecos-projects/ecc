@@ -232,7 +232,7 @@ def test_create_db_engine_uses_def_input_for_lvs_even_when_db_exists(tmp_path, m
     assert not any(call[0] == "read_lvs_verilog" for call in module.calls)
 
 
-def test_create_db_engine_reads_replaced_step_input_without_db(tmp_path, monkeypatch):
+def test_create_db_engine_reads_replaced_step_input_despite_db(tmp_path, monkeypatch):
     step_def = tmp_path / "step" / "old.def"
     staging_def = tmp_path / "data" / "to" / "sizer.def.gz"
     staging_verilog = tmp_path / "data" / "to" / "sizer.v.gz"
@@ -253,7 +253,7 @@ def test_create_db_engine_reads_replaced_step_input_without_db(tmp_path, monkeyp
         input=StepInput(
             def_=staging_def,
             verilog=staging_verilog,
-            db=None,
+            db=tmp_path / "input_db",
         ),
         data=EccData(dir=tmp_path / "timing_optimization_sizer" / "data"),
         feature=EccFeature(dir=tmp_path / "timing_optimization_sizer" / "feature"),
@@ -267,6 +267,7 @@ def test_create_db_engine_reads_replaced_step_input_without_db(tmp_path, monkeyp
     module = ecc_runner.create_db_engine(workspace, step)
 
     assert module is FakeEccModule.instances[-1]
+    assert not any(call[0] == "is_db_data_exists" for call in module.calls)
     assert not any(call[0] == "load_data" for call in module.calls)
     assert ("read_def", str(staging_def)) in module.calls
     assert not any(call[0] == "read_def" and call[1] == str(step_def) for call in module.calls)

@@ -120,9 +120,14 @@ Commands:
 
 ```bash
 ecc version          # text
-ecc version --json   # JSON (schema_version/ecc/dreamplace/ecc_tools)
+ecc version --json   # JSON (schema_version/ecc/dreamplace/ecc_tools/tools)
 ecc --version        # single ecc version line
 ```
+
+The first four lines are bundle metadata (Python package versions). The
+`yosys` / `sizer` / `klayout` lines are resolved from the environment the
+same way a flow run resolves them, and show the binary's own version, or
+`not installed` / `unknown` when it is absent or cannot report one.
 
 ```console
 $ ecc version
@@ -130,9 +135,12 @@ ecc 0.1.0-alpha.11
 dreamplace 0.1.0a7
 ecc_tools 0.1.0a11
 runtime ECC CLI
+yosys 0.68+132
+sizer not installed
+klayout 0.30.2
 
 $ ecc version --json
-{"schema_version": 1, "runtime": "ECC CLI", "ecc": "0.1.0-alpha.11", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a11"}
+{"schema_version": 1, "runtime": "ECC CLI", "ecc": "0.1.0-alpha.11", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a11", "tools": {"yosys": "0.68+132", "sizer": "not installed", "klayout": "0.30.2"}}
 ```
 
 ## 3. init — create a project

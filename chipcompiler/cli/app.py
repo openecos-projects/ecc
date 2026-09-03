@@ -13,6 +13,7 @@ from chipcompiler.cli.commands.report import report_app
 from chipcompiler.cli.commands.rpc import rpc_app
 from chipcompiler.cli.commands.signoff import signoff_app
 from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
+from chipcompiler.cli.inspection.tool_versions import tool_versions
 
 app = typer.Typer(
     add_completion=False,
@@ -43,16 +44,17 @@ def root_callback(
     pass
 
 
-@app.command("version", help="Show ECC runtime and component versions")
+@app.command("version", help="Show ECC runtime, component, and installed tool versions")
 def version_cmd(
     *,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     payload = version_payload()
+    tools = tool_versions()
     if json_output:
-        click.echo(json.dumps(payload))
+        click.echo(json.dumps({**payload, "tools": tools}))
     else:
-        click.echo(version_text(payload))
+        click.echo(version_text(payload, tools))
 
 
 @app.command("layout-image", help="Render a GDS file into a layout image")

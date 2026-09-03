@@ -122,9 +122,13 @@ Commands:
 
 ```bash
 ecc version          # 文本
-ecc version --json   # JSON（含 schema_version/ecc/dreamplace/ecc_tools）
+ecc version --json   # JSON（含 schema_version/ecc/dreamplace/ecc_tools/tools）
 ecc --version        # 仅一行 ecc 版本
 ```
+
+前四行是捆绑组件元数据（Python 包版本）。`yosys` / `sizer` / `klayout`
+三行按流程运行时相同的方式从当前环境解析，显示工具二进制自身的版本；
+工具缺失时显示 `not installed`，无法查询版本时显示 `unknown`。
 
 ```console
 $ ecc version
@@ -132,9 +136,12 @@ ecc 0.1.0-alpha.11
 dreamplace 0.1.0a7
 ecc_tools 0.1.0a11
 runtime ECC CLI
+yosys 0.68+132
+sizer not installed
+klayout 0.30.2
 
 $ ecc version --json
-{"schema_version": 1, "runtime": "ECC CLI", "ecc": "0.1.0-alpha.11", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a11"}
+{"schema_version": 1, "runtime": "ECC CLI", "ecc": "0.1.0-alpha.11", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a11", "tools": {"yosys": "0.68+132", "sizer": "not installed", "klayout": "0.30.2"}}
 ```
 
 ## 3. init — 创建项目

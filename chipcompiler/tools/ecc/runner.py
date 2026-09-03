@@ -290,18 +290,9 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
 
     if not is_eda_exist() or not is_enable_setup():
         return None
-    if step.name == StepEnum.LVS.value or not step.input.db:
-        return load_design()
-
-    ecc_module = None
-    try:
-        ecc_module = load_data()
-    except Exception as e:
-        workspace.logger.warning("Failed to load ECC data; falling back to design input: %s", e)
-        ecc_module = None
-    if ecc_module is None:
-        ecc_module = load_design()
-    return ecc_module
+    # Loading serialized ECC data is deliberately disabled. Always rebuild the
+    # database from the current design inputs.
+    return load_design()
 
 
 def get_eda_instance(
@@ -436,7 +427,7 @@ def save_data(
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
     ecc_module.gds_save(output_path=step.output.gds or "")
-    ecc_module.save_data(path=step.output.db or "")
+    # ecc_module.save_data(path=step.output.db or "")
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest

@@ -36,12 +36,14 @@ def root_version_line() -> str:
     return f"ecc {ecc_version()}"
 
 
-def version_text(payload: dict[str, int | str]) -> str:
+def version_text(payload: dict[str, int | str], tools: dict[str, str]) -> str:
+    tool_lines = tuple(f"{name} {version}" for name, version in tools.items())
     return "\n".join(
         (
             f"ecc {payload['ecc']}",
             f"dreamplace {payload['dreamplace']}",
             f"ecc_tools {payload['ecc_tools']}",
             f"runtime {payload['runtime']}",
+            *tool_lines,
         )
     )

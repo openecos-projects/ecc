@@ -5,20 +5,22 @@
 # 功能：
 #   1. 下载并安装 ecc CLI（GitHub Releases 预编译包，Linux x86_64）
 #   2. 配置 PATH（生成 ~/.ecc-env.sh 并写入 shell rc，幂等可重复运行）
-#   3. 环境自检：ecc 组件 / Yosys(+slang 前端) / ics55 PDK 完整性
+#   3. 环境自检：ecc 组件 / Yosys(+slang 前端) / Sizer / ics55 PDK 完整性
 #   4. 补齐缺失依赖：
 #      - PDK：clone icsprout55-pdk 并 `make unzip` 下载 liberty/GDS
-#      - Yosys：下载 OSS CAD Suite 最新发行版（内置 slang 前端）
+#      - Yosys：下载 OSS CAD Suite 最新发行版（内置 slang 前端；LEC 等价性检查亦复用该 yosys）
+#      - Sizer（可选）：下载 ecc-sizer 预编译 Release，用于 timing 优化步骤
 #
 # 用法：
 #   bash ecc-cli-setup.sh                 # 一键安装 + 自检 + 补齐
 #   bash ecc-cli-setup.sh --check-only    # 只做环境体检，不安装任何东西
 #   bash ecc-cli-setup.sh --force         # 强制重新下载安装 ecc CLI
-#   bash ecc-cli-setup.sh --skip-pdk --skip-tools   # 只装 ecc CLI 本体
+#   bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体
 #
 # 可通过环境变量覆盖的配置（见下方"配置区"）：
 #   ECC_VERSION / ECC_RELEASE_BASE / ECC_ASSET_NAME / ECC_CLI_URL
 #   ECC_INSTALL_DIR / ECC_PDK_DIR / ECC_OSS_CAD_DIR / OSS_CAD_URL
+#   ECC_SIZER_DIR / ECC_SIZER_URL
 #   GH_PROXY（GitHub 下载代理前缀，如 https://gh-proxy.org/）
 #
 # ics55 PDK 仓库地址固定为：
@@ -39,6 +41,9 @@ ECC_OSS_CAD_DIR="${ECC_OSS_CAD_DIR:-$HOME/.local/oss-cad-suite}"        # 含 bi
 OSS_CAD_URL="${OSS_CAD_URL:-}"                 # OSS CAD Suite 完整直链覆盖
 OSS_ARCH_PATTERN="${OSS_ARCH_PATTERN:-linux-x64}"
 
+ECC_SIZER_DIR="${ECC_SIZER_DIR:-$HOME/.local/ecc-sizer}"                 # sizer 根目录（含 bin/Sizer 与 src/sizer_os.tcl）
+ECC_SIZER_URL="${ECC_SIZER_URL:-}"              # ecc-sizer 预编译包完整直链覆盖
+
 GH_PROXY="${GH_PROXY:-}"                       # 例：https://gh-proxy.org/（留空不用代理）
 ECC_ENV_FILE="${ECC_ENV_FILE:-$HOME/.ecc-env.sh}"
 # -------------------------------------------------------------------------------------
@@ -46,6 +51,7 @@ ECC_ENV_FILE="${ECC_ENV_FILE:-$HOME/.ecc-env.sh}"
 FORCE=0
 SKIP_PDK=0
 SKIP_TOOLS=0
+SKIP_SIZER=0
 CHECK_ONLY=0
 EDIT_SHELL_RC=1
 
@@ -57,7 +63,7 @@ warn() { printf '    %s\n' "${C_Y}[!!]${C_0}  $*"; }
 fail() { printf '    %s\n' "${C_R}[FAIL]${C_0} $*"; }
 die()  { fail "$*"; exit 1; }
 
-usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; }
 
 # ----------------------------- 参数解析 -----------------------------
 while [[ $# -gt 0 ]]; do
@@ -65,6 +71,7 @@ while [[ $# -gt 0 ]]; do
     --force)          FORCE=1 ;;
     --skip-pdk)       SKIP_PDK=1 ;;
     --skip-tools)     SKIP_TOOLS=1 ;;
+    --skip-sizer)     SKIP_SIZER=1 ;;
     --check-only)     CHECK_ONLY=1 ;;
     --no-shell-rc)    EDIT_SHELL_RC=0 ;;
     -h|--help)        usage; exit 0 ;;
@@ -123,6 +130,20 @@ resolve_oss_cad_url() {
   echo "$url"
 }
 
+# 从 GitHub API 解析 ecc-sizer 最新 Release 的 linux-x64 预编译包直链
+# （资产名带版本号，如 ecc-sizer-0.1.0-linux-x64.tar.gz，故需经 API 匹配；
+#   官方尚未打 tag 发布时返回失败，调用方降级为提示源码构建）
+resolve_sizer_url() {
+  if [[ -n "$ECC_SIZER_URL" ]]; then
+    echo "$ECC_SIZER_URL"; return 0
+  fi
+  local api="https://api.github.com/repos/openecos-projects/ecc-sizer/releases/latest" url
+  url=$(fetch_stdout "$api" 2>/dev/null \
+        | grep -oE "https://[^\"]*/download/[^\"]*linux-x64[^\"]*\.tar\.gz" | head -1) || true
+  [[ -n "$url" ]] || return 1
+  echo "$url"
+}
+
 # 选出 ecc 实际会用的 yosys：优先 CHIPCOMPILER_OSS_CAD_DIR/ECC_OSS_CAD_DIR，其次 PATH
 pick_yosys() {
   local d="${CHIPCOMPILER_OSS_CAD_DIR:-$ECC_OSS_CAD_DIR}"
@@ -138,6 +159,36 @@ slang_ok() {
         "$ybin" -Q -T -p "help read_slang" 2>&1) || return 1
   [[ "$out" != *"No such command"* ]]
 }
+
+# 与 chipcompiler/tools/ecc_sizer/utility.py 的解析规则保持一致：
+#   Sizer 二进制取 PATH（或脚本安装的 $ECC_SIZER_DIR/bin/Sizer），
+#   运行时根目录 = 含 src/sizer_os.tcl 的目录，自二进制各级父目录向上查找
+#   （含 share/ecc-sizer、share/sizer），CHIPCOMPILER_ECC_SIZER_ROOT 可直接指定。
+sizer_binary() {
+  local d="${CHIPCOMPILER_ECC_SIZER_ROOT:-$ECC_SIZER_DIR}"
+  if [[ -x "$d/bin/Sizer" ]]; then echo "$d/bin/Sizer"; return 0; fi
+  command -v Sizer >/dev/null 2>&1 && command -v Sizer
+}
+
+find_sizer_root() {
+  local candidates=() bin p
+  [[ -n "${CHIPCOMPILER_ECC_SIZER_ROOT:-}" ]] && candidates+=("${CHIPCOMPILER_ECC_SIZER_ROOT%/}")
+  bin=$(sizer_binary) || true
+  if [[ -n "$bin" ]]; then
+    p=$(cd "$(dirname "$bin")" && pwd -P)
+    while [[ "$p" != "/" ]]; do
+      candidates+=("$p" "$p/share/ecc-sizer" "$p/share/sizer")
+      p=$(dirname "$p")
+    done
+  fi
+  (( ${#candidates[@]} )) || return 1
+  for p in "${candidates[@]}"; do
+    [[ -f "$p/src/sizer_os.tcl" ]] && { echo "$p"; return 0; }
+  done
+  return 1
+}
+
+sizer_ready() { sizer_binary >/dev/null 2>&1 && find_sizer_root >/dev/null 2>&1; }
 
 # 与 chipcompiler/data/pdk.py 中 ics55 的必需文件清单保持一致
 pdk_ready() {
@@ -191,7 +242,7 @@ step_install_ecc() {
     url="$alt"
     fetch "$url" "$archive" || die "下载失败: $url"
   fi
-  (( FORCE )) && rm -rf "$ECC_INSTALL_DIR"
+  rm -rf "$ECC_INSTALL_DIR"   # 先清空旧目录再解压，避免残缺/旧版安装与新包文件混杂
   mkdir -p "$ECC_INSTALL_DIR"
   tar -xzf "$archive" -C "$ECC_INSTALL_DIR"
   rm -rf "$tmpdir"
@@ -202,15 +253,19 @@ step_install_ecc() {
 # ----------------------------- 2. PATH / 环境变量 -----------------------------
 step_setup_env() {
   msg "环境变量与 PATH（写入 $ECC_ENV_FILE）"
-  local bin_dir=""
+  local bin_dir="" sizer_bin=""
   [[ -x "$ECC_OSS_CAD_DIR/bin/yosys" ]] && bin_dir="$ECC_OSS_CAD_DIR/bin"
+  [[ -x "$ECC_SIZER_DIR/bin/Sizer" ]] && sizer_bin="$ECC_SIZER_DIR/bin"
 
   {
     echo "# ecc CLI environment — generated by ecc-cli-setup.sh"
-    echo "export PATH=\"$ECC_INSTALL_DIR${bin_dir:+:$bin_dir}:\$PATH\""
+    echo "export PATH=\"$ECC_INSTALL_DIR${bin_dir:+:$bin_dir}${sizer_bin:+:$sizer_bin}:\$PATH\""
     echo "export CHIPCOMPILER_ICS55_PDK_ROOT=\"$ECC_PDK_DIR\""
     if [[ -n "$bin_dir" ]]; then
       echo "export CHIPCOMPILER_OSS_CAD_DIR=\"$ECC_OSS_CAD_DIR\""
+    fi
+    if [[ -n "$sizer_bin" ]]; then
+      echo "export CHIPCOMPILER_ECC_SIZER_ROOT=\"$ECC_SIZER_DIR\""
     fi
   } > "$ECC_ENV_FILE"
   ok "已写入 $ECC_ENV_FILE"
@@ -223,14 +278,21 @@ step_setup_env() {
   fi
 
   if (( EDIT_SHELL_RC )); then
-    local rc="$HOME/.bashrc"
-    [[ "${SHELL:-}" == */zsh ]] && rc="$HOME/.zshrc"
-    if [[ -f "$rc" ]] && ! grep -qF "$ECC_ENV_FILE" "$rc"; then
-      printf '\n# Added by ecc-cli-setup.sh\n[ -f %q ] && . %q\n' "$ECC_ENV_FILE" "$ECC_ENV_FILE" >> "$rc"
-      ok "已向 $rc 追加加载 $ECC_ENV_FILE（幂等，不会重复添加）"
-    else
-      ok "$rc 已配置或不存在，跳过（可用 --no-shell-rc 禁用本行为）"
+    local rcs=("$HOME/.bashrc") rc
+    [[ "${SHELL:-}" == */zsh ]] && rcs=("$HOME/.zshrc")
+    # bash 登录 shell（SSH / tmux 新窗口）读 .profile 而非 .bashrc；.profile 常不链 .bashrc，
+    # 需同样追加加载行（仅当没有优先级更高的 .bash_profile / .bash_login 时 .profile 才会被读）
+    if [[ "${SHELL:-}" != */zsh ]] && [[ ! -f "$HOME/.bash_profile" && ! -f "$HOME/.bash_login" ]]; then
+      rcs+=("$HOME/.profile")
     fi
+    for rc in "${rcs[@]}"; do
+      if [[ -f "$rc" ]] && ! grep -qF "$ECC_ENV_FILE" "$rc"; then
+        printf '\n# Added by ecc-cli-setup.sh\n[ -f %q ] && . %q\n' "$ECC_ENV_FILE" "$ECC_ENV_FILE" >> "$rc"
+        ok "已向 $rc 追加加载 $ECC_ENV_FILE（幂等，不会重复添加）"
+      else
+        ok "$rc 已配置或不存在，跳过（可用 --no-shell-rc 禁用本行为）"
+      fi
+    done
   fi
   ok "当前 shell 立即生效：source $ECC_ENV_FILE"
 }
@@ -297,7 +359,43 @@ step_tools() {
   slang_ok "$ybin" && ok "slang 前端可用" || die "OSS CAD Suite 的 yosys 仍无 slang 前端，请反馈给 ECC 维护者"
 }
 
-# ----------------------------- 5. 汇总自检 -----------------------------
+# ----------------------------- 5. Sizer（可选：timing 优化步骤；LEC 复用 yosys 无需安装） -----------------------------
+step_sizer() {
+  msg "Sizer（可选组件，仅 timing 优化步骤需要）"
+  if sizer_ready; then
+    ok "已就绪：$(sizer_binary)（root: $(find_sizer_root)）"
+    return 0
+  fi
+  local url tmpdir top
+  if ! url=$(resolve_sizer_url); then
+    warn "ecc-sizer 尚无预编译 Release（或 GitHub API 不可达），跳过自动安装（不影响 rtl2gds 主流程）"
+    warn "需要时可源码构建（依赖 OpenROAD 子模块栈，耗时较长），完成后重跑本脚本即可自动识别："
+    cat <<EOF
+      git clone --recursive https://github.com/openecos-projects/ecc-sizer.git
+      cd ecc-sizer
+      cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      cmake --build build --target Sizer -j "\$(nproc)"     # 产物在 build/src/Sizer
+      export PATH="\$PWD/build/src:\$PATH"                  # 或 export CHIPCOMPILER_ECC_SIZER_ROOT="\$PWD"
+EOF
+    return 0
+  fi
+  msg "下载 $url"
+  tmpdir=$(mktemp -d)
+  fetch "$url" "$tmpdir/ecc-sizer.tar.gz" || { rm -rf "$tmpdir"; warn "下载失败: $url（可选组件，跳过）"; return 0; }
+  msg "解压并安装到 $ECC_SIZER_DIR"
+  tar -xzf "$tmpdir/ecc-sizer.tar.gz" -C "$tmpdir"
+  top=$(find "$tmpdir" -mindepth 1 -maxdepth 1 -type d | head -1)
+  [[ -n "$top" ]] || { rm -rf "$tmpdir"; warn "压缩包布局异常（未找到顶层目录），跳过"; return 0; }
+  mkdir -p "$(dirname "$ECC_SIZER_DIR")"
+  rm -rf "$ECC_SIZER_DIR"
+  mv "$top" "$ECC_SIZER_DIR"
+  rm -rf "$tmpdir"
+  [[ -x "$ECC_SIZER_DIR/bin/Sizer" && -f "$ECC_SIZER_DIR/src/sizer_os.tcl" ]] \
+    || { warn "包内缺 bin/Sizer 或 src/sizer_os.tcl，跳过（资产布局可能变化）"; return 0; }
+  ok "安装完成：$ECC_SIZER_DIR/bin/Sizer（$("$ECC_SIZER_DIR/bin/Sizer" --version 2>/dev/null | head -1 || echo unknown)）"
+}
+
+# ----------------------------- 6. 汇总自检 -----------------------------
 step_verify() {
   msg "汇总自检"
   local pass=1
@@ -321,8 +419,16 @@ step_verify() {
     else
       fail "yosys     : $ybin 无 slang 前端"; pass=0
     fi
+    ok "yosys_lec : 复用同一 yosys（read_verilog/equiv_*，无需单独安装）"
   else
     fail "yosys     : 未找到"; pass=0
+  fi
+
+  # sizer 是可选组件（同 ecc doctor：仅 timing 优化步骤需要），未就绪只警示不判失败
+  if sizer_ready; then
+    ok "sizer     : $(sizer_binary)（可选，timing 优化步骤）"
+  else
+    warn "sizer     : 未就绪（可选组件，不影响 rtl2gds；发布预编译包后重跑本脚本可自动补齐）"
   fi
 
   # 组件级体检交给 CLI 内置的 doctor（官方旧版无此命令则跳过）
@@ -359,6 +465,7 @@ main() {
   fi
   step_install_ecc
   (( SKIP_TOOLS )) || step_tools
+  (( SKIP_SIZER )) || step_sizer
   (( SKIP_PDK ))    || step_pdk
   step_setup_env
   step_verify
