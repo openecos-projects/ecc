@@ -429,7 +429,7 @@ $ ecc status --jsonl
 ...
 ```
 
-The run-level status aggregates all steps: `success / failed / ongoing / unstart / missing / corrupt`.
+The run-level status aggregates all steps: `success / warning / failed / ongoing / unstart / missing / corrupt`; an unproven synthesis-level LEC is reported as `warning`, while its evidence is retained and the physical flow continues.
 
 ## 7. log — view logs
 

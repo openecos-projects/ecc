@@ -66,7 +66,7 @@ graph LR
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON |
-| lec | — | 无（Tcl） | 综合级 Yosys LEC；比较综合网表与 golden 网表 |
+| lec | — | 无（Tcl） | 综合级 Yosys LEC；比较综合网表与 golden 网表；未证明时记录为 Warning，不阻断后续物理流程 |
 | floorplan | ✓ | `floorplan_ecc.json` | |
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | cts | ✓ | `cts_ecc.json` | |

@@ -115,6 +115,58 @@ def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_pa
     assert sleep_calls == []
 
 
+def test_failed_synthesis_lec_is_persisted_as_warning(monkeypatch, tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    workspace.flow.path = tmp_path / "flow.json"
+    workspace.flow.data = {
+        "steps": [{"name": StepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"}]
+    }
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    workspace_step = EccStep(name=StepEnum.LEC.value, directory=tmp_path, tool="yosys_lec")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    monkeypatch.setattr(
+        flow_module,
+        "execute_tool_step",
+        lambda *args, **kwargs: SimpleNamespace(
+            error=None, elapsed_seconds=0.1, peak_memory_mb=1.0, runtime="0:00:00"
+        ),
+    )
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: False)
+
+    assert engine_flow.run_step(workspace_step) is StateEnum.Warning
+    assert workspace.flow.data["steps"][0]["state"] == StateEnum.Warning.value
+
+
+def test_run_steps_continues_after_synthesis_lec_warning(monkeypatch, tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"},
+            {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": "Unstart"},
+        ]
+    }
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [
+        EccStep(name=StepEnum.LEC.value, directory=tmp_path, tool="yosys_lec"),
+        EccStep(name=StepEnum.FLOORPLAN.value, directory=tmp_path, tool="ecc"),
+    ]
+    calls = []
+
+    def fake_run_step(step, **_kwargs):
+        calls.append(step.name)
+        return StateEnum.Warning if step.name == StepEnum.LEC.value else StateEnum.Success
+
+    monkeypatch.setattr(engine_flow, "run_step", fake_run_step)
+    monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
+    monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
+
+    assert engine_flow.run_steps() is True
+    assert calls == [StepEnum.LEC.value, StepEnum.FLOORPLAN.value]
+
+
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
     verilog = tmp_path / "gcd.v"
     verilog.write_text("module gcd; endmodule\n")

@@ -10,7 +10,14 @@ from .parameter import (
     save_parameter,
 )
 from .pdk import PDK, get_pdk
-from .step import StateEnum, StepEnum, StepMetrics, load_metrics, save_metrics
+from .step import (
+    StateEnum,
+    StepEnum,
+    StepMetrics,
+    is_non_blocking_step,
+    load_metrics,
+    save_metrics,
+)
 from .workspace import (
     OriginDesign,
     Workspace,
@@ -89,6 +96,7 @@ __all__ = [
     "YosysReport",
     "YosysLecReport",
     "EccReport",
+    "is_non_blocking_step",
     "LogPaths",
     "ScriptPaths",
     "EccScript",

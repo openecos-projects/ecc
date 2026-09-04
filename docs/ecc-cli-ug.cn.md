@@ -427,7 +427,7 @@ $ ecc status --jsonl
 ...
 ```
 
-run 级状态取全部步骤的聚合：`success / failed / ongoing / unstart / missing / corrupt`。
+run 级状态取全部步骤的聚合：`success / warning / failed / ongoing / unstart / missing / corrupt`；综合级 LEC 未证明时为 `warning`，但仍保留 LEC 证据并继续物理流程。
 
 ## 7. log — 查看日志
 

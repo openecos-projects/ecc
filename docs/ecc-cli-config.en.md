@@ -66,7 +66,7 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | Step | db_ecc | Step-specific config | Notes |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl` (Tcl) | Yosys is driven by Tcl variables, not JSON |
-| lec | — | none (Tcl) | Synthesis-level Yosys LEC; compares the mapped and golden synthesis netlists |
+| lec | — | none (Tcl) | Synthesis-level Yosys LEC; compares the mapped and golden synthesis netlists; an unproven result is recorded as Warning and does not block the physical flow |
 | floorplan | ✓ | `floorplan_ecc.json` | |
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | cts | ✓ | `cts_ecc.json` | |

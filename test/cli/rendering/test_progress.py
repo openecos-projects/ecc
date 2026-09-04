@@ -631,6 +631,7 @@ def _make_ws(directory="/tmp", log_section_fn=None):
                 (),
                 {
                     "info": lambda *a, **k: None,
+                    "warning": lambda *a, **k: None,
                     "log_section": section_fn,
                     "log_separator": lambda *a, **k: None,
                 },
@@ -671,6 +672,24 @@ def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=No
 
 
 class TestRunFlowWithProgress:
+    def test_synthesis_lec_warning_continues_to_next_step(self):
+        def fake_run_step(self, s):
+            return StateEnum.Warning if s.name == "lec" else StateEnum.Success
+
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("lec", "yosys_lec"), _make_step("Floorplan", "ecc")],
+            fake_run_step,
+        )
+
+        buf = FakeTTYStderr(isatty_value=True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        assert result is True
+        plain = _strip_ansi("".join(buf.written))
+        assert "! lec (yosys_lec) warning" in plain
+        assert "✓ floorplan (ecc)" in plain
+
     def test_success_summary_format(self, tmp_path):
         flow = _make_flow(
             _make_ws(str(tmp_path)),

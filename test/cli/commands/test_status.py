@@ -68,6 +68,25 @@ class TestStatus:
         assert "synthesis" in out
         assert "placement" in out
 
+    def test_status_reports_warning_when_flow_has_non_blocking_warning(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(
+            run_dir,
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                {"name": "lec", "tool": "yosys_lec", "state": "Warning"},
+                {"name": "Floorplan", "tool": "ecc", "state": "Success"},
+            ],
+        )
+
+        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"][0]["status"] == "warning"
+
     def test_status_missing_run(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
 
