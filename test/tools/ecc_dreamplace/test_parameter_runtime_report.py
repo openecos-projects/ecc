@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import sys
 from types import SimpleNamespace
 
-from chipcompiler.tools.ecc_dreamplace.module import (
+from chipcompiler.tools.ecc_dreamplace.parameter_runtime_report import (
+    _capture_native_runtime,
     _observe_native_model,
     _write_parameter_runtime_report,
 )
@@ -328,6 +330,50 @@ def test_native_probe_observes_density_updates_and_routability_calls():
         "density_weight_updates": [{"sequence": 0, "before": 0.004, "after": 0.006}],
         "routability_branch_round_count": 1,
     }
+
+
+def test_native_probe_skips_candidate_without_runtime_hooks(tmp_path, monkeypatch):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.target_density", "value": 0.85}]}),
+        encoding="utf-8",
+    )
+
+    class PlaceObj:
+        pass
+
+    original_init = PlaceObj.__init__
+    monkeypatch.setitem(sys.modules, "dreamplace.PlaceObj", SimpleNamespace(PlaceObj=PlaceObj))
+
+    with _capture_native_runtime(SimpleNamespace(directory=tmp_path)) as probe:
+        assert probe == {}
+        assert PlaceObj.__init__ is original_init
+
+
+def test_native_probe_restores_runtime_hooks(tmp_path, monkeypatch):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text(
+        json.dumps({"patch": [{"knob_id": "place.density_weight", "value": 0.001}]}),
+        encoding="utf-8",
+    )
+
+    class PlaceObj:
+        pass
+
+    original_init = PlaceObj.__init__
+    monkeypatch.setitem(sys.modules, "dreamplace.PlaceObj", SimpleNamespace(PlaceObj=PlaceObj))
+
+    with _capture_native_runtime(SimpleNamespace(directory=tmp_path)) as probe:
+        assert PlaceObj.__init__ is not original_init
+        assert probe == {
+            "density_weight_initializations": [],
+            "density_weight_updates": [],
+            "routability_branch_round_count": 0,
+        }
+
+    assert PlaceObj.__init__ is original_init
 
 
 def test_runtime_report_does_not_claim_use_before_engine_success(tmp_path):
