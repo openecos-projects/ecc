@@ -8,18 +8,25 @@ from chipcompiler.engine.reconcile import (
     resolve_target_section,
 )
 
-
-def _preset_entries(preset):
-    from chipcompiler.rtl2gds.builder import get_flow_builders
-
-    return [
-        (step.value if hasattr(step, "value") else str(step), str(tool))
-        for step, tool, _state in get_flow_builders()[preset]()
-    ]
-
-
-RTL2GDS_STEPS = _preset_entries("rtl2gds")
-RCX_SUFFIX = _preset_entries("rcx")[len(RTL2GDS_STEPS) :]
+RTL2GDS_STEPS = [
+    ("Synthesis", "yosys"),
+    ("lec", "yosys_lec"),
+    ("Floorplan", "ecc"),
+    ("place", "dreamplace"),
+    ("CTS", "ecc"),
+    ("legalization", "dreamplace"),
+    ("Timing optimization", "sizer"),
+    ("route", "ecc"),
+    ("filler", "ecc"),
+    ("lvs", "ecc"),
+    ("drc", "ecc"),
+    ("postRouteLec", "yosys_lec"),
+    ("RCX", "ecc"),
+    ("sta", "ecc"),
+    ("Harden", "ecc"),
+]
+LEGACY_RTL2GDS_STEPS = RTL2GDS_STEPS[:-3]
+FULL_FLOW_SUFFIX = RTL2GDS_STEPS[-3:]
 
 
 def _write_workspace(tmp_path, steps, states=None, flow_section=None, params=None):
@@ -69,10 +76,10 @@ class TestCompareFlows:
         assert compare_flows(RTL2GDS_STEPS, RTL2GDS_STEPS) == "equal"
 
     def test_proper_prefix(self):
-        assert compare_flows(RTL2GDS_STEPS, RTL2GDS_STEPS + RCX_SUFFIX) == "proper_prefix"
+        assert compare_flows(LEGACY_RTL2GDS_STEPS, RTL2GDS_STEPS) == "proper_prefix"
 
     def test_target_prefix(self):
-        assert compare_flows(RTL2GDS_STEPS + RCX_SUFFIX, RTL2GDS_STEPS) == "target_prefix"
+        assert compare_flows(RTL2GDS_STEPS, LEGACY_RTL2GDS_STEPS) == "target_prefix"
 
     def test_divergent(self):
         diverged = [("Synthesis", "ecc")] + RTL2GDS_STEPS[1:]
@@ -83,29 +90,29 @@ class TestCompareFlows:
 class TestReconcile:
     def test_extension_appends_suffix_and_adopts_target(self, tmp_path):
         workspace_dir = _write_workspace(
-            tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
+            tmp_path, LEGACY_RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
         )
 
-        result = reconcile_workspace(workspace_dir, {"preset": "rcx"})
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "extended"
-        assert result.appended == ("RCX", "sta")
+        assert result.appended == ("RCX", "sta", "Harden")
         steps = _flow_steps(workspace_dir)
-        assert [(s["name"], s["tool"]) for s in steps] == RTL2GDS_STEPS + RCX_SUFFIX
-        assert all(s["state"] == "Success" for s in steps[: len(RTL2GDS_STEPS)])
-        assert [s["state"] for s in steps[-len(RCX_SUFFIX) :]] == ["Unstart"] * len(RCX_SUFFIX)
-        assert _flow_section(workspace_dir) == {"preset": "rcx"}
+        assert [(s["name"], s["tool"]) for s in steps] == RTL2GDS_STEPS
+        assert all(s["state"] == "Success" for s in steps[: len(LEGACY_RTL2GDS_STEPS)])
+        assert [s["state"] for s in steps[-3:]] == ["Unstart", "Unstart", "Unstart"]
+        assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
 
     def test_extension_resumes_from_first_non_success(self, tmp_path):
-        states = ["Success"] * (len(RTL2GDS_STEPS) - 1) + ["Ongoing"]
+        states = ["Success"] * (len(LEGACY_RTL2GDS_STEPS) - 1) + ["Ongoing"]
         workspace_dir = _write_workspace(
-            tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
+            tmp_path, LEGACY_RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
         )
 
-        result = reconcile_workspace(workspace_dir, {"preset": "rcx"})
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "extended"
-        assert result.appended == ("RCX", "sta")
+        assert result.appended == ("RCX", "sta", "Harden")
 
     def test_equal_all_success_is_no_op(self, tmp_path):
         workspace_dir = _write_workspace(
@@ -129,66 +136,67 @@ class TestReconcile:
     def test_target_prefix_keeps_extra_steps(self, tmp_path):
         workspace_dir = _write_workspace(
             tmp_path,
-            RTL2GDS_STEPS + RCX_SUFFIX,
-            flow_section={"preset": "rcx"},
+            RTL2GDS_STEPS,
+            flow_section={"preset": "rtl2gds"},
         )
 
-        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+        result = reconcile_workspace(workspace_dir, {"start": "Synthesis", "end": "postRouteLec"})
 
         assert result.outcome == "no_op"
-        assert len(_flow_steps(workspace_dir)) == len(RTL2GDS_STEPS) + len(RCX_SUFFIX)
+        assert len(_flow_steps(workspace_dir)) == len(RTL2GDS_STEPS)
         # A stale wider target is adopted to the effective one; the extra
         # persisted steps stay in the ledger untouched.
-        assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
+        assert _flow_section(workspace_dir) == {"start": "Synthesis", "end": "postRouteLec"}
 
     def test_target_prefix_noop_even_with_unfinished_extras(self, tmp_path):
         # Extra steps beyond the target are never the run's business, and
         # the workspace's [flow] is never widened to cover them.
-        states = ["Success"] * len(RTL2GDS_STEPS) + ["Unstart"] * len(RCX_SUFFIX)
+        states = ["Success"] * len(LEGACY_RTL2GDS_STEPS) + ["Unstart"] * len(FULL_FLOW_SUFFIX)
         workspace_dir = _write_workspace(
             tmp_path,
-            RTL2GDS_STEPS + RCX_SUFFIX,
-            states=states,
-            flow_section={"preset": "rcx"},
-        )
-
-        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
-
-        assert result.outcome == "no_op"
-        assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
-        # A follow-up reconcile with the same target no-ops too — the extras
-        # never become executable.
-        assert reconcile_workspace(workspace_dir, {"preset": "rtl2gds"}).outcome == "no_op"
-
-    def test_crash_window_repair_then_resume(self, tmp_path):
-        # flow.json appended (suffix Unstart) but [flow] never adopted.
-        states = ["Success"] * len(RTL2GDS_STEPS) + ["Unstart"] * len(RCX_SUFFIX)
-        workspace_dir = _write_workspace(
-            tmp_path,
-            RTL2GDS_STEPS + RCX_SUFFIX,
+            RTL2GDS_STEPS,
             states=states,
             flow_section={"preset": "rtl2gds"},
         )
 
-        result = reconcile_workspace(workspace_dir, {"preset": "rcx"})
+        target = {"start": "Synthesis", "end": "postRouteLec"}
+        result = reconcile_workspace(workspace_dir, target)
+
+        assert result.outcome == "no_op"
+        assert _flow_section(workspace_dir) == target
+        # A follow-up reconcile with the same target no-ops too — the extras
+        # never become executable.
+        assert reconcile_workspace(workspace_dir, target).outcome == "no_op"
+
+    def test_crash_window_repair_then_resume(self, tmp_path):
+        # flow.json appended (suffix Unstart) but [flow] never adopted.
+        states = ["Success"] * len(LEGACY_RTL2GDS_STEPS) + ["Unstart"] * len(FULL_FLOW_SUFFIX)
+        workspace_dir = _write_workspace(
+            tmp_path,
+            RTL2GDS_STEPS,
+            states=states,
+            flow_section={"start": "Synthesis", "end": "postRouteLec"},
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "resume"
-        assert _flow_section(workspace_dir) == {"preset": "rcx"}
+        assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
 
     def test_stale_flow_section_repaired(self, tmp_path):
         # Crash window: flow.json already extended, [flow] never adopted.
         workspace_dir = _write_workspace(
             tmp_path,
-            RTL2GDS_STEPS + RCX_SUFFIX,
-            flow_section={"preset": "rtl2gds"},
+            RTL2GDS_STEPS,
+            flow_section={"start": "Synthesis", "end": "postRouteLec"},
         )
 
-        result = reconcile_workspace(workspace_dir, {"preset": "rcx"})
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "repaired"
-        assert _flow_section(workspace_dir) == {"preset": "rcx"}
+        assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
         # A follow-up reconcile with the same target is a clean no-op.
-        assert reconcile_workspace(workspace_dir, {"preset": "rcx"}).outcome == "no_op"
+        assert reconcile_workspace(workspace_dir, {"preset": "rtl2gds"}).outcome == "no_op"
 
     def test_divergent_flows_fail_with_zero_mutation(self, tmp_path):
         workspace_dir = _write_workspace(
@@ -212,7 +220,7 @@ class TestReconcile:
         # Absent [flow] derives from the persisted ledger at load; the
         # derived range matches the persisted flow, so the run no-ops.
         assert result.outcome == "no_op"
-        assert _flow_section(workspace_dir) == {"start": "Synthesis", "end": "postRouteLec"}
+        assert _flow_section(workspace_dir) == {"start": "Synthesis", "end": "Harden"}
 
     def test_unknown_persisted_steps_are_a_mismatch_not_a_crash(self, tmp_path):
         workspace_dir = _write_workspace(
@@ -243,7 +251,9 @@ class TestReconcile:
 
 class TestTargetPrecedence:
     def test_project_flow_wins_over_workspace_flow(self):
-        assert resolve_target_section({"preset": "rcx"}, {"preset": "rtl2gds"}) == {"preset": "rcx"}
+        assert resolve_target_section(
+            {"start": "Synthesis", "end": "sta"}, {"preset": "rtl2gds"}
+        ) == {"start": "Synthesis", "end": "sta"}
         assert resolve_target_section({}, {"preset": "rtl2gds"}) == {"preset": "rtl2gds"}
         assert resolve_target_section(None, {"start": "place", "end": "route"}) == {
             "start": "place",
@@ -252,12 +262,14 @@ class TestTargetPrecedence:
 
 
 def test_adoption_failure_is_an_error_not_a_tolerated_stale_target(tmp_path, monkeypatch):
-    workspace_dir = _write_workspace(tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"})
+    workspace_dir = _write_workspace(
+        tmp_path, LEGACY_RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
+    )
     monkeypatch.setattr(
         "chipcompiler.data.workspace_config.save_workspace_config", lambda *a, **k: False
     )
 
-    result = reconcile_workspace(workspace_dir, {"preset": "rcx"})
+    result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
     assert result.outcome == "mismatch"
     assert result.error is not None

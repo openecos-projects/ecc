@@ -90,7 +90,7 @@ def run_cmd(
         str | None,
         typer.Option(
             "--preset",
-            help="Flow preset for this run only, e.g. --preset harden (does not edit ecc.toml)",
+            help="Flow preset for this run only, e.g. --preset syn_sta (does not edit ecc.toml)",
         ),
     ] = None,
     json_output: JsonOption = False,

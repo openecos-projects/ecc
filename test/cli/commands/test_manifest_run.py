@@ -33,7 +33,7 @@ class TestVirginFirstRun:
         assert entry["workspace_id"] == "default"
         assert entry["workspace_path"] == run_dir
         assert entry["start_step"] == "Synth"
-        assert entry["end_step"] == "PostRouteLEC"
+        assert entry["end_step"] == "Harden"
         # The DummyFlow run succeeds, so the D4 write-back finalizes the
         # initial "running" status.
         assert entry["status"] == "success"
@@ -418,7 +418,7 @@ class TestHybridFullLayering:
             '[design]\nname = "gcd"\ntop = "gcd"\n'
             'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 100.0\n'
             '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
-            '\n[flow]\npreset = "rcx"\n'
+            '\n[flow]\npreset = "rtl2gds"\n'
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--json"])

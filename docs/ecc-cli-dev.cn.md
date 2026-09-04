@@ -225,14 +225,13 @@ config_param(
 
 ```bash
 cd ecc
-.venv/bin/python -m PyInstaller ecc.spec --clean --noconfirm   # 产物 dist/ecc/（onedir，~3.6G；首跑会触发 dreamplace 的 cmake 安装，属正常）
+bash docs/ecc-cli-local-build.sh   # 生成 dist/release/ecc-cli-linux-x86_64.tar.gz，并重建 dist/ecc/（onedir，~3.6G；首跑会触发 dreamplace 的 cmake 安装，属正常）
 
 # 安装到本机（ecc-cli-setup.sh 的默认安装位；~/.local/bin/ecc 软链与 ~/.ecc-env.sh 均无需改动）
 rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
 ecc --help            # 验证 doctor / signoff / report 已列出
 
-# 需要分发时按官方格式打 tar.gz
-tar -cf /tmp/ecc.tar -C dist/ecc . && gzip -n -9 -c /tmp/ecc.tar > dist/release/ecc-cli-linux-x86_64.tar.gz
+# 脚本按官方 tar.gz 格式打包，并对解压后的 bundle 做 smoke test。
 ```
 
 打出的 tar.gz 也可以直接复用安装脚本装到本机（会清空旧目录整包替换，并顺带维护 `~/.ecc-env.sh` 与 `~/.local/bin/ecc` 软链；`ECC_CLI_URL` 接受绝对路径或 `file://` 直链，失败不会回退下载官方包）：

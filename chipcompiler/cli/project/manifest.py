@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 MANIFEST_FILENAME = "project.json"
 
-# GUI display names for the canonical chain; presets are named prefixes.
+# GUI display names for the canonical rtl2gds chain.
 MANIFEST_FLOW_STEPS = (
     "Synth",
     "Floor",
@@ -49,9 +49,7 @@ MANIFEST_FLOW_STEPS = (
 
 PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
-    "rtl2gds": ("Synth", "PostRouteLEC"),
-    "rcx": ("Synth", "STA"),
-    "harden": ("Synth", "Harden"),
+    "rtl2gds": ("Synth", "Harden"),
     "synthesis_lec": ("Synth", "LEC"),
 }
 

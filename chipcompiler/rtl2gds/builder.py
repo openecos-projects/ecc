@@ -21,6 +21,10 @@ def build_rtl2gds_flow() -> list:
 
     steps.append((StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart))
 
+    steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
+
     return steps
 
 
@@ -28,23 +32,6 @@ def build_syn_sta_flow() -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-
-    return steps
-
-
-def build_harden_flow() -> list:
-    steps = build_rcx_flow()
-
-    steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
-
-    return steps
-
-
-def build_rcx_flow() -> list:
-    steps = build_rtl2gds_flow()
-
-    steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
 
     return steps
 

@@ -160,7 +160,7 @@ Script `scripts/autopatch-ecc-py.sh` collects `.so` dependencies, copies to `bin
 
 ### RTL2GDS Layer (chipcompiler/rtl2gds/)
 
-`build_rtl2gds_flow()` returns complete flow: SYNTHESIS → FLOORPLAN → PLACEMENT → CTS → LEGALIZATION → TIMING_OPT → ROUTING → DRC → FILLER.
+`build_rtl2gds_flow()` returns the complete flow: SYNTHESIS → FLOORPLAN → PLACEMENT → CTS → LEGALIZATION → TIMING_OPT → ROUTING → FILLER → LVS → DRC → POST_ROUTE_LEC → RCX → STA → HARDEN.
 
 Timing Opt (`TIMING_OPT`, tool `sizer`) sits **after legalization and before routing**. CTS dirties legality, so the post-CTS `legalization` sibling still runs first. Sizer then sizes cells and Timing Opt legalizes internally before publishing DEF/Verilog. Missing Sizer does not prevent building the rest of the flow; the Timing Opt step is marked Invalid and later steps still chain from its declared outputs.
 

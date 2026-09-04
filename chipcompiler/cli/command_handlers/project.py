@@ -56,7 +56,7 @@ name = "ics55"
 root = ""
 
 [flow]
-# preset: rtl2gds | rcx | harden | syn_sta
+# preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
 run = "default"
 """

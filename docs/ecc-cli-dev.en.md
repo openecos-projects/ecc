@@ -225,14 +225,13 @@ The command itself can be verified directly with `.venv/bin/ecc` or `uv run ecc`
 
 ```bash
 cd ecc
-.venv/bin/python -m PyInstaller ecc.spec --clean --noconfirm   # output: dist/ecc/ (onedir, ~3.6G; the first run triggers dreamplace's cmake install, which is normal)
+bash docs/ecc-cli-local-build.sh   # creates dist/release/ecc-cli-linux-x86_64.tar.gz; rebuilds dist/ecc/ (onedir, ~3.6G; the first run triggers dreamplace's cmake install, which is normal)
 
 # Install locally (the default install location of ecc-cli-setup.sh; the ~/.local/bin/ecc symlink and ~/.ecc-env.sh need no changes)
 rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
 ecc --help            # verify doctor / signoff / report are listed
 
-# To distribute, package the tar.gz in the official format
-tar -cf /tmp/ecc.tar -C dist/ecc . && gzip -n -9 -c /tmp/ecc.tar > dist/release/ecc-cli-linux-x86_64.tar.gz
+# The script uses the official tar.gz format and smoke-tests the extracted bundle.
 ```
 
 To roll back to the official release: `bash docs/ecc-cli-setup.sh --force` (see [ecc-cli-setup.sh](ecc-cli-setup.sh)).

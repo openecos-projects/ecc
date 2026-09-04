@@ -490,7 +490,7 @@ name = "ics55"
 root = "/path/to/ics55"
 
 [flow]
-preset = "rtl2gds" # rtl2gds | rcx | harden | syn_sta
+preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
 run = "default"
 
 [params.place]
@@ -517,10 +517,9 @@ whitespace-padded, NUL-containing, or non-string — are rejected, and
 inspection commands fail with a config error when `[flow] run` is present but
 invalid. Valid
 flow presets are discovered from the `build_*_flow` defs in
-`chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `rcx`, `harden`, and
-`syn_sta`). The preset selects the flow builder: `rcx` appends the RCX and STA
-steps to the rtl2gds flow, `harden` additionally appends the Harden step, and
-`syn_sta` runs synthesis only, with a best-effort netlist-level STA report
+`chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `syn_sta`, and
+`synthesis_lec`). The `rtl2gds` preset includes every physical-design step
+through RCX, STA, and Harden; `syn_sta` runs synthesis only, with a best-effort netlist-level STA report
 (an STA failure does not fail the step). Switching
 presets on an existing run requires `ecc run --overwrite` to rebuild the
 workspace.
