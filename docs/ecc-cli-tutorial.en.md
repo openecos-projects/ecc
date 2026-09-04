@@ -401,6 +401,13 @@ gcd_Harden.png    211 KB   # layout snapshot
 
 Once every step reports Success, finish with the `signoff` / `report` command groups.
 
+The commands below run from the `gcd/` project directory, so they need no selector. To operate on an existing workspace from another directory, pass `--workspace PATH` to either `inspect` or `export`; it is mutually exclusive with `--project` and `--run-id`:
+
+```bash
+ecc signoff inspect --workspace /path/to/gcd/default
+ecc signoff export --workspace /path/to/gcd/default -o /path/to/gcd_signoff_package.tar.gz
+```
+
 ### 5.1 Check signoff readiness: ecc signoff inspect
 
 First refresh completed-step analysis and inspect deliverable completeness (even `blocked` returns rc=0 — the real gate is at export):
