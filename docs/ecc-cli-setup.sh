@@ -15,7 +15,7 @@
 #   bash ecc-cli-setup.sh                 # 一键安装 + 自检 + 补齐
 #   bash ecc-cli-setup.sh --check-only    # 只做环境体检，不安装任何东西
 #   bash ecc-cli-setup.sh --force         # 强制重新下载安装 ecc CLI
-#   bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体
+#   bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体；依赖未就绪时自检会失败
 #
 # 安装本地构建包（开发实测；先在 ecc 仓库执行 PyInstaller 并打包出
 # dist/release/ecc-cli-linux-x86_64.tar.gz，见 docs/ecc-cli-dev.cn.md 第 6 节）：
@@ -380,7 +380,7 @@ step_tools() {
   slang_ok "$ybin" && ok "slang 前端可用" || die "OSS CAD Suite 的 yosys 仍无 slang 前端，请反馈给 ECC 维护者"
 }
 
-# ----------------------------- 5. Sizer（可选：timing 优化步骤；LEC 复用 yosys 无需安装） -----------------------------
+# ----------------------------- 5. Sizer（Timing optimization 必需；LEC 复用 yosys 无需安装） -----------------------------
 step_sizer() {
   msg "Sizer（rtl2gds/rcx/harden 的 Timing optimization 步骤需要）"
   if sizer_ready; then
@@ -402,7 +402,7 @@ EOF
   fi
   msg "下载 $url"
   tmpdir=$(mktemp -d)
-  fetch "$url" "$tmpdir/ecc-sizer.tar.gz" || { rm -rf "$tmpdir"; warn "下载失败: $url（可选组件，跳过）"; return 0; }
+  fetch "$url" "$tmpdir/ecc-sizer.tar.gz" || { rm -rf "$tmpdir"; warn "下载失败: $url（稍后自检会失败）"; return 0; }
   msg "解压并安装到 $ECC_SIZER_DIR"
   tar -xzf "$tmpdir/ecc-sizer.tar.gz" -C "$tmpdir"
   top=$(find "$tmpdir" -mindepth 1 -maxdepth 1 -type d | head -1)
@@ -419,7 +419,7 @@ EOF
 # ----------------------------- 6. 汇总自检 -----------------------------
 step_verify() {
   msg "汇总自检"
-  local pass=1 sizer_missing=0
+  local pass=1
 
   if ecc_installed; then
     ok "ecc CLI   : $ECC_INSTALL_DIR/ecc ($("$ECC_INSTALL_DIR/ecc" --version 2>/dev/null || echo unknown))"
@@ -445,12 +445,10 @@ step_verify() {
     fail "yosys     : 未找到"; pass=0
   fi
 
-  # ecc doctor 将 Sizer 标为可选，但默认 rtl2gds/rcx/harden 运行链会实际执行它。
   if sizer_ready; then
     ok "sizer     : $(sizer_binary)（Timing optimization）"
   else
-    sizer_missing=1
-    warn "sizer     : 未就绪（rtl2gds/rcx/harden 会在 Timing optimization 失败；发布预编译包后重跑本脚本可自动补齐）"
+    fail "sizer     : 未就绪（rtl2gds/rcx/harden 的 Timing optimization 必需）"; pass=0
   fi
 
   # 组件级体检交给 CLI 内置的 doctor（官方旧版无此命令则跳过）
@@ -458,12 +456,12 @@ step_verify() {
     if "$ECC_INSTALL_DIR/ecc" doctor >/dev/null 2>&1; then
       ok "ecc doctor: 组件体检通过（含捆绑组件）"
     else
-      warn "ecc doctor: 存在必需组件未就绪，详查: $ECC_INSTALL_DIR/ecc doctor"
+      fail "ecc doctor: 存在必需组件未就绪，详查: $ECC_INSTALL_DIR/ecc doctor"; pass=0
     fi
   fi
 
   echo
-  if (( pass && ! sizer_missing )); then
+  if (( pass )); then
     msg "全部就绪。快速上手："
     cat <<EOF
       source "$ECC_ENV_FILE"          # 当前 shell 生效（新终端自动生效）
@@ -471,8 +469,6 @@ step_verify() {
       ecc check && ecc run            # 校验并运行 RTL-to-GDS
       ecc status && ecc log           # 查看进度与日志
 EOF
-  elif (( pass )); then
-    warn "基础环境已就绪，但 Sizer 缺失；请安装 Sizer 后再运行 rtl2gds/rcx/harden。"
   else
     warn "存在未就绪项（见上）。修复后重新运行本脚本即可增量补齐。"
     exit 1

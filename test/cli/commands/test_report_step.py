@@ -326,6 +326,8 @@ class TestStepOverview:
         out = capsys.readouterr().out
 
         assert rc == 0
+        assert "peak MB" in out
+        assert "143.227" in out
         assert "floorplan" in out
         assert "timing_optimization" in out
         assert "blocked (1 blocked)" in out

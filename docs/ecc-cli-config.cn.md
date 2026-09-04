@@ -349,7 +349,7 @@ Timing optimization 是三阶段子流程：运行 Sizer，用 DreamPlace 对 Si
 | `-min_route_layer` / `-max_route_layer` | 设置后取 `route.bottom_layer` / `route.top_layer` | 直接传给 Sizer 的布线层限制 |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer 输出 | 被内部 DreamPlace 合法化消费的暂存产物；合法化成功后保存为 Timing optimization 步骤输出 |
 
-运行时根目录必须含 `src/sizer_os.tcl`；ECC 从 `CHIPCOMPILER_ECC_SIZER_ROOT`，或从 `PATH` 上的 `Sizer` 二进制逐级向上查找。`rtl2gds`、`rcx`、`harden` 都需要 Sizer，但当前 `ecc run` 环境预检不包含它。
+运行时根目录必须含 `src/sizer_os.tcl`；ECC 从 `CHIPCOMPILER_ECC_SIZER_ROOT`，或从 `PATH` 上的 `Sizer` 二进制逐级向上查找。`ecc doctor` 同时要求此 runtime root 与 Sizer 可执行文件。`rtl2gds`、`rcx`、`harden` 都需要 Sizer，但当前 `ecc run` 环境预检不包含它。
 
 ## 7. cts（ecc-tools）
 

@@ -37,7 +37,7 @@ graph LR
 
 ### 2.1 One-shot installer (recommended)
 
-The repository ships an installer script, [ecc-cli-setup.sh](ecc-cli-setup.sh), which does everything in one command: download and install the ecc CLI → set up PATH → run an environment self-check → provision the ICS55 PDK (clone + `make unzip` to fetch liberty/GDS) and Yosys (latest OSS CAD Suite with the slang frontend built in). It is idempotent — rerunning skips anything already in place.
+The repository ships an installer script, [ecc-cli-setup.sh](ecc-cli-setup.sh), which does everything in one command: download and install the ecc CLI → set up PATH → run an environment self-check → provision the ICS55 PDK (clone + `make unzip` to fetch liberty/GDS), Yosys (latest OSS CAD Suite with the slang frontend built in), and Sizer for Timing optimization. It is idempotent — rerunning skips anything already in place.
 
 ```bash
 # Get the script (cloning the repo also gives you the gcd example RTL used here)
@@ -60,6 +60,7 @@ What the script installs:
 | ecc CLI | `~/.local/ecc/` | PyInstaller bundle: `ecc` + `_internal/`; the two must stay together |
 | PDK | `~/.local/icsprout55-pdk/` | pointed to by `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | Yosys | `~/.local/oss-cad-suite/` | pointed to by `CHIPCOMPILER_OSS_CAD_DIR` |
+| Sizer | `~/.local/ecc-sizer/` | `bin/Sizer` plus `src/sizer_os.tcl`; required by `ecc doctor` |
 | Environment file | `~/.ecc-env.sh` | PATH + the variables above; idempotently appended to `~/.bashrc` (or `~/.zshrc` for zsh) |
 | Convenience symlink | `~/.local/bin/ecc` | that directory is already on PATH on most distros |
 
@@ -68,7 +69,7 @@ Common variants:
 ```bash
 bash docs/ecc-cli-setup.sh --check-only    # environment check only, installs nothing
 bash docs/ecc-cli-setup.sh --force         # force-reinstall the ecc CLI (also how you upgrade)
-bash docs/ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # install only the ecc CLI itself
+bash docs/ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # install only the ecc CLI; the final check fails until required dependencies are ready
 GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh   # use a proxy on restricted networks
 ```
 
@@ -144,7 +145,7 @@ $ ecc doctor
   ...
 ```
 
-All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. `rtl2gds`, `rcx`, and `harden` all contain a Timing optimization step, so **a missing Sizer also fails mid-flow**; it is not currently part of `ecc run` preflight. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available; otherwise, follow the Sizer remediation hint before running those presets.
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. `rtl2gds`, `rcx`, and `harden` all contain a Timing optimization step, so **a missing Sizer also fails mid-flow**; it is not currently part of `ecc run` preflight. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available and exits non-zero until the required components are ready.
 
 ## 3. Creating Your First Project
 

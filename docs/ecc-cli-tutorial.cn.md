@@ -37,7 +37,7 @@ graph LR
 
 ### 2.1 一键安装（推荐）
 
-仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)，一条命令完成：下载安装 ecc CLI → 配置 PATH → 环境自检 → 补齐 ICS55 PDK（clone + `make unzip` 下载 liberty/GDS）与 Yosys（OSS CAD Suite 最新版，内置 slang 前端）。幂等可重复运行，已就绪的部件自动跳过。
+仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)，一条命令完成：下载安装 ecc CLI → 配置 PATH → 环境自检 → 补齐 ICS55 PDK（clone + `make unzip` 下载 liberty/GDS）、Yosys（OSS CAD Suite 最新版，内置 slang 前端）和 Timing optimization 所需的 Sizer。幂等可重复运行，已就绪的部件自动跳过。
 
 ```bash
 # 获取脚本（clone 仓库可同时拿到本教程用的 gcd 示例 RTL）
@@ -60,6 +60,7 @@ source ~/.ecc-env.sh
 | ecc CLI | `~/.local/ecc/` | PyInstaller 打包的 `ecc` + `_internal/`，两者须保持在一起 |
 | PDK | `~/.local/icsprout55-pdk/` | 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` 指向它 |
 | Yosys | `~/.local/oss-cad-suite/` | 环境变量 `CHIPCOMPILER_OSS_CAD_DIR` 指向它 |
+| Sizer | `~/.local/ecc-sizer/` | `bin/Sizer` 与 `src/sizer_os.tcl`；`ecc doctor` 的必需组件 |
 | 环境文件 | `~/.ecc-env.sh` | PATH + 上述变量，已幂等写入 `~/.bashrc`（zsh 则 `~/.zshrc`） |
 | 便利软链接 | `~/.local/bin/ecc` | 多数发行版该目录已在 PATH |
 
@@ -68,7 +69,7 @@ source ~/.ecc-env.sh
 ```bash
 bash docs/ecc-cli-setup.sh --check-only    # 只做环境体检，不安装任何东西
 bash docs/ecc-cli-setup.sh --force         # 强制重装 ecc CLI（升级同理）
-bash docs/ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体
+bash docs/ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体；必需依赖未就绪时最终自检会失败
 GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh   # 网络受限走代理
 ```
 
@@ -144,7 +145,7 @@ $ ecc doctor
   ...
 ```
 
-必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。`rtl2gds`、`rcx`、`harden` 都含 Timing optimization 步骤，**缺 Sizer 也会在流中段失败**；它目前仍不在 `ecc run` 预检中。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；否则，在运行这些 preset 前按 Sizer remediation 提示补齐。
+必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。`rtl2gds`、`rcx`、`harden` 都含 Timing optimization 步骤，**缺 Sizer 也会在流中段失败**；它目前仍不在 `ecc run` 预检中。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；必需组件未齐时以非零退出。
 
 ## 3. 创建第一个项目
 

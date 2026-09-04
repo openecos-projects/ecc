@@ -16,7 +16,7 @@
 bash ecc-cli-setup.sh                 # 一键安装 + 自检 + 补齐
 bash ecc-cli-setup.sh --check-only    # 只做环境体检，不安装任何东西
 bash ecc-cli-setup.sh --force         # 强制重装 ecc CLI
-bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体
+bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体；必需依赖未就绪时最终自检会失败
 bash ecc-cli-setup.sh --no-shell-rc   # 不修改 shell rc（默认会幂等地写入加载行）
 ```
 
@@ -270,7 +270,7 @@ rc=1
 | Yosys（综合） | `which yosys && yosys -V`，或 `echo $CHIPCOMPILER_OSS_CAD_DIR` | 二者其一可用（优先 `CHIPCOMPILER_OSS_CAD_DIR` 指向 OSS CAD Suite） |
 | Yosys slang 前端 | `yosys -Q -T -p "help read_slang"` | 输出**不含** `No such command`（yosys ≥ v0.67 内置；旧版需可加载的 slang 插件） |
 | KLayout（仅 `layout-image` 需要） | `python3 -c "from klayout import lay"` | 无 ImportError |
-| Sizer（`ecc doctor` 的必需组件；默认 rtl2gds/rcx/harden 链的 Timing optimization 步骤也需要） | `which Sizer`，或 `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | 二者其一有效（root 需含 `src/sizer_os.tcl`）。`ecc run` 预检**不含** sizer，缺失会在流中段 fail |
+| Sizer（`ecc doctor` 的必需组件；默认 rtl2gds/rcx/harden 链的 Timing optimization 步骤也需要） | `which Sizer`；可选 `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | 可执行文件和含 `src/sizer_os.tcl` 的 root 均须可解析；root 可显式设置，或由二进制位置自动发现。`ecc run` 预检**不含** sizer，缺失会在流中段 fail |
 
 可整体复制的一段自检脚本：
 
