@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.tools.ecc.runner import _write_cts_parameter_runtime_report
+from chipcompiler.tools.ecc.parameter_runtime_report import _write_cts_parameter_runtime_report
 
 
 def _write_candidate(tmp_path: Path, value: int) -> None:

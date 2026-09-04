@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-import hashlib
-import json
 import os
-import re
 import shutil
-from math import isfinite
 from pathlib import Path
 
 from chipcompiler.data import (
@@ -22,6 +18,10 @@ from chipcompiler.tools.ecc.metrics import (
     save_rcx_spef_feature_facts,
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
+from chipcompiler.tools.ecc.parameter_runtime_report import (
+    _write_cts_parameter_runtime_report,
+    _write_floorplan_parameter_runtime_report,
+)
 from chipcompiler.tools.ecc.plot import ECCToolsPlot
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import (
@@ -47,10 +47,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.STA.value,
     }
 )
-
-
-def _runner_source_sha256() -> str:
-    return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 class EccDesignReadError(RuntimeError):
@@ -599,59 +595,6 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     return reslut
 
 
-def _write_cts_parameter_runtime_report(
-    workspace: Workspace,
-    config_path: str | Path,
-    *,
-    engine_succeeded: bool,
-) -> None:
-    """Record CTS config effectiveness without claiming unobserved activation."""
-    workspace_dir = getattr(workspace, "directory", None)
-    if workspace_dir is None:
-        return
-    materialization_path = Path(workspace_dir) / "analysis" / "candidate_materialization.v1.json"
-    if not materialization_path.is_file():
-        return
-    try:
-        materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
-        patch = next(
-            item for item in materialization["patch"] if item.get("knob_id") == "cts.max_fanout"
-        )
-        value = json.loads(Path(config_path).read_text(encoding="utf-8"))["max_fanout"]
-    except (OSError, ValueError, KeyError, TypeError, StopIteration):
-        return
-
-    requested = patch.get("value")
-    matches_request = type(value) is int and value == requested
-    effective = value if engine_succeeded else None
-    report = {
-        "knob_id": "cts.max_fanout",
-        "requested_value": requested,
-        "tool": {
-            "name": "ECC-CTS",
-            "revision": "ecc.cts.parameter_runtime_report.v1",
-            "source_sha256": _runner_source_sha256(),
-        },
-        "application_status": ("applied" if engine_succeeded and matches_request else "unknown"),
-        "effective_initial": {"value": effective, "unit": "fanout"},
-        "effective_final": {"value": effective, "unit": "fanout"},
-        "activation": {"status": "unknown", "consumers": []},
-        "consumer_observation": {
-            "config_value": value,
-            "engine_succeeded": engine_succeeded,
-            "activation_evidence_complete": False,
-        },
-        "transitions": [],
-    }
-    output_path = Path(workspace_dir) / "analysis" / "parameter_runtime_report.v1.json"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output_path.with_name(output_path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
-    )
-    os.replace(temporary, output_path)
-
-
 def run_routing(
     workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
 ) -> bool:
@@ -848,151 +791,6 @@ def run_floorplan(
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
 
     return reslut
-
-
-def _write_floorplan_parameter_runtime_report(
-    workspace: Workspace,
-    config_path: str | Path,
-    *,
-    feature_path: str | Path | None = None,
-    report_path: str | Path | None = None,
-) -> None:
-    """Record the candidate knob consumed by iFP's native die builder."""
-    workspace_dir = getattr(workspace, "directory", None)
-    if workspace_dir is None:
-        return
-    materialization_path = Path(workspace_dir) / "analysis" / "candidate_materialization.v1.json"
-    if not materialization_path.is_file():
-        return
-    try:
-        materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
-        patch = next(
-            item
-            for item in materialization["patch"]
-            if item.get("knob_id") in {"floorplan.core_util", "floorplan.aspect_ratio"}
-        )
-        floorplan = json.loads(Path(config_path).read_text(encoding="utf-8"))
-        die_builder = floorplan["die_builder"]
-        die_util = die_builder["die_util"]
-    except (OSError, ValueError, KeyError, TypeError, StopIteration):
-        return
-
-    knob_id = patch["knob_id"]
-    field, consumer_id = {
-        "floorplan.core_util": ("utilization", "ifp.die_builder.die_utilization"),
-        "floorplan.aspect_ratio": ("aspect_ratio", "ifp.die_builder.die_aspect_ratio"),
-    }[knob_id]
-    value = die_util.get(field)
-    requested = patch.get("value")
-    mode = die_builder.get("mode")
-    matches_request = value == requested
-    observation = _floorplan_geometry_observation(feature_path, report_path)
-    complete = _floorplan_observation_complete(observation)
-    status = (
-        "used"
-        if complete and mode == "die_util" and value is not None and matches_request
-        else "unknown"
-    )
-    if complete and mode != "die_util" and value is not None and matches_request:
-        status = "not_activated"
-    evidence = {
-        "consumer_id": consumer_id,
-        "outcome": "geometry_constructed" if status == "used" else "evaluated",
-        "evidence_ref": "analysis/parameter_runtime_report.v1.json",
-    }
-    evidence["evidence_sha256"] = (
-        "sha256:"
-        + hashlib.sha256(
-            json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
-    )
-    report = {
-        "knob_id": knob_id,
-        "requested_value": requested,
-        "tool": {
-            "name": "ECC-Floorplan",
-            "revision": "ecc.floorplan.parameter_runtime_report.v2",
-            "source_sha256": _runner_source_sha256(),
-        },
-        "application_status": "applied" if complete and matches_request else "unknown",
-        "effective_initial": {"value": value, "unit": "ratio"},
-        "effective_final": {"value": value, "unit": "ratio"},
-        "activation": {
-            "status": status,
-            "consumers": [evidence] if status in {"used", "not_activated"} else [],
-        },
-        "transitions": [],
-    }
-    if observation is not None:
-        report["consumer_observation"] = observation
-    if feature_path is not None and not _floorplan_observation_complete(observation):
-        report["application_status"] = "unknown"
-        report["activation"] = {"status": "unknown", "consumers": []}
-    output_path = Path(workspace_dir) / "analysis" / "parameter_runtime_report.v1.json"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output_path.with_name(output_path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
-    )
-    os.replace(temporary, output_path)
-
-
-def _floorplan_geometry_observation(
-    feature_path: str | Path | None, report_path: str | Path | None
-) -> dict | None:
-    if not feature_path or not Path(feature_path).is_file():
-        return None
-    try:
-        feature = json.loads(Path(feature_path).read_text(encoding="utf-8"))
-        layout = feature["Design Layout"]
-        width = layout["core_bounding_width"]
-        height = layout["core_bounding_height"]
-        area = layout.get("core_area")
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-    numeric = all(isinstance(item, (int, float)) and isfinite(item) for item in (width, height))
-    if not numeric or width <= 0 or height <= 0:
-        return None
-    ratio = width / height
-    rows, sites = _floorplan_report_counts(report_path)
-    return {
-        "core_geometry": {
-            "width": {"value": width, "unit": "um"},
-            "height": {"value": height, "unit": "um"},
-            "area": {"value": area, "unit": "um^2"},
-            "aspect_ratio": {"value": ratio, "unit": "ratio"},
-        },
-        "rows": {"count": rows, "observed": rows is not None},
-        "sites": {"count": sites, "observed": sites is not None},
-    }
-
-
-def _floorplan_observation_complete(observation: dict | None) -> bool:
-    if not observation:
-        return False
-    geometry = observation.get("core_geometry", {})
-    return all(
-        geometry.get(name, {}).get("value") is not None
-        for name in ("width", "height", "area", "aspect_ratio")
-    ) and (
-        observation.get("rows", {}).get("observed") is True
-        and observation.get("sites", {}).get("observed") is True
-    )
-
-
-def _floorplan_report_counts(report_path: str | Path | None) -> tuple[int | None, int | None]:
-    if not report_path or not Path(report_path).is_file():
-        return None, None
-    try:
-        text = Path(report_path).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None, None
-    values = {}
-    for name in ("Site", "Row"):
-        match = re.search(rf"Number\s*-\s*{name}[^0-9]*(\d+)", text)
-        if match:
-            values[name] = int(match.group(1))
-    return values.get("Row"), values.get("Site")
 
 
 def run_harden(

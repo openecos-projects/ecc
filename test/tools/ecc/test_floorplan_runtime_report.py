@@ -5,7 +5,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.tools.ecc.runner import _write_floorplan_parameter_runtime_report
+from chipcompiler.tools.ecc.parameter_runtime_report import (
+    _write_floorplan_parameter_runtime_report,
+)
 
 
 def _write_candidate(tmp_path: Path, knob_id: str, value: float) -> None:
