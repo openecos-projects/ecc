@@ -344,7 +344,7 @@ $ ecc run --preset bogus  # invalid preset (ecc.toml is not modified)
   unsupported_preset
   preset: bogus
   presets: rtl2gds, syn_sta, synthesis_lec
-  inspect: ecc config --resolved
+  inspect: ecc config
 rc=1
 ```
 
@@ -464,27 +464,27 @@ rc=1
 ## 8. config — view the resolved configuration
 
 ```bash
-ecc config [STEP] --resolved [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
+ecc config [STEP] [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
 ```
 
-`--resolved` is required. Without STEP it prints the project-level configuration (`ecc.toml` keys + resolved absolute paths); with STEP it lists the configuration files actually in effect for that step under the workspace's `config/`.
+Without STEP it prints the project-level configuration (`ecc.toml` keys + resolved absolute paths); with STEP it lists the configuration files actually in effect for that step under the workspace's `config/`.
 
 ```console
-$ ecc config --resolved --plain    # project level (excerpt)
+$ ecc config --plain    # project level (excerpt)
 config=design.name scope=project value=gcd resolved=gcd source=ecc.toml
 config=design.top scope=project value=gcd resolved=gcd source=ecc.toml
 config=pdk.name scope=project value=ics55 resolved=ics55 source=ecc.toml
 ...
 
-$ ecc config floorplan --resolved  # step level
+$ ecc config floorplan  # step level
 [config]
   step:
     db_ecc.json (config)
       path: default/config/db_ecc.json
-  inspect: ecc config floorplan --resolved --json
+  inspect: ecc config floorplan --json
     floorplan_ecc.json (config)
       path: default/config/floorplan_ecc.json
-  inspect: ecc config floorplan --resolved --json
+  inspect: ecc config floorplan --json
 ```
 
 ## 9. param — parameter management
@@ -617,9 +617,9 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
 
 The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (ecos-studio workspace layout). Keep `pdk.root` on `ecc pdk set-root`; `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef` use `ecc param set KEY VALUE`, which writes `[pdk.overrides]`.
 
-## 11. signoff — signoff package and design report
+## 11. signoff — signoff package
 
-`ecc signoff export` requires a ready Harden signoff package. `ecc signoff inspect` and `ecc signoff report` can also assess or summarize a partially completed workspace. All three subcommands accept `--project DIR` with an optional `--run-id ID`, or `--workspace PATH` pointing at a workspace directly, plus `--json/--jsonl/--plain`.
+`ecc signoff export` requires a ready Harden signoff package. `ecc signoff inspect` can assess a partially completed workspace. Both subcommands accept `--project DIR` with an optional `--run-id ID`, or `--workspace PATH` pointing at a workspace directly, plus `--json/--jsonl/--plain`.
 
 ### 11.1 inspect — readiness review
 
@@ -635,7 +635,7 @@ $ ecc signoff inspect --workspace default
   status    : blocked
   workspace : default
   export    : ecc signoff export -o <path>
-  report    : ecc signoff report
+  report    : ecc report summary
 
   groups:
     initial        ready      (2/2)
@@ -671,18 +671,23 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # once ready
   path: /abs/path/gcd.tar.gz
 ```
 
-### 11.3 report — text design summary
+## 12. report — design summary, QoR score, and checklist reports
 
 ```bash
-ecc signoff report [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
+ecc report summary    [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
+ecc report qor        [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
+ecc report checklist  [-o PATH] [same options]
+ecc report step       [STEP] [--section feature|analysis|checklist]... [same options]
 ```
 
-Generates a design summary with the same layout as the GUI's "export report (text)" (8 sections: physical / timing / clock / multi-corner / routing / power / verification / execution cost), by default written to `<workspace>/signoff/<design>_design_summary.txt`:
+### 12.1 summary — text design summary
+
+Generates a design summary with the same layout as the GUI's "export report (text)" (8 sections: physical / timing / clock / multi-corner / routing / power / verification / execution cost), by default written to `<workspace>/signoff/<design>_design_summary.txt`. The report does not require a completed flow; it summarizes whatever has run so far.
 
 ```console
-$ ecc signoff report --project gcd
+$ ecc report summary --project gcd
 [status]
-  signoff: report
+  report: summary
   status: written
   path: /path/gcd/default/signoff/gcd_design_summary.txt
   design: gcd
@@ -706,17 +711,11 @@ PDK / Node         : ics55
   Synth              yosys                     18s          512MB  Success
 ```
 
-Notes: inspect/export refresh each step's analysis first (matching the GUI); report extracts the current state by default (the engine API `generate_text_report(workspace, refresh_analysis=True)` requests a refresh). The report does not require a completed flow — it summarizes whatever has run so far.
+Notes: inspect/export refresh each step's analysis first (matching the GUI);
+the report extracts the current state by default (the engine API
+`generate_text_report(workspace, refresh_analysis=True)` requests a refresh).
 
-## 12. report — QoR score and checklist reports
-
-```bash
-ecc report qor        [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
-ecc report checklist  [-o PATH] [same options]
-ecc report step       [STEP] [--section feature|analysis|checklist]... [same options]
-```
-
-### 12.1 qor — overall QoR score report
+### 12.2 qor — overall QoR score report
 
 Scores the current workspace by the GUI project-dashboard rules: every v3 `qor_metrics.json` metric is converted to 0-100 against fixed fail thresholds (slack metrics linearly, core_utilization against the [0.45, 0.70] target window, lower/higher_is_better proportionally), averaged per dimension, then combined with the dimension weights (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1) into the overall score — **absent dimensions are not renormalized** (matching the GUI; missing dimensions lower the score); 60 is the pass line. By default written to `<workspace>/signoff/<design>_qor_report.txt`:
 
@@ -730,7 +729,7 @@ report=qor path=.../signoff/gcd_qor_report.txt bytes=1717 design=gcd \
 
 The report contains: the overall score and verdict (PASS/BELOW THRESHOLD/NOT RATED), the flow status color (Green/Yellow/Orange/Red/Blocked) and gate (DRC/LVS/RCX/STA step states), the area scoring step (the last successful step carrying area metrics), the dimension table, and the per-metric detail (corners scored independently).
 
-### 12.2 checklist — signoff checklist report
+### 12.3 checklist — signoff checklist report
 
 Reads `home/checklist.json` (the schema-v3 signoff checklist maintained by flow steps / `ecc signoff inspect`) and renders a status report: the overview (passed/blocked/attention/unavailable), **BLOCKED item details** (with failure reasons and evidence paths), ATTENTION items, and the full table. When the checklist does not exist it returns `checklist_unavailable`. By default written to `<workspace>/signoff/checklist_report.txt`.
 
@@ -739,7 +738,7 @@ ecc signoff inspect --project gcd    # refresh the checklist first (if not prese
 ecc report checklist --project gcd
 ```
 
-### 12.3 step — per-step feature / analysis / checklist report (read-only preview)
+### 12.4 step — per-step feature / analysis / checklist report (read-only preview)
 
 Previews the **current step artifacts** of one workspace directly in the terminal. It writes no files and refreshes nothing (unlike `report qor/checklist` it does not load a Workspace, so no config migration or workspace log is appended):
 
@@ -808,10 +807,10 @@ ecc log place                      # the failing step's log (TEXT mode highlight
 ecc param set place.target_density 0.55   # tune a parameter and re-run
 ecc run --overwrite --preset rtl2gds
 ecc run --workspace default --only place --force   # or re-run a single step in place
-ecc config place --resolved        # config files actually in effect for that step
+ecc config place        # config files actually in effect for that step
 ecc signoff inspect                # signoff readiness (blocked still exits 0)
 ecc signoff export -o gcd_signoff.tar.gz    # export the signoff package once ready
-ecc signoff report                 # text design summary (signoff/<design>_design_summary.txt)
+ecc report summary                 # text design summary (signoff/<design>_design_summary.txt)
 ecc report qor                     # QoR overall score report (signoff/<design>_qor_report.txt)
 ecc report checklist               # signoff checklist report (signoff/checklist_report.txt)
 ecc report step drc                # preview one step's feature/analysis/checklist (read-only)

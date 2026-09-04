@@ -464,7 +464,7 @@ class TestConfigResolved:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump({"steps": []}, f)
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         records = data["records"]
@@ -491,7 +491,7 @@ class TestConfigResolved:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump({"steps": []}, f)
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         param_records = [r for r in data["records"] if r.get("kind") == "param"]
@@ -513,7 +513,7 @@ class TestConfigResolved:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump({"steps": []}, f)
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         param_records = [r for r in data["records"] if r.get("kind") == "param"]

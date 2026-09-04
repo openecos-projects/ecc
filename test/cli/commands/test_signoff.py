@@ -14,7 +14,6 @@ def workspace_stub(monkeypatch):
         load_path=None,
         inspect=None,
         export=None,
-        report=None,
     )
     workspace = SimpleNamespace(
         directory="/tmp/ws",
@@ -89,19 +88,6 @@ def _patch_export(monkeypatch, destination="/tmp/pkg.tar.gz", error=None):
     monkeypatch.setattr(
         "chipcompiler.runtime.signoff_export.export_signoff_package_archive", fake_export
     )
-    return calls
-
-
-def _patch_report(monkeypatch, content="REPORT BODY", error=None):
-    calls = []
-
-    def fake_generate(workspace):
-        calls.append(workspace)
-        if error is not None:
-            raise error
-        return content
-
-    monkeypatch.setattr("chipcompiler.engine.signoff.generate_text_report", fake_generate)
     return calls
 
 
@@ -251,56 +237,3 @@ class TestSignoffExport:
         assert rc == 1
         assert record["error"] == "signoff_incomplete"
         assert "incomplete" in record["reason"]
-
-
-class TestSignoffReport:
-    def test_report_writes_default_destination(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
-    ):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        os.makedirs(run_dir)
-        workspace_stub.workspace.directory = run_dir
-        calls = _patch_report(monkeypatch, content="LINE1\nLINE2")
-
-        rc = cli_main.run(["signoff", "report", "--project", project_dir, "--json"])
-
-        data = json.loads(capsys.readouterr().out)
-        assert rc == 0
-        record = data["records"][0]
-        assert record["status"] == "written"
-        assert record["design"] == "gcd"
-        assert record["bytes"] == len(b"LINE1\nLINE2")
-        expected_path = os.path.join(run_dir, "signoff", "gcd_design_summary.txt")
-        assert record["path"] == expected_path
-        with open(expected_path) as f:
-            assert f.read() == "LINE1\nLINE2"
-        assert calls == [workspace_stub.workspace]
-
-    def test_report_output_override(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
-    ):
-        project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
-        _patch_report(monkeypatch)
-        override = str(tmp_path / "custom.txt")
-
-        rc = cli_main.run(["signoff", "report", "-o", override, "--project", project_dir, "--json"])
-
-        data = json.loads(capsys.readouterr().out)
-        assert rc == 0
-        assert data["records"][0]["path"] == override
-        assert os.path.isfile(override)
-
-    def test_report_failure_maps_to_error(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
-    ):
-        project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
-        _patch_report(monkeypatch, error=RuntimeError("boom"))
-
-        rc = cli_main.run(["signoff", "report", "--project", project_dir, "--json"])
-
-        record = json.loads(capsys.readouterr().out)["records"][0]
-        assert rc == 1
-        assert record["error"] == "report_failed"

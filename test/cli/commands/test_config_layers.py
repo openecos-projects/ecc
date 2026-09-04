@@ -395,7 +395,7 @@ class TestOrderedRtlDivergence:
 
 
 class TestConfigResolvedManifestLayering:
-    """ecc config --resolved shows the EFFECTIVE config: the same manifest
+    """ecc config shows the EFFECTIVE config: the same manifest
     layering check/run resolve, with source labels following the layers."""
 
     def _records_by_key(self, records):
@@ -413,7 +413,7 @@ class TestConfigResolvedManifestLayering:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--json"])
 
         assert rc == 0
         by_key = self._records_by_key(manifest_stubs.records())
@@ -446,7 +446,7 @@ class TestConfigResolvedManifestLayering:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--json"])
 
         assert rc == 0
         by_key = self._records_by_key(manifest_stubs.records())

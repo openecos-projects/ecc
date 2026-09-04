@@ -47,7 +47,7 @@ Examples:
 ```bash
 ecc status
 ecc log cts
-ecc config cts --resolved
+ecc config cts
 ```
 
 ### Disclosure Commands On Summary Lines
@@ -92,7 +92,7 @@ Recommended style:
 run=default status=failed workspace=runs/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=synthesis tool=yosys status=success runtime=0:00:18 log_cmd="ecc log synthesis"
 step=floorplan tool=ecc status=success runtime=0:00:04 log_cmd="ecc log floorplan"
-config=place_default_config.json scope=step step=placement role=config path=runs/default/config/place_default_config.json inspect="ecc config placement --resolved --json"
+config=place_default_config.json scope=step step=placement role=config path=runs/default/config/place_default_config.json inspect="ecc config placement --json"
 ```
 
 Current implementation note: `--plain` provides this stable key-value output.
@@ -121,7 +121,7 @@ Example:
 
 ```jsonl
 {"step":"synthesis","tool":"yosys","status":"success","runtime":"0:00:18","log_cmd":"ecc log synthesis"}
-{"config":"place_default_config.json","scope":"step","step":"placement","role":"config","path":"runs/default/config/place_default_config.json","inspect":"ecc config placement --resolved --json"}
+{"config":"place_default_config.json","scope":"step","step":"placement","role":"config","path":"runs/default/config/place_default_config.json","inspect":"ecc config placement --json"}
 ```
 
 Text output and JSON output should describe the same objects. The text output is
@@ -219,11 +219,11 @@ Responsibilities:
 | `ecc run` | Execute the configured flow (`--preset` overrides `[flow] preset` for one run) |
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
-| `ecc config` | Show user or resolved configuration |
+| `ecc config` | Show the resolved project or step configuration |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
 | `ecc pdk` | `setup` clones + `make unzip`s + wires in a PDK checkout; also `set-root`/`show`/`unset` for the `[pdk] root` path |
-| `ecc signoff` | Inspect package readiness, export the tar.gz package, write the text design summary |
-| `ecc report` | QoR overall score report (GUI scoring rules) and signoff checklist report |
+| `ecc signoff` | Inspect package readiness and export the tar.gz package |
+| `ecc report` | Write the design summary, QoR, checklist, and step reports |
 | `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |
 
 `ecc run` preflights the tools its preset needs (yosys for synthesis,
@@ -235,6 +235,26 @@ enforces completeness (`signoff_incomplete` on missing required resources).
 The former standalone metrics, artifact listing, and diagnosis commands are no
 longer part of the public root command surface. Metrics files and generated
 artifacts remain part of the workspace data model and flow outputs.
+
+### Interface Conventions
+
+The public command graph is organized by the resource it owns rather than by
+implementation detail:
+
+| Group | Subcommands | Scope |
+| --- | --- | --- |
+| `ecc signoff` | `inspect`, `export` | Signoff package readiness and archive generation |
+| `ecc report` | `summary`, `qor`, `checklist`, `step` | Read-only report generation and viewing |
+| `ecc pdk` | `setup`, `set-root`, `show`, `unset` | Project PDK configuration |
+| `ecc param` | `list`, `show`, `set`, `unset`, `diff` | Project parameter overrides |
+
+Commands that consume a run use `--project DIR` (default: current directory)
+and, when a run selection matters, `--run-id ID`. Report and signoff commands
+also accept `--workspace PATH` for direct workspace access; it is exclusive
+with project selectors. Record-producing commands use default human text,
+`--plain` for stable key-value records, `--json` for a record envelope, and
+`--jsonl` for one record per line. Commands that only create, configure, or
+serve a process expose only the options meaningful for that operation.
 
 ### Project-Oriented Entry
 
@@ -314,7 +334,7 @@ ecc run --run-id exp1
 ecc run --run-id sweeps/sweep_001/run_004 --overwrite
 ecc status --run-id default
 ecc log cts --run-id run_005
-ecc config cts --resolved --run-id sweeps/sweep_001/run_004
+ecc config cts --run-id sweeps/sweep_001/run_004
 ```
 
 With `[flow] run = "exp1"` in `ecc.toml`, bare `ecc run`, `ecc status`,
@@ -432,7 +452,7 @@ Examples:
 ```text
 run=default status=success workspace=runs/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
-config=route_ecc.json scope=step step=routing role=config path=runs/default/config/route_ecc.json inspect="ecc config routing --resolved --json"
+config=route_ecc.json scope=step step=routing role=config path=runs/default/config/route_ecc.json inspect="ecc config routing --json"
 ```
 
 Rules:
@@ -599,19 +619,17 @@ sets: the required `tech`, `lefs`, and `libs` (checked for every PDK by
 when an override supplies them). A non-empty value pointing at a missing file
 fails `ecc check` regardless of whether that field is later persisted or
 regenerated.
-`ecc config --resolved` surfaces the raw `[pdk.overrides]` input as a project
+`ecc config` surfaces the raw `[pdk.overrides]` input as a project
 configuration entry.
 
 The resolved configuration used by each step should be inspectable:
 
 ```bash
-ecc config --resolved
-ecc config placement --resolved
+ecc config
+ecc config placement
 ecc param list
 ecc param show place.target_density
 ```
-
-The current `ecc config` command requires `--resolved`.
 
 ## AI-Native Behavior
 
@@ -664,7 +682,7 @@ Success criteria:
 
 ### Phase 2: Debug And Traceability
 
-- [x] `ecc config --resolved`
+- [x] `ecc config`
 - [x] Run selection for inspection commands with `--run-id`
 - [x] Parameter overrides with `ecc param` and `ecc run --set`
 - [x] Private runtime sidecar under `ecc rpc serve --stdio`

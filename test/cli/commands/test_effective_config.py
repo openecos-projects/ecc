@@ -678,7 +678,7 @@ class TestManifestFlatGeometryValidation:
 
 
 class TestManifestResolvedConfigView:
-    """`ecc config --resolved` presents manifest-layer parameters through the
+    """`ecc config` presents manifest-layer parameters through the
     same canonical projection the run uses (GUI-flat aliases included)."""
 
     def test_config_resolved_shows_gui_flat_manifest_geometry(
@@ -699,7 +699,7 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 0
         data = json.loads(capsys.readouterr().out)

@@ -134,11 +134,11 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc run` | Run the configured RTL-to-GDS flow (`--preset` overrides for one run) |
 | `ecc status` | Show run and step status |
 | `ecc log [step]` | Show available logs or step log content |
-| `ecc config [step] --resolved` | Show resolved project or step configuration |
+| `ecc config [step]` | Show resolved project or step configuration |
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
 | `ecc pdk` | PDK path setup (`setup` clones + unzips, `set-root`, `show`, `unset`) |
-| `ecc signoff` | Inspect readiness, export the signoff package, write the text report |
-| `ecc report` | QoR overall score and signoff checklist reports |
+| `ecc signoff` | Inspect readiness and export the signoff package |
+| `ecc report` | Write design-summary, QoR, checklist, and step reports |
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc layout-image` | Render a GDS file into a layout image |
 

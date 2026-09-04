@@ -127,6 +127,45 @@ def checklist(command_input, ctx: CommandContext) -> CommandResult:
     )
 
 
+def _design_name(workspace) -> str:
+    design = getattr(workspace, "design", None)
+    name = getattr(design, "name", "") if design is not None else ""
+    if name:
+        return name
+
+    parameters = getattr(getattr(workspace, "parameters", None), "data", None)
+    if isinstance(parameters, dict):
+        return parameters.get("design") or parameters.get("Design") or "design"
+
+    from chipcompiler.utility.json import json_read
+
+    parameters = json_read(os.path.join(workspace.directory or "", "home", "parameters.json"))
+    return parameters.get("design") or parameters.get("Design") or "design"
+
+
+def summary(command_input, ctx: CommandContext) -> CommandResult:
+    workspace, failure = _resolve(command_input, ctx)
+    if failure is not None:
+        return failure
+
+    from chipcompiler.engine.signoff import generate_text_report
+
+    try:
+        content = generate_text_report(workspace)
+    except Exception as exc:
+        return CommandResult.err([error_record("report_failed", reason=str(exc))])
+
+    design = _design_name(workspace)
+    return _write_report(
+        "summary",
+        f"{design}_design_summary.txt",
+        content,
+        command_input,
+        ctx,
+        extra={"design": design},
+    )
+
+
 def _resolve_workspace_dir(command_input, ctx: CommandContext):
     """Resolve the workspace directory without loading a Workspace.
 

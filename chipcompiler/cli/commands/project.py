@@ -175,19 +175,15 @@ def migrate_cmd(
 def config_cmd(
     *,
     step: Annotated[str | None, typer.Argument()] = None,
-    resolved: Annotated[bool, typer.Option("--resolved")] = False,
     project: ProjectOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
     run_id: RunIdOption = None,
 ) -> None:
-    if not resolved:
-        raise typer.BadParameter("--resolved is required", param_hint="--resolved")
     command_input = ConfigInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project, run_id),
         step=step,
-        resolved=resolved,
     )
     execute_command("config", command_input, inspect_handlers.config)

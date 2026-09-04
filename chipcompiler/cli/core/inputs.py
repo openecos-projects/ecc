@@ -73,7 +73,6 @@ class ConfigInput:
     output: OutputOptions
     project: ProjectOptions
     step: str | None = None
-    resolved: bool = False
 
 
 @dataclass(frozen=True)
@@ -144,7 +143,7 @@ class SignoffExportInput:
 
 
 @dataclass(frozen=True)
-class SignoffReportInput:
+class ReportSummaryInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()
     workspace: str | None = None

@@ -81,7 +81,7 @@ def build_project_config_items(
         entries.append(("flow.preset", cfg.flow_preset, cfg.flow_preset, source_of("flow.preset")))
     entries.append(("flow.run", cfg.flow_run, cfg.flow_run, source_of("flow.run")))
 
-    inspect = disclosure_cmd("ecc config --resolved --json", project, run_id)
+    inspect = disclosure_cmd("ecc config --json", project, run_id)
 
     for key, value, resolved, source in entries:
         items.append(
@@ -272,9 +272,7 @@ def build_step_config_items(
                 "run": display_run,
                 "path": os.path.relpath(str(fpath), base_dir),
                 "source": "workspace_config",
-                "inspect_cmd": disclosure_cmd(
-                    f"ecc config {step_token} --resolved --json", project, run_id
-                ),
+                "inspect_cmd": disclosure_cmd(f"ecc config {step_token} --json", project, run_id),
             }
         )
 

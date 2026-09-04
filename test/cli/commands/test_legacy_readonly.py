@@ -55,7 +55,7 @@ def _create_legacy_workspace(project_dir, pdk_root):
         ["status"],
         ["log"],
         ["check"],
-        ["config", "--resolved"],
+        ["config"],
     ],
 )
 def test_readonly_commands_never_migrate_legacy_workspace(

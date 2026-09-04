@@ -22,6 +22,6 @@ class TestReadOnly:
             run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
         )
 
-        cli_main.run(["config", "--resolved", "--project", project_dir])
+        cli_main.run(["config", "--project", project_dir])
 
         assert not os.path.exists(os.path.join(project_dir, "resolved_config.json"))

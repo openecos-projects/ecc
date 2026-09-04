@@ -33,9 +33,7 @@ class TestStepConfigInvalidFlowRun:
         create_flow_json(run_dir)
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
 
-        rc = cli_main.run(
-            ["config", "cts", "--resolved", "--run-id", run_id, "--project", project_dir, "--json"]
-        )
+        rc = cli_main.run(["config", "cts", "--run-id", run_id, "--project", project_dir, "--json"])
 
         assert rc == 1
         assert json.loads(capsys.readouterr().out)["records"] == [
@@ -59,7 +57,7 @@ class TestConfigUnreadableFallback:
 
         monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", deny)
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
 
         assert rc == 1
         assert json.loads(capsys.readouterr().out)["records"] == [
@@ -77,7 +75,7 @@ class TestConfigUnreadableFallback:
         with open(os.path.join(project_dir, "ecc.toml"), "wb") as f:
             f.write(b'[flow]\nrun = "\xff\xfe"\n')
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
 
         assert rc == 1
         assert json.loads(capsys.readouterr().out)["records"] == [

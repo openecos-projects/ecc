@@ -6,7 +6,6 @@ from chipcompiler.cli.command_handlers import signoff as signoff_handlers
 from chipcompiler.cli.core.inputs import (
     SignoffExportInput,
     SignoffInspectInput,
-    SignoffReportInput,
     output_options,
     project_options,
 )
@@ -77,26 +76,3 @@ def export_cmd(
         include_debug=include_debug,
     )
     _finish("export", command_input, signoff_handlers.export)
-
-
-@signoff_app.command("report", help="Write the text design summary report")
-def report_cmd(
-    *,
-    output_path: Annotated[
-        str | None,
-        typer.Option("--output", "-o", help="Report destination (default: <workspace>/signoff/)"),
-    ] = None,
-    project: ProjectOption = None,
-    run_id: RunIdOption = None,
-    workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
-    plain: PlainOption = False,
-) -> None:
-    command_input = SignoffReportInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
-        workspace=workspace,
-        output_path=output_path,
-    )
-    _finish("report", command_input, signoff_handlers.report)

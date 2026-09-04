@@ -218,7 +218,7 @@ class TestMultilineTomlValues:
                 f"multiline replacement concatenated keys on one line: {line!r}"
             )
 
-    """config --resolved must error on malformed/invalid CLI provenance."""
+    """config must error on malformed/invalid CLI provenance."""
 
     def _setup_run_dir(self, project_dir):
         run_dir = os.path.join(project_dir, "runs", "default")
@@ -236,7 +236,7 @@ class TestMultilineTomlValues:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: [],
         )
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["error"] == "invalid_config"
@@ -250,7 +250,7 @@ class TestMultilineTomlValues:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: [],
         )
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
         assert rc == 1
 
     def test_unknown_key_in_provenance_fails(
@@ -264,7 +264,7 @@ class TestMultilineTomlValues:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: [],
         )
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["error"] == "invalid_config"

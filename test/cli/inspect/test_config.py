@@ -11,7 +11,7 @@ class TestConfigResolved:
         mock_pdk_validation()
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir])
+        rc = cli_main.run(["config", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "design.name" in out
@@ -25,7 +25,7 @@ class TestConfigResolved:
         mock_pdk_validation()
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
@@ -40,7 +40,7 @@ class TestConfigResolved:
         mock_pdk_validation()
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         run_item = next(i for i in data["records"] if i["config"] == "run_dir")
@@ -52,7 +52,7 @@ class TestConfigResolved:
         mock_pdk_validation()
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["config", "--resolved", "--jsonl", "--project", project_dir])
+        rc = cli_main.run(["config", "--jsonl", "--project", project_dir])
         assert rc == 0
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
         keys = [o["config"] for o in objects]
@@ -68,7 +68,7 @@ class TestConfigResolved:
 
         project_dir = create_cli_project(pdk_root="")
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         pdk_item = next(i for i in data["records"] if i["config"] == "pdk.root")
@@ -83,7 +83,6 @@ class TestConfigResolved:
         rc = cli_main.run(
             [
                 "config",
-                "--resolved",
                 "--run-id",
                 "sweeps/sweep_001/run_004",
                 "--json",
@@ -100,14 +99,14 @@ class TestConfigResolved:
         project_dir = tmp_path / "empty_project"
         project_dir.mkdir()
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
         assert rc == 1
 
     def test_config_missing_config_json_has_kind_error(self, tmp_path, capsys):
         project_dir = tmp_path / "empty_project"
         project_dir.mkdir()
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--json"])
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         record = data["records"][0]
@@ -118,7 +117,7 @@ class TestConfigResolved:
         project_dir = tmp_path / "empty_project"
         project_dir.mkdir()
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--jsonl"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--jsonl"])
         assert rc == 1
         record = json.loads(capsys.readouterr().out.strip())
         assert record["kind"] == "error"
@@ -128,20 +127,13 @@ class TestConfigResolved:
         project_dir = tmp_path / "empty_project"
         project_dir.mkdir()
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
         assert rc == 1
         out = capsys.readouterr().out
         assert "[error]" in out
         assert "missing_config" in out
         assert "ecc check" in out
         assert str(project_dir) in out
-
-    def test_config_requires_resolved(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-
-        rc = cli_main.run(["config", "--project", project_dir])
-        assert rc != 0
-        assert "--resolved" in capsys.readouterr().err
 
 
 class TestConfigStepResolved:
@@ -169,7 +161,7 @@ class TestConfigStepResolved:
             },
         )
 
-        rc = cli_main.run(["config", "cts", "--resolved", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "step:" in out or "cts" in out
@@ -201,7 +193,7 @@ class TestConfigStepResolved:
             },
         )
 
-        rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
@@ -232,11 +224,11 @@ class TestConfigStepResolved:
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
         create_cts_workspace_config(run_dir)
 
-        rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert all(
-            item["inspect"] == f"ecc config cts --resolved --json --project {project_dir}"
+            item["inspect"] == f"ecc config cts --json --project {project_dir}"
             for item in data["records"]
         )
 
@@ -245,7 +237,7 @@ class TestConfigStepResolved:
         run_dir = os.path.join(project_dir, "runs", "default")
         os.makedirs(run_dir, exist_ok=True)
 
-        rc = cli_main.run(["config", "nonexistent", "--resolved", "--project", project_dir])
+        rc = cli_main.run(["config", "nonexistent", "--project", project_dir])
         assert rc == 1
 
     def test_config_step_no_config_files(
@@ -256,7 +248,7 @@ class TestConfigStepResolved:
         create_flow_json(run_dir)
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
 
-        rc = cli_main.run(["config", "cts", "--resolved", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--project", project_dir])
         assert rc == 0
 
     def test_config_dreamplace_legalization_uses_dreamplace_config(
@@ -287,9 +279,7 @@ class TestConfigStepResolved:
         create_step_dir(run_dir, "legalization", "dreamplace", subdirs=["output"])
         create_dreamplace_workspace_config(run_dir)
 
-        rc = cli_main.run(
-            ["config", "legalization", "--resolved", "--json", "--project", project_dir]
-        )
+        rc = cli_main.run(["config", "legalization", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert [item["path"] for item in data["records"]] == [
@@ -328,9 +318,7 @@ class TestConfigStepResolved:
             },
         )
 
-        rc = cli_main.run(
-            ["config", "timing optimization", "--resolved", "--json", "--project", project_dir]
-        )
+        rc = cli_main.run(["config", "timing optimization", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert [item["path"] for item in data["records"]] == [
@@ -369,9 +357,7 @@ class TestConfigStepResolved:
             create_step_dir(run_dir, step_name, "ecc", subdirs=["output"])
             create_ecc_workspace_config(run_dir, step_config or "filler_ecc.json")
 
-            rc = cli_main.run(
-                ["config", step_token, "--resolved", "--json", "--project", project_dir]
-            )
+            rc = cli_main.run(["config", step_token, "--json", "--project", project_dir])
             assert rc == 0
             data = json.loads(capsys.readouterr().out)
             expected = [
@@ -414,7 +400,7 @@ class TestConfigStepResolved:
             },
         )
 
-        rc = cli_main.run(["config", "sta", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "sta", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert [item["path"] for item in data["records"]] == [
@@ -449,7 +435,7 @@ class TestConfigStepResolved:
         create_step_dir(run_dir, "Synthesis", "yosys", subdirs=["output"])
         create_workspace_config(run_dir, {"db_ecc.json": "{}"})
 
-        rc = cli_main.run(["config", "synthesis", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "synthesis", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert len(data["records"]) == 1
@@ -467,7 +453,7 @@ class TestEmptyStepConfigSentinel:
         create_flow_json(run_dir)
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
 
-        rc = cli_main.run(["config", "cts", "--resolved", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "cts" in out
@@ -483,7 +469,7 @@ class TestEmptyStepConfigSentinel:
         create_flow_json(run_dir)
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
 
-        rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0]["step"] == "cts"
@@ -512,7 +498,7 @@ class TestDirectoryOnlyStepConfig:
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
         create_cts_workspace_config(run_dir)
 
-        rc = cli_main.run(["config", "cts", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert [item["path"] for item in data["records"]] == [
@@ -539,7 +525,7 @@ class TestDirectoryOnlyStepConfig:
         create_step_dir(run_dir, "route", "ecc", subdirs=["output"])
         create_ecc_workspace_config(run_dir, "route_ecc.json")
 
-        rc = cli_main.run(["config", "routing", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "routing", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert [item["path"] for item in data["records"]] == [
@@ -566,7 +552,6 @@ class TestAbsoluteRunIdConfig:
         rc = cli_main.run(
             [
                 "config",
-                "--resolved",
                 "--run-id",
                 str(external_run),
                 "--json",
@@ -587,7 +572,7 @@ class TestConfigTextUsesItemInspectCmd:
         mock_pdk_validation()
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir])
+        rc = cli_main.run(["config", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "run_dir" in out
@@ -601,7 +586,7 @@ class TestConfigJsonDisclosure:
         mock_pdk_validation()
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "--json", "--project", project_dir])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         for item in data["records"]:
@@ -650,7 +635,7 @@ run = "{defaults["flow_run"]}"
         project_dir.mkdir()
         toml = self._valid_toml(tmp_path, flow_run="custom", rtl=f'["{tmp_path}/rtl/gcd.v"]')
         (project_dir / "ecc.toml").write_text(toml)
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
         assert rc == 0
 
     def test_invalid_flow_run_rejected(self, tmp_path, capsys, monkeypatch, mock_pdk_validation):
@@ -659,7 +644,7 @@ run = "{defaults["flow_run"]}"
         project_dir.mkdir()
         toml = self._valid_toml(tmp_path, flow_run="")
         (project_dir / "ecc.toml").write_text(toml)
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
         assert rc == 1
         out = capsys.readouterr().out
         assert "unsupported flow.run" in out
@@ -670,7 +655,7 @@ run = "{defaults["flow_run"]}"
         project_dir.mkdir()
         toml = self._valid_toml(tmp_path, clock_port="")
         (project_dir / "ecc.toml").write_text(toml)
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
         assert rc == 1
 
     def test_zero_frequency_rejected(self, tmp_path, capsys, monkeypatch, mock_pdk_validation):
@@ -679,7 +664,7 @@ run = "{defaults["flow_run"]}"
         project_dir.mkdir()
         toml = self._valid_toml(tmp_path, frequency_mhz="0")
         (project_dir / "ecc.toml").write_text(toml)
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
         assert rc == 1
 
     def test_empty_rtl_rejected(self, tmp_path, capsys, monkeypatch, mock_pdk_validation):
@@ -688,7 +673,7 @@ run = "{defaults["flow_run"]}"
         project_dir.mkdir()
         toml = self._valid_toml(tmp_path, rtl="[]")
         (project_dir / "ecc.toml").write_text(toml)
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
         assert rc == 1
 
 
@@ -718,7 +703,7 @@ preset = "rtl2gds"
 run = "default"
 ''')
         (tmp_path / "pdk").mkdir(exist_ok=True)
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         rtl_item = next(i for i in data["records"] if i["config"] == "design.rtl.0")
@@ -738,7 +723,7 @@ def test_config_resolved_pdk_overrides_present(
     with open(toml_path, "a") as f:
         f.write('\n[pdk.overrides]\ndont_use = ["ICG*", "DFFSRQX*"]\n')
 
-    rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+    rc = cli_main.run(["config", "--json", "--project", project_dir])
     assert rc == 0
     data = json.loads(capsys.readouterr().out)
     keys = [item["config"] for item in data["records"]]
@@ -757,7 +742,7 @@ def test_config_resolved_pdk_overrides_absent(
     mock_pdk_validation()
     project_dir = create_cli_project()
 
-    rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+    rc = cli_main.run(["config", "--json", "--project", project_dir])
     assert rc == 0
     data = json.loads(capsys.readouterr().out)
     keys = [item["config"] for item in data["records"]]
@@ -790,7 +775,7 @@ def test_config_resolved_pdk_overrides_absent(
         }
         (project_dir / "project.json").write_text(json.dumps(manifest))
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--json"])
 
         assert rc == 0
         records = json.loads(capsys.readouterr().out)["records"]
