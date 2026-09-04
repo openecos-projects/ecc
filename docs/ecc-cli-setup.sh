@@ -389,7 +389,7 @@ step_sizer() {
   fi
   local url tmpdir top
   if ! url=$(resolve_sizer_url); then
-    warn "ecc-sizer 尚无预编译 Release（或 GitHub API 不可达），跳过自动安装（rtl2gds 会在 Timing optimization 失败）"
+    warn "ecc-sizer 尚无预编译 Release（或 GitHub API 不可达），跳过自动安装（新建或 --overwrite 的 rtl2gds 会在预检失败；已有 workspace 重跑仍可能在 Timing optimization 失败）"
     warn "需要时可源码构建（依赖 OpenROAD 子模块栈，耗时较长），完成后重跑本脚本即可自动识别："
     cat <<EOF
       git clone --recursive https://github.com/openecos-projects/ecc-sizer.git

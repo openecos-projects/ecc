@@ -168,7 +168,7 @@ $ ecc doctor
   ...
 ```
 
-All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains a Timing optimization step, so **a missing Sizer also fails mid-flow**; it is not currently part of `ecc run` preflight. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available and exits non-zero until the required components are ready.
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available and exits non-zero until the required components are ready.
 
 ## 3. Creating Your First Project
 
@@ -299,7 +299,7 @@ graph LR
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-Before starting, `ecc run` pre-checks bundled ecc-tools plus Yosys and DreamPlace when selected by the preset, and fails fast with a pointer to `ecc doctor` if they are missing. Sizer is not part of this preflight; because the complete `rtl2gds` flow contains Timing optimization, a missing Sizer fails at that step.
+For a fresh or `--overwrite` target, `ecc run` pre-checks bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`), and returns `env_not_ready` with a pointer to `ecc doctor` when a component is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at Timing optimization.
 
 ### 4.2 Watching progress (in a second terminal)
 
@@ -597,7 +597,7 @@ ecc status --run-id exp1
 ecc report qor --run-id exp1     # report commands also accept --run-id
 ```
 
-`--set KEY=VALUE` applies to that run only (recorded in its provenance) and does not modify `ecc.toml`. Once `project.json` exists, project-scoped inspection selects only declared workspaces. `ecc run --run-id` can create an undeclared single-segment workspace, but it reports `workspace_not_registered` and cannot later be selected by project-scoped `status`, `log`, or `config`; add further tracked workspaces through the manifest-owning UI.
+`--set KEY=VALUE` applies to that run only (recorded in its provenance) and does not modify `ecc.toml`. Once `project.json` exists, project-scoped inspection, signoff, and report commands select only declared workspaces. `ecc run --run-id` can create an undeclared single-segment workspace, but it reports `workspace_not_registered` and cannot later be selected by project-scoped `status`, `log`, `config`, `signoff`, or `report`; add further tracked workspaces through the manifest-owning UI.
 
 ### 6.3 Rerunning
 

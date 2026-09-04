@@ -167,7 +167,7 @@ $ ecc doctor
   ...
 ```
 
-必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤，**缺 Sizer 也会在流中段失败**；它目前仍不在 `ecc run` 预检中。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；必需组件未齐时以非零退出。
+必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤；新建或 `--overwrite` 的 `rtl2gds` 会在启动预检中检查 Sizer，缺失时以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不预检，缺 Sizer 时仍可能在流中段失败。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；必需组件未齐时以非零退出。
 
 ## 3. 创建第一个项目
 
@@ -297,7 +297,7 @@ graph LR
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-`ecc run` 启动前会预检捆绑的 ecc-tools，以及 preset 选中的 Yosys 和 DreamPlace；缺失则 fail-fast 并提示 `ecc doctor`。Sizer 不在这项预检中；完整 `rtl2gds` 流含 Timing optimization，缺失 Sizer 时会在该步骤失败。
+对新建或 `--overwrite` 的目标，`ecc run` 启动前会预检捆绑的 ecc-tools，以及 preset 选中的 Yosys、DreamPlace 和 Sizer（仅含 Timing optimization 的 flow，如 `rtl2gds`）；缺失则以 `env_not_ready` fail-fast 并提示 `ecc doctor`。已有 workspace 或 `--workspace` 重跑不做预检，缺 Sizer 时仍可能在 Timing optimization 步骤失败。
 
 ### 4.2 观察进度（另开一个终端）
 
@@ -595,7 +595,7 @@ ecc status --run-id exp1
 ecc report qor --run-id exp1     # 报告类命令同样接受 --run-id
 ```
 
-`--set KEY=VALUE` 只对本次运行生效并记入 provenance，不改 `ecc.toml`。`project.json` 生成后，项目级查看命令只会选择已声明的 workspace。`ecc run --run-id` 可以创建未声明的单路径段 workspace，但会输出 `workspace_not_registered`，并且之后不能用项目级 `status`、`log`、`config` 选中；需要额外可跟踪 workspace 时，应通过拥有 manifest 的 UI 增加条目。
+`--set KEY=VALUE` 只对本次运行生效并记入 provenance，不改 `ecc.toml`。`project.json` 生成后，项目级查看、签核和报告命令只会选择已声明的 workspace。`ecc run --run-id` 可以创建未声明的单路径段 workspace，但会输出 `workspace_not_registered`，并且之后不能用项目级 `status`、`log`、`config`、`signoff` 或 `report` 选中；需要额外可跟踪 workspace 时，应通过拥有 manifest 的 UI 增加条目。
 
 ### 6.3 重跑
 
