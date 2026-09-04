@@ -58,6 +58,7 @@ class MigrateInput:
 class StatusInput:
     output: OutputOptions
     project: ProjectOptions
+    workspace: str | None = None
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,7 @@ class LogInput:
     output: OutputOptions
     project: ProjectOptions
     step: str | None = None
-    errors: bool = False
+    workspace: str | None = None
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,7 @@ class ConfigInput:
     output: OutputOptions
     project: ProjectOptions
     step: str | None = None
+    workspace: str | None = None
 
 
 @dataclass(frozen=True)

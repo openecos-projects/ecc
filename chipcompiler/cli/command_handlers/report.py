@@ -6,32 +6,20 @@ import shlex
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-
-
-def _resolve(command_input, ctx: CommandContext):
-    from chipcompiler.cli.inspection.discovery import resolve_command_workspace
-
-    workspace, error = resolve_command_workspace(
-        command_input.workspace, ctx.project, command_input.project.run_id, ctx.run_dir
-    )
-    if error is not None:
-        return None, CommandResult.err([error])
-    return workspace, None
-
-
-def _workspace_display(command_input, ctx: CommandContext) -> str:
-    if command_input.workspace is not None:
-        return os.path.abspath(os.path.expanduser(command_input.workspace))
-    return ctx.run_dir
+from chipcompiler.cli.inspection.discovery import (
+    resolve_loaded_workspace,
+    resolve_workspace_path,
+    workspace_display,
+)
 
 
 def _write_report(report_name, default_filename, content, command_input, ctx, extra):
     """Write the report file (default: <workspace>/signoff/) and summarize."""
-    workspace_display = _workspace_display(command_input, ctx)
+    workspace_display_dir = workspace_display(command_input, ctx)
     if command_input.output_path is not None:
         destination = os.path.abspath(os.path.expanduser(command_input.output_path))
     else:
-        destination = os.path.join(workspace_display, "signoff", default_filename)
+        destination = os.path.join(workspace_display_dir, "signoff", default_filename)
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     with open(destination, "w", encoding="utf-8") as f:
         f.write(content)
@@ -47,7 +35,7 @@ def _write_report(report_name, default_filename, content, command_input, ctx, ex
 
 
 def qor(command_input, ctx: CommandContext) -> CommandResult:
-    workspace, failure = _resolve(command_input, ctx)
+    workspace, failure = resolve_loaded_workspace(command_input, ctx)
     if failure is not None:
         return failure
 
@@ -85,7 +73,7 @@ def qor(command_input, ctx: CommandContext) -> CommandResult:
 
 
 def checklist(command_input, ctx: CommandContext) -> CommandResult:
-    workspace, failure = _resolve(command_input, ctx)
+    workspace, failure = resolve_loaded_workspace(command_input, ctx)
     if failure is not None:
         return failure
 
@@ -144,7 +132,7 @@ def _design_name(workspace) -> str:
 
 
 def summary(command_input, ctx: CommandContext) -> CommandResult:
-    workspace, failure = _resolve(command_input, ctx)
+    workspace, failure = resolve_loaded_workspace(command_input, ctx)
     if failure is not None:
         return failure
 
@@ -171,27 +159,17 @@ def _resolve_workspace_dir(command_input, ctx: CommandContext):
 
     `report step` previews current artifacts only; load_workspace would
     migrate configs and append a workspace log file on every invocation.
-    Error records match resolve_command_workspace's contract.
+    Error records match resolve_command_workspace's contract. Unlike the
+    loaded variant, the conflict check uses the resolved ctx.run_id, so a
+    run selected via ecc.toml or the manifest also conflicts with
+    --workspace.
     """
-    if command_input.workspace is not None:
-        if ctx.project is not None or ctx.run_id is not None:
-            return None, CommandResult.err([error_record("project_workspace_conflict")])
-        path = os.path.abspath(os.path.expanduser(command_input.workspace))
-        if not os.path.isdir(path):
-            return None, CommandResult.err([error_record("invalid_workspace", workspace=path)])
-        return path, None
-
-    if not os.path.isdir(ctx.run_dir):
-        return None, CommandResult.err(
-            [
-                error_record(
-                    "missing_workspace",
-                    run_dir=ctx.run_dir,
-                    run=disclosure_cmd("ecc run", ctx.project, ctx.run_id),
-                )
-            ]
-        )
-    return ctx.run_dir, None
+    workspace_dir, error = resolve_workspace_path(
+        command_input.workspace, ctx.project, ctx.run_id, ctx.run_dir
+    )
+    if error is not None:
+        return None, CommandResult.err([error])
+    return workspace_dir, None
 
 
 def step(command_input, ctx: CommandContext) -> CommandResult:

@@ -1,10 +1,9 @@
 import os
-import re
-import sys
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
-from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.cli.project import toml_edit
 from chipcompiler.cli.project.params import (
     lookup_schema,
     parse_value,
@@ -294,105 +293,6 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
 
 
 # ---------------------------------------------------------------------------
-# Pretty rendering for param commands
-# ---------------------------------------------------------------------------
-
-
-def render_param_result(result, mode: OutputMode, file=None) -> bool:
-    """Render param-specific output. Returns True if handled, False otherwise."""
-    target = file or sys.stdout
-
-    if mode == OutputMode.JSON:
-        from chipcompiler.cli.rendering.render import render_json
-
-        render_json(result, file=target)
-        return True
-    if mode == OutputMode.JSONL:
-        from chipcompiler.cli.rendering.render import render_jsonl
-
-        render_jsonl(result, file=target)
-        return True
-    if mode == OutputMode.PLAIN:
-        from chipcompiler.cli.rendering.render import render_plain
-
-        render_plain(result.records, file=target)
-        return True
-
-    return False
-
-
-def render_param_list_text(records, file=None):
-    target = file or sys.stdout
-    groups: dict[str, list] = {}
-    for r in records:
-        g = r.get("group", "")
-        groups.setdefault(g, []).append(r)
-
-    for group_name, group_records in groups.items():
-        print(f"  {group_name}", file=target)
-        for r in group_records:
-            val = r.get("value")
-            src = r.get("source", "default")
-            line = f"    {r['param']:30s} {val}"
-            if src != "default":
-                line += f"  ({src})"
-            print(line, file=target)
-
-
-def render_param_show_text(records, file=None):
-    target = file or sys.stdout
-    r = records[0]
-
-    print(f"  {r['param']}", file=target)
-    for field in (
-        "value",
-        "default",
-        "source",
-        "type",
-        "applies",
-        "maps_to",
-        "config_target",
-        "pdk_target",
-        "description",
-        "range",
-        "choices",
-        "unit",
-        "inspect",
-        "set",
-        "run",
-    ):
-        val = r.get(field)
-        if val is not None:
-            label = field.replace("_", " ")
-            print(f"    {label:14s} {val}", file=target)
-
-
-def render_param_set_text(records, file=None):
-    target = file or sys.stdout
-    r = records[0]
-    status = r.get("status", "")
-    if status == "set":
-        print(f"  set {r['param']} = {r['value']} (ecc.toml)", file=target)
-    elif status == "no_override":
-        print(f"  {r['param']}: no override to remove", file=target)
-    elif status == "unset":
-        print(f"  unset {r['param']} (now default: {r['value']})", file=target)
-    else:
-        from chipcompiler.cli.rendering.render import render_text
-
-        render_text(records, file=target)
-
-
-def render_param_diff_text(records, file=None):
-    target = file or sys.stdout
-    if len(records) == 1 and records[0].get("diff_status") == "clean":
-        print("  No overrides.", file=target)
-        return
-    for r in records:
-        print(f"  {r['param']:30s} {r['value']} (was {r['default']}, {r['source']})", file=target)
-
-
-# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -454,7 +354,7 @@ def _write_param_to_toml(config_path: str, schema, value: object) -> None:
     with open(config_path) as f:
         original = f.read()
 
-    new_text = _apply_scoped_param_edit(original, target_table, name, value)
+    new_text = toml_edit.set_scoped_key(original, target_table, name, value)
 
     with open(config_path, "w") as f:
         f.write(new_text)
@@ -470,148 +370,10 @@ def _remove_param_from_toml(config_path: str, schema) -> bool:
     with open(config_path) as f:
         original = f.read()
 
-    result = _remove_scoped_param_key(original, target_table, name)
+    result = toml_edit.remove_scoped_key(original, target_table, name)
     if result is None:
         return False
 
     with open(config_path, "w") as f:
         f.write(result)
     return True
-
-
-_TABLE_HEADER_RE = re.compile(r"^[ \t]*\[([^\]]+)\][ \t]*(?:#.*)?$", re.MULTILINE)
-
-
-def _find_table_span(text: str, table_name: str) -> tuple[int, int] | None:
-    """Return (body_start, body_end) for a TOML table, or None."""
-    for m in _TABLE_HEADER_RE.finditer(text):
-        if m.group(1).strip() == table_name:
-            header_end = m.end()
-            nl = text.find("\n", header_end)
-            body_start = len(text) if nl == -1 else nl + 1
-            next_header = _TABLE_HEADER_RE.search(text, body_start)
-            body_end = next_header.start() if next_header else len(text)
-            return body_start, body_end
-    return None
-
-
-def _extend_multiline_value(text: str, match_end: int) -> int:
-    """Extend match end past continuation lines for multiline TOML values.
-
-    After matching `key = ...` on one line, consume subsequent lines if the
-    value has unclosed brackets (arrays or inline tables).
-    """
-    line_start = text.rfind("\n", 0, match_end) + 1
-    matched_line = text[line_start:match_end]
-
-    depth = 0
-    eq_pos = matched_line.find("=")
-    if eq_pos >= 0:
-        for ch in matched_line[eq_pos + 1 :]:
-            if ch in ("[", "{"):
-                depth += 1
-            elif ch in ("]", "}"):
-                depth -= 1
-
-    if depth <= 0:
-        return match_end
-
-    pos = match_end
-    while pos < len(text) and depth > 0:
-        ch = text[pos]
-        if ch in ("[", "{"):
-            depth += 1
-        elif ch in ("]", "}"):
-            depth -= 1
-        pos += 1
-
-    while pos < len(text) and text[pos] in (" ", "\t"):
-        pos += 1
-    if pos < len(text) and text[pos] == "\n":
-        pos += 1
-
-    return pos
-
-
-def _apply_scoped_param_edit(text: str, target_table: str, name: str, value: object) -> str:
-    value_str = _format_toml_value(value)
-
-    span = _find_table_span(text, target_table)
-    if span is None:
-        params_span = _find_table_span(text, "params")
-        if params_span is None:
-            return text.rstrip() + f"\n\n[{target_table}]\n{name} = {value_str}\n"
-        body_start, body_end = params_span
-        insert = f"\n\n[{target_table}]\n{name} = {value_str}"
-        next_header = _TABLE_HEADER_RE.search(text, body_start)
-        if next_header:
-            pos = next_header.start()
-            return text[:pos] + insert + "\n" + text[pos:]
-        return text + insert + "\n"
-
-    body_start, body_end = span
-    section_body = text[body_start:body_end]
-    key_pattern = re.compile(rf"^(\s*){re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
-    key_match = key_pattern.search(section_body)
-
-    if key_match:
-        indent = key_match.group(1)
-        end = _extend_multiline_value(section_body, key_match.end())
-        new_line = f"{indent}{name} = {value_str}"
-        if end > key_match.end():
-            new_line += "\n"
-        new_body = section_body[: key_match.start()] + new_line + section_body[end:]
-        return text[:body_start] + new_body + text[body_end:]
-    else:
-        insert = f"{name} = {value_str}\n"
-        return text[:body_start] + insert + text[body_start:]
-
-
-def _remove_scoped_param_key(text: str, target_table: str, name: str) -> str | None:
-    span = _find_table_span(text, target_table)
-    if span is None:
-        return None
-
-    body_start, body_end = span
-    section_body = text[body_start:body_end]
-    key_pattern = re.compile(rf"^\s*{re.escape(name)}\s*=[^\n]*\n?", re.MULTILINE)
-    key_match = key_pattern.search(section_body)
-    if not key_match:
-        return None
-
-    end = _extend_multiline_value(section_body, key_match.end())
-    # Consume trailing newline after multiline value
-    if section_body[end : end + 1] == "\n":
-        end += 1
-    new_body = section_body[: key_match.start()] + section_body[end:]
-    remaining_keys = [line for line in new_body.strip().split("\n") if line.strip()]
-    if not remaining_keys:
-        header_match = None
-        for m in _TABLE_HEADER_RE.finditer(text):
-            if m.group(1).strip() == target_table:
-                header_match = m
-                break
-        if header_match is None:
-            return None
-        header_start = header_match.start()
-        result = text[:header_start].rstrip("\n") + "\n" + text[body_end:].lstrip("\n")
-        return result if result.strip() else None
-    else:
-        return text[:body_start] + new_body + text[body_end:]
-
-
-def _format_toml_value(val: object) -> str:
-    if isinstance(val, bool):
-        return "true" if val else "false"
-    if isinstance(val, (int, float)):
-        return str(val)
-    if isinstance(val, str):
-        escaped = val.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    if isinstance(val, (list, tuple)):
-        items = ", ".join(_format_toml_value(v) for v in val)
-        return f"[{items}]"
-    if isinstance(val, dict):
-        items = ", ".join(f'"{key}" = {_format_toml_value(value)}' for key, value in val.items())
-        return f"{{{items}}}"
-    return str(val)

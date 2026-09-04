@@ -18,14 +18,14 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── signoff.py                  # signoff 子应用（inspect/export）
   ├── report.py                   # report 子应用（summary/qor/checklist/step）
   └── rpc.py                      # rpc 子应用（serve）
-chipcompiler/cli/command_handlers/  # 业务处理层（有状态/重逻辑）
+chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，有状态/重逻辑）
   ├── project.py                  # init / check / run / migrate（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor（组装 env_probe 结果为 records）
+  ├── param.py                    # param 五子命令（校验 + 经 cli/project/toml_edit.py 做 TOML 定点改写）
   ├── pdk.py                      # pdk 四子命令（TOML 定点改写 + root 来源解析）
-  ├── signoff.py                  # signoff inspect/export + inspect 的 TEXT 渲染
+  ├── signoff.py                  # signoff inspect/export
   └── report.py                   # report summary/qor/checklist/step 的处理器
-chipcompiler/cli/handlers/param.py  # param 子命令处理 + param 的 TEXT 渲染
 chipcompiler/cli/core/            # 框架层
   ├── inputs.py                   # 各命令的 frozen dataclass 输入模型
   ├── invocation.py               # execute_command()：上下文构建→handler→渲染→退出码
@@ -44,7 +44,7 @@ chipcompiler/engine/signoff/      # 签核收集器 + 设计/checklist 报告（
 chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §5.5）
 ```
 
-模块归属由 `test/cli/test_cli_module_layout.py` 强制：核心框架必须在 `cli/core/`、命令注册在 `cli/commands/`、处理逻辑在 `cli/command_handlers/`（项目类）与 `cli/handlers/`（param 类）、只读探查在 `cli/inspection/`、渲染在 `cli/rendering/`；旧的 `chipcompiler/cli/*.py` 平铺模块必须不可导入。新增文件时放进对应子包，不要在 `cli/` 根下新建模块。
+模块归属由 `test/cli/test_cli_module_layout.py` 强制：核心框架必须在 `cli/core/`、命令注册在 `cli/commands/`、全部处理器在唯一的 `cli/command_handlers/` 包、只读探查在 `cli/inspection/`、渲染在 `cli/rendering/`；旧的 `chipcompiler/cli/*.py` 平铺模块必须不可导入。新增文件时放进对应子包，不要在 `cli/` 根下新建模块。
 
 公开命令的归属必须严格：`ecc signoff` 只负责签核包就绪度与归档导出（`inspect`、`export`）；`ecc report` 统一承载报告输出（`summary`、`qor`、`checklist`、`step`）。`ecc config [STEP]` 始终返回解析后的数据，因此不提供 `--resolved` 开关。不要在错误的命令组中增加别名，也不要添加没有行为分支的选项。
 
@@ -67,7 +67,7 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §
 
 ## 3. 输出约定（records 模型）
 
-所有命令的输出统一为「记录列表」：
+经 `execute_command()` 分发的命令统一使用「记录列表」：
 
 - handler 返回 `CommandResult.ok(records)` / `CommandResult.err(records, exit_code=1)`（`cli/core/types.py`）；`records` 是 `tuple[dict, ...]`，每个 dict 是一行结构化记录。
 - 四种输出模式（优先级 jsonl > json > plain > text，见 `cli/core/invocation.py`）：
@@ -77,6 +77,8 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §
   - 默认 TEXT：走 pretty 渲染；无定制渲染器时打印 `key=value`，键名去掉 `_cmd` 后缀。
 - 错误记录用 `core/records.py::error_record(...)`，产出 `{"kind": "error", "error": "<机器可读错误码>", ...}`；TEXT 模式下由 `render_error` 打成 `[error]` 块。错误码是稳定契约（如 `missing_config`、`run_exists`、`unknown_parameter`、`invalid_value`），测试会对它们断言。
 - 给用户的「下一步」提示统一用 `core/output.py::disclosure_cmd("ecc status", project, run_id)` 生成可复制的完整命令，记录里放在 `inspect` / `log_cmd` / `run` 等字段。
+
+`ecc version` 直接格式化版本元数据，但也支持 `--json`、`--jsonl` 和 `--plain`，使用版本专用 schema。`ecc rpc serve` 与 `ecc layout-image` 有意不使用 records 渲染器输出模式。
 
 ## 4. 新增一个顶层命令（Step by Step）
 
@@ -96,7 +98,7 @@ class CheckInput:
 
 ### 4.2 编写 handler
 
-放在 `cli/command_handlers/`（会改项目/跑 flow 的命令）或 `cli/handlers/`（param 类轻命令），签名固定：
+放在 `cli/command_handlers/`，签名固定：
 
 ```python
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
@@ -113,7 +115,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 在 `cli/commands/project.py`（或新模块）声明命令函数并注册，共享选项直接用 `cli/core/options.py` 的别名：
 
 ```python
-from chipcompiler.cli.core.options import JsonOption, PlainOption, ProjectOption
+from chipcompiler.cli.core.options import JsonlOption, JsonOption, PlainOption, ProjectOption
 
 def register_project_commands(app: typer.Typer) -> None:
     app.command("check", help="Validate the current project setup")(check_cmd)
@@ -122,10 +124,11 @@ def check_cmd(
     *,
     project: ProjectOption = None,
     json_output: JsonOption = False,
+    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = CheckInput(
-        output=output_options(json_output=json_output, jsonl=False, plain=plain),
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
     )
     execute_command("check", command_input, project_handlers.check)
@@ -208,7 +211,7 @@ config_param(
 
 ### 5.4 扩展签核（`ecc signoff inspect/export`）
 
-- **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`_resolve_workspace()` 统一解析 `--workspace` 与 `--project/--run-id`（互斥冲突 → `project_workspace_conflict`）。inspect 复用 `runtime/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`RuntimeApiError` → `signoff_incomplete`）。
+- **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`inspection/discovery.py::resolve_loaded_workspace()` 统一解析 `--workspace` 与 `--project/--run-id`（互斥冲突 → `project_workspace_conflict`）。inspect 复用 `runtime/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`RuntimeApiError` → `signoff_incomplete`）。
 - **引擎层**：`chipcompiler/engine/signoff/` 包负责签核收集器 `SignoffPackageCollector`，以及就绪度检查和归档导出所使用的包级 API。
 
 ### 5.5 扩展报告（`ecc report summary/qor/checklist/step`）
@@ -216,7 +219,7 @@ config_param(
 - **设计总结**：`ecc report summary` 调用 `chipcompiler.engine.signoff.generate_text_report`。其实现按职责分模块（`report.py` 编排 / `report_data.py` 数据契约 / `report_extract.py` 解析器+workspace 收集 / `report_sections.py` 分区抽取 / `report_timing.py` timing 链 / `report_text.py` 格式化），全部经包 `__init__` 对外暴露。新增报告分区时，在 `report_sections.py`（或 timing 链）增加 `_extract_<family>(q)`，并在 `report.py` 编排处注册。
 - `engine/qor_report.py`：GUI `projectQorTrend.ts` 的单 workspace 移植——常量表（`METRIC_FAIL_VALUES`/`DIMENSION_WEIGHTS`/`QOR_SCORE_THRESHOLD`）+ 归一化 + 项目级记录选择（role 优先级 final>gate>trend、area_cost 只取最后成功的 area 步）+ `score_record` 计分公式 + 维度加权（不重归一化）。新增可计分指标 = 在 GUI 与 `METRIC_FAIL_VALUES` 同步加阈值。
 - `engine/signoff/report_checklist.py`：只读渲染 `home/checklist.json`（不合法时报 unavailable，绝不回写文件）。
-- CLI：`cli/commands/report.py` + `cli/command_handlers/report.py`；workspace 解析复用 `inspection/discovery.py::resolve_command_workspace`（signoff/report 共用）。
+- CLI：`cli/commands/report.py` + `cli/command_handlers/report.py`；workspace 解析复用 `inspection/discovery.py`（`resolve_workspace_path` 是无副作用核心，`resolve_command_workspace` 是核心加 `load_workspace`；signoff、report 与只读的 status/log/config 共用）。
 
 ### 5.6 扩展 RPC（`ecc rpc serve`）
 

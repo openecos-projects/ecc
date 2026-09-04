@@ -129,9 +129,10 @@ ecc log --project gcd
 | `ecc check` | 校验 RTL、约束、PDK、工具和配置 |
 | `ecc doctor` | 检查主机环境：PDK、yosys（含 slang）和内置工具 |
 | `ecc run` | 运行配置的 RTL-to-GDS 流程 |
-| `ecc status` | 显示运行和步骤状态 |
+| `ecc status` | 快速查看 run/步骤进度概要 |
 | `ecc log [step]` | 显示可用日志或步骤日志内容 |
 | `ecc config [step]` | 显示解析后的项目或步骤配置 |
+| `ecc migrate` | 将旧版 `runs/` 项目迁移到 manifest 布局 |
 | `ecc param` | 管理参数覆盖（`list`、`show`、`set`、`unset`、`diff`） |
 | `ecc pdk` | 管理 PDK 路径（`setup`、`set-root`、`show`、`unset`） |
 | `ecc signoff` | 检查签核就绪度并导出签核包 |

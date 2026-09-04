@@ -1,26 +1,10 @@
 """Handlers for the `ecc pdk` command group (PDK path configuration)."""
 
 import os
-import re
 
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-
-_TABLE_HEADER_RE = re.compile(r"^[ \t]*\[([^\]]+)\][ \t]*(?:#.*)?$", re.MULTILINE)
-
-
-def _find_table_span(text: str, table_name: str) -> tuple[int, int] | None:
-    """Return (body_start, body_end) for a TOML table, or None."""
-    for match in _TABLE_HEADER_RE.finditer(text):
-        if match.group(1).strip() != table_name:
-            continue
-        header_end = match.end()
-        newline = text.find("\n", header_end)
-        body_start = len(text) if newline == -1 else newline + 1
-        next_header = _TABLE_HEADER_RE.search(text, body_start)
-        body_end = next_header.start() if next_header else len(text)
-        return body_start, body_end
-    return None
+from chipcompiler.cli.project.toml_edit import set_pdk_root
 
 
 def _write_pdk_root(config_path: str, value: str) -> None:
@@ -28,23 +12,7 @@ def _write_pdk_root(config_path: str, value: str) -> None:
     with open(config_path) as f:
         original = f.read()
 
-    span = _find_table_span(original, "pdk")
-    if span is None:
-        new_text = original.rstrip("\n") + f'\n\n[pdk]\nroot = "{value}"\n'
-    else:
-        body_start, body_end = span
-        section = original[body_start:body_end]
-        key_pattern = re.compile(r"^(\s*)root\s*=[^\n]*$", re.MULTILINE)
-        key_match = key_pattern.search(section)
-        if key_match:
-            new_section = (
-                section[: key_match.start()]
-                + f'{key_match.group(1)}root = "{value}"'
-                + section[key_match.end() :]
-            )
-        else:
-            new_section = f'root = "{value}"\n' + section
-        new_text = original[:body_start] + new_section + original[body_end:]
+    new_text = set_pdk_root(original, value)
 
     with open(config_path, "w") as f:
         f.write(new_text)

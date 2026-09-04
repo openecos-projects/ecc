@@ -131,11 +131,16 @@ Current implementation status:
 
 | Command family | Structured options |
 | --- | --- |
-| `ecc init` | `--plain` |
-| `ecc check` | `--json`, `--plain` |
-| `ecc run`, `ecc status`, `ecc log`, `ecc config` | `--json`, `--jsonl`, `--plain` |
+| `ecc init` | `--json`, `--jsonl`, `--plain` |
+| `ecc check`, `ecc doctor` | `--json`, `--jsonl`, `--plain` |
+| `ecc run`, `ecc status`, `ecc log`, `ecc config`, `ecc migrate` | `--json`, `--jsonl`, `--plain` |
 | `ecc param list/show/set/unset/diff` | `--json`, `--jsonl`, `--plain` |
-| `ecc version` | `--json` |
+| `ecc pdk setup/set-root/show/unset` | `--json`, `--jsonl`, `--plain` |
+| `ecc signoff inspect/export` | `--json`, `--jsonl`, `--plain` |
+| `ecc report summary/qor/checklist/step` | `--json`, `--jsonl`, `--plain` |
+| `ecc version` | `--json`, `--jsonl`, `--plain` |
+| `ecc rpc serve` | none (machine protocol) |
+| `ecc layout-image` | none (tool invocation; produces a file) |
 
 When multiple project output options are provided, the implementation selects
 `--jsonl` first, then `--json`, then `--plain`, and otherwise renders pretty
@@ -200,11 +205,13 @@ ecc run
 ecc status
 ecc log
 ecc config
+ecc migrate
 ecc param
 ecc pdk
 ecc signoff
 ecc report
 ecc rpc
+ecc layout-image
 ```
 
 Responsibilities:
@@ -220,11 +227,13 @@ Responsibilities:
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
 | `ecc config` | Show the resolved project or step configuration |
+| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
 | `ecc pdk` | `setup` clones + `make unzip`s + wires in a PDK checkout; also `set-root`/`show`/`unset` for the `[pdk] root` path |
 | `ecc signoff` | Inspect package readiness and export the tar.gz package |
-| `ecc report` | Write the design summary, QoR, checklist, and step reports |
+| `ecc report` | Write design-summary, QoR, and checklist reports; show step evidence |
 | `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |
+| `ecc layout-image` | Render a GDS file into an image |
 
 `ecc run` preflights the tools its preset needs (yosys for synthesis,
 dreamplace for placement/legalization, ecc-tools always) and fails with
@@ -244,17 +253,52 @@ implementation detail:
 | Group | Subcommands | Scope |
 | --- | --- | --- |
 | `ecc signoff` | `inspect`, `export` | Signoff package readiness and archive generation |
-| `ecc report` | `summary`, `qor`, `checklist`, `step` | Read-only report generation and viewing |
+| `ecc report` | `summary`, `qor`, `checklist`, `step` | File reports and per-step evidence viewing |
 | `ecc pdk` | `setup`, `set-root`, `show`, `unset` | Project PDK configuration |
 | `ecc param` | `list`, `show`, `set`, `unset`, `diff` | Project parameter overrides |
 
 Commands that consume a run use `--project DIR` (default: current directory)
-and, when a run selection matters, `--run-id ID`. Report and signoff commands
-also accept `--workspace PATH` for direct workspace access; it is exclusive
-with project selectors. Record-producing commands use default human text,
+and, when a run selection matters, `--run-id ID`. Run-scoped inspection and
+reporting commands (`run`, `status`, `log`, `config`, `report *`, `signoff *`)
+also accept `--workspace PATH` for direct access to an existing workspace
+directory; it is exclusive with `--project` and `--run-id`, which may be used
+together, and the read-only
+commands (`status`, `log`, `config`, `report step`) never load or mutate the
+workspace. Record-producing commands use default human text,
 `--plain` for stable key-value records, `--json` for a record envelope, and
 `--jsonl` for one record per line. Commands that only create, configure, or
 serve a process expose only the options meaningful for that operation.
+
+### Unified CLI Standard
+
+The command graph follows these rules; new commands must follow them too:
+
+- **Architecture.** Top-level commands are workflow-scale verbs (`init`,
+  `check`, `run`, `status`, `log`, `config`, `doctor`, `migrate`, `version`)
+  plus the frozen tool invocations (`layout-image`). Resource management and
+  reporting live in noun groups (`param`, `pdk`, `signoff`, `report`, `rpc`).
+- **Subcommand verbs.** Mutable resources use the CRUD set
+  (`list`, `show`, `set`, `unset`, `diff`, plus `setup` for pdk). The `report`
+  group names its artifacts instead (`summary`, `qor`, `checklist`, `step`)
+  because `report <artifact>` reads as one action.
+- **Naming.** Lowercase single words; multi-word names use kebab-case
+  (`set-root`, `layout-image`). Help strings start with an imperative verb.
+- **Selectors.** `--workspace` is mutually exclusive with `--project` and
+  `--run-id`; the latter two may be combined. File-producing commands use
+  `-o/--output`.
+- **Status vs full evidence.** `ecc status` is the lightweight progress check;
+  `ecc report step` is the full per-step evidence report (features, analysis,
+  checklist). Both are read-only.
+- **Module layout.** One handler package (`cli/command_handlers/`), command
+  registration in `cli/commands/`, framework in `cli/core/`, read-only probing
+  in `cli/inspection/`, all rendering in `cli/rendering/` behind a single
+  registry keyed by full command path (top-level name, or `group:sub`).
+- **Frozen surfaces.** The GUI invokes `ecc rpc serve --stdio
+  [--persistent-db]`, `ecc version --json` (schema: `schema_version`, `runtime`,
+  `ecc`, `dreamplace`, `ecc_tools`, `tools`), the `ecc --version` single line,
+  and `ecc layout-image --gds <gds> --image <png>` as subprocess contracts.
+  Additive optional flags are allowed; these names, flags, and output schemas
+  must not change.
 
 ### Project-Oriented Entry
 

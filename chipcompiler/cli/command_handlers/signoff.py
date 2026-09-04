@@ -1,30 +1,11 @@
-import os
-
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-
-
-def _resolve_workspace(command_input, ctx: CommandContext):
-    """Return (workspace, None) or (None, error CommandResult)."""
-    from chipcompiler.cli.inspection.discovery import resolve_command_workspace
-
-    workspace, error = resolve_command_workspace(
-        command_input.workspace, ctx.project, command_input.project.run_id, ctx.run_dir
-    )
-    if error is not None:
-        return None, CommandResult.err([error])
-    return workspace, None
-
-
-def _workspace_display(command_input, ctx: CommandContext) -> str:
-    if command_input.workspace is not None:
-        return os.path.abspath(os.path.expanduser(command_input.workspace))
-    return ctx.run_dir
+from chipcompiler.cli.inspection.discovery import resolve_loaded_workspace, workspace_display
 
 
 def inspect(command_input, ctx: CommandContext) -> CommandResult:
-    workspace, failure = _resolve_workspace(command_input, ctx)
+    workspace, failure = resolve_loaded_workspace(command_input, ctx)
     if failure is not None:
         return failure
 
@@ -36,7 +17,7 @@ def inspect(command_input, ctx: CommandContext) -> CommandResult:
         {
             "signoff": "inspect",
             "status": review.get("status", "blocked"),
-            "workspace": _workspace_display(command_input, ctx),
+            "workspace": workspace_display(command_input, ctx),
             "export": disclosure_cmd("ecc signoff export -o <path>", project, ctx.run_id),
             "report": disclosure_cmd("ecc report summary", project, ctx.run_id),
         }
@@ -71,7 +52,7 @@ def inspect(command_input, ctx: CommandContext) -> CommandResult:
 
 
 def export(command_input, ctx: CommandContext) -> CommandResult:
-    workspace, failure = _resolve_workspace(command_input, ctx)
+    workspace, failure = resolve_loaded_workspace(command_input, ctx)
     if failure is not None:
         return failure
 
@@ -105,34 +86,3 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
             }
         ]
     )
-
-
-# ---------------------------------------------------------------------------
-# TEXT rendering for `ecc signoff inspect`
-# ---------------------------------------------------------------------------
-
-
-def render_signoff_inspect_text(records) -> None:
-    summary = records[0]
-    print("[signoff]")
-    print(f"  status    : {summary['status']}")
-    print(f"  workspace : {summary['workspace']}")
-    print(f"  export    : {summary['export']}")
-    print(f"  report    : {summary['report']}")
-    groups = [r for r in records[1:] if "group" in r]
-    if groups:
-        print()
-        print("  groups:")
-        for group in groups:
-            counts = ""
-            if group.get("available") is not None:
-                counts = f"  ({group['available']}/{group['expected']})"
-            print(f"    {group['group']:14s} {group['status']:9s}{counts}")
-    risks = [r for r in records[1:] if "risk" in r]
-    if risks:
-        print()
-        print("  risks:")
-        for risk in risks:
-            print(f"    [{risk['risk']:7s}] {risk['title']}")
-            if risk.get("reason"):
-                print(f"              {risk['reason']}")

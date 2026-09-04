@@ -325,15 +325,104 @@ def _render_step_disclosure(target, record, color, indent="      "):
         target.write(f"{indent}{dim_label} {value}\n")
 
 
-# --- Renderer registry ---
+# ---------------------------------------------------------------------------
+# Pretty rendering for param and signoff commands
+# ---------------------------------------------------------------------------
 
 
-def get_pretty_renderer(command):
-    registry = {
-        "init": render_init,
-        "check": render_check,
-        "run": render_run_summary,
-        "status": render_status,
-        "config": render_config,
-    }
-    return registry.get(command)
+def render_param_list_text(records, file=None):
+    target = file or sys.stdout
+    groups: dict[str, list] = {}
+    for r in records:
+        g = r.get("group", "")
+        groups.setdefault(g, []).append(r)
+
+    for group_name, group_records in groups.items():
+        print(f"  {group_name}", file=target)
+        for r in group_records:
+            val = r.get("value")
+            src = r.get("source", "default")
+            line = f"    {r['param']:30s} {val}"
+            if src != "default":
+                line += f"  ({src})"
+            print(line, file=target)
+
+
+def render_param_show_text(records, file=None):
+    target = file or sys.stdout
+    r = records[0]
+
+    print(f"  {r['param']}", file=target)
+    for field in (
+        "value",
+        "default",
+        "source",
+        "type",
+        "applies",
+        "maps_to",
+        "config_target",
+        "pdk_target",
+        "description",
+        "range",
+        "choices",
+        "unit",
+        "inspect",
+        "set",
+        "run",
+    ):
+        val = r.get(field)
+        if val is not None:
+            label = field.replace("_", " ")
+            print(f"    {label:14s} {val}", file=target)
+
+
+def render_param_set_text(records, file=None):
+    target = file or sys.stdout
+    r = records[0]
+    status = r.get("status", "")
+    if status == "set":
+        print(f"  set {r['param']} = {r['value']} (ecc.toml)", file=target)
+    elif status == "no_override":
+        print(f"  {r['param']}: no override to remove", file=target)
+    elif status == "unset":
+        print(f"  unset {r['param']} (now default: {r['value']})", file=target)
+    else:
+        from chipcompiler.cli.rendering.render import render_text
+
+        render_text(records, file=target)
+
+
+def render_param_diff_text(records, file=None):
+    target = file or sys.stdout
+    if len(records) == 1 and records[0].get("diff_status") == "clean":
+        print("  No overrides.", file=target)
+        return
+    for r in records:
+        print(f"  {r['param']:30s} {r['value']} (was {r['default']}, {r['source']})", file=target)
+
+
+def render_signoff_inspect_text(records, file=None):
+    target = file or sys.stdout
+    summary = records[0]
+    print("[signoff]", file=target)
+    print(f"  status    : {summary['status']}", file=target)
+    print(f"  workspace : {summary['workspace']}", file=target)
+    print(f"  export    : {summary['export']}", file=target)
+    print(f"  report    : {summary['report']}", file=target)
+    groups = [r for r in records[1:] if "group" in r]
+    if groups:
+        print()
+        print("  groups:")
+        for group in groups:
+            counts = ""
+            if group.get("available") is not None:
+                counts = f"  ({group['available']}/{group['expected']})"
+            print(f"    {group['group']:14s} {group['status']:9s}{counts}")
+    risks = [r for r in records[1:] if "risk" in r]
+    if risks:
+        print()
+        print("  risks:")
+        for risk in risks:
+            print(f"    [{risk['risk']:7s}] {risk['title']}")
+            if risk.get("reason"):
+                print(f"              {risk['reason']}")

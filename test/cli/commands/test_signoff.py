@@ -141,6 +141,7 @@ class TestSignoffInspect:
 
     def test_inspect_with_workspace_flag(self, tmp_path, capsys, monkeypatch, workspace_stub):
         _patch_inspect(monkeypatch)
+        os.makedirs(tmp_path / "ws")
 
         rc = cli_main.run(["signoff", "inspect", "--workspace", str(tmp_path / "ws"), "--json"])
 

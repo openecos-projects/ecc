@@ -132,9 +132,10 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
 | `ecc doctor` | Probe host environment: PDK, yosys (+slang), bundled tools |
 | `ecc run` | Run the configured RTL-to-GDS flow (`--preset` overrides for one run) |
-| `ecc status` | Show run and step status |
+| `ecc status` | Show a quick run/step progress summary |
 | `ecc log [step]` | Show available logs or step log content |
 | `ecc config [step]` | Show resolved project or step configuration |
+| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
 | `ecc pdk` | PDK path setup (`setup` clones + unzips, `set-root`, `show`, `unset`) |
 | `ecc signoff` | Inspect readiness and export the signoff package |

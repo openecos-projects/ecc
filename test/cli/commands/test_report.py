@@ -118,6 +118,7 @@ class TestReportQor:
         assert os.path.isfile(override)
 
     def test_qor_with_workspace_flag(self, tmp_path, capsys, monkeypatch, report_mocks):
+        os.makedirs(tmp_path / "ws")
         rc = cli_main.run(["report", "qor", "--workspace", str(tmp_path / "ws"), "--plain"])
         out = capsys.readouterr().out
         assert rc == 0
