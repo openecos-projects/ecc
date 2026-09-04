@@ -19,7 +19,7 @@ graph LR
     C --> D[ecc run --preset rtl2gds<br/>14 步全流程]
     D --> E[ecc status / log<br/>查看结果与日志]
     E --> F[ecc signoff export<br/>签核包 tar.gz]
-    E --> G[ecc signoff report<br/>设计总结报告]
+    E --> G[ecc report summary<br/>设计总结报告]
     E --> H[ecc report qor / checklist<br/>QoR 与签核清单]
 ```
 
@@ -367,7 +367,7 @@ rc=0
 default/
 ├── home/               # flow.json（步骤状态）+ params.toml + checklist.json
 ├── origin/             # 冻结的输入：gcd.v + 自动生成的 gcd.sdc
-├── config/             # 各步骤实际生效的配置（ecc config <step> --resolved 查看）
+├── config/             # 各步骤实际生效的配置（ecc config <step> 查看）
 ├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
 ├── Floorplan_ecc/
 ├── ...
@@ -406,7 +406,7 @@ $ ecc signoff inspect
   status    : attention
   workspace : default
   export    : ecc signoff export -o <path>
-  report    : ecc signoff report
+  report    : ecc report summary
 
   groups:
     initial        ready      (2/2)     # 原始 RTL + SDC
@@ -453,14 +453,14 @@ gcd_signoff_package/
     └── reports/      # 各步骤 QoR 指标 + postRouteLec/（LEC 等价性证明）
 ```
 
-### 5.3 设计总结报告：ecc signoff report
+### 5.3 设计总结报告：ecc report summary
 
 与 GUI「导出报告（文本）」同源，8 个分区（物理面积 / 时序收敛 / 时钟树 / 多 corner / 布线 / 功耗 / 物理验证 / 执行成本）：
 
 ```console
-$ ecc signoff report
+$ ecc report summary
 [status]
-  signoff: report
+  report: summary
   status: written
   path: /home/user/ecc-demo/gcd/default/signoff/gcd_design_summary.txt
   design: gcd
@@ -601,8 +601,8 @@ ecc run --workspace default --resume   # 从第一个非成功步骤继续
 ### 6.4 查看某步实际生效的配置
 
 ```bash
-ecc config placement --resolved    # 该步在 workspace config/ 下实际用的配置文件
-ecc config --resolved --plain      # 项目级配置（键值 + 解析后绝对路径）
+ecc config placement    # 该步在 workspace config/ 下实际用的配置文件
+ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 ```
 
 ## 7. 常见问题

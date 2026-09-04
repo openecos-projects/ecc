@@ -236,7 +236,7 @@ class TestConfigRunResolution:
         project_dir = create_cli_project()
         set_flow_run(project_dir, 'run = "exp1"')
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "--json", "--project", project_dir])
 
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
@@ -374,7 +374,7 @@ class TestNamedRunDisclosures:
 
 
 class TestInvalidConfigRun:
-    @pytest.mark.parametrize("command", (["status"], ["log"], ["config", "--resolved"]))
+    @pytest.mark.parametrize("command", (["status"], ["log"], ["config"]))
     def test_inspection_errors_on_invalid_flow_run(
         self, tmp_path, capsys, create_cli_project, set_flow_run, command
     ):
@@ -415,9 +415,7 @@ class TestInvalidConfigRun:
         project_dir = create_cli_project()
         set_flow_run(project_dir, 'run = ""')
 
-        rc = cli_main.run(
-            ["config", "--resolved", "--run-id", "exp1", "--project", project_dir, "--json"]
-        )
+        rc = cli_main.run(["config", "--run-id", "exp1", "--project", project_dir, "--json"])
 
         assert rc == 1
         assert json.loads(capsys.readouterr().out)["records"] == [

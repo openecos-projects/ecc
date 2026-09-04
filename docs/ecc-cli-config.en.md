@@ -3,7 +3,7 @@
 This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were verified against the v0.1.0a11 source (after the rebase onto main; templates live in [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
 
 - For command usage, see the [ECC CLI User Guide](ecc-cli-ug.en.md); to get started from scratch, see the [Tutorial](ecc-cli-tutorial.en.md)
-- Config inspection command: `ecc config <step> --resolved` (lists the configuration files actually in effect for that step)
+- Config inspection command: `ecc config <step>` (lists the configuration files actually in effect for that step)
 
 ## 0. Configuration System Overview
 
@@ -60,7 +60,7 @@ graph LR
 
 ### 0.3 Which configurations each step uses
 
-Distilled from real `ecc config <step> --resolved` output (maps to the source `_STEP_CONFIG_KEYS`):
+Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG_KEYS`):
 
 | Step | db_ecc | Step-specific config | Notes |
 |---|---|---|---|
@@ -77,7 +77,7 @@ Distilled from real `ecc config <step> --resolved` output (maps to the source `_
 | postroutelec | — | none (Tcl) | Yosys LEC, see §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §12) |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | reads the rcx config to align SPEFs |
-| harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not in `_STEP_CONFIG_KEYS`; `ecc config harden --resolved` prints nothing |
+| harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not in `_STEP_CONFIG_KEYS`; `ecc config harden` prints nothing |
 
 ## 1. The Parameter Chain (user-tunable parameters)
 
@@ -338,7 +338,7 @@ The two steps share `config/dreamplace_ecc.json`; before each step runs, `def_in
 
 ## 6. timing optimization (Sizer)
 
-Timing optimization is a three-stage subflow: run Sizer, legalize the Sizer staging DEF/netlist with DreamPlace, then publish the resulting ECC artifacts. `ecc config timing optimization --resolved` lists `db_ecc.json` and `dreamplace_ecc.json` because the inner legalization uses the normal workspace configuration mapping; **Sizer itself is driven by generated script files, not either JSON file**.
+Timing optimization is a three-stage subflow: run Sizer, legalize the Sizer staging DEF/netlist with DreamPlace, then publish the resulting ECC artifacts. `ecc config timing optimization` lists `db_ecc.json` and `dreamplace_ecc.json` because the inner legalization uses the normal workspace configuration mapping; **Sizer itself is driven by generated script files, not either JSON file**.
 
 | Generated file or option | Source | Meaning |
 |---|---|---|
@@ -449,8 +449,8 @@ No step-specific configuration file: it reuses `db_ecc.json` to locate its input
 ## 15. Configuration inspection and modification cheat sheet
 
 ```bash
-ecc config floorplan --resolved          # list the config files floorplan actually uses
-ecc config --resolved --plain            # project-level config (ecc.toml after resolution)
+ecc config floorplan          # list the config files floorplan actually uses
+ecc config --plain            # project-level config (ecc.toml after resolution)
 ecc param list --step cts                 # list all tunable CTS fields
 ecc param list --all                      # show the full reviewed schema
 ecc param show KEY / diff                 # single parameter / diff against defaults

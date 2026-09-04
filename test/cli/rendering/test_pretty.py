@@ -164,7 +164,7 @@ class TestPlainFlagAcceptance:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        rc = cli_main.run(["config", "--resolved", "--plain", "--project", project_dir])
+        rc = cli_main.run(["config", "--plain", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "\x1b[" not in out

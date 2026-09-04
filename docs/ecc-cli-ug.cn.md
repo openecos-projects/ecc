@@ -343,7 +343,7 @@ $ ecc run --preset bogus  # 非法 preset（不修改 ecc.toml）
   unsupported_preset
   preset: bogus
   presets: rtl2gds, syn_sta, synthesis_lec
-  inspect: ecc config --resolved
+  inspect: ecc config
 rc=1
 ```
 
@@ -463,27 +463,27 @@ rc=1
 ## 8. config — 查看解析后的配置
 
 ```bash
-ecc config [STEP] --resolved [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
+ecc config [STEP] [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
 ```
 
-`--resolved` 必选。不带 STEP 输出项目级配置（`ecc.toml` 键 + 解析后的绝对路径）；带 STEP 列出该步骤在 workspace `config/` 下实际生效的配置文件。
+不带 STEP 输出项目级配置（`ecc.toml` 键 + 解析后的绝对路径）；带 STEP 列出该步骤在 workspace `config/` 下实际生效的配置文件。
 
 ```console
-$ ecc config --resolved --plain    # 项目级（节选）
+$ ecc config --plain    # 项目级（节选）
 config=design.name scope=project value=gcd resolved=gcd source=ecc.toml
 config=design.top scope=project value=gcd resolved=gcd source=ecc.toml
 config=pdk.name scope=project value=ics55 resolved=ics55 source=ecc.toml
 ...
 
-$ ecc config floorplan --resolved  # 步骤级
+$ ecc config floorplan  # 步骤级
 [config]
   step:
     db_ecc.json (config)
       path: default/config/db_ecc.json
-  inspect: ecc config floorplan --resolved --json
+  inspect: ecc config floorplan --json
     floorplan_ecc.json (config)
       path: default/config/floorplan_ecc.json
-  inspect: ecc config floorplan --resolved --json
+  inspect: ecc config floorplan --json
 ```
 
 ## 9. param — 参数管理
@@ -612,9 +612,9 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
 
 解析优先级不变：`ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（ecos-studio workspace 布局）。除 root 使用 `ecc pdk set-root` 外，`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef` 可由 `ecc param set KEY VALUE` 管理，写入 `[pdk.overrides]`。
 
-## 11. signoff — 签核包与设计报告
+## 11. signoff — 签核包
 
-`ecc signoff export` 需要就绪的 Harden 签核包。`ecc signoff inspect` 与 `ecc signoff report` 也可用于审阅或汇总尚未完成的 workspace。三个子命令都接受 `--project DIR`（可选 `--run-id ID`），或直接指定 workspace 的 `--workspace PATH`，以及 `--json/--jsonl/--plain`。
+`ecc signoff export` 需要就绪的 Harden 签核包。`ecc signoff inspect` 可审阅尚未完成的 workspace。两个子命令都接受 `--project DIR`（可选 `--run-id ID`），或直接指定 workspace 的 `--workspace PATH`，以及 `--json/--jsonl/--plain`。
 
 ### 11.1 inspect — 就绪度审阅
 
@@ -630,7 +630,7 @@ $ ecc signoff inspect --workspace default
   status    : blocked
   workspace : default
   export    : ecc signoff export -o <path>
-  report    : ecc signoff report
+  report    : ecc report summary
 
   groups:
     initial        ready      (2/2)
@@ -666,18 +666,23 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # 就绪后
   path: /abs/path/gcd.tar.gz
 ```
 
-### 11.3 report — 文本设计总结报告
+## 12. report — 设计总结、QoR 总分与 checklist 报告
 
 ```bash
-ecc signoff report [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
+ecc report summary [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
+ecc report qor     [-o PATH] [同上]
+ecc report checklist [-o PATH] [同上]
+ecc report step    [STEP] [--section feature|analysis|checklist]... [同上]
 ```
+
+### 12.1 summary — 文本设计总结报告
 
 生成与 GUI「导出报告（文本）」同版式的设计总结（8 个分区：物理/时序/时钟/多 corner/绕线/功耗/验证/执行成本），默认写入 `<workspace>/signoff/<design>_design_summary.txt`：
 
 ```console
-$ ecc signoff report --project gcd
+$ ecc report summary --project gcd
 [status]
-  signoff: report
+  report: summary
   status: written
   path: /path/gcd/default/signoff/gcd_design_summary.txt
   design: gcd
@@ -703,15 +708,7 @@ PDK / Node         : ics55
 
 说明：inspect/export 会先刷新各步 analysis（与 GUI 一致）；report 默认按现状抽取（可用引擎 API `generate_text_report(workspace, refresh_analysis=True)` 要求刷新）。报告不要求 flow 完成——跑到哪一步就总结到哪一步。
 
-## 12. report — QoR 总分与 checklist 报告
-
-```bash
-ecc report qor        [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
-ecc report checklist  [-o PATH] [同上]
-ecc report step       [STEP] [--section feature|analysis|checklist]... [同上]
-```
-
-### 12.1 qor — QoR 总体计分报告
+### 12.2 qor — QoR 总体计分报告
 
 按 GUI 项目看板的计分规则给当前 workspace 打分：每条 v3 `qor_metrics.json` 指标按固定失败阈值折算 0-100 分（slack 类线性、core_utilization 目标区间 [0.45,0.70]、lower/higher_is_better 比例），维度内取平均，再按权重（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1）加权出总分——**缺项维度不重归一化**（与 GUI 一致，缺项会拉低总分）；60 分为通过线。默认写 `<workspace>/signoff/<design>_qor_report.txt`：
 
@@ -725,7 +722,7 @@ report=qor path=.../signoff/gcd_qor_report.txt bytes=1717 design=gcd \
 
 报告含：总分与判定（PASS/BELOW THRESHOLD/NOT RATED）、Flow 状态色（Green/Yellow/Orange/Red/Blocked）与 gate（DRC/LVS/RCX/STA 步骤状态）、Area 计分步（最后一个成功的 area 指标步）、维度表、逐指标明细分（corner 维度独立计分）。
 
-### 12.2 checklist — 签核清单报告
+### 12.3 checklist — 签核清单报告
 
 读取 `home/checklist.json`（schema v3 签核清单，由 flow 步骤/`ecc signoff inspect` 维护）渲染状态报告：总览（passed/blocked/attention/unavailable）、**BLOCKED 项明细**（含失败原因与 evidence 路径）、ATTENTION 项、全量表。清单不存在时返回 `checklist_unavailable`。默认写 `<workspace>/signoff/checklist_report.txt`。
 
@@ -734,7 +731,7 @@ ecc signoff inspect --project gcd    # 先刷新 checklist（若还没有）
 ecc report checklist --project gcd
 ```
 
-### 12.3 step — 单步骤 feature / analysis / checklist 报告（只读预览）
+### 12.4 step — 单步骤 feature / analysis / checklist 报告（只读预览）
 
 直接在终端预览**单个 step** 的三类产物，不写任何文件、不刷新任何快照（与 `report qor/checklist` 不同，本命令不加载 Workspace，因此不会触发配置迁移或追加 workspace 日志）：
 
@@ -803,10 +800,10 @@ ecc log place                      # 看出错步骤日志（TEXT 模式自动�
 ecc param set place.target_density 0.55   # 调参数后重跑
 ecc run --overwrite --preset rtl2gds
 ecc run --workspace default --only place --force   # 或原地单步复跑
-ecc config place --resolved        # 查看该步实际生效的配置文件
+ecc config place        # 查看该步实际生效的配置文件
 ecc signoff inspect                # 签核就绪度（blocked 也 rc=0）
 ecc signoff export -o gcd_signoff.tar.gz    # 就绪后导出签核包
-ecc signoff report                 # 生成文本设计总结（signoff/<design>_design_summary.txt）
+ecc report summary                 # 生成文本设计总结（signoff/<design>_design_summary.txt）
 ecc report qor                     # QoR 总分报告（signoff/<design>_qor_report.txt）
 ecc report checklist               # 签核清单报告（signoff/checklist_report.txt）
 ecc report step drc                # 终端预览单步骤 feature/analysis/checklist（只读）

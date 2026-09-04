@@ -19,7 +19,7 @@ graph LR
     C --> D[ecc run --preset rtl2gds<br/>14-step flow]
     D --> E[ecc status / log<br/>inspect results & logs]
     E --> F[ecc signoff export<br/>signoff tar.gz]
-    E --> G[ecc signoff report<br/>design summary]
+    E --> G[ecc report summary<br/>design summary]
     E --> H[ecc report qor / checklist<br/>QoR & signoff checklist]
 ```
 
@@ -369,7 +369,7 @@ Each run gets an isolated workspace (`gcd/<run-id>/` for fresh projects — the 
 default/
 ├── home/               # flow.json (step states) + params.toml + checklist.json
 ├── origin/             # frozen inputs: gcd.v + the auto-generated gcd.sdc
-├── config/             # configs actually in effect per step (view: ecc config <step> --resolved)
+├── config/             # configs actually in effect per step (view: ecc config <step>)
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
 ├── Floorplan_ecc/
 ├── ...
@@ -408,7 +408,7 @@ $ ecc signoff inspect
   status    : attention
   workspace : default
   export    : ecc signoff export -o <path>
-  report    : ecc signoff report
+  report    : ecc report summary
 
   groups:
     initial        ready      (2/2)     # original RTL + SDC
@@ -455,14 +455,14 @@ gcd_signoff_package/
     └── reports/      # per-step QoR metrics + postRouteLec/ (LEC equivalence proof)
 ```
 
-### 5.3 Design summary report: ecc signoff report
+### 5.3 Design summary report: ecc report summary
 
 Same source as the GUI's "export text report", with 8 sections (physical & area / timing closure / clock tree / multi-corner / routing / power / physical verification / execution cost):
 
 ```console
-$ ecc signoff report
+$ ecc report summary
 [status]
-  signoff: report
+  report: summary
   status: written
   path: /home/user/ecc-demo/gcd/default/signoff/gcd_design_summary.txt
   design: gcd
@@ -603,8 +603,8 @@ Note: `--from`/`--only` take the raw step names from `home/flow.json` (e.g. `pla
 ### 6.4 Inspecting a step's effective configuration
 
 ```bash
-ecc config placement --resolved    # config files actually used by that step under the workspace's config/
-ecc config --resolved --plain      # project-level config (key=value + resolved absolute paths)
+ecc config placement    # config files actually used by that step under the workspace's config/
+ecc config --plain      # project-level config (key=value + resolved absolute paths)
 ```
 
 ## 7. Troubleshooting

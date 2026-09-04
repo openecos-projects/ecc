@@ -7,6 +7,7 @@ from chipcompiler.cli.core.inputs import (
     ReportChecklistInput,
     ReportQorInput,
     ReportStepInput,
+    ReportSummaryInput,
     output_options,
     project_options,
 )
@@ -23,7 +24,7 @@ report_app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
     rich_markup_mode=None,
-    help="Generate QoR score and signoff checklist reports",
+    help="Generate design-summary, QoR score, checklist, and step reports",
 )
 
 WorkspaceOption = Annotated[
@@ -78,6 +79,26 @@ def checklist_cmd(
         output_path=output_path,
     )
     _finish("checklist", command_input, report_handlers.checklist)
+
+
+@report_app.command("summary", help="Write the text design summary report")
+def summary_cmd(
+    *,
+    output_path: OutputPathOption = None,
+    project: ProjectOption = None,
+    run_id: RunIdOption = None,
+    workspace: WorkspaceOption = None,
+    json_output: JsonOption = False,
+    jsonl: JsonlOption = False,
+    plain: PlainOption = False,
+) -> None:
+    command_input = ReportSummaryInput(
+        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        project=project_options(project, run_id),
+        workspace=workspace,
+        output_path=output_path,
+    )
+    _finish("summary", command_input, report_handlers.summary)
 
 
 SectionOption = Annotated[

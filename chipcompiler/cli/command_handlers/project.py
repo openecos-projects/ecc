@@ -270,7 +270,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
                     "unsupported_preset",
                     preset=command_input.preset,
                     presets=", ".join(sorted(flow_builders)),
-                    inspect=disclosure_cmd("ecc config --resolved", project),
+                    inspect=disclosure_cmd("ecc config", project),
                 )
             ]
         )

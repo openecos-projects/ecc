@@ -3,7 +3,7 @@
 本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0a11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
 
 - 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)；从零上手 → [入门教程](ecc-cli-tutorial.cn.md)
-- 配置查看命令：`ecc config <step> --resolved`（列出该步骤实际生效的配置文件）
+- 配置查看命令：`ecc config <step>`（列出该步骤实际生效的配置文件）
 
 ## 0. 配置体系总览
 
@@ -60,7 +60,7 @@ graph LR
 
 ### 0.3 每个步骤用到哪些配置
 
-`ecc config <step> --resolved` 的真实输出归纳（映射源码 `_STEP_CONFIG_KEYS`）：
+`ecc config <step>` 的真实输出归纳（映射源码 `_STEP_CONFIG_KEYS`）：
 
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|
@@ -77,7 +77,7 @@ graph LR
 | postroutelec | — | 无（Tcl） | Yosys LEC，见 §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §12） |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | 读 rcx 配置以对齐 SPEF |
-| harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但不在 `_STEP_CONFIG_KEYS` 中，`ecc config harden --resolved` 输出为空 |
+| harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但不在 `_STEP_CONFIG_KEYS` 中，`ecc config harden` 输出为空 |
 
 ## 1. 参数传递链（用户可调参数）
 
@@ -340,7 +340,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ## 6. timing optimization（Sizer）
 
-Timing optimization 是三阶段子流程：运行 Sizer，用 DreamPlace 对 Sizer 的暂存 DEF/网表做合法化，再发布得到的 ECC 产物。`ecc config timing optimization --resolved` 会列出 `db_ecc.json` 与 `dreamplace_ecc.json`，因为内部合法化使用常规 workspace 配置映射；**Sizer 本身由生成的脚本文件驱动，不直接使用这两个 JSON**。
+Timing optimization 是三阶段子流程：运行 Sizer，用 DreamPlace 对 Sizer 的暂存 DEF/网表做合法化，再发布得到的 ECC 产物。`ecc config timing optimization` 会列出 `db_ecc.json` 与 `dreamplace_ecc.json`，因为内部合法化使用常规 workspace 配置映射；**Sizer 本身由生成的脚本文件驱动，不直接使用这两个 JSON**。
 
 | 生成文件或选项 | 来源 | 含义 |
 |---|---|---|
@@ -451,8 +451,8 @@ ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=
 ## 15. 配置查看与修改速查
 
 ```bash
-ecc config floorplan --resolved          # 看 floorplan 实际用的配置文件列表
-ecc config --resolved --plain            # 项目级配置（ecc.toml 解析后）
+ecc config floorplan          # 看 floorplan 实际用的配置文件列表
+ecc config --plain            # 项目级配置（ecc.toml 解析后）
 ecc param list --step cts                 # 查看 CTS 全部可调字段
 ecc param list --all                      # 查看完整审核 schema
 ecc param show KEY / diff                 # 单参数 / 与默认差异

@@ -1,5 +1,4 @@
 import os
-import shlex
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
@@ -39,7 +38,7 @@ def inspect(command_input, ctx: CommandContext) -> CommandResult:
             "status": review.get("status", "blocked"),
             "workspace": _workspace_display(command_input, ctx),
             "export": disclosure_cmd("ecc signoff export -o <path>", project, ctx.run_id),
-            "report": disclosure_cmd("ecc signoff report", project, ctx.run_id),
+            "report": disclosure_cmd("ecc report summary", project, ctx.run_id),
         }
     ]
     for group in review.get("groups", []):
@@ -103,59 +102,6 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
                 "status": "exported",
                 "path": output_path,
                 "inspect_cmd": disclosure_cmd("ecc signoff inspect", ctx.project, ctx.run_id),
-            }
-        ]
-    )
-
-
-def _design_name(workspace) -> str:
-    design = getattr(workspace, "design", None)
-    name = getattr(design, "name", "") if design is not None else ""
-    if name:
-        return name
-
-    parameters = getattr(getattr(workspace, "parameters", None), "data", None)
-    if isinstance(parameters, dict):
-        return parameters.get("design") or parameters.get("Design") or "design"
-
-    from chipcompiler.utility.json import json_read
-
-    parameters = json_read(os.path.join(workspace.directory or "", "home", "parameters.json"))
-    return parameters.get("design") or parameters.get("Design") or "design"
-
-
-def report(command_input, ctx: CommandContext) -> CommandResult:
-    workspace, failure = _resolve_workspace(command_input, ctx)
-    if failure is not None:
-        return failure
-
-    from chipcompiler.engine.signoff import generate_text_report
-
-    try:
-        content = generate_text_report(workspace)
-    except Exception as exc:
-        return CommandResult.err([error_record("report_failed", reason=str(exc))])
-
-    design = _design_name(workspace)
-    workspace_display = _workspace_display(command_input, ctx)
-    if command_input.output_path is not None:
-        destination = os.path.abspath(os.path.expanduser(command_input.output_path))
-    else:
-        destination = os.path.join(workspace_display, "signoff", f"{design}_design_summary.txt")
-    os.makedirs(os.path.dirname(destination), exist_ok=True)
-    data = content.encode("utf-8")
-    with open(destination, "wb") as f:
-        f.write(data)
-
-    return CommandResult.ok(
-        [
-            {
-                "signoff": "report",
-                "status": "written",
-                "path": destination,
-                "design": design,
-                "bytes": len(data),
-                "view": f"cat {shlex.quote(destination)}",
             }
         ]
     )

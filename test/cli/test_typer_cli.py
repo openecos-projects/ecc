@@ -137,14 +137,28 @@ def test_invalid_option_returns_nonzero_without_system_exit(capsys):
     assert "No such option" in capsys.readouterr().err
 
 
-def test_config_requires_resolved_without_system_exit(tmp_path, capsys):
+def test_config_without_resolved_reaches_the_config_handler(tmp_path, capsys):
     project = tmp_path / "project"
     project.mkdir()
 
-    rc = cli_main.run(["config", "--project", str(project)])
+    rc = cli_main.run(["config", "--project", str(project), "--json"])
+
+    assert rc == 1
+    assert json.loads(capsys.readouterr().out)["records"][0]["error"] == "missing_config"
+
+
+def test_removed_config_resolved_option_returns_unknown_option(capsys):
+    rc = cli_main.run(["config", "--resolved"])
 
     assert rc != 0
-    assert "--resolved" in capsys.readouterr().err
+    assert "No such option" in capsys.readouterr().err
+
+
+def test_removed_signoff_report_command_returns_unknown_command(capsys):
+    rc = cli_main.run(["signoff", "report"])
+
+    assert rc != 0
+    assert "No such command" in capsys.readouterr().err
 
 
 def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):

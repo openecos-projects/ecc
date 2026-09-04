@@ -300,35 +300,33 @@ emits GDS + abstract LEF + timing LIB):
 uv run ecc run --project gcd --preset rtl2gds
 ```
 
-### QoR & Checklist Reports
+### Reports
 
 `ecc report qor` scores the workspace the same way the GUI project dashboard
 does (per-metric scores against fixed fail thresholds, dimension averages,
 weighted overall — weights are not renormalized over missing dimensions);
-`ecc report checklist` renders the signoff checklist status. Both write to
+`ecc report checklist` renders the signoff checklist status, and `ecc report
+summary` writes the GUI-parity text design summary. All three write to
 `<workspace>/signoff/` by default and accept `-o` plus the usual
 `--project/--run-id/--workspace` selectors:
 
 ```bash
 uv run ecc report qor --project gcd
 uv run ecc report checklist --workspace runs/default
+uv run ecc report summary --project gcd
 ```
 
 ### Signoff
 
-After a completed flow, inspect and export the signoff package and write the
-text design summary (GUI-parity report):
+After a completed flow, inspect and export the signoff package:
 
 ```bash
 uv run ecc signoff inspect --project gcd       # readiness review (blocked still exits 0)
 uv run ecc signoff export -o gcd.tar.gz --project gcd [--include-debug]
-uv run ecc signoff report --project gcd        # writes runs/<id>/signoff/<design>_design_summary.txt
 ```
 
-`inspect`/`export` refresh step analysis first (same as the GUI); `report`
-extracts as-is and defaults the destination to the workspace `signoff/`
-directory. Both project runs (`--project`/`--run-id`) and `--workspace` paths
-are accepted.
+`inspect`/`export` refresh step analysis first (same as the GUI). Both project
+runs (`--project`/`--run-id`) and `--workspace` paths are accepted.
 
 The project config is the CLI input surface:
 
