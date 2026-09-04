@@ -125,3 +125,83 @@ def checklist(command_input, ctx: CommandContext) -> CommandResult:
             "inspect": disclosure_cmd("ecc signoff inspect", ctx.project, ctx.run_id),
         },
     )
+
+
+def _resolve_workspace_dir(command_input, ctx: CommandContext):
+    """Resolve the workspace directory without loading a Workspace.
+
+    `report step` previews current artifacts only; load_workspace would
+    migrate configs and append a workspace log file on every invocation.
+    Error records match resolve_command_workspace's contract.
+    """
+    if command_input.workspace is not None:
+        if ctx.project is not None or ctx.run_id is not None:
+            return None, CommandResult.err([error_record("project_workspace_conflict")])
+        path = os.path.abspath(os.path.expanduser(command_input.workspace))
+        if not os.path.isdir(path):
+            return None, CommandResult.err([error_record("invalid_workspace", workspace=path)])
+        return path, None
+
+    if not os.path.isdir(ctx.run_dir):
+        return None, CommandResult.err(
+            [
+                error_record(
+                    "missing_workspace",
+                    run_dir=ctx.run_dir,
+                    run=disclosure_cmd("ecc run", ctx.project, ctx.run_id),
+                )
+            ]
+        )
+    return ctx.run_dir, None
+
+
+def step(command_input, ctx: CommandContext) -> CommandResult:
+    workspace_dir, failure = _resolve_workspace_dir(command_input, ctx)
+    if failure is not None:
+        return failure
+
+    from chipcompiler.cli.inspection.step_view import (
+        SECTIONS,
+        available_step_tokens,
+        build_step_detail_records,
+        build_step_overview_records,
+    )
+
+    invalid = [s for s in command_input.sections if s not in SECTIONS]
+    if invalid:
+        return CommandResult.err(
+            [
+                error_record(
+                    "invalid_section",
+                    reason=f"unknown section(s): {', '.join(invalid)}",
+                    sections=list(SECTIONS),
+                )
+            ]
+        )
+    if command_input.sections and command_input.step is None:
+        return CommandResult.err(
+            [error_record("section_requires_step", reason="--section needs a step token")]
+        )
+
+    if command_input.step is None:
+        return CommandResult.ok(build_step_overview_records(workspace_dir, ctx.project, ctx.run_id))
+
+    records = build_step_detail_records(
+        workspace_dir,
+        command_input.step,
+        command_input.sections or SECTIONS,
+        ctx.project,
+        ctx.run_id,
+    )
+    if records is None:
+        return CommandResult.err(
+            [
+                error_record(
+                    "unknown_step",
+                    step=command_input.step,
+                    available=available_step_tokens(workspace_dir),
+                    inspect=disclosure_cmd("ecc report step", ctx.project, ctx.run_id),
+                )
+            ]
+        )
+    return CommandResult.ok(records)

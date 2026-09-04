@@ -96,6 +96,38 @@ class TestDoctorCommand:
         assert summary["failed"] == 0  # optional failure never inflates `failed`
         assert summary["attention"] == 1
 
+    def test_doctor_sizer_failure_exits_nonzero(
+        self, tmp_path, capsys, monkeypatch, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        monkeypatch.setattr(
+            "chipcompiler.cli.inspection.env_probe.ALL_COMPONENTS",
+            ("sizer",),
+        )
+        _patch_probes(
+            monkeypatch,
+            {"sizer": ProbeResult("sizer", FAIL, remediation="install sizer")},
+        )
+
+        rc = cli_main.run(["doctor", "--project", project_dir, "--json"])
+
+        data = json.loads(capsys.readouterr().out)
+        assert rc == 1
+        assert data["records"][0]["status"] == "failed"
+        assert data["records"][0]["failed"] == 1
+        assert data["records"][1]["required"] is True
+
+    def test_sizer_probe_is_required(self, monkeypatch):
+        monkeypatch.setattr(
+            "chipcompiler.tools.ecc_sizer.utility.is_sizer_runtime_exist",
+            lambda: False,
+        )
+
+        result = env_probe.probe_sizer()
+
+        assert result.status == FAIL
+        assert result.required is True
+
     def test_doctor_without_project_skips_pdk(self, tmp_path, capsys, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
@@ -199,6 +231,7 @@ class TestRunPreflight:
             lambda: [
                 ("Synthesis", "yosys", "Unstart"),
                 ("place", "dreamplace", "Unstart"),
+                ("Timing optimization", "sizer", "Unstart"),
             ],
         )
 
@@ -207,6 +240,7 @@ class TestRunPreflight:
             "ecc-tools",
             "yosys",
             "dreamplace",
+            "sizer",
         )
 
     def test_workspace_run_mode_never_probes(self, tmp_path, monkeypatch):

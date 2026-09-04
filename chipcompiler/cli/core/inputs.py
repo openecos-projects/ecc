@@ -119,6 +119,15 @@ class ReportChecklistInput:
 
 
 @dataclass(frozen=True)
+class ReportStepInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    workspace: str | None = None
+    step: str | None = None
+    sections: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class SignoffInspectInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()

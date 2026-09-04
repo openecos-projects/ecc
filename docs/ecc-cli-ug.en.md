@@ -217,7 +217,7 @@ rc=0
 
 ### Environment self-check: ecc doctor
 
-`ecc doctor` checks every dependency in one command (PDK, yosys including the slang frontend, bundled ecc-tools/dreamplace, optional klayout/sizer), reporting pass/fail/skip per component with remediation hints; only **required** failures produce a non-zero exit:
+`ecc doctor` checks every dependency in one command (PDK, yosys including the slang frontend, bundled ecc-tools/dreamplace, required Sizer, and optional KLayout), reporting pass/fail/skip per component with remediation hints; only **required** failures produce a non-zero exit:
 
 ```bash
 ecc doctor [--project DIR] [--json | --jsonl | --plain]
@@ -271,7 +271,7 @@ Notes:
 | Yosys (synthesis) | `which yosys && yosys -V`, or `echo $CHIPCOMPILER_OSS_CAD_DIR` | either works (`CHIPCOMPILER_OSS_CAD_DIR` pointing at OSS CAD Suite takes priority) |
 | Yosys slang frontend | `yosys -Q -T -p "help read_slang"` | output does **not** contain `No such command` (builtin since yosys ≥ v0.67; older builds need a loadable slang plugin) |
 | KLayout (only needed by `layout-image`) | `python3 -c "from klayout import lay"` | no ImportError |
-| Sizer (needed by the Timing optimization step, present in the default rtl2gds/rcx/harden chains) | `which Sizer` or `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | either resolves (the root must contain `src/sizer_os.tcl`). Note `ecc run` preflight does **not** probe sizer; a missing binary fails mid-flow |
+| Sizer (required by `ecc doctor`; needed by the Timing optimization step in the default rtl2gds/rcx/harden chains) | `which Sizer` or `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | either resolves (the root must contain `src/sizer_os.tcl`). `ecc run` preflight does **not** probe sizer; a missing binary fails mid-flow |
 
 A copy-paste self-check snippet:
 
@@ -689,6 +689,7 @@ Notes: inspect/export refresh each step's analysis first (matching the GUI); rep
 ```bash
 ecc report qor        [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
 ecc report checklist  [-o PATH] [same options]
+ecc report step       [STEP] [--section feature|analysis|checklist]... [same options]
 ```
 
 ### 12.1 qor — overall QoR score report
@@ -712,6 +713,33 @@ Reads `home/checklist.json` (the schema-v3 signoff checklist maintained by flow 
 ```bash
 ecc signoff inspect --project gcd    # refresh the checklist first (if not present yet)
 ecc report checklist --project gcd
+```
+
+### 12.3 step — per-step feature / analysis / checklist report (read-only preview)
+
+Previews the **current step artifacts** of one workspace directly in the terminal. It writes no files and refreshes nothing (unlike `report qor/checklist` it does not load a Workspace, so no config migration or workspace log is appended):
+
+- Without arguments: an overview table of all steps (state, runtime, peak memory, metric count, quality, checklist status)
+- With `STEP`: the step's three detail sections
+  - `feature`: run facts from `feature/<Step>.step.json` (state/runtime/peak_memory/constraints) plus tool facts, and the grouped design stats from `feature/<Step>.db.json` (Design Layout / Statis / Instances)
+  - `analysis`: every metric of `analysis/qor_metrics.json` (value/unit/category/role) plus the quality status and quality gates of `analysis/qor_summary.json` (e.g. `qor.drc.clean — drc_count=336 == 0`)
+  - `checklist`: `<step>/checklist.json` (the v3 contract; falls back to `home/checklist.json` filtered by step when missing)
+- `--section` may be repeated to select sections; a section whose artifacts are missing renders as `unavailable`
+
+Step tokens follow `ecc log` (`synthesis/floorplan/placement/cts/...`); flow-internal names (`Timing optimization`) and directory-name variants (`timing_optimization`) are accepted too. An unknown token returns `unknown_step` with the list of valid tokens.
+
+```console
+$ ecc report step --workspace default
+  step                   tool         status    runtime  metrics quality  checklist
+  synthesis              yosys        success   0:0:17   10      pass     ready
+  ...
+  drc                    ecc          success   0:0:3    12      blocked  blocked (1 blocked)
+
+$ ecc report step drc --section analysis
+  analysis:
+    quality: blocked  (12 metrics, 0 missing)
+    ...
+    [BLOCK] qor.drc.clean — drc_count=336 == 0
 ```
 
 ## 13. rpc — JSON-RPC runtime sidecar (private)
@@ -762,6 +790,7 @@ ecc signoff export -o gcd_signoff.tar.gz    # export the signoff package once re
 ecc signoff report                 # text design summary (signoff/<design>_design_summary.txt)
 ecc report qor                     # QoR overall score report (signoff/<design>_qor_report.txt)
 ecc report checklist               # signoff checklist report (signoff/checklist_report.txt)
+ecc report step drc                # preview one step's feature/analysis/checklist (read-only)
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
 ```
 

@@ -3,7 +3,9 @@ import chipcompiler.cli.inspection.tool_versions as tool_versions
 
 def test_yosys_version_parses_yosys_v_output(monkeypatch):
     monkeypatch.setattr("chipcompiler.tools.yosys.utility.get_yosys_command", lambda: ["yosys"])
-    monkeypatch.setattr("chipcompiler.tools.yosys.utility.get_yosys_runtime", lambda: (["yosys"], {}))
+    monkeypatch.setattr(
+        "chipcompiler.tools.yosys.utility.get_yosys_runtime", lambda: (["yosys"], {})
+    )
     query_calls = []
 
     def fake_query(command, env=None):
@@ -21,7 +23,9 @@ def test_yosys_version_reports_missing_and_failed_query(monkeypatch):
     assert tool_versions.yosys_version() == "not installed"
 
     monkeypatch.setattr("chipcompiler.tools.yosys.utility.get_yosys_command", lambda: ["yosys"])
-    monkeypatch.setattr("chipcompiler.tools.yosys.utility.get_yosys_runtime", lambda: (["yosys"], {}))
+    monkeypatch.setattr(
+        "chipcompiler.tools.yosys.utility.get_yosys_runtime", lambda: (["yosys"], {})
+    )
     monkeypatch.setattr(tool_versions, "_query", lambda command, env=None: "")
     assert tool_versions.yosys_version() == "unknown"
 
@@ -33,15 +37,35 @@ def test_sizer_version_reports_missing_and_failed_query(monkeypatch):
     monkeypatch.setattr(
         "chipcompiler.tools.ecc_sizer.utility.get_sizer_command", lambda: ["/opt/bin/Sizer"]
     )
-    monkeypatch.setattr(tool_versions, "_query", lambda command, env=None: "")
+    monkeypatch.setattr(tool_versions, "_query", lambda command, env=None, **kwargs: "")
     assert tool_versions.sizer_version() == "unknown"
 
 
-def test_sizer_version_uses_query_output(monkeypatch):
+def test_sizer_version_parses_openroad_line_despite_usage_exit(monkeypatch):
     monkeypatch.setattr(
         "chipcompiler.tools.ecc_sizer.utility.get_sizer_command", lambda: ["/opt/bin/Sizer"]
     )
-    monkeypatch.setattr(tool_versions, "_query", lambda command, env=None: "ecc-sizer 1.2.3")
+    monkeypatch.setattr(
+        tool_versions,
+        "_query",
+        lambda command, env=None, **kwargs: "\n".join(
+            (
+                "OpenROAD v0.1.0-alpha ",
+                "This program is licensed under the BSD-3 license.",
+                "Usage : sizer -env <env_file> -f <cmd_file>",
+            )
+        ),
+    )
+    assert tool_versions.sizer_version() == "0.1.0-alpha"
+
+
+def test_sizer_version_falls_back_to_first_output_line(monkeypatch):
+    monkeypatch.setattr(
+        "chipcompiler.tools.ecc_sizer.utility.get_sizer_command", lambda: ["/opt/bin/Sizer"]
+    )
+    monkeypatch.setattr(
+        tool_versions, "_query", lambda command, env=None, **kwargs: "ecc-sizer 1.2.3"
+    )
     assert tool_versions.sizer_version() == "ecc-sizer 1.2.3"
 
 

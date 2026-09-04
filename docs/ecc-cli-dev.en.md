@@ -202,7 +202,7 @@ Project-run preset sequences are defined in `chipcompiler/rtl2gds/builder.py` (`
 
 ### 5.3 Extending environment probing (doctor / preflight)
 
-`cli/inspection/env_probe.py` is the single probing layer: `ProbeResult(component, status, required, detail, remediation)` plus one probe function per component (yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk). Adding a component = adding a probe function and registering it in `_PROBES`/`ALL_COMPONENTS`; `probe_environment()` guards against exceptions (a crashing probe counts as a fail rather than aborting the sweep). `probe_components_for_preset()` decides the current run-preflight scope (ecc-tools always, yosys ↔ contains Synthesis, dreamplace ↔ contains place/legalization). The PDK is covered by configuration validation, slang is left to synthesis, and Sizer is doctor-only today even though the default chains execute it.
+`cli/inspection/env_probe.py` is the single probing layer: `ProbeResult(component, status, required, detail, remediation)` plus one probe function per component (yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk). Adding a component = adding a probe function and registering it in `_PROBES`/`ALL_COMPONENTS`; `probe_environment()` guards against exceptions (a crashing probe counts as a fail rather than aborting the sweep). `probe_components_for_preset()` decides the current run-preflight scope (ecc-tools always, yosys ↔ contains Synthesis, dreamplace ↔ contains place/legalization). The PDK is covered by configuration validation, slang is left to synthesis, and Sizer is a required doctor component even though it remains outside run preflight.
 
 ### 5.4 Extending signoff (`ecc signoff` and the engine reports)
 

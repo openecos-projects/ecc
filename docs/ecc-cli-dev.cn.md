@@ -202,7 +202,7 @@ config_param(
 
 ### 5.3 扩展环境探查（doctor / 预检）
 
-`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围（始终 ecc-tools，yosys↔含 Synthesis，dreamplace↔含 place/legalization）。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 当前只在 doctor 探查，尽管默认链会执行它。
+`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围（始终 ecc-tools，yosys↔含 Synthesis，dreamplace↔含 place/legalization）。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 是 doctor 的必需组件，但仍不在 run 预检范围内。
 
 ### 5.4 扩展签核（`ecc signoff` 与引擎报告）
 
@@ -233,6 +233,13 @@ ecc --help            # 验证 doctor / signoff / report 已列出
 
 # 需要分发时按官方格式打 tar.gz
 tar -cf /tmp/ecc.tar -C dist/ecc . && gzip -n -9 -c /tmp/ecc.tar > dist/release/ecc-cli-linux-x86_64.tar.gz
+```
+
+打出的 tar.gz 也可以直接复用安装脚本装到本机（会清空旧目录整包替换，并顺带维护 `~/.ecc-env.sh` 与 `~/.local/bin/ecc` 软链；`ECC_CLI_URL` 接受绝对路径或 `file://` 直链，失败不会回退下载官方包）：
+
+```bash
+ECC_CLI_URL=$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz \
+  bash docs/ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
 ```
 
 回退官方发行版：`bash docs/ecc-cli-setup.sh --force`（见 [ecc-cli-setup.sh](ecc-cli-setup.sh)）。
