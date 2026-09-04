@@ -1,16 +1,22 @@
 import os
-import sys
 from collections.abc import Callable
 from typing import Protocol
 
 from chipcompiler.cli.core.inputs import LogInput
 from chipcompiler.cli.core.invocation import CommandInput
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
-from chipcompiler.cli.handlers.param import (
+from chipcompiler.cli.rendering.pretty import (
+    render_check,
+    render_config,
+    render_error,
+    render_init,
     render_param_diff_text,
     render_param_list_text,
     render_param_set_text,
     render_param_show_text,
+    render_run_summary,
+    render_signoff_inspect_text,
+    render_status,
 )
 from chipcompiler.cli.rendering.render import render_result
 
@@ -27,7 +33,8 @@ class Renderer(Protocol):
 
 
 RendererKey = tuple[str, OutputMode]
-ParamTextRenderer = Callable[[tuple[dict, ...]], None]
+PrettyRenderer = Callable[..., None]
+PlainTextRenderer = Callable[[tuple[dict, ...]], None]
 
 
 def render_command_result(
@@ -47,20 +54,46 @@ def render_command_result(
     render_result(result, ctx.output_mode, command=command, color=color)
 
 
-def _render_signoff_inspect_text(
-    result: CommandResult,
-    ctx: CommandContext,
-    command_input: CommandInput,
-    *,
-    color: bool,
-) -> None:
-    from chipcompiler.cli.command_handlers.signoff import render_signoff_inspect_text
-    from chipcompiler.cli.rendering.pretty import render_error
+def _pretty(render_text: PrettyRenderer) -> Callable[..., None]:
+    """Adapt a pretty.py renderer (records, file=None, *, color=True) to the registry."""
 
-    if result.exit_code != 0:
-        render_error(result.records, color=color)
-        return
-    render_signoff_inspect_text(result.records)
+    def renderer(
+        result: CommandResult,
+        ctx: CommandContext,
+        command_input: CommandInput,
+        *,
+        color: bool,
+    ) -> None:
+        records = result.records
+        if not records:
+            return
+        if result.exit_code != 0 and records[0].get("kind") == "error":
+            render_error(records, color=color)
+            return
+        render_text(records, color=color)
+
+    return renderer
+
+
+def _plain_text(render_text: PlainTextRenderer) -> Callable[..., None]:
+    """Adapt a plain text renderer (records, file=None) to the registry."""
+
+    def renderer(
+        result: CommandResult,
+        ctx: CommandContext,
+        command_input: CommandInput,
+        *,
+        color: bool,
+    ) -> None:
+        records = result.records
+        if not records:
+            return
+        if result.exit_code != 0 and records[0].get("kind") == "error":
+            render_error(records, color=color)
+            return
+        render_text(records)
+
+    return renderer
 
 
 def _render_report_step_text(
@@ -74,7 +107,6 @@ def _render_report_step_text(
         render_step_detail_text,
         render_step_overview_text,
     )
-    from chipcompiler.cli.rendering.pretty import render_error
 
     if result.exit_code != 0:
         render_error(result.records, color=color)
@@ -83,24 +115,6 @@ def _render_report_step_text(
         render_step_overview_text(result.records)
     else:
         render_step_detail_text(result.records)
-
-
-def _render_param_text(render_text: ParamTextRenderer) -> Renderer:
-    def renderer(
-        result: CommandResult,
-        ctx: CommandContext,
-        command_input: CommandInput,
-        *,
-        color: bool,
-    ) -> None:
-        from chipcompiler.cli.rendering.pretty import render_error
-
-        if result.exit_code != 0:
-            render_error(result.records, color=color)
-            return
-        render_text(result.records)
-
-    return renderer
 
 
 def _render_log_text(
@@ -115,13 +129,10 @@ def _render_log_text(
         render_log_pretty,
         tail_lines_for_log,
     )
-    from chipcompiler.cli.rendering.pretty import render_error, render_generic_block
+    from chipcompiler.cli.rendering.pretty import render_generic_block
 
     if not isinstance(command_input, LogInput):
         raise TypeError("log renderer requires LogInput")
-
-    if command_input.errors:
-        print("warning: --errors is deprecated and no longer filters output", file=sys.stderr)
 
     if result.exit_code != 0:
         render_error(result.records, color=color)
@@ -202,12 +213,17 @@ def _render_log_plain(
 
 
 RENDERERS: dict[RendererKey, Renderer] = {
-    ("param:list", OutputMode.TEXT): _render_param_text(render_param_list_text),
-    ("param:show", OutputMode.TEXT): _render_param_text(render_param_show_text),
-    ("param:set", OutputMode.TEXT): _render_param_text(render_param_set_text),
-    ("param:unset", OutputMode.TEXT): _render_param_text(render_param_set_text),
-    ("param:diff", OutputMode.TEXT): _render_param_text(render_param_diff_text),
-    ("signoff:inspect", OutputMode.TEXT): _render_signoff_inspect_text,
+    ("init", OutputMode.TEXT): _pretty(render_init),
+    ("check", OutputMode.TEXT): _pretty(render_check),
+    ("run", OutputMode.TEXT): _pretty(render_run_summary),
+    ("status", OutputMode.TEXT): _pretty(render_status),
+    ("config", OutputMode.TEXT): _pretty(render_config),
+    ("param:list", OutputMode.TEXT): _plain_text(render_param_list_text),
+    ("param:show", OutputMode.TEXT): _plain_text(render_param_show_text),
+    ("param:set", OutputMode.TEXT): _plain_text(render_param_set_text),
+    ("param:unset", OutputMode.TEXT): _plain_text(render_param_set_text),
+    ("param:diff", OutputMode.TEXT): _plain_text(render_param_diff_text),
+    ("signoff:inspect", OutputMode.TEXT): _plain_text(render_signoff_inspect_text),
     ("report:step", OutputMode.TEXT): _render_report_step_text,
     ("log", OutputMode.TEXT): _render_log_text,
     ("log", OutputMode.PLAIN): _render_log_plain,

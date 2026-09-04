@@ -2,6 +2,11 @@ from typing import Annotated
 
 import typer
 
+from chipcompiler.cli.command_handlers.param import param_diff as param_diff_handler
+from chipcompiler.cli.command_handlers.param import param_list as param_list_handler
+from chipcompiler.cli.command_handlers.param import param_set as param_set_handler
+from chipcompiler.cli.command_handlers.param import param_show as param_show_handler
+from chipcompiler.cli.command_handlers.param import param_unset as param_unset_handler
 from chipcompiler.cli.core.inputs import (
     ParamDiffInput,
     ParamListInput,
@@ -13,11 +18,6 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import CommandHandler, CommandInputT, execute_command
 from chipcompiler.cli.core.options import JsonlOption, JsonOption, PlainOption, ProjectOption
-from chipcompiler.cli.handlers.param import param_diff as param_diff_handler
-from chipcompiler.cli.handlers.param import param_list as param_list_handler
-from chipcompiler.cli.handlers.param import param_set as param_set_handler
-from chipcompiler.cli.handlers.param import param_show as param_show_handler
-from chipcompiler.cli.handlers.param import param_unset as param_unset_handler
 
 param_app = typer.Typer(
     add_completion=False,

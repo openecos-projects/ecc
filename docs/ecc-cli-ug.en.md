@@ -118,7 +118,7 @@ uv run ecc --help
 
 - Global: `ecc --version` (single version line), `ecc --help`.
 - Project location: project-scoped commands accept `--project <dir>` (defaults to the current directory), and the run-aware ones also accept `--run-id <id>`. A **fresh project** (no `project.json`, no `runs/`) creates its first workspace at `<project>/<run-id>` and records it in an auto-created `project.json`. A **manifest project** resolves inspection commands from that declared workspace table (one active workspace auto-selects); use a non-empty, single-segment id. `ecc run --run-id` may create an undeclared single-segment workspace, but emits `workspace_not_registered`; project-scoped `status`/`log`/`config` cannot select it afterwards. A **legacy project** (a populated `runs/` directory) keeps using `runs/<run-id>`, accepts absolute paths or relative paths containing `/`, and can be upgraded with `ecc migrate`. All three states may carry an `ecc.toml`; only manifest projects *without* an `ecc.toml` are rejected by `ecc param` (`param_requires_ecc_toml`).
-- Output modes (shared by inspection commands): `--json` (`{"records":[...]}`), `--jsonl` (one JSON record per line), `--plain` (`key=value`, for scripting), and human-readable TEXT by default.
+- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `signoff`, and `report` accept `--json` (`{"records":[...]}`), `--jsonl` (one JSON record per line), and `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `ecc version` supports the same flags with its version-specific schema; `rpc serve` and `layout-image` use their own protocols instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens are normalized to lowercase in display: `synthesis / floorplan / placement / cts / legalization / timing optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`; `--from`/`--only` require the exact names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`).
 
@@ -132,7 +132,7 @@ Commands:
   init          Create a new ECC project
   check         Validate the current project setup
   run           Run the configured RTL-to-GDS flow
-  status        Show run and step status
+  status        Show a quick run/step progress summary (full evidence:...)
   log           Show available logs or step log content
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
@@ -147,9 +147,11 @@ Commands:
 ## 2. version — show versions
 
 ```bash
-ecc version          # text
-ecc version --json   # JSON (schema_version/ecc/dreamplace/ecc_tools/tools)
-ecc --version        # single ecc version line
+ecc version           # text
+ecc version --json    # JSON (schema_version/ecc/dreamplace/ecc_tools/tools)
+ecc version --jsonl   # one {"component", "version"} object per line
+ecc version --plain   # one key=value record
+ecc --version         # single ecc version line
 ```
 
 The first four lines are bundle metadata (Python package versions). The
@@ -174,7 +176,7 @@ $ ecc version --json
 ## 3. init — create a project
 
 ```bash
-ecc init <NAME> [--plain]
+ecc init <NAME> [--json | --jsonl | --plain]
 ```
 
 Creates an `ecc.toml`, `rtl/`, and `constraints/` skeleton under `NAME/` (the workspace is created by the first `ecc run`):
@@ -212,7 +214,7 @@ run = "default"          # run id (workspace defaults to <project>/<id>; legacy 
 ## 4. check — validate the project configuration
 
 ```bash
-ecc check [--project DIR] [--json | --plain]
+ecc check [--project DIR] [--json | --jsonl | --plain]
 ```
 
 Validates required `ecc.toml` fields, RTL path/filelist validity, and the PDK name and contents (tech LEF/LEF/liberty):
@@ -387,7 +389,7 @@ rc=1
 ### 5.3 migrate — legacy-layout migration (transitional command)
 
 ```bash
-ecc migrate [--project DIR] [--yes]
+ecc migrate [--project DIR] [--yes] [--json | --jsonl | --plain]
 ```
 
 Migrates a legacy `runs/`-layout project to the manifest layout: each safe `runs/<id>` workspace is moved to `<project>/<id>`, its workspace-internal paths are rebased, and it is registered in a generated or updated `project.json`. By default it prints the migration plan and asks for confirmation; `--yes` skips the prompt. The command is kept for the transition period (marked deprecated in code) and can be retired once existing projects have migrated. `run`/`check`/`status` attach a migration-hint record to their output on legacy projects.
@@ -395,8 +397,12 @@ Migrates a legacy `runs/`-layout project to the manifest layout: each safe `runs
 ## 6. status — show run and step status
 
 ```bash
-ecc status [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
+ecc status [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
 ```
+
+`status` is the lightweight progress check; for the full per-step evidence
+report use `ecc report step` (§12.4). `--workspace` points at an existing
+workspace directory and is exclusive with `--project`/`--run-id`.
 
 ```console
 $ ecc status
@@ -428,7 +434,7 @@ The run-level status aggregates all steps: `success / failed / ongoing / unstart
 ## 7. log — view logs
 
 ```bash
-ecc log [STEP] [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
+ecc log [STEP] [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
 ```
 
 Without STEP it lists all log files (the run-level flow log plus each step's log, with tail previews); with STEP it prints that step's log content (TEXT mode highlights ERROR/WARNING lines).
@@ -464,8 +470,12 @@ rc=1
 ## 8. config — view the resolved configuration
 
 ```bash
-ecc config [STEP] [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
+ecc config [STEP] [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
 ```
+
+`--workspace` scopes the step view to an existing workspace directory
+(exclusive with `--project`/`--run-id`); the project-level view remains
+project-scoped and reads `ecc.toml` from the project directory.
 
 Without STEP it prints the project-level configuration (`ecc.toml` keys + resolved absolute paths); with STEP it lists the configuration files actually in effect for that step under the workspace's `config/`.
 
@@ -597,6 +607,8 @@ a ready-made checkout directly — `[pdk] root` in `ecc.toml` (the path is expan
 absolute form; the directory must already exist). Incomplete contents (e.g.
 `make unzip` not run yet) do not block the setting — a hint is emitted instead:
 
+All `pdk` subcommands accept `--project DIR` and `--json/--jsonl/--plain`.
+
 ```bash
 ecc pdk setup [~/pdk/icsprout55-pdk]     # all-in-one: clone (if missing) -> make unzip (if liberty missing, honors GH_PROXY + retries) -> wire in; defaults to ~/.local/icsprout55-pdk
 ecc pdk set-root ~/pdk/icsprout55-pdk   # wire in only (for an already-ready PDK)
@@ -624,7 +636,7 @@ The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS5
 ### 11.1 inspect — readiness review
 
 ```bash
-ecc signoff inspect [--project DIR] [--run-id ID] | --workspace PATH
+ecc signoff inspect ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
 ```
 
 Refreshes completed-step analysis and `home/checklist.json`, then prints the signoff package readiness status (`ready / attention / blocked`), the seven groups (initial/config/harden/final_design/sta/spef/reports), and the risk list. **blocked still exits with rc=0** (inspection is advisory; the gate lives in export):
@@ -652,7 +664,7 @@ $ ecc signoff inspect --workspace default
 ### 11.2 export — export the signoff package tar.gz (gated)
 
 ```bash
-ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--run-id ID] | --workspace PATH
+ecc signoff export -o <path>.tar.gz [--include-debug] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
 ```
 
 Same source as the GUI's "export signoff package": refreshes analysis → collects every deliverable under initial/config/harden/final → atomically writes `<design>_signoff_package.tar.gz`. When readiness is insufficient the export is refused (no partial archive is produced):
@@ -671,13 +683,13 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # once ready
   path: /abs/path/gcd.tar.gz
 ```
 
-## 12. report — design summary, QoR score, and checklist reports
+## 12. report — design summary, QoR score, checklist, and step evidence
 
 ```bash
-ecc report summary    [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
-ecc report qor        [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
-ecc report checklist  [-o PATH] [same options]
-ecc report step       [STEP] [--section feature|analysis|checklist]... [same options]
+ecc report summary    [-o PATH] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc report qor        [-o PATH] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc report checklist  [-o PATH] [same selector and output options]
+ecc report step       [STEP] [--section feature|analysis|checklist]... [same selector and output options]
 ```
 
 ### 12.1 summary — text design summary
@@ -740,7 +752,7 @@ ecc report checklist --project gcd
 
 ### 12.4 step — per-step feature / analysis / checklist report (read-only preview)
 
-Previews the **current step artifacts** of one workspace directly in the terminal. It writes no files and refreshes nothing (unlike `report qor/checklist` it does not load a Workspace, so no config migration or workspace log is appended):
+Previews the **current step artifacts** of one workspace directly in the terminal. It writes no files and refreshes nothing (unlike `report qor/checklist` it does not load a Workspace, so no config migration or workspace log is appended). This is the deep-dive counterpart of `ecc status`: `status` answers "where is the run", `report step` answers "what exactly happened in this step":
 
 - Without arguments: an overview table of all steps (state, runtime, peak memory, metric count, quality, checklist status)
 - With `STEP`: the step's three detail sections

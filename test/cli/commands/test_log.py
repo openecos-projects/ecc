@@ -43,7 +43,7 @@ class TestLog:
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
             f.write("Info: running\nError: bad thing\n")
 
-        rc = cli_main.run(["log", "synthesis", "--errors", "--jsonl", "--project", project_dir])
+        rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
         assert rc == 0
         objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
         assert any("Error" in obj["line"] for obj in objects)
@@ -572,44 +572,6 @@ class TestLogMultiSource:
         assert "b.log" in out
         assert "from A" in out
         assert "from B" in out
-
-
-class TestLogErrorsDeprecation:
-    """AC-8: --errors is deprecated with visible notice."""
-
-    def test_errors_hidden_from_help(self, tmp_path, capsys):
-        rc = cli_main.run(["log", "--help"])
-        assert rc == 0
-        assert "--errors" not in capsys.readouterr().out
-
-    def test_errors_emits_deprecation_warning(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
-        os.makedirs(step_dir, exist_ok=True)
-        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
-            f.write("ok\n")
-
-        rc = cli_main.run(["log", "synthesis", "--errors", "--project", project_dir])
-        assert rc == 0
-        err = capsys.readouterr().err
-        assert "deprecated" in err
-
-    def test_errors_jsonl_still_full_records(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
-        os.makedirs(step_dir, exist_ok=True)
-        with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
-            f.write("INFO: running\nError: bad\n")
-
-        rc = cli_main.run(["log", "synthesis", "--errors", "--jsonl", "--project", project_dir])
-        assert rc == 0
-        objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
-        assert len(objects) == 2
-        assert objects[0]["kind"] == "info"
-        assert objects[1]["kind"] == "error"
-        assert "\x1b[" not in capsys.readouterr().out
 
 
 class TestLogListingFlowOrder:

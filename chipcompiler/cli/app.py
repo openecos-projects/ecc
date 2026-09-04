@@ -48,11 +48,22 @@ def root_callback(
 def version_cmd(
     *,
     json_output: Annotated[bool, typer.Option("--json")] = False,
+    jsonl: Annotated[bool, typer.Option("--jsonl")] = False,
+    plain: Annotated[bool, typer.Option("--plain")] = False,
 ) -> None:
     payload = version_payload()
     tools = tool_versions()
-    if json_output:
+    if jsonl:
+        for name in ("ecc", "dreamplace", "ecc_tools"):
+            click.echo(json.dumps({"component": name, "version": payload[name]}))
+        for name, version in tools.items():
+            click.echo(json.dumps({"component": name, "version": version}))
+    elif json_output:
         click.echo(json.dumps({**payload, "tools": tools}))
+    elif plain:
+        from chipcompiler.cli.rendering.render import render_plain
+
+        render_plain(({**payload, **tools},))
     else:
         click.echo(version_text(payload, tools))
 

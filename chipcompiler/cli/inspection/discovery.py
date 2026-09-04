@@ -2,9 +2,12 @@ import json
 import os
 
 from chipcompiler.cli.core.output import (
+    disclosure_cmd,
     normalize_state,
     normalize_step_name,
 )
+from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.types import CommandContext, CommandResult
 
 
 def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
@@ -119,14 +122,6 @@ def discover_logs(run_dir: str, step_token: str | None = None) -> list[str]:
     return _list_files(os.path.join(step_dirs[step_token], "log"))
 
 
-def read_log_file(path: str) -> list[str]:
-    try:
-        with open(path, errors="replace") as f:
-            return f.read().splitlines()
-    except OSError:
-        return []
-
-
 def listing_step_order(run_dir: str) -> list[str]:
     """Return step tokens in flow.json order, with undiscovered extras alphabetically after."""
     step_dirs = discover_step_dirs(run_dir)
@@ -146,53 +141,74 @@ def listing_step_order(run_dir: str) -> list[str]:
     return sorted(step_dirs)
 
 
+def resolve_workspace_path(workspace_arg, project, run_id, run_dir):
+    """Resolve the workspace directory a command should operate on.
+
+    Side-effect-free: never loads a Workspace, never writes — safe for
+    read-only commands. `project` and `run_id` are whatever pair the caller
+    wants treated as conflicting with `workspace_arg` (the loaded variant
+    passes the raw CLI flags; read-only callers may pass resolved context
+    values). Returns (workspace_dir, error-record-or-None).
+    """
+    if workspace_arg is not None:
+        if project is not None or run_id is not None:
+            return None, error_record("project_workspace_conflict")
+        path = os.path.abspath(os.path.expanduser(workspace_arg))
+        if not os.path.isdir(path):
+            return None, error_record("invalid_workspace", workspace=path)
+        return path, None
+
+    if not os.path.isdir(run_dir):
+        return None, error_record(
+            "missing_workspace",
+            run_dir=run_dir,
+            run=disclosure_cmd("ecc run", project, run_id),
+        )
+    return run_dir, None
+
+
 def resolve_command_workspace(workspace_arg, project, run_id, run_dir):
     """Load the workspace a command should operate on.
 
     `workspace_arg` (--workspace) wins and conflicts with --project/--run-id;
     otherwise the project run directory (`run_dir`, already resolved by the
-    command context) is loaded. Returns (workspace, error-record-or-None);
-    the caller maps a non-None record to a CommandResult.err.
+    command context) is loaded. Wraps resolve_workspace_path with
+    load_workspace, which appends a workspace log entry and may migrate
+    workspace configs — read-only commands must use resolve_workspace_path
+    instead. Returns (workspace, error-record-or-None); the caller maps a
+    non-None record to a CommandResult.err.
     """
-    import os
-
     from chipcompiler.data import load_workspace
 
-    if workspace_arg is not None:
-        if project is not None or run_id is not None:
-            return None, {"kind": "error", "error": "project_workspace_conflict"}
-        path = os.path.abspath(os.path.expanduser(workspace_arg))
-        try:
-            workspace = load_workspace(path)
-        except Exception as exc:
-            return None, {
-                "kind": "error",
-                "error": "invalid_workspace",
-                "workspace": path,
-                "reason": str(exc),
-            }
-        if workspace is None:
-            return None, {"kind": "error", "error": "invalid_workspace", "workspace": path}
-        return workspace, None
-
-    if not os.path.isdir(run_dir):
-        from chipcompiler.cli.core.output import disclosure_cmd
-
-        return None, {
-            "kind": "error",
-            "error": "missing_workspace",
-            "run_dir": run_dir,
-            "run": disclosure_cmd("ecc run", project, run_id),
-        }
+    path, error = resolve_workspace_path(workspace_arg, project, run_id, run_dir)
+    if error is not None:
+        return None, error
     try:
-        workspace = load_workspace(run_dir)
+        workspace = load_workspace(path)
     except Exception as exc:
-        return None, {
-            "kind": "error",
-            "error": "invalid_workspace",
-            "workspace": run_dir,
-            "reason": str(exc),
-        }
+        return None, error_record("invalid_workspace", workspace=path, reason=str(exc))
     if workspace is None:
-        return None, {"kind": "error", "error": "invalid_workspace", "workspace": run_dir}
+        return None, error_record("invalid_workspace", workspace=path)
     return workspace, None
+
+
+def resolve_loaded_workspace(command_input, ctx: CommandContext):
+    """Resolve and load the workspace for handlers that need a Workspace.
+
+    `command_input` must carry a `workspace` field (the --workspace flag) and
+    a `project` field (raw CLI project options). Returns (workspace, failure
+    CommandResult-or-None).
+    """
+    workspace, error = resolve_command_workspace(
+        command_input.workspace, ctx.project, command_input.project.run_id, ctx.run_dir
+    )
+    if error is not None:
+        return None, CommandResult.err([error])
+    return workspace, None
+
+
+def workspace_display(command_input, ctx: CommandContext) -> str:
+    """Human-facing workspace path: the --workspace value or the run dir."""
+    if command_input.workspace is not None:
+        return os.path.abspath(os.path.expanduser(command_input.workspace))
+    return ctx.run_dir

@@ -18,6 +18,7 @@ from chipcompiler.cli.core.options import (
     PlainOption,
     ProjectOption,
     RunIdOption,
+    WorkspaceOption,
 )
 
 report_app = typer.Typer(
@@ -27,10 +28,6 @@ report_app = typer.Typer(
     help="Generate design-summary, QoR score, checklist, and step reports",
 )
 
-WorkspaceOption = Annotated[
-    str | None,
-    typer.Option("--workspace", help="Operate on an existing workspace directory"),
-]
 OutputPathOption = Annotated[
     str | None,
     typer.Option("--output", "-o", help="Report destination (default: <workspace>/signoff/)"),
@@ -41,7 +38,7 @@ def _finish(subcommand: str, command_input, handler) -> None:
     execute_command("report", command_input, handler, render_key=f"report:{subcommand}")
 
 
-@report_app.command("qor", help="Overall QoR score report (GUI scoring rules)")
+@report_app.command("qor", help="Show the overall QoR score report (GUI scoring rules)")
 def qor_cmd(
     *,
     output_path: OutputPathOption = None,
@@ -61,7 +58,7 @@ def qor_cmd(
     _finish("qor", command_input, report_handlers.qor)
 
 
-@report_app.command("checklist", help="Signoff checklist status report")
+@report_app.command("checklist", help="Show the signoff checklist status report")
 def checklist_cmd(
     *,
     output_path: OutputPathOption = None,
@@ -110,7 +107,11 @@ SectionOption = Annotated[
 ]
 
 
-@report_app.command("step", help="Per-step feature, analysis, and checklist report (read-only)")
+@report_app.command(
+    "step",
+    help="Show the full per-step evidence report (features, analysis, checklist); "
+    "for a quick progress check use 'ecc status'",
+)
 def step_cmd(
     *,
     step: Annotated[

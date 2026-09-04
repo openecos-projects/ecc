@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from chipcompiler.cli.core.types import OutputMode
+
 LEGACY_MODULES = (
     "artifacts",
     "command_inputs",
@@ -59,9 +61,16 @@ def test_project_modules_live_under_project_package():
         assert module.__name__ == f"chipcompiler.cli.project.{module_name}"
 
 
-def test_param_handler_lives_under_handlers_package():
-    module = importlib.import_module("chipcompiler.cli.handlers.param")
-    assert module.__name__ == "chipcompiler.cli.handlers.param"
+def test_param_handler_lives_under_command_handlers_package():
+    module = importlib.import_module("chipcompiler.cli.command_handlers.param")
+    assert module.__name__ == "chipcompiler.cli.command_handlers.param"
+
+
+def test_legacy_handlers_package_is_not_importable():
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("chipcompiler.cli.handlers")
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("chipcompiler.cli.handlers.param")
 
 
 def test_inspection_modules_live_under_inspection_package():
@@ -86,7 +95,9 @@ def test_legacy_root_modules_are_not_importable():
             importlib.import_module(f"chipcompiler.cli.{module_name}")
 
 
-def test_workspace_config_view_module_is_not_importable():
+def test_workspace_package_is_not_importable():
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("chipcompiler.cli.workspace")
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("chipcompiler.cli.workspace.config_view")
 
@@ -118,11 +129,12 @@ def test_removed_command_input_dataclasses_are_not_exposed():
 
 def test_pretty_renderers_do_not_expose_removed_commands():
     module = importlib.import_module("chipcompiler.cli.rendering.pretty")
+    renderers = importlib.import_module("chipcompiler.cli.rendering.renderers")
 
-    for name in ("render_metrics", "render_artifacts", "render_diagnose"):
+    for name in ("render_metrics", "render_artifacts", "render_diagnose", "get_pretty_renderer"):
         assert not hasattr(module, name)
     for command in ("metrics", "artifacts", "diagnose"):
-        assert module.get_pretty_renderer(command) is None
+        assert (command, OutputMode.TEXT) not in renderers.RENDERERS
 
 
 def test_production_code_does_not_import_inspection_step_config():

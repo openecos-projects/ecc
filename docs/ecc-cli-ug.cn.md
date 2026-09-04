@@ -118,7 +118,7 @@ uv run ecc --help
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
 - 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录），其中与 run 有关的命令还接受 `--run-id <id>`。**新项目**（没有 `project.json`、没有 `runs/`）首个 workspace 落在 `<project>/<run-id>`，并自动生成 `project.json` 登记。**manifest 项目**从其中已声明的 workspace 表解析查看类命令（恰有一个活跃 workspace 时自动选中）；id 必须是非空单个路径段。`ecc run --run-id` 可以创建未声明的单路径段 workspace，但会给出 `workspace_not_registered`；之后项目级 `status`/`log`/`config` 无法选中它。**legacy 项目**（有非空 `runs/`）仍使用 `runs/<run-id>`，接受绝对路径或含 `/` 的相对路径，并可用 `ecc migrate` 升级。三种状态都可带 `ecc.toml`；只有缺少 `ecc.toml` 的 manifest 项目会被 `ecc param` 拒绝（`param_requires_ecc_toml`）。
-- 输出模式（inspect 类命令通用）：`--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）、`--plain`（`key=value`，便于脚本解析）、默认人类可读 TEXT。
+- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`signoff`、`report` 都支持 `--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）和 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`ecc version` 也支持这三种选项，但使用版本专用 schema；`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）在展示层统一为小写：`synthesis / floorplan / placement / cts / legalization / timing optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`、`Timing optimization`）。
 
@@ -132,7 +132,7 @@ Commands:
   init          Create a new ECC project
   check         Validate the current project setup
   run           Run the configured RTL-to-GDS flow
-  status        Show run and step status
+  status        Show a quick run/step progress summary (full evidence:...)
   log           Show available logs or step log content
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
@@ -147,9 +147,11 @@ Commands:
 ## 2. version — 查看版本
 
 ```bash
-ecc version          # 文本
-ecc version --json   # JSON（含 schema_version/ecc/dreamplace/ecc_tools/tools）
-ecc --version        # 仅一行 ecc 版本
+ecc version           # 文本
+ecc version --json    # JSON（含 schema_version/ecc/dreamplace/ecc_tools/tools）
+ecc version --jsonl   # 每行一个 {"component", "version"} 对象
+ecc version --plain   # 一条 key=value 记录
+ecc --version         # 仅一行 ecc 版本
 ```
 
 前四行是捆绑组件元数据（Python 包版本）。`yosys` / `sizer` / `klayout`
@@ -173,7 +175,7 @@ $ ecc version --json
 ## 3. init — 创建项目
 
 ```bash
-ecc init <NAME> [--plain]
+ecc init <NAME> [--json | --jsonl | --plain]
 ```
 
 在 `NAME/` 下生成 `ecc.toml`、`rtl/`、`constraints/` 骨架（workspace 由首个 `ecc run` 创建）：
@@ -211,7 +213,7 @@ run = "default"          # run id（workspace 默认 <项目>/<id>；legacy 项�
 ## 4. check — 校验项目配置
 
 ```bash
-ecc check [--project DIR] [--json | --plain]
+ecc check [--project DIR] [--json | --jsonl | --plain]
 ```
 
 校验 `ecc.toml` 必填项、RTL 路径/filelist 有效性、PDK 名称与内容（tech LEF/LEF/liberty）：
@@ -386,7 +388,7 @@ rc=1
 ### 5.3 migrate — 旧布局迁移（过渡期命令）
 
 ```bash
-ecc migrate [--project DIR] [--yes]
+ecc migrate [--project DIR] [--yes] [--json | --jsonl | --plain]
 ```
 
 把 legacy `runs/` 布局项目迁移到 manifest 布局：每个安全的 `runs/<id>` workspace 都会移动到 `<project>/<id>`，重写 workspace 内部路径，并登记到新建或更新的 `project.json`。缺省先输出迁移计划，确认后才执行；`--yes` 跳过确认。该命令为过渡期保留（代码标注 deprecated），存量项目迁完即可弃用。`run`/`check`/`status` 在 legacy 项目上会自动附带迁移提示记录。
@@ -394,8 +396,11 @@ ecc migrate [--project DIR] [--yes]
 ## 6. status — 查看 run 与步骤状态
 
 ```bash
-ecc status [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
+ecc status [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
 ```
+
+`status` 是轻量进度速查；完整的分步证据报告用 `ecc report step`（§12.4）。
+`--workspace` 指向一个已存在的 workspace 目录，与 `--project`/`--run-id` 互斥。
 
 ```console
 $ ecc status
@@ -427,7 +432,7 @@ run 级状态取全部步骤的聚合：`success / failed / ongoing / unstart / 
 ## 7. log — 查看日志
 
 ```bash
-ecc log [STEP] [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
+ecc log [STEP] [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
 ```
 
 不带 STEP 列出全部日志文件（run 级 flow 日志 + 各步骤日志，含尾部预览）；带 STEP 打印该步骤日志内容（TEXT 模式高亮 ERROR/WARNING 行）。
@@ -463,8 +468,12 @@ rc=1
 ## 8. config — 查看解析后的配置
 
 ```bash
-ecc config [STEP] [--project DIR] [--run-id ID] [--json | --jsonl | --plain]
+ecc config [STEP] [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
 ```
+
+`--workspace` 将步骤视图限定到指定 workspace 目录（与
+`--project`/`--run-id` 互斥）；项目级视图仍以项目为作用域，读取项目目录
+的 `ecc.toml`。
 
 不带 STEP 输出项目级配置（`ecc.toml` 键 + 解析后的绝对路径）；带 STEP 列出该步骤在 workspace `config/` 下实际生效的配置文件。
 
@@ -592,6 +601,8 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 接入 PDK 有两条路：`ecc pdk setup` 一条到位（自动 clone + `make unzip`，已就绪的目录则跳过下载只接入），或对已就绪的 PDK 用 `ecc pdk set-root` 直接接入（写入 `ecc.toml` 的 `[pdk] root`，自动展开为绝对路径；目录必须已存在）。内容不完整（如还没 `make unzip`）不阻断设置，会给出提示：
 
+全部 `pdk` 子命令都支持 `--project DIR` 和 `--json/--jsonl/--plain`。
+
 ```bash
 ecc pdk setup [~/pdk/icsprout55-pdk]     # 一条到位：clone（缺时）→ make unzip（缺 liberty 时，支持 GH_PROXY+重试）→ 接入；缺省装到 ~/.local/icsprout55-pdk
 ecc pdk set-root ~/pdk/icsprout55-pdk   # 仅设置（已就绪的 PDK）
@@ -619,7 +630,7 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
 ### 11.1 inspect — 就绪度审阅
 
 ```bash
-ecc signoff inspect [--project DIR] [--run-id ID] | --workspace PATH
+ecc signoff inspect ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
 ```
 
 刷新已完成步骤的 analysis 与 `home/checklist.json` 后，输出签核包的就绪状态（`ready / attention / blocked`）、七个分组（initial/config/harden/final_design/sta/spef/reports）与风险清单。**blocked 也返回 rc=0**（检查是建议性的，门禁在 export）：
@@ -647,7 +658,7 @@ $ ecc signoff inspect --workspace default
 ### 11.2 export — 导出签核包 tar.gz（有门禁）
 
 ```bash
-ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--run-id ID] | --workspace PATH
+ecc signoff export -o <path>.tar.gz [--include-debug] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
 ```
 
 与 GUI「导出签核包」同源：刷新分析 → 收集 initial/config/harden/final 全部交付物 → 原子落盘 `<design>_signoff_package.tar.gz`。就绪度不足时拒绝导出（不产生残档）：
@@ -666,13 +677,13 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # 就绪后
   path: /abs/path/gcd.tar.gz
 ```
 
-## 12. report — 设计总结、QoR 总分与 checklist 报告
+## 12. report — 设计总结、QoR 总分、checklist 与单步证据
 
 ```bash
-ecc report summary [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
-ecc report qor     [-o PATH] [同上]
-ecc report checklist [-o PATH] [同上]
-ecc report step    [STEP] [--section feature|analysis|checklist]... [同上]
+ecc report summary [-o PATH] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc report qor     [-o PATH] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc report checklist [-o PATH] [同样的 selector 与输出选项]
+ecc report step    [STEP] [--section feature|analysis|checklist]... [同样的 selector 与输出选项]
 ```
 
 ### 12.1 summary — 文本设计总结报告
@@ -733,7 +744,7 @@ ecc report checklist --project gcd
 
 ### 12.4 step — 单步骤 feature / analysis / checklist 报告（只读预览）
 
-直接在终端预览**单个 step** 的三类产物，不写任何文件、不刷新任何快照（与 `report qor/checklist` 不同，本命令不加载 Workspace，因此不会触发配置迁移或追加 workspace 日志）：
+直接在终端预览**单个 step** 的三类产物，不写任何文件、不刷新任何快照（与 `report qor/checklist` 不同，本命令不加载 Workspace，因此不会触发配置迁移或追加 workspace 日志）。它是 `ecc status` 的深挖对应物：`status` 回答"run 跑到哪了"，`report step` 回答"这一步到底发生了什么"：
 
 - 不带参数：全部 step 概览表（状态、runtime、峰值内存、指标数、quality、checklist 状态）
 - 带 `STEP`：该 step 的三节明细

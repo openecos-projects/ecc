@@ -81,6 +81,48 @@ def test_version_command_returns_json_payload(monkeypatch, capsys):
     assert data["tools"] == {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"}
 
 
+def test_version_command_returns_jsonl_lines(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "0.30.2"},
+    )
+
+    rc = cli_main.run(["version", "--jsonl"])
+
+    lines = capsys.readouterr().out.splitlines()
+    assert rc == 0
+    records = [json.loads(ln) for ln in lines]
+    assert [r["component"] for r in records] == [
+        "ecc",
+        "dreamplace",
+        "ecc_tools",
+        "yosys",
+        "sizer",
+        "klayout",
+    ]
+    assert all(set(r) == {"component", "version"} for r in records)
+    assert records[3] == {"component": "yosys", "version": "0.68"}
+    assert records[4] == {"component": "sizer", "version": "unknown"}
+    assert records[5] == {"component": "klayout", "version": "0.30.2"}
+
+
+def test_version_command_returns_plain_line(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "0.30.2"},
+    )
+
+    rc = cli_main.run(["version", "--plain"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "schema_version=1" in out
+    assert 'runtime="ECC CLI"' in out
+    assert "yosys=0.68" in out
+    assert "sizer=unknown" in out
+    assert "klayout=0.30.2" in out
+
+
 def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
     def missing_version(distribution):
         raise metadata.PackageNotFoundError(distribution)
@@ -149,6 +191,13 @@ def test_config_without_resolved_reaches_the_config_handler(tmp_path, capsys):
 
 def test_removed_config_resolved_option_returns_unknown_option(capsys):
     rc = cli_main.run(["config", "--resolved"])
+
+    assert rc != 0
+    assert "No such option" in capsys.readouterr().err
+
+
+def test_removed_log_errors_option_returns_unknown_option(capsys):
+    rc = cli_main.run(["log", "synthesis", "--errors"])
 
     assert rc != 0
     assert "No such option" in capsys.readouterr().err

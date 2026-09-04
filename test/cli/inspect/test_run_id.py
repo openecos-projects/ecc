@@ -79,7 +79,7 @@ class TestRunIdResolution:
         )
 
         rc = cli_main.run(
-            ["log", "synthesis", "--errors", "--run-id", "run_005", "--project", project_dir]
+            ["log", "synthesis", "--run-id", "run_005", "--project", project_dir]
         )
         assert rc == 0
         out = capsys.readouterr().out
@@ -223,7 +223,7 @@ class TestConfigRunResolution:
             files={"log/synthesis.log": "Error: something failed\n"},
         )
 
-        rc = cli_main.run(["log", "synthesis", "--errors", "--project", project_dir])
+        rc = cli_main.run(["log", "synthesis", "--project", project_dir])
 
         assert rc == 0
         out = capsys.readouterr().out

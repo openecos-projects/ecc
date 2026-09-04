@@ -16,6 +16,7 @@ from chipcompiler.cli.core.options import (
     PlainOption,
     ProjectOption,
     RunIdOption,
+    WorkspaceOption,
 )
 
 signoff_app = typer.Typer(
@@ -24,11 +25,6 @@ signoff_app = typer.Typer(
     rich_markup_mode=None,
     help="Inspect and export signoff packages",
 )
-
-WorkspaceOption = Annotated[
-    str | None,
-    typer.Option("--workspace", help="Operate on an existing workspace directory"),
-]
 
 
 def _finish(subcommand: str, command_input, handler) -> None:

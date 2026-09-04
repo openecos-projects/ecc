@@ -171,7 +171,7 @@ def build_project_config_items(
         cli_overrides=cli_provenance,
         manifest_overrides=_manifest_parameter_overrides(cfg),
     )
-    from chipcompiler.cli.handlers.param import _maps_to_str
+    from chipcompiler.cli.command_handlers.param import _maps_to_str
 
     for rp in resolved_params:
         if rp.schema.has_direct_target and not rp.is_explicit:
