@@ -20,10 +20,10 @@ from agent.workspace_api import (
 from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 HASH = "sha256:" + "a" * 64
-PRODUCER = Path(__file__).parents[2] / "chipcompiler/tools/ecc_dreamplace/module.py"
+PRODUCER = Path(__file__).parents[1] / "data/parameter_runtime_observer.py"
 TOOL = {
     "name": "DREAMPlace",
-    "revision": "ecc.dreamplace.parameter_runtime_report.v2",
+    "revision": "ecc.agent.dreamplace_parameter_observer.v1",
     "source_sha256": sha256_path(PRODUCER),
 }
 

@@ -9,10 +9,6 @@ from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.tools.ecc_dreamplace.parameter_runtime_report import (
-    _capture_native_runtime,
-    _write_parameter_runtime_report,
-)
 from chipcompiler.utility.path import optional_path, path_text
 
 _LEGALIZE_OWNERS = frozenset(
@@ -120,27 +116,13 @@ class DreamplaceModule:
 
             engine = PlacementEngine(params)
             engine.setup_rawdb(ecc_module=self.ecc_module)
-            with _capture_native_runtime(self.workspace) as native_runtime_probe:
-                ppa = engine.run()
-            engine.native_runtime_probe = native_runtime_probe
+            ppa = engine.run()
 
             if ppa.get("hpwl") == float("inf"):
-                if not legalize_only:
-                    _write_parameter_runtime_report(
-                        self.workspace, engine.params, engine=engine, ppa=ppa
-                    )
                 LOGGER = logging.getLogger(__name__)
                 LOGGER.error("dreamplace failed for %s", self.step.name)
                 return False
 
-            if not legalize_only:
-                _write_parameter_runtime_report(
-                    self.workspace,
-                    engine.params,
-                    engine=engine,
-                    ppa=ppa,
-                    engine_succeeded=True,
-                )
             return True
 
     def run_placement(self) -> bool:

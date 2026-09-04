@@ -18,10 +18,6 @@ from chipcompiler.tools.ecc.metrics import (
     save_rcx_spef_feature_facts,
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.tools.ecc.parameter_runtime_report import (
-    _write_cts_parameter_runtime_report,
-    _write_floorplan_parameter_runtime_report,
-)
 from chipcompiler.tools.ecc.plot import ECCToolsPlot
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import (
@@ -570,9 +566,6 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             config=config_path,
             output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
         )
-        _write_cts_parameter_runtime_report(
-            workspace, config_path, engine_succeeded=bool(engine_succeeded)
-        )
         if not engine_succeeded:
             return False
 
@@ -778,12 +771,6 @@ def run_floorplan(
             ecc_module=ecc_module,
             feature_step=False,
             report_timing=False,
-        )
-        _write_floorplan_parameter_runtime_report(
-            workspace,
-            workspace.config.get(StepEnum.FLOORPLAN.value, ""),
-            feature_path=step.feature.db,
-            report_path=step.report.db,
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
