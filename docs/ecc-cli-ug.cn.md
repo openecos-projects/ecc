@@ -1,6 +1,6 @@
 # ECC CLI 用户指南（当前支持的全部命令）
 
-`ecc` 是 ECOS Chip Compiler 的项目制命令行入口，覆盖 RTL-to-GDS 流水的建项、校验、运行、状态/日志/配置查询与参数管理。本文基于 `ecc/` 子模块当前源码（v0.1.0a11）整理，所有示例输出均为真实执行结果（示例中的 run 状态为手工构造的演示数据）。
+`ecc` 是 ECOS Chip Compiler 的项目制命令行入口，覆盖 RTL-to-GDS 流水的建项、校验、运行、状态/日志/配置查询、参数管理、签核与报告。本文基于 `ecc/` 子模块当前源码（v0.1.0-alpha.11）整理，所有示例输出均为真实执行结果（示例中的 run 状态为手工构造的演示数据）。
 
 - 源码位置：[chipcompiler/cli/](../chipcompiler/cli/)
 - 命令扩展开发方式见同目录 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)
@@ -140,7 +140,7 @@ Commands:
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   signoff       Inspect and export signoff packages
-  report        Generate QoR score and signoff checklist reports
+  report        Generate design-summary, QoR score, checklist, and step reports
   rpc           Run the private ECC JSON-RPC runtime
 ```
 

@@ -1,6 +1,6 @@
 # ECC CLI 命令扩展开发指南
 
-本文面向需要在 `ecc` CLI 中新增/修改命令的开发者，基于 `ecc/` 子模块当前源码（`chipcompiler` 包，v0.1.0a11）整理。代码路径均相对 `ecc/` 子模块根目录。
+本文面向需要在 `ecc` CLI 中新增/修改命令的开发者，基于 `ecc/` 子模块当前源码（`chipcompiler` 包，v0.1.0-alpha.11）整理。代码路径均相对 `ecc/` 子模块根目录。
 
 相关文档：[architecture.md](architecture.md)（架构）、[development.md](development.md)（开发工作流）、[workspace-cli.md](workspace-cli.md)（RPC sidecar 协议）、[../CLAUDE.md](../CLAUDE.md)（仓库约定）。
 
@@ -15,16 +15,16 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── doctor.py                   # doctor 顶层命令（环境体检）
   ├── param.py                    # param 子应用（list/show/set/unset/diff）
   ├── pdk.py                      # pdk 子应用（setup/set-root/show/unset）
-  ├── signoff.py                  # signoff 子应用（inspect/export/report）
-  ├── report.py                   # report 子应用（qor/checklist）
+  ├── signoff.py                  # signoff 子应用（inspect/export）
+  ├── report.py                   # report 子应用（summary/qor/checklist/step）
   └── rpc.py                      # rpc 子应用（serve）
 chipcompiler/cli/command_handlers/  # 业务处理层（有状态/重逻辑）
   ├── project.py                  # init / check / run / migrate（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor（组装 env_probe 结果为 records）
   ├── pdk.py                      # pdk 四子命令（TOML 定点改写 + root 来源解析）
-  ├── signoff.py                  # signoff 三子命令 + inspect 的 TEXT 渲染
-  └── report.py                   # report 两子命令（写文件 + 记录汇总）
+  ├── signoff.py                  # signoff inspect/export + inspect 的 TEXT 渲染
+  └── report.py                   # report summary/qor/checklist/step 的处理器
 chipcompiler/cli/handlers/param.py  # param 子命令处理 + param 的 TEXT 渲染
 chipcompiler/cli/core/            # 框架层
   ├── inputs.py                   # 各命令的 frozen dataclass 输入模型
@@ -45,6 +45,8 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §
 ```
 
 模块归属由 `test/cli/test_cli_module_layout.py` 强制：核心框架必须在 `cli/core/`、命令注册在 `cli/commands/`、处理逻辑在 `cli/command_handlers/`（项目类）与 `cli/handlers/`（param 类）、只读探查在 `cli/inspection/`、渲染在 `cli/rendering/`；旧的 `chipcompiler/cli/*.py` 平铺模块必须不可导入。新增文件时放进对应子包，不要在 `cli/` 根下新建模块。
+
+公开命令的归属必须严格：`ecc signoff` 只负责签核包就绪度与归档导出（`inspect`、`export`）；`ecc report` 统一承载报告输出（`summary`、`qor`、`checklist`、`step`）。`ecc config [STEP]` 始终返回解析后的数据，因此不提供 `--resolved` 开关。不要在错误的命令组中增加别名，也不要添加没有行为分支的选项。
 
 ## 2. 一次命令调用的完整链路
 
@@ -204,13 +206,14 @@ config_param(
 
 `cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围（始终 ecc-tools，yosys↔含 Synthesis，dreamplace↔含 place/legalization）。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 是 doctor 的必需组件，但仍不在 run 预检范围内。
 
-### 5.4 扩展签核（`ecc signoff` 与引擎报告）
+### 5.4 扩展签核（`ecc signoff inspect/export`）
 
 - **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`_resolve_workspace()` 统一解析 `--workspace` 与 `--project/--run-id`（互斥冲突 → `project_workspace_conflict`）。inspect 复用 `runtime/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`RuntimeApiError` → `signoff_incomplete`）。
-- **引擎层**：`chipcompiler/engine/signoff/` 包——`__init__.py` 是签核收集器 `SignoffPackageCollector`（`text_report()` 薄入口）+ 公共 API 再导出；文本设计报告的实现按职责分模块（`report.py` 编排 / `report_data.py` 数据契约 / `report_extract.py` 解析器+workspace 收集 / `report_sections.py` 分区抽取 / `report_timing.py` timing 链 / `report_text.py` 格式化），全部经包 `__init__` 对外暴露（`from chipcompiler.engine.signoff import generate_text_report`）。对外导入面保持单一；新增报告分区 = 在 `report_sections.py`（或 timing 链）加一个 `_extract_<family>(q)` 并在 `report.py` 编排处调用。
+- **引擎层**：`chipcompiler/engine/signoff/` 包负责签核收集器 `SignoffPackageCollector`，以及就绪度检查和归档导出所使用的包级 API。
 
-### 5.5 扩展 QoR 计分 / checklist 报告（`ecc report`）
+### 5.5 扩展报告（`ecc report summary/qor/checklist/step`）
 
+- **设计总结**：`ecc report summary` 调用 `chipcompiler.engine.signoff.generate_text_report`。其实现按职责分模块（`report.py` 编排 / `report_data.py` 数据契约 / `report_extract.py` 解析器+workspace 收集 / `report_sections.py` 分区抽取 / `report_timing.py` timing 链 / `report_text.py` 格式化），全部经包 `__init__` 对外暴露。新增报告分区时，在 `report_sections.py`（或 timing 链）增加 `_extract_<family>(q)`，并在 `report.py` 编排处注册。
 - `engine/qor_report.py`：GUI `projectQorTrend.ts` 的单 workspace 移植——常量表（`METRIC_FAIL_VALUES`/`DIMENSION_WEIGHTS`/`QOR_SCORE_THRESHOLD`）+ 归一化 + 项目级记录选择（role 优先级 final>gate>trend、area_cost 只取最后成功的 area 步）+ `score_record` 计分公式 + 维度加权（不重归一化）。新增可计分指标 = 在 GUI 与 `METRIC_FAIL_VALUES` 同步加阈值。
 - `engine/signoff/report_checklist.py`：只读渲染 `home/checklist.json`（不合法时报 unavailable，绝不回写文件）。
 - CLI：`cli/commands/report.py` + `cli/command_handlers/report.py`；workspace 解析复用 `inspection/discovery.py::resolve_command_workspace`（signoff/report 共用）。

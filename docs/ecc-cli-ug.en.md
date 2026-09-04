@@ -1,6 +1,6 @@
 # ECC CLI User Guide (all currently supported commands)
 
-`ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, and parameter management. This guide is based on the current source tree (v0.1.0a11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
+`ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, parameter management, signoff, and reporting. This guide is based on the current source tree (v0.1.0-alpha.11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
 
 - Source code: [chipcompiler/cli/](../chipcompiler/cli/)
 - For how to extend the CLI with new commands, see [ecc-cli-dev.en.md](ecc-cli-dev.en.md)
@@ -140,7 +140,7 @@ Commands:
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   signoff       Inspect and export signoff packages
-  report        Generate QoR score and signoff checklist reports
+  report        Generate design-summary, QoR score, checklist, and step reports
   rpc           Run the private ECC JSON-RPC runtime
 ```
 

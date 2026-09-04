@@ -6,7 +6,7 @@
 - **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/LEC 证明/报告等 300+ 文件）；
 - **三份报告**：设计总结（文本）、QoR 总分、签核清单。
 
-全程以官方 [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk)（开源 55nm 工艺）为目标工艺。教程中所有命令输出均为真实执行结果（基于 v0.1.0a11，示例路径统一写作 `~/ecc-demo`）。
+全程以官方 [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk)（开源 55nm 工艺）为目标工艺。教程中所有命令输出均为真实执行结果（基于 v0.1.0-alpha.11，示例路径统一写作 `~/ecc-demo`）。
 
 > 参考耗时：首次安装（下载 CLI 包 / OSS CAD Suite / PDK 数据，共约 3 GB 下载量）20–60 分钟，视网络而定；gcd 全流程运行约 **4–5 分钟**。
 
@@ -629,4 +629,4 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 
 ---
 
-*本教程的示例输出采集自 v0.1.0a11 + ICS55 PDK 在 Linux x86_64 上的真实运行。*
+*本教程的示例输出采集自 v0.1.0-alpha.11 + ICS55 PDK 在 Linux x86_64 上的真实运行。*

@@ -6,7 +6,7 @@ This tutorial is for first-time ECC users: starting from a bare Linux machine, i
 - A **signoff package** `gcd_signoff_package.tar.gz` (300+ files: RTL / configs / deliverables / LEC proof / reports);
 - **Three reports**: design summary (text), QoR score, and signoff checklist.
 
-The target process is the official [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk) (an open-source 55 nm educational PDK). Every command output in this tutorial is a real execution result (captured on v0.1.0a11; example paths are written as `~/ecc-demo`).
+The target process is the official [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk) (an open-source 55 nm educational PDK). Every command output in this tutorial is a real execution result (captured on v0.1.0-alpha.11; example paths are written as `~/ecc-demo`).
 
 > Reference timing: first-time install (downloads the PDK and OSS CAD Suite, roughly 3 GB total) takes 20–60 minutes depending on network; the gcd flow itself runs in about **4–5 minutes**.
 
@@ -631,4 +631,4 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 
 ---
 
-*Outputs in this tutorial were captured from a real run of v0.1.0a11 + the ICS55 PDK on Linux x86_64.*
+*Outputs in this tutorial were captured from a real run of v0.1.0-alpha.11 + the ICS55 PDK on Linux x86_64.*
