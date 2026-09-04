@@ -248,6 +248,41 @@ def run_step(args, capsys):
 
 
 class TestStepOverview:
+    def test_overview_includes_every_rtl2gds_step(self, tmp_path, capsys):
+        from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
+
+        ws = str(tmp_path / "ws")
+        _write(
+            os.path.join(ws, "home", "flow.json"),
+            {
+                "steps": [
+                    {"name": step.value, "tool": tool, "state": state.value}
+                    for step, tool, state in build_rtl2gds_flow()
+                ]
+            },
+        )
+
+        rc, data = run_step(["report", "step", "--workspace", ws, "--json"], capsys)
+
+        assert rc == 0
+        assert [record["step"] for record in data["records"][1:]] == [
+            "synthesis",
+            "lec",
+            "floorplan",
+            "placement",
+            "cts",
+            "legalization",
+            "timing_optimization",
+            "routing",
+            "filler",
+            "lvs",
+            "drc",
+            "postroutelec",
+            "rcx",
+            "sta",
+            "harden",
+        ]
+
     def test_overview_records(self, tmp_path, capsys):
         ws = create_step_workspace(tmp_path)
 

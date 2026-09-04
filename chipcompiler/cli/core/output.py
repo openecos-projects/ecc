@@ -17,9 +17,12 @@ def normalize_step_name(internal: str) -> str:
         "place": "placement",
         "CTS": "cts",
         "legalization": "legalization",
+        "Timing optimization": "timing_optimization",
+        "timing optimization": "timing_optimization",
         "route": "routing",
         "drc": "drc",
         "filler": "filler",
+        "postRouteLec": "postroutelec",
     }
     return mapping.get(internal, internal.lower())
 

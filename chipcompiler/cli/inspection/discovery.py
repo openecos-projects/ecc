@@ -70,14 +70,26 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
     result = {}
     if not os.path.isdir(run_dir):
         return result
+
+    flow_data = read_flow_json(run_dir)
+    flow_dir_tokens = {}
+    if isinstance(flow_data, dict):
+        flow_dir_tokens = {
+            f"{step['name']}_{step['tool']}": normalize_step_name(step["name"])
+            for step in _safe_steps(flow_data)
+            if isinstance(step.get("name"), str) and isinstance(step.get("tool"), str)
+        }
+
     for entry in os.listdir(run_dir):
         full = os.path.join(run_dir, entry)
         if not os.path.isdir(full):
             continue
-        name = step_dir_step_name(full)
-        if name is None:
-            continue
-        token = normalize_step_name(name)
+        token = flow_dir_tokens.get(entry)
+        if token is None:
+            name = step_dir_step_name(full)
+            if name is None:
+                continue
+            token = normalize_step_name(name)
         result[token] = full
     return result
 

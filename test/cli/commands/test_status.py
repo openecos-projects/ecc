@@ -5,6 +5,44 @@ from chipcompiler.cli import main as cli_main
 
 
 class TestStatus:
+    def test_status_normalizes_every_rtl2gds_step(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
+
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        flow = build_rtl2gds_flow()
+        create_flow_json(
+            run_dir,
+            [
+                {"name": step.value, "tool": tool, "state": state.value}
+                for step, tool, state in flow
+            ],
+        )
+
+        rc = cli_main.run(["status", "--json", "--project", project_dir])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert [record["step"] for record in records if "step" in record] == [
+            "synthesis",
+            "lec",
+            "floorplan",
+            "placement",
+            "cts",
+            "legalization",
+            "timing_optimization",
+            "routing",
+            "filler",
+            "lvs",
+            "drc",
+            "postroutelec",
+            "rcx",
+            "sta",
+            "harden",
+        ]
+
     def test_status_reads_flow_json(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")

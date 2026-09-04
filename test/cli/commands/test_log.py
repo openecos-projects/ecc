@@ -357,6 +357,45 @@ class TestLogListingMode:
         assert "synthesis" in out
         assert "ecc log synthesis" in out
 
+    def test_listing_and_reading_yosys_lec_logs(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump(
+                {
+                    "steps": [
+                        {"name": "lec", "tool": "yosys_lec", "state": "Success"},
+                        {
+                            "name": "postRouteLec",
+                            "tool": "yosys_lec",
+                            "state": "Success",
+                        },
+                    ]
+                },
+                f,
+            )
+        for name, contents in (
+            ("lec", "synthesis equivalence\n"),
+            ("postRouteLec", "post-route equivalence\n"),
+        ):
+            log_dir = os.path.join(run_dir, f"{name}_yosys_lec", "log")
+            os.makedirs(log_dir, exist_ok=True)
+            with open(os.path.join(log_dir, f"{name}.log"), "w") as f:
+                f.write(contents)
+
+        rc = cli_main.run(["log", "--json", "--project", project_dir])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert [record["step"] for record in records] == ["lec", "postroutelec"]
+
+        rc = cli_main.run(["log", "postroutelec", "--json", "--project", project_dir])
+
+        assert rc == 0
+        assert json.loads(capsys.readouterr().out)["records"][0]["line"] == "post-route equivalence"
+
     def test_listing_no_logs_returns_no_log_status(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "runs", "default")
