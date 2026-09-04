@@ -231,6 +231,7 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
         "Synthesis",
+        "lec",
         "Floorplan",
         "place",
         "CTS",
