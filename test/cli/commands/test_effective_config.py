@@ -324,7 +324,7 @@ class TestEffectiveConfigValidation:
         # The entry declares the same range rtl2gds maps to, isolating the
         # path-spelling comparison.
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        entry["start_step"], entry["end_step"] = "Synth", "PostRouteLEC"
+        entry["start_step"], entry["end_step"] = "Synth", "Harden"
         manifest_stubs.write(project_dir, [entry])
         (project_dir / "ecc.toml").write_text(
             '[design]\nname = "gcd"\ntop = "gcd"\n'

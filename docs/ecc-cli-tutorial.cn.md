@@ -16,7 +16,7 @@
 graph LR
     A[安装 ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>建项目放 RTL]
     B --> C[ecc doctor / check<br/>环境与配置体检]
-    C --> D[ecc run --preset harden<br/>14 步全流程]
+    C --> D[ecc run --preset rtl2gds<br/>14 步全流程]
     D --> E[ecc status / log<br/>查看结果与日志]
     E --> F[ecc signoff export<br/>签核包 tar.gz]
     E --> G[ecc signoff report<br/>设计总结报告]
@@ -73,7 +73,29 @@ bash docs/ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc C
 GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh   # 网络受限走代理
 ```
 
-### 2.2 手动安装（可选）
+### 2.2 安装本地源码构建包
+
+在 Linux x86_64 的本地 checkout 中，先构建压缩包，再把它交给常规安装器：
+
+```bash
+cd ecc
+bash docs/ecc-cli-local-build.sh
+
+# 替换 CLI 并补齐必需依赖。
+ECC_CLI_URL="$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
+  bash docs/ecc-cli-setup.sh --force
+```
+
+PDK、Yosys 与 Sizer 都已就绪时，只替换 CLI：
+
+```bash
+ECC_CLI_URL="file://$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
+  bash docs/ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
+```
+
+最终自检仍要求全部必需依赖就绪，否则会以非零状态退出。
+
+### 2.3 手动安装（可选）
 
 不想用脚本时，三步手动完成同样的事：
 
@@ -105,7 +127,7 @@ ecc pdk show                     # 查看生效的 PDK root 与来源
 ecc pdk unset                    # 清除 ecc.toml 的 pdk.root，回落到环境变量/仓库默认
 ```
 
-### 2.3 验证安装
+### 2.4 验证安装
 
 ```console
 $ ecc version
@@ -145,7 +167,7 @@ $ ecc doctor
   ...
 ```
 
-必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。`rtl2gds`、`rcx`、`harden` 都含 Timing optimization 步骤，**缺 Sizer 也会在流中段失败**；它目前仍不在 `ecc run` 预检中。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；必需组件未齐时以非零退出。
+必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤，**缺 Sizer 也会在流中段失败**；它目前仍不在 `ecc run` 预检中。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；必需组件未齐时以非零退出。
 
 ## 3. 创建第一个项目
 
@@ -206,8 +228,8 @@ name = "ics55"           # 目前支持 ics55
 root = ""                # 留空则用 CHIPCOMPILER_ICS55_PDK_ROOT 环境变量
 
 [flow]
-# preset: rtl2gds | rcx | harden | syn_sta
-preset = "rtl2gds"       # 本教程用 harden（也可不改这里，运行时 --preset 覆盖）
+# preset: rtl2gds | syn_sta | synthesis_lec
+preset = "rtl2gds"       # 本教程使用的完整 RTL-to-Harden 流程
 run = "default"          # run id（workspace 默认 <项目>/<id>；legacy 项目为 runs/<id>）
 ```
 
@@ -240,15 +262,15 @@ rc=0
 
 ### 4.1 启动
 
-`harden` preset 是完整 14 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）：
+`rtl2gds` preset 是完整 14 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
-ecc run --preset harden
+ecc run --preset rtl2gds
 ```
 
-（把 `ecc.toml` 里 `preset` 改成 `"harden"` 效果相同；`--preset` 只对本次运行生效，不写回配置。）
+（生成的 `ecc.toml` 已选择 `rtl2gds`；`--preset` 只对本次运行生效，不写回配置。）
 
-交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。harden 的 14 步依次为：
+交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。`rtl2gds` 的 14 步依次为：
 
 | # | 步骤 | 工具 | 作用 |
 |---|------|------|------|
@@ -274,7 +296,7 @@ graph LR
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-`ecc run` 启动前会预检捆绑的 ecc-tools，以及 preset 选中的 Yosys 和 DreamPlace；缺失则 fail-fast 并提示 `ecc doctor`。Sizer 不在这项预检中；`rtl2gds`、`rcx`、`harden` 都含 Timing optimization，缺失 Sizer 时会在该步骤失败。
+`ecc run` 启动前会预检捆绑的 ecc-tools，以及 preset 选中的 Yosys 和 DreamPlace；缺失则 fail-fast 并提示 `ecc doctor`。Sizer 不在这项预检中；完整 `rtl2gds` 流含 Timing optimization，缺失 Sizer 时会在该步骤失败。
 
 ### 4.2 观察进度（另开一个终端）
 
@@ -558,7 +580,7 @@ ecc param unset place.target_density    # 恢复默认
 在第一次运行前选择非默认 id，使自动生成的 manifest 登记它：
 
 ```bash
-ecc run --run-id exp1 --preset harden --set place.target_density=0.55
+ecc run --run-id exp1 --preset rtl2gds --set place.target_density=0.55
 ecc status --run-id exp1
 ecc report qor --run-id exp1     # 报告类命令同样接受 --run-id
 ```
@@ -568,7 +590,7 @@ ecc report qor --run-id exp1     # 报告类命令同样接受 --run-id
 ### 6.3 重跑
 
 ```bash
-ecc run --overwrite --preset harden       # 整个 run 推倒重来（删除该 run 目录，有安全校验）
+ecc run --overwrite --preset rtl2gds      # 整个 run 推倒重来（删除该 run 目录，有安全校验）
 ecc run --workspace default --from CTS        # 从 CTS 起重跑其后所有步骤
 ecc run --workspace default --only place --force   # 只重跑一步（已成功时需 --force）
 ecc run --workspace default --resume   # 从第一个非成功步骤继续
@@ -594,14 +616,14 @@ ecc config --resolved --plain      # 项目级配置（键值 + 解析后绝对�
 | `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk setup` 或 `ecc pdk set-root <路径>`，或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |
 | 下载 GitHub 资源超时 | 网络受限 | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
-| doctor 显示 `sizer: fail` | 必需的 Sizer 组件未安装 | `ecc doctor` 返回非零。`rtl2gds`、`rcx`、`harden` 链也含 Timing optimization 步骤，运行前应安装 Sizer。重跑 [ecc-cli-setup.sh](ecc-cli-setup.sh)（官方发布预编译包后自动安装），或按 remediation 提示源码构建 |
+| doctor 显示 `sizer: fail` | 必需的 Sizer 组件未安装 | `ecc doctor` 返回非零。完整 `rtl2gds` 链含 Timing optimization 步骤，运行前应安装 Sizer。重跑 [ecc-cli-setup.sh](ecc-cli-setup.sh)（官方发布预编译包后自动安装），或按 remediation 提示源码构建 |
 | synthesis 日志报 `yosys slang frontend check failed` | yosys 无 slang 前端 | 换 OSS CAD Suite ≥ v0.67 的 yosys，`ecc log synthesis` 排查 |
 | synthesis 在 DFFLIBMAP 报 `uncaught exception during Yosys command invoked from TCL` 后退出 | 当前 shell 未加载 ecc 环境（如非交互终端），ecc 回落到系统 PATH 里的旧版 yosys（解析 ics55 liberty 会直接崩溃，异常详情被 TCL 吞掉） | `which yosys` 确认指向 OSS CAD Suite；`source ~/.ecc-env.sh` 后重跑 |
 
 ## 8. 下一步
 
 - 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](examples/gcd/README.md#using-filelist)；
-- 了解 preset 差异：`rtl2gds`（11 步：综合 → … → Filler/LVS/DRC/LEC）、`rcx`（+寄生提取与 STA，共 13 步）、`harden`（+硬化交付，共 14 步）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC 两步）；
+- 了解 preset 差异：`rtl2gds`（完整 14 步综合到 Harden 链）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
 - 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**；CLI 扩展开发见 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)；
 - 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py)。
 

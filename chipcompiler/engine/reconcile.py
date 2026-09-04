@@ -84,14 +84,14 @@ def compare_flows(persisted: list[tuple[str, str]], target: list[tuple[str, str]
 
 def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     """(name, tool) entries for a [flow] section, over the canonical chain."""
-    from chipcompiler.data.workspace import _canonical_harden_flow_entries
+    from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
     from chipcompiler.data.workspace_config import flow_range_of
 
     flow_range = flow_range_of(flow_section)
     if flow_range is None:
         return []
     start, end = flow_range
-    chain = _canonical_harden_flow_entries()
+    chain = _canonical_rtl2gds_flow_entries()
     names = [name for name, _tool, _state in chain]
     return [(name, tool) for name, tool, _state in chain[names.index(start) : names.index(end) + 1]]
 
@@ -345,8 +345,8 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         # Adopt the effective target when the persisted [flow] is stale
         # (crash between append and adopt, a hand-edited file, or an
         # older wider intent superseded by the current target).
-        # Staleness compares ranges, not section form: preset="rcx" and
-        # start=Synthesis..end=sta describe the same steps. Adoption
+        # Staleness compares ranges, not section form: a named preset and
+        # its equivalent start/end range describe the same steps. Adoption
         # always writes the effective target itself — never a range
         # derived from the persisted ledger — so extra persisted steps
         # are kept but never become the target.

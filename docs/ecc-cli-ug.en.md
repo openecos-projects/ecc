@@ -27,7 +27,7 @@ Configuration knobs (override via environment variables; change these when versi
 | `ECC_VERSION` | `latest` | ecc release tag (e.g. `v0.1.0-alpha.11`) |
 | `ECC_RELEASE_BASE` | Official ecc Releases page | Release page URL (change for a mirror or a different repository) |
 | `ECC_ASSET_NAME` | `ecc-cli-linux-x86_64.tar.gz` | Asset name (change if the layout changes) |
-| `ECC_CLI_URL` | empty | Full direct URL; highest priority |
+| `ECC_CLI_URL` | empty | Full direct URL or local archive path; highest priority |
 | `ECC_INSTALL_DIR` | `~/.local/ecc` | Installation directory |
 | `ECC_PDK_DIR` | `~/.local/icsprout55-pdk` | PDK directory (repository URL is fixed: https://github.com/openecos-projects/icsprout55-pdk.git) |
 | `ECC_OSS_CAD_DIR` | `~/.local/oss-cad-suite` | OSS CAD Suite directory (Yosys) |
@@ -42,6 +42,30 @@ The script produces `~/.ecc-env.sh` (PATH (including the Sizer bin directory) + 
 ```bash
 GH_PROXY=https://gh-proxy.org/ bash ecc-cli-setup.sh
 ```
+
+### Local source-built bundle
+
+To install a bundle built from the local checkout, build it first, then point the
+installer at the archive. `ECC_CLI_URL` accepts an absolute local path or a
+`file://` URL; local files are copied directly and never use `GH_PROXY`.
+
+```bash
+cd ecc
+bash docs/ecc-cli-local-build.sh
+
+# Replace the CLI and provision any required dependencies.
+ECC_CLI_URL="$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
+  bash docs/ecc-cli-setup.sh --force
+```
+
+When the PDK, Yosys, and Sizer are already ready, replace only the CLI:
+
+```bash
+ECC_CLI_URL="file://$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
+  bash docs/ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
+```
+
+The final self-check still fails until every required dependency is ready.
 
 ### Pre-built CLI bundle (manual install)
 
@@ -180,7 +204,7 @@ name = "ics55"           # ics55 is the currently supported PDK
 root = ""                # icsprout55-pdk path; empty falls back to CHIPCOMPILER_ICS55_PDK_ROOT / ICS55_PDK_ROOT
 
 [flow]
-# preset: rtl2gds | rcx | harden | syn_sta
+# preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
 run = "default"          # run id (workspace defaults to <project>/<id>; legacy projects use runs/<id>)
 ```
@@ -271,7 +295,7 @@ Notes:
 | Yosys (synthesis) | `which yosys && yosys -V`, or `echo $CHIPCOMPILER_OSS_CAD_DIR` | either works (`CHIPCOMPILER_OSS_CAD_DIR` pointing at OSS CAD Suite takes priority) |
 | Yosys slang frontend | `yosys -Q -T -p "help read_slang"` | output does **not** contain `No such command` (builtin since yosys ≥ v0.67; older builds need a loadable slang plugin) |
 | KLayout (only needed by `layout-image`) | `python3 -c "from klayout import lay"` | no ImportError |
-| Sizer (required by `ecc doctor`; needed by the Timing optimization step in the default rtl2gds/rcx/harden chains) | `which Sizer`; optionally `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | both the executable and a root containing `src/sizer_os.tcl` must resolve; the root may be configured or discovered from the binary. `ecc run` preflight does **not** probe sizer; a missing binary fails mid-flow |
+| Sizer (required by `ecc doctor`; needed by the Timing optimization step in the complete rtl2gds chain) | `which Sizer`; optionally `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | both the executable and a root containing `src/sizer_os.tcl` must resolve; the root may be configured or discovered from the binary. `ecc run` preflight does **not** probe sizer; a missing binary fails mid-flow |
 
 A copy-paste self-check snippet:
 
@@ -298,13 +322,13 @@ Notes:
 ecc run [OPTIONS]
   --project TEXT     project directory (defaults to cwd)
   --run-id TEXT      run id (defaults to [flow] run / default)
-  --preset TEXT      flow preset override for this run only (not written back to ecc.toml), e.g. --preset harden
+  --preset TEXT      flow preset override for this run only (not written back to ecc.toml), e.g. --preset syn_sta
   --overwrite        overwrite an existing run (only deletes genuine ECC run directories, with safety checks)
   --set KEY=VALUE    parameter override, repeatable (e.g. --set place.target_density=0.65), recorded in the run provenance
   --json / --jsonl / --plain
 ```
 
-For a fresh or `--overwrite` run target, the pipeline reads `ecc.toml` → resolves RTL/PDK/parameters → preflights bundled ecc-tools plus Yosys and DreamPlace when selected by the preset → creates the workspace under the resolved run target (`<project>/<run-id>` for fresh projects, registered in an auto-created `project.json`; `runs/<run-id>` for legacy projects) → builds and executes the selected preset (`rtl2gds | rcx | harden | syn_sta | synthesis_lec`; progress rendering on a TTY). Existing workspaces resume their persisted flow without preset preflight. Sizer is intentionally not part of the preflight, so a missing Sizer fails at the Timing optimization step. `harden` is the full 14-step chain (Synthesis→Floorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→LVS→DRC→postRouteLec (Yosys equivalence check)→RCX→sta→Harden; Harden emits GDS + abstract LEF + timing LIB; `rtl2gds`/`rcx` are its prefix sub-chains).
+For a fresh or `--overwrite` run target, the pipeline reads `ecc.toml` → resolves RTL/PDK/parameters → preflights bundled ecc-tools plus Yosys and DreamPlace when selected by the preset → creates the workspace under the resolved run target (`<project>/<run-id>` for fresh projects, registered in an auto-created `project.json`; `runs/<run-id>` for legacy projects) → builds and executes the selected preset (`rtl2gds | syn_sta | synthesis_lec`; progress rendering on a TTY). Existing workspaces resume their persisted flow without preset preflight. Sizer is intentionally not part of the preflight, so a missing Sizer fails at the Timing optimization step. `rtl2gds` is the full 14-step chain (Synthesis→Floorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→LVS→DRC→postRouteLec (Yosys equivalence check)→RCX→sta→Harden; Harden emits GDS + abstract LEF + timing LIB).
 
 ```console
 $ ecc run                # refuses to overwrite an existing run
@@ -319,7 +343,7 @@ $ ecc run --preset bogus  # invalid preset (ecc.toml is not modified)
 [error]
   unsupported_preset
   preset: bogus
-  presets: harden, rcx, rtl2gds, syn_sta, synthesis_lec
+  presets: rtl2gds, syn_sta, synthesis_lec
   inspect: ecc config --resolved
 rc=1
 ```
@@ -328,7 +352,7 @@ Typical usage:
 
 ```bash
 ecc run                                        # first run (uses the preset from ecc.toml)
-ecc run --preset harden                        # run all the way to Harden in one shot (GDS/LEF/LIB)
+ecc run --preset rtl2gds                       # run the complete chain to Harden (GDS/LEF/LIB)
 ecc run --run-id exp1 --set place.target_density=0.65
 ecc run --run-id exp1 --overwrite              # re-run a run of the same name
 ```
@@ -778,11 +802,11 @@ ecc init gcd && cd gcd
 ecc pdk set-root ~/pdk/icsprout55-pdk   # (optional) wire in a manually downloaded PDK
 ecc doctor                         # environment check (PDK/yosys/slang/components)
 ecc check                          # validate the project config before running
-ecc run --preset harden            # run the full chain in one shot (Synthesis→…→Harden)
+ecc run --preset rtl2gds           # run the full chain in one shot (Synthesis→…→Harden)
 ecc status                         # step status; on failure:
 ecc log place                      # the failing step's log (TEXT mode highlights error lines)
 ecc param set place.target_density 0.55   # tune a parameter and re-run
-ecc run --overwrite --preset harden
+ecc run --overwrite --preset rtl2gds
 ecc run --workspace default --only place --force   # or re-run a single step in place
 ecc config place --resolved        # config files actually in effect for that step
 ecc signoff inspect                # signoff readiness (blocked still exits 0)

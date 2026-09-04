@@ -276,7 +276,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
-    canonical_steps = _canonical_harden_flow_entries()
+    canonical_steps = _canonical_rtl2gds_flow_entries()
     from ..workspace_config import resolve_flow_selection
 
     selected_names, _degraded = resolve_flow_selection(flow_config, canonical_steps)
@@ -293,7 +293,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
     }
 
 
-def _canonical_harden_flow_entries() -> list[tuple[str, str, str]]:
+def _canonical_rtl2gds_flow_entries() -> list[tuple[str, str, str]]:
     import chipcompiler.rtl2gds as rtl2gds_api
 
     return [
@@ -302,7 +302,7 @@ def _canonical_harden_flow_entries() -> list[tuple[str, str, str]]:
             str(tool),
             state.value if isinstance(state, StateEnum) else str(state),
         )
-        for step, tool, state in rtl2gds_api.build_harden_flow()
+        for step, tool, state in rtl2gds_api.build_rtl2gds_flow()
     ]
 
 

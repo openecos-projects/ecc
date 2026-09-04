@@ -232,7 +232,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 0},
-            entry_range=("Synth", "PostRouteLEC"),
+            entry_range=("Synth", "Harden"),
         )
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
@@ -250,7 +250,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 0},
-            entry_range=("Synth", "PostRouteLEC"),
+            entry_range=("Synth", "Harden"),
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
@@ -299,13 +299,13 @@ class TestLowerLayerDivergence:
     def test_check_equivalent_flow_range_stays_silent(
         self, manifest_stubs, tmp_path, capsys, monkeypatch
     ):
-        # rtl2gds maps to (Synth, Filler) — the same range the entry declares.
+        # rtl2gds maps to (Synth, Harden) — the same range the entry declares.
         project_dir = self._hybrid(
             manifest_stubs,
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 100},
-            entry_range=("Synth", "PostRouteLEC"),
+            entry_range=("Synth", "Harden"),
         )
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
@@ -321,7 +321,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 100},
-            entry_range=("Synth", "PostRouteLEC"),
+            entry_range=("Synth", "Harden"),
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
@@ -338,7 +338,7 @@ class TestOrderedRtlDivergence:
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        entry["start_step"], entry["end_step"] = "Synth", "PostRouteLEC"
+        entry["start_step"], entry["end_step"] = "Synth", "Harden"
         manifest_stubs.write(
             project_dir,
             [entry],

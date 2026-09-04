@@ -16,7 +16,7 @@ The target process is the official [ICS55 PDK](https://github.com/openecos-proje
 graph LR
     A[Install ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>create project, add RTL]
     B --> C[ecc doctor / check<br/>environment & config checks]
-    C --> D[ecc run --preset harden<br/>14-step flow]
+    C --> D[ecc run --preset rtl2gds<br/>14-step flow]
     D --> E[ecc status / log<br/>inspect results & logs]
     E --> F[ecc signoff export<br/>signoff tar.gz]
     E --> G[ecc signoff report<br/>design summary]
@@ -73,7 +73,30 @@ bash docs/ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # install only
 GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh   # use a proxy on restricted networks
 ```
 
-### 2.2 Manual install (optional)
+### 2.2 Install a local source-built bundle
+
+From a local checkout on Linux x86_64, build the bundle and pass the archive to
+the normal installer:
+
+```bash
+cd ecc
+bash docs/ecc-cli-local-build.sh
+
+# Replace the CLI and provision any required dependencies.
+ECC_CLI_URL="$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
+  bash docs/ecc-cli-setup.sh --force
+```
+
+When the PDK, Yosys, and Sizer are already ready, replace only the CLI:
+
+```bash
+ECC_CLI_URL="file://$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
+  bash docs/ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
+```
+
+The final self-check still requires every dependency to be ready.
+
+### 2.3 Manual install (optional)
 
 If you prefer not to use the script, the same result takes three steps:
 
@@ -105,7 +128,7 @@ ecc pdk show                     # show the effective PDK root and where it came
 ecc pdk unset                    # clear pdk.root in ecc.toml (falls back to env vars / repo default)
 ```
 
-### 2.3 Verify the installation
+### 2.4 Verify the installation
 
 ```console
 $ ecc version
@@ -145,7 +168,7 @@ $ ecc doctor
   ...
 ```
 
-All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. `rtl2gds`, `rcx`, and `harden` all contain a Timing optimization step, so **a missing Sizer also fails mid-flow**; it is not currently part of `ecc run` preflight. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available and exits non-zero until the required components are ready.
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains a Timing optimization step, so **a missing Sizer also fails mid-flow**; it is not currently part of `ecc run` preflight. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available and exits non-zero until the required components are ready.
 
 ## 3. Creating Your First Project
 
@@ -207,8 +230,8 @@ name = "ics55"           # ics55 is currently the only supported PDK
 root = ""                # empty = fall back to the CHIPCOMPILER_ICS55_PDK_ROOT env var
 
 [flow]
-# preset: rtl2gds | rcx | harden | syn_sta
-preset = "rtl2gds"       # this tutorial uses harden (or leave it and pass --preset at run time)
+# preset: rtl2gds | syn_sta | synthesis_lec
+preset = "rtl2gds"       # the complete RTL-to-Harden flow used in this tutorial
 run = "default"          # run id (workspace defaults to <project>/<id>; legacy projects use runs/<id>)
 ```
 
@@ -241,15 +264,15 @@ rc=0
 
 ### 4.1 Start
 
-The `harden` preset is the full 14-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB):
+The `rtl2gds` preset is the full 14-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB):
 
 ```bash
-ecc run --preset harden
+ecc run --preset rtl2gds
 ```
 
-(Editing `preset = "harden"` in `ecc.toml` is equivalent; `--preset` applies to this run only and is not written back.)
+(The generated `ecc.toml` already selects `rtl2gds`; `--preset` applies to this run only and is not written back.)
 
-In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 14 harden steps are:
+In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 14 `rtl2gds` steps are:
 
 | # | Step | Tool | What it does |
 |---|------|------|--------------|
@@ -275,7 +298,7 @@ graph LR
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-Before starting, `ecc run` pre-checks bundled ecc-tools plus Yosys and DreamPlace when selected by the preset, and fails fast with a pointer to `ecc doctor` if they are missing. Sizer is not part of this preflight; because `rtl2gds`, `rcx`, and `harden` contain Timing optimization, a missing Sizer fails at that step.
+Before starting, `ecc run` pre-checks bundled ecc-tools plus Yosys and DreamPlace when selected by the preset, and fails fast with a pointer to `ecc doctor` if they are missing. Sizer is not part of this preflight; because the complete `rtl2gds` flow contains Timing optimization, a missing Sizer fails at that step.
 
 ### 4.2 Watching progress (in a second terminal)
 
@@ -559,7 +582,7 @@ Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_ut
 Choose a non-default id before the first run so the automatically generated manifest records it:
 
 ```bash
-ecc run --run-id exp1 --preset harden --set place.target_density=0.55
+ecc run --run-id exp1 --preset rtl2gds --set place.target_density=0.55
 ecc status --run-id exp1
 ecc report qor --run-id exp1     # report commands also accept --run-id
 ```
@@ -569,7 +592,7 @@ ecc report qor --run-id exp1     # report commands also accept --run-id
 ### 6.3 Rerunning
 
 ```bash
-ecc run --overwrite --preset harden       # wipe and redo the whole run (deletes the run dir, with safety checks)
+ecc run --overwrite --preset rtl2gds      # wipe and redo the whole run (deletes the run dir, with safety checks)
 ecc run --workspace default --from CTS        # rerun from CTS through the end
 ecc run --workspace default --only place --force   # rerun a single step (--force needed if it already succeeded)
 ecc run --workspace default --resume   # continue from the first non-successful step
@@ -595,14 +618,14 @@ ecc config --resolved --plain      # project-level config (key=value + resolved 
 | `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk setup` or `ecc pdk set-root <path>`, or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |
 | GitHub downloads time out | restricted network | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
-| doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The `rtl2gds`, `rcx`, and `harden` chains also contain Timing optimization, so install Sizer before running them. Re-run [ecc-cli-setup.sh](ecc-cli-setup.sh) (installs the prebuilt package automatically once published), or build ecc-sizer per the remediation hint |
+| doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The complete `rtl2gds` chain contains Timing optimization, so install Sizer before running it. Re-run [ecc-cli-setup.sh](ecc-cli-setup.sh) (installs the prebuilt package automatically once published), or build ecc-sizer per the remediation hint |
 | synthesis log says `yosys slang frontend check failed` | yosys lacks the slang frontend | use an OSS CAD Suite yosys ≥ v0.67; debug with `ecc log synthesis` |
 | synthesis aborts at DFFLIBMAP with `uncaught exception during Yosys command invoked from TCL` | the current shell never loaded the ecc env (e.g. a non-interactive terminal), so ecc fell back to an old yosys on system PATH, which crashes parsing the ics55 liberty (the TCL wrapper swallows the exception detail) | verify `which yosys` points at the OSS CAD Suite; `source ~/.ecc-env.sh` and rerun |
 
 ## 8. Next Steps
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](examples/gcd/README.md#using-filelist) for multi-file designs;
-- Preset differences: `rtl2gds` (11 steps: synthesis → … → Filler/LVS/DRC/LEC), `rcx` (+ extraction and STA, 13 steps), `harden` (+ hardened handoff, 14 steps in total), `syn_sta` (synthesis only), `synthesis_lec` (synthesis + LEC, two steps);
+- Preset differences: `rtl2gds` (the complete 14-step synthesis-to-Harden chain), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
 - Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [ecc-cli-dev.en.md](ecc-cli-dev.en.md);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py).
 

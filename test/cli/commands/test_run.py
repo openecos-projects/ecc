@@ -19,7 +19,7 @@ def _set_flow_preset(project_dir, preset):
 
 def _patch_all_flow_builders(monkeypatch):
     markers = {}
-    for attr in ("build_rtl2gds_flow", "build_rcx_flow", "build_harden_flow", "build_syn_sta_flow"):
+    for attr in ("build_rtl2gds_flow", "build_syn_sta_flow", "build_synthesis_lec_flow"):
         steps = [("Synthesis", "yosys", "Unstart"), (attr, "ecc", "Unstart")]
         markers[attr] = steps
         monkeypatch.setattr(f"chipcompiler.rtl2gds.builder.{attr}", lambda steps=steps: steps)
@@ -159,9 +159,8 @@ class TestRunFlowPreset:
         "preset,builder_attr",
         [
             ("rtl2gds", "build_rtl2gds_flow"),
-            ("rcx", "build_rcx_flow"),
-            ("harden", "build_harden_flow"),
             ("syn_sta", "build_syn_sta_flow"),
+            ("synthesis_lec", "build_synthesis_lec_flow"),
         ],
     )
     def test_run_dispatches_builder_for_preset(
@@ -184,13 +183,13 @@ class TestRunFlowPreset:
         os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir, profile="main")
-        _set_flow_preset(project_dir, "harden")
+        _set_flow_preset(project_dir, "syn_sta")
         markers = _patch_all_flow_builders(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--overwrite"])
 
         assert rc == 0
-        assert flow_mocks.flow.instances[0].added_steps == markers["build_harden_flow"]
+        assert flow_mocks.flow.instances[0].added_steps == markers["build_syn_sta_flow"]
 
     def test_run_preset_flag_overrides_toml(
         self, tmp_path, monkeypatch, create_cli_project, flow_mocks
@@ -198,10 +197,10 @@ class TestRunFlowPreset:
         project_dir = create_cli_project()
         markers = _patch_all_flow_builders(monkeypatch)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--preset", "harden"])
+        rc = cli_main.run(["run", "--project", project_dir, "--preset", "syn_sta"])
 
         assert rc == 0
-        assert flow_mocks.flow.instances[0].added_steps == markers["build_harden_flow"]
+        assert flow_mocks.flow.instances[0].added_steps == markers["build_syn_sta_flow"]
 
     def test_run_preset_flag_does_not_edit_toml(
         self, tmp_path, monkeypatch, create_cli_project, flow_mocks
@@ -489,9 +488,7 @@ class TestWorkspaceRun:
 
 
 class TestWorkspaceNoOp:
-    def test_target_prefix_workspace_resume_is_noop_without_executing_extras(
-        self, tmp_path, capsys, monkeypatch
-    ):
+    def test_complete_workspace_resume_is_noop(self, tmp_path, capsys, monkeypatch):
         import json as _json
 
         from chipcompiler.data.workspace_config import save_workspace_config
@@ -499,21 +496,13 @@ class TestWorkspaceNoOp:
         workspace = tmp_path / "workspace"
         home = workspace / "home"
         home.mkdir(parents=True)
-        from chipcompiler.rtl2gds.builder import build_harden_flow, build_rtl2gds_flow
+        from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
         chain = [
             (step.value if hasattr(step, "value") else str(step), str(tool))
-            for step, tool, _state in build_harden_flow()
+            for step, tool, _state in build_rtl2gds_flow()
         ]
-        target_len = len(build_rtl2gds_flow())
-        steps = [
-            {
-                "name": name,
-                "tool": tool,
-                "state": "Success" if index < target_len else "Unstart",
-            }
-            for index, (name, tool) in enumerate(chain)
-        ]
+        steps = [{"name": name, "tool": tool, "state": "Success"} for name, tool in chain]
         (home / "flow.json").write_text(_json.dumps({"steps": steps}))
         assert save_workspace_config(
             workspace,
@@ -523,7 +512,7 @@ class TestWorkspaceNoOp:
         monkeypatch.setattr(
             "chipcompiler.engine.rerun.run_resume",
             lambda flow: (_ for _ in ()).throw(
-                AssertionError("extras must not execute on a no_op reconcile")
+                AssertionError("a complete flow must not execute on a no_op reconcile")
             ),
         )
 
