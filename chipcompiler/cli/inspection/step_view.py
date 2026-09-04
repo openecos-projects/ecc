@@ -43,8 +43,9 @@ class _StepEntry:
             return normalize_state(self.flow.get("state", ""))
         return "unknown"  # dir-discovered step with no flow record
 
-    def runtime(self) -> str:
-        return (self.flow or {}).get("runtime", "") or None
+    def runtime(self) -> str | None:
+        runtime = (self.flow or {}).get("runtime", "")
+        return str(runtime) if runtime else None
 
     def peak_memory_mb(self):
         return (self.flow or {}).get("peak memory (mb)")
@@ -135,7 +136,10 @@ def _flatten(prefix: str, value, depth: int = 0):
 
 def _feature_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
     records = []
-    feature_dir = os.path.join(entry.directory, "feature")
+    directory = entry.directory
+    if directory is None:
+        return records
+    feature_dir = os.path.join(directory, "feature")
     if not os.path.isdir(feature_dir):
         return records
 
@@ -175,8 +179,11 @@ def _feature_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
 
 def _analysis_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
     records = []
-    metrics_payload = json_read(os.path.join(entry.directory, "analysis", "qor_metrics.json"))
-    summary_payload = json_read(os.path.join(entry.directory, "analysis", "qor_summary.json"))
+    directory = entry.directory
+    if directory is None:
+        return records
+    metrics_payload = json_read(os.path.join(directory, "analysis", "qor_metrics.json"))
+    summary_payload = json_read(os.path.join(directory, "analysis", "qor_summary.json"))
 
     if not isinstance(metrics_payload, dict) or not isinstance(
         metrics_payload.get("metrics"), list
@@ -204,7 +211,7 @@ def _analysis_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
         source = metric.get("source") if isinstance(metric.get("source"), dict) else {}
         source_ref = ""
         if source.get("path"):
-            source_ref = f"{os.path.basename(entry.directory)}/{source['path']}"
+            source_ref = f"{os.path.basename(directory)}/{source['path']}"
             if source.get("selector"):
                 source_ref = f"{source_ref}#{source['selector']}"
         rating = metric.get("rating") if isinstance(metric.get("rating"), dict) else {}
@@ -258,7 +265,10 @@ def _analysis_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
 
 
 def _checklist_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
-    step_data = json_read(os.path.join(entry.directory, "checklist.json"))
+    directory = entry.directory
+    if directory is None:
+        return []
+    step_data = json_read(os.path.join(directory, "checklist.json"))
     if isinstance(step_data, dict) and isinstance(step_data.get("checklist"), list):
         data, source = step_data, "step"
     else:
@@ -295,7 +305,10 @@ def _checklist_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
         }
         source = "home"
 
-    summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+    summary: dict = {}
+    raw_summary = data.get("summary")
+    if isinstance(raw_summary, dict):
+        summary = raw_summary
     records = [
         {
             "step": entry.token,
@@ -387,7 +400,7 @@ def build_step_overview_records(workspace_dir: str, project=None, run_id=None) -
 
 def build_step_detail_records(
     workspace_dir: str, token: str, sections, project=None, run_id=None
-) -> list[dict]:
+) -> list[dict] | None:
     """Detail records for one step, or None when the token is unknown."""
     entry = _resolve_entry(_step_entries(workspace_dir), token)
     if entry is None:
@@ -448,7 +461,7 @@ def render_step_overview_text(records) -> None:
     print()
     print(
         f"  {'step':22s} {'tool':12s} {'status':9s} {'runtime':8s} "
-        f"{'metrics':7s} {'quality':8s} checklist"
+        f"{'peak MB':8s} {'metrics':7s} {'quality':8s} checklist"
     )
     for record in records[1:]:
         checklist = record["checklist"] or "-"
@@ -456,7 +469,8 @@ def render_step_overview_text(records) -> None:
             checklist = f"{checklist} ({record['blocked']} blocked)"
         print(
             f"  {record['step']:22s} {record['tool']:12s} {record['status']:9s} "
-            f"{record['runtime'] or '-':8s} {_fmt(record['metrics']):7s} "
+            f"{record['runtime'] or '-':8s} {_fmt(record['peak_memory_mb']):8s} "
+            f"{_fmt(record['metrics']):7s} "
             f"{record['quality'] or '-':8s} {checklist}"
         )
     print()

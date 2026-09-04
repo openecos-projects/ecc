@@ -16,7 +16,7 @@ The repository ships an install script, [ecc-cli-setup.sh](ecc-cli-setup.sh) (in
 bash ecc-cli-setup.sh                 # install + self-check + fill in dependencies
 bash ecc-cli-setup.sh --check-only    # environment check only, installs nothing
 bash ecc-cli-setup.sh --force         # force reinstall of the ecc CLI
-bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # install only the ecc CLI itself
+bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # install only the ecc CLI; the final check fails until required dependencies are ready
 bash ecc-cli-setup.sh --no-shell-rc   # do not touch shell rc files (by default a load line is added idempotently)
 ```
 
@@ -271,7 +271,7 @@ Notes:
 | Yosys (synthesis) | `which yosys && yosys -V`, or `echo $CHIPCOMPILER_OSS_CAD_DIR` | either works (`CHIPCOMPILER_OSS_CAD_DIR` pointing at OSS CAD Suite takes priority) |
 | Yosys slang frontend | `yosys -Q -T -p "help read_slang"` | output does **not** contain `No such command` (builtin since yosys ≥ v0.67; older builds need a loadable slang plugin) |
 | KLayout (only needed by `layout-image`) | `python3 -c "from klayout import lay"` | no ImportError |
-| Sizer (required by `ecc doctor`; needed by the Timing optimization step in the default rtl2gds/rcx/harden chains) | `which Sizer` or `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | either resolves (the root must contain `src/sizer_os.tcl`). `ecc run` preflight does **not** probe sizer; a missing binary fails mid-flow |
+| Sizer (required by `ecc doctor`; needed by the Timing optimization step in the default rtl2gds/rcx/harden chains) | `which Sizer`; optionally `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | both the executable and a root containing `src/sizer_os.tcl` must resolve; the root may be configured or discovered from the binary. `ecc run` preflight does **not** probe sizer; a missing binary fails mid-flow |
 
 A copy-paste self-check snippet:
 

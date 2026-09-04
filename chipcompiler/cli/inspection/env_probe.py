@@ -108,9 +108,13 @@ def probe_klayout() -> ProbeResult:
 
 
 def probe_sizer() -> ProbeResult:
-    from chipcompiler.tools.ecc_sizer.utility import get_sizer_command, is_sizer_runtime_exist
+    from chipcompiler.tools.ecc_sizer.utility import (
+        get_sizer_command,
+        is_eda_exist,
+        is_sizer_runtime_exist,
+    )
 
-    if is_sizer_runtime_exist():
+    if is_eda_exist() and is_sizer_runtime_exist():
         return ProbeResult("sizer", PASS, detail=" ".join(get_sizer_command()))
     return ProbeResult(
         "sizer",

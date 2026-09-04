@@ -128,6 +128,18 @@ class TestDoctorCommand:
         assert result.status == FAIL
         assert result.required is True
 
+    def test_sizer_probe_requires_binary_and_runtime(self, monkeypatch):
+        monkeypatch.setattr("chipcompiler.tools.ecc_sizer.utility.is_eda_exist", lambda: False)
+        monkeypatch.setattr(
+            "chipcompiler.tools.ecc_sizer.utility.is_sizer_runtime_exist",
+            lambda: True,
+        )
+
+        result = env_probe.probe_sizer()
+
+        assert result.status == FAIL
+        assert result.required is True
+
     def test_doctor_without_project_skips_pdk(self, tmp_path, capsys, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
