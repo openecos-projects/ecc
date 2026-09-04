@@ -63,6 +63,28 @@ def _render_signoff_inspect_text(
     render_signoff_inspect_text(result.records)
 
 
+def _render_report_step_text(
+    result: CommandResult,
+    ctx: CommandContext,
+    command_input: CommandInput,
+    *,
+    color: bool,
+) -> None:
+    from chipcompiler.cli.inspection.step_view import (
+        render_step_detail_text,
+        render_step_overview_text,
+    )
+    from chipcompiler.cli.rendering.pretty import render_error
+
+    if result.exit_code != 0:
+        render_error(result.records, color=color)
+        return
+    if result.records and result.records[0].get("view") == "overview":
+        render_step_overview_text(result.records)
+    else:
+        render_step_detail_text(result.records)
+
+
 def _render_param_text(render_text: ParamTextRenderer) -> Renderer:
     def renderer(
         result: CommandResult,
@@ -186,6 +208,7 @@ RENDERERS: dict[RendererKey, Renderer] = {
     ("param:unset", OutputMode.TEXT): _render_param_text(render_param_set_text),
     ("param:diff", OutputMode.TEXT): _render_param_text(render_param_diff_text),
     ("signoff:inspect", OutputMode.TEXT): _render_signoff_inspect_text,
+    ("report:step", OutputMode.TEXT): _render_report_step_text,
     ("log", OutputMode.TEXT): _render_log_text,
     ("log", OutputMode.PLAIN): _render_log_plain,
 }

@@ -123,10 +123,10 @@ Then run an environment check (works from any directory; only **required** failu
 $ ecc doctor
 [status]
   doctor: environment
-  status: attention          # ok=all pass / attention=only optional items failed (rc=0) / failed=required item failed (rc=1)
+  status: failed             # a missing required component returns rc=1
   checked: 7
-  failed: 0
-  attention: 1
+  failed: 1
+  attention: 0
   run: ecc run
   component: yosys
   status: pass
@@ -140,11 +140,11 @@ $ ecc doctor
   ...
   component: sizer
   status: fail
-  required: False            # optional at doctor level; rtl2gds/rcx/harden still require it
+  required: True             # required by doctor and by Timing optimization
   ...
 ```
 
-As long as the required components (yosys, yosys-slang, ecc-tools, dreamplace, pdk) all `pass`, you are good to go. `sizer` is optional at the doctor level (it only downgrades the status to `attention`), but `rtl2gds`, `rcx`, and `harden` all contain a Timing optimization step, and **a missing Sizer fails mid-flow**. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available; otherwise, follow the Sizer remediation hint before running those presets.
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. `rtl2gds`, `rcx`, and `harden` all contain a Timing optimization step, so **a missing Sizer also fails mid-flow**; it is not currently part of `ecc run` preflight. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available; otherwise, follow the Sizer remediation hint before running those presets.
 
 ## 3. Creating Your First Project
 
@@ -594,7 +594,7 @@ ecc config --resolved --plain      # project-level config (key=value + resolved 
 | `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk setup` or `ecc pdk set-root <path>`, or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |
 | GitHub downloads time out | restricted network | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
-| doctor shows `sizer: fail` | optional component not installed | the `rtl2gds`, `rcx`, and `harden` chains contain Timing optimization, so a missing Sizer fails mid-flow. Re-run [ecc-cli-setup.sh](ecc-cli-setup.sh) (installs the prebuilt package automatically once published), or build ecc-sizer per the remediation hint |
+| doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The `rtl2gds`, `rcx`, and `harden` chains also contain Timing optimization, so install Sizer before running them. Re-run [ecc-cli-setup.sh](ecc-cli-setup.sh) (installs the prebuilt package automatically once published), or build ecc-sizer per the remediation hint |
 | synthesis log says `yosys slang frontend check failed` | yosys lacks the slang frontend | use an OSS CAD Suite yosys ≥ v0.67; debug with `ecc log synthesis` |
 | synthesis aborts at DFFLIBMAP with `uncaught exception during Yosys command invoked from TCL` | the current shell never loaded the ecc env (e.g. a non-interactive terminal), so ecc fell back to an old yosys on system PATH, which crashes parsing the ics55 liberty (the TCL wrapper swallows the exception detail) | verify `which yosys` points at the OSS CAD Suite; `source ~/.ecc-env.sh` and rerun |
 

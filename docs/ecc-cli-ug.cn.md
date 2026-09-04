@@ -216,7 +216,7 @@ rc=0
 
 ### 环境自检：ecc doctor
 
-`ecc doctor` 一条命令体检全部依赖（PDK、yosys 含 slang 前端、随包捆绑的 ecc-tools/dreamplace、可选的 klayout/sizer），每项给出 pass/fail/skip 与修复建议；只有**必需项**失败才返回非零：
+`ecc doctor` 一条命令体检全部依赖（PDK、yosys 含 slang 前端、随包捆绑的 ecc-tools/dreamplace、必需的 Sizer，以及可选的 KLayout），每项给出 pass/fail/skip 与修复建议；只有**必需项**失败才返回非零：
 
 ```bash
 ecc doctor [--project DIR] [--json | --jsonl | --plain]
@@ -270,7 +270,7 @@ rc=1
 | Yosys（综合） | `which yosys && yosys -V`，或 `echo $CHIPCOMPILER_OSS_CAD_DIR` | 二者其一可用（优先 `CHIPCOMPILER_OSS_CAD_DIR` 指向 OSS CAD Suite） |
 | Yosys slang 前端 | `yosys -Q -T -p "help read_slang"` | 输出**不含** `No such command`（yosys ≥ v0.67 内置；旧版需可加载的 slang 插件） |
 | KLayout（仅 `layout-image` 需要） | `python3 -c "from klayout import lay"` | 无 ImportError |
-| Sizer（Timing optimization 步骤需要，默认 rtl2gds/rcx/harden 链均含） | `which Sizer`，或 `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | 二者其一有效（root 需含 `src/sizer_os.tcl`）。注意 `ecc run` 预检**不含** sizer，缺失会在流中段 fail |
+| Sizer（`ecc doctor` 的必需组件；默认 rtl2gds/rcx/harden 链的 Timing optimization 步骤也需要） | `which Sizer`，或 `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | 二者其一有效（root 需含 `src/sizer_os.tcl`）。`ecc run` 预检**不含** sizer，缺失会在流中段 fail |
 
 可整体复制的一段自检脚本：
 
@@ -684,6 +684,7 @@ PDK / Node         : ics55
 ```bash
 ecc report qor        [-o PATH] [--project DIR] [--run-id ID] | --workspace PATH
 ecc report checklist  [-o PATH] [同上]
+ecc report step       [STEP] [--section feature|analysis|checklist]... [同上]
 ```
 
 ### 12.1 qor — QoR 总体计分报告
@@ -707,6 +708,33 @@ report=qor path=.../signoff/gcd_qor_report.txt bytes=1717 design=gcd \
 ```bash
 ecc signoff inspect --project gcd    # 先刷新 checklist（若还没有）
 ecc report checklist --project gcd
+```
+
+### 12.3 step — 单步骤 feature / analysis / checklist 报告（只读预览）
+
+直接在终端预览**单个 step** 的三类产物，不写任何文件、不刷新任何快照（与 `report qor/checklist` 不同，本命令不加载 Workspace，因此不会触发配置迁移或追加 workspace 日志）：
+
+- 不带参数：全部 step 概览表（状态、runtime、峰值内存、指标数、quality、checklist 状态）
+- 带 `STEP`：该 step 的三节明细
+  - `feature`：`feature/<Step>.step.json` 的 run facts（state/runtime/peak_memory/constraints）与工具 facts + `feature/<Step>.db.json` 的分组设计统计（Design Layout / Statis / Instances）
+  - `analysis`：`analysis/qor_metrics.json` 全量指标（值/单位/类别/角色）+ `analysis/qor_summary.json` 的 quality 状态与 quality gates（如 `qor.drc.clean — drc_count=336 == 0`）
+  - `checklist`：`<step>/checklist.json`（v3 契约，缺失时回退 `home/checklist.json` 按步骤过滤）
+- `--section` 可重复指定，只输出选中的节；某节产物缺失时该节显示 `unavailable`
+
+step token 与 `ecc log` 同源（`synthesis/floorplan/placement/cts/...`），同时接受 flow 内部名（如 `Timing optimization`）与目录名变体（`timing_optimization`）；未知 token 返回 `unknown_step` 并列出可用值。
+
+```console
+$ ecc report step --workspace default
+  step                   tool         status    runtime  metrics quality  checklist
+  synthesis              yosys        success   0:0:17   10      pass     ready
+  ...
+  drc                    ecc          success   0:0:3    12      blocked  blocked (1 blocked)
+
+$ ecc report step drc --section analysis
+  analysis:
+    quality: blocked  (12 metrics, 0 missing)
+    ...
+    [BLOCK] qor.drc.clean — drc_count=336 == 0
 ```
 
 ## 13. rpc — JSON-RPC runtime sidecar（私有）
@@ -757,6 +785,7 @@ ecc signoff export -o gcd_signoff.tar.gz    # 就绪后导出签核包
 ecc signoff report                 # 生成文本设计总结（signoff/<design>_design_summary.txt）
 ecc report qor                     # QoR 总分报告（signoff/<design>_qor_report.txt）
 ecc report checklist               # 签核清单报告（signoff/checklist_report.txt）
+ecc report step drc                # 终端预览单步骤 feature/analysis/checklist（只读）
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
 ```
 

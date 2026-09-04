@@ -111,12 +111,11 @@ def probe_sizer() -> ProbeResult:
     from chipcompiler.tools.ecc_sizer.utility import get_sizer_command, is_sizer_runtime_exist
 
     if is_sizer_runtime_exist():
-        return ProbeResult("sizer", PASS, required=False, detail=get_sizer_command() or "")
+        return ProbeResult("sizer", PASS, detail=" ".join(get_sizer_command()))
     return ProbeResult(
         "sizer",
         FAIL,
-        required=False,
-        detail="optional; used only by timing optimization steps",
+        detail="required by timing optimization steps",
         remediation=(
             "Build ecc-sizer, add its build/src directory to PATH, and set "
             "CHIPCOMPILER_ECC_SIZER_ROOT to the checkout."
@@ -202,4 +201,6 @@ def probe_components_for_preset(preset: str) -> tuple[str, ...]:
         components.append("yosys")
     if "dreamplace" in tools:
         components.append("dreamplace")
+    if "sizer" in tools:
+        components.append("sizer")
     return tuple(components)

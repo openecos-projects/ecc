@@ -17,6 +17,12 @@
 #   bash ecc-cli-setup.sh --force         # 强制重新下载安装 ecc CLI
 #   bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体
 #
+# 安装本地构建包（开发实测；先在 ecc 仓库执行 PyInstaller 并打包出
+# dist/release/ecc-cli-linux-x86_64.tar.gz，见 docs/ecc-cli-dev.cn.md 第 6 节）：
+#   ECC_CLI_URL=/abs/path/to/ecc/dist/release/ecc-cli-linux-x86_64.tar.gz \
+#     bash ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
+#   （ECC_CLI_URL 也接受 file:// 直链；本地文件直接拷贝，不走 GH_PROXY）
+#
 # 可通过环境变量覆盖的配置（见下方"配置区"）：
 #   ECC_VERSION / ECC_RELEASE_BASE / ECC_ASSET_NAME / ECC_CLI_URL
 #   ECC_INSTALL_DIR / ECC_PDK_DIR / ECC_OSS_CAD_DIR / OSS_CAD_URL
@@ -63,7 +69,7 @@ warn() { printf '    %s\n' "${C_Y}[!!]${C_0}  $*"; }
 fail() { printf '    %s\n' "${C_R}[FAIL]${C_0} $*"; }
 die()  { fail "$*"; exit 1; }
 
-usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; }
 
 # ----------------------------- 参数解析 -----------------------------
 while [[ $# -gt 0 ]]; do
@@ -86,8 +92,18 @@ command -v curl >/dev/null 2>&1 && DL_CMD="curl"
 [[ -z "$DL_CMD" ]] && command -v wget >/dev/null 2>&1 && DL_CMD="wget"
 [[ -z "$DL_CMD" ]] && die "需要 curl 或 wget，请先安装"
 
-fetch() { # fetch <url> <输出文件>   下载（可选走 GH_PROXY）
-  local url="$1" out="$2"
+fetch() { # fetch <url> <输出文件>   下载（可选走 GH_PROXY）；支持本地文件路径 / file:// 直链
+  local url="$1" out="$2" local_path=""
+  if [[ "$url" =~ ^file:// ]]; then
+    local_path="${url#file://}"
+  elif [[ "$url" != *://* && -f "$url" ]]; then
+    local_path="$url"
+  fi
+  if [[ -n "$local_path" ]]; then
+    [[ -f "$local_path" ]] || { warn "本地包不存在: $local_path"; return 1; }
+    cp -f "$local_path" "$out"
+    return 0
+  fi
   [[ -n "$GH_PROXY" ]] && url="${GH_PROXY}${url}"
   if [[ "$DL_CMD" == "curl" ]]; then
     curl -fL --retry 3 --connect-timeout 30 -o "$out" "$url"
@@ -232,6 +248,10 @@ step_install_ecc() {
   archive="$tmpdir/$ECC_ASSET_NAME"
   msg "下载 $url"
   if ! fetch "$url" "$archive"; then
+    # ECC_CLI_URL 是用户显式指定的来源（含本地包），失败不回退官方资产
+    if [[ -n "$ECC_CLI_URL" ]]; then
+      die "获取 ECC_CLI_URL 指定的包失败: $ECC_CLI_URL"
+    fi
     # /releases/latest 不含 prerelease 时会 404，回退到 GitHub API 找同名资产
     warn "直链下载失败，尝试通过 GitHub API 定位资产…"
     local owner_repo alt

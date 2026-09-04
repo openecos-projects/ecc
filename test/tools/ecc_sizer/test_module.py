@@ -342,6 +342,33 @@ def test_sizer_step_keeps_caller_output_paths_that_share_old_prefix(tmp_path):
     assert str(step.output.verilog) == output_verilog
 
 
+def test_sizer_command_resolves_from_env_root_before_path(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer.utility import get_sizer_command
+
+    env_root = tmp_path / "ecc-sizer"
+    (env_root / "bin").mkdir(parents=True)
+    env_sizer = env_root / "bin" / "Sizer"
+    env_sizer.write_text("#!/bin/sh\n", encoding="utf-8")
+    env_sizer.chmod(0o755)
+
+    path_dir = tmp_path / "on-path"
+    path_dir.mkdir()
+    path_sizer = path_dir / "Sizer"
+    path_sizer.write_text("#!/bin/sh\n", encoding="utf-8")
+    path_sizer.chmod(0o755)
+
+    monkeypatch.setenv("PATH", str(path_dir))
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(env_root))
+
+    assert get_sizer_command() == [str(env_sizer)]
+
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(tmp_path / "absent"))
+    assert get_sizer_command() == [str(path_sizer)]
+
+    monkeypatch.delenv("CHIPCOMPILER_ECC_SIZER_ROOT", raising=False)
+    assert get_sizer_command() == [str(path_sizer)]
+
+
 def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_sizer.utility import get_sizer_command, is_eda_exist
 

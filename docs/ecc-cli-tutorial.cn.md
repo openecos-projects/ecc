@@ -123,10 +123,10 @@ klayout 0.30.2
 $ ecc doctor
 [status]
   doctor: environment
-  status: attention          # ok=全过 / attention=仅可选项失败(rc=0) / failed=必需项失败(rc=1)
+  status: failed             # 缺少必需组件时返回 rc=1
   checked: 7
-  failed: 0
-  attention: 1
+  failed: 1
+  attention: 0
   run: ecc run
   component: yosys
   status: pass
@@ -140,11 +140,11 @@ $ ecc doctor
   ...
   component: sizer
   status: fail
-  required: False            # doctor 级别可选；rtl2gds/rcx/harden 仍依赖该组件
+  required: True             # doctor 和 Timing optimization 均要求该组件
   ...
 ```
 
-必需项（yosys、yosys-slang、ecc-tools、dreamplace、pdk）全部 `pass` 即可继续；`sizer` 是可选项（doctor 只标 `attention`），但 `rtl2gds`、`rcx`、`harden` 都含 Timing optimization 步骤，**缺 Sizer 会在流中段失败**。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；否则，在运行这些 preset 前按 Sizer remediation 提示补齐。
+必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。`rtl2gds`、`rcx`、`harden` 都含 Timing optimization 步骤，**缺 Sizer 也会在流中段失败**；它目前仍不在 `ecc run` 预检中。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；否则，在运行这些 preset 前按 Sizer remediation 提示补齐。
 
 ## 3. 创建第一个项目
 
@@ -593,7 +593,7 @@ ecc config --resolved --plain      # 项目级配置（键值 + 解析后绝对�
 | `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk setup` 或 `ecc pdk set-root <路径>`，或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |
 | 下载 GitHub 资源超时 | 网络受限 | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
-| doctor 显示 `sizer: fail` | 可选组件未安装 | `rtl2gds`、`rcx`、`harden` 链都含 Timing optimization 步骤，缺失会在流中段失败。重跑 [ecc-cli-setup.sh](ecc-cli-setup.sh)（官方发布预编译包后自动安装），或按 remediation 提示源码构建 |
+| doctor 显示 `sizer: fail` | 必需的 Sizer 组件未安装 | `ecc doctor` 返回非零。`rtl2gds`、`rcx`、`harden` 链也含 Timing optimization 步骤，运行前应安装 Sizer。重跑 [ecc-cli-setup.sh](ecc-cli-setup.sh)（官方发布预编译包后自动安装），或按 remediation 提示源码构建 |
 | synthesis 日志报 `yosys slang frontend check failed` | yosys 无 slang 前端 | 换 OSS CAD Suite ≥ v0.67 的 yosys，`ecc log synthesis` 排查 |
 | synthesis 在 DFFLIBMAP 报 `uncaught exception during Yosys command invoked from TCL` 后退出 | 当前 shell 未加载 ecc 环境（如非交互终端），ecc 回落到系统 PATH 里的旧版 yosys（解析 ics55 liberty 会直接崩溃，异常详情被 TCL 吞掉） | `which yosys` 确认指向 OSS CAD Suite；`source ~/.ecc-env.sh` 后重跑 |
 

@@ -13,8 +13,15 @@ UNKNOWN = "unknown"
 VERSION_QUERY_TIMEOUT = 5
 
 
-def _query(command: list[str], env: dict[str, str] | None = None) -> str:
-    """Run a version query; return its trimmed output, or "" on any failure."""
+def _query(
+    command: list[str], env: dict[str, str] | None = None, *, tolerate_exit: bool = False
+) -> str:
+    """Run a version query; return its trimmed output, or "" on any failure.
+
+    tolerate_exit keeps the output of a tool that prints its version and then
+    exits non-zero (ecc-sizer's OpenROAD binary prints a usage error after
+    "OpenROAD vX" with exit code 1).
+    """
     try:
         result = subprocess.run(
             command,
@@ -26,7 +33,7 @@ def _query(command: list[str], env: dict[str, str] | None = None) -> str:
         )
     except (OSError, subprocess.SubprocessError):
         return ""
-    if result.returncode != 0:
+    if result.returncode != 0 and not tolerate_exit:
         return ""
     return result.stdout.decode("utf-8", errors="replace").strip()
 
@@ -53,8 +60,19 @@ def sizer_version() -> str:
     command = get_sizer_command()
     if not command:
         return NOT_INSTALLED
-    # Best-effort: ecc-sizer has no committed version protocol yet.
-    return _query(command + ["--version"]) or UNKNOWN
+    # Best-effort: ecc-sizer has no committed version protocol. The OpenROAD
+    # binary prints "OpenROAD vX.Y.Z" followed by a usage error (exit 1), so
+    # the exit code is tolerated and the version line is parsed out.
+    output = _query(command + ["--version"], tolerate_exit=True)
+    if not output:
+        return UNKNOWN
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("OpenROAD v"):
+            version = stripped.removeprefix("OpenROAD v").strip()
+            if version:
+                return version
+    return output.splitlines()[0].strip()
 
 
 def klayout_version() -> str:
