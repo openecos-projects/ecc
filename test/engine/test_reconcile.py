@@ -8,20 +8,18 @@ from chipcompiler.engine.reconcile import (
     resolve_target_section,
 )
 
-RTL2GDS_STEPS = [
-    ("Synthesis", "yosys"),
-    ("Floorplan", "ecc"),
-    ("place", "dreamplace"),
-    ("CTS", "ecc"),
-    ("legalization", "dreamplace"),
-    ("Timing optimization", "sizer"),
-    ("route", "ecc"),
-    ("drc", "ecc"),
-    ("lvs", "ecc"),
-    ("filler", "ecc"),
-    ("postRouteLec", "yosys_lec"),
-]
-RCX_SUFFIX = [("RCX", "ecc"), ("sta", "ecc")]
+
+def _preset_entries(preset):
+    from chipcompiler.rtl2gds.builder import get_flow_builders
+
+    return [
+        (step.value if hasattr(step, "value") else str(step), str(tool))
+        for step, tool, _state in get_flow_builders()[preset]()
+    ]
+
+
+RTL2GDS_STEPS = _preset_entries("rtl2gds")
+RCX_SUFFIX = _preset_entries("rcx")[len(RTL2GDS_STEPS) :]
 
 
 def _write_workspace(tmp_path, steps, states=None, flow_section=None, params=None):
@@ -95,11 +93,11 @@ class TestReconcile:
         steps = _flow_steps(workspace_dir)
         assert [(s["name"], s["tool"]) for s in steps] == RTL2GDS_STEPS + RCX_SUFFIX
         assert all(s["state"] == "Success" for s in steps[: len(RTL2GDS_STEPS)])
-        assert [s["state"] for s in steps[-2:]] == ["Unstart", "Unstart"]
+        assert [s["state"] for s in steps[-len(RCX_SUFFIX) :]] == ["Unstart"] * len(RCX_SUFFIX)
         assert _flow_section(workspace_dir) == {"preset": "rcx"}
 
     def test_extension_resumes_from_first_non_success(self, tmp_path):
-        states = ["Success"] * 10 + ["Ongoing"]
+        states = ["Success"] * (len(RTL2GDS_STEPS) - 1) + ["Ongoing"]
         workspace_dir = _write_workspace(
             tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
         )
@@ -119,7 +117,7 @@ class TestReconcile:
         assert result.outcome == "no_op"
 
     def test_equal_with_non_success_is_resume(self, tmp_path):
-        states = ["Success"] * 10 + ["Imcomplete"]
+        states = ["Success"] * (len(RTL2GDS_STEPS) - 1) + ["Imcomplete"]
         workspace_dir = _write_workspace(
             tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
         )
@@ -138,7 +136,7 @@ class TestReconcile:
         result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "no_op"
-        assert len(_flow_steps(workspace_dir)) == len(RTL2GDS_STEPS) + 2
+        assert len(_flow_steps(workspace_dir)) == len(RTL2GDS_STEPS) + len(RCX_SUFFIX)
         # A stale wider target is adopted to the effective one; the extra
         # persisted steps stay in the ledger untouched.
         assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
@@ -146,7 +144,7 @@ class TestReconcile:
     def test_target_prefix_noop_even_with_unfinished_extras(self, tmp_path):
         # Extra steps beyond the target are never the run's business, and
         # the workspace's [flow] is never widened to cover them.
-        states = ["Success"] * 11 + ["Unstart", "Unstart"]
+        states = ["Success"] * len(RTL2GDS_STEPS) + ["Unstart"] * len(RCX_SUFFIX)
         workspace_dir = _write_workspace(
             tmp_path,
             RTL2GDS_STEPS + RCX_SUFFIX,
@@ -164,7 +162,7 @@ class TestReconcile:
 
     def test_crash_window_repair_then_resume(self, tmp_path):
         # flow.json appended (suffix Unstart) but [flow] never adopted.
-        states = ["Success"] * 11 + ["Unstart", "Unstart"]
+        states = ["Success"] * len(RTL2GDS_STEPS) + ["Unstart"] * len(RCX_SUFFIX)
         workspace_dir = _write_workspace(
             tmp_path,
             RTL2GDS_STEPS + RCX_SUFFIX,
