@@ -57,6 +57,8 @@ def get_run_status(flow_data: dict) -> str:
         return "ongoing"
     if states & {"incomplete", "invalid"}:
         return "failed"
+    if "warning" in states and states <= {"success", "warning"}:
+        return "warning"
     if states == {"success"}:
         return "success"
     if states == {"unstart"}:

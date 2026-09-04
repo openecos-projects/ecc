@@ -471,14 +471,19 @@ def _lec_artifact_items(
         golden_verilog=golden_verilog,
         gate_verilog=gate_verilog,
     )
+    is_warning = step_name == StepEnum.LEC.value
     if status == "proven":
         state, summary = "pass", "Yosys LEC proved equivalence."
     elif status == "stale":
-        state, summary = "failed", "Yosys LEC proof is stale; golden or gate netlist changed."
+        state = "warning" if is_warning else "failed"
+        summary = "Yosys LEC proof is stale; golden or gate netlist changed."
     elif result_json and Path(result_json).is_file():
-        state, summary = "failed", "Yosys LEC did not prove equivalence."
+        state = "warning" if is_warning else "failed"
+        summary = "Yosys LEC did not prove equivalence."
     else:
         state, summary = _file_state(result_json)
+        if is_warning and state == "failed":
+            state = "warning"
     result_path = _path_text(workspace, result_json)
     return [
         _item(
@@ -486,7 +491,7 @@ def _lec_artifact_items(
             step=step_name,
             category="artifact",
             owner="checklist",
-            policy="block",
+            policy="warn" if is_warning else "block",
             state=state,
             title="Yosys LEC result",
             summary=summary,

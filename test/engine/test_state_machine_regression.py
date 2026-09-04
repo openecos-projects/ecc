@@ -286,7 +286,7 @@ class TestTransitionTableCompleteness:
     """All transitions in _VALID_TRANSITIONS are documented and tested."""
 
     def test_all_source_states_covered(self):
-        """_VALID_TRANSITIONS covers all 6 StateEnum string values."""
+        """_VALID_TRANSITIONS covers all StateEnum string values."""
         all_states = {s.value for s in StateEnum}
         assert set(_VALID_TRANSITIONS.keys()) == all_states
 

@@ -10,8 +10,9 @@ from chipcompiler.engine import rerun
 from chipcompiler.engine.flow import EngineFlow
 
 
-def _make_run_flow(tmp_path, steps):
+def _make_run_flow(tmp_path, steps, tools_by_name=None):
     """EngineFlow over a persisted flow.json plus aligned workspace steps."""
+    tools_by_name = tools_by_name or {}
     home = tmp_path / "home"
     home.mkdir()
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
@@ -20,7 +21,7 @@ def _make_run_flow(tmp_path, steps):
         "steps": [
             {
                 "name": name,
-                "tool": "ecc",
+                "tool": tools_by_name.get(name, "ecc"),
                 "state": state,
                 "runtime": "",
                 "peak memory (mb)": 0,
@@ -36,7 +37,7 @@ def _make_run_flow(tmp_path, steps):
         engine_flow.workspace_steps.append(
             EccStep(
                 name=name,
-                tool="ecc",
+                tool=tools_by_name.get(name, "ecc"),
                 directory=directory,
                 output=EccOutput(dir=directory / "output"),
             )
@@ -110,6 +111,20 @@ class TestSelectedStepNames:
 
 
 class TestRunFrom:
+    def test_synthesis_lec_warning_does_not_stop_resume(self, monkeypatch, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("lec", "Unstart"), ("route", "Unstart")],
+            tools_by_name={"lec": "yosys_lec"},
+        )
+        calls = _fake_execution(flow, monkeypatch, outcomes={"lec": StateEnum.Warning})
+
+        result = rerun.run_from(flow, "lec")
+
+        assert result.ok
+        assert result.executed == ("lec", "route")
+        assert calls == [("lec", True), ("route", True)]
+
     def test_reexecutes_suffix_and_clears_only_executed_outputs(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
             tmp_path,

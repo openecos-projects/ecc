@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, log_flow
+from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, is_non_blocking_step, log_flow
 from chipcompiler.utility.log import redirect_stdio_to_file
 from chipcompiler.utility.path import path_is_within
 
@@ -157,8 +157,18 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
         flow.workspace.logger.log_section(
             f"{workspace_step.tool} - end step - {workspace_step.name}"
         )
-        if state != StateEnum.Success:
+        if state not in {StateEnum.Success, StateEnum.Warning} and not is_non_blocking_step(
+            workspace_step
+        ):
             return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
+        if state != StateEnum.Success:
+            flow.workspace.logger.warning(
+                "[WARNING] %s %s; continuing flow",
+                workspace_step.name,
+                "did not prove equivalence"
+                if is_non_blocking_step(workspace_step)
+                else "completed with warnings",
+            )
         executed.append(workspace_step.name)
     return StepRunResult(ok=True, executed=tuple(executed))
 

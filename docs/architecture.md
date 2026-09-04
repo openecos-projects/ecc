@@ -55,9 +55,9 @@ workspace_step/
 ### 3. State Machine
 ```
 Unstart → Ongoing → Success
-                  ↘ Incomplete
+                  ↘ Incomplete / Warning
 ```
-States: Unstart (not started), Ongoing (running), Success (completed), Incomplete (failed), Invalid, Ignored, Pending.
+States: Unstart (not started), Ongoing (running), Success (completed), Warning (non-blocking check failed), Incomplete (blocking failure), Invalid, Ignored, Pending.
 
 ### 4. Configuration as Data
 - `workspace.flow.json` - Flow state persistence

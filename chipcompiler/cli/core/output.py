@@ -27,6 +27,7 @@ def normalize_step_name(internal: str) -> str:
 def normalize_state(internal: str) -> str:
     mapping = {
         "Success": "success",
+        "Warning": "warning",
         "Incomplete": "incomplete",
         "Unstart": "unstart",
         "Ongoing": "ongoing",
