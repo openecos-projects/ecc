@@ -1,6 +1,6 @@
 # ECC Flow 工具配置参考（按步骤）
 
-本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0a11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
+本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
 
 - 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)；从零上手 → [入门教程](ecc-cli-tutorial.cn.md)
 - 配置查看命令：`ecc config <step>`（列出该步骤实际生效的配置文件）
@@ -465,4 +465,4 @@ ecc run --set place.target_density=0.55  # 只对本次 run 生效
 
 ---
 
-*参数默认值核对自 v0.1.0a11（rebase main 后）源码模板与 ics55 PDK 下 gcd 设计的真实运行；`*` 标记表示该字段由用户参数驱动。*
+*参数默认值核对自 v0.1.0-alpha.11（rebase main 后）源码模板与 ics55 PDK 下 gcd 设计的真实运行；`*` 标记表示该字段由用户参数驱动。*

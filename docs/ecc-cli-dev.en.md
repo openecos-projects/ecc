@@ -1,6 +1,6 @@
 # ECC CLI Command Extension Developer Guide
 
-This guide is for developers who need to add or modify commands in the `ecc` CLI. It is based on the current source tree (the `chipcompiler` package, v0.1.0a11). All code paths are relative to the `ecc` repository root.
+This guide is for developers who need to add or modify commands in the `ecc` CLI. It is based on the current source tree (the `chipcompiler` package, v0.1.0-alpha.11). All code paths are relative to the `ecc` repository root.
 
 Related documents: [architecture.md](architecture.md) (architecture), [development.md](development.md) (development workflow), [workspace-cli.md](workspace-cli.md) (RPC sidecar protocol), [../CLAUDE.md](../CLAUDE.md) (repository conventions).
 
@@ -15,16 +15,16 @@ chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── doctor.py                   # doctor top-level command (environment check)
   ├── param.py                    # param sub-app (list/show/set/unset/diff)
   ├── pdk.py                      # pdk sub-app (setup/set-root/show/unset)
-  ├── signoff.py                  # signoff sub-app (inspect/export/report)
-  ├── report.py                   # report sub-app (qor/checklist)
+  ├── signoff.py                  # signoff sub-app (inspect/export)
+  ├── report.py                   # report sub-app (summary/qor/checklist/step)
   └── rpc.py                      # rpc sub-app (serve)
 chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
   ├── project.py                  # init / check / run / migrate (preset resolution and environment preflight)
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor (assembles env_probe results into records)
   ├── pdk.py                      # the four pdk subcommands (surgical TOML edit + root source resolution)
-  ├── signoff.py                  # the three signoff subcommands + inspect TEXT rendering
-  └── report.py                   # the two report subcommands (file writing + record summary)
+  ├── signoff.py                  # signoff inspect/export + inspect TEXT rendering
+  └── report.py                   # the four report subcommands (file writing + record summary)
 chipcompiler/cli/handlers/param.py  # param subcommand handlers + param TEXT rendering
 chipcompiler/cli/core/            # framework layer
   ├── inputs.py                   # frozen dataclass input models per command
@@ -45,6 +45,8 @@ chipcompiler/engine/qor_report.py # overall QoR scoring (port of the GUI rules, 
 ```
 
 Module placement is enforced by `test/cli/test_cli_module_layout.py`: the core framework must live under `cli/core/`, command registration under `cli/commands/`, handlers under `cli/command_handlers/` (project-style commands) and `cli/handlers/` (param-style), read-only probing under `cli/inspection/`, and rendering under `cli/rendering/`; the old flat `chipcompiler/cli/*.py` modules must not be importable. Put new files in the matching subpackage — do not create modules at the `cli/` root.
+
+Public command ownership is strict: `ecc signoff` owns package readiness and archive export (`inspect`, `export`); `ecc report` owns all report output (`summary`, `qor`, `checklist`, `step`). `ecc config [STEP]` always returns resolved data, so it has no `--resolved` switch. Do not introduce an alias in the wrong group or an option that does not change behavior.
 
 ## 2. The full path of one command invocation
 
@@ -204,13 +206,14 @@ Project-run preset sequences are defined in `chipcompiler/rtl2gds/builder.py` (`
 
 `cli/inspection/env_probe.py` is the single probing layer: `ProbeResult(component, status, required, detail, remediation)` plus one probe function per component (yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk). Adding a component = adding a probe function and registering it in `_PROBES`/`ALL_COMPONENTS`; `probe_environment()` guards against exceptions (a crashing probe counts as a fail rather than aborting the sweep). `probe_components_for_preset()` decides the current run-preflight scope (ecc-tools always, yosys ↔ contains Synthesis, dreamplace ↔ contains place/legalization). The PDK is covered by configuration validation, slang is left to synthesis, and Sizer is a required doctor component even though it remains outside run preflight.
 
-### 5.4 Extending signoff (`ecc signoff` and the engine reports)
+### 5.4 Extending signoff (`ecc signoff inspect/export`)
 
 - **CLI layer**: `cli/commands/signoff.py` + `cli/command_handlers/signoff.py`. `_resolve_workspace()` uniformly resolves `--workspace` versus `--project/--run-id` (conflict → `project_workspace_conflict`). inspect reuses `runtime/signoff_export.py::inspect_signoff_package` (blocked still exits 0); export reuses `export_signoff_package_archive` (`RuntimeApiError` → `signoff_incomplete`).
-- **Engine layer**: the `chipcompiler/engine/signoff/` package — `__init__.py` holds the signoff collector `SignoffPackageCollector` (with the thin `text_report()` entry) plus the re-exported public API; the text design report implementation is split by responsibility (`report.py` orchestration / `report_data.py` data contract / `report_extract.py` parsers + workspace collection / `report_sections.py` section extraction / `report_timing.py` the timing chain / `report_text.py` formatting), all exposed through the package `__init__` (`from chipcompiler.engine.signoff import generate_text_report`). The public import surface stays single; adding a report section = adding an `_extract_<family>(q)` in `report_sections.py` (or the timing chain) and calling it from the orchestration in `report.py`.
+- **Engine layer**: the `chipcompiler/engine/signoff/` package owns the signoff collector `SignoffPackageCollector` and the package-export APIs used by readiness inspection and archive generation.
 
-### 5.5 Extending QoR scoring / checklist reports (`ecc report`)
+### 5.5 Extending reports (`ecc report summary/qor/checklist/step`)
 
+- **Design summary**: `ecc report summary` calls `chipcompiler.engine.signoff.generate_text_report`. Its implementation is split by responsibility (`report.py` orchestration / `report_data.py` data contract / `report_extract.py` parsers + workspace collection / `report_sections.py` section extraction / `report_timing.py` the timing chain / `report_text.py` formatting), all exposed through the package `__init__`. Add a report section through an `_extract_<family>(q)` in `report_sections.py` (or the timing chain) and register it from `report.py`.
 - `engine/qor_report.py`: the single-workspace port of the GUI's `projectQorTrend.ts` — constant tables (`METRIC_FAIL_VALUES`/`DIMENSION_WEIGHTS`/`QOR_SCORE_THRESHOLD`) + normalization + project-level record selection (role priority final>gate>trend; area_cost only from the last successful area step) + the `score_record` formulas + dimension weighting (no renormalization). Adding a scoreable metric = adding its threshold here and in the GUI.
 - `engine/signoff/report_checklist.py`: read-only rendering of `home/checklist.json` (reports unavailable on an invalid file; never writes back).
 - CLI: `cli/commands/report.py` + `cli/command_handlers/report.py`; workspace resolution reuses `inspection/discovery.py::resolve_command_workspace` (shared by signoff and report).
