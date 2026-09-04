@@ -399,6 +399,13 @@ gcd_Harden.png    211 KB   # 版图快照
 
 flow 全部步骤 Success 后，用 `signoff` / `report` 两组命令收尾。
 
+本教程以下命令均在 `gcd/` 项目目录中执行，因此不必指定 selector。若要从其他目录直接操作已有 workspace，`inspect` 与 `export` 都可传 `--workspace PATH`；它不能与 `--project` 或 `--run-id` 同时使用：
+
+```bash
+ecc signoff inspect --workspace /path/to/gcd/default
+ecc signoff export --workspace /path/to/gcd/default -o /path/to/gcd_signoff_package.tar.gz
+```
+
 ### 5.1 检查签核就绪度：ecc signoff inspect
 
 先刷新已完成步骤的 analysis，再查看交付物是否齐全（即使 `blocked` 也返回 rc=0，真正的门禁在 export）：

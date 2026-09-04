@@ -625,7 +625,7 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
 
 ## 11. signoff — 签核包
 
-`ecc signoff export` 需要就绪的 Harden 签核包。`ecc signoff inspect` 可审阅尚未完成的 workspace。两个子命令都接受 `--project DIR`（可选 `--run-id ID`），或直接指定 workspace 的 `--workspace PATH`，以及 `--json/--jsonl/--plain`。
+`ecc signoff export` 需要就绪的 Harden 签核包。`ecc signoff inspect` 可审阅尚未完成的 workspace。两个子命令都接受 `--project DIR`（可选 `--run-id ID`），或直接指定 workspace 的 `--workspace PATH`，以及 `--json/--jsonl/--plain`。`--workspace` 与 `--project`、`--run-id` 互斥。
 
 ### 11.1 inspect — 就绪度审阅
 
@@ -659,6 +659,12 @@ $ ecc signoff inspect --workspace default
 
 ```bash
 ecc signoff export -o <path>.tar.gz [--include-debug] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+```
+
+直接指定已有 workspace 时，例如：
+
+```bash
+ecc signoff export --workspace /path/to/gcd/default -o /path/to/gcd_signoff_package.tar.gz
 ```
 
 与 GUI「导出签核包」同源：刷新分析 → 收集 initial/config/harden/final 全部交付物 → 原子落盘 `<design>_signoff_package.tar.gz`。就绪度不足时拒绝导出（不产生残档）：

@@ -631,7 +631,7 @@ The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS5
 
 ## 11. signoff — signoff package
 
-`ecc signoff export` requires a ready Harden signoff package. `ecc signoff inspect` can assess a partially completed workspace. Both subcommands accept `--project DIR` with an optional `--run-id ID`, or `--workspace PATH` pointing at a workspace directly, plus `--json/--jsonl/--plain`.
+`ecc signoff export` requires a ready Harden signoff package. `ecc signoff inspect` can assess a partially completed workspace. Both subcommands accept `--project DIR` with an optional `--run-id ID`, or `--workspace PATH` pointing at a workspace directly, plus `--json/--jsonl/--plain`. `--workspace` is mutually exclusive with `--project` and `--run-id`.
 
 ### 11.1 inspect — readiness review
 
@@ -665,6 +665,12 @@ $ ecc signoff inspect --workspace default
 
 ```bash
 ecc signoff export -o <path>.tar.gz [--include-debug] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+```
+
+For an existing workspace, for example:
+
+```bash
+ecc signoff export --workspace /path/to/gcd/default -o /path/to/gcd_signoff_package.tar.gz
 ```
 
 Same source as the GUI's "export signoff package": refreshes analysis → collects every deliverable under initial/config/harden/final → atomically writes `<design>_signoff_package.tar.gz`. When readiness is insufficient the export is refused (no partial archive is produced):
