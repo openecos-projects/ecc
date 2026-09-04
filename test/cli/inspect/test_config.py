@@ -137,6 +137,29 @@ class TestConfigResolved:
 
 
 class TestConfigStepResolved:
+    def test_config_accepts_extended_rtl2gds_step_token(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "runs", "default")
+        create_flow_json(
+            run_dir,
+            [
+                {
+                    "name": "Timing optimization",
+                    "tool": "sizer",
+                    "state": "Unstart",
+                }
+            ],
+        )
+
+        rc = cli_main.run(["config", "timing_optimization", "--json", "--project", project_dir])
+
+        assert rc == 0
+        assert json.loads(capsys.readouterr().out)["records"] == [
+            {"step": "timing_optimization", "config_status": "none"}
+        ]
+
     def test_config_step_lists_files(
         self,
         tmp_path,

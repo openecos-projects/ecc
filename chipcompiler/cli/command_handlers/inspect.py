@@ -155,10 +155,10 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
     )
     from chipcompiler.cli.inspection.log_view import build_log_records
 
-    step_token = command_input.step
+    requested_step_token = command_input.step
     project = ctx.project
 
-    if step_token is None:
+    if requested_step_token is None:
         records = []
 
         for lf in discover_logs(run_dir):
@@ -191,6 +191,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
             )
         return CommandResult.ok(records)
 
+    step_token = normalize_step_name(requested_step_token)
     step_dirs = discover_step_dirs(run_dir)
     if step_token not in step_dirs:
         flow_steps = get_flow_step_names(run_dir)
@@ -198,16 +199,18 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
             return CommandResult.err(
                 [
                     {
-                        "step": step_token,
+                        "step": requested_step_token,
                         "log_status": "missing",
-                        "inspect_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
+                        "inspect_cmd": disclosure_cmd(
+                            f"ecc log {requested_step_token}", project, ctx.run_id
+                        ),
                     }
                 ]
             )
         return CommandResult.err(
             [
                 {
-                    "step": step_token,
+                    "step": requested_step_token,
                     "status": "unknown_step",
                     "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
                 }
@@ -219,18 +222,20 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [
                 {
-                    "step": step_token,
+                    "step": requested_step_token,
                     "log_status": "missing",
                     "source": os.path.relpath(
                         os.path.join(step_dirs[step_token], "log"),
                         run_dir,
                     ),
-                    "inspect_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
+                    "inspect_cmd": disclosure_cmd(
+                        f"ecc log {requested_step_token}", project, ctx.run_id
+                    ),
                 }
             ]
         )
 
-    inspect_cmd = disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id)
+    inspect_cmd = disclosure_cmd(f"ecc log {requested_step_token}", project, ctx.run_id)
 
     all_records = []
     for lf in log_files:
@@ -242,7 +247,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
             return CommandResult.err(
                 [
                     {
-                        "step": step_token,
+                        "step": requested_step_token,
                         "log_status": "unreadable",
                         "source": source,
                         "error": str(exc),
@@ -252,13 +257,13 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
             )
         if not raw:
             continue
-        all_records.extend(build_log_records(step_token, source, raw, inspect_cmd))
+        all_records.extend(build_log_records(requested_step_token, source, raw, inspect_cmd))
 
     if not all_records:
         return CommandResult.ok(
             [
                 {
-                    "step": step_token,
+                    "step": requested_step_token,
                     "log_status": "empty",
                     "inspect_cmd": inspect_cmd,
                 }

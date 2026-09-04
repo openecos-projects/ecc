@@ -54,9 +54,8 @@ class _StepEntry:
 def _step_entries(workspace_dir: str) -> list[_StepEntry]:
     """Flow steps in flow order plus dir-discovered extras, dir-associated.
 
-    A flow step links to its step directory on token equality, the
-    underscore alias of its token ("Timing optimization" -> "timing_optimization"),
-    or a tool-suffixed dir token ("postroutelec" -> "postroutelec_yosys").
+    A flow step links to its step directory on token equality or the
+    underscore alias of its token ("Timing optimization" -> "timing_optimization").
     """
     from chipcompiler.cli.core.output import normalize_step_name
     from chipcompiler.cli.inspection.discovery import (

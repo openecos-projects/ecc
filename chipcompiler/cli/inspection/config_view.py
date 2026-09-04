@@ -233,9 +233,11 @@ def build_step_config_items(
     from chipcompiler.data import step_config_paths
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
+    requested_step_token = step_token or ""
+    step_token = normalize_step_name(requested_step_token)
     flow_data = read_flow_json(run_dir)
     if flow_data is None:
-        return [{"kind": "error", "status": "unknown_step", "step": step_token}], 1
+        return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
     if flow_data is CORRUPT_FLOW_JSON:
         return [{"kind": "error", "status": "invalid_flow_json"}], 1
 
@@ -244,7 +246,7 @@ def build_step_config_items(
     flow_step_by_token = {normalize_step_name(s.get("name", "")): s for s in steps}
 
     if step_token not in flow_step_by_token and step_token not in step_dirs:
-        return [{"kind": "error", "status": "unknown_step", "step": step_token}], 1
+        return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
 
     step_info = flow_step_by_token.get(step_token, {})
     data_step = step_info.get("name")
@@ -267,12 +269,14 @@ def build_step_config_items(
             {
                 "kind": "config",
                 "scope": "step",
-                "step": step_token,
+                "step": requested_step_token,
                 "role": "config",
                 "run": display_run,
                 "path": os.path.relpath(str(fpath), base_dir),
                 "source": "workspace_config",
-                "inspect_cmd": disclosure_cmd(f"ecc config {step_token} --json", project, run_id),
+                "inspect_cmd": disclosure_cmd(
+                    f"ecc config {requested_step_token} --json", project, run_id
+                ),
             }
         )
 
@@ -281,7 +285,7 @@ def build_step_config_items(
             {
                 "kind": "config",
                 "scope": "step",
-                "step": step_token,
+                "step": requested_step_token,
                 "config_status": "none",
             }
         ], 0
