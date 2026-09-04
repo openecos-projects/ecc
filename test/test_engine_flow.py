@@ -31,6 +31,20 @@ def test_engine_flow_missing_path_is_not_initialized():
     assert engine_flow.has_init() is False
 
 
+def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
+    workspace = Workspace()
+    workspace.flow.path = tmp_path / "flow.json"
+
+    engine_flow = EngineFlow(workspace)
+    engine_flow.build_default_steps()
+
+    assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:3]] == [
+        (StepEnum.SYNTHESIS.value, "yosys"),
+        (StepEnum.LEC.value, "yosys_lec"),
+        (StepEnum.FLOORPLAN.value, "ecc"),
+    ]
+
+
 def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
     monkeypatch,
     tmp_path,

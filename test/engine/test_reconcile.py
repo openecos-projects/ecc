@@ -27,6 +27,7 @@ RTL2GDS_STEPS = [
 ]
 LEGACY_RTL2GDS_STEPS = RTL2GDS_STEPS[:-3]
 FULL_FLOW_SUFFIX = RTL2GDS_STEPS[-3:]
+LEGACY_SYNTH_LEC_STEPS = [entry for entry in RTL2GDS_STEPS if entry[0] != "lec"]
 
 
 def _write_workspace(tmp_path, steps, states=None, flow_section=None, params=None):
@@ -88,6 +89,21 @@ class TestCompareFlows:
 
 
 class TestReconcile:
+    def test_upgrade_inserts_new_synthesis_lec_step(self, tmp_path):
+        workspace_dir = _write_workspace(
+            tmp_path, LEGACY_SYNTH_LEC_STEPS, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "extended"
+        assert result.appended == ("lec",)
+        steps = _flow_steps(workspace_dir)
+        assert [(s["name"], s["tool"]) for s in steps] == RTL2GDS_STEPS
+        assert steps[0]["state"] == "Success"
+        assert steps[1]["state"] == "Unstart"
+        assert all(s["state"] == "Success" for s in steps[2:])
+
     def test_extension_appends_suffix_and_adopts_target(self, tmp_path):
         workspace_dir = _write_workspace(
             tmp_path, LEGACY_RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}

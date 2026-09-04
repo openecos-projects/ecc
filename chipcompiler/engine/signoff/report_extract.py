@@ -336,6 +336,7 @@ def _parse_corner_attributes(name: str):
 # local to avoid an import cycle between the two signoff modules.
 STEP_DIRS = {
     StepEnum.SYNTHESIS.value: "Synthesis_yosys",
+    StepEnum.LEC.value: "lec_yosys_lec",
     StepEnum.FLOORPLAN.value: "Floorplan_ecc",
     StepEnum.PLACEMENT.value: "place_dreamplace",
     StepEnum.CTS.value: "CTS_ecc",

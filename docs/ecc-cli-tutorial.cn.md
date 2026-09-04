@@ -16,7 +16,7 @@
 graph LR
     A[安装 ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>建项目放 RTL]
     B --> C[ecc doctor / check<br/>环境与配置体检]
-    C --> D[ecc run --preset rtl2gds<br/>14 步全流程]
+    C --> D[ecc run --preset rtl2gds<br/>15 步全流程]
     D --> E[ecc status / log<br/>查看结果与日志]
     E --> F[ecc signoff export<br/>签核包 tar.gz]
     E --> G[ecc report summary<br/>设计总结报告]
@@ -262,7 +262,7 @@ rc=0
 
 ### 4.1 启动
 
-`rtl2gds` preset 是完整 14 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）：
+`rtl2gds` preset 是完整 15 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 ecc run --preset rtl2gds
@@ -270,28 +270,29 @@ ecc run --preset rtl2gds
 
 （生成的 `ecc.toml` 已选择 `rtl2gds`；`--preset` 只对本次运行生效，不写回配置。）
 
-交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。`rtl2gds` 的 14 步依次为：
+交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。`rtl2gds` 的 15 步依次为：
 
 | # | 步骤 | 工具 | 作用 |
 |---|------|------|------|
 | 1 | synthesis | yosys | RTL 综合、工艺映射（slang 前端读入 SystemVerilog） |
-| 2 | floorplan | ecc | 布局规划：die/core 区域、IO pin 排布 |
-| 3 | placement | dreamplace | 全局布局 |
-| 4 | cts | ecc | 时钟树综合（含扇出约束） |
-| 5 | legalization | dreamplace | 布局合法化 |
-| 6 | timing optimization | sizer | 时序优化（cell sizing） |
-| 7 | routing | ecc | 布线 |
-| 8 | filler | ecc | 填充单元插入 |
-| 9 | lvs | ecc | 版图与原理图一致性检查 |
-| 10 | drc | ecc | 物理规则检查 |
-| 11 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
-| 12 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
-| 13 | sta | ecc | 多 corner 静态时序分析 |
-| 14 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
+| 2 | lec | yosys_lec | 逻辑等价性检查：综合网表与 golden 网表 |
+| 3 | floorplan | ecc | 布局规划：die/core 区域、IO pin 排布 |
+| 4 | placement | dreamplace | 全局布局 |
+| 5 | cts | ecc | 时钟树综合（含扇出约束） |
+| 6 | legalization | dreamplace | 布局合法化 |
+| 7 | timing optimization | sizer | 时序优化（cell sizing） |
+| 8 | routing | ecc | 布线 |
+| 9 | filler | ecc | 填充单元插入 |
+| 10 | lvs | ecc | 版图与原理图一致性检查 |
+| 11 | drc | ecc | 物理规则检查 |
+| 12 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
+| 13 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
+| 14 | sta | ecc | 多 corner 静态时序分析 |
+| 15 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> B[Floorplan] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
@@ -341,6 +342,7 @@ $ ecc status
 
   steps:
     synthesis (yosys) success 0:0:17
+    lec (yosys_lec) success 0:0:1
     floorplan (ecc) success 0:0:1
     placement (dreamplace) success 0:0:47
     cts (ecc) success 0:0:19
@@ -369,6 +371,7 @@ default/
 ├── origin/             # 冻结的输入：gcd.v + 自动生成的 gcd.sdc
 ├── config/             # 各步骤实际生效的配置（ecc config <step> 查看）
 ├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
+├── lec_yosys_lec/       # 综合级 LEC 等价性检查
 ├── Floorplan_ecc/
 ├── ...
 ├── postRouteLec_yosys_lec/   # LEC 等价性检查（output/<design>_postRouteLec_result.json）
@@ -450,7 +453,7 @@ gcd_signoff_package/
 └── final/
     ├── design/       # 最终 DEF、GDS、网表、版图快照
     ├── timing/       # STA 各 corner 报告 + spef/（多 corner 寄生参数）
-    └── reports/      # 各步骤 QoR 指标 + postRouteLec/（LEC 等价性证明）
+    └── reports/      # 各步骤 QoR 指标 + lec/、postRouteLec/（两次 LEC 证明）
 ```
 
 ### 5.3 设计总结报告：ecc report summary
@@ -623,7 +626,7 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 ## 8. 下一步
 
 - 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](examples/gcd/README.md#using-filelist)；
-- 了解 preset 差异：`rtl2gds`（完整 14 步综合到 Harden 链）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
+- 了解 preset 差异：`rtl2gds`（完整 15 步综合到 Harden 链，含综合级 LEC）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
 - 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**；CLI 扩展开发见 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)；
 - 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py)。
 

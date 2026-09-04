@@ -582,7 +582,8 @@ inspection commands fail with a config error when `[flow] run` is present but
 invalid. Valid
 flow presets are discovered from the `build_*_flow` defs in
 `chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `syn_sta`, and
-`synthesis_lec`). The `rtl2gds` preset includes every physical-design step
+`synthesis_lec`). The `rtl2gds` preset includes synthesis-level LEC immediately
+after synthesis, followed by every physical-design step
 through RCX, STA, and Harden; `syn_sta` runs synthesis only, with a best-effort netlist-level STA report
 (an STA failure does not fail the step). Switching
 presets on an existing run requires `ecc run --overwrite` to rebuild the

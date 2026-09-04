@@ -120,7 +120,7 @@ uv run ecc --help
 - 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录），其中与 run 有关的命令还接受 `--run-id <id>`。**新项目**（没有 `project.json`、没有 `runs/`）首个 workspace 落在 `<project>/<run-id>`，并自动生成 `project.json` 登记。**manifest 项目**从其中已声明的 workspace 表解析查看类命令（恰有一个活跃 workspace 时自动选中）；id 必须是非空单个路径段。`ecc run --run-id` 可以创建未声明的单路径段 workspace，但会给出 `workspace_not_registered`；之后项目级 `status`/`log`/`config` 无法选中它。**legacy 项目**（有非空 `runs/`）仍使用 `runs/<run-id>`，接受绝对路径或含 `/` 的相对路径，并可用 `ecc migrate` 升级。三种状态都可带 `ecc.toml`；只有缺少 `ecc.toml` 的 manifest 项目会被 `ecc param` 拒绝（`param_requires_ecc_toml`）。
 - 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`signoff`、`report` 都支持 `--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）和 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`ecc version` 也支持这三种选项，但使用版本专用 schema；`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
-- 步骤名（step token）在展示层统一为小写：`synthesis / floorplan / placement / cts / legalization / timing optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`、`Timing optimization`）。
+- 步骤名（step token）在展示层统一为小写：`synthesis / lec / floorplan / placement / cts / legalization / timing optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`、`Timing optimization`）。
 
 命令总览：
 
@@ -329,7 +329,7 @@ ecc run [OPTIONS]
   --json / --jsonl / --plain
 ```
 
-新建或 `--overwrite` 的 run 会按以下流程执行：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检捆绑的 ecc-tools，以及 preset 选中的 Yosys 和 DreamPlace → 在解析出的 run 目标下创建 workspace（新项目为 `<project>/<run-id>` 并写入 `project.json` 登记；legacy 项目为 `runs/<run-id>`）→ 按 preset（`rtl2gds | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。已有 workspace 直接按持久化 flow 续跑，不做 preset 预检。Sizer 有意不在预检范围内，缺失时会在 Timing optimization 步骤失败。`rtl2gds` 是完整 14 步链（Synthesis→Floorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→LVS→DRC→postRouteLec（Yosys 等价性检查）→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
+新建或 `--overwrite` 的 run 会按以下流程执行：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检捆绑的 ecc-tools，以及 preset 选中的 Yosys 和 DreamPlace → 在解析出的 run 目标下创建 workspace（新项目为 `<project>/<run-id>` 并写入 `project.json` 登记；legacy 项目为 `runs/<run-id>`）→ 按 preset（`rtl2gds | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。已有 workspace 直接按持久化 flow 续跑，不做 preset 预检。Sizer 有意不在预检范围内，缺失时会在 Timing optimization 步骤失败。`rtl2gds` 是完整 15 步链（Synthesis→LEC（Yosys 等价性检查）→Floorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→LVS→DRC→postRouteLec（Yosys 等价性检查）→RCX→sta→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
 
 ```console
 $ ecc run                # 该 run 已存在时拒绝覆盖
