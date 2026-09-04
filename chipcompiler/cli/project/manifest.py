@@ -31,6 +31,7 @@ MANIFEST_FILENAME = "project.json"
 # GUI display names for the canonical rtl2gds chain.
 MANIFEST_FLOW_STEPS = (
     "Synth",
+    "LEC",
     "Floor",
     "Place",
     "CTS",
@@ -44,7 +45,6 @@ MANIFEST_FLOW_STEPS = (
     "RCX",
     "STA",
     "Harden",
-    "LEC",
 )
 
 PRESET_MANIFEST_RANGE = {

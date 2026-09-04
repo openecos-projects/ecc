@@ -86,6 +86,7 @@ class EngineFlow:
         steps = []
 
         steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
@@ -407,6 +408,12 @@ class EngineFlow:
                 # use the first unsuccess step to setup db engine
                 workspace_step = ws_step
                 break
+
+        # LEC is a netlist comparison step and does not expose an ECC DB
+        # input. Keep any existing DB alive, but do not try to initialize one
+        # from the Yosys LEC workspace.
+        if workspace_step is not None and workspace_step.tool == "yosys_lec":
+            return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
 

@@ -29,9 +29,10 @@
 │   └── macro_locations.txt# 宏单元位置（初始为空文件）
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
+├── lec_yosys_lec/            # 综合级 LEC（Tcl 脚本驱动）
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # 自动生成的 Sizer 配置
-└── postRouteLec_yosys_lec/  # LEC 步骤同样无 JSON 配置（Tcl 脚本驱动）
+└── postRouteLec_yosys_lec/  # 布线后 LEC 步骤（Tcl 脚本驱动）
 ```
 
 > 历史变化：旧版本的 `flow_ecc.json`（配置路径聚合器）与 `fixfanout_ecc.json`（高扇出修复，独立步骤）已随 ecc-tools 更新移除——高扇出约束现在只作用于 CTS（`cts.max_fanout`）。
@@ -65,6 +66,7 @@ graph LR
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON |
+| lec | — | 无（Tcl） | 综合级 Yosys LEC；比较综合网表与 golden 网表 |
 | floorplan | ✓ | `floorplan_ecc.json` | |
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | cts | ✓ | `cts_ecc.json` | |
@@ -160,7 +162,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `use_slang` | `false` | 运行时探测 | 是否用 slang 前端读 SystemVerilog（默认 Verilog 模式） |
 | `rtl_file` | `[origin/gcd.v]` | `ecc.toml design.rtl` / filelist | RTL 源文件列表 |
 | `final_netlist_file` | `output/gcd_Synthesis.v.gz` | 步骤调度 | 输出门级网表（供 floorplan） |
-| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | 步骤调度 | LEC 移交用 golden 网表（clockgate 映射前导出，供 postRouteLec 比对） |
+| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | 步骤调度 | 两次 LEC 共用的 golden 网表（clockgate 映射前导出） |
 | `final_netlist_sim_file` | `…_sim.v.gz` | 步骤调度 | 仿真用网表（含 SDF 相关信息） |
 | `synth_stat_json` / `synth_check_rpt` 等 | `report/`、`feature/` 下 | 步骤调度 | 统计与检查报告输出 |
 | `keep_hierarchy` | `false` | 模板 | 是否保留模块层级 |
@@ -409,7 +411,7 @@ Timing optimization 是三阶段子流程：运行 Sizer，用 DreamPlace 对 Si
 | 输出 | `output/<设计>_postRouteLec_result.json`：`status`（`proven` / 失败）+ 双方 `sha256` + 报告路径；`report/equiv_status.rpt`、`report/run_lec_status.rpt` |
 | 签核 | `status=proven` 计入签核清单（LEC 结果进签核包 `final/reports/postRouteLec/`） |
 
-另有 `synthesis_lec` preset（仅 synthesis + lec 两步）可单独做综合级等价检查。
+完整 `rtl2gds` preset 会在 synthesis 后立即执行 `lec`。另有 `synthesis_lec` preset（仅 synthesis + lec 两步）可单独做综合级等价检查。
 
 ## 12. rcx（ecc-tools）
 

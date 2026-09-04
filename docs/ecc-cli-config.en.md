@@ -29,9 +29,10 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   └── macro_locations.txt# macro locations (initially an empty file)
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
+├── lec_yosys_lec/            # synthesis-level LEC (Tcl-script driven)
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # generated Sizer configuration
-└── postRouteLec_yosys_lec/  # the LEC step likewise has no JSON config (Tcl-script driven)
+└── postRouteLec_yosys_lec/  # post-route LEC step (Tcl-script driven)
 ```
 
 > History: the old `flow_ecc.json` (configuration-path aggregator) and `fixfanout_ecc.json` (high-fanout fixing, a standalone step) were removed along with an ecc-tools update — the high-fanout constraint now applies only to CTS (`cts.max_fanout`).
@@ -65,6 +66,7 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | Step | db_ecc | Step-specific config | Notes |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl` (Tcl) | Yosys is driven by Tcl variables, not JSON |
+| lec | — | none (Tcl) | Synthesis-level Yosys LEC; compares the mapped and golden synthesis netlists |
 | floorplan | ✓ | `floorplan_ecc.json` | |
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | cts | ✓ | `cts_ecc.json` | |
@@ -158,7 +160,7 @@ No JSON configuration. Yosys is driven by two Tcl pieces: `script/yosys_synthesi
 | `use_slang` | `false` | runtime detection | Whether to use the slang front end to read SystemVerilog (default is Verilog mode) |
 | `rtl_file` | `[origin/gcd.v]` | `ecc.toml design.rtl` / filelist | RTL source file list |
 | `final_netlist_file` | `output/gcd_Synthesis.v.gz` | step scheduling | Output gate-level netlist (consumed by floorplan) |
-| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | step scheduling | Golden netlist handed off for LEC (exported before clock-gate mapping, compared by postRouteLec) |
+| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | step scheduling | Golden netlist handed off for both LEC checks (exported before clock-gate mapping) |
 | `final_netlist_sim_file` | `…_sim.v.gz` | step scheduling | Netlist for simulation (contains SDF-related information) |
 | `synth_stat_json` / `synth_check_rpt` etc. | under `report/`, `feature/` | step scheduling | Statistics and check report outputs |
 | `keep_hierarchy` | `false` | template | Whether to preserve module hierarchy |
@@ -407,7 +409,7 @@ No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normaliz
 | Output | `output/<design>_postRouteLec_result.json`: `status` (`proven` / failure) + both sides' `sha256` + report paths; `report/equiv_status.rpt`, `report/run_lec_status.rpt` |
 | Signoff | `status=proven` counts toward the signoff checklist (LEC results go into the signoff package `final/reports/postRouteLec/`) |
 
-There is also a `synthesis_lec` preset (just the two steps synthesis + lec) for standalone synthesis-level equivalence checking.
+The `lec` step runs immediately after synthesis in the complete `rtl2gds` preset. There is also a `synthesis_lec` preset (just the two steps synthesis + lec) for standalone synthesis-level equivalence checking.
 
 ## 12. rcx (ecc-tools)
 

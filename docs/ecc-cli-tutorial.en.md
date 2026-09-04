@@ -16,7 +16,7 @@ The target process is the official [ICS55 PDK](https://github.com/openecos-proje
 graph LR
     A[Install ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>create project, add RTL]
     B --> C[ecc doctor / check<br/>environment & config checks]
-    C --> D[ecc run --preset rtl2gds<br/>14-step flow]
+    C --> D[ecc run --preset rtl2gds<br/>15-step flow]
     D --> E[ecc status / log<br/>inspect results & logs]
     E --> F[ecc signoff export<br/>signoff tar.gz]
     E --> G[ecc report summary<br/>design summary]
@@ -264,7 +264,7 @@ rc=0
 
 ### 4.1 Start
 
-The `rtl2gds` preset is the full 14-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB):
+The `rtl2gds` preset is the full 15-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB):
 
 ```bash
 ecc run --preset rtl2gds
@@ -272,28 +272,29 @@ ecc run --preset rtl2gds
 
 (The generated `ecc.toml` already selects `rtl2gds`; `--preset` applies to this run only and is not written back.)
 
-In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 14 `rtl2gds` steps are:
+In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 15 `rtl2gds` steps are:
 
 | # | Step | Tool | What it does |
 |---|------|------|--------------|
 | 1 | synthesis | yosys | RTL synthesis and technology mapping (slang frontend reads SystemVerilog) |
-| 2 | floorplan | ecc | Floorplan: die/core regions, IO pin placement |
-| 3 | placement | dreamplace | Global placement |
-| 4 | cts | ecc | Clock tree synthesis (incl. fanout limits) |
-| 5 | legalization | dreamplace | Placement legalization |
-| 6 | timing optimization | sizer | Timing optimization (cell sizing) |
-| 7 | routing | ecc | Routing |
-| 8 | filler | ecc | Filler cell insertion |
-| 9 | lvs | ecc | Layout-vs-schematic check |
-| 10 | drc | ecc | Design rule check |
-| 11 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
-| 12 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
-| 13 | sta | ecc | Multi-corner static timing analysis |
-| 14 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
+| 2 | lec | yosys_lec | Logic equivalence check: synthesis netlist vs its golden netlist |
+| 3 | floorplan | ecc | Floorplan: die/core regions, IO pin placement |
+| 4 | placement | dreamplace | Global placement |
+| 5 | cts | ecc | Clock tree synthesis (incl. fanout limits) |
+| 6 | legalization | dreamplace | Placement legalization |
+| 7 | timing optimization | sizer | Timing optimization (cell sizing) |
+| 8 | routing | ecc | Routing |
+| 9 | filler | ecc | Filler cell insertion |
+| 10 | lvs | ecc | Layout-vs-schematic check |
+| 11 | drc | ecc | Design rule check |
+| 12 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
+| 13 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
+| 14 | sta | ecc | Multi-corner static timing analysis |
+| 15 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> B[Floorplan] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
 ```
@@ -343,6 +344,7 @@ $ ecc status
 
   steps:
     synthesis (yosys) success 0:0:17
+    lec (yosys_lec) success 0:0:1
     floorplan (ecc) success 0:0:1
     placement (dreamplace) success 0:0:47
     cts (ecc) success 0:0:19
@@ -371,6 +373,7 @@ default/
 ├── origin/             # frozen inputs: gcd.v + the auto-generated gcd.sdc
 ├── config/             # configs actually in effect per step (view: ecc config <step>)
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
+├── lec_yosys_lec/       # synthesis-level LEC equivalence check
 ├── Floorplan_ecc/
 ├── ...
 ├── postRouteLec_yosys_lec/   # LEC equivalence check (output/<design>_postRouteLec_result.json)
@@ -452,7 +455,7 @@ gcd_signoff_package/
 └── final/
     ├── design/       # final DEF, GDS, netlist, layout snapshot
     ├── timing/       # per-corner STA reports + spef/ (multi-corner parasitics)
-    └── reports/      # per-step QoR metrics + postRouteLec/ (LEC equivalence proof)
+    └── reports/      # per-step QoR metrics + lec/ and postRouteLec/ proofs
 ```
 
 ### 5.3 Design summary report: ecc report summary
@@ -625,7 +628,7 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 ## 8. Next Steps
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](examples/gcd/README.md#using-filelist) for multi-file designs;
-- Preset differences: `rtl2gds` (the complete 14-step synthesis-to-Harden chain), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
+- Preset differences: `rtl2gds` (the complete 15-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
 - Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [ecc-cli-dev.en.md](ecc-cli-dev.en.md);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py).
 

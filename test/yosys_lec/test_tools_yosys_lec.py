@@ -438,6 +438,87 @@ def test_rtl2gds_flow_runs_post_route_lec_before_rcx():
     assert steps[lec_index] == (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart)
 
 
+def test_rtl2gds_flow_runs_synthesis_lec_before_floorplan():
+    from chipcompiler.rtl2gds import build_rtl2gds_flow
+
+    steps = build_rtl2gds_flow()
+    step_names = [step[0] for step in steps]
+    lec_index = step_names.index(StepEnum.LEC)
+    assert step_names.index(StepEnum.SYNTHESIS) < lec_index < step_names.index(StepEnum.FLOORPLAN)
+    assert steps[lec_index] == (StepEnum.LEC, "yosys_lec", StateEnum.Unstart)
+
+
+def test_engine_flow_wires_synthesis_lec_without_changing_physical_chain(tmp_path, monkeypatch):
+    import chipcompiler.tools as tools
+
+    workspace = _workspace(tmp_path)
+    workspace.flow.path = tmp_path / "flow.json"
+    workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": StateEnum.Unstart.value},
+            {"name": StepEnum.LEC.value, "tool": "yosys_lec", "state": StateEnum.Unstart.value},
+            {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
+        ]
+    }
+    json_write(workspace.flow.path, workspace.flow.data)
+
+    def fake_create_step(
+        workspace,
+        step,
+        eda,
+        input_def,
+        input_verilog,
+        input_db=None,
+        **kwargs,
+    ):
+        if eda == "yosys":
+            return YosysStep(
+                name=step,
+                tool=eda,
+                input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
+                output=YosysOutput(
+                    verilog=tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v",
+                    golden_verilog=(
+                        tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis_golden.v"
+                    ),
+                    db=tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis_db",
+                ),
+            )
+        if eda == "yosys_lec":
+            return YosysLecStep(
+                name=step,
+                tool=eda,
+                input=SimpleNamespace(
+                    gate_verilog=input_verilog,
+                    golden_verilog=input_db,
+                    db=input_db,
+                ),
+                output=OutputPaths(
+                    json=tmp_path / "lec_yosys_lec" / "output" / "gcd_lec_result.json"
+                ),
+            )
+        return SimpleNamespace(
+            name=step,
+            tool=eda,
+            input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
+            output=SimpleNamespace(
+                def_=tmp_path / "Floorplan_ecc" / "output" / "gcd.def",
+                verilog=tmp_path / "Floorplan_ecc" / "output" / "gcd.v",
+                db=tmp_path / "Floorplan_ecc" / "output" / "gcd_db",
+            ),
+        )
+
+    monkeypatch.setattr(tools, "create_step", fake_create_step)
+
+    engine_flow = EngineFlow(workspace=workspace)
+    engine_flow.create_step_workspaces()
+
+    synth_step, lec_step, floorplan_step = engine_flow.workspace_steps
+    assert lec_step.input.gate_verilog == synth_step.output.verilog
+    assert lec_step.input.golden_verilog == synth_step.output.golden_verilog
+    assert floorplan_step.input.verilog == synth_step.output.verilog
+
+
 def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monkeypatch):
     import chipcompiler.tools as tools
 

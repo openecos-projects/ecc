@@ -1298,6 +1298,7 @@ class SignoffPackageCollector:
     def _step_dirs(self) -> dict[str, str]:
         return {
             StepEnum.SYNTHESIS.value: "Synthesis_yosys",
+            StepEnum.LEC.value: "lec_yosys_lec",
             StepEnum.FLOORPLAN.value: "Floorplan_ecc",
             StepEnum.PLACEMENT.value: "place_dreamplace",
             StepEnum.CTS.value: "CTS_ecc",
