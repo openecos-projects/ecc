@@ -200,14 +200,14 @@ config_param(
 
 `run` 有两条互斥路径（`cli/command_handlers/project.py` 的 `run()` / `_run_workspace()`）：
 
-- **项目模式**（默认）：读 `ecc.toml` → 解析 RTL/PDK/参数与 `--preset` 覆盖 → 对新建或 `--overwrite` 的目标执行**环境预检**（`_preflight_environment` 预检捆绑 ecc-tools，以及 preset 使用的 Yosys/DreamPlace；缺失 → `env_not_ready` fail-fast）→ 在解析出的 run 目标下 `create_workspace`（manifest/virgin 项目默认 `<project>/<run-id>`，或 `project.json` 声明的 workspace 路径；`runs/<run-id>` 是 legacy 布局，`ecc migrate` 可升级）→ 从 `rtl2gds.get_flow_builders()` 取步骤构建 `EngineFlow` → 运行（TTY 下走 `rendering/progress.py::run_flow_with_progress` 的进度渲染，否则直接 `run_steps`）。已有 workspace 直接按持久化 flow 对账和续跑，不做 preset 预检。`--overwrite` 会先做安全校验（只删真正的 ECC run 目录）；`--preset` 不写回 `ecc.toml`，与 `--workspace` 互斥。Sizer 有意不在这项预检中，会在 Timing optimization 执行时失败。
+- **项目模式**（默认）：读 `ecc.toml` → 解析 RTL/PDK/参数与 `--preset` 覆盖 → 对新建或 `--overwrite` 的目标执行**环境预检**（`_preflight_environment` 预检捆绑 ecc-tools，以及 preset 使用的 Yosys/DreamPlace/Sizer；缺失 → `env_not_ready` fail-fast）→ 在解析出的 run 目标下 `create_workspace`（manifest/virgin 项目默认 `<project>/<run-id>`，或 `project.json` 声明的 workspace 路径；`runs/<run-id>` 是 legacy 布局，`ecc migrate` 可升级）→ 从 `rtl2gds.get_flow_builders()` 取步骤构建 `EngineFlow` → 运行（TTY 下走 `rendering/progress.py::run_flow_with_progress` 的进度渲染，否则直接 `run_steps`）。已有 workspace 直接按持久化 flow 对账和续跑，不做 preset 预检。`--overwrite` 会先做安全校验（只删真正的 ECC run 目录）；`--preset` 不写回 `ecc.toml`，与 `--workspace` 互斥。含 Timing optimization 的 flow（包括 `rtl2gds`）会预检 Sizer；已有 workspace 与 `--workspace` 模式不做预检，缺失 Sizer 时仍可能在 Timing optimization 执行时失败。
 - **workspace 模式**（`--workspace`）：`load_workspace` 后用 `chipcompiler.engine.rerun` 的 `run_resume / run_from / run_only` 原地复跑；`--resume/--from/--only` 三个选择器互斥且仅在该模式合法；该模式不做环境预检。
 
 项目运行 preset 的步骤序列定义在 `chipcompiler/rtl2gds/builder.py`（`build_*_flow()` / `get_flow_builders()`），不在 CLI 层。修改序列时须同步引擎默认 flow、`StepEnum` 与 manifest 范围映射（`PRESET_MANIFEST_RANGE`）；CLI 只负责参数解析、进度渲染选择与结果映射。
 
 ### 5.3 扩展环境探查（doctor / 预检）
 
-`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围（始终 ecc-tools，yosys↔含 Synthesis，dreamplace↔含 place/legalization）。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 是 doctor 的必需组件，但仍不在 run 预检范围内。
+`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围（始终 ecc-tools，yosys↔含 Synthesis，dreamplace↔含 place/legalization，sizer↔含 Timing optimization）。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 也是 doctor 的必需组件。
 
 ### 5.4 扩展签核（`ecc signoff inspect/export`）
 
