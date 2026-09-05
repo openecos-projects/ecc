@@ -166,10 +166,17 @@ def render_check(records, file=None, *, color=True):
 
 def render_run_summary(records, file=None, *, color=True):
     target = file or sys.stdout
-    r = records[0]
+    # Layer warnings may precede the workspace record; the summary describes
+    # the workspace, not the first record.
+    r = next((rec for rec in records if "workspace_id" in rec), records[0])
     st = r.get("status", "")
     tag = "workspace"
     target.write(f"{render_header(tag, color=color)}\n")
+    for warning in (rec for rec in records if rec.get("kind") == "warning"):
+        message = warning.get("reason") or warning.get("warning") or ""
+        target.write(
+            f"  {style('warning', YELLOW if color else None, enabled=color)}: {message}\n"
+        )
     target.write(f"  workspace id: {r.get('workspace_id', '')}\n")
     target.write(f"  status: {status_style(st, color=color)}\n")
     target.write(f"  workspace: {r.get('workspace', '')}\n")

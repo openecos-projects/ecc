@@ -6,11 +6,14 @@ from chipcompiler.cli import main as cli_main
 
 class TestHybridManifestFallbacks:
     def test_flowless_ecc_toml_existing_run_uses_workspace_flow(
-        self, tmp_path, capsys, flow_mocks, monkeypatch, manifest_stubs
+        self, tmp_path, capsys, flow_mocks, monkeypatch, manifest_stubs, minimal_ics55_pdk_factory
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        # load_workspace validates PDK contents; give the recorded root a
+        # minimal valid tree so the no-op rerun reaches the flow target.
+        minimal_ics55_pdk_factory(project_dir / "pdk")
         # Hybrid ecc.toml WITHOUT [flow].
         (project_dir / "ecc.toml").write_text(
             '[design]\nname = "gcd"\ntop = "gcd"\n'
@@ -33,7 +36,13 @@ class TestHybridManifestFallbacks:
 
         assert save_workspace_config(
             run_dir,
-            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+            },
             {"start": "Synthesis", "end": "Synthesis"},
         )
 
@@ -270,7 +279,7 @@ class TestEffectiveConfigValidation:
             '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--run-id", "sweep1", "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--workspace", "sweep1", "--json"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())

@@ -151,7 +151,7 @@ class TestPlainFlagAcceptance:
 
     def test_status_plain(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
-        create_flow_json(os.path.join(project_dir, "runs", "default"), profile="pretty")
+        create_flow_json(os.path.join(project_dir, "default"), profile="pretty")
         rc = cli_main.run(["status", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
@@ -196,17 +196,17 @@ class TestPrettyDefaultOutput:
 
     def test_status_has_header(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
-        create_flow_json(os.path.join(project_dir, "runs", "default"), profile="pretty")
+        create_flow_json(os.path.join(project_dir, "default"), profile="pretty")
         rc = cli_main.run(["status", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
         assert "[status]" in out
-        assert out.count("  run:") == 1
+        assert out.count("  workspace id:") == 1
 
     def test_status_groups_steps(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
         create_flow_json(
-            os.path.join(project_dir, "runs", "default"),
+            os.path.join(project_dir, "default"),
             [
                 {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
                 {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
@@ -272,7 +272,7 @@ class TestPrettyDefaultOutput:
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "[run]" in out
+        assert "[workspace]" in out
         assert "success" in out
 
 
@@ -284,12 +284,12 @@ class TestPrettyDefaultOutput:
 class TestJsonUnchanged:
     def test_status_json_unchanged(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
-        create_flow_json(os.path.join(project_dir, "runs", "default"), profile="pretty")
+        create_flow_json(os.path.join(project_dir, "default"), profile="pretty")
         rc = cli_main.run(["status", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
-        assert data["records"][0]["run"] == "default"
+        assert data["records"][0]["workspace_id"] == "default"
 
 
 # ---------------------------------------------------------------------------

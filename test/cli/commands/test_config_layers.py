@@ -125,11 +125,6 @@ class TestExplicitEmptyStaysExplicit:
             id="empty-clock",
         ),
         pytest.param(
-            _HYBRID_TOML.replace('rtl = ["rtl/gcd.v"]', "rtl = []"),
-            "design.rtl must have at least one entry",
-            id="empty-rtl",
-        ),
-        pytest.param(
             _HYBRID_TOML.replace('name = "ics55"', 'name = ""'),
             "pdk.name is required",
             id="empty-pdk-name",
@@ -158,6 +153,31 @@ class TestExplicitEmptyStaysExplicit:
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
         assert expected in reasons
 
+    def test_check_explicit_empty_rtl_allowed_until_run(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks
+    ):
+        # An explicitly empty rtl list is a legal spelling (netlist-driven
+        # flows declare no RTL); check accepts it and the gate moves to the
+        # run preflight, where the Synthesis entry step demands design.rtl.
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            _HYBRID_TOML.replace('rtl = ["rtl/gcd.v"]', "rtl = []"),
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        capsys.readouterr()
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
+        assert "step_input_missing: Synthesis requires design.rtl" in reasons
+        assert flow_mocks.capture["create_kwargs"] is None
+
     @pytest.mark.parametrize("toml_text,expected", _CASES)
     def test_run_explicit_empty_fails_before_mutation(
         self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks, toml_text, expected
@@ -171,12 +191,12 @@ class TestExplicitEmptyStaysExplicit:
         assert expected in reasons
         assert flow_mocks.capture["create_kwargs"] is None
 
-    def test_check_explicit_empty_pdk_root_diverges_with_env_root(
+    def test_check_explicit_empty_pdk_root_matches_env_base_quietly(
         self, manifest_stubs, tmp_path, capsys, monkeypatch
     ):
-        # An explicit empty root resolves through the env fallback (valid
-        # here) — the explicit override must surface as a divergence, not
-        # be hidden by the emptiness skip.
+        # The init-template spelling (root = "") resolves through the env
+        # fallback; when that effective root equals the manifest base there
+        # is no divergence to surface — the default flow stays warning-free.
         project_dir = self._hybrid(
             manifest_stubs,
             tmp_path,
@@ -184,6 +204,27 @@ class TestExplicitEmptyStaysExplicit:
             _HYBRID_TOML.replace('root = "{ROOT}"', 'root = ""'),
         )
         monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(project_dir / "pdk"))
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        warnings = _divergences(manifest_stubs.records())
+        assert warnings == []
+
+    def test_check_explicit_empty_pdk_root_diverges_with_env_root(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch
+    ):
+        # An explicit empty root that resolves through the env fallback to a
+        # DIFFERENT directory than the manifest base is a real divergence.
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            _HYBRID_TOML.replace('root = "{ROOT}"', 'root = ""'),
+        )
+        other_root = project_dir / "pdk-env"
+        other_root.mkdir()
+        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(other_root))
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
 

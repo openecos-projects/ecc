@@ -6,43 +6,41 @@ import pytest
 from chipcompiler.cli import main as cli_main
 
 
-class TestStepConfigInvalidFlowRun:
-    @pytest.mark.parametrize("run_id", ("default", ""))
-    @pytest.mark.parametrize(
-        ("toml_line", "reason"),
-        [
-            ('run = ""', "unsupported flow.run: "),
-            ("run = 42", "unsupported flow.run: 42"),
-        ],
-    )
-    def test_step_config_errors_on_invalid_flow_run_with_selector(
+class TestStepConfigIgnoresLegacyFlowRun:
+    @pytest.mark.parametrize("selector", ("default", None))
+    @pytest.mark.parametrize("toml_line", ('run = ""', "run = 42"))
+    def test_step_config_ignores_legacy_flow_run_with_selector(
         self,
         tmp_path,
         capsys,
         create_cli_project,
         create_flow_json,
         create_step_dir,
+        create_cts_workspace_config,
         set_flow_run,
         toml_line,
-        reason,
-        run_id,
+        selector,
     ):
+        """The step view reads only the workspace; a legacy [flow].run key
+        in ecc.toml must not break step-scoped config listing."""
         project_dir = create_cli_project()
         set_flow_run(project_dir, toml_line)
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_cts_workspace_config(run_dir)
 
-        rc = cli_main.run(["config", "cts", "--run-id", run_id, "--project", project_dir, "--json"])
+        args = ["config", "cts"]
+        if selector is not None:
+            args += ["--workspace", selector]
+        args += ["--project", project_dir, "--json"]
+        rc = cli_main.run(args)
 
-        assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
-            {
-                "kind": "error",
-                "error": "config_error",
-                "reason": reason,
-                "inspect": f"ecc check --project {project_dir}",
-            }
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert [item["path"] for item in records] == [
+            "default/config/db_ecc.json",
+            "default/config/cts_ecc.json",
         ]
 
 

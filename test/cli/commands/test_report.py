@@ -85,7 +85,7 @@ class TestReportQor:
         self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir)
         report_mocks.workspace.directory = run_dir
 
@@ -107,7 +107,7 @@ class TestReportQor:
         self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks
     ):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
+        os.makedirs(os.path.join(project_dir, "default"))
         override = str(tmp_path / "qor.txt")
 
         rc = cli_main.run(["report", "qor", "-o", override, "--project", project_dir, "--json"])
@@ -119,7 +119,9 @@ class TestReportQor:
 
     def test_qor_with_workspace_flag(self, tmp_path, capsys, monkeypatch, report_mocks):
         os.makedirs(tmp_path / "ws")
-        rc = cli_main.run(["report", "qor", "--workspace", str(tmp_path / "ws"), "--plain"])
+        rc = cli_main.run(
+            ["report", "qor", "--project", str(tmp_path), "--workspace", "ws", "--plain"]
+        )
         out = capsys.readouterr().out
         assert rc == 0
         assert "report=qor" in out
@@ -131,7 +133,7 @@ class TestReportChecklist:
         self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir)
         report_mocks.workspace.directory = run_dir
 
@@ -155,7 +157,7 @@ class TestReportChecklist:
         self, tmp_path, capsys, monkeypatch, create_cli_project
     ):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
+        os.makedirs(os.path.join(project_dir, "default"))
         from types import SimpleNamespace as NS
 
         monkeypatch.setattr(
@@ -185,7 +187,7 @@ class TestReportSummary:
         self, capsys, monkeypatch, create_cli_project, report_mocks
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir)
         report_mocks.workspace.directory = run_dir
         calls = []
@@ -215,7 +217,7 @@ class TestReportSummary:
         self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks
     ):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
+        os.makedirs(os.path.join(project_dir, "default"))
         monkeypatch.setattr(
             "chipcompiler.engine.signoff.generate_text_report", lambda _workspace: "REPORT BODY"
         )
@@ -232,7 +234,7 @@ class TestReportSummary:
         self, capsys, monkeypatch, create_cli_project, report_mocks
     ):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
+        os.makedirs(os.path.join(project_dir, "default"))
 
         def fail(_workspace):
             raise RuntimeError("boom")
@@ -247,19 +249,22 @@ class TestReportSummary:
 
 
 class TestReportWorkspaceResolution:
-    def test_workspace_conflicts_with_project(
+    def test_unresolved_workspace_rejected_before_load(
         self, tmp_path, capsys, monkeypatch, create_cli_project
     ):
         monkeypatch.setattr(
             "chipcompiler.data.load_workspace",
-            lambda _path: pytest.fail("conflicts must be rejected before workspace load"),
+            lambda _path: pytest.fail("missing workspaces must be rejected before workspace load"),
         )
 
-        rc = cli_main.run(["report", "qor", "--project", "p", "--workspace", "w", "--json"])
+        rc = cli_main.run(
+            ["report", "qor", "--project", str(tmp_path), "--workspace", "absent", "--json"]
+        )
 
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 1
-        assert record["error"] == "project_workspace_conflict"
+        assert record["error"] == "missing_workspace"
+        assert record["workspace"] == str(tmp_path / "absent")
 
     def test_missing_run_workspace(self, tmp_path, capsys, monkeypatch, create_cli_project):
         project_dir = create_cli_project()  # no runs/default

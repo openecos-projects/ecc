@@ -216,9 +216,6 @@ def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
     def fake_resolve_project_dir(project):
         return str(tmp_path)
 
-    def fake_resolve_run_dir(project_dir, run_id):
-        return (str(tmp_path / "runs" / "default"), run_id)
-
     def fake_status(command_input, ctx):
         seen["input_type"] = type(command_input).__name__
         seen["frozen"] = dataclasses.is_dataclass(command_input)
@@ -232,7 +229,6 @@ def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         fake_resolve_project_dir,
     )
-    monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_run_dir", fake_resolve_run_dir)
     monkeypatch.setattr("chipcompiler.cli.command_handlers.inspect.status", fake_status)
 
     rc = cli_main.run(["status", "--jsonl", "--json", "--plain"])
@@ -257,10 +253,6 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
     )
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_run_dir",
-        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
-    )
 
     def fake_run(command_input, ctx):
         seen["input_type"] = type(command_input).__name__
@@ -276,31 +268,6 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
         "input_type": "RunInput",
         "param_set": ("place.target_density=0.65", "cts.max_fanout=16"),
     }
-
-
-def test_run_accepts_run_id_option(monkeypatch, tmp_path):
-    seen = {}
-
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_project_dir",
-        lambda project: str(tmp_path),
-    )
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_run_dir",
-        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
-    )
-
-    def fake_run(command_input, ctx):
-        seen["input_type"] = type(command_input).__name__
-        seen["run_id"] = command_input.project.run_id
-        return CommandResult.ok([{"status": "ok"}])
-
-    monkeypatch.setattr("chipcompiler.cli.command_handlers.project.run", fake_run)
-
-    rc = cli_main.run(["run", "--run-id", "run_004"])
-
-    assert rc == 0
-    assert seen == {"input_type": "RunInput", "run_id": "run_004"}
 
 
 def test_rpc_routes_through_root_typer(monkeypatch):
@@ -363,7 +330,7 @@ def test_old_top_level_workspace_form_is_root_parser_error(capsys):
 
 
 def test_run_workspace_flag_reaches_workspace_validation(capsys):
-    rc = cli_main.run(["run", "--workspace", "gcd"])
+    rc = cli_main.run(["run", "--workspace", "gcd/rtl"])
 
     assert rc != 0
     assert "invalid_workspace" in capsys.readouterr().out
@@ -373,10 +340,6 @@ def test_status_command_handler_still_returns_command_result(monkeypatch, tmp_pa
     monkeypatch.setattr(
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
-    )
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_run_dir",
-        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
     )
 
     def fake_status(command_input, ctx):
@@ -396,10 +359,6 @@ def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
-    )
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_run_dir",
-        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
     )
 
     def fake_show(command_input, ctx):
@@ -436,9 +395,6 @@ def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
     def fake_resolve_project_dir(project):
         return str(tmp_path)
 
-    def fake_resolve_run_dir(project_dir, run_id):
-        return (str(tmp_path / "runs" / "default"), run_id)
-
     def fake_handler(command_input, ctx):
         return CommandResult.ok([{"status": "ok"}])
 
@@ -449,7 +405,6 @@ def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         fake_resolve_project_dir,
     )
-    monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_run_dir", fake_resolve_run_dir)
     monkeypatch.setitem(
         __import__("chipcompiler.cli.rendering.renderers", fromlist=["RENDERERS"]).RENDERERS,
         ("custom", OutputMode.TEXT),

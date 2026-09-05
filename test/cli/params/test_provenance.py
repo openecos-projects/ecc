@@ -11,7 +11,7 @@ class TestCliProvenance:
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        os.makedirs(os.path.join(project_dir), exist_ok=True)
         workspace_obj = SimpleNamespace(name="workspace")
 
         def fake_create(**kwargs):
@@ -61,7 +61,7 @@ class TestCliProvenance:
 
         # Verify provenance file was written
         provenance = os.path.join(
-            project_dir, "runs", "default", "home", "cli-param-overrides.json"
+            project_dir, "default", "home", "cli-param-overrides.json"
         )
         assert os.path.isfile(provenance)
         with open(provenance) as f:
@@ -74,7 +74,7 @@ class TestCliProvenance:
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        os.makedirs(os.path.join(project_dir), exist_ok=True)
         workspace_obj = SimpleNamespace(name="workspace")
 
         def fake_create(**kwargs):
@@ -138,7 +138,7 @@ class TestCliProvenance:
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        os.makedirs(os.path.join(project_dir), exist_ok=True)
         workspace_obj = SimpleNamespace(name="workspace")
 
         # Set a TOML override first

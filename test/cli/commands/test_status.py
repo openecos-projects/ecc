@@ -11,7 +11,7 @@ class TestStatus:
         from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         flow = build_rtl2gds_flow()
         create_flow_json(
             run_dir,
@@ -45,7 +45,7 @@ class TestStatus:
 
     def test_status_reads_flow_json(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir])
@@ -57,7 +57,7 @@ class TestStatus:
 
     def test_status_json(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir, "--json"])
@@ -65,7 +65,7 @@ class TestStatus:
         data = json.loads(capsys.readouterr().out)
         assert "records" in data
         records = data["records"]
-        assert records[0]["run"] == "default"
+        assert records[0]["workspace_id"] == "default"
         assert records[0]["status"] == "success"
         assert "inspect_cmd" in records[0]
         assert "log_cmd" in records[0]
@@ -77,21 +77,21 @@ class TestStatus:
 
     def test_status_jsonl(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir, "--jsonl"])
         assert rc == 0
         lines = capsys.readouterr().out.strip().split("\n")
         objects = [json.loads(ln) for ln in lines]
-        assert "run" in objects[0]
+        assert "workspace_id" in objects[0]
         assert "step" in objects[1]
 
     def test_status_normalizes_step_names(
         self, tmp_path, capsys, create_cli_project, create_flow_json
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(
             run_dir,
             [
@@ -110,7 +110,7 @@ class TestStatus:
         self, tmp_path, capsys, create_cli_project, create_flow_json
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(
             run_dir,
             [
@@ -136,7 +136,7 @@ class TestStatus:
 
     def test_status_invalid_flow_json(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
@@ -151,7 +151,7 @@ class TestCorruptFlowJson:
 
     def test_array_flow_json_is_corrupt(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
@@ -164,7 +164,7 @@ class TestCorruptFlowJson:
 
     def test_string_flow_json_is_corrupt(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:

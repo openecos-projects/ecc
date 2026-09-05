@@ -247,6 +247,11 @@ def run_step(args, capsys):
     return rc, json.loads(capsys.readouterr().out)
 
 
+def step_args(tmp_path, *args, workspace="ws"):
+    """`report step` argv selecting a managed workspace of tmp_path."""
+    return ["report", "step", "--project", str(tmp_path), "--workspace", workspace, *args]
+
+
 class TestStepOverview:
     def test_overview_includes_every_rtl2gds_step(self, tmp_path, capsys):
         from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
@@ -262,7 +267,7 @@ class TestStepOverview:
             },
         )
 
-        rc, data = run_step(["report", "step", "--workspace", ws, "--json"], capsys)
+        rc, data = run_step(step_args(tmp_path, "--json"), capsys)
 
         assert rc == 0
         assert [record["step"] for record in data["records"][1:]] == [
@@ -275,18 +280,18 @@ class TestStepOverview:
             "timing_optimization",
             "routing",
             "filler",
-            "lvs",
-            "drc",
-            "postroutelec",
             "rcx",
             "sta",
+            "lvs",
+            "postroutelec",
+            "drc",
             "harden",
         ]
 
     def test_overview_records(self, tmp_path, capsys):
         ws = create_step_workspace(tmp_path)
 
-        rc, data = run_step(["report", "step", "--workspace", ws, "--json"], capsys)
+        rc, data = run_step(step_args(tmp_path, "--json"), capsys)
 
         assert rc == 0
         assert data["records"] == [
@@ -295,7 +300,7 @@ class TestStepOverview:
                 "view": "overview",
                 "workspace": ws,
                 "steps": 3,
-                "inspect": "ecc report step <step>",
+                "inspect": f"ecc report step <step> --project {tmp_path} --workspace ws",
             },
             {
                 "step": "floorplan",
@@ -307,7 +312,7 @@ class TestStepOverview:
                 "quality": "pass",
                 "checklist": "ready",
                 "blocked": 0,
-                "inspect": "ecc report step floorplan",
+                "inspect": f"ecc report step floorplan --project {tmp_path} --workspace ws",
             },
             {
                 "step": "timing_optimization",
@@ -319,7 +324,9 @@ class TestStepOverview:
                 "quality": None,
                 "checklist": None,
                 "blocked": 0,
-                "inspect": "ecc report step timing_optimization",
+                "inspect": (
+                    f"ecc report step timing_optimization --project {tmp_path} --workspace ws"
+                ),
             },
             {
                 "step": "drc",
@@ -331,7 +338,7 @@ class TestStepOverview:
                 "quality": "blocked",
                 "checklist": "blocked",
                 "blocked": 1,
-                "inspect": "ecc report step drc",
+                "inspect": f"ecc report step drc --project {tmp_path} --workspace ws",
             },
         ]
 
@@ -339,7 +346,7 @@ class TestStepOverview:
         ws = str(tmp_path / "empty")
         os.makedirs(ws)
 
-        rc, data = run_step(["report", "step", "--workspace", ws, "--json"], capsys)
+        rc, data = run_step(step_args(tmp_path, "--json", workspace="empty"), capsys)
 
         assert rc == 0
         assert data["records"] == [
@@ -348,16 +355,16 @@ class TestStepOverview:
                 "view": "overview",
                 "workspace": ws,
                 "steps": 0,
-                "inspect": "ecc report step <step>",
+                "inspect": f"ecc report step <step> --project {tmp_path} --workspace empty",
                 "step_status": "no_steps",
-                "run": "ecc run",
+                "run": f"ecc run --project {tmp_path} --workspace empty",
             }
         ]
 
     def test_overview_text(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path)
+        create_step_workspace(tmp_path)
 
-        rc = cli_main.run(["report", "step", "--workspace", ws])
+        rc = cli_main.run(step_args(tmp_path))
         out = capsys.readouterr().out
 
         assert rc == 0
@@ -370,11 +377,10 @@ class TestStepOverview:
 
 class TestStepDetail:
     def test_detail_feature_section(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path)
+        create_step_workspace(tmp_path)
 
         rc, data = run_step(
-            ["report", "step", "floorplan", "--workspace", ws, "--section", "feature", "--json"],
-            capsys,
+            step_args(tmp_path, "floorplan", "--section", "feature", "--json"), capsys
         )
 
         assert rc == 0
@@ -467,11 +473,10 @@ class TestStepDetail:
         ]
 
     def test_detail_analysis_section_with_gate(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path)
+        create_step_workspace(tmp_path)
 
         rc, data = run_step(
-            ["report", "step", "drc", "--workspace", ws, "--section", "analysis", "--json"],
-            capsys,
+            step_args(tmp_path, "drc", "--section", "analysis", "--json"), capsys
         )
 
         assert rc == 0
@@ -515,11 +520,10 @@ class TestStepDetail:
         }
 
     def test_detail_checklist_from_step_file(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path)
+        create_step_workspace(tmp_path)
 
         rc, data = run_step(
-            ["report", "step", "floorplan", "--workspace", ws, "--section", "checklist", "--json"],
-            capsys,
+            step_args(tmp_path, "floorplan", "--section", "checklist", "--json"), capsys
         )
 
         assert rc == 0
@@ -554,8 +558,7 @@ class TestStepDetail:
         os.remove(os.path.join(ws, "Floorplan_ecc", "checklist.json"))
 
         rc, data = run_step(
-            ["report", "step", "floorplan", "--workspace", ws, "--section", "checklist", "--json"],
-            capsys,
+            step_args(tmp_path, "floorplan", "--section", "checklist", "--json"), capsys
         )
 
         assert rc == 0
@@ -566,11 +569,9 @@ class TestStepDetail:
         assert item["id"] == "artifact.floorplan.def"
 
     def test_detail_unavailable_sections(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path, with_drc=False)
+        create_step_workspace(tmp_path, with_drc=False)
 
-        rc, data = run_step(
-            ["report", "step", "timing_optimization", "--workspace", ws, "--json"], capsys
-        )
+        rc, data = run_step(step_args(tmp_path, "timing_optimization", "--json"), capsys)
 
         assert rc == 0
         statuses = {
@@ -586,19 +587,17 @@ class TestStepDetail:
         ]
 
     def test_detail_accepts_flow_token_with_spaces(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path, with_drc=False)
+        create_step_workspace(tmp_path, with_drc=False)
 
-        rc, data = run_step(
-            ["report", "step", "timing optimization", "--workspace", ws, "--json"], capsys
-        )
+        rc, data = run_step(step_args(tmp_path, "timing optimization", "--json"), capsys)
 
         assert rc == 0
         assert data["records"][0]["step"] == "timing_optimization"
 
     def test_detail_text(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path)
+        create_step_workspace(tmp_path)
 
-        rc = cli_main.run(["report", "step", "drc", "--workspace", ws])
+        rc = cli_main.run(step_args(tmp_path, "drc"))
         out = capsys.readouterr().out
 
         assert rc == 0
@@ -608,9 +607,9 @@ class TestStepDetail:
 
 class TestStepErrors:
     def test_unknown_step(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path, with_drc=False)
+        create_step_workspace(tmp_path, with_drc=False)
 
-        rc, data = run_step(["report", "step", "nope", "--workspace", ws, "--json"], capsys)
+        rc, data = run_step(step_args(tmp_path, "nope", "--json"), capsys)
 
         assert rc == 1
         assert data["records"] == [
@@ -619,16 +618,15 @@ class TestStepErrors:
                 "error": "unknown_step",
                 "step": "nope",
                 "available": ["floorplan", "timing_optimization"],
-                "inspect": "ecc report step",
+                "inspect": f"ecc report step --project {tmp_path} --workspace ws",
             }
         ]
 
     def test_invalid_section(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path, with_drc=False)
+        create_step_workspace(tmp_path, with_drc=False)
 
         rc, data = run_step(
-            ["report", "step", "floorplan", "--workspace", ws, "--section", "bogus", "--json"],
-            capsys,
+            step_args(tmp_path, "floorplan", "--section", "bogus", "--json"), capsys
         )
 
         assert rc == 1
@@ -636,22 +634,19 @@ class TestStepErrors:
         assert data["records"][0]["sections"] == ["feature", "analysis", "checklist"]
 
     def test_section_requires_step(self, tmp_path, capsys):
-        ws = create_step_workspace(tmp_path, with_drc=False)
+        create_step_workspace(tmp_path, with_drc=False)
 
-        rc, data = run_step(
-            ["report", "step", "--workspace", ws, "--section", "analysis", "--json"], capsys
-        )
+        rc, data = run_step(step_args(tmp_path, "--section", "analysis", "--json"), capsys)
 
         assert rc == 1
         assert data["records"][0]["error"] == "section_requires_step"
 
     def test_missing_workspace_directory(self, tmp_path, capsys):
-        rc, data = run_step(
-            ["report", "step", "--workspace", str(tmp_path / "absent"), "--json"], capsys
-        )
+        rc, data = run_step(step_args(tmp_path, "--json", workspace="absent"), capsys)
 
         assert rc == 1
-        assert data["records"][0]["error"] == "invalid_workspace"
+        assert data["records"][0]["error"] == "missing_workspace"
+        assert data["records"][0]["workspace"] == str(tmp_path / "absent")
 
 
 class TestStepReadOnly:
@@ -664,7 +659,7 @@ class TestStepReadOnly:
             )
 
         before = snapshot()
-        cli_main.run(["report", "step", "--workspace", ws])
-        cli_main.run(["report", "step", "floorplan", "--workspace", ws, "--json"])
+        cli_main.run(step_args(tmp_path))
+        cli_main.run(step_args(tmp_path, "floorplan", "--json"))
 
         assert snapshot() == before

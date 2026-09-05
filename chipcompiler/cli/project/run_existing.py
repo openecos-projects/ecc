@@ -142,6 +142,20 @@ def run_existing_workspace(
                     )
                 ]
             )
+        except Exception as exc:
+            # Mirrors run_workspace.py: an unloadable workspace (e.g. PDK
+            # validation failing inside load_workspace) is a clean error
+            # record, never a traceback.
+            return CommandResult.err(
+                [
+                    error_record(
+                        "invalid_workspace",
+                        workspace_id=run_name,
+                        workspace=run_dir,
+                        reason=str(exc),
+                    )
+                ]
+            )
         if workspace is None:
             return CommandResult.err(
                 [

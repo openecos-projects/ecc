@@ -100,7 +100,7 @@ which ecc && ecc --version          # 任意目录下应输出 ecc <版本号>
 # 升级 = 用新包覆盖解压目录内容；方式 B/C 的软链接无需改动
 ```
 
-> 注意「官方发行版」与「源码构建版」的差异：`ecc doctor / signoff / report` 等新命令目前只在**源码构建版**里有（官方 Releases 尚未发布）。本地改完代码可用 PyInstaller 重打包并覆盖 `~/.local/ecc`（流程见 [ecc-cli-dev.cn.md §6](ecc-cli-dev.cn.md)）；重新运行 `bash ecc-cli-setup.sh --force` 则会装回官方发行版（新命令随之消失，属预期回退行为）。
+> 官方最新 Release（v0.1.0-alpha.11，`ecc-cli-setup.sh` 默认安装的就是它）已包含本文全部命令，含 `doctor`/`signoff`/`report` 与 `run` 的 workspace/范围选择器。当源码领先于最近一次 Release 时（两次发布之间的新行为），用 [ecc-cli-local-build.sh](ecc-cli-local-build.sh) 本地打包再经 `ECC_CLI_URL` 安装即可体验（流程见 [ecc-cli-dev.cn.md §6](ecc-cli-dev.cn.md)）；重新运行 `bash ecc-cli-setup.sh --force` 会装回官方发行版，未发布的新行为随之消失，属预期回退。
 
 > 注：`ecc` 的项目定位默认取当前目录（`ecc.toml` 所在处），所以「任意文件夹启动」是常态用法；在其他目录操作项目时加 `--project <dir>` 即可。
 
@@ -120,7 +120,11 @@ uv run ecc --help
 - 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录）。`--workspace <名称>` 是项目内受管的、非空单路径段名称，不能传文件系统路径。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
 - 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`signoff`、`report` 都支持 `--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）和 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`ecc version` 也支持这三种选项，但使用版本专用 schema；`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
-- 步骤名（step token）在展示层统一为小写：`synthesis / lec / floorplan / placement / cts / legalization / timing optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`、`Timing optimization`）。
+- 步骤名（step token）有三套写法，按场景区分：
+  - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`；
+  - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / Floorplan / place / CTS / legalization / Timing optimization / route / filler / RCX / sta / lvs / postRouteLec / drc / Harden`；
+  - **新建范围时的别名**（首次 `--from A --to B` 建 workspace 会做别名归一化，两种拼法都接受）：如 `cts`↔`CTS`、`route`↔`routing`、`timingopt`↔`Timing optimization`、`postlec`↔`postRouteLec`。
+  拼错时返回 `unknown_step` 并列出全部可用步骤名，照抄即可。
 
 命令总览：
 
@@ -221,14 +225,12 @@ preset = "rtl2gds"
 ecc check [--project DIR] [--json | --jsonl | --plain]
 ```
 
-校验 `ecc.toml` 必填项、RTL 路径/filelist 有效性、PDK 名称与内容（tech LEF/LEF/liberty）：
+校验 `ecc.toml` 必填项（design/pdk/flow）、PDK 名称与内容（tech LEF/LEF/liberty）；声明了多个 RTL 源的 manifest 项目还会逐一校验每个源。单个 RTL 源文件的存在性在 `ecc run` 创建 workspace 时按入口步骤校验（报 `step_input_missing`）：
 
 ```console
-$ ecc check        # RTL 未就绪时
+$ ecc check        # PDK 未就绪时
 [check]
   fail pdk.root is required
-  inspect: ecc check --json
-  fail rtl path does not exist: rtl/gcd.v
   inspect: ecc check --json
 rc=1
 
@@ -292,7 +294,7 @@ rc=1
 
 ### 手动排查清单（无 doctor 时备用）
 
-`ecc check` 只覆盖「项目配置 + RTL + **PDK 内容**（tech LEF / LEF / liberty）」，**不检查外部工具**。手动逐项确认：
+`ecc check` 只覆盖「项目配置（design/pdk/flow 必填项）+ **PDK 内容**（tech LEF / LEF / liberty）」，**不检查外部工具**，也不检查单个 RTL 源文件的存在性（后者在 `ecc run` 创建 workspace 时校验）。手动逐项确认：
 
 | 依赖 | 检查命令 | 就绪标志 |
 |---|---|---|
@@ -341,15 +343,41 @@ ecc run [OPTIONS]
 
 新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → 在 `<project>/<workspace 名称>` 创建 workspace → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 15 步链（Synthesis→LEC（Yosys 等价性检查）→Floorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→RCX→sta→LVS→postRouteLec（Yosys 等价性检查）→DRC→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
 
-```console
-$ ecc run                # 该 run 已存在时拒绝覆盖
-[error]
-  run_exists
-  workspace id: default
-  workspace: /path/gcd/default
-  overwrite: ecc run --overwrite
-rc=1
+运行结束打印汇总（真实输出）：
 
+```console
+$ ecc run --preset synthesis_lec
+[workspace]
+  workspace id: default
+  status: success
+  workspace: /tmp/gcd/default
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
+
+$ ecc run --workspace default          # 已全部成功时再跑一次 → 无事可做（no_op）
+[workspace]
+  workspace id: default
+  status: success
+  workspace: /tmp/gcd/default
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
+```
+
+`--json` 输出会带 `no_op: true`（用 `--resume`/`--only` 等选择器时还会带 `executed_steps` 列表）。若 `ecc.toml` 与 `project.json` 记录的基线值实际不一致（如 `pdk.root` 解析到了与首次运行记录不同的 PDK，或 `flow.preset` 与 workspace 声明的范围不一致），汇总块前会多一行 `warning: ...` 提示（`config_layer_diverged`），不影响执行结果。
+
+**已有 workspace 的目标对齐（reconcile）**：再次 `ecc run` 时，CLI 会把 workspace 已持久化的 flow 与当前目标（`ecc.toml` 的 `flow.preset`，或 `project.json` 中该 workspace 声明的 start/end 范围）对齐：
+
+- 已持久化步骤是目标的**前缀**且未跑完 → 续跑，必要时**自动扩展**到目标终点（例如先用 `--preset synthesis_lec` 建的 workspace，`ecc.toml` 是 `rtl2gds`，再裸跑 `ecc run` 会从当前进度继续把物理流程跑完）；
+- 已持久化范围 ⊇ 目标且全部成功 → `no_op`（默认 resume 不会越过目标终点重跑更宽的账本）；
+- 目标与持久化 flow **分叉**（既非前缀也非超集）→ `flow_mismatch`，按提示 `--overwrite` 重建或换新的 `--workspace`。
+
+参数与选择器的边界：
+
+- `--set KEY=VALUE` 只在**新建** workspace 时生效并记录到 `home/cli-param-overrides.json`；对已有 workspace 使用会报 `set_requires_fresh_run`（提示改用 `--overwrite` 或新 `--workspace`）；
+- `ecc.toml` 的 `[params.*]` 对已有 workspace 同样不再生效（workspace 复用创建时的 `home/params.toml`），此时会附 `params_ignored_on_existing_run` 警告；
+- `--preset` 只影响本次调用的目标，**不写回** `ecc.toml`：
+
+```console
 $ ecc run --preset bogus  # 非法 preset（不修改 ecc.toml）
 [error]
   unsupported_preset
@@ -362,10 +390,21 @@ rc=1
 典型用法：
 
 ```bash
-ecc run                                        # 创建 default，或续跑唯一 workspace
+ecc run                                        # 创建 default；已有唯一活跃 workspace 时自动选择并续跑
 ecc run --workspace baseline --preset rtl2gds  # 创建命名的完整流程 workspace
-ecc run --workspace cts-only --from CTS --to CTS
-ecc run --workspace cts-route --from CTS --to route
+ecc run --workspace syn-only --preset syn_sta  # 只做综合的单步 workspace
+ecc run --workspace cts-only --from cts --to cts      # 新建范围 workspace（别名写法 OK）
+ecc run --workspace cts-route --from cts --to routing # 同上；两端都接受别名
+```
+
+新建范围 workspace 时只校验**入口步骤**所需的设计输入：Synthesis 要 `rtl`；LEC/postRouteLec 要 `netlist` + `golden_netlist`；Floorplan 要 `netlist`；物理步骤（place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden）要 `def` + `netlist`；sta 还要 `spef`；`sdc` 声明了才校验。缺输入时按 `step_input_missing` 报错：
+
+```console
+$ ecc run --from cts --to route          # 新建范围但缺 def/netlist
+[error]
+  step_input_missing step_input_missing: cts requires design.def
+  step_input_missing step_input_missing: cts requires design.netlist
+rc=1
 ```
 
 ### 5.2 workspace 模式（调试/复跑）
@@ -378,25 +417,82 @@ ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--
 - `--from STEP`：已有 workspace 时从该步起重跑其后缀；与 `--to STEP` 配对可运行已有 flow 的包含式范围；
 - 新 workspace 必须同时给出 `--from` 与 `--to`，动态构建这段包含式 flow；
 - `--only STEP [--force]`：只跑一步，`--force` 用于该步已成功时强制重跑；
-- `--resume`、`--only` 与范围选择互斥；新建范围不能与 `--preset`、`--resume`、`--only`、`--force`、`--overwrite` 组合；`--workspace` 可与 `--project` 组合；步骤名使用 flow 的规范别名（如 `place`、`CTS`）；
-- 原地修改 workspace：被重跑步骤的 `output/` 会被替换，下游步骤标记为 `Unstart`。
-
-```bash
-ecc run --workspace default --resume
-ecc run --workspace default --from CTS --to route
-ecc run --workspace default --only place --force
-```
-
-误在项目模式使用选择器会得到明确报错：
+- `--resume`、`--only` 与范围选择互斥；新建范围不能与 `--preset`、`--resume`、`--only`、`--force`、`--overwrite` 组合；`--workspace` 可与 `--project` 组合；
+- **已有 workspace 上的 `--from`/`--only`/`--to` 必须用持久化名**（`home/flow.json` 中的原始名，见第 1 节词表，如 `place`、`CTS`、`Timing optimization`）；新建范围（`--from A --to B` 同时给出）才接受小写别名。拼错时报 `unknown_step` 并列出全部可用名：
 
 ```console
-$ ecc run --resume
+$ ecc run --workspace default --from synthesis   # 持久化名是 "Synthesis"
 [error]
-  selector_requires_workspace
-rc=1
+  unknown_step unknown step 'synthesis'; available steps: Synthesis, lec, Floorplan,
+  place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
+  postRouteLec, drc, Harden
+  workspace: /tmp/gcd/default
 ```
 
-### 5.3 migrate — 旧布局迁移（过渡期命令）
+- 原地修改 workspace：被重跑步骤的 `output/` 会被替换，下游步骤标记为 `Unstart`（输出文件保留，等后续运行）。某步的子目录从未创建过（如工具缺失导致 `Incomplete`）时，选择器会拒绝执行并报 `step_unavailable`。
+
+```bash
+ecc run --workspace default --resume               # 从第一个非成功步骤继续
+ecc run --workspace default --from CTS --to route  # 重跑一个包含式范围
+ecc run --workspace default --only place           # 只跑一步（已成功则 no_op）
+ecc run --workspace default --only place --force   # 已成功也强制重跑这一步
+ecc run --workspace default --from Synthesis       # 从头重跑整个持久化后缀
+```
+
+误用选择器会得到明确报错（均 rc=1）：
+
+```console
+$ ecc run --resume            # 项目里还没有任何 workspace
+[error]
+  selector_requires_workspace
+
+$ ecc run --to route          # --to 不能脱离 --from 单独出现
+[error]
+  flow_range_requires_pair
+
+$ ecc run --from cts          # 新建目标上 --from 必须与 --to 配对
+[error]
+  flow_range_requires_pair
+
+$ ecc run --force             # --force 只属于 --only
+[error]
+  force_requires_only
+
+$ ecc run --from cts --to route --preset rtl2gds   # 新建范围与其他选择器互斥
+[error]
+  selector_conflict
+
+$ ecc run --workspace a/b     # workspace 必须是单段名称，不能是路径
+[error]
+  invalid_workspace invalid_workspace: 'a/b' is not a single workspace name
+```
+
+### 5.3 run 错误码速查
+
+| 错误码 | 触发场景 | 处理 |
+|---|---|---|
+| `run_exists` | 目标目录已存在但不是有效 ECC workspace（无 `home/flow.json`） | `--overwrite`（有安全校验）或换 `--workspace` |
+| `overwrite_refused` | `--overwrite` 的目标不是真正的 ECC workspace 目录 | 人工确认目录内容后手动清理 |
+| `invalid_workspace` | workspace 名含 `/`、是绝对路径或 `.`/`..`；或目录不是可加载的 workspace | 换合规名称 / 检查目录 |
+| `workspace_required` | 项目有多个活跃 workspace 但没传 `--workspace` | 按报错列出的名称指定其一 |
+| `workspace_not_declared` | `--workspace` 名与 `project.json` 声明的 id 不一致（含别名指向已声明路径） | 使用报错中给出的已声明 id |
+| `workspace_conflict` | 同名 workspace 已声明在另一个路径 | 换名称 |
+| `workspace_registration_failed` | 向 `project.json` 登记新 workspace 失败（清单不可写等） | 检查 `project.json` 可读写后重试 |
+| `legacy_workspace_migration_required` | 在 legacy `runs/` 项目上执行 `ecc run` | 先 `ecc migrate`（提示记录会给出完整命令） |
+| `selector_requires_workspace` | 全新项目上直接用 `--resume`/`--only` | 先跑一次 `ecc run` |
+| `selector_conflict` | `--resume`/`--from`/`--only` 组合使用，或新建范围搭配 `--preset` 等 | 只保留一个选择器 |
+| `flow_range_requires_pair` | `--to` 单独出现；或新建目标上 `--from` 无 `--to` | 补齐配对参数 |
+| `force_requires_only` | `--force` 未搭配 `--only` | 加 `--only STEP` |
+| `unsupported_preset` | `--preset` 不在受支持列表 | 从报错中的 `presets:` 选择 |
+| `step_input_missing` | 新建目标的入口步骤缺 `rtl`/`netlist`/`def`/`spef` 等输入 | 在 `ecc.toml` 补齐对应 `[design]` 字段 |
+| `unknown_step` | 选择器步骤名不在持久化 flow 里 | 照抄报错列出的可用步骤名 |
+| `step_unavailable` | 选择的步骤在 workspace 中没有可用子目录（此前创建失败） | 先修复环境（`ecc doctor`）后 `--overwrite` 重建 |
+| `flow_mismatch` | 目标 flow 与 workspace 持久化 flow 分叉 | `--overwrite` 重建，或新 `--workspace` |
+| `set_requires_fresh_run` | 对已有 workspace 用 `--set` | `--overwrite` 或新 `--workspace` |
+| `env_not_ready` | 新建/`--overwrite` 目标预检发现必需工具缺失 | 按 `ecc doctor` 输出补齐 |
+| `step_input_missing` 之外的 `config_error` | `ecc.toml`/清单参数校验失败 | `ecc check` 查看具体字段 |
+
+### 5.4 migrate — 旧布局迁移（过渡期命令）
 
 ```bash
 ecc migrate [--project DIR] [--yes] [--json | --jsonl | --plain]
@@ -416,29 +512,33 @@ ecc status [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```console
 $ ecc status
 [status]
-  run: default
+  workspace id: default
   status: failed
   workspace: /tmp/gcd/default
-  inspect: ecc status
-  log: ecc log
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
 
   steps:
-    synthesis (yosys) success 0:00:18
-      log: ecc log synthesis
-    floorplan (ecc) success 0:00:04
-      log: ecc log floorplan
-    placement (dreamplace) incomplete 0:00:31
-      log: ecc log placement
+    synthesis (yosys) success 0:0:17
+      log: ecc log synthesis --workspace default
+    lec (yosys_lec) success 0:0:1
+      log: ecc log lec --workspace default
+    floorplan (ecc) success 0:0:1
+      log: ecc log floorplan --workspace default
+    placement (dreamplace) incomplete
+      log: ecc log placement --workspace default
     cts (ecc) unstart
+      log: ecc log cts --workspace default
+    ...
 
 $ ecc status --jsonl
-{"workspace_id": "default", "status": "failed", "workspace": "/tmp/gcd/default", "inspect_cmd": "ecc status", "log_cmd": "ecc log"}
-{"step": "synthesis", "tool": "yosys", "status": "success", "runtime": "0:00:18", "log_cmd": "ecc log synthesis"}
-{"step": "floorplan", "tool": "ecc", "status": "success", "runtime": "0:00:04", "log_cmd": "ecc log floorplan"}
+{"workspace_id": "default", "status": "failed", "workspace": "/tmp/gcd/default", "inspect_cmd": "ecc status --workspace default", "log_cmd": "ecc log --workspace default"}
+{"step": "synthesis", "tool": "yosys", "status": "success", "runtime": "0:0:17", "log_cmd": "ecc log synthesis --workspace default"}
+{"step": "lec", "tool": "yosys_lec", "status": "success", "runtime": "0:0:1", "log_cmd": "ecc log lec --workspace default"}
 ...
 ```
 
-run 级状态取全部步骤的聚合：`success / warning / failed / ongoing / unstart / missing / corrupt`；综合级 LEC 未证明时为 `warning`，但仍保留 LEC 证据并继续物理流程。
+run 级状态取全部步骤的聚合：`success / warning / failed / ongoing / unstart`（flow.json 缺失/损坏时为 `missing / corrupt`）；步骤级状态为 `success / warning / incomplete / unstart / ongoing / pending / invalid`。综合级 LEC 未证明时为 `warning`，但仍保留 LEC 证据并继续物理流程。
 
 ## 7. log — 查看日志
 
@@ -446,7 +546,7 @@ run 级状态取全部步骤的聚合：`success / warning / failed / ongoing / 
 ecc log [STEP] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
-不带 STEP 列出全部日志文件（run 级 flow 日志 + 各步骤日志，含尾部预览）；带 STEP 打印该步骤日志内容（TEXT 模式高亮 ERROR/WARNING 行）。
+不带 STEP 列出全部日志文件（run 级 flow 日志 + 各步骤日志，含尾部预览）；带 STEP 打印该步骤日志内容（TEXT 模式高亮 ERROR/WARNING 行）。STEP 接受展示名（`synthesis`）与持久化名（`Synthesis`）两种写法；步骤尚未运行（日志不存在）时报 `log status: missing`，名字拼错报 `unknown_step`。
 
 ```console
 $ ecc log
@@ -456,23 +556,24 @@ $ ecc log
       flow : /path/gcd/default/home/flow.json
       name | tool | state | runtime
       Synthesis | yosys | Success | 0:0:15
+  inspect: ecc log --workspace default
   synthesis  Synthesis_yosys/log/Synthesis.log
     tail:
       synthesizing gcd...
-  inspect: ecc log synthesis
+  inspect: ecc log synthesis --workspace default
 
 $ ecc log synthesis
 [log] step=synthesis
   source: Synthesis_yosys/log/Synthesis.log
         synthesizing gcd...
-  inspect: ecc log synthesis
+  inspect: ecc log synthesis --workspace default
 
 $ ecc log nosuchstep
 [error]
   error
   step: nosuchstep
   status: unknown_step
-  inspect: ecc status
+  inspect: ecc status --workspace default
 rc=1
 ```
 
@@ -773,10 +874,30 @@ step token 与 `ecc log` 同源（`synthesis/floorplan/placement/cts/...`），�
 
 ```console
 $ ecc report step --workspace default
-  step                   tool         status    runtime  metrics quality  checklist
-  synthesis              yosys        success   0:0:17   10      pass     ready
+[report step]
+  workspace : /tmp/gcd/default
+  steps     : 15
+
+  step                   tool         status    runtime  peak MB  metrics quality  checklist
+  synthesis              yosys        success   0:0:17   1165.89  10      pass     ready
+  lec                    yosys_lec    success   0:0:1    0.164    -       -        ready
+  floorplan              ecc          success   0:0:1    97.516   11      pass     ready
   ...
-  drc                    ecc          success   0:0:3    12      blocked  blocked (1 blocked)
+  drc                    ecc          success   0:0:3    42.0     12      blocked  blocked (1 blocked)
+
+$ ecc report step Synthesis
+[report step]
+  step      : synthesis (Synthesis)
+  tool      : yosys
+  status    : success
+  runtime   : 0:0:17, peak 1165.89 MB
+  workspace : /tmp/gcd/default
+
+  feature:
+    run.peak_memory_mb                           1165.89
+    run.runtime_seconds                          17.233
+    run.state                                    Success
+    ...
 
 $ ecc report step drc --section analysis
   analysis:
@@ -822,12 +943,14 @@ ecc pdk set-root ~/pdk/icsprout55-pdk   # （可选）手动下载的 PDK 用这
 ecc doctor                         # 环境体检（PDK/yosys/slang/组件）
 ecc check                          # 项目配置校验通过再运行
 ecc run --preset rtl2gds           # 一次性跑完整链（Synthesis→…→Harden）
+ecc run                            # 再跑一次：已成功 → no_op；中断/失败 → 自动续跑
 ecc status                         # 看步骤状态；失败时：
-ecc log place                      # 看出错步骤日志（TEXT 模式自动高亮错误行）
+ecc log placement                  # 看出错步骤日志（TEXT 模式自动高亮错误行）
 ecc param set place.target_density 0.55   # 调参数后重跑
 ecc run --overwrite --preset rtl2gds
-ecc run --workspace default --only place --force   # 或原地单步复跑
-ecc config place        # 查看该步实际生效的配置文件
+ecc run --workspace default --only place --force   # 或原地单步复跑（已成功需 --force）
+ecc run --workspace default --from CTS --to route  # 或原地重跑一段（用持久化名）
+ecc config place                   # 查看该步实际生效的配置文件
 ecc signoff inspect                # 签核就绪度（blocked 也 rc=0）
 ecc signoff export -o gcd_signoff.tar.gz    # 就绪后导出签核包
 ecc report summary                 # 生成文本设计总结（signoff/<design>_design_summary.txt）
@@ -837,14 +960,20 @@ ecc report step drc                # 终端预览单步骤 feature/analysis/chec
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
 ```
 
-创建一个受管 workspace：
+创建多个受管 workspace 做对比实验（每个独立目录、互不干扰）：
 
 ```bash
 # `--workspace` 在创建前自动登记到 project.json。
 ecc init gcd && cd gcd
+ecc run --workspace baseline --preset rtl2gds                 # 基线：默认参数
 ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.65
 ecc status --workspace exp1
 ecc log --workspace exp1
+ecc report qor --workspace baseline    # 两个 run 的 QoR 报告分别对比
+ecc report qor --workspace exp1
+
+# 已有现成综合网表时，也可以从中间步骤起建范围 workspace（入口输入要求见 §5.1）：
+ecc run --workspace pnr --from floorplan --to route
 ```
 
-`project.json` 生成后，项目级查看、签核和报告命令按已声明的 workspace 选择。多个活跃 workspace 时必须显式传 `--workspace NAME`。
+`project.json` 生成后，项目级查看、签核和报告命令按已声明的 workspace 选择；只有一个活跃 workspace 时自动选中，多个活跃 workspace 时必须显式传 `--workspace NAME`（否则报 `workspace_required` 并列出可用名称）。不再使用的 workspace 可在 `project.json` 中把其 `status` 改为 `archived`，使其退出自动选择。

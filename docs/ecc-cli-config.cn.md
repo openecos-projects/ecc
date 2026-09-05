@@ -61,7 +61,7 @@ graph LR
 
 ### 0.3 每个步骤用到哪些配置
 
-`ecc config <step>` 的真实输出归纳（映射源码 `_STEP_CONFIG_KEYS`）：
+`ecc config <step>` 的真实输出归纳（映射源码 `_STEP_CONFIG_KEYS`，位于 [chipcompiler/data/workspace/__init__.py](../chipcompiler/data/workspace/__init__.py)）：
 
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|

@@ -221,7 +221,7 @@ class TestMultilineTomlValues:
     """config must error on malformed/invalid CLI provenance."""
 
     def _setup_run_dir(self, project_dir):
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
         return run_dir
 

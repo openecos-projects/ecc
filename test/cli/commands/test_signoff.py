@@ -96,7 +96,7 @@ class TestSignoffInspect:
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir)
         _patch_inspect(monkeypatch)
 
@@ -116,7 +116,7 @@ class TestSignoffInspect:
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
     ):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
+        os.makedirs(os.path.join(project_dir, "default"))
         _patch_inspect(monkeypatch, {"status": "blocked", "groups": [], "risks": []})
 
         rc = cli_main.run(["signoff", "inspect", "--project", project_dir, "--json"])
@@ -128,7 +128,7 @@ class TestSignoffInspect:
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
     ):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
+        os.makedirs(os.path.join(project_dir, "default"))
         _patch_inspect(monkeypatch)
 
         rc = cli_main.run(["signoff", "inspect", "--project", project_dir])
@@ -143,24 +143,29 @@ class TestSignoffInspect:
         _patch_inspect(monkeypatch)
         os.makedirs(tmp_path / "ws")
 
-        rc = cli_main.run(["signoff", "inspect", "--workspace", str(tmp_path / "ws"), "--json"])
+        rc = cli_main.run(
+            ["signoff", "inspect", "--project", str(tmp_path), "--workspace", "ws", "--json"]
+        )
 
         assert rc == 0
         assert workspace_stub.seen.load_path == str(tmp_path / "ws")
 
-    def test_workspace_conflicts_with_project(
+    def test_unresolved_workspace_rejected_before_load(
         self, tmp_path, capsys, monkeypatch, create_cli_project
     ):
         monkeypatch.setattr(
             "chipcompiler.data.load_workspace",
-            lambda _path: pytest.fail("conflicts must be rejected before workspace load"),
+            lambda _path: pytest.fail("missing workspaces must be rejected before workspace load"),
         )
 
-        rc = cli_main.run(["signoff", "inspect", "--project", "p", "--workspace", "w", "--json"])
+        rc = cli_main.run(
+            ["signoff", "inspect", "--project", str(tmp_path), "--workspace", "absent", "--json"]
+        )
 
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 1
-        assert record["error"] == "project_workspace_conflict"
+        assert record["error"] == "missing_workspace"
+        assert record["workspace"] == str(tmp_path / "absent")
 
     def test_missing_run_workspace(self, tmp_path, capsys, monkeypatch, create_cli_project):
         project_dir = create_cli_project()  # no runs/default directory
@@ -177,7 +182,7 @@ class TestSignoffExport:
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
     ):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
+        os.makedirs(os.path.join(project_dir, "default"))
         calls = _patch_export(monkeypatch, destination="/tmp/out/pkg.tar.gz")
 
         rc = cli_main.run(
@@ -190,7 +195,7 @@ class TestSignoffExport:
             "signoff": "export",
             "status": "exported",
             "path": "/tmp/out/pkg.tar.gz",
-            "inspect_cmd": f"ecc signoff inspect --project {project_dir}",
+            "inspect_cmd": f"ecc signoff inspect --project {project_dir} --workspace default",
         }
         assert calls[0]["output_path"] == "/tmp/out/pkg.tar.gz"
         assert calls[0]["include_debug"] is False
@@ -199,7 +204,7 @@ class TestSignoffExport:
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
     ):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
+        os.makedirs(os.path.join(project_dir, "default"))
         calls = _patch_export(monkeypatch)
 
         rc = cli_main.run(
@@ -224,7 +229,7 @@ class TestSignoffExport:
         from chipcompiler.runtime.workspace_api import RuntimeApiError
 
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
+        os.makedirs(os.path.join(project_dir, "default"))
         _patch_export(
             monkeypatch,
             error=RuntimeApiError("command_failed", "signoff package is incomplete: x"),

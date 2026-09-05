@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -255,7 +256,9 @@ class TestRunPreflight:
             "sizer",
         )
 
-    def test_workspace_run_mode_never_probes(self, tmp_path, monkeypatch):
+    def test_workspace_run_mode_never_probes(
+        self, tmp_path, monkeypatch, create_cli_project, minimal_ics55_pdk_factory
+    ):
         from types import SimpleNamespace
 
         from chipcompiler.engine import StepRunResult
@@ -280,22 +283,44 @@ class TestRunPreflight:
                 return None
 
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+        reconcile_probe = SimpleNamespace(outcome="resume")
+        reconcile_result = SimpleNamespace(
+            ok=True, outcome="resume", persisted=True, target=["place"], appended=()
+        )
+        monkeypatch.setattr(
+            "chipcompiler.engine.reconcile.classify_workspace",
+            lambda *args, **kwargs: reconcile_probe,
+        )
+        monkeypatch.setattr(
+            "chipcompiler.engine.reconcile.reconcile_workspace_locked",
+            lambda *args, **kwargs: reconcile_result,
+        )
         monkeypatch.setattr(
             "chipcompiler.engine.rerun.selected_step_names",
             lambda flow, **kwargs: ["place"],
         )
         monkeypatch.setattr(
+            "chipcompiler.engine.rerun.bounded_resume_names",
+            lambda flow, through: ["place"],
+        )
+        monkeypatch.setattr(
             "chipcompiler.engine.rerun.run_resume",
-            lambda flow: StepRunResult(ok=True, executed=("place",)),
+            lambda flow, **kwargs: StepRunResult(ok=True, executed=("place",)),
         )
         monkeypatch.setattr(
             "chipcompiler.data.create_workspace",
             lambda **_kwargs: pytest.fail("workspace mode must not create a workspace"),
         )
 
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        rc = cli_main.run(["run", "--workspace", str(workspace), "--resume", "--json"])
+        project_dir = create_cli_project(
+            pdk_root=minimal_ics55_pdk_factory(tmp_path / "ics55")
+        )
+        workspace = Path(project_dir) / "ws"
+        (workspace / "home").mkdir(parents=True)
+        (workspace / "home" / "flow.json").write_text('{"steps": []}')
+        rc = cli_main.run(
+            ["run", "--project", project_dir, "--workspace", "ws", "--resume", "--json"]
+        )
 
         assert rc == 0
 

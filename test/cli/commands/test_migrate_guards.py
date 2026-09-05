@@ -248,7 +248,6 @@ class TestRunMigrationRace:
         create_legacy_workspace,
         monkeypatch,
     ):
-        from chipcompiler.cli.project import effective_config
 
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -262,25 +261,20 @@ class TestRunMigrationRace:
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
 
-        def migrating_validate(*args, **kwargs):
-            # A concurrent migration completes between context construction
-            # and the run's locked decision.
-            rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
-            assert rc == 0
-            capsys.readouterr()  # drop the migration's own output
-            return []
-
-        monkeypatch.setattr(effective_config, "validate_effective", migrating_validate)
-
-        rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
+        # A legacy project is refused BEFORE any locked decision, so no
+        # stale-classification window exists: the run never mutates the
+        # tree, and the legacy workspace stays exactly where it was.
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--json"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "project_state_changed"]
-        assert "retry" in failure["reason"]
-        # The moved workspace was not shadowed by a recreated runs/exp1,
-        # and workspace creation never ran for the stale target.
-        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
-        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+        records = _records(capsys)
+        assert any(r.get("error") == "legacy_workspace_migration_required" for r in records)
+        assert any(
+            r.get("warning") == "legacy_layout_detected" and "ecc migrate" in r.get("migrate", "")
+            for r in records
+        )
+        assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
+        assert not os.path.exists(os.path.join(project_dir, "exp1"))
         assert created == []
 
 
