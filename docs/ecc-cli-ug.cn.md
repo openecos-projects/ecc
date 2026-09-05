@@ -409,6 +409,20 @@ $ ecc run --from cts --to route          # 新建范围但缺 def/netlist
 rc=1
 ```
 
+例如，要复用已有 workspace `2` 的 Floorplan 产物，新建一个只跑 placement 到 routing 的 workspace，先把**匹配的一对** DEF 和门级网表声明为新 workspace 的入口输入，再创建范围 flow：
+
+```bash
+PROJECT=~/projects/benchmark/gcd
+SOURCE="$PROJECT/2/Floorplan_ecc/output"
+
+ecc project set design.def "$SOURCE/gcd_Floorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_Floorplan.v.gz" --project "$PROJECT"
+ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
+  --from placement --to routing
+```
+
+`ecc run` 不提供 `--def` 或 `--netlist` 选项；范围入口从 `ecc.toml` 的 `design.def` / `design.netlist` 读取。这个例子会在 `project.json` 中登记 `floorplan-2-place-route`，将两个文件复制到新 workspace 的 `origin/`，并从 placement 开始执行至 routing（不重跑 Floorplan）。由于前两条命令会改动项目级 `ecc.toml`，它们也影响之后新建的 workspace；若原先未声明这些字段，可在创建完成后用 `ecc project unset design.def --project "$PROJECT"` 和 `ecc project unset design.netlist --project "$PROJECT"` 恢复项目默认入口。
+
 ### 5.2 workspace 模式（调试/复跑）
 
 ```bash
@@ -621,7 +635,23 @@ ecc project unset design.spef
 ecc project show [KEY]
 ```
 
-`ecc workspace refresh NAME --project DIR` 用当前 `ecc.toml` 重建一个已在 `project.json` 声明的 workspace，但不执行 flow。它会替换该 workspace 的复制输入、工具配置、状态和产物；完成后再执行 `ecc run --workspace NAME`。`ecc run --workspace NAME --overwrite` 则是刷新后立即执行的既有快捷方式。
+`ecc workspace refresh NAME --project DIR` 用当前 `ecc.toml` 重建一个已在 `project.json` 声明的 workspace，但不执行 flow。它会替换该 workspace 的复制输入、工具配置、状态和产物；完成后再执行 `ecc run --workspace NAME`。`ecc run --workspace NAME --overwrite` 则是刷新后立即执行的既有快捷方式：
+
+```console
+$ ecc workspace refresh default
+[status]
+  workspace id: default
+  status: refreshed
+  workspace: /tmp/gcd/default
+  run: ecc run --workspace default
+
+$ ecc workspace refresh nosuch
+[error]
+  workspace_not_declared workspace_not_declared: unknown workspace 'nosuch'; declared workspaces: default
+rc=1
+```
+
+入口输入、PDK 路径和 `flow.preset` 的改动必须走 refresh，因为它们会改变 workspace 的输入快照或 flow 结构。只调已有 workspace 的参数还可以用 `ecc param set KEY VALUE --workspace NAME`（见 §9），不经过 `ecc.toml`。
 
 资源输入、PDK 路径和 `flow.preset` 改动必须使用 refresh，因为它们会改变 workspace 的输入快照或 flow 结构。
 
@@ -638,7 +668,26 @@ ecc param diff                      # 只显示与默认值不同的参数
 ecc param set KEY VALUE --workspace NAME  # 仅修改指定 workspace，不写 ecc.toml
 ```
 
-通用选项：`--project DIR`、`--json / --jsonl / --plain`。`list`、`show`、`set`、`unset` 和 `diff` 还接受 `--workspace NAME`。此时参数写入该 workspace 的 `home/params.toml`，刷新其生成配置，并将参数所属步骤及其后缀标记为待执行；后续 `ecc run --workspace NAME` 从该步骤继续。workspace 局部设置仅支持 `ecc param list --all` 中的已审核参数，`pdk.*` 路径字段仍需通过 `ecc workspace refresh` 更新。
+通用选项：`--project DIR`、`--json / --jsonl / --plain`。`list`、`show`、`set`、`unset` 和 `diff` 还接受 `--workspace NAME`。此时参数写入该 workspace 的 `home/params.toml`（不写 `ecc.toml`），刷新其生成配置，并将参数所属步骤及其后缀标记为待执行；后续 `ecc run --workspace NAME` 从该步骤继续。workspace 局部设置会记录到 `workspace_param_overrides`（含修改前的 `baseline`）——`param diff --workspace NAME` 与该 baseline 对比，`param unset KEY --workspace NAME` 恢复 baseline。只有 `ecc param list --all` 中的已审核参数可局部设置，且参数所属步骤必须存在于该 workspace 的持久化 flow 中（否则报 `workspace_param_refresh_failed`，例如对只有综合的 workspace 设 `place.*`）；`pdk.*` 路径字段仍需修改 `ecc.toml` 后执行 `ecc workspace refresh`：
+
+```console
+$ ecc param set design.frequency_mhz 150 --workspace default --plain
+param=design.frequency_mhz value=150.0 status=set source=workspace workspace=default from_step=Synthesis invalidated_steps=['Synthesis']
+
+$ ecc param list --workspace default      # workspace 作用域：只列局部覆盖
+    design.frequency_mhz           150.0  (workspace)
+
+$ ecc param show design.frequency_mhz --workspace default
+  design.frequency_mhz
+    value          150.0
+    source         workspace
+
+$ ecc param diff --workspace default --plain
+param=design.frequency_mhz value=150.0 baseline=100.0 source=workspace workspace=default
+
+$ ecc param unset design.frequency_mhz --workspace default --plain
+param=design.frequency_mhz value=100.0 status=unset source=workspace workspace=default from_step=Synthesis invalidated_steps=['Synthesis']
+```
 
 ```console
 $ ecc param list
@@ -936,7 +985,7 @@ ecc rpc serve --stdio [--persistent-db]
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}
-← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0a11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
+← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0-alpha.11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
 
 → {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
 ← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
@@ -958,7 +1007,9 @@ ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.p
 
 ```bash
 ecc init gcd && cd gcd
-# 放入 RTL，编辑 ecc.toml（top/clock/frequency、pdk.root、flow.preset）
+# 放入 RTL，编辑 ecc.toml（top/clock/frequency、pdk.root、flow.preset）——
+# 也可以不打开编辑器，直接用命令声明：
+ecc project set design.top gcd && ecc project add design.rtl rtl/gcd.v
 ecc pdk set-root ~/pdk/icsprout55-pdk   # （可选）手动下载的 PDK 用这条接入
 ecc doctor                         # 环境体检（PDK/yosys/slang/组件）
 ecc check                          # 项目配置校验通过再运行
@@ -968,8 +1019,11 @@ ecc status                         # 看步骤状态；失败时：
 ecc log placement                  # 看出错步骤日志（TEXT 模式自动高亮错误行）
 ecc param set place.target_density 0.55   # 调参数后重跑
 ecc run --overwrite --preset rtl2gds
+ecc param set place.target_density 0.65 --workspace default   # 或只局部调一个 workspace 的参数，不动 ecc.toml
+ecc run --workspace default        # 从失效步骤继续跑
 ecc run --workspace default --only place --force   # 或原地单步复跑（已成功需 --force）
 ecc run --workspace default --from CTS --to route  # 或原地重跑一段（用持久化名）
+ecc workspace refresh default      # ecc.toml 的输入/PDK/preset 变了，重建 workspace 但不执行
 ecc config place                   # 查看该步实际生效的配置文件
 ecc signoff inspect                # 签核就绪度（blocked 也 rc=0）
 ecc signoff export -o gcd_signoff.tar.gz    # 就绪后导出签核包

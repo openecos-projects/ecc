@@ -15,15 +15,19 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── doctor.py                   # doctor 顶层命令（环境体检）
   ├── param.py                    # param 子应用（list/show/set/unset/diff）
   ├── pdk.py                      # pdk 子应用（setup/set-root/show/unset）
+  ├── project_config.py           # project 子应用（set/unset/add/remove/show）
+  ├── workspace.py                # workspace 子应用（refresh）
   ├── signoff.py                  # signoff 子应用（inspect/export）
   ├── report.py                   # report 子应用（summary/qor/checklist/step）
   └── rpc.py                      # rpc 子应用（serve）
 chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，有状态/重逻辑）
-  ├── project.py                  # init / check / run / migrate（含 preset 解析与环境预检）
+  ├── project.py                  # init / check / run / migrate / workspace refresh（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor（组装 env_probe 结果为 records）
   ├── param.py                    # param 五子命令（校验 + 经 cli/project/toml_edit.py 做 TOML 定点改写）
   ├── pdk.py                      # pdk 四子命令（TOML 定点改写 + root 来源解析）
+  ├── project_config.py           # project 五子命令（声明 schema + 经 cli/project/config_fields.py 做 TOML 定点改写）
+  ├── workspace_params.py         # workspace 局部 param set/unset/list/diff（改 home/params.toml + 失效后缀步骤）
   ├── signoff.py                  # signoff inspect/export
   └── report.py                   # report summary/qor/checklist/step 的处理器
 chipcompiler/cli/core/            # 框架层
@@ -38,7 +42,7 @@ chipcompiler/cli/inspection/      # 只读探查逻辑
   ├── discovery.py / config_view.py / log_view.py
   ├── env_probe.py                # doctor/run 预检的环境探查（ProbeResult 体系）
   └── tool_versions.py            # ecc version 的环境工具版本（yosys/sizer/klayout）
-chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ params.py（参数注册表）/ manifest.py（项目形态分类）/ effective_config.py / config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
+chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ effective_config.py / config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
 chipcompiler/cli/rendering/       # 输出渲染（render / renderers / pretty / progress）
 chipcompiler/engine/signoff/      # 签核收集器 + 设计/checklist 报告（包，见 §5.4）
 chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §5.5）
@@ -224,6 +228,12 @@ config_param(
 ### 5.6 扩展 RPC（`ecc rpc serve`）
 
 `rpc serve --stdio` 启动 JSON-RPC 2.0 sidecar（`chipcompiler/runtime/stdio_server.py`）。方法在 `chipcompiler/runtime/methods.py::RUNTIME_METHODS` 声明（`method_name` + pydantic `request_model` + `handler_name`），handler 实现在 `chipcompiler/runtime/workspace_api.py`，由 `runtime/server.py` 统一挂载；协议细节见 [workspace-cli.md](workspace-cli.md)。新增方法 = 加一个 `RuntimeMethodSpec` + 对应 API 方法 + 请求模型，无需改 CLI 层。
+
+### 5.7 扩展项目声明（`ecc project *` / `ecc workspace refresh`）
+
+- `ecc project set/unset/add/remove/show` 的可编辑键在 `cli/project/config_fields.py::PROJECT_FIELDS` 声明（`key` / TOML 表 / 字段名 / 类型 / `list_value`）。加一个字段五个子命令自动生效；`add`/`remove` 硬性只支持 `design.rtl`（其余键报 `unsupported_project_collection`）。
+- `ecc workspace refresh` 的实现等价于 run 路径的 `overwrite=True, execute_flow=False`（`cli/command_handlers/project.py::refresh_workspace`），因此它和新建 run 一样做环境预检（`ecc.toml` 的 `preset: rtl2gds` 要求全套工具就绪，即使并不真正执行步骤）；非 manifest 项目报 `workspace_refresh_requires_managed_workspace`。
+- workspace 局部 `param set/unset/list/diff --workspace NAME` 经 `cli/command_handlers/workspace_params.py` 修改 `home/params.toml`（记录到 `workspace_param_overrides`，经 `chipcompiler.engine.rerun` 失效后缀步骤）；项目级 `param` 走 `cli/command_handlers/param.py`。
 
 ## 6. 构建 CLI 安装包（改完代码的实测环节）
 
