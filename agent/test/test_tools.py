@@ -1,4 +1,5 @@
 import json
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -54,6 +55,43 @@ def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypat
 
     assert eda.run_step(workspace, step, ecc_module=True) is True
     assert consumed == [0.65]
+
+
+def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
+    workspace = SimpleNamespace(
+        directory=str(tmp_path),
+        config={},
+        logger=SimpleNamespace(),
+        flow=SimpleNamespace(data={"steps": [{"name": "Timing optimization", "tool": "sizer"}]}),
+    )
+    step = SimpleNamespace(name="Timing optimization", tool="sizer")
+    runtime_root = tmp_path / "sizer"
+    executable = runtime_root / "bin" / "Sizer"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    observed = {}
+
+    def run_step(**_kwargs):
+        observed.update(
+            LD_LIBRARY_PATH=os.environ.get("LD_LIBRARY_PATH"),
+            LD_PRELOAD=os.environ.get("LD_PRELOAD"),
+        )
+        return True
+
+    tool = SimpleNamespace(build_step_config=lambda *_args: None, run_step=run_step)
+    monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
+    monkeypatch.setattr(eda, "log_workspace_step", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(eda, "reapply_materialized_candidate_config", lambda *_args: None)
+    monkeypatch.setattr(eda, "run_with_parameter_observation", lambda *_args: _args[-1]())
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/packaged/lib")
+    monkeypatch.setenv("LD_PRELOAD", "/packaged/preload.so")
+
+    assert eda.run_step(workspace, step) is True
+    assert observed == {"LD_LIBRARY_PATH": None, "LD_PRELOAD": None}
+    assert os.environ["LD_LIBRARY_PATH"] == "/packaged/lib"
+    assert os.environ["LD_PRELOAD"] == "/packaged/preload.so"
 
 
 def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):

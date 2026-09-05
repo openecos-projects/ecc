@@ -561,13 +561,10 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        config_path = workspace.config.get(f"{StepEnum.CTS.value}", "")
-        engine_succeeded = ecc_module.run_cts(
-            config=config_path,
+        ecc_module.run_cts(
+            config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
             output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
         )
-        if not engine_succeeded:
-            return False
 
         ecc_module.report_cts(output=(step.data.steps or {}).get(StepEnum.CTS.value, ""))
 

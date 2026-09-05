@@ -31,6 +31,18 @@ def test_agent_runtime_server_registers_isolated_methods():
     assert set(agent_method_names()).issubset(server.capabilities)
 
 
+def test_agent_runtime_server_prepares_agent_environment(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "agent.server.prepare_agent_runtime_environment",
+        lambda: calls.append(True),
+    )
+
+    AgentRuntimeServer()
+
+    assert calls == [True]
+
+
 def test_agent_request_normalizes_camel_case_fields():
     request = parse_agent_request_model(
         CandidateRerunRequest,

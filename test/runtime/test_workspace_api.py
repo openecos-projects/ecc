@@ -206,7 +206,7 @@ def _install_runtime_mocks(monkeypatch, tmp_path, *, create_workspace_files=True
     )
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
-        "chipcompiler.rtl2gds.build_harden_flow",
+        "chipcompiler.rtl2gds.build_rtl2gds_flow",
         lambda: [("Synthesis", "yosys", "Unstart")],
     )
 
@@ -219,7 +219,7 @@ def _install_runtime_mocks(monkeypatch, tmp_path, *, create_workspace_files=True
     return capture, ws
 
 
-def test_runtime_workspace_defaults_to_harden_flow(monkeypatch):
+def test_runtime_workspace_defaults_to_rtl2gds_flow(monkeypatch):
     from chipcompiler.runtime.workspace_api import build_flow_for_workspace
 
     workspace = SimpleNamespace(flow=SimpleNamespace(data={}))
@@ -235,7 +235,7 @@ def test_runtime_workspace_defaults_to_harden_flow(monkeypatch):
 
     flow = build_flow_for_workspace(workspace)
 
-    assert flow.added_steps == [("Harden", "ecc", "Unstart")]
+    assert flow.added_steps == [("rtl2gds", "ecc", "Unstart")]
 
 
 def _assert_call_waits_for_session_lock(api, workspace_id, call, entered):

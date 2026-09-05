@@ -2067,7 +2067,7 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
 
     engine_flow = engine_api.EngineFlow(workspace=workspace)
     if not engine_flow.has_init():
-        for step, tool, state in rtl2gds_api.build_harden_flow():
+        for step, tool, state in rtl2gds_api.build_rtl2gds_flow():
             engine_flow.add_step(step=step, tool=tool, state=state)
 
     if create_step_workspaces:

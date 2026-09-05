@@ -31,8 +31,8 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
 
     calls = []
 
-    def fake_run(command, cwd, stdout, stderr, check, env):
-        calls.append((command, cwd, stdout, stderr, check, env))
+    def fake_run(command, cwd, stdout, stderr, check):
+        calls.append((command, cwd, stdout, stderr, check))
         _write_staging(step)
         return SimpleNamespace(returncode=0)
 
@@ -42,9 +42,6 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
     monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setenv("LD_LIBRARY_PATH", "/app/resources/binaries/_internal")
-    monkeypatch.setenv("LD_PRELOAD", "/bad/preload.so")
-    monkeypatch.setenv("KEEP_ME", "kept")
 
     assert (
         sizer_runner.run_step(
@@ -75,11 +72,6 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
             None,
             subprocess.STDOUT,
             False,
-            {
-                key: value
-                for key, value in os.environ.items()
-                if key not in {"LD_LIBRARY_PATH", "LD_PRELOAD"}
-            },
         )
     ]
 
@@ -167,7 +159,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda command, cwd, stdout, stderr, check, env: SimpleNamespace(returncode=0),
+        lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
     )
 
     assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
@@ -193,8 +185,8 @@ def test_sizer_runner_inherits_captured_stdio_instead_of_truncating_step_log(
     Path(step.log.file).write_text("preface\n", encoding="utf-8")
     seen = {}
 
-    def fake_run(command, cwd, stdout, stderr, check, env):
-        del command, cwd, check, env
+    def fake_run(command, cwd, stdout, stderr, check):
+        del command, cwd, check
         seen["stdout"] = stdout
         seen["stderr"] = stderr
         return SimpleNamespace(returncode=1)
