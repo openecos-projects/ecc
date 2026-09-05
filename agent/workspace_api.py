@@ -607,8 +607,6 @@ def _candidate_rerun_result(
                 parent,
             )
         except Exception as exc:
-            if terminal_state == "succeeded":
-                raise
             evidence_error = str(exc)
     result = {
         "candidateId": request.candidate_id,

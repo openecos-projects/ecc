@@ -10,6 +10,7 @@ from agent.data.candidate_materialization import materialize_candidate_config
 from agent.requests import CandidateRerunRequest
 from agent.workspace_api import (
     FlowAgentRuntimeApi,
+    _candidate_rerun_result,
     _candidate_rerun_steps,
     _candidate_step_artifact_dirs,
     _materialize_candidate_rerun,
@@ -521,6 +522,56 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     assert terminal["result"]["parameterApplicationReceiptSha256"] == sha256_path(
         candidate / "analysis" / "parameter_application_receipt.v1.json"
     )
+
+
+def test_succeeded_candidate_preserves_flow_when_runtime_report_is_missing(
+    monkeypatch, tmp_path
+) -> None:
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    (analysis / "candidate_materialization.v1.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / "flow.json").write_text('{"steps": []}', encoding="utf-8")
+    for suffix in ("gds", "lef", "lib"):
+        output = tmp_path / "Harden_ecc" / "output"
+        output.mkdir(parents=True, exist_ok=True)
+        (output / f"gcd_Harden.{suffix}").write_text("artifact", encoding="utf-8")
+    workspace = SimpleNamespace(directory=tmp_path, design=SimpleNamespace(name="gcd"))
+    parent = {
+        "root_ref": None,
+        "manifest_ref": None,
+        "manifest_sha256": None,
+        "flow_sha256": "sha256:" + "1" * 64,
+        "state_sha256": "sha256:" + "2" * 64,
+    }
+    missing_report = RuntimeApiError("command_failed", "candidate runtime report is unavailable")
+    monkeypatch.setattr(
+        "agent.workspace_api.reapply_materialized_candidate_config", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        "agent.workspace_api._candidate_parameter_receipt",
+        lambda *_args: (_ for _ in ()).throw(missing_report),
+    )
+
+    result = _candidate_rerun_result(
+        workspace,
+        SimpleNamespace(
+            candidate_id="candidate-1",
+            target_step="place",
+            end_step="Harden",
+            execution_scope="full_flow",
+        ),
+        ".agent/candidates/candidate-1",
+        parent,
+        terminal_state="succeeded",
+    )
+
+    assert result["evidenceError"] == "candidate runtime report is unavailable"
+    assert "parameterApplicationReceipt" not in result
+    manifest = json.loads(
+        (tmp_path / "analysis" / "candidate_workspace.v1.json").read_text(encoding="utf-8")
+    )
+    assert manifest["terminal_state"] == "succeeded"
 
 
 def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch, tmp_path):
