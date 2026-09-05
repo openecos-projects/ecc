@@ -28,13 +28,13 @@ proc normalize_design {top_design} {
     yosys memory
     yosys async2sync
     yosys flatten
-    yosys splitnets -ports -format __v
+    yosys splitnets -ports -format _
     yosys opt_clean -purge
 }
 
 proc build_design {stash_name top_design netlist_file} {
     read_support_models
-    yosys read_verilog -sv $netlist_file
+    yosys read_verilog -sv -icells $netlist_file
     normalize_design $top_design
     yosys design -stash $stash_name
 }

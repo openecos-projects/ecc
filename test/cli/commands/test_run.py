@@ -457,18 +457,20 @@ class TestWorkspaceNoOp:
         workspace = tmp_path / "workspace"
         home = workspace / "home"
         home.mkdir(parents=True)
-        from chipcompiler.rtl2gds.builder import build_harden_flow
+        from chipcompiler.rtl2gds.builder import build_harden_flow, build_rtl2gds_flow
 
         chain = [
             (step.value if hasattr(step, "value") else str(step), str(tool))
             for step, tool, _state in build_harden_flow()
         ]
+        target_len = len(build_rtl2gds_flow())
         steps = [
-            {"name": name, "tool": tool, "state": "Success"}
-            for name, tool in chain[:11]  # the full rtl2gds target
-        ] + [
-            {"name": chain[11][0], "tool": chain[11][1], "state": "Unstart"},
-            {"name": chain[12][0], "tool": chain[12][1], "state": "Unstart"},
+            {
+                "name": name,
+                "tool": tool,
+                "state": "Success" if index < target_len else "Unstart",
+            }
+            for index, (name, tool) in enumerate(chain)
         ]
         (home / "flow.json").write_text(_json.dumps({"steps": steps}))
         assert save_workspace_config(
