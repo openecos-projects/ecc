@@ -29,6 +29,10 @@ def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
 
 
 def param_list(args, ctx: CommandContext) -> CommandResult:
+    if getattr(args, "workspace", None) is not None:
+        from chipcompiler.cli.command_handlers import workspace_params
+
+        return workspace_params.param_list(args, ctx)
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
@@ -78,6 +82,10 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
 
 
 def param_show(args, ctx: CommandContext) -> CommandResult:
+    if getattr(args, "workspace", None) is not None:
+        from chipcompiler.cli.command_handlers import workspace_params
+
+        return workspace_params.param_show(args, ctx)
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
@@ -130,6 +138,10 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
 
 
 def param_set(args, ctx: CommandContext) -> CommandResult:
+    if getattr(args, "workspace", None) is not None:
+        from chipcompiler.cli.command_handlers import workspace_params
+
+        return workspace_params.param_set(args, ctx)
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
@@ -210,6 +222,10 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
 
 
 def param_unset(args, ctx: CommandContext) -> CommandResult:
+    if getattr(args, "workspace", None) is not None:
+        from chipcompiler.cli.command_handlers import workspace_params
+
+        return workspace_params.param_unset(args, ctx)
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
@@ -264,6 +280,10 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
 
 
 def param_diff(args, ctx: CommandContext) -> CommandResult:
+    if getattr(args, "workspace", None) is not None:
+        from chipcompiler.cli.command_handlers import workspace_params
+
+        return workspace_params.param_diff(args, ctx)
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error

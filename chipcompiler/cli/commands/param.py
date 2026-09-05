@@ -17,7 +17,13 @@ from chipcompiler.cli.core.inputs import (
     project_options,
 )
 from chipcompiler.cli.core.invocation import CommandHandler, CommandInputT, execute_command
-from chipcompiler.cli.core.options import JsonlOption, JsonOption, PlainOption, ProjectOption
+from chipcompiler.cli.core.options import (
+    JsonlOption,
+    JsonOption,
+    PlainOption,
+    ProjectOption,
+    WorkspaceOption,
+)
 
 param_app = typer.Typer(
     add_completion=False,
@@ -41,6 +47,7 @@ def list_cmd(
     project: ProjectOption = None,
     step: Annotated[str | None, typer.Option("--step")] = None,
     all_params: Annotated[bool, typer.Option("--all")] = False,
+    workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
@@ -50,6 +57,7 @@ def list_cmd(
         project=project_options(project),
         step=step,
         all=all_params,
+        workspace=workspace,
     )
     _finish_param("list", command_input, param_list_handler)
 
@@ -59,6 +67,7 @@ def show_cmd(
     *,
     key: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
@@ -67,6 +76,7 @@ def show_cmd(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
         key=key,
+        workspace=workspace,
     )
     _finish_param("show", command_input, param_show_handler)
 
@@ -77,6 +87,7 @@ def set_cmd(
     key: Annotated[str, typer.Argument()],
     value: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
@@ -86,6 +97,7 @@ def set_cmd(
         project=project_options(project),
         key=key,
         value=value,
+        workspace=workspace,
     )
     _finish_param("set", command_input, param_set_handler)
 
@@ -95,6 +107,7 @@ def unset_cmd(
     *,
     key: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
@@ -103,6 +116,7 @@ def unset_cmd(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
         key=key,
+        workspace=workspace,
     )
     _finish_param("unset", command_input, param_unset_handler)
 
@@ -111,6 +125,7 @@ def unset_cmd(
 def diff_cmd(
     *,
     project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
@@ -118,5 +133,6 @@ def diff_cmd(
     command_input = ParamDiffInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
+        workspace=workspace,
     )
     _finish_param("diff", command_input, param_diff_handler)

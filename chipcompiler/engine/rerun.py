@@ -99,6 +99,13 @@ def run_from(flow: "EngineFlow", name: str, *, through: str | None = None) -> St
     return _run_selected(flow, list(zip(suffix, output_dirs, strict=True)))
 
 
+def invalidate_from(flow: "EngineFlow", name: str) -> list[str]:
+    """Persist an invalidated suffix without executing or deleting outputs."""
+    index = _require_step_index(flow, name)
+    _invalidate_suffix(flow, index)
+    return [step["name"] for step in flow.workspace.flow.data.get("steps", [])[index:]]
+
+
 def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunResult:
     """Run exactly one persisted step; a successful step is re-run only with force."""
     steps = flow.workspace.flow.data.get("steps", [])

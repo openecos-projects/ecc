@@ -118,7 +118,7 @@ uv run ecc --help
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
 - 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录）。`--workspace <名称>` 是项目内受管的、非空单路径段名称，不能传文件系统路径。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
-- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`signoff`、`report` 都支持 `--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）和 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`ecc version` 也支持这三种选项，但使用版本专用 schema；`rpc serve` 和 `layout-image` 使用各自的协议。
+- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`project`、`workspace`、`signoff`、`report` 都支持 `--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）和 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`ecc version` 也支持这三种选项，但使用版本专用 schema；`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）有三套写法，按场景区分：
   - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`；
@@ -143,6 +143,8 @@ Commands:
   doctor        Check host environment: PDK, tools, and components
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
+  project       Edit project declarations in ecc.toml
+  workspace     Refresh managed workspaces from project configuration
   signoff       Inspect and export signoff packages
   report        Generate design-summary, QoR score, checklist, and step reports
   rpc           Run the private ECC JSON-RPC runtime
@@ -200,7 +202,7 @@ $ ecc init gcd
 [design]
 name = "gcd"
 top = "gcd"
-rtl = ["rtl/gcd.v"]      # 单个 Verilog 文件，或多源时指向一个 filelist（如 rtl/filelist.f）
+rtl = ["rtl/gcd.v"]      # 一个或多个 Verilog 源文件，也可指向一个 filelist（如 rtl/filelist.f）
 # 非 RTL 范围可按需声明入口输入：
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
@@ -606,6 +608,23 @@ $ ecc config floorplan  # 步骤级
   inspect: ecc config floorplan --json
 ```
 
+## 8.5. project / workspace — 编辑项目资源与刷新 workspace
+
+`ecc project` 只写项目根目录的 `ecc.toml`；它不修改已创建 workspace。支持的字段覆盖 `[design]` 的 `name`、`top`、`rtl`、`netlist`、`golden_netlist`、`def`、`sdc`、`spef`、`clock_port`、`frequency_mhz`，以及 `pdk.name`、`pdk.root` 和 `flow.preset`。
+
+```bash
+ecc project set design.def inputs/gcd.def
+ecc project set design.rtl rtl/gcd.sv rtl/alu.sv  # 整体替换 RTL 列表
+ecc project add design.rtl rtl/fifo.sv
+ecc project remove design.rtl rtl/alu.sv
+ecc project unset design.spef
+ecc project show [KEY]
+```
+
+`ecc workspace refresh NAME --project DIR` 用当前 `ecc.toml` 重建一个已在 `project.json` 声明的 workspace，但不执行 flow。它会替换该 workspace 的复制输入、工具配置、状态和产物；完成后再执行 `ecc run --workspace NAME`。`ecc run --workspace NAME --overwrite` 则是刷新后立即执行的既有快捷方式。
+
+资源输入、PDK 路径和 `flow.preset` 改动必须使用 refresh，因为它们会改变 workspace 的输入快照或 flow 结构。
+
 ## 9. param — 参数管理
 
 ```bash
@@ -616,9 +635,10 @@ ecc param show KEY                  # 查看单个参数（值/默认/来源/类
 ecc param set KEY VALUE             # 写入 ecc.toml（保留注释与格式）
 ecc param unset KEY                 # 移除覆盖，恢复默认值
 ecc param diff                      # 只显示与默认值不同的参数
+ecc param set KEY VALUE --workspace NAME  # 仅修改指定 workspace，不写 ecc.toml
 ```
 
-通用选项：`--project DIR`、`--json / --jsonl / --plain`。
+通用选项：`--project DIR`、`--json / --jsonl / --plain`。`list`、`show`、`set`、`unset` 和 `diff` 还接受 `--workspace NAME`。此时参数写入该 workspace 的 `home/params.toml`，刷新其生成配置，并将参数所属步骤及其后缀标记为待执行；后续 `ecc run --workspace NAME` 从该步骤继续。workspace 局部设置仅支持 `ecc param list --all` 中的已审核参数，`pdk.*` 路径字段仍需通过 `ecc workspace refresh` 更新。
 
 ```console
 $ ecc param list
