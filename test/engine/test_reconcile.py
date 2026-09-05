@@ -18,11 +18,11 @@ RTL2GDS_STEPS = [
     ("Timing optimization", "sizer"),
     ("route", "ecc"),
     ("filler", "ecc"),
-    ("lvs", "ecc"),
-    ("drc", "ecc"),
-    ("postRouteLec", "yosys_lec"),
     ("RCX", "ecc"),
     ("sta", "ecc"),
+    ("lvs", "ecc"),
+    ("postRouteLec", "yosys_lec"),
+    ("drc", "ecc"),
     ("Harden", "ecc"),
 ]
 LEGACY_RTL2GDS_STEPS = RTL2GDS_STEPS[:-3]
@@ -112,7 +112,7 @@ class TestReconcile:
         result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "extended"
-        assert result.appended == ("RCX", "sta", "Harden")
+        assert result.appended == tuple(name for name, _tool in FULL_FLOW_SUFFIX)
         steps = _flow_steps(workspace_dir)
         assert [(s["name"], s["tool"]) for s in steps] == RTL2GDS_STEPS
         assert all(s["state"] == "Success" for s in steps[: len(LEGACY_RTL2GDS_STEPS)])
@@ -128,7 +128,7 @@ class TestReconcile:
         result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "extended"
-        assert result.appended == ("RCX", "sta", "Harden")
+        assert result.appended == tuple(name for name, _tool in FULL_FLOW_SUFFIX)
 
     def test_equal_all_success_is_no_op(self, tmp_path):
         workspace_dir = _write_workspace(
@@ -167,7 +167,12 @@ class TestReconcile:
     def test_target_prefix_noop_even_with_unfinished_extras(self, tmp_path):
         # Extra steps beyond the target are never the run's business, and
         # the workspace's [flow] is never widened to cover them.
-        states = ["Success"] * len(LEGACY_RTL2GDS_STEPS) + ["Unstart"] * len(FULL_FLOW_SUFFIX)
+        target_end = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "postRouteLec"
+        )
+        states = ["Success"] * (target_end + 1) + ["Unstart"] * (
+            len(RTL2GDS_STEPS) - target_end - 1
+        )
         workspace_dir = _write_workspace(
             tmp_path,
             RTL2GDS_STEPS,

@@ -283,18 +283,18 @@ ecc run --preset rtl2gds
 | 7 | timing optimization | sizer | 时序优化（cell sizing） |
 | 8 | routing | ecc | 布线 |
 | 9 | filler | ecc | 填充单元插入 |
-| 10 | lvs | ecc | 版图与原理图一致性检查 |
-| 11 | drc | ecc | 物理规则检查 |
-| 12 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
-| 13 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
-| 14 | sta | ecc | 多 corner 静态时序分析 |
+| 10 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
+| 11 | sta | ecc | 多 corner 静态时序分析 |
+| 12 | lvs | ecc | 版图与原理图一致性检查 |
+| 13 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
+| 14 | drc | ecc | 物理规则检查 |
 | 15 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
 
 ```mermaid
 graph LR
     A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
-    G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
+    G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
 对新建或 `--overwrite` 的目标，`ecc run` 启动前会预检捆绑的 ecc-tools，以及 preset 选中的 Yosys、DreamPlace 和 Sizer（仅含 Timing optimization 的 flow，如 `rtl2gds`）；缺失则以 `env_not_ready` fail-fast 并提示 `ecc doctor`。已有 workspace 或 `--workspace` 重跑不做预检，缺 Sizer 时仍可能在 Timing optimization 步骤失败。
@@ -350,11 +350,11 @@ $ ecc status
     timing optimization (sizer) success 0:0:4
     routing (ecc) success 0:0:6
     filler (ecc) success 0:0:2
-    lvs (ecc) success 0:0:1
-    drc (ecc) success 0:0:2
-    postroutelec (yosys_lec) success 0:0:1
     rcx (ecc) success 0:0:0
     sta (ecc) success 0:2:35
+    lvs (ecc) success 0:0:1
+    postroutelec (yosys_lec) success 0:0:1
+    drc (ecc) success 0:0:2
     harden (ecc) success 0:0:11
 rc=0
 ```

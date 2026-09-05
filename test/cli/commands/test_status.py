@@ -35,11 +35,11 @@ class TestStatus:
             "timing_optimization",
             "routing",
             "filler",
-            "lvs",
-            "drc",
-            "postroutelec",
             "rcx",
             "sta",
+            "lvs",
+            "postroutelec",
+            "drc",
             "harden",
         ]
 

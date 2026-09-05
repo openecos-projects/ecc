@@ -16,11 +16,11 @@ def build_rtl2gds_flow() -> list:
     steps.append((StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
     steps.append((StepEnum.ROUTING, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.FILLER, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart))
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
     return steps

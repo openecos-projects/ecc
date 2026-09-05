@@ -48,11 +48,11 @@ RTL2GDS_NAMES = [
     "Timing optimization",
     "route",
     "filler",
-    "lvs",
-    "drc",
-    "postRouteLec",
     "RCX",
     "sta",
+    "lvs",
+    "postRouteLec",
+    "drc",
     "Harden",
 ]
 
