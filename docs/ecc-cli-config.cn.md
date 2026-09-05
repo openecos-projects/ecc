@@ -105,7 +105,7 @@ graph LR
 
 ### 1.2 每步骤直配 schema 与 PDK 路径
 
-`chipcompiler/cli/project/config_params/` 为每个配置 owner 保留一个人工审核的 Python schema 文件。所有静态工具字段均可由 `ecc param` 修改；默认 `ecc param list` 只保留旧参数和已覆盖字段，使用以下命令检查完整字段、类型和 JSON 目标：
+`chipcompiler/data/config_params/` 为每个配置 owner 保留一个人工审核的 Python schema 文件。所有静态工具字段均可由 `ecc param` 修改；默认 `ecc param list` 只保留旧参数和已覆盖字段，使用以下命令检查完整字段、类型和 JSON 目标：
 
 ```bash
 ecc param list --step cts

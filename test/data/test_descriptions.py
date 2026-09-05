@@ -2,11 +2,11 @@ import json
 from inspect import Parameter, signature
 from pathlib import Path
 
-from chipcompiler.cli.project.config_params import CONFIG_PARAM_SCHEMAS
-from chipcompiler.cli.project.config_params.common import config_param
 from chipcompiler.cli.project.params import PARAM_REGISTRY
+from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
+from chipcompiler.data.config_params.common import config_param
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _DREAMPLACE_PARAMETERS = (
     _REPO_ROOT / "chipcompiler/thirdparty/ecc-dreamplace/dreamplace/params.json"
 )

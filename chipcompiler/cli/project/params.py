@@ -1,8 +1,8 @@
 import json
 from dataclasses import dataclass
 
-from chipcompiler.cli.project.config_params import CONFIG_PARAM_SCHEMAS
-from chipcompiler.cli.project.config_params.common import ParamSchema
+from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
+from chipcompiler.data.config_params.common import ParamSchema
 
 _LEGACY_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
     ParamSchema(

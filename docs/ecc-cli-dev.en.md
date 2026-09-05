@@ -178,12 +178,12 @@ uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package
 
 ### 5.1 Adding a tunable parameter (the param system)
 
-Legacy semantic parameters remain in `cli/project/params.py::_LEGACY_PARAM_REGISTRY`. Direct tool configuration belongs in one reviewed module per owner under `cli/project/config_params/` (`cts.py`, `floorplan.py`, `dreamplace.py`, and so on). `ParamSchema` has one target: legacy `maps_to`, a JSON `config_target`, or a whitelisted PDK `pdk_target`.
+Legacy semantic parameters remain in `cli/project/params.py::_LEGACY_PARAM_REGISTRY`. Direct tool configuration belongs in one reviewed module per owner under `data/config_params/` (`cts.py`, `floorplan.py`, `dreamplace.py`, and so on). `ParamSchema` has one target: legacy `maps_to`, a JSON `config_target`, or a whitelisted PDK `pdk_target`.
 
-Use `config_param()` for a reviewed static template field (`description` is a required keyword argument, written per parameter by a human reviewer and enforced by `test/cli/params/test_descriptions.py`):
+Use `config_param()` for a reviewed static template field (`description` is a required keyword argument, written per parameter by a human reviewer and enforced by `test/data/test_descriptions.py`):
 
 ```python
-# cli/project/config_params/cts.py
+# chipcompiler/data/config_params/cts.py
 config_param(
     "cts.skew_bound",
     "cts",

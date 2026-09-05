@@ -178,12 +178,12 @@ uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package
 
 ### 5.1 新增可调参数（param 体系）
 
-旧的语义参数仍在 `cli/project/params.py::_LEGACY_PARAM_REGISTRY`。工具 JSON 的直配字段按 owner 分别放在 `cli/project/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 只能拥有一种目标：旧的 `maps_to`、JSON `config_target` 或白名单 PDK `pdk_target`。
+旧的语义参数仍在 `cli/project/params.py::_LEGACY_PARAM_REGISTRY`。工具 JSON 的直配字段按 owner 分别放在 `data/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 只能拥有一种目标：旧的 `maps_to`、JSON `config_target` 或白名单 PDK `pdk_target`。
 
-已审核的静态模板字段使用 `config_param()` 声明（`description` 为必填关键字参数，逐参数人工撰写，`test/cli/params/test_descriptions.py` 会校验）：
+已审核的静态模板字段使用 `config_param()` 声明（`description` 为必填关键字参数，逐参数人工撰写，`test/data/test_descriptions.py` 会校验）：
 
 ```python
-# cli/project/config_params/cts.py
+# chipcompiler/data/config_params/cts.py
 config_param(
     "cts.skew_bound",
     "cts",
