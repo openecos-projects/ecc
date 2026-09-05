@@ -324,7 +324,12 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
     base_root = _normalize_path(cfg.project_dir, assembled.get("pdk_root"))
     toml_root = _normalize_path(cfg.project_dir, cfg.pdk_root)
     if "pdk.root" in explicit and base_root != toml_root:
-        keys.append("pdk_root")
+        # An explicit empty root takes effect through the env fallback (the
+        # same resolution a run uses); only a genuinely different effective
+        # root diverges from the manifest base.
+        effective_root = toml_root or _env_resolved_pdk_root(cfg)
+        if effective_root != base_root:
+            keys.append("pdk_root")
 
     # Ordered comparison: source order is execution-significant (filelist
     # compilation order), so a reordered list diverges; duplicates survive.
@@ -410,6 +415,13 @@ def _normalize_path(project_dir: str, value) -> str:
     if os.path.isabs(value):
         return os.path.normpath(value)
     return os.path.normpath(os.path.join(project_dir, value))
+
+
+def _env_resolved_pdk_root(cfg) -> str:
+    """The env-fallback root an explicit empty ``pdk.root`` actually uses."""
+    from chipcompiler.cli.project.config import resolve_pdk_root
+
+    return _normalize_path(cfg.project_dir, resolve_pdk_root(cfg))
 
 
 def _normalized_sources(project_dir: str, sources: list[str]) -> tuple[str, ...]:

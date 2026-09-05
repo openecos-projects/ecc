@@ -347,7 +347,13 @@ class TestMigrate:
         os.unlink(os.path.join(run_dir, "home", "params.toml"))
         import json as _json
 
-        long_keys = {"Design": "gcd", "Top module": "gcd", "Clock": "clk", "PDK": "ics55"}
+        long_keys = {
+            "Design": "gcd",
+            "Top module": "gcd",
+            "Clock": "clk",
+            "PDK": "ics55",
+            "PDK Root": str(pdk_root),
+        }
         long_keys["PDK Config"] = legacy["PDK Config"]
         Path(run_dir, "home", "parameters.json").write_text(_json.dumps(long_keys))
 

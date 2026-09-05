@@ -5,7 +5,7 @@ from pathlib import Path
 from chipcompiler.cli import main as cli_main
 
 
-def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds"):
+def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None):
     """A valid existing workspace: home/params.toml + flow.json with given steps."""
     from chipcompiler.data.workspace_config import save_workspace_config
     from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
@@ -31,11 +31,10 @@ def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds"
     os.makedirs(home, exist_ok=True)
     with open(os.path.join(home, "flow.json"), "w") as f:
         json.dump({"steps": steps}, f)
-    assert save_workspace_config(
-        run_dir,
-        {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
-        {"preset": preset},
-    )
+    parameters = {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"}
+    if pdk_root is not None:
+        parameters["pdk_root"] = str(pdk_root)
+    assert save_workspace_config(run_dir, parameters, {"preset": preset})
 
 
 RTL2GDS_NAMES = [
@@ -76,9 +75,8 @@ class TestFlowContinuation:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
 
         class Flow:
             def __init__(self, workspace):
@@ -110,17 +108,15 @@ class TestFlowContinuation:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
         flow_before = Path(run_dir, "home", "flow.json").read_bytes()
 
         rc = cli_main.run(["run", "--project", project_dir, "--set", "cts.max_fanout=16", "--json"])
 
         assert rc != 0
-        record, hint = _records(capsys)
+        (record,) = _records(capsys)
         assert record["error"] == "set_requires_fresh_run"
-        assert hint["warning"] == "legacy_layout_detected"
         assert Path(run_dir, "home", "flow.json").read_bytes() == flow_before
 
     def test_params_warning_on_existing_run(
@@ -137,11 +133,10 @@ class TestFlowContinuation:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
             f.write("\n[params.cts]\nmax_fanout = 16\n")
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
 
         class Flow:
             def __init__(self, workspace):
@@ -169,17 +164,19 @@ class TestFlowContinuation:
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
         Path(run_dir, "home", "params.toml").write_text("[params\nbroken =")
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
 
         assert rc != 0
-        record, hint = _records(capsys)
+        (record,) = _records(capsys)
         assert record["error"] == "workspace_config_invalid"
-        assert hint["warning"] == "legacy_layout_detected"
 
 
 def _tree_snapshot(root):
@@ -319,9 +316,9 @@ class TestFlowMismatchZeroMutation:
     def test_existing_run_rejects_symlinked_legacy_target(
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
     ):
-        """A symlinked legacy run target must never be executed or mutated:
-        the run fails loud with run_target_unsafe and the external workspace
-        behind the link is left byte-identical."""
+        """A symlinked run target must never be executed or mutated: the run
+        fails loud with run_target_unsafe and the external workspace behind
+        the link is left byte-identical."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         monkeypatch.setattr(
@@ -330,7 +327,7 @@ class TestFlowMismatchZeroMutation:
         )
         external = tmp_path / "external-ws"
         _write_existing_workspace(str(external), RTL2GDS_NAMES)
-        os.symlink(str(external), os.path.join(project_dir, "runs", "default"))
+        os.symlink(str(external), os.path.join(project_dir, "default"))
 
         flow_before = (external / "home" / "flow.json").read_bytes()
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
@@ -379,7 +376,12 @@ class TestFlowMismatchZeroMutation:
             lambda name, root, overrides=None: None,
         )
         run_dir = os.path.join(project_dir, "ws_0001")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES, states=["Unstart"] * len(RTL2GDS_NAMES))
+        _write_existing_workspace(
+            run_dir,
+            RTL2GDS_NAMES,
+            states=["Unstart"] * len(RTL2GDS_NAMES),
+            pdk_root=pdk_root,
+        )
         manifest_path = _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
 
         class Flow:
@@ -428,13 +430,17 @@ def _hold_workspace_lock_briefly(workspace_dir, seconds=0.4):
 
 
 class TestWorkspaceRunLock:
-    def test_workspace_run_waits_for_an_active_workspace_lock(self, tmp_path, capsys):
+    def test_workspace_run_waits_for_an_active_workspace_lock(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
         """Two runs of the same workspace serialize on the sibling lock."""
-        run_dir = os.path.join(str(tmp_path), "ws")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = os.path.join(project_dir, "ws")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
         thread, released = _hold_workspace_lock_briefly(run_dir)
 
-        rc = cli_main.run(["run", "--workspace", run_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "ws", "--json"])
 
         thread.join()
         assert rc == 0

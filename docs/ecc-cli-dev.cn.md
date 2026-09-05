@@ -201,7 +201,7 @@ config_param(
 `run` 有两条互斥路径（`cli/command_handlers/project.py` 的 `run()` / `_run_workspace()`）：
 
 - **新建 workspace**：解析 `[design]` 输入声明、PDK、参数与请求入口步骤；只校验入口步骤所需文件；先原子登记受管名称到 `project.json`（`not_started`）；预检工具；在 `<project>/<workspace 名称>` 调用 `create_workspace`。`create_workspace` 将输入复制到 `origin/` 并产出全部步骤配置，CLI 后续不改写配置。正常新建 flow 用 preset；`--from A --to B` 改用 `rtl2gds.build_flow_range(A, B)` 动态构建包含式规范范围。新范围不能与 `--preset`、`--overwrite`、`--resume`、`--only`、`--force` 组合。
-- **已有 workspace**：`load_workspace` 后由 `chipcompiler.engine.rerun` 的 `run_resume`、`run_from` 或 `run_only` 原地复跑。`--from A --to B` 是已有 flow 的包含式范围，会将其后的步骤状态失效但保留其输出文件。已有 workspace 不会重新预检输入，也不会改写已复制输入或配置。
+- **已有 workspace**：先由 `chipcompiler/engine/reconcile.py` 把持久化 flow 与目标对齐（前缀 → 追加扩展；超集且全成 → `no_op`；分叉 → `flow_mismatch`），再 `load_workspace` 后由 `chipcompiler.engine.rerun` 的 `run_resume`、`run_from` 或 `run_only` 原地复跑。`--from A --to B` 是已有 flow 的包含式范围，会将其后的步骤状态失效但保留其输出文件。已有 workspace 不会重新预检输入，也不会改写已复制输入或配置。
 
 项目 preset 的步骤序列定义在 `chipcompiler/rtl2gds/builder.py`（`build_*_flow()` / `get_flow_builders()`），不在 CLI 层。`build_flow_range()` 对规范的 `build_rtl2gds_flow()` 结果切片，步骤别名和顺序只有一份来源。修改序列时须同步引擎默认 flow、`StepEnum` 与 manifest 范围映射；CLI 只负责参数解析、输入契约、进度渲染选择与结果映射。
 

@@ -8,43 +8,55 @@ import pytest
 from chipcompiler.cli import main as cli_main
 
 
-def _make_workspace(tmp_path, name="ws"):
-    ws = str(tmp_path / name)
+def _make_workspace(project_dir, name="ws"):
+    ws = os.path.join(str(project_dir), name)
     os.makedirs(ws)
     return ws
 
 
-class TestWorkspaceConflict:
-    def test_status_conflicts_with_project(self, tmp_path, capsys, monkeypatch):
+class TestWorkspaceSelection:
+    """--workspace names a managed workspace inside --project; the two
+    options combine (no conflict) and read-only commands never load the
+    workspace."""
+
+    def test_status_resolves_workspace_inside_project(self, tmp_path, capsys, monkeypatch):
         monkeypatch.setattr(
             "chipcompiler.data.load_workspace",
             lambda _path: pytest.fail("read-only commands must not load a workspace"),
         )
 
-        rc = cli_main.run(["status", "--project", "p", "--workspace", "w", "--json"])
+        rc = cli_main.run(["status", "--project", str(tmp_path), "--workspace", "w", "--json"])
 
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 1
-        assert record["error"] == "project_workspace_conflict"
+        assert record["workspace_id"] == "w"
+        assert record["status"] == "missing"
+        assert record["workspace"] == str(tmp_path / "w")
 
-    def test_log_conflicts_with_run_id(self, tmp_path, capsys):
+    def test_log_rejects_legacy_run_id_option(self, tmp_path, capsys):
         rc = cli_main.run(["log", "--run-id", "r", "--workspace", "w", "--json"])
 
+        captured = capsys.readouterr()
+        assert rc == 2
+        assert "No such option: --run-id" in captured.err
+        assert captured.out == ""
+
+    def test_config_resolves_workspace_inside_project(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setattr(
+            "chipcompiler.data.load_workspace",
+            lambda _path: pytest.fail("read-only commands must not load a workspace"),
+        )
+
+        rc = cli_main.run(["config", "--project", str(tmp_path), "--workspace", "w", "--json"])
+
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 1
-        assert record["error"] == "project_workspace_conflict"
-
-    def test_config_conflicts_with_project(self, tmp_path, capsys):
-        rc = cli_main.run(["config", "--project", "p", "--workspace", "w", "--json"])
-
-        record = json.loads(capsys.readouterr().out)["records"][0]
-        assert rc == 1
-        assert record["error"] == "project_workspace_conflict"
+        assert record["error"] == "missing_config"
 
 
 class TestInvalidWorkspace:
     @pytest.mark.parametrize("command", (["status"], ["log"], ["config"]))
-    def test_absent_directory_is_invalid(self, tmp_path, capsys, command):
+    def test_workspace_path_is_not_a_name(self, tmp_path, capsys, command):
         absent = str(tmp_path / "absent")
 
         rc = cli_main.run([*command, "--workspace", absent, "--json"])
@@ -52,7 +64,7 @@ class TestInvalidWorkspace:
         record = json.loads(capsys.readouterr().out)["records"][0]
         assert rc == 1
         assert record["error"] == "invalid_workspace"
-        assert record["workspace"] == absent
+        assert record["reason"] == f"invalid_workspace: {absent!r} is not a single workspace name"
 
 
 class TestWorkspaceViews:
@@ -63,12 +75,12 @@ class TestWorkspaceViews:
         create_flow_json(ws, profile="inspect")
         create_step_dir(ws, "CTS", "ecc")
 
-        rc = cli_main.run(["status", "--workspace", ws, "--json"])
+        rc = cli_main.run(["status", "--project", str(tmp_path), "--workspace", "ws", "--json"])
 
         data = json.loads(capsys.readouterr().out)
         assert rc == 0
         assert data["records"][0]["workspace"] == ws
-        assert data["records"][0]["run"] == "ws"
+        assert data["records"][0]["workspace_id"] == "ws"
         assert any(r.get("step") == "cts" for r in data["records"][1:])
 
     def test_log_reads_step_log(self, tmp_path, capsys, create_flow_json):
@@ -84,7 +96,9 @@ class TestWorkspaceViews:
             files={"log/synthesis.log": "Error: bad thing\n"},
         )
 
-        rc = cli_main.run(["log", "synthesis", "--workspace", ws, "--json"])
+        rc = cli_main.run(
+            ["log", "synthesis", "--project", str(tmp_path), "--workspace", "ws", "--json"]
+        )
 
         records = json.loads(capsys.readouterr().out)["records"]
         assert rc == 0
@@ -97,7 +111,9 @@ class TestWorkspaceViews:
         create_flow_json(ws, profile="inspect")
         create_cts_workspace_config(ws)
 
-        rc = cli_main.run(["config", "cts", "--workspace", ws, "--json"])
+        rc = cli_main.run(
+            ["config", "cts", "--project", str(tmp_path), "--workspace", "ws", "--json"]
+        )
 
         records = json.loads(capsys.readouterr().out)["records"]
         assert rc == 0
@@ -124,8 +140,10 @@ class TestReadOnly:
             )
 
         before = snapshot()
-        cli_main.run(["status", "--workspace", ws])
-        cli_main.run(["log", "synthesis", "--workspace", ws, "--json"])
-        cli_main.run(["config", "--workspace", ws, "--json"])
+        cli_main.run(["status", "--project", str(tmp_path), "--workspace", "ws"])
+        cli_main.run(
+            ["log", "synthesis", "--project", str(tmp_path), "--workspace", "ws", "--json"]
+        )
+        cli_main.run(["config", "--project", str(tmp_path), "--workspace", "ws", "--json"])
 
         assert snapshot() == before

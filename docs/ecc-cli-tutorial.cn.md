@@ -261,7 +261,7 @@ $ ecc check
 rc=0
 ```
 
-`ecc check` 校验配置必填项、RTL 路径与 PDK 内容（tech LEF / LEF / liberty）。**先 check 再 run**——配置错误在这里就能发现，不必等到 flow 中途失败。
+`ecc check` 校验配置必填项与 PDK 内容（tech LEF / LEF / liberty）；RTL 源文件的存在性由 `ecc run` 在创建 workspace 时按入口步骤校验。**先 check 再 run**——配置错误在这里就能发现，不必等到 flow 中途失败。
 
 ## 4. 运行 RTL → Harden 全流程
 
@@ -315,20 +315,23 @@ ecc log placement          # 直接查看某步日志内容（自动高亮 ERROR
 ```console
 $ ecc status
 [status]
-  run: default
+  workspace id: default
   status: ongoing
   workspace: /home/user/ecc-demo/gcd/default
-  inspect: ecc status
-  log: ecc log
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
 
   steps:
     synthesis (yosys) success 0:0:17
-      log: ecc log synthesis
+      log: ecc log synthesis --workspace default
+    lec (yosys_lec) success 0:0:1
+      log: ecc log lec --workspace default
     floorplan (ecc) success 0:0:1
+      log: ecc log floorplan --workspace default
     placement (dreamplace) ongoing 0:0:40
-      log: ecc log placement
+      log: ecc log placement --workspace default
     cts (ecc) unstart
-    timing optimization (sizer) unstart
+      log: ecc log cts --workspace default
     ...
 ```
 
@@ -339,20 +342,21 @@ $ ecc status
 ```console
 $ ecc status
 [status]
-  run: default
+  workspace id: default
   status: success
   workspace: /home/user/ecc-demo/gcd/default
-  inspect: ecc status
-  log: ecc log
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
 
   steps:
     synthesis (yosys) success 0:0:17
+      log: ecc log synthesis --workspace default
     lec (yosys_lec) success 0:0:1
     floorplan (ecc) success 0:0:1
     placement (dreamplace) success 0:0:47
     cts (ecc) success 0:0:19
     legalization (dreamplace) success 0:0:1
-    timing optimization (sizer) success 0:0:4
+    timing_optimization (sizer) success 0:0:4
     routing (ecc) success 0:0:6
     filler (ecc) success 0:0:2
     rcx (ecc) success 0:0:0
@@ -364,7 +368,19 @@ $ ecc status
 rc=0
 ```
 
-某步失败时 `status` 为 `failed`，用 `ecc log <step>` 定位原因，处理方式见 §6 与 §7。
+运行结束的汇总同样给出下一步提示（真实输出节选）：
+
+```console
+$ ecc run --preset rtl2gds
+[workspace]
+  workspace id: default
+  status: success
+  workspace: /home/user/ecc-demo/gcd/default
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
+```
+
+某步失败时 `status` 为 `failed`，用 `ecc log <step>` 定位原因，处理方式见 §6 与 §7。再次执行 `ecc run`：已全部成功时是空操作（no_op），中断或失败时则从第一个非成功步骤自动续跑，已成功的步骤不会重跑。
 
 ### 4.4 结果都放在哪
 
@@ -604,14 +620,58 @@ ecc report qor --workspace exp1
 
 ### 6.3 重跑
 
+后端迭代中常见的四种重跑场景（示例均针对 `default` workspace）：
+
+**① 中断后继续**（最常用）：从第一个非成功步骤接着跑，已成功的步骤直接复用，不会重跑。
+
 ```bash
-ecc run --overwrite --preset rtl2gds      # 重建已选择的 workspace（有安全校验）
-ecc run --workspace default --from CTS --to route  # 重跑一个包含式范围
-ecc run --workspace default --only place --force   # 只重跑一步（已成功时需 --force）
-ecc run --workspace default --resume   # 从第一个非成功步骤继续
+ecc run --workspace default --resume
+# 不带 --resume 裸跑 ecc run --workspace default 效果相同：
+# 已全部成功 → no_op；有失败/未跑步骤 → 自动从断点续跑
 ```
 
-新建范围 workspace 时必须同时传 `--from` 和 `--to`，例如 `ecc run --workspace cts-only --from CTS --to CTS`。入口文件按首步要求校验：Synthesis 要 `rtl`；LEC 要 `netlist` 和 `golden_netlist`；Floorplan 要 `netlist`；物理步骤要 `def` 和 `netlist`；STA 要 `def`、`netlist`、`spef`；`sdc` 可选。
+**② 调参后整体重跑**：`--set` 只在新建 workspace 时生效，重跑旧 workspace 改参数要用 `--overwrite`（或干脆开一个新 workspace 对比，见 §6.2）。
+
+```bash
+ecc run --workspace default --overwrite            # 重建 default（有安全校验，只删真正的 ECC workspace 目录）
+ecc run --workspace default --overwrite --set place.target_density=0.55
+```
+
+**③ 原地重跑一段/一步**（调试某步工具行为时用）：被重跑步骤的 `output/` 会被替换，其下游步骤标记为待重跑（输出保留）。
+
+```bash
+ecc run --workspace default --from CTS --to route  # 重跑 CTS→route 这一段（含两端）
+ecc run --workspace default --from CTS             # 从 CTS 重跑到底
+ecc run --workspace default --only place           # 只跑 place 一步（已成功则 no_op）
+ecc run --workspace default --only place --force   # 已成功也强制重跑这一步
+```
+
+**④ 从中间步骤新建范围 workspace**（手上已有现成网表/DEF 时）：新建时必须同时传 `--from` 与 `--to`，两端的步骤名这时写小写别名也可以（如 `cts`、`route`）：
+
+```bash
+ecc run --workspace cts-only --from cts --to cts     # 只跑 CTS 一步的 workspace
+ecc run --workspace pnr --from floorplan --to route  # 从布局规划到布线
+```
+
+入口文件按首步要求校验：Synthesis 要 `rtl`；LEC 要 `netlist` 和 `golden_netlist`；Floorplan 要 `netlist`；物理步骤（place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden）要 `def` 和 `netlist`；STA 要 `def`、`netlist`、`spef`；`sdc` 可选。缺什么会明确报错：
+
+```console
+$ ecc run --from cts --to route
+[error]
+  step_input_missing step_input_missing: cts requires design.def
+  step_input_missing step_input_missing: cts requires design.netlist
+rc=1
+```
+
+> **步骤名怎么写**：`ecc status`/`ecc log` 展示的是小写展示名（如 `placement`、`timing_optimization`）；而 **已有** workspace 上的 `--from`/`--only`/`--to` 要用 `home/flow.json` 里的持久化名（如 `place`、`CTS`、`Timing optimization`）；只有**新建**范围（`--from A --to B` 成对出现）接受小写别名。记不住没关系——拼错时会报 `unknown_step` 并列出全部可用名，照抄即可：
+>
+> ```console
+> $ ecc run --workspace default --only placement   # 持久化名是 "place"
+> [error]
+>   unknown_step unknown step 'placement'; available steps: Synthesis, lec, Floorplan,
+>   place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
+>   postRouteLec, drc, Harden
+> ```
 
 ### 6.4 查看某步实际生效的配置
 
@@ -626,7 +686,11 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 |---|---|---|
 | `ecc: command not found` | PATH 未生效 | `source ~/.ecc-env.sh`；重开终端；或检查 `~/.local/bin` 在 PATH |
 | `[error] env_not_ready`（run 时） | preset 必需工具缺失 | 按 `ecc doctor` 输出补齐；通常是 yosys/slang，重跑 `bash docs/ecc-cli-setup.sh` |
-| `[error] run_exists` | workspace 目录已存在 | `ecc run --overwrite`，或换 `--workspace NAME` |
+| `[error] run_exists` | workspace 目录已存在但不是有效 ECC workspace | `ecc run --overwrite`，或换 `--workspace NAME`。注意：**跑完再执行 `ecc run` 不会报这个错**——已成功时是 no_op，中断时自动续跑 |
+| `[error] workspace_required` | 项目里有多个活跃 workspace，没指明用哪个 | 按报错列出的名称传 `--workspace NAME` |
+| `[error] unknown_step` | `--from`/`--only` 的步骤名拼写与 `home/flow.json` 持久化名不符（如写了 `placement`，持久化名是 `place`） | 照抄报错列出的可用步骤名；详见 §6.3 的「步骤名怎么写」 |
+| `[error] set_requires_fresh_run` | 对已有 workspace 用 `--set` | `--set` 只在新建时生效；改用 `--overwrite` 或新 `--workspace` |
+| run 汇总带 `warning: ecc.toml values override different project.json base values`（`config_layer_diverged`） | `ecc.toml` 与首次运行记录到 `project.json` 的基线实际不一致：`pdk.root` 解析到了与首次运行不同的 PDK（如环境变量改指向），或 `flow.preset` 与 workspace 声明的范围不一致（如用 `--preset synthesis_lec` 建的 workspace 配 `rtl2gds` 的 ecc.toml） | 不影响执行结果，可忽略；对齐两边即消失（`ecc pdk set-root` 或修正 `flow.preset`） |
 | `[error] signoff_incomplete`（export 时） | 必需交付物缺失（如某步失败） | `ecc signoff inspect` 看 blocked 项；`ecc status`/`ecc log` 排查失败步骤后重跑 |
 | `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk setup` 或 `ecc pdk set-root <路径>`，或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |

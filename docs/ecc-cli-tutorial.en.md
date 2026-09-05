@@ -263,7 +263,7 @@ $ ecc check
 rc=0
 ```
 
-`ecc check` validates required config fields, RTL paths, and PDK contents (tech LEF / LEF / liberty). **Always check before run** — config mistakes surface here instead of failing the flow halfway through.
+`ecc check` validates required config fields and PDK contents (tech LEF / LEF / liberty); RTL source existence is checked by `ecc run` per the entry step when it creates the workspace. **Always check before run** — config mistakes surface here instead of failing the flow halfway through.
 
 ## 4. Running the RTL → Harden Flow
 
@@ -317,20 +317,23 @@ ecc log placement          # print a step's log (ERROR/WARNING lines are highlig
 ```console
 $ ecc status
 [status]
-  run: default
+  workspace id: default
   status: ongoing
   workspace: /home/user/ecc-demo/gcd/default
-  inspect: ecc status
-  log: ecc log
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
 
   steps:
     synthesis (yosys) success 0:0:17
-      log: ecc log synthesis
+      log: ecc log synthesis --workspace default
+    lec (yosys_lec) success 0:0:1
+      log: ecc log lec --workspace default
     floorplan (ecc) success 0:0:1
+      log: ecc log floorplan --workspace default
     placement (dreamplace) ongoing 0:0:40
-      log: ecc log placement
+      log: ecc log placement --workspace default
     cts (ecc) unstart
-    timing optimization (sizer) unstart
+      log: ecc log cts --workspace default
     ...
 ```
 
@@ -341,20 +344,21 @@ When the run finishes (reference machine for this article: total flow time **4 m
 ```console
 $ ecc status
 [status]
-  run: default
+  workspace id: default
   status: success
   workspace: /home/user/ecc-demo/gcd/default
-  inspect: ecc status
-  log: ecc log
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
 
   steps:
     synthesis (yosys) success 0:0:17
+      log: ecc log synthesis --workspace default
     lec (yosys_lec) success 0:0:1
     floorplan (ecc) success 0:0:1
     placement (dreamplace) success 0:0:47
     cts (ecc) success 0:0:19
     legalization (dreamplace) success 0:0:1
-    timing optimization (sizer) success 0:0:4
+    timing_optimization (sizer) success 0:0:4
     routing (ecc) success 0:0:6
     filler (ecc) success 0:0:2
     rcx (ecc) success 0:0:0
@@ -366,7 +370,19 @@ $ ecc status
 rc=0
 ```
 
-If a step fails, `status` shows `failed`; locate the cause with `ecc log <step>` — remedies in §6 and §7.
+The end-of-run summary points you to the next commands the same way (excerpt from the real output):
+
+```console
+$ ecc run --preset rtl2gds
+[workspace]
+  workspace id: default
+  status: success
+  workspace: /home/user/ecc-demo/gcd/default
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
+```
+
+If a step fails, `status` shows `failed`; locate the cause with `ecc log <step>` — remedies in §6 and §7. Running `ecc run` again is a no-op when every step has already succeeded; after an interruption or a failure it automatically resumes from the first non-successful step — steps that already succeeded are not rerun.
 
 ### 4.4 Where everything lands
 
@@ -606,14 +622,58 @@ ecc report qor --workspace exp1
 
 ### 6.3 Rerunning
 
+Four rerun scenarios come up all the time in backend iteration (the examples all target the `default` workspace):
+
+**① Resume after an interruption** (the most common): continue from the first non-successful step; steps that already succeeded are reused as-is, never rerun.
+
 ```bash
-ecc run --overwrite --preset rtl2gds      # rebuild the selected workspace (with safety checks)
-ecc run --workspace default --from CTS --to route  # rerun an inclusive range
-ecc run --workspace default --only place --force   # rerun a single step (--force needed if it already succeeded)
-ecc run --workspace default --resume   # continue from the first non-successful step
+ecc run --workspace default --resume
+# A bare `ecc run --workspace default` (no --resume) behaves the same:
+# all steps succeeded → no_op; failed/unstarted steps remain → automatically resume from where it stopped
 ```
 
-For a new range workspace, pass both `--from` and `--to`, for example `ecc run --workspace cts-only --from CTS --to CTS`. The declared entry files must satisfy the first step: `rtl` for Synthesis; `netlist` plus `golden_netlist` for LEC; `netlist` for Floorplan; `def` plus `netlist` for physical steps; and `def`, `netlist`, and `spef` for STA. `sdc` is optional.
+**② Full rebuild after a parameter change**: `--set` applies only when a workspace is created; to change parameters on an existing workspace, rerun it with `--overwrite` (or simply create a new workspace for comparison, see §6.2).
+
+```bash
+ecc run --workspace default --overwrite            # rebuild default (with safety checks; deletes only the actual ECC workspace directory)
+ecc run --workspace default --overwrite --set place.target_density=0.55
+```
+
+**③ Rerun a range or a single step in place** (when debugging a step's tool behavior): the rerun steps' `output/` is replaced, and their downstream steps are marked for rerun (outputs kept).
+
+```bash
+ecc run --workspace default --from CTS --to route  # rerun the CTS→route range (both ends inclusive)
+ecc run --workspace default --from CTS             # rerun everything from CTS on
+ecc run --workspace default --only place           # run just the place step (no_op if it already succeeded)
+ecc run --workspace default --only place --force   # rerun this step even if it already succeeded
+```
+
+**④ Create a new range workspace from a mid-flow step** (when you already have a netlist/DEF at hand): creation requires both `--from` and `--to`, and the step names at both ends may then be written with lowercase aliases too (e.g. `cts`, `route`):
+
+```bash
+ecc run --workspace cts-only --from cts --to cts     # a workspace that runs only the CTS step
+ecc run --workspace pnr --from floorplan --to route  # floorplan through routing
+```
+
+The declared entry files are validated against the first step's requirements: `rtl` for Synthesis; `netlist` plus `golden_netlist` for LEC; `netlist` for Floorplan; `def` plus `netlist` for the physical steps (place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden); and `def`, `netlist`, and `spef` for STA. `sdc` is optional. Anything missing fails with a clear error:
+
+```console
+$ ecc run --from cts --to route
+[error]
+  step_input_missing step_input_missing: cts requires design.def
+  step_input_missing step_input_missing: cts requires design.netlist
+rc=1
+```
+
+> **How to spell step names**: `ecc status`/`ecc log` show lowercase display names (e.g. `placement`, `timing_optimization`), while `--from`/`--only`/`--to` on an **existing** workspace must use the persisted names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`); only **creating** a new range (`--from A --to B` given as a pair) accepts the lowercase aliases. Don't worry about memorizing this — a misspelled name fails with `unknown_step` and lists every accepted name, so just copy one:
+>
+> ```console
+> $ ecc run --workspace default --only placement   # the persisted name is "place"
+> [error]
+>   unknown_step unknown step 'placement'; available steps: Synthesis, lec, Floorplan,
+>   place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
+>   postRouteLec, drc, Harden
+> ```
 
 ### 6.4 Inspecting a step's effective configuration
 
@@ -628,7 +688,11 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 |---|---|---|
 | `ecc: command not found` | PATH not effective | `source ~/.ecc-env.sh`; open a new terminal; check `~/.local/bin` is on PATH |
 | `[error] env_not_ready` (at run) | tools required by the preset are missing | Follow `ecc doctor`; usually yosys/slang — rerun `bash docs/ecc-cli-setup.sh` |
-| `[error] run_exists` | the workspace directory already exists | `ecc run --overwrite`, or select a different `--workspace NAME` |
+| `[error] run_exists` | the workspace directory already exists but is not a valid ECC workspace | `ecc run --overwrite`, or select a different `--workspace NAME`. Note: **running `ecc run` again after the flow completed does NOT raise this error** — it no-ops when everything succeeded, and auto-resumes after an interruption |
+| `[error] workspace_required` | the project has multiple active workspaces and none was specified | pass `--workspace NAME` with one of the names listed in the error |
+| `[error] unknown_step` | a step name passed to `--from`/`--only` doesn't match the persisted names in `home/flow.json` (e.g. you wrote `placement`; the persisted name is `place`) | copy one of the available step names listed in the error; see the "How to spell step names" note in §6.3 |
+| `[error] set_requires_fresh_run` | `--set` used on an existing workspace | `--set` applies only at creation; use `--overwrite` or a new `--workspace` instead |
+| run summary carries `warning: ecc.toml values override different project.json base values` (`config_layer_diverged`) | `ecc.toml` effectively disagrees with the baseline the first run recorded in `project.json`: `pdk.root` resolves to a different PDK than the first run used (e.g. the env var was repointed), or `flow.preset` differs from the workspace's declared range (e.g. a workspace created with `--preset synthesis_lec` under an `rtl2gds` ecc.toml) | does not affect the run result — safe to ignore; aligning the two sides makes it go away (`ecc pdk set-root`, or fix `flow.preset`) |
 | `[error] signoff_incomplete` (at export) | required deliverables missing (e.g. a failed step) | `ecc signoff inspect` for blocked items; debug with `ecc status`/`ecc log`, then rerun |
 | `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk setup` or `ecc pdk set-root <path>`, or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |

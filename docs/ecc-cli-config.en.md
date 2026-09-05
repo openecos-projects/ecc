@@ -61,7 +61,7 @@ graph LR
 
 ### 0.3 Which configurations each step uses
 
-Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG_KEYS`):
+Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG_KEYS` in [chipcompiler/data/workspace/__init__.py](../chipcompiler/data/workspace/__init__.py)):
 
 | Step | db_ecc | Step-specific config | Notes |
 |---|---|---|---|

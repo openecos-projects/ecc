@@ -811,7 +811,7 @@ class TestRunFlowWithProgress:
         buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(run_id="exp1"), "myproject", buf)
         plain = _strip_ansi("".join(buf.written))
-        assert "  inspect: ecc log synthesis --project myproject --run-id exp1\n" in plain
+        assert "  inspect: ecc log synthesis --project myproject --workspace exp1\n" in plain
 
     def test_step_headers_emitted(self):
         flow = _make_flow(

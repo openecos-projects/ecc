@@ -458,12 +458,19 @@ class TestMissingConfigErrorRecord:
 
 
 class TestCheckFlowRunShape:
+    """The legacy [flow].run key is rejected in every spelling: managed
+    workspaces replace config-declared run directories."""
+
     @pytest.mark.parametrize(
-        "run_line",
-        ['run = "exp1"', 'run = "sweeps/s1/r4"', 'run = "/data/runs/x"'],
+        ("run_line", "value"),
+        [
+            ('run = "exp1"', "exp1"),
+            ('run = "sweeps/s1/r4"', "sweeps/s1/r4"),
+            ('run = "/data/runs/x"', "/data/runs/x"),
+        ],
     )
-    def test_check_accepts_run_shapes(
-        self, tmp_path, monkeypatch, create_cli_project, set_flow_run, run_line
+    def test_check_rejects_well_formed_run_shapes(
+        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run, run_line, value
     ):
         project_dir = create_cli_project()
         set_flow_run(project_dir, run_line)
@@ -472,21 +479,24 @@ class TestCheckFlowRunShape:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["check", "--project", project_dir])
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
 
-        assert rc == 0
+        assert rc == 1
+        records = json.loads(capsys.readouterr().out)["records"]
+        reason = f"unsupported_flow_run: [flow].run is not supported ({value!r})"
+        assert any(record.get("reason") == reason for record in records)
 
     @pytest.mark.parametrize(
         ("run_line", "reason"),
         [
-            ('run = ""', "unsupported flow.run: "),
-            ('run = "   "', "unsupported flow.run:    "),
-            ('run = " exp1 "', "unsupported flow.run:  exp1 "),
-            ("run = 42", "unsupported flow.run: 42"),
-            ('run = "\\u0000"', "unsupported flow.run: \x00"),
+            ('run = ""', "unsupported_flow_run: [flow].run is not supported ('')"),
+            ('run = "   "', "unsupported_flow_run: [flow].run is not supported ('   ')"),
+            ('run = " exp1 "', "unsupported_flow_run: [flow].run is not supported (' exp1 ')"),
+            ("run = 42", "unsupported_flow_run: [flow].run is not supported (42)"),
+            ('run = "\\u0000"', "unsupported_flow_run: [flow].run is not supported ('\\x00')"),
         ],
     )
-    def test_check_rejects_invalid_run_shapes(
+    def test_check_rejects_degenerate_run_shapes(
         self, tmp_path, capsys, create_cli_project, set_flow_run, run_line, reason
     ):
         project_dir = create_cli_project()
@@ -499,8 +509,10 @@ class TestCheckFlowRunShape:
         assert any(record.get("reason") == reason for record in records)
 
 
-class TestCheckRunDirDisplay:
-    def test_check_reports_default_run_dir(self, tmp_path, monkeypatch, capsys, create_cli_project):
+class TestCheckWorkspaceDisplay:
+    def test_check_reports_default_workspace(
+        self, tmp_path, monkeypatch, capsys, create_cli_project
+    ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -515,151 +527,46 @@ class TestCheckRunDirDisplay:
             "project": "gcd",
             "status": "checked",
             "config": "ecc.toml",
-            "run_dir": "runs/default",
+            "workspace": "default",
             "run": f"ecc run --project {project_dir}",
             "inspect_cmd": f"ecc status --project {project_dir}",
         }
 
-    def test_check_reports_configured_run_dir(
-        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
+    def test_check_reports_declared_workspace(
+        self, tmp_path, capsys, minimal_ics55_pdk_factory, manifest_stubs
     ):
-        project_dir = create_cli_project()
-        set_flow_run(project_dir, 'run = "exp1"')
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        minimal_ics55_pdk_factory(project_dir / "pdk")
 
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
 
         assert rc == 0
         records = json.loads(capsys.readouterr().out)["records"]
         assert records[0] == {
             "project": "gcd",
             "status": "checked",
-            "config": "ecc.toml",
-            "run_dir": os.path.join("runs", "exp1"),
+            "config": "project.json",
+            "workspace": "ws_0001",
             "run": f"ecc run --project {project_dir}",
             "inspect_cmd": f"ecc status --project {project_dir}",
         }
 
-    def test_check_reports_absolute_configured_run_dir(
-        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
+    def test_check_reports_declared_workspace_via_symlinked_project(
+        self, tmp_path, capsys, minimal_ics55_pdk_factory, manifest_stubs
     ):
-        project_dir = create_cli_project()
-        abs_run = str(tmp_path / "external_run")
-        set_flow_run(project_dir, f'run = "{abs_run}"')
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
-
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
-
-        assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
-        assert records[0] == {
-            "project": "gcd",
-            "status": "checked",
-            "config": "ecc.toml",
-            "run_dir": abs_run,
-            "run": f"ecc run --project {project_dir}",
-            "inspect_cmd": f"ecc status --project {project_dir}",
-        }
-
-    def test_check_reports_dotdot_prefixed_name_run_dir_relatively(
-        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
-    ):
-        project_dir = create_cli_project()
-        set_flow_run(project_dir, 'run = "..foo/run"')
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
-
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
-
-        assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
-        assert records[0] == {
-            "project": "gcd",
-            "status": "checked",
-            "config": "ecc.toml",
-            "run_dir": os.path.join("..foo", "run"),
-            "run": f"ecc run --project {project_dir}",
-            "inspect_cmd": f"ecc status --project {project_dir}",
-        }
-
-    def test_check_reports_parent_escaping_run_dir_absolute(
-        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
-    ):
-        project_dir = create_cli_project()
-        set_flow_run(project_dir, 'run = "../outside"')
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
-
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
-
-        assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
-        assert records[0] == {
-            "project": "gcd",
-            "status": "checked",
-            "config": "ecc.toml",
-            "run_dir": os.path.join(project_dir, "..", "outside"),
-            "run": f"ecc run --project {project_dir}",
-            "inspect_cmd": f"ecc status --project {project_dir}",
-        }
-
-    def test_check_reports_symlink_escaping_run_dir_absolute(
-        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
-    ):
-        project_dir = create_cli_project()
-        external = tmp_path / "external"
-        external.mkdir()
-        os.symlink(str(external), os.path.join(project_dir, "link"))
-        set_flow_run(project_dir, 'run = "link/run"')
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
-
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
-
-        assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
-        assert records[0] == {
-            "project": "gcd",
-            "status": "checked",
-            "config": "ecc.toml",
-            "run_dir": os.path.join(project_dir, "link", "run"),
-            "run": f"ecc run --project {project_dir}",
-            "inspect_cmd": f"ecc status --project {project_dir}",
-        }
-
-    def test_check_reports_absolute_in_project_run_dir_via_symlinked_project(
-        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run
-    ):
-        project_dir = create_cli_project()
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        minimal_ics55_pdk_factory(project_dir / "pdk")
         project_link = str(tmp_path / "project_link")
-        os.symlink(project_dir, project_link)
-        set_flow_run(project_dir, f'run = "{os.path.join(project_dir, "runs", "exp1")}"')
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
+        os.symlink(str(project_dir), project_link)
 
         rc = cli_main.run(["check", "--project", project_link, "--json"])
 
         assert rc == 0
         records = json.loads(capsys.readouterr().out)["records"]
-        assert records[0] == {
-            "project": "gcd",
-            "status": "checked",
-            "config": "ecc.toml",
-            "run_dir": os.path.join("runs", "exp1"),
-            "run": f"ecc run --project {project_link}",
-            "inspect_cmd": f"ecc status --project {project_link}",
-        }
+        assert records[0]["workspace"] == "ws_0001"
+        assert records[0]["run"] == f"ecc run --project {project_link}"
+        assert records[0]["inspect_cmd"] == f"ecc status --project {project_link}"

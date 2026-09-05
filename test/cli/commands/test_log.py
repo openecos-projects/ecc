@@ -19,7 +19,7 @@ def _make_path_unreadable(monkeypatch, unreadable_path):
 class TestLog:
     def test_log_step_errors(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
 
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -36,7 +36,7 @@ class TestLog:
 
     def test_log_step_errors_jsonl(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
 
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -50,7 +50,7 @@ class TestLog:
 
     def test_log_no_step_shows_locations(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         log_dir = os.path.join(run_dir, "log")
         os.makedirs(log_dir, exist_ok=True)
         with open(os.path.join(log_dir, "flow.log"), "w") as f:
@@ -63,7 +63,7 @@ class TestLog:
 
     def test_log_no_step_discovers_step_logs(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
 
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -79,7 +79,7 @@ class TestLog:
 
     def test_log_no_step_global_logs_have_disclosure(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         log_dir = os.path.join(run_dir, "log")
         os.makedirs(log_dir, exist_ok=True)
         with open(os.path.join(log_dir, "flow.log"), "w") as f:
@@ -92,14 +92,14 @@ class TestLog:
 
     def test_log_unknown_step(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"), exist_ok=True)
+        os.makedirs(os.path.join(project_dir, "default"), exist_ok=True)
 
         rc = cli_main.run(["log", "nonexistent", "--project", project_dir])
         assert rc == 1
 
     def test_log_missing_step_logs(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(os.path.join(run_dir, "Synthesis_yosys"), exist_ok=True)
 
         rc = cli_main.run(["log", "synthesis", "--project", project_dir])
@@ -111,7 +111,7 @@ class TestLogDefaultShowsAllContent:
 
     def test_default_shows_all_lines(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -127,7 +127,7 @@ class TestLogDefaultShowsAllContent:
 
     def test_default_includes_header(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -142,7 +142,7 @@ class TestLogDefaultShowsAllContent:
 
     def test_blank_lines_preserved(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -160,7 +160,7 @@ class TestLogTracebackComplete:
 
     def test_traceback_complete_in_default_output(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -185,7 +185,7 @@ class TestLogTracebackComplete:
 
     def test_traceback_complete_in_jsonl(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -202,7 +202,7 @@ class TestLogTracebackComplete:
         self, tmp_path, capsys, create_cli_project
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -224,7 +224,7 @@ class TestLogPlainMode:
 
     def test_plain_has_all_fields(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -243,7 +243,7 @@ class TestLogPlainMode:
 
     def test_plain_no_ansi(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -256,7 +256,7 @@ class TestLogPlainMode:
 
     def test_plain_stable_quoting_for_special_chars(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -277,7 +277,7 @@ class TestLogJsonlMode:
 
     def test_jsonl_per_line_objects(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -297,7 +297,7 @@ class TestLogJsonlMode:
 
     def test_jsonl_no_ansi(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -314,7 +314,7 @@ class TestLogJsonMode:
 
     def test_json_step_output(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -328,7 +328,7 @@ class TestLogJsonMode:
 
     def test_json_listing_output(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -345,7 +345,7 @@ class TestLogListingMode:
 
     def test_listing_shows_logs(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -359,7 +359,7 @@ class TestLogListingMode:
 
     def test_listing_and_reading_yosys_lec_logs(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
@@ -398,7 +398,7 @@ class TestLogListingMode:
 
     def test_listing_no_logs_returns_no_log_status(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir, exist_ok=True)
 
         rc = cli_main.run(["log", "--project", project_dir])
@@ -408,7 +408,7 @@ class TestLogListingMode:
 
     def test_listing_jsonl_records(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -423,7 +423,7 @@ class TestLogListingMode:
 
     def test_listing_plain_step_logs(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -439,7 +439,7 @@ class TestLogListingMode:
 
     def test_listing_plain_run_level_logs(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         log_dir = os.path.join(run_dir, "log")
         os.makedirs(log_dir, exist_ok=True)
         with open(os.path.join(log_dir, "flow.log"), "w") as f:
@@ -459,7 +459,7 @@ class TestLogErrorCases:
 
     def test_unknown_step_returns_nonzero(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir, exist_ok=True)
 
         rc = cli_main.run(["log", "nonexistent", "--project", project_dir])
@@ -469,7 +469,7 @@ class TestLogErrorCases:
 
     def test_unknown_step_json(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir, exist_ok=True)
 
         rc = cli_main.run(["log", "nonexistent", "--jsonl", "--project", project_dir])
@@ -479,7 +479,7 @@ class TestLogErrorCases:
 
     def test_known_step_no_logs_returns_nonzero(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(os.path.join(run_dir, "Synthesis_yosys"), exist_ok=True)
 
         rc = cli_main.run(["log", "synthesis", "--project", project_dir])
@@ -489,7 +489,7 @@ class TestLogErrorCases:
 
     def test_known_step_no_logs_json(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(os.path.join(run_dir, "Synthesis_yosys"), exist_ok=True)
 
         rc = cli_main.run(["log", "synthesis", "--jsonl", "--project", project_dir])
@@ -499,7 +499,7 @@ class TestLogErrorCases:
 
     def test_empty_log_returns_zero(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -516,7 +516,7 @@ class TestLogNoErrorsInDisclosure:
 
     def test_listing_disclosure_no_errors(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -529,7 +529,7 @@ class TestLogNoErrorsInDisclosure:
 
     def test_step_log_inspect_no_errors(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -544,7 +544,7 @@ class TestLogNoErrorsInDisclosure:
         self, tmp_path, capsys, create_cli_project, create_flow_json
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir])
@@ -560,7 +560,7 @@ class TestLogUnreadableFile:
         self, tmp_path, monkeypatch, capsys, create_cli_project
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         log_path = os.path.join(step_dir, "synthesis.log")
@@ -575,7 +575,7 @@ class TestLogUnreadableFile:
 
     def test_unreadable_log_jsonl(self, tmp_path, monkeypatch, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         log_path = os.path.join(step_dir, "synthesis.log")
@@ -596,7 +596,7 @@ class TestLogMultiSource:
 
     def test_multi_source_pretty(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "a.log"), "w") as f:
@@ -620,7 +620,7 @@ class TestLogListingFlowOrder:
         self, tmp_path, create_cli_project, create_flow_json, step_names, extra_dirs=None
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(
             run_dir, steps=[{"name": n, "tool": "ecc", "state": "Success"} for n in step_names]
         )
@@ -669,7 +669,7 @@ class TestLogListingFlowOrder:
             create_flow_json,
             ["Synthesis", "CTS"],
         )
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         log_dir = os.path.join(run_dir, "log")
         os.makedirs(log_dir, exist_ok=True)
         with open(os.path.join(log_dir, "flow.log"), "w") as f:
@@ -730,7 +730,7 @@ class TestLogListingFlowOrder:
         self, tmp_path, capsys, create_cli_project
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir, exist_ok=True)
         for name in ["CTS_ecc", "Floorplan_ecc", "Synthesis_yosys"]:
             step_dir = os.path.join(run_dir, name, "log")
@@ -749,7 +749,7 @@ class TestLogListingFlowOrder:
         self, tmp_path, capsys, create_cli_project
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
@@ -773,7 +773,7 @@ class TestLogListingTailPreview:
 
     def test_listing_shows_tail_lines(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         log_path = os.path.join(step_dir, "synthesis.log")
@@ -788,7 +788,7 @@ class TestLogListingTailPreview:
 
     def test_listing_tail_max_10_lines(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         log_path = os.path.join(step_dir, "synthesis.log")
@@ -811,7 +811,7 @@ class TestLogListingTailPreview:
 
     def test_empty_log_no_tail_block(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         log_path = os.path.join(step_dir, "synthesis.log")
@@ -825,7 +825,7 @@ class TestLogListingTailPreview:
 
     def test_inspect_visible_below_tail(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         log_path = os.path.join(step_dir, "synthesis.log")
@@ -844,7 +844,7 @@ class TestLogListingMachineModeNoTail:
 
     def test_plain_no_tail(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -856,7 +856,7 @@ class TestLogListingMachineModeNoTail:
 
     def test_json_no_tail(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -869,7 +869,7 @@ class TestLogListingMachineModeNoTail:
 
     def test_jsonl_no_tail(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -888,7 +888,7 @@ class TestLogStepUnchanged:
 
     def test_step_shows_all_lines_not_tail(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         lines = [f"line {i}" for i in range(20)]
@@ -902,7 +902,7 @@ class TestLogStepUnchanged:
 
     def test_step_plain_unchanged(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -917,7 +917,7 @@ class TestLogStepUnchanged:
 
     def test_step_jsonl_unchanged(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
@@ -939,7 +939,7 @@ class TestLogListingUnreadable:
         self, tmp_path, monkeypatch, capsys, create_cli_project
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         log_path = os.path.join(step_dir, "synthesis.log")
