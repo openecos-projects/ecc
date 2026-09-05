@@ -17,10 +17,12 @@ The sidecar speaks JSON-RPC 2.0 over stdio. Each JSON-RPC payload is framed with
 a `Content-Length` header. Stdout is reserved for framed protocol messages;
 diagnostics and tool output belong on stderr.
 
-The legacy workspace command group and its custom server-shaped JSON envelope
-are no longer supported. Project commands such as `ecc init`, `ecc run`,
-`ecc status`, `ecc config`, and `ecc param` remain ordinary stateless CLI
-commands.
+The public CLI supports only `ecc workspace refresh NAME` from this resource
+area. It reconstructs a workspace already declared in `project.json` from the
+current `ecc.toml`, without executing the flow. The legacy workspace create/run
+commands and their custom server-shaped JSON envelope are not supported.
+Project commands such as `ecc init`, `ecc run`, `ecc status`, `ecc config`, and
+`ecc param` remain ordinary stateless CLI commands.
 
 ## Framing
 

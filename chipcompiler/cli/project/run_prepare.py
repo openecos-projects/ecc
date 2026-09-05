@@ -191,6 +191,7 @@ def execute_fresh_run(
     *,
     workspace_registered: bool,
     owns_target: bool,
+    execute_flow: bool = True,
 ) -> CommandResult:
     """Create the workspace, seed it, execute the flow, and map the result.
 
@@ -335,7 +336,7 @@ def execute_fresh_run(
                 workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
                 save_parameter(workspace_parameters)
 
-        if workspace_registered:
+        if workspace_registered and execute_flow:
             _write_back_status(project_dir, run_name, "running", warning_records)
 
         # Engine execution still holds the workspace lock taken before
@@ -349,6 +350,21 @@ def execute_fresh_run(
                     engine_flow.add_step(step=step, tool=tool, state=state)
 
             engine_flow.create_step_workspaces()
+
+            if not execute_flow:
+                if workspace_registered:
+                    _write_back_status(project_dir, run_name, "not_started", warning_records)
+                return CommandResult.ok(
+                    warning_records
+                    + [
+                        {
+                            "workspace_id": run_name,
+                            "status": "refreshed",
+                            "workspace": run_dir,
+                            "run": disclosure_cmd("ecc run", project, run_name),
+                        }
+                    ]
+                )
 
             from chipcompiler.cli.rendering.progress import (
                 run_flow_with_progress,

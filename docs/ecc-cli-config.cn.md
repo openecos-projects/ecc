@@ -135,6 +135,21 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 `home/params.toml` 保存规范化的 workspace 参数、`config_overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`config_overrides` 是 CLI 从审核 schema 生成的嵌套 TOML 补丁；每次 workspace 刷新都会在 PDK 和语义参数映射之后重新应用。`home/parameters.json` 仅在迁移旧 workspace 时读取。
 
+文件由四个节区构成：
+
+| 节区 | 内容 |
+|---|---|
+| `[design]` | `name` / `top` / `clock_port` / `frequency_mhz`，与项目级 `ecc.toml [design]` 同词汇 |
+| `[pdk]` | `name` / `root` / `config`；`config` 以 workspace 相对路径存储，加载时还原为绝对路径 |
+| `[flow]` | `preset = "rtl2gds"`，或 `start` + `end` 成对出现（只接受持久化规范步骤名）；缺省时由 `home/flow.json` 的首末步骤推导 |
+| `[params]` | 规范扁平参数（snake_case）；嵌套值渲染为子表（如 `[params.die]`、`[params.floorplan.phy_placer.well_tap]`） |
+
+**身份参数的双份存储是刻意设计，不是冗余错误**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 七个身份键在 `[params]` 扁平键与 `[design]`/`[pdk]` 节区各存一份（如 `[design] top` ↔ `[params] top_module`、`[design] frequency_mhz` ↔ `[params] frequency_max`、`[pdk] root` ↔ `[params] pdk_root`）。两套词汇各司其职：`[design]`/`[pdk]`/`[flow]` 是与 `ecc.toml` 同词汇的人读视图，使 workspace 自描述；`[params]` 是程序消费的规范扁平存储（步骤参数、`config_overrides` 与回填结果都在其中）。
+
+保存时两份由同一份扁平参数渲染，正常情况下永远一致。若文件被手工改到两处不一致，加载规则为：**`[design]`/`[pdk]` 的非空值覆盖 `[params]` 副本；节区键为空或缺失时回落到 `[params]` 副本**。写入采用临时文件 + 原子 rename，不穿透 symlink。
+
+通过 `ecc param set KEY VALUE --workspace NAME` 写入的已创建 workspace 覆盖也保存在 `[params]`：实际参数值与 `config_overrides` 共同决定刷新后的步骤配置，`workspace_param_overrides` 列表记录 `key`、首次修改前的 `baseline` 和当前 `value`，供 `ecc param diff --workspace NAME` 使用。`ecc param unset KEY --workspace NAME` 会恢复该 `baseline` 并清除这条本地覆盖记录；其所属步骤及后续步骤会失效，直到再次运行。PDK 资源路径和引用不能在此处局部修改，应更新 `ecc.toml` 后执行 `ecc workspace refresh NAME`。
+
 ## 2. 公共配置：db_ecc.json
 
 所有 ecc 工具步骤共用。每个步骤启动时先用它把 LEF/DEF/网表/LIB 载入内存数据库（subflow 的 "load data" 阶段）。`INPUT.def_path/verilog_path` 与 `OUTPUT.output_dir_path` 三个字段**每步运行前被重写**，实现步骤间文件链。

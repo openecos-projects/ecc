@@ -158,6 +158,7 @@ class ParamListInput:
     project: ProjectOptions
     step: str | None = None
     all: bool = False
+    workspace: str | None = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +166,7 @@ class ParamShowInput:
     output: OutputOptions
     project: ProjectOptions
     key: str
+    workspace: str | None = None
 
 
 @dataclass(frozen=True)
@@ -173,6 +175,7 @@ class ParamSetInput:
     project: ProjectOptions
     key: str
     value: str
+    workspace: str | None = None
 
 
 @dataclass(frozen=True)
@@ -180,12 +183,51 @@ class ParamUnsetInput:
     output: OutputOptions
     project: ProjectOptions
     key: str
+    workspace: str | None = None
 
 
 @dataclass(frozen=True)
 class ParamDiffInput:
     output: OutputOptions
     project: ProjectOptions
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
+class ProjectSetInput:
+    output: OutputOptions
+    project: ProjectOptions
+    key: str
+    values: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ProjectUnsetInput:
+    output: OutputOptions
+    project: ProjectOptions
+    key: str
+
+
+@dataclass(frozen=True)
+class ProjectAddInput:
+    output: OutputOptions
+    project: ProjectOptions
+    key: str
+    values: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ProjectShowInput:
+    output: OutputOptions
+    project: ProjectOptions
+    key: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkspaceRefreshInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str
 
 
 def output_options(*, json_output: bool, jsonl: bool, plain: bool) -> OutputOptions:

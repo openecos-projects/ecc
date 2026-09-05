@@ -208,6 +208,8 @@ ecc config
 ecc migrate
 ecc param
 ecc pdk
+ecc project
+ecc workspace
 ecc signoff
 ecc report
 ecc rpc
@@ -230,6 +232,8 @@ Responsibilities:
 | `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
 | `ecc pdk` | `setup` clones + `make unzip`s + wires in a PDK checkout; also `set-root`/`show`/`unset` for the `[pdk] root` path |
+| `ecc project` | Edit declared design, PDK, and flow resource fields in `ecc.toml` |
+| `ecc workspace` | Refresh a declared workspace from current `ecc.toml` without running it |
 | `ecc signoff` | Inspect package readiness and export the tar.gz package |
 | `ecc report` | Write design-summary, QoR, and checklist reports; show step evidence |
 | `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |
@@ -256,6 +260,8 @@ implementation detail:
 | `ecc report` | `summary`, `qor`, `checklist`, `step` | File reports and per-step evidence viewing |
 | `ecc pdk` | `setup`, `set-root`, `show`, `unset` | Project PDK configuration |
 | `ecc param` | `list`, `show`, `set`, `unset`, `diff` | Project parameter overrides |
+| `ecc project` | `set`, `unset`, `add`, `remove`, `show` | Project design, PDK, and flow declarations in `ecc.toml` |
+| `ecc workspace` | `refresh` | Recreate one declared workspace from `ecc.toml`, without execution |
 
 Commands that consume a workspace use `--project DIR` (default: current
 directory) and, when selection matters, `--workspace NAME`. The name resolves
@@ -275,7 +281,8 @@ The command graph follows these rules; new commands must follow them too:
 - **Architecture.** Top-level commands are workflow-scale verbs (`init`,
   `check`, `run`, `status`, `log`, `config`, `doctor`, `migrate`, `version`)
   plus the frozen tool invocations (`layout-image`). Resource management and
-  reporting live in noun groups (`param`, `pdk`, `signoff`, `report`, `rpc`).
+  reporting live in noun groups (`param`, `pdk`, `project`, `workspace`,
+  `signoff`, `report`, `rpc`).
 - **Subcommand verbs.** Mutable resources use the CRUD set
   (`list`, `show`, `set`, `unset`, `diff`, plus `setup` for pdk). The `report`
   group names its artifacts instead (`summary`, `qor`, `checklist`, `step`)
@@ -378,8 +385,35 @@ ecc param set cts.skew_bound 0.05
 ecc param set cts.routing_layer '[4, 5]'
 ecc param unset place.target_density
 ecc param diff
+ecc param set place.target_density 0.65 --workspace baseline
+ecc param diff --workspace baseline
 ecc run --set cts.max_fanout=16
 ```
+
+With `--workspace NAME`, `ecc param` changes only the selected existing
+workspace's `home/params.toml`. It immediately refreshes the generated
+configuration and invalidates the owning flow step plus its suffix, but does
+not run those steps. PDK resource paths and references require a complete
+reconstruction instead:
+
+```bash
+ecc project set design.def inputs/gcd.def
+ecc project set design.sdc constraints/gcd.sdc
+ecc project set design.rtl rtl/gcd.sv rtl/alu.sv
+ecc project add design.rtl rtl/fifo.sv
+ecc project set pdk.root /path/to/ics55
+ecc project set flow.preset rtl2gds
+ecc workspace refresh baseline
+```
+
+`ecc project` edits only `ecc.toml`: the field registry covers the `[design]`
+inputs (`name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`, `sdc`,
+`spef`, `clock_port`, `frequency_mhz`), `[pdk] name/root`, and `[flow] preset`.
+`ecc param` continues to own all `[params.*]` and `[pdk.overrides]` fields.
+`ecc workspace refresh NAME` accepts only a workspace declared in
+`project.json`, recreates it with the existing overwrite safeguards, records
+status `not_started`, and never executes the flow. `ecc run --workspace NAME
+--overwrite` remains the refresh-and-run form.
 
 ### Version Information
 
@@ -400,8 +434,9 @@ package `__version__`.
 
 ### Runtime Sidecar RPC
 
-Workspace operations are no longer exposed as a compatibility command namespace.
-The supported runtime surface is the private stdio sidecar:
+The old workspace create/run compatibility commands are not exposed as a public
+CLI namespace. The supported runtime session surface is the private stdio
+sidecar:
 
 ```bash
 ecc rpc serve --stdio
@@ -557,9 +592,10 @@ through RCX, STA, and Harden; `syn_sta` runs synthesis only, with a best-effort 
 (an STA failure does not fail the step). Switching
 presets on an existing run requires `ecc run --overwrite` to rebuild the
 workspace.
-`design.rtl` must contain exactly one entry; use a
-filelist (`.f`, `.fl`, or `.filelist`) for multi-source RTL designs. If
-`pdk.root` is empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
+`design.rtl` accepts one or more source entries. A filelist (`.f`, `.fl`, or
+`.filelist`) is also accepted; multiple direct source entries are assembled
+into a generated filelist when the workspace is created. If `pdk.root` is
+empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
 `ICS55_PDK_ROOT`.
 
 ### PDK Field Overrides
@@ -734,12 +770,15 @@ implementation refactors. Integrations should invoke the packaged `ecc` command
 or call `chipcompiler.cli.main.run(argv)` rather than importing CLI helper
 modules directly.
 
-The legacy top-level parameter-only invocation with `--workspace` is no longer
-part of the CLI contract. Old-workspace automation should use the private
-JSON-RPC runtime sidecar, open or create a workspace session, and pass the
-returned `workspaceId` to follow-up runtime calls. The long-term default is
-project-oriented and configuration-driven through `ecc.toml` and subcommands
-such as `ecc run --project <dir>`.
+The supported workspace parameter form is `ecc param <verb> KEY --workspace
+NAME` for a workspace declared in the project manifest. It persists a
+workspace-local override and refreshes the affected configuration without
+running the flow. PDK resources and input references are project-level values:
+edit `ecc.toml` through `ecc project` (or the matching `ecc pdk`/`ecc param`
+commands), then use `ecc workspace refresh NAME`. Old workspace create/run
+automation should use the private JSON-RPC runtime sidecar. The long-term
+default is project-oriented and configuration-driven through `ecc.toml` and
+subcommands such as `ecc run --project <dir>`.
 
 The project-level Python APIs should remain compatible with existing Python
 users. Changes needed for the CLI should be additive and should not force

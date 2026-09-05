@@ -216,6 +216,32 @@ def migrate(command_input: MigrateInput, ctx: CommandContext) -> CommandResult:
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
+    return _run_project(command_input, ctx, execute_flow=True)
+
+
+def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
+    """Recreate one managed workspace from current project configuration."""
+    if ctx.project_state != "manifest":
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_refresh_requires_managed_workspace",
+                    reason="refresh requires a workspace declared in project.json",
+                )
+            ]
+        )
+    refresh_input = RunInput(
+        output=command_input.output,
+        project=command_input.project,
+        overwrite=True,
+        workspace=command_input.workspace,
+    )
+    return _run_project(refresh_input, ctx, execute_flow=False)
+
+
+def _run_project(
+    command_input: RunInput, ctx: CommandContext, *, execute_flow: bool
+) -> CommandResult:
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
 
@@ -430,6 +456,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         project_state,
         warning_records,
         workspace_registered=workspace_registered,
+        execute_flow=execute_flow,
     )
 
 

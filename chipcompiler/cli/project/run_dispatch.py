@@ -188,6 +188,7 @@ def dispatch_project_run(
     warning_records: list[dict],
     *,
     workspace_registered: bool,
+    execute_flow: bool = True,
 ) -> CommandResult:
     """Run the existing/fresh decision and target creation under the shared
     project lock, then execute.
@@ -224,6 +225,7 @@ def dispatch_project_run(
             warning_records,
             workspace_registered=workspace_registered,
             owns_target=owns_target,
+            execute_flow=execute_flow,
         )
 
     project_dir = ctx.project_dir

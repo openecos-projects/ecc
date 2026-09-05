@@ -25,6 +25,8 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "doctor",
         "param",
         "pdk",
+        "project",
+        "workspace",
         "signoff",
         "report",
         "rpc",
@@ -32,7 +34,6 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         assert command in out
     for removed_command in ("metrics", "artifacts", "diagnose"):
         assert removed_command not in out
-    assert "workspace" not in out
 
 
 def test_root_version_returns_single_line(capsys):
