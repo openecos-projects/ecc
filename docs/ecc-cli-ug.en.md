@@ -118,7 +118,7 @@ uv run ecc --help
 
 - Global: `ecc --version` (single version line), `ecc --help`.
 - Project location: project-scoped commands accept `--project <dir>` (defaults to the current directory). `--workspace <name>` is a managed, non-empty single path segment in that project, never a filesystem path. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
-- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `signoff`, and `report` accept `--json` (`{"records":[...]}`), `--jsonl` (one JSON record per line), and `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `ecc version` supports the same flags with its version-specific schema; `rpc serve` and `layout-image` use their own protocols instead.
+- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--json` (`{"records":[...]}`), `--jsonl` (one JSON record per line), and `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `ecc version` supports the same flags with its version-specific schema; `rpc serve` and `layout-image` use their own protocols instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens come in three vocabularies, distinguished by context:
   - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`;
@@ -143,6 +143,8 @@ Commands:
   doctor        Check host environment: PDK, tools, and components
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
+  project       Edit project declarations in ecc.toml
+  workspace     Refresh managed workspaces from project configuration
   signoff       Inspect and export signoff packages
   report        Generate design-summary, QoR score, checklist, and step reports
   rpc           Run the private ECC JSON-RPC runtime
@@ -408,6 +410,20 @@ $ ecc run --from cts --to route          # new range but def/netlist are missing
 rc=1
 ```
 
+For example, to reuse the Floorplan artifacts from existing workspace `2` and create a workspace that runs only placement through routing, declare the **matching pair** of DEF and gate-level netlist as the new workspace's entry inputs before creating the range flow:
+
+```bash
+PROJECT=~/projects/benchmark/gcd
+SOURCE="$PROJECT/2/Floorplan_ecc/output"
+
+ecc project set design.def "$SOURCE/gcd_Floorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_Floorplan.v.gz" --project "$PROJECT"
+ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
+  --from placement --to routing
+```
+
+`ecc run` has no `--def` or `--netlist` flag; a range entry reads `design.def` and `design.netlist` from `ecc.toml`. This registers `floorplan-2-place-route` in `project.json`, copies the two files into the new workspace's `origin/`, and runs placement through routing without rerunning Floorplan. The first two commands change project-level `ecc.toml`, so they also affect later fresh workspaces. If those fields were previously absent, restore the default project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
+
 ### 5.2 Workspace mode (debugging / re-runs)
 
 ```bash
@@ -608,6 +624,79 @@ $ ecc config floorplan  # step level
   inspect: ecc config floorplan --json
 ```
 
+## 8.5. project / workspace — edit project declarations and refresh workspaces
+
+`ecc project` writes only the project-root `ecc.toml`; it does not touch already-created workspaces. The supported keys cover `[design]` `name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`, `sdc`, `spef`, `clock_port`, and `frequency_mhz`, plus `pdk.name`, `pdk.root`, and `flow.preset`:
+
+```bash
+ecc project set <KEY> <VALUES...>     # set one declaration (rtl takes a list and replaces it wholesale)
+ecc project unset <KEY>               # remove one declaration
+ecc project add design.rtl <FILES...>     # append RTL sources (design.rtl only)
+ecc project remove design.rtl <FILES...>  # remove RTL sources (design.rtl only)
+ecc project show [KEY]                # show declarations stored in ecc.toml
+```
+
+All subcommands accept `--project DIR` and `--json/--jsonl/--plain`. Real outputs:
+
+```console
+$ ecc project set design.def inputs/gcd.def
+[status]
+  project field: design.def
+  value: inputs/gcd.def
+  status: set
+  source: ecc.toml
+
+$ ecc project add design.rtl rtl/alu.sv
+[status]
+  project field: design.rtl
+  value: ['rtl/gcd.v', 'rtl/alu.sv']
+  status: added
+  source: ecc.toml
+
+$ ecc project remove design.rtl rtl/alu.sv
+[status]
+  project field: design.rtl
+  value: ['rtl/gcd.v']
+  status: removed
+  source: ecc.toml
+
+$ ecc project unset design.def
+[status]
+  project field: design.def
+  status: unset
+  source: ecc.toml
+
+$ ecc project set design.bogus x      # unknown key
+[error]
+  unknown_project_field
+  key: design.bogus
+rc=1
+
+$ ecc project add design.name x       # add/remove exist only for the rtl list
+[error]
+  unsupported_project_collection only design.rtl supports add/remove
+  key: design.name
+rc=1
+```
+
+`ecc workspace refresh NAME --project DIR` rebuilds a workspace already declared in `project.json` from the current `ecc.toml`, without running the flow. It replaces the workspace's copied inputs, tool configuration, state, and artifacts; run `ecc run --workspace NAME` afterwards. `ecc run --workspace NAME --overwrite` is the existing shortcut that refreshes and immediately re-executes:
+
+```console
+$ ecc workspace refresh default
+[status]
+  workspace id: default
+  status: refreshed
+  workspace: /tmp/gcd/default
+  run: ecc run --workspace default
+
+$ ecc workspace refresh nosuch
+[error]
+  workspace_not_declared workspace_not_declared: unknown workspace 'nosuch'; declared workspaces: default
+rc=1
+```
+
+Changes to entry inputs, PDK paths, and `flow.preset` must go through refresh, because they alter the workspace's input snapshot or flow structure. For parameter-only tweaks on an existing workspace there is also `ecc param set KEY VALUE --workspace NAME` (§9), which does not touch `ecc.toml`.
+
 ## 9. param — parameter management
 
 ```bash
@@ -618,9 +707,29 @@ ecc param show KEY                  # show one parameter (value/default/source/t
 ecc param set KEY VALUE             # write into ecc.toml (comments and formatting preserved)
 ecc param unset KEY                 # remove the override, restoring the default
 ecc param diff                      # show only parameters that differ from their defaults
+ecc param set KEY VALUE --workspace NAME   # workspace-local override; ecc.toml is not touched
 ```
 
-Common options: `--project DIR`, `--json / --jsonl / --plain`.
+Common options: `--project DIR`, `--json / --jsonl / --plain`. `list`, `show`, `set`, `unset`, and `diff` also accept `--workspace NAME`. With the selector, the value is written to that workspace's `home/params.toml` (not `ecc.toml`), its generated step configuration is refreshed, and the owning step plus its suffix are marked for re-run; a later `ecc run --workspace NAME` continues from that step. Workspace-local values are recorded in `workspace_param_overrides` with the pre-edit `baseline` — `param diff --workspace NAME` compares against that baseline and `param unset KEY --workspace NAME` restores it. Only reviewed parameters from `ecc param list --all` can be set locally, the parameter's owning step must exist in the workspace's persisted flow (otherwise `workspace_param_refresh_failed` — e.g. `place.*` on a synthesis-only workspace), and `pdk.*` path fields still require changing `ecc.toml` plus `ecc workspace refresh`:
+
+```console
+$ ecc param set design.frequency_mhz 150 --workspace default --plain
+param=design.frequency_mhz value=150.0 status=set source=workspace workspace=default from_step=Synthesis invalidated_steps=['Synthesis']
+
+$ ecc param list --workspace default      # workspace scope: only local overrides
+    design.frequency_mhz           150.0  (workspace)
+
+$ ecc param show design.frequency_mhz --workspace default
+  design.frequency_mhz
+    value          150.0
+    source         workspace
+
+$ ecc param diff --workspace default --plain
+param=design.frequency_mhz value=150.0 baseline=100.0 source=workspace workspace=default
+
+$ ecc param unset design.frequency_mhz --workspace default --plain
+param=design.frequency_mhz value=100.0 status=unset source=workspace workspace=default from_step=Synthesis invalidated_steps=['Synthesis']
+```
 
 ```console
 $ ecc param list
@@ -924,7 +1033,7 @@ A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Leng
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}
-← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0a11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
+← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0-alpha.11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
 
 → {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
 ← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
@@ -946,7 +1055,9 @@ ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.p
 
 ```bash
 ecc init gcd && cd gcd
-# drop in RTL, edit ecc.toml (top/clock/frequency, pdk.root, flow.preset)
+# drop in RTL, edit ecc.toml (top/clock/frequency, pdk.root, flow.preset) —
+# or set the declarations without opening an editor:
+ecc project set design.top gcd && ecc project add design.rtl rtl/gcd.v
 ecc pdk set-root ~/pdk/icsprout55-pdk   # (optional) wire in a manually downloaded PDK
 ecc doctor                         # environment check (PDK/yosys/slang/components)
 ecc check                          # validate the project config before running
@@ -956,8 +1067,11 @@ ecc status                         # step status; on failure:
 ecc log placement                  # the failing step's log (TEXT mode highlights error lines)
 ecc param set place.target_density 0.55   # tune a parameter and re-run
 ecc run --overwrite --preset rtl2gds
+ecc param set place.target_density 0.65 --workspace default   # or tweak one workspace locally, no ecc.toml change
+ecc run --workspace default        # continues from the invalidated step
 ecc run --workspace default --only place --force   # or re-run a single step in place (--force needed once successful)
 ecc run --workspace default --from CTS --to route  # or re-run a range in place (persisted names)
+ecc workspace refresh default      # re-apply ecc.toml inputs/PDK/preset changes to the workspace without running
 ecc config place                   # config files actually in effect for that step
 ecc signoff inspect                # signoff readiness (blocked still exits 0)
 ecc signoff export -o gcd_signoff.tar.gz    # export the signoff package once ready

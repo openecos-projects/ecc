@@ -263,7 +263,7 @@ uv run ecc run --project gcd
 ### Environment Doctor
 
 `ecc doctor` probes the host environment (PDK, yosys incl. the slang frontend,
-bundled ecc-tools/dreamplace, optional klayout/sizer) and reports
+bundled ecc-tools/dreamplace, required sizer, optional klayout) and reports
 pass/fail/skip per component with remediation hints. Only required failures
 exit non-zero. `ecc run` performs the same probes for the tools the chosen
 preset needs and fails fast with `env_not_ready` before creating a workspace:

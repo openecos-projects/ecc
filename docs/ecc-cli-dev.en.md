@@ -15,15 +15,19 @@ chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── doctor.py                   # doctor top-level command (environment check)
   ├── param.py                    # param sub-app (list/show/set/unset/diff)
   ├── pdk.py                      # pdk sub-app (setup/set-root/show/unset)
+  ├── project_config.py           # project sub-app (set/unset/add/remove/show)
+  ├── workspace.py                # workspace sub-app (refresh)
   ├── signoff.py                  # signoff sub-app (inspect/export)
   ├── report.py                   # report sub-app (summary/qor/checklist/step)
   └── rpc.py                      # rpc sub-app (serve)
 chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
-  ├── project.py                  # init / check / run / migrate (preset resolution and environment preflight)
+  ├── project.py                  # init / check / run / migrate / workspace refresh (preset resolution and environment preflight)
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor (assembles env_probe results into records)
   ├── param.py                    # the five param subcommands (validation + TOML edits via cli/project/toml_edit.py)
   ├── pdk.py                      # the four pdk subcommands (surgical TOML edit + root source resolution)
+  ├── project_config.py           # the five project subcommands (declaration schema + TOML edits via cli/project/config_fields.py)
+  ├── workspace_params.py         # workspace-scoped param set/unset/list/diff (home/params.toml mutation + step invalidation)
   ├── signoff.py                  # signoff inspect/export
   └── report.py                   # the four report subcommands (file writing + record summary)
 chipcompiler/cli/core/            # framework layer
@@ -38,7 +42,7 @@ chipcompiler/cli/inspection/      # read-only probing logic
   ├── discovery.py / config_view.py / log_view.py
   ├── env_probe.py                # environment probes for doctor/run preflight (the ProbeResult model)
   └── tool_versions.py            # environment tool versions for ecc version (yosys/sizer/klayout)
-chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / params.py (parameter registry) / manifest.py (project-state classification) / effective_config.py / config_params/ (direct-config schemas) / migrate*.py (legacy-layout migration) / run_*.py (workspace target resolution and dispatch)
+chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / config_fields.py (project declaration schema for `ecc project`) / params.py (parameter registry) / workspace_params.py (workspace-local override records) / manifest.py (project-state classification) / effective_config.py / config_params/ (direct-config schemas) / migrate*.py (legacy-layout migration) / run_*.py (workspace target resolution and dispatch)
 chipcompiler/cli/rendering/       # output rendering (render / renderers / pretty / progress)
 chipcompiler/engine/signoff/      # signoff collector + design/checklist reports (package, see §5.4)
 chipcompiler/engine/qor_report.py # overall QoR scoring (port of the GUI rules, see §5.5)
@@ -224,6 +228,12 @@ Project preset sequences are defined in `chipcompiler/rtl2gds/builder.py` (`buil
 ### 5.6 Extending the RPC (`ecc rpc serve`)
 
 `rpc serve --stdio` starts the JSON-RPC 2.0 sidecar (`chipcompiler/runtime/stdio_server.py`). Methods are declared in `chipcompiler/runtime/methods.py::RUNTIME_METHODS` (`method_name` + a pydantic `request_model` + `handler_name`), handler implementations live in `chipcompiler/runtime/workspace_api.py`, and `runtime/server.py` mounts them uniformly; protocol details in [workspace-cli.md](workspace-cli.md). Adding a method = one `RuntimeMethodSpec` + the matching API method + a request model; no CLI-layer changes needed.
+
+### 5.7 Extending project declarations (`ecc project *` / `ecc workspace refresh`)
+
+- The editable keys of `ecc project set/unset/add/remove/show` are declared in `cli/project/config_fields.py::PROJECT_FIELDS` (`key` / TOML table / name / type / `list_value`). Add a field there and the subcommands pick it up; `add`/`remove` are hard-restricted to `design.rtl` (`unsupported_project_collection` otherwise).
+- `ecc workspace refresh` is implemented as the run path with `overwrite=True, execute_flow=False` (`cli/command_handlers/project.py::refresh_workspace`), which is why it runs the same environment preflight as a fresh run (`preset: rtl2gds` from `ecc.toml` means the full tool set must be ready, even though no step executes). On a non-manifest project it reports `workspace_refresh_requires_managed_workspace`.
+- Workspace-scoped `param set/unset/list/diff --workspace NAME` mutate `home/params.toml` through `cli/command_handlers/workspace_params.py` (records in `workspace_param_overrides`, suffix invalidation via `chipcompiler.engine.rerun`), and project-scoped `param` goes through `cli/command_handlers/param.py`.
 
 ## 6. Building the CLI bundle (testing installed behavior after code changes)
 

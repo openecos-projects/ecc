@@ -242,6 +242,18 @@ preset = "rtl2gds"       # the complete RTL-to-Harden flow used in this tutorial
 
 For the gcd example, the defaults produced by `init` happen to be exactly right (the top module is literally `gcd`, the clock port is `clk`) — **you don't need to change a single character**. For your own design, check the four fields `top`, `rtl`, `clock_port`, and `frequency_mhz`.
 
+You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-cli-ug.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces)):
+
+```bash
+ecc project set design.top my_chip            # set one declaration
+ecc project set design.rtl rtl/cpu.v rtl/uart.v   # replace the whole RTL list
+ecc project add design.rtl rtl/sram.v         # append one more RTL source
+ecc project remove design.rtl rtl/sram.v      # drop an RTL source
+ecc project set design.clock_port clk_i       # rename the clock port
+ecc project set flow.preset syn_sta           # switch preset
+ecc project show                              # list what ecc.toml declares
+```
+
 Two things worth knowing:
 
 - **No hand-written SDC needed**: the flow generates constraints automatically from `clock_port` and `frequency_mhz` (`create_clock` + an I/O delay ratio); the generated SDC lands in the workspace's `origin/gcd.sdc`;
@@ -604,9 +616,15 @@ ecc param set place.target_density 0.55 # written to ecc.toml (comments & format
 ecc param set cts.skew_bound 0.05       # change a direct CTS configuration field
 ecc param set cts.routing_layer '[4, 5]' # lists use JSON literals
 ecc param unset place.target_density    # back to default
+# Workspace-local overrides — same commands with --workspace; ecc.toml is NOT touched:
+ecc param set place.target_density 0.60 --workspace exp1   # writes home/params.toml of exp1
+ecc param diff --workspace exp1                            # vs. the values exp1 was created with
+ecc param unset place.target_density --workspace exp1      # restore exp1's original value
 ```
 
 Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management) for the full contract.
+
+A `--workspace` override marks the parameter's owning step (and everything after it) as pending, so the next `ecc run --workspace exp1` re-runs just that suffix — cheaper than an `--overwrite` rebuild when you only want to tweak one knob. It only works for reviewed parameters (`ecc param list --all`) whose owning step exists in that workspace's flow.
 
 ### 6.2 Creating a managed workspace
 
@@ -632,11 +650,18 @@ ecc run --workspace default --resume
 # all steps succeeded → no_op; failed/unstarted steps remain → automatically resume from where it stopped
 ```
 
-**② Full rebuild after a parameter change**: `--set` applies only when a workspace is created; to change parameters on an existing workspace, rerun it with `--overwrite` (or simply create a new workspace for comparison, see §6.2).
+**② Full rebuild after a parameter change**: `--set` applies only when a workspace is created; to change parameters on an existing workspace, rerun it with `--overwrite` (or simply create a new workspace for comparison, see §6.2). Cheaper still, the `--workspace`-scoped `param set` from §6.1 invalidates only the affected suffix.
 
 ```bash
 ecc run --workspace default --overwrite            # rebuild default (with safety checks; deletes only the actual ECC workspace directory)
 ecc run --workspace default --overwrite --set place.target_density=0.55
+```
+
+The same `--overwrite` rerun is also how an existing workspace picks up changes to its **entry inputs, PDK paths, or `flow.preset`** — those alter the workspace's input snapshot or flow structure. To rebuild the workspace from the current `ecc.toml` *without* running it, use the dedicated command (handy before a batch of runs, or when the required tools aren't on the current machine):
+
+```bash
+ecc workspace refresh default                      # rebuild inputs/config from ecc.toml, do not run
+ecc run --workspace default                        # then run when ready
 ```
 
 **③ Rerun a range or a single step in place** (when debugging a step's tool behavior): the rerun steps' `output/` is replaced, and their downstream steps are marked for rerun (outputs kept).
@@ -654,6 +679,20 @@ ecc run --workspace default --only place --force   # rerun this step even if it 
 ecc run --workspace cts-only --from cts --to cts     # a workspace that runs only the CTS step
 ecc run --workspace pnr --from floorplan --to route  # floorplan through routing
 ```
+
+**Complete example: reuse existing Floorplan outputs.** To create a placement-through-routing workspace from the Floorplan output of existing workspace `2`, do not pass the DEF directly to `ecc run`. The placement entry requires matching `design.def` and `design.netlist`; write those project declarations first, then create the new range:
+
+```bash
+PROJECT=~/projects/benchmark/gcd
+SOURCE="$PROJECT/2/Floorplan_ecc/output"
+
+ecc project set design.def "$SOURCE/gcd_Floorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_Floorplan.v.gz" --project "$PROJECT"
+ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
+  --from placement --to routing
+```
+
+This copies the DEF/netlist into the new workspace's `origin/`, runs placement through routing, and does not rerun Floorplan; `placement` and `routing` are accepted aliases when creating a range. `ecc project set` changes project-level `ecc.toml`, which also affects later fresh workspaces. If the two fields were previously unset, restore the original project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
 
 The declared entry files are validated against the first step's requirements: `rtl` for Synthesis; `netlist` plus `golden_netlist` for LEC; `netlist` for Floorplan; `def` plus `netlist` for the physical steps (place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden); and `def`, `netlist`, and `spef` for STA. `sdc` is optional. Anything missing fails with a clear error:
 

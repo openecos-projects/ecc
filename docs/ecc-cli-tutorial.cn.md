@@ -240,6 +240,18 @@ preset = "rtl2gds"       # 本教程使用的完整 RTL-to-Harden 流程
 
 对 gcd 示例来说，`init` 生成的默认值恰好全部正确（顶层就叫 `gcd`，时钟端口 `clk`），**一个字都不用改**。换你自己的设计时，需要核对 `top`、`rtl`、`clock_port`、`frequency_mhz` 四项。
 
+除了用编辑器改 `ecc.toml`，也可以用 `ecc project` 命令组直接改声明（写入 `ecc.toml`，保留注释；详见[用户指南 §8.5](ecc-cli-ug.cn.md#85-project--workspace--编辑项目资源与刷新-workspace)）：
+
+```bash
+ecc project set design.top my_chip            # 设置一条声明
+ecc project set design.rtl rtl/cpu.v rtl/uart.v   # 整体替换 RTL 列表
+ecc project add design.rtl rtl/sram.v         # 追加一个 RTL 源
+ecc project remove design.rtl rtl/sram.v      # 删除一个 RTL 源
+ecc project set design.clock_port clk_i       # 改时钟端口名
+ecc project set flow.preset syn_sta           # 切换 preset
+ecc project show                              # 查看 ecc.toml 里声明的字段
+```
+
 两个要点：
 
 - **无需手写 SDC**：flow 会根据 `clock_port` 与 `frequency_mhz` 自动生成约束（`create_clock` + I/O 延迟比例），生成的 SDC 落在 workspace 的 `origin/gcd.sdc`；
@@ -602,9 +614,15 @@ ecc param set place.target_density 0.55 # 写入 ecc.toml（保留注释与格�
 ecc param set cts.skew_bound 0.05       # 直接修改 CTS 配置字段
 ecc param set cts.routing_layer '[4, 5]' # 列表使用 JSON 字面量
 ecc param unset place.target_density    # 恢复默认
+# workspace 局部覆盖——同样的命令加 --workspace；不改动 ecc.toml：
+ecc param set place.target_density 0.60 --workspace exp1   # 写入 exp1 的 home/params.toml
+ecc param diff --workspace exp1                            # 与 exp1 创建时的取值对比
+ecc param unset place.target_density --workspace exp1      # 恢复 exp1 的原值
 ```
 
 常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-cli-ug.cn.md#9-param--参数管理)。
+
+`--workspace` 局部设置会把参数所属步骤及其后缀标记为待执行，下一次 `ecc run --workspace exp1` 只重跑这一段——只想微调一个参数时，比 `--overwrite` 整体重建便宜得多。注意只支持已审核参数（`ecc param list --all`），且参数所属步骤必须存在于该 workspace 的 flow 中。
 
 ### 6.2 创建受管 workspace
 
@@ -630,11 +648,18 @@ ecc run --workspace default --resume
 # 已全部成功 → no_op；有失败/未跑步骤 → 自动从断点续跑
 ```
 
-**② 调参后整体重跑**：`--set` 只在新建 workspace 时生效，重跑旧 workspace 改参数要用 `--overwrite`（或干脆开一个新 workspace 对比，见 §6.2）。
+**② 调参后整体重跑**：`--set` 只在新建 workspace 时生效，重跑旧 workspace 改参数要用 `--overwrite`（或干脆开一个新 workspace 对比，见 §6.2）。只想微调一个参数时，§6.1 的 `--workspace` 局部设置更省——只会让受影响的步骤后缀失效。
 
 ```bash
 ecc run --workspace default --overwrite            # 重建 default（有安全校验，只删真正的 ECC workspace 目录）
 ecc run --workspace default --overwrite --set place.target_density=0.55
+```
+
+同样的 `--overwrite` 重跑也是已有 workspace 吸收**入口输入、PDK 路径、`flow.preset`** 变更的方式——这些改动会改变 workspace 的输入快照或 flow 结构。若只想按当前 `ecc.toml` 重建 workspace 而**不执行**，用专用命令（适合批量运行前准备，或当前机器缺少所需工具时）：
+
+```bash
+ecc workspace refresh default                      # 按 ecc.toml 重建输入/配置，但不运行
+ecc run --workspace default                        # 之后想跑再跑
 ```
 
 **③ 原地重跑一段/一步**（调试某步工具行为时用）：被重跑步骤的 `output/` 会被替换，其下游步骤标记为待重跑（输出保留）。
@@ -652,6 +677,20 @@ ecc run --workspace default --only place --force   # 已成功也强制重跑这
 ecc run --workspace cts-only --from cts --to cts     # 只跑 CTS 一步的 workspace
 ecc run --workspace pnr --from floorplan --to route  # 从布局规划到布线
 ```
+
+**复用已有 Floorplan 输出的完整示例**：从已有 workspace `2` 的 Floorplan 输出创建一个新的 placement 到 routing workspace 时，不能把 DEF 直接传给 `ecc run`。placement 入口要求匹配的 `design.def` 和 `design.netlist`；先用 `ecc project` 写入项目配置，再创建新范围：
+
+```bash
+PROJECT=~/projects/benchmark/gcd
+SOURCE="$PROJECT/2/Floorplan_ecc/output"
+
+ecc project set design.def "$SOURCE/gcd_Floorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_Floorplan.v.gz" --project "$PROJECT"
+ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
+  --from placement --to routing
+```
+
+这会将 DEF/网表复制到新 workspace 的 `origin/`，从 placement 运行至 routing，不会重新运行 Floorplan；`placement`、`routing` 是新建范围时可用的别名。`ecc project set` 修改的是项目级 `ecc.toml`，也会影响之后新建的 workspace。若这两个字段原来没有设置，在新 workspace 创建后执行 `ecc project unset design.def --project "$PROJECT"` 和 `ecc project unset design.netlist --project "$PROJECT"` 可恢复原先的项目入口。
 
 入口文件按首步要求校验：Synthesis 要 `rtl`；LEC 要 `netlist` 和 `golden_netlist`；Floorplan 要 `netlist`；物理步骤（place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden）要 `def` 和 `netlist`；STA 要 `def`、`netlist`、`spef`；`sdc` 可选。缺什么会明确报错：
 
