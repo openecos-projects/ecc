@@ -321,6 +321,8 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
         ("filler", "ecc"),
+        ("lvs", "ecc"),
+        ("drc", "ecc"),
         ("postRouteLec", "yosys_lec"),
         ("RCX", "ecc"),
     ]
