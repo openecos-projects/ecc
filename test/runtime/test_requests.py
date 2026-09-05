@@ -287,6 +287,27 @@ def test_workspace_export_signoff_preserves_exact_output_path():
 
 
 @pytest.mark.parametrize(
+    "additional_files",
+    [
+        "not-a-list",
+        [{"archivePath": "nested.txt"}],
+        [{"content": "missing path"}],
+        [{"archivePath": "nested.txt", "content": 42}],
+    ],
+)
+def test_workspace_export_signoff_validates_additional_files(additional_files):
+    with pytest.raises(RequestValidationError):
+        _parse_runtime_request(
+            "workspace.export_signoff",
+            {
+                "workspaceId": "ws-1",
+                "outputPath": "/exports/custom.tar.gz",
+                "additionalFiles": additional_files,
+            },
+        )
+
+
+@pytest.mark.parametrize(
     ("method", "params"),
     [
         ("flow.run", {"workspaceId": "ws-1", "rerun": "false"}),

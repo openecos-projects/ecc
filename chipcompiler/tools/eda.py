@@ -60,17 +60,33 @@ def create_step(
     *,
     initialize_config: bool = False,
     check_dependency: bool = True,
-) -> WorkspaceStep:
+) -> WorkspaceStep | None:
     """
     Create and return an EDA tool instance based on the given step and eda tool name.
     """
+    # Unselected optional tools only need a path-only step to preserve the
+    # positional input chain; importing them can trigger expensive native
+    # builds before the selected-step dependency check even runs.
+    if not check_dependency and eda in {"dreamplace", "sizer"}:
+        return _build_deferred_step(
+            workspace,
+            step,
+            eda,
+            input_def,
+            input_verilog,
+            input_db,
+            output_def,
+            output_verilog,
+            output_gds,
+        )
+
     # check eda tool exist
     eda_module = load_eda_module(eda, check_dependency=check_dependency and eda != "sizer")
     if eda_module is None or not hasattr(eda_module, "build_step"):
         return None
 
     # build step
-    step = eda_module.build_step(
+    workspace_step = eda_module.build_step(
         workspace=workspace,
         step_name=step,
         input_def=input_def,
@@ -82,12 +98,68 @@ def create_step(
     )
 
     # build step sub workspace
-    eda_module.build_step_space(step)
+    eda_module.build_step_space(workspace_step)
 
     if initialize_config:
-        eda_module.build_step_config(workspace, step)
+        eda_module.build_step_config(workspace, workspace_step)
 
-    return step
+    return workspace_step
+
+
+def _build_deferred_step(
+    workspace: Workspace,
+    step_name: str,
+    eda: str,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | str | None,
+    output_def: Path | None,
+    output_verilog: Path | None,
+    output_gds: Path | None,
+) -> WorkspaceStep:
+    """Build an unselected optional step without importing its EDA package.
+
+    Existing-workspace reruns still need a complete positional chain so the
+    selected step receives the persisted predecessor outputs. The core ECC
+    builder supplies that path-only representation; no directories or config
+    files are initialized for the deferred step.
+    """
+    from chipcompiler.tools.ecc import builder as ecc_builder
+
+    if eda == "sizer":
+        safe_name = "_".join(step_name.split()).lower()
+        step_directory = Path(workspace.directory or ".") / f"{safe_name}_sizer"
+        output_def = (
+            output_def or step_directory / "output" / f"{workspace.design.name}_{safe_name}.def.gz"
+        )
+        output_verilog = (
+            output_verilog
+            or step_directory / "output" / f"{workspace.design.name}_{safe_name}.v.gz"
+        )
+        return ecc_builder.build_step(
+            workspace=workspace,
+            step_name=step_name,
+            input_def=input_def,
+            input_verilog=input_verilog,
+            input_db=input_db,
+            output_def=output_def,
+            output_verilog=output_verilog,
+            output_gds=output_gds,
+            tool=eda,
+            step_directory=step_directory,
+        )
+
+    return ecc_builder.build_step(
+        workspace=workspace,
+        step_name=step_name,
+        input_def=input_def,
+        input_verilog=input_verilog,
+        input_db=input_db,
+        output_def=output_def,
+        output_verilog=output_verilog,
+        output_gds=output_gds,
+        tool=eda,
+    )
 
 
 def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool:
@@ -121,7 +193,7 @@ def save_layout_image(workspace: Workspace, step: WorkspaceStep) -> bool:
     return save_gds_image(workspace=workspace, step=step)
 
 
-def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics:
+def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics | None:
     """
     build step metrics
     """
@@ -135,7 +207,7 @@ def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics
     return metrics
 
 
-def get_step_info(workspace: Workspace, step: WorkspaceStep, id: str) -> dict:
+def get_step_info(workspace: Workspace, step: WorkspaceStep, id: str) -> dict | None:
     """
     get step info by step and command id, return dict as resource definition
     """
