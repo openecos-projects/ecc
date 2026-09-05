@@ -74,11 +74,11 @@ graph LR
 | timing optimization | ✓ | `dreamplace_ecc.json` | Sizer 使用生成的脚本，随后做内部 DreamPlace 合法化；见 §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
-| lvs | — | 无 | 工具默认行为 |
-| drc | ✓ | `drc_ecc.json`（空） | 规则来自 tech LEF |
-| postroutelec | — | 无（Tcl） | Yosys LEC，见 §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §12） |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | 读 rcx 配置以对齐 SPEF |
+| lvs | — | 无 | 工具默认行为 |
+| postroutelec | — | 无（Tcl） | Yosys LEC，见 §11 |
+| drc | ✓ | `drc_ecc.json`（空） | 规则来自 tech LEF |
 | harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但不在 `_STEP_CONFIG_KEYS` 中；`ecc config harden` 会明确显示该步骤没有配置 |
 
 ## 1. 参数传递链（用户可调参数）
@@ -402,12 +402,12 @@ Timing optimization 是三阶段子流程：运行 Sizer，用 DreamPlace 对 Si
 
 ## 11. postroutelec（Yosys LEC）
 
-无 JSON 配置，由 `script/run_lec.tcl` 驱动（读 liberty → 双方网表规范化 → 等价性证明）。放在 filler 之后、RCX 之前，防止布线类步骤引入的逻辑变更漏检：
+无 JSON 配置，由 `script/run_lec.tcl` 驱动（读 liberty → 双方网表规范化 → 等价性证明）。放在 LVS 之后、DRC 之前：
 
 | 项 | 内容 |
 |---|---|
 | 输入（golden） | 综合映射网表（如 `Synthesis_yosys/output/gcd_Synthesis.v.gz`） |
-| 输入（gate） | 上一步（DRC）输出网表（`drc_ecc/output/gcd_drc.v.gz`，链式取 `pre_step.output.verilog`） |
+| 输入（gate） | 上一步（LVS）输出网表（`lvs_ecc/output/gcd_lvs.v.gz`，链式取 `pre_step.output.verilog`） |
 | 输出 | `output/<设计>_postRouteLec_result.json`：`status`（`proven` / 失败）+ 双方 `sha256` + 报告路径；`report/equiv_status.rpt`、`report/run_lec_status.rpt` |
 | 签核 | `status=proven` 计入签核清单（LEC 结果进签核包 `final/reports/postRouteLec/`） |
 

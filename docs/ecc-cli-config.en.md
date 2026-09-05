@@ -74,11 +74,11 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | timing optimization | ✓ | `dreamplace_ecc.json` | Sizer uses generated scripts, then runs an inner DreamPlace legalization; see §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
-| lvs | — | none | tool default behavior |
-| drc | ✓ | `drc_ecc.json` (empty) | rules come from the tech LEF |
-| postroutelec | — | none (Tcl) | Yosys LEC, see §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §12) |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | reads the rcx config to align SPEFs |
+| lvs | — | none | tool default behavior |
+| postroutelec | — | none (Tcl) | Yosys LEC, see §11 |
+| drc | ✓ | `drc_ecc.json` (empty) | rules come from the tech LEF |
 | harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not in `_STEP_CONFIG_KEYS`; `ecc config harden` explicitly reports that the step has no configuration |
 
 ## 1. The Parameter Chain (user-tunable parameters)
@@ -400,12 +400,12 @@ Configuration file `filler_ecc.json`. Sub-phases: load data → run filler → s
 
 ## 11. postroutelec (Yosys LEC)
 
-No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normalize both netlists → prove equivalence). It sits after filler and before RCX so that logical changes introduced by the routing-family steps cannot slip through undetected:
+No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normalize both netlists → prove equivalence). It sits after LVS and before DRC:
 
 | Item | Content |
 |---|---|
 | Input (golden) | Synthesis mapped netlist (e.g. `Synthesis_yosys/output/gcd_Synthesis.v.gz`) |
-| Input (gate) | Previous (DRC) step's output netlist (`drc_ecc/output/gcd_drc.v.gz`; chaining uses `pre_step.output.verilog`) |
+| Input (gate) | Previous (LVS) step's output netlist (`lvs_ecc/output/gcd_lvs.v.gz`; chaining uses `pre_step.output.verilog`) |
 | Output | `output/<design>_postRouteLec_result.json`: `status` (`proven` / failure) + both sides' `sha256` + report paths; `report/equiv_status.rpt`, `report/run_lec_status.rpt` |
 | Signoff | `status=proven` counts toward the signoff checklist (LEC results go into the signoff package `final/reports/postRouteLec/`) |
 

@@ -191,7 +191,10 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "Timing optimization",
         "route",
         "filler",
+        "RCX",
+        "sta",
         "lvs",
+        "postRouteLec",
         "drc",
     ]
     assert [step["tool"] for step in flow_data["steps"]] == [
@@ -202,6 +205,9 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "ecc",
         "ecc",
         "ecc",
+        "ecc",
+        "ecc",
+        "yosys_lec",
         "ecc",
     ]
     assert all(step["state"] == "Unstart" for step in flow_data["steps"])
@@ -275,21 +281,21 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "Timing optimization",
         "route",
         "filler",
-        "lvs",
-        "drc",
-        "postRouteLec",
         "RCX",
         "sta",
+        "lvs",
+        "postRouteLec",
+        "drc",
         "Harden",
     ]
 
 
 POST_ROUTE_LEC_STEP_ALIAS_CASES = (
-    ["filler", "postRouteLec", "RCX"],
-    ["filler", "postlec", "RCX"],
-    ["filler", "postroutelec", "RCX"],
-    ["filler", "post_route_lec", "RCX"],
-    ["filler", "Post-Route-LEC", "RCX"],
+    ["lvs", "postRouteLec", "DRC"],
+    ["lvs", "postlec", "DRC"],
+    ["lvs", "postroutelec", "DRC"],
+    ["lvs", "post_route_lec", "DRC"],
+    ["lvs", "Post-Route-LEC", "DRC"],
 )
 
 
@@ -312,19 +318,17 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "filler",
-            "end_step": "RCX",
+            "start_step": "lvs",
+            "end_step": "DRC",
             "steps": steps,
         },
     )
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
-        ("filler", "ecc"),
         ("lvs", "ecc"),
-        ("drc", "ecc"),
         ("postRouteLec", "yosys_lec"),
-        ("RCX", "ecc"),
+        ("drc", "ecc"),
     ]
 
 

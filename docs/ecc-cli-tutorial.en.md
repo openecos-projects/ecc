@@ -285,18 +285,18 @@ In an interactive terminal the CLI renders live per-step progress and log tails;
 | 7 | timing optimization | sizer | Timing optimization (cell sizing) |
 | 8 | routing | ecc | Routing |
 | 9 | filler | ecc | Filler cell insertion |
-| 10 | lvs | ecc | Layout-vs-schematic check |
-| 11 | drc | ecc | Design rule check |
-| 12 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
-| 13 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
-| 14 | sta | ecc | Multi-corner static timing analysis |
+| 10 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
+| 11 | sta | ecc | Multi-corner static timing analysis |
+| 12 | lvs | ecc | Layout-vs-schematic check |
+| 13 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
+| 14 | drc | ecc | Design rule check |
 | 15 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
 
 ```mermaid
 graph LR
     A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
-    G --> J[Filler] --> I[LVS] --> H[DRC] --> N[LEC<br/>yosys_lec] --> K[RCX] --> L[STA] --> M[Harden<br/>GDS/LEF/LIB]
+    G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
 For a fresh or `--overwrite` target, `ecc run` pre-checks bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`), and returns `env_not_ready` with a pointer to `ecc doctor` when a component is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at Timing optimization.
@@ -352,11 +352,11 @@ $ ecc status
     timing optimization (sizer) success 0:0:4
     routing (ecc) success 0:0:6
     filler (ecc) success 0:0:2
-    lvs (ecc) success 0:0:1
-    drc (ecc) success 0:0:2
-    postroutelec (yosys_lec) success 0:0:1
     rcx (ecc) success 0:0:0
     sta (ecc) success 0:2:35
+    lvs (ecc) success 0:0:1
+    postroutelec (yosys_lec) success 0:0:1
+    drc (ecc) success 0:0:2
     harden (ecc) success 0:0:11
 rc=0
 ```

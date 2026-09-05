@@ -427,14 +427,15 @@ def test_lec_runner_writes_incomplete_result_when_yosys_raises(tmp_path, monkeyp
     assert payload["gate_sha256"]
 
 
-def test_rtl2gds_flow_runs_post_route_lec_before_rcx():
+def test_rtl2gds_flow_runs_post_route_lec_after_lvs_before_drc():
     from chipcompiler.rtl2gds import build_rtl2gds_flow
 
     steps = build_rtl2gds_flow()
 
     step_names = [step[0] for step in steps]
     lec_index = step_names.index(StepEnum.POST_ROUTE_LEC)
-    assert step_names.index(StepEnum.FILLER) < lec_index < step_names.index(StepEnum.RCX)
+    assert step_names.index(StepEnum.STA) < step_names.index(StepEnum.LVS)
+    assert step_names.index(StepEnum.LVS) < lec_index < step_names.index(StepEnum.DRC)
     assert steps[lec_index] == (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart)
 
 
