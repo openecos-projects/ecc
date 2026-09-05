@@ -166,7 +166,7 @@ def create_legacy_workspace():
     def _create(project_dir, pdk_root, run_id, states):
         from chipcompiler.data import create_workspace
         from chipcompiler.data.workspace_config import flow_steps_in_range
-        from chipcompiler.rtl2gds.builder import build_harden_flow
+        from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
         rtl_path = os.path.join(project_dir, "rtl", "gcd.v")
         os.makedirs(os.path.dirname(rtl_path), exist_ok=True)
@@ -186,7 +186,7 @@ def create_legacy_workspace():
 
         chain = [
             (step.value if hasattr(step, "value") else str(step), str(tool))
-            for step, tool, _state in build_harden_flow()
+            for step, tool, _state in build_rtl2gds_flow()
         ]
         tools = dict(chain)
         names = flow_steps_in_range("Synthesis", "Floorplan")
