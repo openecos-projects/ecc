@@ -182,6 +182,7 @@ chipcompiler/tools/ecc_dreamplace/dreamplace
 
 .humanize/
 humanize-*
+.zcode/
 docs/superpowers/
 findings.md
 progress.md
