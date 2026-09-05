@@ -223,6 +223,8 @@ def parse_request_model(model: type, params: object):
 
         if field.name in {"rerun", "reset_dependents"} and not isinstance(values[field.name], bool):
             raise RequestValidationError(f"{field.name} must be a boolean")
+        if field.name == "additional_files":
+            _validate_additional_files(values[field.name])
 
     return model(**values)
 
@@ -239,3 +241,19 @@ def _normalize_fields(params: dict) -> dict[str, Any]:
 
 def _is_missing(value: object) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _validate_additional_files(value: object) -> None:
+    if value is None:
+        return
+    if not isinstance(value, list):
+        raise RequestValidationError("additional_files must be a list")
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise RequestValidationError(f"additional_files[{index}] must be an object")
+        if not isinstance(item.get("archivePath"), str) or not item["archivePath"]:
+            raise RequestValidationError(
+                f"additional_files[{index}].archivePath must be a non-empty string"
+            )
+        if not isinstance(item.get("content"), str):
+            raise RequestValidationError(f"additional_files[{index}].content must be a string")

@@ -221,6 +221,27 @@ def test_inspect_signoff_package_blocks_when_current_checklist_is_unavailable(
     assert review["risks"][0]["title"] == "Signoff checklist unavailable"
 
 
+def test_inspect_signoff_package_blocks_when_checklist_is_not_an_object(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    home_dir = workspace_dir / "home"
+    home_dir.mkdir(parents=True)
+    (home_dir / "checklist.json").write_text("[]", encoding="utf-8")
+
+    class FakeFlow:
+        def __init__(self, workspace):
+            assert workspace.directory == workspace_dir
+
+        def collect_signoff_package(self, options):
+            return SimpleNamespace()
+
+    monkeypatch.setattr(signoff_export, "EngineFlow", FakeFlow)
+
+    review = signoff_export.inspect_signoff_package(SimpleNamespace(directory=workspace_dir))
+
+    assert review["status"] == "blocked"
+    assert review["risks"][0]["title"] == "Signoff checklist unavailable"
+
+
 def test_workspace_inspect_signoff_waits_for_session_mutation_lock(monkeypatch, tmp_path):
     workspace = SimpleNamespace(directory=tmp_path / "workspace")
     sessions = WorkspaceSessionRegistry()
@@ -299,6 +320,59 @@ def test_export_signoff_package_archive_collects_temporarily_and_replaces_atomic
     assert captured_output_dirs
     assert not Path(captured_output_dirs[0]).exists()
     assert not list(output_path.parent.glob(f".{output_path.name}.*"))
+
+
+@pytest.mark.parametrize("archive_path", ["/tmp/ecc-signoff-escape", "../escape.txt"])
+def test_export_signoff_package_archive_rejects_additional_file_path_escape(
+    monkeypatch, tmp_path, archive_path
+):
+    output_path = tmp_path / "chosen.tar.gz"
+
+    class FakeFlow:
+        def __init__(self, workspace):
+            pass
+
+        def collect_signoff_package(self, options):
+            package_dir = Path(options.output_dir) / "design_signoff_package"
+            package_dir.mkdir(parents=True, exist_ok=True)
+            return SimpleNamespace(ok=True, package_dir=str(package_dir), missing_required=[])
+
+    monkeypatch.setattr(signoff_export, "EngineFlow", FakeFlow)
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        signoff_export.export_signoff_package_archive(
+            "workspace",
+            str(output_path),
+            [{"archivePath": archive_path, "content": "must stay inside"}],
+        )
+
+    assert exc_info.value.code == "invalid_request"
+
+
+def test_export_signoff_package_archive_allows_nested_additional_file(monkeypatch, tmp_path):
+    output_path = tmp_path / "chosen.tar.gz"
+
+    class FakeFlow:
+        def __init__(self, workspace):
+            pass
+
+        def collect_signoff_package(self, options):
+            package_dir = Path(options.output_dir) / "design_signoff_package"
+            package_dir.mkdir(parents=True, exist_ok=True)
+            return SimpleNamespace(ok=True, package_dir=str(package_dir), missing_required=[])
+
+    monkeypatch.setattr(signoff_export, "EngineFlow", FakeFlow)
+
+    signoff_export.export_signoff_package_archive(
+        "workspace",
+        str(output_path),
+        [{"archivePath": "metadata/extra.txt", "content": "included"}],
+    )
+
+    import tarfile
+
+    with tarfile.open(output_path, "r:gz") as tar:
+        assert tar.extractfile("design_signoff_package/metadata/extra.txt").read() == b"included"
 
 
 def test_export_signoff_package_archive_preserves_existing_target_on_incomplete_result(

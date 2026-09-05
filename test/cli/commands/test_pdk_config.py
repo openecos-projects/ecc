@@ -128,6 +128,25 @@ class TestPdkShow:
         assert data["records"][1]["status"] == "missing"
         assert "set-root" in data["records"][1]["set_root"]
 
+    def test_show_reports_unreadable_config(
+        self, tmp_path, capsys, monkeypatch, create_cli_project
+    ):
+        project_dir = create_cli_project()
+
+        def deny(_config_path):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", deny)
+
+        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--json"])
+
+        assert rc == 1
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0]["kind"] == "error"
+        assert records[0]["error"] == "config_error"
+        assert records[0]["reason"].startswith("unreadable project config:")
+        assert records[0]["inspect"] == f"ecc check --project {project_dir}"
+
 
 class TestPdkUnset:
     def test_unset_restores_empty_root(self, tmp_path, capsys, create_cli_project):

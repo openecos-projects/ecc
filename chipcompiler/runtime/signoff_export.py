@@ -26,7 +26,8 @@ def inspect_signoff_package(workspace) -> dict:
     checklist_path = Path(workspace.directory) / "home" / "checklist.json"
     checklist_data = json_read(checklist_path)
     if (
-        checklist_data.get("schema_version") != 3
+        not isinstance(checklist_data, dict)
+        or checklist_data.get("schema_version") != 3
         or checklist_data.get("kind") != "signoff_checklist"
     ):
         return _unavailable_review()
@@ -227,10 +228,40 @@ def export_signoff_package_archive(
         package_dir = Path(result.package_dir)
 
         if additional_files:
+            package_root = package_dir.resolve()
             for file_info in additional_files:
-                p = package_dir / file_info["archivePath"]
+                archive_path = file_info.get("archivePath") if isinstance(file_info, dict) else None
+                content = file_info.get("content") if isinstance(file_info, dict) else None
+                if not isinstance(archive_path, str) or not archive_path:
+                    raise RuntimeApiError(
+                        "invalid_request",
+                        "additionalFiles entries require a non-empty archivePath",
+                    )
+                if not isinstance(content, str):
+                    raise RuntimeApiError(
+                        "invalid_request",
+                        "additionalFiles entries require string content",
+                    )
+                relative_path = Path(archive_path)
+                if (
+                    not relative_path.parts
+                    or relative_path.is_absolute()
+                    or ".." in relative_path.parts
+                ):
+                    raise RuntimeApiError(
+                        "invalid_request",
+                        f"additional file path escapes signoff package: {archive_path}",
+                    )
+                p = package_dir / relative_path
+                try:
+                    p.resolve().relative_to(package_root)
+                except ValueError as exc:
+                    raise RuntimeApiError(
+                        "invalid_request",
+                        f"additional file path escapes signoff package: {archive_path}",
+                    ) from exc
                 p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(file_info["content"], encoding="utf-8")
+                p.write_text(content, encoding="utf-8")
 
         archive = package_dir.with_suffix(".tar.gz")
         import tarfile

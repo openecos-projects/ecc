@@ -104,6 +104,18 @@ def set_root(command_input, ctx: CommandContext) -> CommandResult:
 def show(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project.config import load_run_config
 
+    if ctx.config_error:
+        from chipcompiler.cli.core.output import disclosure_cmd
+
+        return CommandResult.err(
+            [
+                error_record(
+                    "config_error",
+                    reason=ctx.config_error,
+                    inspect=disclosure_cmd("ecc check", ctx.project),
+                )
+            ]
+        )
     cfg = ctx.config if ctx.config is not None else load_run_config(ctx.project_dir)
     root, source = _resolve_root_source(cfg, ctx.project_dir)
 
