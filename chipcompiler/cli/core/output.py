@@ -1,12 +1,12 @@
 import shlex
 
 
-def disclosure_cmd(command: str, project: str | None = None, run_id: str | None = None) -> str:
+def disclosure_cmd(command: str, project: str | None = None, workspace: str | None = None) -> str:
     parts = [command]
     if project:
         parts.append(f"--project {shlex.quote(project)}")
-    if run_id is not None:
-        parts.append(f"--run-id {shlex.quote(run_id)}")
+    if workspace is not None:
+        parts.append(f"--workspace {shlex.quote(workspace)}")
     return " ".join(parts)
 
 

@@ -117,7 +117,7 @@ uv run ecc --help
 ## 1. General conventions
 
 - Global: `ecc --version` (single version line), `ecc --help`.
-- Project location: project-scoped commands accept `--project <dir>` (defaults to the current directory), and the run-aware ones also accept `--run-id <id>`. A **fresh project** (no `project.json`, no `runs/`) creates its first workspace at `<project>/<run-id>` and records it in an auto-created `project.json`. A **manifest project** resolves inspection commands from that declared workspace table (one active workspace auto-selects); use a non-empty, single-segment id. `ecc run --run-id` may create an undeclared single-segment workspace, but emits `workspace_not_registered`; project-scoped `status`, `log`, `config`, `signoff`, and `report` cannot select it afterwards. A **legacy project** (a populated `runs/` directory) keeps using `runs/<run-id>`, accepts absolute paths or relative paths containing `/`, and can be upgraded with `ecc migrate`. All three states may carry an `ecc.toml`; only manifest projects *without* an `ecc.toml` are rejected by `ecc param` (`param_requires_ecc_toml`).
+- Project location: project-scoped commands accept `--project <dir>` (defaults to the current directory). `--workspace <name>` is a managed, non-empty single path segment in that project, never a filesystem path. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
 - Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `signoff`, and `report` accept `--json` (`{"records":[...]}`), `--jsonl` (one JSON record per line), and `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `ecc version` supports the same flags with its version-specific schema; `rpc serve` and `layout-image` use their own protocols instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens are normalized to lowercase in display: `synthesis / lec / floorplan / placement / cts / legalization / timing optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`; `--from`/`--only` require the exact names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`).
@@ -198,6 +198,12 @@ The generated `ecc.toml` (edit `design.*` and `pdk.root` as needed):
 name = "gcd"
 top = "gcd"
 rtl = ["rtl/gcd.v"]      # a single Verilog file, or one filelist for multiple sources (e.g. rtl/filelist.f)
+# Optional entry inputs for non-RTL ranges:
+# netlist = "inputs/gcd.v"
+# golden_netlist = "inputs/gcd-golden.v"
+# def = "inputs/gcd.def"
+# sdc = "constraints/gcd.sdc"
+# spef = "inputs/gcd.spef"
 clock_port = "clk"
 frequency_mhz = 100.0
 
@@ -208,7 +214,6 @@ root = ""                # icsprout55-pdk path; empty falls back to CHIPCOMPILER
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-run = "default"          # run id (workspace defaults to <project>/<id>; legacy projects use runs/<id>)
 ```
 
 ## 4. check — validate the project configuration
@@ -323,20 +328,25 @@ Notes:
 ```bash
 ecc run [OPTIONS]
   --project TEXT     project directory (defaults to cwd)
-  --run-id TEXT      run id (defaults to [flow] run / default)
+  --workspace TEXT   create, select, or resume a managed workspace name
+  --resume           continue from the first non-successful step
+  --from TEXT        re-execute from a step, or pair with --to for a new range workspace
+  --to TEXT          inclusive final step for a bounded range (requires --from)
+  --only TEXT        run exactly one persisted step
+  --force            re-execute an already successful --only step
   --preset TEXT      flow preset override for this run only (not written back to ecc.toml), e.g. --preset syn_sta
   --overwrite        overwrite an existing run (only deletes genuine ECC run directories, with safety checks)
   --set KEY=VALUE    parameter override, repeatable (e.g. --set place.target_density=0.65), recorded in the run provenance
   --json / --jsonl / --plain
 ```
 
-For a fresh or `--overwrite` run target, the pipeline reads `ecc.toml` → resolves RTL/PDK/parameters → preflights bundled ecc-tools plus the preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`) → creates the workspace under the resolved run target (`<project>/<run-id>` for fresh projects, registered in an auto-created `project.json`; `runs/<run-id>` for legacy projects) → builds and executes the selected preset (`rtl2gds | syn_sta | synthesis_lec`; progress rendering on a TTY). Existing workspaces resume their persisted flow without preset preflight; consequently, a missing Sizer can still fail at Timing optimization for an existing workspace or in `--workspace` mode. `rtl2gds` is the full 15-step chain (Synthesis→LEC (Yosys equivalence check)→Floorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + abstract LEF + timing LIB).
+For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 15-step chain (Synthesis→LEC (Yosys equivalence check)→Floorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + abstract LEF + timing LIB).
 
 ```console
 $ ecc run                # refuses to overwrite an existing run
 [error]
   run_exists
-  run: default
+  workspace id: default
   workspace: /path/gcd/default
   overwrite: ecc run --overwrite
 rc=1
@@ -353,27 +363,28 @@ rc=1
 Typical usage:
 
 ```bash
-ecc run                                        # first run (uses the preset from ecc.toml)
-ecc run --preset rtl2gds                       # run the complete chain to Harden (GDS/LEF/LIB)
-ecc run --run-id exp1 --set place.target_density=0.65
-ecc run --run-id exp1 --overwrite              # re-run a run of the same name
+ecc run                                        # create default, or resume the single workspace
+ecc run --workspace baseline --preset rtl2gds  # create a named complete-flow workspace
+ecc run --workspace cts-only --from CTS --to CTS
+ecc run --workspace cts-route --from CTS --to route
 ```
 
 ### 5.2 Workspace mode (debugging / re-runs)
 
 ```bash
-ecc run --workspace <dir> [--resume | --from STEP | --only STEP [--force]]
+ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--force]]
 ```
 
 - `--resume`: continue from the first non-successful step (the default when no selector is given);
-- `--from STEP`: re-run a step and every step after it;
+- `--from STEP`: on an existing workspace, re-run a step and its suffix; pair it with `--to STEP` to run an inclusive persisted range;
+- on a new workspace, `--from` and `--to` must be supplied together and dynamically build the inclusive flow range;
 - `--only STEP [--force]`: run exactly one step; `--force` re-runs it even if it already succeeded;
-- the three selectors are mutually exclusive; `--workspace` cannot be combined with `--project/--run-id/--overwrite/--set/--preset`; STEP names must match `home/flow.json` exactly (e.g. `place`, `CTS`);
+- `--resume`, `--only`, and a range are mutually exclusive; a fresh range cannot be combined with `--preset`, `--resume`, `--only`, `--force`, or `--overwrite`; `--workspace` may be combined with `--project`; STEP names use the canonical flow aliases (for example `place`, `CTS`);
 - the workspace is modified in place: the re-run steps' `output/` is replaced and downstream steps are marked `Unstart`.
 
 ```bash
 ecc run --workspace default --resume
-ecc run --workspace default --from CTS
+ecc run --workspace default --from CTS --to route
 ecc run --workspace default --only place --force
 ```
 
@@ -397,12 +408,12 @@ Migrates a legacy `runs/`-layout project to the manifest layout: each safe `runs
 ## 6. status — show run and step status
 
 ```bash
-ecc status [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
+ecc status [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
 `status` is the lightweight progress check; for the full per-step evidence
-report use `ecc report step` (§12.4). `--workspace` points at an existing
-workspace directory and is exclusive with `--project`/`--run-id`.
+report use `ecc report step` (§12.4). `--workspace` is the name of an existing
+managed workspace and may be combined with `--project`.
 
 ```console
 $ ecc status
@@ -423,7 +434,7 @@ $ ecc status
     cts (ecc) unstart
 
 $ ecc status --jsonl
-{"run": "default", "status": "failed", "workspace": "/tmp/gcd/default", "inspect_cmd": "ecc status", "log_cmd": "ecc log"}
+{"workspace_id": "default", "status": "failed", "workspace": "/tmp/gcd/default", "inspect_cmd": "ecc status", "log_cmd": "ecc log"}
 {"step": "synthesis", "tool": "yosys", "status": "success", "runtime": "0:00:18", "log_cmd": "ecc log synthesis"}
 {"step": "floorplan", "tool": "ecc", "status": "success", "runtime": "0:00:04", "log_cmd": "ecc log floorplan"}
 ...
@@ -434,7 +445,7 @@ The run-level status aggregates all steps: `success / warning / failed / ongoing
 ## 7. log — view logs
 
 ```bash
-ecc log [STEP] [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
+ecc log [STEP] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
 Without STEP it lists all log files (the run-level flow log plus each step's log, with tail previews); with STEP it prints that step's log content (TEXT mode highlights ERROR/WARNING lines).
@@ -470,11 +481,10 @@ rc=1
 ## 8. config — view the resolved configuration
 
 ```bash
-ecc config [STEP] [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
+ecc config [STEP] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
-`--workspace` scopes the step view to an existing workspace directory
-(exclusive with `--project`/`--run-id`); the project-level view remains
+`--workspace` scopes the step view to an existing managed workspace; the project-level view remains
 project-scoped and reads `ecc.toml` from the project directory.
 
 Without STEP it prints the project-level configuration (`ecc.toml` keys + resolved absolute paths); with STEP it lists the configuration files actually in effect for that step under the workspace's `config/`.
@@ -631,12 +641,12 @@ The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS5
 
 ## 11. signoff — signoff package
 
-`ecc signoff export` requires a ready Harden signoff package. `ecc signoff inspect` can assess a partially completed workspace. Both subcommands accept `--project DIR` with an optional `--run-id ID`, or `--workspace PATH` pointing at a workspace directly, plus `--json/--jsonl/--plain`. `--workspace` is mutually exclusive with `--project` and `--run-id`.
+`ecc signoff export` requires a ready Harden signoff package. `ecc signoff inspect` can assess a partially completed workspace. Both subcommands accept `--project DIR` and an optional managed `--workspace NAME`, plus `--json/--jsonl/--plain`.
 
 ### 11.1 inspect — readiness review
 
 ```bash
-ecc signoff inspect ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc signoff inspect [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
 Refreshes completed-step analysis and `home/checklist.json`, then prints the signoff package readiness status (`ready / attention / blocked`), the seven groups (initial/config/harden/final_design/sta/spef/reports), and the risk list. **blocked still exits with rc=0** (inspection is advisory; the gate lives in export):
@@ -664,13 +674,13 @@ $ ecc signoff inspect --workspace default
 ### 11.2 export — export the signoff package tar.gz (gated)
 
 ```bash
-ecc signoff export -o <path>.tar.gz [--include-debug] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
 For an existing workspace, for example:
 
 ```bash
-ecc signoff export --workspace /path/to/gcd/default -o /path/to/gcd_signoff_package.tar.gz
+ecc signoff export --project /path/to/gcd --workspace default -o /path/to/gcd_signoff_package.tar.gz
 ```
 
 Same source as the GUI's "export signoff package": refreshes analysis → collects every deliverable under initial/config/harden/final → atomically writes `<design>_signoff_package.tar.gz`. When readiness is insufficient the export is refused (no partial archive is produced):
@@ -692,8 +702,8 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # once ready
 ## 12. report — design summary, QoR score, checklist, and step evidence
 
 ```bash
-ecc report summary    [-o PATH] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
-ecc report qor        [-o PATH] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc report summary    [-o PATH] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
+ecc report qor        [-o PATH] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ecc report checklist  [-o PATH] [same selector and output options]
 ecc report step       [STEP] [--section feature|analysis|checklist]... [same selector and output options]
 ```
@@ -840,9 +850,9 @@ Choosing a tracked run:
 ```bash
 # Choose the id before the first run so the generated manifest registers it.
 ecc init gcd && cd gcd
-ecc run --run-id exp1 --set place.target_density=0.65
-ecc status --run-id exp1
-ecc log --run-id exp1
+ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.65
+ecc status --workspace exp1
+ecc log --workspace exp1
 ```
 
 Once `project.json` exists, project-scoped inspection, signoff, and report commands select only declared workspaces. The CLI can run an undeclared single-segment id, but it remains unregistered and produces `workspace_not_registered`; add workspace entries through the manifest-owning UI before using it as a tracked additional run.

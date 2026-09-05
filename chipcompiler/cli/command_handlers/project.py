@@ -58,7 +58,6 @@ root = ""
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-run = "default"
 """
 
     with open(config_path, "w") as f:
@@ -134,12 +133,12 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    run_dir_display = "runs/default"
+    workspace_display = "default"
     if ctx.run_id is not None:
-        run_dir_display = ctx.run_dir
+        workspace_display = ctx.run_dir
         if _canonically_inside(ctx.run_dir, ctx.project_dir):
             with contextlib.suppress(ValueError):
-                run_dir_display = os.path.relpath(
+                workspace_display = os.path.relpath(
                     os.path.realpath(ctx.run_dir), os.path.realpath(ctx.project_dir)
                 )
 
@@ -148,7 +147,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             "project": cfg.design_name,
             "status": "checked",
             "config": "ecc.toml" if ctx.config is not None else "project.json",
-            "run_dir": run_dir_display,
+            "workspace": workspace_display,
             "run": disclosure_cmd("ecc run", project),
             "inspect_cmd": disclosure_cmd("ecc status", project),
         }
@@ -217,18 +216,45 @@ def migrate(command_input: MigrateInput, ctx: CommandContext) -> CommandResult:
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
-    if command_input.workspace is not None:
-        return _run_workspace(command_input, ctx)
+    def error(kind: str, **fields) -> CommandResult:
+        return CommandResult.err([{"kind": "error", "error": kind, **fields}])
 
-    if any(
-        (
-            command_input.resume,
-            command_input.from_step is not None,
-            command_input.only is not None,
-            command_input.force,
-        )
+    if ctx.project_state == "legacy":
+        return error("legacy_workspace_migration_required")
+    if ctx.manifest_error:
+        return error(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)
+
+    range_requested = command_input.from_step is not None or command_input.to_step is not None
+    if command_input.to_step is not None and command_input.from_step is None:
+        return error("flow_range_requires_pair")
+    if (
+        range_requested
+        and command_input.from_step is not None
+        and command_input.to_step is not None
     ):
-        return CommandResult.err([{"kind": "error", "error": "selector_requires_workspace"}])
+        if any(
+            (
+                command_input.resume,
+                command_input.only is not None,
+                command_input.force,
+                command_input.preset,
+                command_input.overwrite,
+            )
+        ):
+            return error("selector_conflict")
+    elif (
+        sum(
+            (
+                command_input.resume,
+                command_input.from_step is not None,
+                command_input.only is not None,
+            )
+        )
+        > 1
+    ):
+        return error("selector_conflict")
+    if command_input.force and command_input.only is None:
+        return error("force_requires_only")
 
     from chipcompiler import rtl2gds as rtl2gds_api
     from chipcompiler.cli.project import run_dispatch, run_prepare
@@ -253,9 +279,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project import effective_config
 
     if ctx.project_state == "manifest":
-        resolved_cfg = effective_config.resolve_effective_config(
-            ctx, command_input.project.run_id, cfg
-        )
+        resolved_cfg = effective_config.resolve_effective_config(ctx, command_input.workspace, cfg)
         if isinstance(resolved_cfg, CommandResult):
             return resolved_cfg
         cfg, flow_config, entry_warnings = resolved_cfg
@@ -280,6 +304,18 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
         cfg.flow_preset = effective_preset
         cfg.manifest_driven = False
         flow_config = None
+
+    if command_input.from_step is not None and command_input.to_step is not None:
+        try:
+            from chipcompiler.rtl2gds import build_flow_range
+
+            build_flow_range(command_input.from_step, command_input.to_step)
+        except ValueError as exc:
+            return error("flow_range_invalid", reason=str(exc))
+        flow_config = {
+            "start_step": command_input.from_step,
+            "end_step": command_input.to_step,
+        }
 
     cli_overrides = {}
     raw_sets = command_input.param_set
@@ -325,6 +361,10 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
     flow_json = os.path.join(run_dir, "home", "flow.json")
     fresh_target = not os.path.exists(flow_json) or command_input.overwrite
+    if fresh_target and command_input.from_step is not None and command_input.to_step is None:
+        return error("flow_range_requires_pair")
+    if fresh_target and (command_input.resume or command_input.only is not None):
+        return error("selector_requires_workspace")
     errors = effective_config.validate_effective(
         ctx,
         cfg,
@@ -340,7 +380,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             [
                 {
                     "kind": "error",
-                    "error": "config_error",
+                    "error": _config_error_code(err),
                     "reason": err,
                 }
                 for err in errors
@@ -355,20 +395,29 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
             [
                 {
                     "kind": "error",
-                    "error": "invalid_run_id",
-                    "run": run_name,
+                    "error": "invalid_workspace",
+                    "workspace_id": run_name,
                     "workspace": run_dir,
-                    "reason": "run id must not resolve to the project or runs container",
+                    "reason": (
+                        "workspace name must not resolve to the project or legacy runs container"
+                    ),
                 }
             ]
         )
 
     # Manifest entries may define only a start/end range. They have no named
     # preset to probe; EngineFlow uses the persisted range for that case.
-    if fresh_target and effective_preset:
+    if fresh_target and flow_config is None and effective_preset:
         preflight = _preflight_environment(effective_preset, project)
         if preflight is not None:
             return preflight
+
+    if not fresh_target and (
+        command_input.resume
+        or command_input.from_step is not None
+        or command_input.only is not None
+    ):
+        return _run_workspace(command_input, ctx)
 
     return run_dispatch.dispatch_project_run(
         command_input,
@@ -384,18 +433,17 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     )
 
 
+def _config_error_code(reason: str) -> str:
+    for code in ("step_input_missing", "unsupported_flow_run"):
+        if reason.startswith(f"{code}:"):
+            return code
+    return "config_error"
+
+
 def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
 
-    if ctx.project is not None or command_input.project.run_id is not None:
-        return error("project_workspace_conflict")
-    if command_input.preset is not None:
-        return error("preset_requires_project")
-    if command_input.overwrite:
-        return error("overwrite_requires_project")
-    if command_input.param_set:
-        return error("set_requires_project")
     selectors = sum(
         (
             command_input.resume,
@@ -410,4 +458,4 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
 
     from chipcompiler.cli.project import run_workspace
 
-    return run_workspace.execute_workspace_run(command_input)
+    return run_workspace.execute_workspace_run(command_input, ctx.run_dir, ctx.run_id)

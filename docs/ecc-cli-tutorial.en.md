@@ -195,9 +195,9 @@ gcd/
 ├── rtl/           # put Verilog sources or a filelist here
 └── constraints/   # reserved for constraints (none needed in this tutorial, see §3.3)
 
-# the workspace is created by the first `ecc run`: `gcd/<run-id>/` for fresh projects,
-# registered in an auto-created `project.json`; choose --run-id on that first run when
-# you want a non-default tracked workspace. Legacy `runs/<id>/` is upgraded by `ecc migrate`
+# the workspace is created by the first `ecc run`: `gcd/default/` by default and
+# registered in `project.json`. Create another managed workspace with
+# `ecc run --workspace <name>`. Legacy `runs/<id>/` projects require `ecc migrate`.
 ```
 
 ### 3.2 Add the RTL
@@ -222,6 +222,12 @@ For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [
 name = "gcd"
 top = "gcd"              # top module name
 rtl = ["rtl/gcd.v"]      # a single Verilog file, or a filelist for multi-source designs
+# Optional entry inputs for a non-RTL range:
+# netlist = "inputs/gcd.v"
+# golden_netlist = "inputs/gcd-golden.v"
+# def = "inputs/gcd.def"
+# sdc = "constraints/gcd.sdc"
+# spef = "inputs/gcd.spef"
 clock_port = "clk"       # clock port name
 frequency_mhz = 100.0    # target frequency (MHz)
 
@@ -232,7 +238,6 @@ root = ""                # empty = fall back to the CHIPCOMPILER_ICS55_PDK_ROOT 
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"       # the complete RTL-to-Harden flow used in this tutorial
-run = "default"          # run id (workspace defaults to <project>/<id>; legacy projects use runs/<id>)
 ```
 
 For the gcd example, the defaults produced by `init` happen to be exactly right (the top module is literally `gcd`, the clock port is `clk`) — **you don't need to change a single character**. For your own design, check the four fields `top`, `rtl`, `clock_port`, and `frequency_mhz`.
@@ -365,7 +370,7 @@ If a step fails, `status` shows `failed`; locate the cause with `ecc log <step>`
 
 ### 4.4 Where everything lands
 
-Each run gets an isolated workspace (`gcd/<run-id>/` for fresh projects — the first run also writes a `project.json` registering it; `runs/<run-id>/` for legacy projects), one subdirectory per step:
+Each managed workspace is isolated under `gcd/<workspace-name>/`; `project.json` records it before creation, and each workspace keeps its copied declared inputs in `origin/`. There is no per-workspace project input manifest. Each step has one subdirectory:
 
 ```
 default/
@@ -401,11 +406,11 @@ gcd_Harden.png    211 KB   # layout snapshot
 
 Once every step reports Success, finish with the `signoff` / `report` command groups.
 
-The commands below run from the `gcd/` project directory, so they need no selector. To operate on an existing workspace from another directory, pass `--workspace PATH` to either `inspect` or `export`; it is mutually exclusive with `--project` and `--run-id`:
+The commands below run from the `gcd/` project directory, so they need no selector. From another directory, select the project and managed workspace name:
 
 ```bash
-ecc signoff inspect --workspace /path/to/gcd/default
-ecc signoff export --workspace /path/to/gcd/default -o /path/to/gcd_signoff_package.tar.gz
+ecc signoff inspect --project /path/to/gcd --workspace default
+ecc signoff export --project /path/to/gcd --workspace default -o /path/to/gcd_signoff_package.tar.gz
 ```
 
 ### 5.1 Check signoff readiness: ecc signoff inspect
@@ -587,28 +592,28 @@ ecc param unset place.target_density    # back to default
 
 Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management) for the full contract.
 
-### 6.2 Choosing a tracked run
+### 6.2 Creating a managed workspace
 
-Choose a non-default id before the first run so the automatically generated manifest records it:
+Name a workspace when creating it; it is automatically registered in `project.json`:
 
 ```bash
-ecc run --run-id exp1 --preset rtl2gds --set place.target_density=0.55
-ecc status --run-id exp1
-ecc report qor --run-id exp1     # report commands also accept --run-id
+ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.55
+ecc status --workspace exp1
+ecc report qor --workspace exp1
 ```
 
-`--set KEY=VALUE` applies to that run only (recorded in its provenance) and does not modify `ecc.toml`. Once `project.json` exists, project-scoped inspection, signoff, and report commands select only declared workspaces. `ecc run --run-id` can create an undeclared single-segment workspace, but it reports `workspace_not_registered` and cannot later be selected by project-scoped `status`, `log`, `config`, `signoff`, or `report`; add further tracked workspaces through the manifest-owning UI.
+`--set KEY=VALUE` applies to that workspace creation only (recorded in its provenance) and does not modify `ecc.toml`. Once `project.json` exists, project-scoped inspection, signoff, and report commands select declared workspaces; specify `--workspace NAME` when more than one is active.
 
 ### 6.3 Rerunning
 
 ```bash
-ecc run --overwrite --preset rtl2gds      # wipe and redo the whole run (deletes the run dir, with safety checks)
-ecc run --workspace default --from CTS        # rerun from CTS through the end
+ecc run --overwrite --preset rtl2gds      # rebuild the selected workspace (with safety checks)
+ecc run --workspace default --from CTS --to route  # rerun an inclusive range
 ecc run --workspace default --only place --force   # rerun a single step (--force needed if it already succeeded)
 ecc run --workspace default --resume   # continue from the first non-successful step
 ```
 
-Note: `--from`/`--only` take the raw step names from `home/flow.json` (e.g. `place`, `CTS`), not the lower-case display names.
+For a new range workspace, pass both `--from` and `--to`, for example `ecc run --workspace cts-only --from CTS --to CTS`. The declared entry files must satisfy the first step: `rtl` for Synthesis; `netlist` plus `golden_netlist` for LEC; `netlist` for Floorplan; `def` plus `netlist` for physical steps; and `def`, `netlist`, and `spef` for STA. `sdc` is optional.
 
 ### 6.4 Inspecting a step's effective configuration
 
@@ -623,7 +628,7 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 |---|---|---|
 | `ecc: command not found` | PATH not effective | `source ~/.ecc-env.sh`; open a new terminal; check `~/.local/bin` is on PATH |
 | `[error] env_not_ready` (at run) | tools required by the preset are missing | Follow `ecc doctor`; usually yosys/slang — rerun `bash docs/ecc-cli-setup.sh` |
-| `[error] run_exists` | the run directory already exists | `ecc run --overwrite`, or use a different `--run-id` |
+| `[error] run_exists` | the workspace directory already exists | `ecc run --overwrite`, or select a different `--workspace NAME` |
 | `[error] signoff_incomplete` (at export) | required deliverables missing (e.g. a failed step) | `ecc signoff inspect` for blocked items; debug with `ecc status`/`ecc log`, then rerun |
 | `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk setup` or `ecc pdk set-root <path>`, or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |

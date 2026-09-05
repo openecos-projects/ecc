@@ -309,11 +309,11 @@ weighted overall — weights are not renormalized over missing dimensions);
 `ecc report checklist` renders the signoff checklist status, and `ecc report
 summary` writes the GUI-parity text design summary. All three write to
 `<workspace>/signoff/` by default and accept `-o` plus the usual
-`--project/--run-id/--workspace` selectors:
+`--project` plus an optional managed `--workspace NAME` selector:
 
 ```bash
 uv run ecc report qor --project gcd
-uv run ecc report checklist --workspace runs/default
+uv run ecc report checklist --project gcd --workspace default
 uv run ecc report summary --project gcd
 ```
 
@@ -326,8 +326,9 @@ uv run ecc signoff inspect --project gcd       # readiness review (blocked still
 uv run ecc signoff export -o gcd.tar.gz --project gcd [--include-debug]
 ```
 
-`inspect`/`export` refresh step analysis first (same as the GUI). Both project
-runs (`--project`/`--run-id`) and `--workspace` paths are accepted.
+`inspect`/`export` refresh step analysis first (same as the GUI). They use the
+selected project and its managed `--workspace NAME`; a single active workspace
+is selected automatically.
 
 The project config is the CLI input surface:
 
@@ -336,6 +337,12 @@ The project config is the CLI input surface:
 name = "gcd"
 top = "gcd"
 rtl = ["rtl/gcd.v"]
+# Optional input declarations for non-RTL entry ranges:
+# netlist = "inputs/gcd.v"
+# golden_netlist = "inputs/gcd-golden.v"
+# def = "inputs/gcd.def"
+# sdc = "constraints/gcd.sdc"
+# spef = "inputs/gcd.spef"
 clock_port = "clk"
 frequency_mhz = 100.0
 
@@ -345,7 +352,6 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
-run = "default"
 ```
 
 For filelist mode, set `design.rtl` to a single filelist path, for example
@@ -454,27 +460,29 @@ CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk uv run ecc
 1. Check `workspace_step.logs/` for tool output.
 2. Inspect `workspace_step.config/` for configs.
 3. Verify `workspace_step.input/` files.
-4. Reproduce or continue the failure in place with `ecc run --workspace`:
+4. Reproduce or continue the failure in place with the project and managed
+   workspace name:
 
 ```bash
-workspace=/path/to/reported/workspace
+project=/path/to/project
+workspace=default
 
 # Resume from the first non-successful step (default when no selector is given).
-.venv/bin/ecc run --workspace "$workspace"
-.venv/bin/ecc run --workspace "$workspace" --resume
+.venv/bin/ecc run --project "$project" --workspace "$workspace"
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --resume
 
-# Re-execute CTS and every following step in the persisted flow.
-.venv/bin/ecc run --workspace "$workspace" --from CTS
+# Re-execute the inclusive CTS-to-route range in the persisted flow.
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --from CTS --to route
 
 # Run exactly one step; add --force if it already succeeded.
-.venv/bin/ecc run --workspace "$workspace" --only place
-.venv/bin/ecc run --workspace "$workspace" --only place --force
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --only place
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --only place --force
 ```
 
-`--resume`, `--from`, and `--only` are mutually exclusive, and `--force` is
-only valid with `--only`. Workspace mode cannot be combined with `--project`,
-`--run-id`, `--overwrite`, or `--set`. Step names must match `home/flow.json`
-exactly.
+`--resume`, `--only`, and a range are mutually exclusive, and `--force` is
+only valid with `--only`. `--workspace` can be combined with `--project`;
+new ranges cannot be combined with `--overwrite`. Step names use the canonical
+flow aliases.
 
 Workspace mode mutates the workspace in place: each executed step's `output/`
 is replaced, and steps downstream of a re-executed step are marked `Unstart`

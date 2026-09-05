@@ -30,7 +30,12 @@ class StepRunResult(NamedTuple):
 
 
 def selected_step_names(
-    flow: "EngineFlow", *, from_step: str = None, only: str = None, force: bool = False
+    flow: "EngineFlow",
+    *,
+    from_step: str = None,
+    through: str | None = None,
+    only: str = None,
+    force: bool = False,
 ) -> list[str]:
     """Resolve a run selector to the persisted step names it would execute."""
     steps = flow.workspace.flow.data.get("steps", [])
@@ -40,7 +45,11 @@ def selected_step_names(
             return []
         return [steps[index]["name"]]
     if from_step is not None:
-        return [step["name"] for step in steps[_require_step_index(flow, from_step) :]]
+        first = _require_step_index(flow, from_step)
+        last = _require_step_index(flow, through) if through is not None else len(steps) - 1
+        if last < first:
+            raise ValueError(f"step '{through}' is before '{from_step}'")
+        return [step["name"] for step in steps[first : last + 1]]
     for index, step in enumerate(steps):
         if step.get("state") != StateEnum.Success.value:
             return [step["name"] for step in steps[index:]]
@@ -83,7 +92,10 @@ def run_from(flow: "EngineFlow", name: str, *, through: str | None = None) -> St
     _require_steps_available(flow, last_index)
     suffix = flow.workspace_steps[index : last_index + 1]
     output_dirs = _validated_output_dirs(flow.workspace, suffix)
-    _invalidate_suffix(flow, index, last_index)
+    # A bounded rerun executes only the requested interval, but all later
+    # states become stale because their input chain changed. Their outputs are
+    # deliberately retained until the user chooses to run them.
+    _invalidate_suffix(flow, index)
     return _run_selected(flow, list(zip(suffix, output_dirs, strict=True)))
 
 

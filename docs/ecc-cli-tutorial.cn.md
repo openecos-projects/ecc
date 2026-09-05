@@ -194,8 +194,8 @@ gcd/
 ├── rtl/           # 放 Verilog 源码或 filelist
 └── constraints/   # 约束预留目录（本教程无需手写约束，见 §3.3）
 
-# workspace 由首个 ecc run 创建：新项目落在 gcd/<run-id>/（并写入 project.json 登记）；
-# 要使用非默认且可跟踪的 id，请在这次首次运行时传 --run-id。旧布局 runs/<id>/ 由 ecc migrate 升级
+# workspace 由首个 ecc run 创建：缺省为 gcd/default/，并写入 project.json 登记；
+# 可用 ecc run --workspace <名称> 创建其他受管 workspace。旧布局 runs/<id>/ 必须先 ecc migrate。
 ```
 
 ### 3.2 放入 RTL
@@ -220,6 +220,12 @@ cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
 name = "gcd"
 top = "gcd"              # 顶层模块名
 rtl = ["rtl/gcd.v"]      # 单个 Verilog 文件，或多源时指向 filelist
+# 非 RTL 范围可按需声明入口输入：
+# netlist = "inputs/gcd.v"
+# golden_netlist = "inputs/gcd-golden.v"
+# def = "inputs/gcd.def"
+# sdc = "constraints/gcd.sdc"
+# spef = "inputs/gcd.spef"
 clock_port = "clk"       # 时钟端口名
 frequency_mhz = 100.0    # 目标频率（MHz）
 
@@ -230,7 +236,6 @@ root = ""                # 留空则用 CHIPCOMPILER_ICS55_PDK_ROOT 环境变量
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"       # 本教程使用的完整 RTL-to-Harden 流程
-run = "default"          # run id（workspace 默认 <项目>/<id>；legacy 项目为 runs/<id>）
 ```
 
 对 gcd 示例来说，`init` 生成的默认值恰好全部正确（顶层就叫 `gcd`，时钟端口 `clk`），**一个字都不用改**。换你自己的设计时，需要核对 `top`、`rtl`、`clock_port`、`frequency_mhz` 四项。
@@ -363,7 +368,7 @@ rc=0
 
 ### 4.4 结果都放在哪
 
-每次运行落在一个独立 workspace（新项目为 `gcd/<run-id>/`，首个 run 同时写入 `project.json` 登记；legacy 项目为 `runs/<run-id>/`），每个步骤一个子目录，互不干扰：
+每个受管 workspace 独立落在 `gcd/<workspace 名称>/`，创建前先登记到 `project.json`，声明的输入会复制到其 `origin/`。workspace 不保存第二份项目输入清单，每个步骤一个子目录，互不干扰：
 
 ```
 default/
@@ -399,11 +404,11 @@ gcd_Harden.png    211 KB   # 版图快照
 
 flow 全部步骤 Success 后，用 `signoff` / `report` 两组命令收尾。
 
-本教程以下命令均在 `gcd/` 项目目录中执行，因此不必指定 selector。若要从其他目录直接操作已有 workspace，`inspect` 与 `export` 都可传 `--workspace PATH`；它不能与 `--project` 或 `--run-id` 同时使用：
+本教程以下命令均在 `gcd/` 项目目录中执行，因此不必指定 selector。从其他目录操作时，传项目和受管 workspace 名称：
 
 ```bash
-ecc signoff inspect --workspace /path/to/gcd/default
-ecc signoff export --workspace /path/to/gcd/default -o /path/to/gcd_signoff_package.tar.gz
+ecc signoff inspect --project /path/to/gcd --workspace default
+ecc signoff export --project /path/to/gcd --workspace default -o /path/to/gcd_signoff_package.tar.gz
 ```
 
 ### 5.1 检查签核就绪度：ecc signoff inspect
@@ -585,28 +590,28 @@ ecc param unset place.target_density    # 恢复默认
 
 常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-cli-ug.cn.md#9-param--参数管理)。
 
-### 6.2 选择可跟踪的 run
+### 6.2 创建受管 workspace
 
-在第一次运行前选择非默认 id，使自动生成的 manifest 登记它：
+创建时命名 workspace，它会自动登记到 `project.json`：
 
 ```bash
-ecc run --run-id exp1 --preset rtl2gds --set place.target_density=0.55
-ecc status --run-id exp1
-ecc report qor --run-id exp1     # 报告类命令同样接受 --run-id
+ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.55
+ecc status --workspace exp1
+ecc report qor --workspace exp1
 ```
 
-`--set KEY=VALUE` 只对本次运行生效并记入 provenance，不改 `ecc.toml`。`project.json` 生成后，项目级查看、签核和报告命令只会选择已声明的 workspace。`ecc run --run-id` 可以创建未声明的单路径段 workspace，但会输出 `workspace_not_registered`，并且之后不能用项目级 `status`、`log`、`config`、`signoff` 或 `report` 选中；需要额外可跟踪 workspace 时，应通过拥有 manifest 的 UI 增加条目。
+`--set KEY=VALUE` 只对本次 workspace 创建生效并记入 provenance，不改 `ecc.toml`。`project.json` 生成后，项目级查看、签核和报告命令按已声明的 workspace 选择；多个活跃 workspace 时显式传 `--workspace NAME`。
 
 ### 6.3 重跑
 
 ```bash
-ecc run --overwrite --preset rtl2gds      # 整个 run 推倒重来（删除该 run 目录，有安全校验）
-ecc run --workspace default --from CTS        # 从 CTS 起重跑其后所有步骤
+ecc run --overwrite --preset rtl2gds      # 重建已选择的 workspace（有安全校验）
+ecc run --workspace default --from CTS --to route  # 重跑一个包含式范围
 ecc run --workspace default --only place --force   # 只重跑一步（已成功时需 --force）
 ecc run --workspace default --resume   # 从第一个非成功步骤继续
 ```
 
-注意 `--from`/`--only` 的步骤名要用 `home/flow.json` 中的原始名（如 `place`、`CTS`），不是展示层的小写名。
+新建范围 workspace 时必须同时传 `--from` 和 `--to`，例如 `ecc run --workspace cts-only --from CTS --to CTS`。入口文件按首步要求校验：Synthesis 要 `rtl`；LEC 要 `netlist` 和 `golden_netlist`；Floorplan 要 `netlist`；物理步骤要 `def` 和 `netlist`；STA 要 `def`、`netlist`、`spef`；`sdc` 可选。
 
 ### 6.4 查看某步实际生效的配置
 
@@ -621,7 +626,7 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 |---|---|---|
 | `ecc: command not found` | PATH 未生效 | `source ~/.ecc-env.sh`；重开终端；或检查 `~/.local/bin` 在 PATH |
 | `[error] env_not_ready`（run 时） | preset 必需工具缺失 | 按 `ecc doctor` 输出补齐；通常是 yosys/slang，重跑 `bash docs/ecc-cli-setup.sh` |
-| `[error] run_exists` | 同名 run 目录已存在 | `ecc run --overwrite`，或换 `--run-id` |
+| `[error] run_exists` | workspace 目录已存在 | `ecc run --overwrite`，或换 `--workspace NAME` |
 | `[error] signoff_incomplete`（export 时） | 必需交付物缺失（如某步失败） | `ecc signoff inspect` 看 blocked 项；`ecc status`/`ecc log` 排查失败步骤后重跑 |
 | `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk setup` 或 `ecc pdk set-root <路径>`，或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |

@@ -8,21 +8,9 @@ from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
 SUPPORTED_PDK_NAMES = {"ics55"}
 
 
-class InvalidFlowRun:
-    """config_run_id result for a [flow] run value that cannot name a run directory."""
-
-    def __init__(self, problem: str) -> None:
-        self.problem = problem
-
-
-def _flow_run_problem(value: object) -> str | None:
-    """Return the rejection reason for a present [flow] run value, or None."""
-    if isinstance(value, str):
-        if value == "default":
-            return None
-        if value and value == value.strip() and "\x00" not in value:
-            return None
-    return f"unsupported flow.run: {value}"
+def _unsupported_flow_run_problem(value: object) -> str:
+    """Return the rejection reason for a present legacy ``[flow].run`` key."""
+    return f"unsupported_flow_run: [flow].run is not supported ({value!r})"
 
 
 # TODO: Move ecc.toml parsing and validation into chipcompiler.data.project_config
@@ -32,6 +20,11 @@ class ProjectConfig:
     design_name: str = ""
     design_top: str = ""
     design_rtl: list[str] = field(default_factory=list)
+    design_netlist: str = ""
+    design_golden_netlist: str = ""
+    design_def: str = ""
+    design_sdc: str = ""
+    design_spef: str = ""
     design_clock_port: str = ""
     design_frequency_mhz: float = 0.0
 
@@ -40,8 +33,6 @@ class ProjectConfig:
     pdk_overrides: dict[str, object] = field(default_factory=dict)
 
     flow_preset: str = ""
-    flow_run: str = ""
-
     config_path: str = ""
     project_dir: str = ""
 
@@ -58,7 +49,7 @@ class ProjectConfig:
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
-    _flow_run_error: str | None = field(default=None, init=False, repr=False)
+    _flow_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
     # Parse provenance: dotted "<section>.<key>" names of every design/pdk/
     # flow key present in ecc.toml. An absent key may fill from a lower
     # (manifest) layer; an explicit value — even an empty/invalid one —
@@ -107,24 +98,29 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     pdk_overrides_raw = pdk.get("overrides", {})
     pdk_overrides = {} if not isinstance(pdk_overrides_raw, dict) else pdk_overrides_raw
 
-    raw_run = flow.get("run", "default")
+    raw_run = flow.get("run")
 
     cfg = ProjectConfig(
         design_name=_str(design.get("name", "")),
         design_top=_str(design.get("top", "")),
         design_rtl=design_rtl,
+        design_netlist=_str(design.get("netlist", "")),
+        design_golden_netlist=_str(design.get("golden_netlist", "")),
+        design_def=_str(design.get("def", "")),
+        design_sdc=_str(design.get("sdc", "")),
+        design_spef=_str(design.get("spef", "")),
         design_clock_port=_str(design.get("clock_port", "")),
         design_frequency_mhz=freq,
         pdk_name=_str(pdk.get("name", "")),
         pdk_root=_str(pdk.get("root", "")),
         pdk_overrides=pdk_overrides,
         flow_preset=_str(flow.get("preset", "")),
-        flow_run=_str(raw_run, "default"),
         config_path=config_path,
         project_dir=project_dir,
     )
 
-    cfg._flow_run_error = _flow_run_problem(raw_run)
+    if "run" in flow:
+        cfg._flow_config_errors.append(_unsupported_flow_run_problem(raw_run))
     cfg._explicit_keys = frozenset(
         f"{section}.{key}"
         for section, table in (("design", design), ("pdk", pdk), ("flow", flow))
@@ -187,30 +183,6 @@ def load_run_config(project_dir: str) -> ProjectConfig | None:
         raise ConfigUnreadableError(f"unreadable project config: {config_path}: {exc}") from exc
 
 
-def config_run_id_from(cfg: ProjectConfig | None) -> str | InvalidFlowRun | None:
-    """Apply the canonical [flow] run rule to an already-parsed config."""
-    if cfg is None or cfg._toml_error:
-        return None
-    if cfg._flow_run_error is not None:
-        return InvalidFlowRun(cfg._flow_run_error)
-    if cfg.flow_run == "default":
-        return None
-    return cfg.flow_run
-
-
-def config_run_id(project_dir: str) -> str | InvalidFlowRun | None:
-    """Return the [flow] run id configured in the project's ecc.toml.
-
-    None when the key is absent, is "default", or the config cannot be read;
-    InvalidFlowRun when the key is present but cannot name a run directory;
-    otherwise the run id string.
-    """
-    try:
-        return config_run_id_from(load_run_config(project_dir))
-    except ConfigUnreadableError:
-        return None
-
-
 def _supported_flow_presets() -> set[str]:
     from chipcompiler import rtl2gds as rtl2gds_api
 
@@ -237,11 +209,6 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append("design.clock_port is required")
     if cfg.design_frequency_mhz <= 0:
         errors.append("design.frequency_mhz must be greater than 0")
-    if not cfg.design_rtl:
-        errors.append("design.rtl must have at least one entry")
-    elif len(cfg.design_rtl) > 1:
-        errors.append("design.rtl must have exactly one entry; use a filelist for multiple sources")
-
     if not cfg.pdk_name:
         errors.append("pdk.name is required")
     elif cfg.pdk_name not in SUPPORTED_PDK_NAMES:
@@ -263,26 +230,7 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
     elif cfg.flow_preset not in _supported_flow_presets():
         errors.append(f"unsupported flow.preset: {cfg.flow_preset}")
 
-    if cfg._flow_run_error:
-        errors.append(cfg._flow_run_error)
-
-    if len(cfg.design_rtl) == 1:
-        rtl_path = _resolve_path(cfg.project_dir, cfg.design_rtl[0])
-        if not os.path.exists(rtl_path):
-            errors.append(f"rtl path does not exist: {cfg.design_rtl[0]}")
-        elif os.path.isdir(rtl_path):
-            errors.append(f"rtl path must be a file, not a directory: {cfg.design_rtl[0]}")
-        else:
-            suffix = os.path.splitext(rtl_path)[1].lower()
-            if suffix in FILELIST_SUFFIXES:
-                from chipcompiler.utility.filelist import validate_filelist
-
-                try:
-                    _, missing = validate_filelist(rtl_path)
-                    if missing:
-                        errors.append(f"filelist references missing files: {', '.join(missing)}")
-                except (ValueError, OSError) as e:
-                    errors.append(f"invalid filelist {cfg.design_rtl[0]}: {e}")
+    errors.extend(cfg._flow_config_errors)
 
     return errors
 

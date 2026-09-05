@@ -32,7 +32,6 @@ root = "{pdk_root}"
 
 [flow]
 preset = "rtl2gds"
-run = "default"
 '''
     (project_dir / "ecc.toml").write_text(toml)
     return str(project_dir)
@@ -111,7 +110,7 @@ def create_ecc_workspace_config(run_dir, step_config):
 
 
 def set_flow_run(project_dir, run_line):
-    """Replace the [flow] run line of a create_cli_project ecc.toml.
+    """Inject or remove the legacy [flow] run line in a test ecc.toml.
 
     run_line is the full TOML line (e.g. 'run = "exp1"'); pass None to remove
     the key entirely.
@@ -119,8 +118,9 @@ def set_flow_run(project_dir, run_line):
     toml_path = os.path.join(project_dir, "ecc.toml")
     with open(toml_path) as f:
         content = f.read()
-    replacement = "" if run_line is None else f"{run_line}\n"
-    content = content.replace('run = "default"\n', replacement)
+    content = content.replace('run = "default"\n', "")
+    if run_line is not None:
+        content = content.replace('preset = "rtl2gds"\n', f'preset = "rtl2gds"\n{run_line}\n')
     with open(toml_path, "w") as f:
         f.write(content)
 

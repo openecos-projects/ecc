@@ -7,11 +7,8 @@ import typer
 
 from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
-from chipcompiler.cli.inspection.discovery import resolve_run_dir
 from chipcompiler.cli.project.config import (
     ConfigUnreadableError,
-    InvalidFlowRun,
-    config_run_id_from,
     load_run_config,
     resolve_project_dir,
 )
@@ -39,47 +36,49 @@ def output_mode(*, json_output: bool, jsonl: bool, plain: bool) -> OutputMode:
     return OutputMode.TEXT
 
 
-def _resolve_manifest_run(
-    project_dir: str, cli_run_id: str | None
+def _resolve_manifest_workspace(
+    project_dir: str, workspace_name: str | None, *, allow_create: bool
 ) -> tuple[str, str | None, str | None]:
-    """Resolve the run directory from a project.json manifest.
+    """Resolve a managed workspace from a project.json manifest.
 
-    Returns (run_dir, run_id, error): exactly one non-archived workspace
-    auto-selects; otherwise --run-id selects by workspace_id or declared
-    path tail. Unknown ids fail with workspace_not_declared (the error text
-    lists the declared ids).
+    Returns (workspace_dir, workspace_id, error). A run may name a new
+    single-segment workspace; read-only commands may only select declarations.
     """
     from chipcompiler.cli.project.manifest import load_manifest
-    from chipcompiler.cli.project.run_prepare import invalid_single_segment_id
+    from chipcompiler.cli.project.run_prepare import invalid_workspace_name
 
     manifest = load_manifest(project_dir)
     active = manifest.active_workspaces()
 
-    if cli_run_id is None:
+    if workspace_name is None:
         if len(active) == 1:
             return active[0].workspace_path, active[0].workspace_id, None
         ids = ", ".join(w.workspace_id for w in active) or "(none)"
+        if allow_create and not active:
+            return os.path.join(project_dir, "default"), "default", None
         return (
             os.path.join(project_dir, "default"),
             None,
-            f"workspace_not_declared: --run-id required; declared workspaces: {ids}",
+            f"workspace_required: --workspace is required; declared workspaces: {ids}",
         )
 
-    if invalid_single_segment_id(cli_run_id):
+    if invalid_workspace_name(workspace_name):
         return (
             os.path.join(project_dir, "default"),
             None,
-            f"invalid_run_id: {cli_run_id!r} is not a single path segment inside the project",
+            f"invalid_workspace: {workspace_name!r} is not a single workspace name",
         )
 
-    match = manifest.find_workspace(cli_run_id)
+    match = manifest.find_workspace(workspace_name)
     if match is not None:
         return match.workspace_path, match.workspace_id, None
     ids = ", ".join(w.workspace_id for w in active) or "(none)"
+    if allow_create:
+        return os.path.join(project_dir, workspace_name), workspace_name, None
     return (
-        os.path.join(project_dir, cli_run_id),
-        cli_run_id,
-        f"workspace_not_declared: unknown workspace {cli_run_id!r}; declared workspaces: {ids}",
+        os.path.join(project_dir, workspace_name),
+        workspace_name,
+        f"workspace_not_declared: unknown workspace {workspace_name!r}; declared workspaces: {ids}",
     )
 
 
@@ -87,7 +86,7 @@ def build_context(command_input: CommandInput) -> CommandContext:
     project = command_input.project.project
     project_dir = resolve_project_dir(project)
 
-    cli_run_id = command_input.project.run_id
+    workspace_name = getattr(command_input, "workspace", None)
     config_error = None
     try:
         cfg = load_run_config(project_dir)
@@ -103,25 +102,34 @@ def build_context(command_input: CommandInput) -> CommandContext:
     project_state = classify_project(project_dir)
     manifest_error = None
 
+    if workspace_name is not None:
+        from chipcompiler.cli.project.run_prepare import invalid_workspace_name
+
+        if invalid_workspace_name(workspace_name):
+            run_dir, run_id = os.path.join(project_dir, "default"), None
+            manifest_error = f"invalid_workspace: {workspace_name!r} is not a single workspace name"
+            project_state = "invalid_workspace"
+        else:
+            run_dir = run_id = None
+    else:
+        run_dir = run_id = None
+
     if project_state == "manifest":
         # Manifest projects use the manifest workspaces table for discovery
         # even when an ecc.toml also exists (config values still layer the
         # ecc.toml above the manifest base).
         try:
-            run_dir, run_id, manifest_error = _resolve_manifest_run(project_dir, cli_run_id)
+            run_dir, run_id, manifest_error = _resolve_manifest_workspace(
+                project_dir,
+                workspace_name,
+                allow_create=command_input.__class__.__name__ == "RunInput",
+            )
         except ManifestError as exc:
-            run_dir, run_id = os.path.join(project_dir, "default"), cli_run_id
+            run_dir, run_id = os.path.join(project_dir, "default"), workspace_name
             manifest_error = f"manifest_invalid: {exc}"
-    else:
-        configured = config_run_id_from(cfg)
-        if isinstance(configured, InvalidFlowRun):
-            if cli_run_id is None:
-                config_error = configured.problem
-            configured = None
-
-        run_dir, run_id = resolve_run_dir(
-            project_dir, cli_run_id if cli_run_id is not None else configured
-        )
+    elif project_state != "invalid_workspace":
+        workspace_id = workspace_name or "default"
+        run_dir, run_id = os.path.join(project_dir, workspace_id), workspace_id
 
     mode = output_mode(
         json_output=command_input.output.json,
@@ -151,17 +159,10 @@ def _should_colorize():
 def _with_legacy_hint(command: str, command_input, result, ctx):
     """Append the legacy-layout hint at the command-result boundary.
 
-    run/check/status on a legacy runs/ project carry the hint on EVERY
-    outcome — success, config error, missing/corrupt flow, or run
-    failure — with exit code and other records untouched. ``run
-    --workspace`` targets an explicit workspace, not the project layout,
-    and stays undecorated.
+    run/check/status on a legacy runs/ project carry the migration hint on
+    every outcome.
     """
-    if (
-        command not in ("run", "check", "status")
-        or ctx.project_state != "legacy"
-        or getattr(command_input, "workspace", None) is not None
-    ):
+    if command not in ("run", "check", "status") or ctx.project_state != "legacy":
         return result
     from chipcompiler.cli.core.records import legacy_layout_hint_record
 
@@ -179,8 +180,7 @@ def _with_config_shadow_hint(command: str, command_input, result, ctx):
     outcome: the JSON is inert, and a user editing it would otherwise see
     nothing happen. One lexists pair per command (lexists, not isfile: a
     dangling link still shadows); no workspace load, no file mutation —
-    deleting the JSON stays the user's call. ``run --workspace`` probes
-    the explicit target, not the project-derived run dir.
+    deleting the JSON stays the user's call.
     """
     if command not in ("run", "check", "status"):
         return result
@@ -190,10 +190,7 @@ def _with_config_shadow_hint(command: str, command_input, result, ctx):
         WORKSPACE_CONFIG_FILENAME,
     )
 
-    explicit = getattr(command_input, "workspace", None)
-    workspace_dir = (
-        os.path.abspath(os.path.expanduser(explicit)) if explicit is not None else ctx.run_dir
-    )
+    workspace_dir = ctx.run_dir
     home = os.path.join(workspace_dir, "home")
     if not (
         os.path.lexists(os.path.join(home, WORKSPACE_CONFIG_FILENAME))

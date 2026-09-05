@@ -17,7 +17,6 @@ from chipcompiler.cli.core.options import (
     JsonOption,
     PlainOption,
     ProjectOption,
-    RunIdOption,
     WorkspaceOption,
 )
 
@@ -43,7 +42,6 @@ def qor_cmd(
     *,
     output_path: OutputPathOption = None,
     project: ProjectOption = None,
-    run_id: RunIdOption = None,
     workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
@@ -51,7 +49,7 @@ def qor_cmd(
 ) -> None:
     command_input = ReportQorInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         workspace=workspace,
         output_path=output_path,
     )
@@ -63,7 +61,6 @@ def checklist_cmd(
     *,
     output_path: OutputPathOption = None,
     project: ProjectOption = None,
-    run_id: RunIdOption = None,
     workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
@@ -71,7 +68,7 @@ def checklist_cmd(
 ) -> None:
     command_input = ReportChecklistInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         workspace=workspace,
         output_path=output_path,
     )
@@ -83,7 +80,6 @@ def summary_cmd(
     *,
     output_path: OutputPathOption = None,
     project: ProjectOption = None,
-    run_id: RunIdOption = None,
     workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
@@ -91,7 +87,7 @@ def summary_cmd(
 ) -> None:
     command_input = ReportSummaryInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         workspace=workspace,
         output_path=output_path,
     )
@@ -120,7 +116,6 @@ def step_cmd(
     ] = None,
     sections: SectionOption = None,
     project: ProjectOption = None,
-    run_id: RunIdOption = None,
     workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
@@ -128,7 +123,7 @@ def step_cmd(
 ) -> None:
     command_input = ReportStepInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         workspace=workspace,
         step=step,
         sections=tuple(sections or ()),

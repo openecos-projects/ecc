@@ -97,6 +97,14 @@ class TestSelectedStepNames:
 
         assert rerun.selected_step_names(flow, from_step="place") == ["place", "CTS"]
 
+    def test_from_through_selects_an_inclusive_bounded_range(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Success"), ("CTS", "Success")],
+        )
+
+        assert rerun.selected_step_names(flow, from_step="place", through="place") == ["place"]
+
     def test_only_success_step_requires_force(self, tmp_path):
         flow = _make_run_flow(tmp_path, [("place", "Success")])
 
@@ -144,6 +152,25 @@ class TestRunFrom:
         assert keep.read_text(encoding="utf-8") == "old"
         assert not stale_place.exists()
         assert not stale_cts.exists()
+
+    def test_bounded_range_marks_downstream_stale_without_deleting_its_output(
+        self, monkeypatch, tmp_path
+    ):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Success"), ("CTS", "Success")],
+        )
+        stale_place = _write_output(flow, "place")
+        retained_cts = _write_output(flow, "CTS")
+        calls = _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_from(flow, "place", through="place")
+
+        assert result.ok
+        assert calls == [("place", True)]
+        assert not stale_place.exists()
+        assert retained_cts.read_text(encoding="utf-8") == "old"
+        assert _flow_states(flow) == ["Success", "Success", "Unstart"]
 
     def test_failure_stops_suffix_and_keeps_downstream_output(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
