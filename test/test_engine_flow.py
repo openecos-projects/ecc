@@ -332,20 +332,43 @@ class TestCheckStepResultRcx:
     def test_rcx_succeeds_when_all_spef_exist(self, tmp_path):
         spef1 = tmp_path / "corner1.spef"
         spef2 = tmp_path / "corner2.spef"
-        spef1.write_text("")
-        spef2.write_text("")
+        spef1.write_text("*SPEF\n")
+        spef2.write_text("*SPEF\n")
         step = EccStep(
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef1, spef2]),
         )
         assert EngineFlow(Workspace()).check_step_result(step) is True
 
-    def test_rcx_succeeds_with_empty_spef_list(self):
+    def test_rcx_fails_with_empty_spef_list(self):
         step = EccStep(
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is True
+        assert EngineFlow(Workspace()).check_step_result(step) is False
+
+    def test_rcx_fails_when_spef_is_zero_byte(self, tmp_path):
+        spef = tmp_path / "corner1.spef"
+        spef.write_text("")
+        step = EccStep(
+            name=StepEnum.RCX.value,
+            output=EccOutput(spef=[spef]),
+        )
+        assert EngineFlow(Workspace()).check_step_result(step) is False
+
+    def test_rcx_fails_when_one_of_two_spef_missing(self, tmp_path):
+        spef1 = tmp_path / "corner1.spef"
+        spef1.write_text("*SPEF\n")
+        spef2 = tmp_path / "corner2.spef"
+        step = EccStep(
+            name=StepEnum.RCX.value,
+            output=EccOutput(spef=[spef1, spef2]),
+        )
+        assert EngineFlow(Workspace()).check_step_result(step) is False
+
+    def test_rcx_fails_when_output_is_not_ecc_output(self):
+        step = YosysStep(name=StepEnum.RCX.value, tool="yosys")
+        assert EngineFlow(Workspace()).check_step_result(step) is False
 
 
 class TestStepExceptionForcesIncomplete:

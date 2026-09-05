@@ -65,36 +65,56 @@ def _workspace_sta_config_path(workspace: Workspace) -> str | None:
     return os.fspath(config_path) if config_path is not None else None
 
 
-def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep):
+def _workspace_rcx_dir(path_text: str, workspace_dir: Path) -> Path:
+    if path_text.startswith("/"):
+        relative_path = path_text[1:]
+        if relative_path.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
+            return workspace_dir / relative_path
+    return Path(path_text)
+
+
+def _resolve_rcx_dirs(workspace: Workspace, step: EccStep) -> tuple[Path | None, Path | None]:
+    """Resolve the RCX extraction data and output directories for a step."""
+    workspace_dir = workspace.directory
+    if workspace_dir is None:
+        return None, None
+
     data_dir_text = os.fspath(step.data.dir or "")
     output_dir_text = os.fspath(step.output.dir or "")
-    workspace_dir = workspace.directory
-    if not data_dir_text or not output_dir_text or workspace_dir is None:
-        return
+    if not data_dir_text or not output_dir_text:
+        return None, None
 
-    data_dir = Path(data_dir_text)
-    if data_dir_text.startswith("/"):
-        relative_data_dir = data_dir_text[1:]
-        if relative_data_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-            data_dir = workspace_dir / relative_data_dir
+    return (
+        _workspace_rcx_dir(data_dir_text, workspace_dir),
+        _workspace_rcx_dir(output_dir_text, workspace_dir),
+    )
 
-    output_dir = Path(output_dir_text)
-    if output_dir_text.startswith("/"):
-        relative_output_dir = output_dir_text[1:]
-        if relative_output_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-            output_dir = workspace_dir / relative_output_dir
+
+def _wipe_stale_rcx_spef_artifacts(data_dir: Path) -> None:
+    for stale_path in (data_dir / "spef_writer").glob("*.spef"):
+        stale_path.unlink(missing_ok=True)
+
+
+def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep) -> bool:
+    data_dir, output_dir = _resolve_rcx_dirs(workspace, step)
+    if data_dir is None or output_dir is None:
+        workspace.logger.error("RCX data or output directory is not configured")
+        return False
 
     spef_writer_dir = data_dir / "spef_writer"
     if not spef_writer_dir.is_dir():
-        return
+        workspace.logger.error("RCX extraction artifacts are missing: %s", spef_writer_dir)
+        return False
 
-    output_paths = [output_dir / spef_path.name for spef_path in step.output.spef if spef_path]
-
-    if not output_paths:
+    declared_paths = [spef_path for spef_path in step.output.spef if spef_path]
+    if declared_paths:
+        output_paths = [output_dir / spef_path.name for spef_path in declared_paths]
+    else:
         output_paths = [
             output_dir / spef_path.name for spef_path in sorted(spef_writer_dir.glob("*.spef"))
         ]
 
+    copied = False
     for output_path in output_paths:
         source_path = spef_writer_dir / output_path.name
         if not source_path.is_file():
@@ -102,10 +122,21 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep):
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, output_path)
+        copied = True
         workspace.logger.info("Copied RCX SPEF %s to %s", source_path, output_path)
+
+    if not copied:
+        workspace.logger.error("RCX extraction produced no SPEF artifacts to publish")
+        return False
+
+    for output_path in output_paths:
+        if not (os.path.isfile(output_path) and os.path.getsize(output_path) > 0):
+            workspace.logger.error("Published RCX SPEF is missing or empty: %s", output_path)
+            return False
 
     if isinstance(step.output.spef, list):
         step.output.spef[:] = output_paths
+    return True
 
 
 def copy_lvs_outputs(workspace: Workspace, step: EccStep):
@@ -841,12 +872,37 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.init_rcx(
-            config=workspace.config.get(StepEnum.RCX.value, ""), pdk=workspace.pdk.name
-        )
-        ecc_module.run_rcx()
-        ecc_module.destroy_rcx()
-        copy_rcx_spef_outputs(workspace, step)
+        # A rerun keeps the step directory, so drop previously extracted SPEFs
+        # first; stale artifacts left behind by an earlier run must not be
+        # mistaken for fresh extraction output.
+        data_dir, _ = _resolve_rcx_dirs(workspace, step)
+        if data_dir is not None:
+            _wipe_stale_rcx_spef_artifacts(data_dir)
+
+        try:
+            if not ecc_module.init_rcx(
+                config=workspace.config.get(StepEnum.RCX.value, ""), pdk=workspace.pdk.name
+            ):
+                workspace.logger.error("Failed to initialize RCX extraction")
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete
+                )
+                return False
+            if not ecc_module.run_rcx():
+                workspace.logger.error("RCX extraction failed")
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete
+                )
+                return False
+        finally:
+            try:
+                ecc_module.destroy_rcx()
+            except Exception as exc:
+                workspace.logger.error("Failed to release the RCX extractor: %s", exc)
+
+        if not copy_rcx_spef_outputs(workspace, step):
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete)
+            return False
         sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
 
         if not save_data(
