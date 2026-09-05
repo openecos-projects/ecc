@@ -157,10 +157,16 @@ def legacy_hint():
 
 @pytest.fixture
 def create_legacy_workspace():
-    """Factory: a real runs/<run_id> workspace with a two-step flow ledger."""
+    """Factory: a real runs/<run_id> workspace with a Synthesis..Floorplan
+    flow ledger cut from the canonical chain.
+
+    *states* holds (first step state, last step state); steps between them
+    inherit the first state."""
 
     def _create(project_dir, pdk_root, run_id, states):
         from chipcompiler.data import create_workspace
+        from chipcompiler.data.workspace_config import flow_steps_in_range
+        from chipcompiler.rtl2gds.builder import build_harden_flow
 
         rtl_path = os.path.join(project_dir, "rtl", "gcd.v")
         os.makedirs(os.path.dirname(rtl_path), exist_ok=True)
@@ -178,23 +184,23 @@ def create_legacy_workspace():
         )
         assert workspace is not None
 
+        chain = [
+            (step.value if hasattr(step, "value") else str(step), str(tool))
+            for step, tool, _state in build_harden_flow()
+        ]
+        tools = dict(chain)
+        names = flow_steps_in_range("Synthesis", "Floorplan")
+        step_states = [states[0]] * (len(names) - 1) + [states[1]]
         steps = [
             {
-                "name": "Synthesis",
-                "tool": "yosys",
-                "state": states[0],
+                "name": name,
+                "tool": tools[name],
+                "state": state,
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
-            },
-            {
-                "name": "Floorplan",
-                "tool": "ecc",
-                "state": states[1],
-                "runtime": "",
-                "peak memory (mb)": 0,
-                "info": {},
-            },
+            }
+            for name, state in zip(names, step_states, strict=True)
         ]
         with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
             json.dump({"steps": steps}, f)

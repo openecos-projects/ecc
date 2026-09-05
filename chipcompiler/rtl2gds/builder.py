@@ -8,6 +8,7 @@ def build_rtl2gds_flow() -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+    steps.append((StepEnum.LEC, "yosys_lec", StateEnum.Unstart))
     steps.append((StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))

@@ -47,19 +47,20 @@ def _set_flow_preset(project_dir, preset):
         f.write(content)
 
 
-RTL2GDS_NAMES = [
-    "Synthesis",
-    "Floorplan",
-    "place",
-    "CTS",
-    "legalization",
-    "Timing optimization",
-    "route",
-    "drc",
-    "lvs",
-    "filler",
-    "postRouteLec",
-]
+def _preset_names(preset):
+    from chipcompiler.rtl2gds.builder import get_flow_builders
+
+    return [step.value for step, _tool, _state in get_flow_builders()[preset]()]
+
+
+RTL2GDS_NAMES = _preset_names("rtl2gds")
+RCX_NAMES = _preset_names("rcx")
+
+
+def _success_through(names, last):
+    """Success states up to and including *last*; Unstart after."""
+    cut = names.index(last) + 1
+    return ["Success"] * cut + ["Unstart"] * (len(names) - cut)
 
 
 def _flow_states(run_dir):
@@ -116,7 +117,7 @@ class TestFlowContinuation:
         assert rc == 0
         states = _flow_states(run_dir)
         # Exactly RCX + sta appended as Unstart; prefix states untouched.
-        assert list(states) == RTL2GDS_NAMES + ["RCX", "sta"]
+        assert list(states) == RCX_NAMES
         assert all(states[name] == "Success" for name in RTL2GDS_NAMES)
         # The adopted target is the widened preset.
         assert _flow_section(run_dir) == {"preset": "rcx"}
@@ -482,10 +483,9 @@ class TestFlowMismatchZeroMutation:
         run_dir = os.path.join(project_dir, "runs", "default")
         _write_existing_workspace(
             run_dir,
-            RTL2GDS_NAMES + ["RCX", "sta"],
-            states=["Success"] * 4
-            + ["Unstart"] * (len(RTL2GDS_NAMES) - 4)
-            + ["Unstart", "Unstart"],
+            RCX_NAMES,
+            states=_success_through(RTL2GDS_NAMES, "place")
+            + ["Unstart"] * (len(RCX_NAMES) - len(RTL2GDS_NAMES)),
             preset="rtl2gds",
         )
 
@@ -557,8 +557,9 @@ class TestWorkspaceRunLockAndTargetBound:
         run_dir = os.path.join(str(tmp_path), "ws")
         _write_existing_workspace(
             run_dir,
-            RTL2GDS_NAMES + ["RCX", "sta"],
-            states=["Success"] * 4 + ["Unstart"] * (len(RTL2GDS_NAMES) - 4) + ["Success"] * 2,
+            RCX_NAMES,
+            states=_success_through(RTL2GDS_NAMES, "place")
+            + ["Success"] * (len(RCX_NAMES) - len(RTL2GDS_NAMES)),
             preset="rtl2gds",
         )
         captured = {}
@@ -589,14 +590,7 @@ class TestWorkspaceRunLockAndTargetBound:
 
         assert rc == 0
         assert captured["through"] == "postRouteLec"
-        # Synthesis..place are Success; the bounded selection starts at CTS
-        # and never reaches RCX/sta beyond the target end.
-        assert captured["executable"] == {
-            "legalization",
-            "Timing optimization",
-            "route",
-            "drc",
-            "lvs",
-            "filler",
-            "postRouteLec",
-        }
+        # Synthesis..place are Success; the bounded selection covers exactly
+        # the remaining Unstart steps and never reaches RCX/sta beyond the
+        # target end.
+        assert captured["executable"] == set(RTL2GDS_NAMES[RTL2GDS_NAMES.index("place") + 1 :])

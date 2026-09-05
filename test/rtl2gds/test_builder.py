@@ -56,6 +56,7 @@ def test_build_rtl2gds_flow_includes_lvs_after_drc():
 
     assert flow == [
         (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
+        (StepEnum.LEC, "yosys_lec", StateEnum.Unstart),
         (StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
