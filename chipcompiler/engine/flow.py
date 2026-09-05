@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from copy import deepcopy
+from pathlib import Path
 
 from chipcompiler.data import (
     EccOutput,
@@ -365,6 +366,8 @@ class EngineFlow:
                 explicit_golden = step_info.get("golden_verilog") or None
                 if explicit_golden:
                     input_db = explicit_golden
+                elif pre_step is None and self.workspace.design.golden_verilog is not None:
+                    input_db = self.workspace.design.golden_verilog
                 elif step["name"] == StepEnum.POST_ROUTE_LEC.value:
                     input_db = synthesis_gate_verilog or self.workspace.design.origin_verilog
                 elif pre_step is not None and pre_step.name == StepEnum.SYNTHESIS.value:
@@ -383,6 +386,13 @@ class EngineFlow:
             )
             # save workspace step
             if eda_step is not None:
+                step_info = step.get("info", {}) or {}
+                if (
+                    eda_step.name == StepEnum.STA.value
+                    and step_info.get("spef")
+                    and isinstance(eda_step.output, EccOutput)
+                ):
+                    eda_step.output.spef = [Path(step_info["spef"])]
                 if (
                     pre_step is not None
                     and pre_step.name == StepEnum.RCX.value

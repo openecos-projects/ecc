@@ -10,6 +10,7 @@ from chipcompiler.cli.project.manifest import (
     build_manifest_document,
     classify_project,
     load_manifest,
+    pre_register_workspace,
     resolved_base_parameters,
     update_manifest,
     write_back_workspace_status,
@@ -126,7 +127,7 @@ def test_load_manifest_rejects_workspace_outside_root(tmp_path):
         load_manifest(str(tmp_path))
 
 
-def test_find_workspace_matches_id_and_path_tail(tmp_path):
+def test_find_workspace_matches_only_declared_id(tmp_path):
     _write_manifest(
         tmp_path,
         _minimal_document(
@@ -142,7 +143,7 @@ def test_find_workspace_matches_id_and_path_tail(tmp_path):
     manifest = load_manifest(str(tmp_path))
 
     assert manifest.find_workspace("ws_0001") is manifest.workspaces[0]
-    assert manifest.find_workspace("custom_dir") is manifest.workspaces[0]
+    assert manifest.find_workspace("custom_dir") is None
     assert manifest.find_workspace("nope") is None
 
 
@@ -262,6 +263,41 @@ def test_write_back_workspace_status(tmp_path):
 
     # Unknown workspace ids degrade to a no-op, not an error.
     assert write_back_workspace_status(str(tmp_path), "unknown", "failed") is True
+
+
+def test_pre_register_workspace_writes_a_manifest_entry_before_workspace_creation(tmp_path):
+    from chipcompiler.cli.project.config import ProjectConfig
+
+    cfg = ProjectConfig(
+        design_name="gcd",
+        design_top="gcd",
+        design_clock_port="clk",
+        design_frequency_mhz=100.0,
+        design_netlist="input/gcd.v",
+        design_def="input/gcd.def",
+        pdk_name="ics55",
+        flow_preset="rtl2gds",
+        project_dir=str(tmp_path),
+    )
+
+    result = pre_register_workspace(
+        str(tmp_path),
+        cfg=cfg,
+        pdk_root="/pdk",
+        workspace_id="cts-only",
+        workspace_path=str(tmp_path / "cts-only"),
+        flow_config={"start_step": "CTS", "end_step": "CTS"},
+    )
+
+    assert result == "registered"
+    assert not (tmp_path / "cts-only").exists()
+    document = json.loads((tmp_path / "project.json").read_text())
+    entry = document["workspaces"][0]
+    assert entry["workspace_id"] == "cts-only"
+    assert entry["start_step"] == "CTS"
+    assert entry["end_step"] == "CTS"
+    assert entry["status"] == "not_started"
+    assert "input_snapshot" not in entry
 
 
 def test_load_manifest_rejects_malformed_mpc(tmp_path):
@@ -558,7 +594,7 @@ def test_load_manifest_symlink_loop_is_a_manifest_error_not_a_traceback(tmp_path
         load_manifest(str(project_dir))
 
 
-def test_find_workspace_selects_by_declared_tail_not_canonical_alias(tmp_path):
+def test_find_workspace_does_not_select_a_declared_path_tail(tmp_path):
     real_dir = tmp_path / "proj" / "actual"
     real_dir.mkdir(parents=True)
     (tmp_path / "proj" / "linked").symlink_to(real_dir)
@@ -574,9 +610,9 @@ def test_find_workspace_selects_by_declared_tail_not_canonical_alias(tmp_path):
 
     manifest = load_manifest(str(tmp_path / "proj"))
 
-    # Execution uses the canonical path; selection spells the document.
+    # Execution uses the canonical path, but CLI selection uses the managed ID.
     assert manifest.workspaces[0].workspace_path == str(real_dir.resolve())
-    assert manifest.find_workspace("linked") == manifest.workspaces[0]
+    assert manifest.find_workspace("linked") is None
     assert manifest.find_workspace("actual") is None
     assert manifest.find_workspace("ws_0001") == manifest.workspaces[0]
 

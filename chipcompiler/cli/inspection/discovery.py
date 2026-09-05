@@ -155,38 +155,28 @@ def listing_step_order(run_dir: str) -> list[str]:
     return sorted(step_dirs)
 
 
-def resolve_workspace_path(workspace_arg, project, run_id, run_dir):
-    """Resolve the workspace directory a command should operate on.
+def resolve_workspace_path(workspace_arg, project, workspace_id, run_dir):
+    """Return the managed workspace directory already selected by the context.
 
-    Side-effect-free: never loads a Workspace, never writes — safe for
-    read-only commands. `project` and `run_id` are whatever pair the caller
-    wants treated as conflicting with `workspace_arg` (the loaded variant
-    passes the raw CLI flags; read-only callers may pass resolved context
-    values). Returns (workspace_dir, error-record-or-None).
+    ``--workspace`` is a project-local name, not an arbitrary filesystem path.
+    The context resolves it through ``project.json`` before a handler reaches
+    this helper, so no command may bypass the manifest with a raw directory.
     """
-    if workspace_arg is not None:
-        if project is not None or run_id is not None:
-            return None, error_record("project_workspace_conflict")
-        path = os.path.abspath(os.path.expanduser(workspace_arg))
-        if not os.path.isdir(path):
-            return None, error_record("invalid_workspace", workspace=path)
-        return path, None
-
+    _ = workspace_arg
     if not os.path.isdir(run_dir):
         return None, error_record(
             "missing_workspace",
-            run_dir=run_dir,
-            run=disclosure_cmd("ecc run", project, run_id),
+            workspace=run_dir,
+            run=disclosure_cmd("ecc run", project, workspace_id),
         )
     return run_dir, None
 
 
-def resolve_command_workspace(workspace_arg, project, run_id, run_dir):
+def resolve_command_workspace(workspace_arg, project, workspace_id, run_dir):
     """Load the workspace a command should operate on.
 
-    `workspace_arg` (--workspace) wins and conflicts with --project/--run-id;
-    otherwise the project run directory (`run_dir`, already resolved by the
-    command context) is loaded. Wraps resolve_workspace_path with
+    The project workspace directory (`run_dir`) is already resolved by the
+    command context. Wraps resolve_workspace_path with
     load_workspace, which appends a workspace log entry and may migrate
     workspace configs — read-only commands must use resolve_workspace_path
     instead. Returns (workspace, error-record-or-None); the caller maps a
@@ -194,7 +184,7 @@ def resolve_command_workspace(workspace_arg, project, run_id, run_dir):
     """
     from chipcompiler.data import load_workspace
 
-    path, error = resolve_workspace_path(workspace_arg, project, run_id, run_dir)
+    path, error = resolve_workspace_path(workspace_arg, project, workspace_id, run_dir)
     if error is not None:
         return None, error
     try:
@@ -209,12 +199,10 @@ def resolve_command_workspace(workspace_arg, project, run_id, run_dir):
 def resolve_loaded_workspace(command_input, ctx: CommandContext):
     """Resolve and load the workspace for handlers that need a Workspace.
 
-    `command_input` must carry a `workspace` field (the --workspace flag) and
-    a `project` field (raw CLI project options). Returns (workspace, failure
-    CommandResult-or-None).
+    Returns (workspace, failure CommandResult-or-None).
     """
     workspace, error = resolve_command_workspace(
-        command_input.workspace, ctx.project, command_input.project.run_id, ctx.run_dir
+        command_input.workspace, ctx.project, ctx.run_id, ctx.run_dir
     )
     if error is not None:
         return None, CommandResult.err([error])
@@ -222,7 +210,5 @@ def resolve_loaded_workspace(command_input, ctx: CommandContext):
 
 
 def workspace_display(command_input, ctx: CommandContext) -> str:
-    """Human-facing workspace path: the --workspace value or the run dir."""
-    if command_input.workspace is not None:
-        return os.path.abspath(os.path.expanduser(command_input.workspace))
+    """Human-facing managed workspace path."""
     return ctx.run_dir

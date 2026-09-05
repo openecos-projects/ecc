@@ -117,7 +117,7 @@ uv run ecc --help
 ## 1. 通用约定
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
-- 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录），其中与 run 有关的命令还接受 `--run-id <id>`。**新项目**（没有 `project.json`、没有 `runs/`）首个 workspace 落在 `<project>/<run-id>`，并自动生成 `project.json` 登记。**manifest 项目**从其中已声明的 workspace 表解析查看类命令（恰有一个活跃 workspace 时自动选中）；id 必须是非空单个路径段。`ecc run --run-id` 可以创建未声明的单路径段 workspace，但会给出 `workspace_not_registered`；之后项目级 `status`、`log`、`config`、`signoff` 和 `report` 无法选中它。**legacy 项目**（有非空 `runs/`）仍使用 `runs/<run-id>`，接受绝对路径或含 `/` 的相对路径，并可用 `ecc migrate` 升级。三种状态都可带 `ecc.toml`；只有缺少 `ecc.toml` 的 manifest 项目会被 `ecc param` 拒绝（`param_requires_ecc_toml`）。
+- 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录）。`--workspace <名称>` 是项目内受管的、非空单路径段名称，不能传文件系统路径。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
 - 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`signoff`、`report` 都支持 `--json`（`{"records":[...]}`）、`--jsonl`（每行一条记录）和 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`ecc version` 也支持这三种选项，但使用版本专用 schema；`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）在展示层统一为小写：`synthesis / lec / floorplan / placement / cts / legalization / timing optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`；`--from`/`--only` 需用 `home/flow.json` 中的原始名（如 `place`、`CTS`、`Timing optimization`）。
@@ -197,6 +197,12 @@ $ ecc init gcd
 name = "gcd"
 top = "gcd"
 rtl = ["rtl/gcd.v"]      # 单个 Verilog 文件，或多源时指向一个 filelist（如 rtl/filelist.f）
+# 非 RTL 范围可按需声明入口输入：
+# netlist = "inputs/gcd.v"
+# golden_netlist = "inputs/gcd-golden.v"
+# def = "inputs/gcd.def"
+# sdc = "constraints/gcd.sdc"
+# spef = "inputs/gcd.spef"
 clock_port = "clk"
 frequency_mhz = 100.0
 
@@ -207,7 +213,6 @@ root = ""                # icsprout55-pdk 路径；留空则用 CHIPCOMPILER_ICS
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-run = "default"          # run id（workspace 默认 <项目>/<id>；legacy 项目为 runs/<id>）
 ```
 
 ## 4. check — 校验项目配置
@@ -322,20 +327,25 @@ yosys -Q -T -p "help read_slang" 2>&1 | grep -q "No such command" \
 ```bash
 ecc run [OPTIONS]
   --project TEXT     项目目录（缺省 cwd）
-  --run-id TEXT      run id（缺省读 [flow] run / default）
+  --workspace TEXT   创建、选择或续跑一个受管 workspace 名称
+  --resume           从第一个非成功步骤继续
+  --from TEXT        从一个步骤重跑，或与 --to 配对创建范围 workspace
+  --to TEXT          有界范围的包含式终点（必须与 --from 同用）
+  --only TEXT        只运行一个已持久化步骤
+  --force            强制重跑已成功的 --only 步骤
   --preset TEXT      本次运行的 flow preset 覆盖（不写回 ecc.toml），如 --preset syn_sta
-  --overwrite        覆盖已存在的 run（仅删除真正的 ECC run 目录，含安全校验）
+  --overwrite        覆盖已存在的 workspace（仅删除真正的 ECC workspace 目录，含安全校验）
   --set KEY=VALUE    参数覆盖，可重复（如 --set place.target_density=0.65），会记录到 run 的 provenance
   --json / --jsonl / --plain
 ```
 
-新建或 `--overwrite` 的 run 会按以下流程执行：读 `ecc.toml` → 解析 RTL/PDK/参数 → 预检捆绑的 ecc-tools，以及 preset 选中的 Yosys、DreamPlace 和 Sizer（仅含 Timing optimization 的 flow，如 `rtl2gds`）→ 在解析出的 run 目标下创建 workspace（新项目为 `<project>/<run-id>` 并写入 `project.json` 登记；legacy 项目为 `runs/<run-id>`）→ 按 preset（`rtl2gds | syn_sta | synthesis_lec`）构建步骤并执行（TTY 下有进度渲染）。已有 workspace 直接按持久化 flow 续跑，不做 preset 预检；因此已有 workspace 或 `--workspace` 模式缺 Sizer 时，仍可能在 Timing optimization 步骤失败。`rtl2gds` 是完整 15 步链（Synthesis→LEC（Yosys 等价性检查）→Floorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→RCX→sta→LVS→postRouteLec（Yosys 等价性检查）→DRC→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
+新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → 在 `<project>/<workspace 名称>` 创建 workspace → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 15 步链（Synthesis→LEC（Yosys 等价性检查）→Floorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→RCX→sta→LVS→postRouteLec（Yosys 等价性检查）→DRC→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
 
 ```console
 $ ecc run                # 该 run 已存在时拒绝覆盖
 [error]
   run_exists
-  run: default
+  workspace id: default
   workspace: /path/gcd/default
   overwrite: ecc run --overwrite
 rc=1
@@ -352,27 +362,28 @@ rc=1
 典型用法：
 
 ```bash
-ecc run                                        # 首次运行（用 ecc.toml 的 preset）
-ecc run --preset rtl2gds                       # 一次性跑完整链至 Harden（GDS/LEF/LIB）
-ecc run --run-id exp1 --set place.target_density=0.65
-ecc run --run-id exp1 --overwrite              # 重跑同名的 run
+ecc run                                        # 创建 default，或续跑唯一 workspace
+ecc run --workspace baseline --preset rtl2gds  # 创建命名的完整流程 workspace
+ecc run --workspace cts-only --from CTS --to CTS
+ecc run --workspace cts-route --from CTS --to route
 ```
 
 ### 5.2 workspace 模式（调试/复跑）
 
 ```bash
-ecc run --workspace <dir> [--resume | --from STEP | --only STEP [--force]]
+ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--force]]
 ```
 
 - `--resume`：从第一个非成功的步骤继续（不给选择器时的默认行为）；
-- `--from STEP`：重跑某步及其后所有步骤；
+- `--from STEP`：已有 workspace 时从该步起重跑其后缀；与 `--to STEP` 配对可运行已有 flow 的包含式范围；
+- 新 workspace 必须同时给出 `--from` 与 `--to`，动态构建这段包含式 flow；
 - `--only STEP [--force]`：只跑一步，`--force` 用于该步已成功时强制重跑；
-- 三个选择器互斥；`--workspace` 不能与 `--project/--run-id/--overwrite/--set/--preset` 组合；STEP 名须与 `home/flow.json` 完全一致（如 `place`、`CTS`）；
+- `--resume`、`--only` 与范围选择互斥；新建范围不能与 `--preset`、`--resume`、`--only`、`--force`、`--overwrite` 组合；`--workspace` 可与 `--project` 组合；步骤名使用 flow 的规范别名（如 `place`、`CTS`）；
 - 原地修改 workspace：被重跑步骤的 `output/` 会被替换，下游步骤标记为 `Unstart`。
 
 ```bash
 ecc run --workspace default --resume
-ecc run --workspace default --from CTS
+ecc run --workspace default --from CTS --to route
 ecc run --workspace default --only place --force
 ```
 
@@ -396,11 +407,11 @@ ecc migrate [--project DIR] [--yes] [--json | --jsonl | --plain]
 ## 6. status — 查看 run 与步骤状态
 
 ```bash
-ecc status [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
+ecc status [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
 `status` 是轻量进度速查；完整的分步证据报告用 `ecc report step`（§12.4）。
-`--workspace` 指向一个已存在的 workspace 目录，与 `--project`/`--run-id` 互斥。
+`--workspace` 是已存在的受管 workspace 名称，可与 `--project` 组合。
 
 ```console
 $ ecc status
@@ -421,7 +432,7 @@ $ ecc status
     cts (ecc) unstart
 
 $ ecc status --jsonl
-{"run": "default", "status": "failed", "workspace": "/tmp/gcd/default", "inspect_cmd": "ecc status", "log_cmd": "ecc log"}
+{"workspace_id": "default", "status": "failed", "workspace": "/tmp/gcd/default", "inspect_cmd": "ecc status", "log_cmd": "ecc log"}
 {"step": "synthesis", "tool": "yosys", "status": "success", "runtime": "0:00:18", "log_cmd": "ecc log synthesis"}
 {"step": "floorplan", "tool": "ecc", "status": "success", "runtime": "0:00:04", "log_cmd": "ecc log floorplan"}
 ...
@@ -432,7 +443,7 @@ run 级状态取全部步骤的聚合：`success / warning / failed / ongoing / 
 ## 7. log — 查看日志
 
 ```bash
-ecc log [STEP] [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
+ecc log [STEP] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
 不带 STEP 列出全部日志文件（run 级 flow 日志 + 各步骤日志，含尾部预览）；带 STEP 打印该步骤日志内容（TEXT 模式高亮 ERROR/WARNING 行）。
@@ -468,11 +479,10 @@ rc=1
 ## 8. config — 查看解析后的配置
 
 ```bash
-ecc config [STEP] [--project DIR] [--run-id ID | --workspace PATH] [--json | --jsonl | --plain]
+ecc config [STEP] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
-`--workspace` 将步骤视图限定到指定 workspace 目录（与
-`--project`/`--run-id` 互斥）；项目级视图仍以项目为作用域，读取项目目录
+`--workspace` 将步骤视图限定到指定的受管 workspace；项目级视图仍以项目为作用域，读取项目目录
 的 `ecc.toml`。
 
 不带 STEP 输出项目级配置（`ecc.toml` 键 + 解析后的绝对路径）；带 STEP 列出该步骤在 workspace `config/` 下实际生效的配置文件。
@@ -625,12 +635,12 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
 
 ## 11. signoff — 签核包
 
-`ecc signoff export` 需要就绪的 Harden 签核包。`ecc signoff inspect` 可审阅尚未完成的 workspace。两个子命令都接受 `--project DIR`（可选 `--run-id ID`），或直接指定 workspace 的 `--workspace PATH`，以及 `--json/--jsonl/--plain`。`--workspace` 与 `--project`、`--run-id` 互斥。
+`ecc signoff export` 需要就绪的 Harden 签核包。`ecc signoff inspect` 可审阅尚未完成的 workspace。两个子命令都接受 `--project DIR` 与可选的受管 `--workspace NAME`，以及 `--json/--jsonl/--plain`。
 
 ### 11.1 inspect — 就绪度审阅
 
 ```bash
-ecc signoff inspect ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc signoff inspect [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
 刷新已完成步骤的 analysis 与 `home/checklist.json` 后，输出签核包的就绪状态（`ready / attention / blocked`）、七个分组（initial/config/harden/final_design/sta/spef/reports）与风险清单。**blocked 也返回 rc=0**（检查是建议性的，门禁在 export）：
@@ -658,13 +668,13 @@ $ ecc signoff inspect --workspace default
 ### 11.2 export — 导出签核包 tar.gz（有门禁）
 
 ```bash
-ecc signoff export -o <path>.tar.gz [--include-debug] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ```
 
 直接指定已有 workspace 时，例如：
 
 ```bash
-ecc signoff export --workspace /path/to/gcd/default -o /path/to/gcd_signoff_package.tar.gz
+ecc signoff export --project /path/to/gcd --workspace default -o /path/to/gcd_signoff_package.tar.gz
 ```
 
 与 GUI「导出签核包」同源：刷新分析 → 收集 initial/config/harden/final 全部交付物 → 原子落盘 `<design>_signoff_package.tar.gz`。就绪度不足时拒绝导出（不产生残档）：
@@ -686,8 +696,8 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # 就绪后
 ## 12. report — 设计总结、QoR 总分、checklist 与单步证据
 
 ```bash
-ecc report summary [-o PATH] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
-ecc report qor     [-o PATH] ([--project DIR] [--run-id ID] | --workspace PATH) [--json | --jsonl | --plain]
+ecc report summary [-o PATH] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
+ecc report qor     [-o PATH] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
 ecc report checklist [-o PATH] [同样的 selector 与输出选项]
 ecc report step    [STEP] [--section feature|analysis|checklist]... [同样的 selector 与输出选项]
 ```
@@ -827,14 +837,14 @@ ecc report step drc                # 终端预览单步骤 feature/analysis/chec
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
 ```
 
-选择一个可跟踪的 run：
+创建一个受管 workspace：
 
 ```bash
-# 在第一次运行前选定 id，使自动生成的 manifest 登记它。
+# `--workspace` 在创建前自动登记到 project.json。
 ecc init gcd && cd gcd
-ecc run --run-id exp1 --set place.target_density=0.65
-ecc status --run-id exp1
-ecc log --run-id exp1
+ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.65
+ecc status --workspace exp1
+ecc log --workspace exp1
 ```
 
-`project.json` 生成后，项目级查看、签核和报告命令只会选择已声明的 workspace。CLI 可以运行未声明的单路径段 id，但它不会被登记并会输出 `workspace_not_registered`；需要作为可跟踪的额外 run 使用时，应先通过拥有 manifest 的 UI 增加 workspace 条目。
+`project.json` 生成后，项目级查看、签核和报告命令按已声明的 workspace 选择。多个活跃 workspace 时必须显式传 `--workspace NAME`。

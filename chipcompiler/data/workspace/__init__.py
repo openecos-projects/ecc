@@ -45,6 +45,7 @@ class OriginDesign:
     top_module: str = ""  # top module name
     origin_def: Path | None = None  # original def file path
     origin_verilog: Path | None = None  # original verilog file path
+    golden_verilog: Path | None = None  # optional external golden netlist for LEC
     input_filelist: Path | None = None  # input filelist for synthesis
 
 
@@ -283,12 +284,17 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
     if not selected_names:
         return {}
 
-    selected = set(selected_names)
+    import chipcompiler.rtl2gds as rtl2gds_api
+
+    selected = rtl2gds_api.build_flow_range(selected_names[0], selected_names[-1])
     return {
         "steps": [
-            _flow_step_template(name, tool, state)
-            for name, tool, state in canonical_steps
-            if name in selected
+            _flow_step_template(
+                name.value if isinstance(name, StepEnum) else str(name),
+                str(tool),
+                state.value if isinstance(state, StateEnum) else str(state),
+            )
+            for name, tool, state in selected
         ]
     }
 
@@ -338,35 +344,9 @@ def _selected_dynamic_flow_step_names(
 
 
 def _normalize_flow_step_name(value) -> str:
-    token = str(value or "").strip()
-    if not token:
-        return ""
-    alias_key = token.lower().replace("_", "").replace("-", "").replace(" ", "")
-    aliases = {
-        "synth": StepEnum.SYNTHESIS.value,
-        "synthesis": StepEnum.SYNTHESIS.value,
-        "floor": StepEnum.FLOORPLAN.value,
-        "floorplan": StepEnum.FLOORPLAN.value,
-        "place": StepEnum.PLACEMENT.value,
-        "placement": StepEnum.PLACEMENT.value,
-        "cts": StepEnum.CTS.value,
-        "legal": StepEnum.LEGALIZATION.value,
-        "legalization": StepEnum.LEGALIZATION.value,
-        "timingopt": StepEnum.TIMING_OPT.value,
-        "timingoptimization": StepEnum.TIMING_OPT.value,
-        "route": StepEnum.ROUTING.value,
-        "routing": StepEnum.ROUTING.value,
-        "drc": StepEnum.DRC.value,
-        "lvs": StepEnum.LVS.value,
-        "filler": StepEnum.FILLER.value,
-        "lec": StepEnum.LEC.value,
-        "postlec": StepEnum.POST_ROUTE_LEC.value,
-        "postroutelec": StepEnum.POST_ROUTE_LEC.value,
-        "rcx": StepEnum.RCX.value,
-        "sta": StepEnum.STA.value,
-        "harden": StepEnum.HARDEN.value,
-    }
-    return aliases.get(alias_key, token)
+    from chipcompiler.rtl2gds import normalize_flow_step
+
+    return normalize_flow_step(value)
 
 
 def _flow_step_template(name: str, tool: str, state: str) -> dict:
@@ -1034,6 +1014,8 @@ def create_workspace(
     pdk_json: str | Path = "",
     flow_config: dict | None = None,
     sdc: str | Path = "",
+    spef: str | Path = "",
+    golden_verilog: str | Path = "",
     pdk_overrides: dict | None = None,
 ) -> Workspace:
     """
@@ -1046,6 +1028,8 @@ def create_workspace(
         pdk: PDK information (LEF, Liberty, SDC, etc.)
         parameters: Design parameters (clock, frequency, etc.)
         sdc: Optional timing constraints file copied into workspace/origin/
+        spef: Optional extracted parasitics copied into workspace/origin/
+        golden_verilog: Optional comparison netlist copied for an LEC entry step
         input_filelist: Optional filelist for synthesis (SystemVerilog sources)
 
     Returns:
@@ -1087,6 +1071,9 @@ def create_workspace(
     explicit_sdc_path = Path(sdc).expanduser().resolve() if sdc else None
     if explicit_sdc_path is not None:
         workspace.pdk.sdc = explicit_sdc_path
+    explicit_spef_path = Path(spef).expanduser().resolve() if spef else None
+    if explicit_spef_path is not None:
+        workspace.pdk.spef = explicit_spef_path
 
     # update config
     if isinstance(parameters, Parameters):
@@ -1129,6 +1116,12 @@ def create_workspace(
         workspace.design.origin_verilog = target
     else:
         workspace.design.origin_verilog = origin_dir / f"{workspace.design.name}.v"
+
+    golden_verilog_path = Path(golden_verilog) if golden_verilog else None
+    if golden_verilog_path and golden_verilog_path.exists():
+        target = origin_dir / f"golden_{golden_verilog_path.name}"
+        shutil.copy(golden_verilog_path, target)
+        workspace.design.golden_verilog = target
 
     # Copy filelist and all referenced source files
     input_filelist_path = Path(input_filelist) if input_filelist else None
@@ -1179,14 +1172,20 @@ def create_workspace(
         from chipcompiler.utility import json_write
 
         workspace.flow.data = dynamic_flow_data
-        if not json_write(workspace.flow.path, workspace.flow.data):
-            raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
-
         from ..workspace_config import flow_section_from_flow_config
 
         flow_section = flow_section_from_flow_config(flow_config)
         if flow_section:
             workspace.parameters.data["_flow"] = flow_section
+
+        if workspace.design.golden_verilog is not None:
+            dynamic_flow_data["steps"][0]["info"]["golden_verilog"] = str(
+                workspace.design.golden_verilog
+            )
+        if workspace.pdk.spef is not None:
+            dynamic_flow_data["steps"][0]["info"]["spef"] = str(workspace.pdk.spef)
+        if not json_write(workspace.flow.path, workspace.flow.data):
+            raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
 
     if workspace.pdk.root:
         workspace.parameters.data["pdk_root"] = str(workspace.pdk.root)
@@ -1277,12 +1276,18 @@ def load_workspace(directory: str | Path) -> Workspace:
     if len(def_gz_path) > 0:
         workspace.design.origin_def = def_gz_path[0]
 
-    verilog_path = list(origin_dir.rglob("*.v"))
-    verilog_gz_path = list(origin_dir.rglob("*.v.gz"))
+    verilog_path = [path for path in origin_dir.rglob("*.v") if not path.name.startswith("golden_")]
+    verilog_gz_path = [
+        path for path in origin_dir.rglob("*.v.gz") if not path.name.startswith("golden_")
+    ]
     if len(verilog_path) > 0:
         workspace.design.origin_verilog = verilog_path[0]
     if len(verilog_gz_path) > 0:
         workspace.design.origin_verilog = verilog_gz_path[0]
+
+    golden_paths = list(origin_dir.rglob("golden_*.v")) + list(origin_dir.rglob("golden_*.v.gz"))
+    if golden_paths:
+        workspace.design.golden_verilog = golden_paths[0]
 
     filelist_path = origin_dir / "filelist"
     if filelist_path.exists():
@@ -1318,6 +1323,7 @@ def log_workspace(workspace: Workspace):
     workspace.logger.info("top module     : %s", workspace.design.top_module)
     workspace.logger.info("origin def     : %s", workspace.design.origin_def)
     workspace.logger.info("origin verilog : %s", workspace.design.origin_verilog)
+    workspace.logger.info("golden verilog : %s", workspace.design.golden_verilog)
     workspace.logger.info("input filelist : %s", workspace.design.input_filelist)
     workspace.logger.info("sdc            : %s", workspace.pdk.sdc)
     workspace.logger.info("spef           : %s", workspace.pdk.spef)

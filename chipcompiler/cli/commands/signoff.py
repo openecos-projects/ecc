@@ -15,7 +15,6 @@ from chipcompiler.cli.core.options import (
     JsonOption,
     PlainOption,
     ProjectOption,
-    RunIdOption,
     WorkspaceOption,
 )
 
@@ -35,7 +34,6 @@ def _finish(subcommand: str, command_input, handler) -> None:
 def inspect_cmd(
     *,
     project: ProjectOption = None,
-    run_id: RunIdOption = None,
     workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
@@ -43,7 +41,7 @@ def inspect_cmd(
 ) -> None:
     command_input = SignoffInspectInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         workspace=workspace,
     )
     _finish("inspect", command_input, signoff_handlers.inspect)
@@ -58,7 +56,6 @@ def export_cmd(
         typer.Option("--include-debug", help="Include debug artifacts in the package"),
     ] = False,
     project: ProjectOption = None,
-    run_id: RunIdOption = None,
     workspace: WorkspaceOption = None,
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
@@ -66,7 +63,7 @@ def export_cmd(
 ) -> None:
     command_input = SignoffExportInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         workspace=workspace,
         output_path=output_path,
         include_debug=include_debug,

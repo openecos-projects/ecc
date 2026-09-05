@@ -1,3 +1,5 @@
+import pytest
+
 import chipcompiler.rtl2gds.builder as builder_module
 from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.rtl2gds import get_flow_builders
@@ -69,3 +71,24 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.DRC, "ecc", StateEnum.Unstart),
         (StepEnum.HARDEN, "ecc", StateEnum.Unstart),
     ]
+
+
+def test_build_flow_range_slices_the_canonical_chain():
+    flow = builder_module.build_flow_range("CTS", "route")
+
+    assert [(step, tool) for step, tool, _state in flow] == [
+        (StepEnum.CTS, "ecc"),
+        (StepEnum.LEGALIZATION, "dreamplace"),
+        (StepEnum.TIMING_OPT, "sizer"),
+        (StepEnum.ROUTING, "ecc"),
+    ]
+
+
+def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
+    assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
+        StepEnum.PLACEMENT,
+        StepEnum.CTS,
+    ]
+
+    with pytest.raises(ValueError, match="reversed"):
+        builder_module.build_flow_range("route", "CTS")

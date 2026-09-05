@@ -12,7 +12,6 @@ from chipcompiler.cli.core.output import (
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.cli.project.config import InvalidFlowRun, config_run_id_from
 
 
 def _config_error_result(ctx: CommandContext, reason: str) -> CommandResult:
@@ -41,37 +40,19 @@ def _manifest_error_result(ctx: CommandContext) -> CommandResult:
 
 
 def _resolve_readonly_run_dir(command_input, ctx: CommandContext):
-    """Resolve the run dir for the read-only status/log/config commands.
-
-    --workspace selects an existing workspace directory directly (conflicts
-    with --project/--run-id); without it the context run dir is used
-    unchanged, preserving the missing/corrupt flow.json outcomes. Never
-    loads a Workspace, so nothing is written.
-    """
-    if command_input.workspace is None:
-        return ctx.run_dir, None
-    from chipcompiler.cli.inspection.discovery import resolve_workspace_path
-
-    run_dir, error = resolve_workspace_path(
-        command_input.workspace,
-        command_input.project.project,
-        command_input.project.run_id,
-        ctx.run_dir,
-    )
-    if error is not None:
-        return None, CommandResult.err([error])
-    return run_dir, None
+    """Return the manifest-selected workspace without loading it."""
+    _ = command_input
+    return ctx.run_dir, None
 
 
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
     run_dir, failure = _resolve_readonly_run_dir(command_input, ctx)
     if failure is not None:
         return failure
-    if command_input.workspace is None:
-        if ctx.config_error:
-            return _config_error_result(ctx, ctx.config_error)
-        if ctx.manifest_error:
-            return _manifest_error_result(ctx)
+    if ctx.config_error:
+        return _config_error_result(ctx, ctx.config_error)
+    if ctx.manifest_error:
+        return _manifest_error_result(ctx)
 
     from chipcompiler.cli.inspection.discovery import (
         CORRUPT_FLOW_JSON,
@@ -81,16 +62,14 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
     )
 
     flow_data = read_flow_json(run_dir)
-    display_run = ctx.run_id or (
-        os.path.basename(run_dir) if command_input.workspace else "default"
-    )
+    display_run = ctx.run_id or os.path.basename(run_dir)
     project = ctx.project
 
     if flow_data is None:
         return CommandResult.err(
             [
                 {
-                    "run": display_run,
+                    "workspace_id": display_run,
                     "status": "missing",
                     "workspace": run_dir,
                     "start_cmd": disclosure_cmd("ecc run", project, ctx.run_id),
@@ -102,7 +81,7 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [
                 {
-                    "run": display_run,
+                    "workspace_id": display_run,
                     "status": "corrupt",
                     "workspace": run_dir,
                     "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
@@ -114,7 +93,7 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
     run_status = get_run_status(flow_data)
     records = [
         {
-            "run": display_run,
+            "workspace_id": display_run,
             "status": run_status,
             "workspace": run_dir,
             "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
@@ -141,11 +120,10 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
     run_dir, failure = _resolve_readonly_run_dir(command_input, ctx)
     if failure is not None:
         return failure
-    if command_input.workspace is None:
-        if ctx.config_error:
-            return _config_error_result(ctx, ctx.config_error)
-        if ctx.manifest_error:
-            return _manifest_error_result(ctx)
+    if ctx.config_error:
+        return _config_error_result(ctx, ctx.config_error)
+    if ctx.manifest_error:
+        return _manifest_error_result(ctx)
 
     from chipcompiler.cli.inspection.discovery import (
         discover_logs,
@@ -277,12 +255,8 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
     run_dir, failure = _resolve_readonly_run_dir(command_input, ctx)
     if failure is not None:
         return failure
-    if command_input.workspace is None:
-        if ctx.manifest_error:
-            return _manifest_error_result(ctx)
-        configured = config_run_id_from(ctx.config)
-        if isinstance(configured, InvalidFlowRun):
-            return _config_error_result(ctx, configured.problem)
+    if ctx.manifest_error:
+        return _manifest_error_result(ctx)
 
     from chipcompiler.cli.inspection.config_view import (
         build_project_config_items,
@@ -294,7 +268,7 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
 
     resolved = None
     layer_warnings: list[dict] = []
-    if command_input.workspace is None and ctx.project_state == "manifest":
+    if ctx.project_state == "manifest":
         # The view must show the EFFECTIVE config — the same layering
         # check/run resolve — not the bare ecc.toml (or missing_config on
         # a manifest-only project).
@@ -404,7 +378,7 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
                     "scope": "step",
                     "step": item["step"],
                     "role": item["role"],
-                    "run": item.get("run", "default"),
+                    "workspace_id": item.get("workspace_id", "default"),
                     "path": item["path"],
                     "source": item["source"],
                     "inspect": item.get("inspect_cmd"),

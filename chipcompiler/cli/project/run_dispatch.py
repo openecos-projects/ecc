@@ -76,9 +76,9 @@ def _existing_target_guard(run_dir: str, project_dir: str, run_name: str) -> Com
             [
                 error_record(
                     "run_target_unsafe",
-                    run=run_name,
+                    workspace_id=run_name,
                     workspace=run_dir,
-                    reason="existing target is not an ECC run directory inside the project",
+                    reason="existing target is not an ECC workspace directory inside the project",
                 )
             ]
         )
@@ -109,9 +109,9 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
                 [
                     error_record(
                         "overwrite_refused",
-                        run=run_name,
+                        workspace_id=run_name,
                         workspace=run_dir,
-                        reason="target is not an ECC run directory",
+                        reason="target is not an ECC workspace directory",
                     )
                 ]
             )
@@ -141,7 +141,7 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
             [
                 error_record(
                     "run_exists",
-                    run=run_name,
+                    workspace_id=run_name,
                     workspace=run_dir,
                     overwrite=disclosure_cmd("ecc run --overwrite", ctx.project, ctx.run_id),
                 )
@@ -259,6 +259,40 @@ def dispatch_project_run(
             if unsafe is not None:
                 return unsafe
         else:
+            if not workspace_registered:
+                from chipcompiler.cli.core.records import error_record
+                from chipcompiler.cli.project.config import resolve_pdk_root
+                from chipcompiler.cli.project.manifest import pre_register_workspace
+
+                registration = pre_register_workspace(
+                    project_dir,
+                    cfg=cfg,
+                    pdk_root=resolve_pdk_root(cfg),
+                    workspace_id=run_name,
+                    workspace_path=run_dir,
+                    flow_config=flow_config,
+                )
+                if registration == "conflict":
+                    return CommandResult.err(
+                        [
+                            error_record(
+                                "workspace_conflict",
+                                workspace_id=run_name,
+                                workspace=run_dir,
+                            )
+                        ]
+                    )
+                if registration != "registered":
+                    return CommandResult.err(
+                        [
+                            error_record(
+                                "workspace_registration_failed",
+                                workspace_id=run_name,
+                                workspace=run_dir,
+                            )
+                        ]
+                    )
+                workspace_registered = True
             prepared = _prepare_run_target(command_input, ctx, run_dir, run_name)
             if isinstance(prepared, CommandResult):
                 return prepared

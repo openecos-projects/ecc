@@ -11,7 +11,6 @@ class OutputOptions:
 @dataclass(frozen=True)
 class ProjectOptions:
     project: str | None = None
-    run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +41,7 @@ class RunInput:
     workspace: str | None = None
     resume: bool = False
     from_step: str | None = None
+    to_step: str | None = None
     only: str | None = None
     force: bool = False
     preset: str | None = None
@@ -192,5 +192,5 @@ def output_options(*, json_output: bool, jsonl: bool, plain: bool) -> OutputOpti
     return OutputOptions(json=json_output, jsonl=jsonl, plain=plain)
 
 
-def project_options(project: str | None, run_id: str | None = None) -> ProjectOptions:
-    return ProjectOptions(project=project, run_id=run_id)
+def project_options(project: str | None) -> ProjectOptions:
+    return ProjectOptions(project=project)

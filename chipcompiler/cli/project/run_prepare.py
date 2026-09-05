@@ -18,20 +18,20 @@ from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 
 
-def invalid_single_segment_id(run_id: str) -> bool:
+def invalid_workspace_name(workspace_name: str) -> bool:
     return (
-        not run_id
-        or os.path.isabs(run_id)
-        or "/" in run_id
-        or (os.sep != "/" and os.sep in run_id)
-        or run_id in (".", "..")
+        not workspace_name
+        or os.path.isabs(workspace_name)
+        or "/" in workspace_name
+        or (os.sep != "/" and os.sep in workspace_name)
+        or workspace_name in (".", "..")
     )
 
 
-def _find_workspace_entry(manifest, run_id: str | None):
-    """The declared workspace for a run id; auto-selects a single active one."""
-    if run_id is not None:
-        return manifest.find_workspace(run_id)
+def _find_workspace_entry(manifest, workspace_name: str | None):
+    """The declared workspace for a workspace name; auto-select one active entry."""
+    if workspace_name is not None:
+        return manifest.find_workspace(workspace_name)
     active = manifest.active_workspaces()
     return active[0] if len(active) == 1 else None
 
@@ -40,25 +40,23 @@ def resolve_manifest_run_target(command_input, ctx):
     """Resolve (run_dir, run_name, registered, warnings) for virgin/manifest projects.
 
     Returns a CommandResult error instead when the run cannot start:
-    manifest_invalid, workspace_not_declared, or invalid_run_id.
+    manifest_invalid, workspace_required, or invalid_workspace.
     """
-    from chipcompiler.cli.core.records import error_record, warning_record
+    from chipcompiler.cli.core.records import error_record
     from chipcompiler.cli.project.manifest import load_manifest
 
     project_dir = ctx.project_dir
-    cli_run_id = command_input.project.run_id
+    workspace_name = command_input.workspace
 
     if ctx.project_state == "virgin":
-        # A configured [flow] run id resolves through ctx.run_id: honoring
-        # it keeps the first writer on the same workspace the inspector shows.
-        run_name = cli_run_id or ctx.run_id or "default"
-        if invalid_single_segment_id(run_name):
+        run_name = workspace_name or ctx.run_id or "default"
+        if invalid_workspace_name(run_name):
             return CommandResult.err(
                 [
                     error_record(
-                        "invalid_run_id",
-                        run=run_name,
-                        reason="run id must be a single path segment inside the project",
+                        "invalid_workspace",
+                        workspace_id=run_name,
+                        reason="workspace must be a single path segment inside the project",
                     )
                 ]
             )
@@ -68,29 +66,26 @@ def resolve_manifest_run_target(command_input, ctx):
         return CommandResult.err([error_record("manifest_invalid", reason=ctx.manifest_error)])
 
     manifest = load_manifest(project_dir)
-    match = _find_workspace_entry(manifest, cli_run_id)
-    if match is None and cli_run_id is None:
+    match = _find_workspace_entry(manifest, workspace_name)
+    if match is None and workspace_name is None:
         active = manifest.active_workspaces()
-        ids = ", ".join(w.workspace_id for w in active) or "(none)"
-        return CommandResult.err(
-            [
-                error_record(
-                    "workspace_not_declared",
-                    reason=f"--run-id required; declared workspaces: {ids}",
-                )
-            ]
-        )
+        if active:
+            ids = ", ".join(w.workspace_id for w in active)
+            return CommandResult.err(
+                [error_record("workspace_required", reason=f"declared workspaces: {ids}")]
+            )
+        return (os.path.join(project_dir, "default"), "default", False, [])
 
     if match is not None:
         return (match.workspace_path, match.workspace_id, True, [])
 
-    if invalid_single_segment_id(cli_run_id):
+    if invalid_workspace_name(workspace_name):
         return CommandResult.err(
             [
                 error_record(
-                    "invalid_run_id",
-                    run=cli_run_id,
-                    reason="run id must be a single path segment inside the project",
+                    "invalid_workspace",
+                    workspace_id=workspace_name,
+                    reason="workspace must be a single path segment inside the project",
                 )
             ]
         )
@@ -98,33 +93,26 @@ def resolve_manifest_run_target(command_input, ctx):
     # path would operate that workspace under an alias the document never
     # spelled — bypassing its registration and status write-back. Refuse
     # and name the declared selector instead.
-    candidate_real = os.path.realpath(os.path.join(project_dir, cli_run_id))
+    candidate_real = os.path.realpath(os.path.join(project_dir, workspace_name))
     for workspace in manifest.workspaces:
         if os.path.realpath(workspace.workspace_path) == candidate_real:
             return CommandResult.err(
                 [
                     error_record(
                         "workspace_not_declared",
-                        run=cli_run_id,
-                        reason=f"workspace id {cli_run_id!r} is not declared in project.json; "
+                        workspace_id=workspace_name,
+                        reason=f"workspace {workspace_name!r} is not declared in project.json; "
                         f"the workspace at that path is declared as {workspace.workspace_id!r}",
                     )
                 ]
             )
-    warnings = [
-        warning_record(
-            "workspace_not_registered",
-            reason=f"workspace {cli_run_id!r} is not declared in project.json; "
-            "the GUI will not show it until it is registered",
-        )
-    ]
-    return (os.path.join(project_dir, cli_run_id), cli_run_id, False, warnings)
+    return (os.path.join(project_dir, workspace_name), workspace_name, False, [])
 
 
 def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) -> CommandResult:
     from chipcompiler.cli.core.records import error_record
 
-    record = error_record("workspace_failed", run=run_name, workspace=run_dir)
+    record = error_record("workspace_failed", workspace_id=run_name, workspace=run_dir)
     if reason is not None:
         record["reason"] = reason
     return CommandResult.err([record])
@@ -227,9 +215,21 @@ def execute_fresh_run(
     project = ctx.project
     project_dir = ctx.project_dir
 
+    def failed_workspace(reason: str | None) -> CommandResult:
+        if workspace_registered:
+            _write_back_status(project_dir, run_name, "failed", warning_records)
+        return _workspace_failed_result(run_name, run_dir, reason)
+
+    from chipcompiler.cli.project.design_inputs import resolve_design_inputs
+
+    inputs = resolve_design_inputs(cfg)
     _, origin_verilog, input_filelist = resolve_rtl(cfg)
+    origin_def = inputs.def_ or cfg.manifest_origin_def
+    if inputs.netlist:
+        origin_verilog = inputs.netlist
+        input_filelist = ""
     generated_filelist = None
-    if len(cfg.design_rtl) > 1:
+    if len(cfg.design_rtl) > 1 and not inputs.netlist:
         # Manifest-backed projects may declare several RTL sources;
         # materialize them as one generated filelist for creation. A failure
         # here must not strand a partial run target for the next run.
@@ -238,7 +238,7 @@ def execute_fresh_run(
         except Exception as exc:
             if owns_target:
                 shutil.rmtree(run_dir, ignore_errors=True)
-            return _workspace_failed_result(run_name, run_dir, str(exc))
+            return failed_workspace(str(exc))
         input_filelist = generated_filelist
         origin_verilog = ""
     parameters = to_parameters(cfg)
@@ -294,7 +294,7 @@ def execute_fresh_run(
             try:
                 workspace = create_workspace(
                     directory=run_dir,
-                    origin_def=cfg.manifest_origin_def,
+                    origin_def=origin_def,
                     origin_verilog=origin_verilog,
                     pdk=cfg.pdk_name,
                     parameters=parameters,
@@ -302,11 +302,14 @@ def execute_fresh_run(
                     pdk_root=pdk_root,
                     pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
                     flow_config=flow_config,
+                    sdc=inputs.sdc,
+                    spef=inputs.spef,
+                    golden_verilog=inputs.golden_netlist,
                 )
             except Exception as exc:
                 if owns_target:
                     shutil.rmtree(run_dir, ignore_errors=True)
-                return _workspace_failed_result(run_name, run_dir, str(exc))
+                return failed_workspace(str(exc))
             finally:
                 if generated_filelist is not None:
                     with contextlib.suppress(OSError):
@@ -315,7 +318,7 @@ def execute_fresh_run(
             if workspace is None:
                 if owns_target:
                     shutil.rmtree(run_dir, ignore_errors=True)
-                return _workspace_failed_result(run_name, run_dir, None)
+                return failed_workspace(None)
 
         if cli_overrides:
             import json
@@ -332,55 +335,8 @@ def execute_fresh_run(
                 workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
                 save_parameter(workspace_parameters)
 
-        if project_state == "virgin":
-            from chipcompiler.cli.project.manifest import (
-                PRESET_MANIFEST_RANGE,
-                base_design_from_config,
-                build_manifest_document,
-                write_manifest_if_absent,
-            )
-
-            start_step, end_step = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
-            # base_design reflects the ecc.toml-resolved config only; --set
-            # values are run-scoped and never baked into the manifest.
-            document = build_manifest_document(
-                project_dir,
-                design_name=cfg.design_name,
-                base_design=base_design_from_config(cfg, pdk_root),
-                workspace_id=run_name,
-                workspace_path=run_dir,
-                start_step=start_step,
-                end_step=end_step,
-            )
-            if write_manifest_if_absent(project_dir, document):
-                workspace_registered = True
-            else:
-                # The write was lost to a concurrent creator OR failed: in
-                # both cases continue read-only against whatever won — but
-                # never silently, because a run the GUI cannot see is not a
-                # full success.
-                from chipcompiler.cli.core.records import warning_record
-                from chipcompiler.cli.project.manifest import load_manifest
-
-                try:
-                    winner = load_manifest(project_dir)
-                    matched = winner.find_workspace(run_name)
-                    # The winner must declare THIS id at THIS path: a
-                    # concurrent manifest that reused the id for another
-                    # workspace must not receive our run's status.
-                    workspace_registered = matched is not None and os.path.realpath(
-                        matched.workspace_path
-                    ) == os.path.realpath(run_dir)
-                except Exception:
-                    workspace_registered = False
-                if not workspace_registered:
-                    warning_records.append(
-                        warning_record(
-                            "manifest_generation_failed",
-                            reason="project.json was not created and no valid manifest "
-                            "declares this run; the GUI will not show it",
-                        )
-                    )
+        if workspace_registered:
+            _write_back_status(project_dir, run_name, "running", warning_records)
 
         # Engine execution still holds the workspace lock taken before
         # creation: a second `ecc run` taking the existing-workspace path
@@ -409,7 +365,7 @@ def execute_fresh_run(
                     _write_back_status(project_dir, run_name, "failed", warning_records)
                 failure_records = [
                     {
-                        "run": run_name,
+                        "workspace_id": run_name,
                         "status": "failed",
                         "workspace": run_dir,
                         "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
@@ -424,7 +380,14 @@ def execute_fresh_run(
                 _write_back_status(project_dir, run_name, "failed", warning_records)
             return CommandResult.err(
                 warning_records
-                + [error_record("flow_failed", run=run_name, workspace=run_dir, reason=str(exc))]
+                + [
+                    error_record(
+                        "flow_failed",
+                        workspace_id=run_name,
+                        workspace=run_dir,
+                        reason=str(exc),
+                    )
+                ]
             )
     finally:
         ws_locks.close()
@@ -434,7 +397,7 @@ def execute_fresh_run(
 
     success_records = [
         {
-            "run": run_name,
+            "workspace_id": run_name,
             "status": "success",
             "workspace": run_dir,
             "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),

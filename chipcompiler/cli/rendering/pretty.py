@@ -79,7 +79,7 @@ def render_generic_block(records, file=None, *, color=True, tag=None):
 
 
 def _infer_tag(record):
-    for key in ("status", "run", "project", "kind"):
+    for key in ("status", "workspace_id", "run", "project", "kind"):
         if key in record:
             return key
     return "result"
@@ -168,9 +168,9 @@ def render_run_summary(records, file=None, *, color=True):
     target = file or sys.stdout
     r = records[0]
     st = r.get("status", "")
-    tag = "run"
+    tag = "workspace"
     target.write(f"{render_header(tag, color=color)}\n")
-    target.write(f"  run: {r.get('run', '')}\n")
+    target.write(f"  workspace id: {r.get('workspace_id', '')}\n")
     target.write(f"  status: {status_style(st, color=color)}\n")
     target.write(f"  workspace: {r.get('workspace', '')}\n")
     _render_disclosure_fields(target, r, color)
@@ -187,11 +187,11 @@ def render_status(records, file=None, *, color=True):
 
     st = first.get("status", "")
     target.write(f"{render_header('status', color=color)}\n")
-    target.write(f"  run: {first.get('run', '')}\n")
+    target.write(f"  workspace id: {first.get('workspace_id', '')}\n")
     target.write(f"  status: {status_style(st, color=color)}\n")
     if first.get("workspace"):
         target.write(f"  workspace: {first['workspace']}\n")
-    _render_disclosure_fields(target, first, color, skip=("run",))
+    _render_disclosure_fields(target, first, color, skip=("workspace_id",))
 
     step_records = [r for r in records if "step" in r]
     if step_records:

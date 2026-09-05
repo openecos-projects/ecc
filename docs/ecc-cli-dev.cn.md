@@ -58,7 +58,7 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()`（`cli/core/invocation.py`）依次：
-   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目的查看类命令按 `project.json` workspace 表解析（唯一活跃 workspace 自动选中；未声明 id → `workspace_not_declared`，清单损坏 → `manifest_invalid`）。legacy/virgin 的 context 先走 `--run-id` > 配置的 `[flow] run` > `runs/default`（`cli/inspection/discovery.py`）；随后 `run_prepare.resolve_manifest_run_target()` 会把 virgin 项目的最终 run 目标改为单路径段的 `<project>/<run-id>`。`ecc run` 另有创建未声明 manifest workspace 并给 warning 的路径，而查看类命令仍只认 manifest 已声明项。随后由 `--json/--jsonl/--plain` 推导 `OutputMode`，组装成带 `project_state` / `manifest_error` 字段的 `CommandContext`（`cli/core/types.py`）。
+   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读项目唯一的 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目只从 `project.json` workspace 表解析 `--workspace NAME`：唯一活跃 workspace 自动选中，多个时必须选择；新的 `ecc run --workspace NAME` 会在创建文件前登记。`--workspace` 是项目内单路径段名称，不是直接路径。legacy 项目必须先迁移才能 `ecc run`；清单损坏为 `manifest_invalid`。随后由 `--json/--jsonl/--plain` 推导 `OutputMode`，组装成带 `project_state` / `manifest_error` 字段的 `CommandContext`（`cli/core/types.py`）。
    - 调 handler：`handler(command_input, ctx) -> CommandResult`。
    - handler 返回后按需追加记录（`_with_legacy_hint` / `_with_config_shadow_hint`）：legacy 项目的 `run/check/status` 附加迁移提示（指向 `ecc migrate`）；workspace 的 `home/` 同时存在 `params.toml` 与旧 `parameters.json` 时打 `workspace_config_shadowed` 警告（旧 JSON 已失效）。
    - 渲染：`rendering/renderers.py::render_command_result()` 先查 `RENDERERS[(render_key, output_mode)]` 定制渲染器，没有则落到通用 `rendering/render.py::render_result()`。
@@ -200,10 +200,10 @@ config_param(
 
 `run` 有两条互斥路径（`cli/command_handlers/project.py` 的 `run()` / `_run_workspace()`）：
 
-- **项目模式**（默认）：读 `ecc.toml` → 解析 RTL/PDK/参数与 `--preset` 覆盖 → 对新建或 `--overwrite` 的目标执行**环境预检**（`_preflight_environment` 预检捆绑 ecc-tools，以及 preset 使用的 Yosys/DreamPlace/Sizer；缺失 → `env_not_ready` fail-fast）→ 在解析出的 run 目标下 `create_workspace`（manifest/virgin 项目默认 `<project>/<run-id>`，或 `project.json` 声明的 workspace 路径；`runs/<run-id>` 是 legacy 布局，`ecc migrate` 可升级）→ 从 `rtl2gds.get_flow_builders()` 取步骤构建 `EngineFlow` → 运行（TTY 下走 `rendering/progress.py::run_flow_with_progress` 的进度渲染，否则直接 `run_steps`）。已有 workspace 直接按持久化 flow 对账和续跑，不做 preset 预检。`--overwrite` 会先做安全校验（只删真正的 ECC run 目录）；`--preset` 不写回 `ecc.toml`，与 `--workspace` 互斥。含 Timing optimization 的 flow（包括 `rtl2gds`）会预检 Sizer；已有 workspace 与 `--workspace` 模式不做预检，缺失 Sizer 时仍可能在 Timing optimization 执行时失败。
-- **workspace 模式**（`--workspace`）：`load_workspace` 后用 `chipcompiler.engine.rerun` 的 `run_resume / run_from / run_only` 原地复跑；`--resume/--from/--only` 三个选择器互斥且仅在该模式合法；该模式不做环境预检。
+- **新建 workspace**：解析 `[design]` 输入声明、PDK、参数与请求入口步骤；只校验入口步骤所需文件；先原子登记受管名称到 `project.json`（`not_started`）；预检工具；在 `<project>/<workspace 名称>` 调用 `create_workspace`。`create_workspace` 将输入复制到 `origin/` 并产出全部步骤配置，CLI 后续不改写配置。正常新建 flow 用 preset；`--from A --to B` 改用 `rtl2gds.build_flow_range(A, B)` 动态构建包含式规范范围。新范围不能与 `--preset`、`--overwrite`、`--resume`、`--only`、`--force` 组合。
+- **已有 workspace**：`load_workspace` 后由 `chipcompiler.engine.rerun` 的 `run_resume`、`run_from` 或 `run_only` 原地复跑。`--from A --to B` 是已有 flow 的包含式范围，会将其后的步骤状态失效但保留其输出文件。已有 workspace 不会重新预检输入，也不会改写已复制输入或配置。
 
-项目运行 preset 的步骤序列定义在 `chipcompiler/rtl2gds/builder.py`（`build_*_flow()` / `get_flow_builders()`），不在 CLI 层。修改序列时须同步引擎默认 flow、`StepEnum` 与 manifest 范围映射（`PRESET_MANIFEST_RANGE`）；CLI 只负责参数解析、进度渲染选择与结果映射。
+项目 preset 的步骤序列定义在 `chipcompiler/rtl2gds/builder.py`（`build_*_flow()` / `get_flow_builders()`），不在 CLI 层。`build_flow_range()` 对规范的 `build_rtl2gds_flow()` 结果切片，步骤别名和顺序只有一份来源。修改序列时须同步引擎默认 flow、`StepEnum` 与 manifest 范围映射；CLI 只负责参数解析、输入契约、进度渲染选择与结果映射。
 
 ### 5.3 扩展环境探查（doctor / 预检）
 
@@ -211,7 +211,7 @@ config_param(
 
 ### 5.4 扩展签核（`ecc signoff inspect/export`）
 
-- **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`inspection/discovery.py::resolve_loaded_workspace()` 统一解析 `--workspace` 与 `--project/--run-id`（互斥冲突 → `project_workspace_conflict`）。inspect 复用 `runtime/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`RuntimeApiError` → `signoff_incomplete`）。
+- **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`inspection/discovery.py::resolve_loaded_workspace()` 在选定项目中解析受管 `--workspace NAME`（或唯一活跃 workspace）。inspect 复用 `runtime/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`RuntimeApiError` → `signoff_incomplete`）。
 - **引擎层**：`chipcompiler/engine/signoff/` 包负责签核收集器 `SignoffPackageCollector`，以及就绪度检查和归档导出所使用的包级 API。
 
 ### 5.5 扩展报告（`ecc report summary/qor/checklist/step`）

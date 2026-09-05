@@ -38,12 +38,12 @@ MANIFEST_FLOW_STEPS = (
     "Legal",
     "TimingOpt",
     "Route",
-    "DRC",
-    "LVS",
     "Filler",
-    "PostRouteLEC",
     "RCX",
     "STA",
+    "LVS",
+    "PostRouteLEC",
+    "DRC",
     "Harden",
 )
 
@@ -51,6 +51,24 @@ PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
     "rtl2gds": ("Synth", "Harden"),
     "synthesis_lec": ("Synth", "LEC"),
+}
+
+_CANONICAL_TO_MANIFEST_STEP = {
+    "Synthesis": "Synth",
+    "lec": "LEC",
+    "Floorplan": "Floor",
+    "place": "Place",
+    "CTS": "CTS",
+    "legalization": "Legal",
+    "Timing optimization": "TimingOpt",
+    "route": "Route",
+    "filler": "Filler",
+    "RCX": "RCX",
+    "sta": "STA",
+    "lvs": "LVS",
+    "postRouteLec": "PostRouteLEC",
+    "drc": "DRC",
+    "Harden": "Harden",
 }
 
 _WORKSPACE_STATUSES = frozenset(
@@ -101,20 +119,10 @@ class ProjectManifest:
     def active_workspaces(self) -> list[ManifestWorkspace]:
         return [w for w in self.workspaces if w.status != "archived"]
 
-    def find_workspace(self, run_id: str) -> ManifestWorkspace | None:
-        """Match a run id against workspace_id, or a declared path tail.
-
-        The stored workspace_path is canonical (symlinks resolved) for
-        execution, but selection spells the DECLARED document: a symlinked
-        declared path is selected by its declared name, and the canonical
-        target name never becomes an alias the document does not contain.
-        """
+    def find_workspace(self, workspace_id: str) -> ManifestWorkspace | None:
+        """Match a managed workspace by its declared identifier only."""
         for workspace in self.workspaces:
-            if workspace.workspace_id == run_id:
-                return workspace
-        for workspace in self.workspaces:
-            declared = str(workspace.raw.get("workspace_path", "")).rstrip("/")
-            if declared and os.path.basename(declared) == run_id:
+            if workspace.workspace_id == workspace_id:
                 return workspace
         return None
 
@@ -346,6 +354,10 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
         "rtl_list": [item for item in rtl_list if isinstance(item, str)],
         "origin_verilog": _optional_str(manifest.base_design.get("origin_verilog")),
         "origin_def": _optional_str(manifest.base_design.get("origin_def")),
+        "netlist": _optional_str(manifest.base_design.get("netlist")),
+        "golden_netlist": _optional_str(manifest.base_design.get("golden_netlist")),
+        "sdc": _optional_str(manifest.base_design.get("sdc")),
+        "spef": _optional_str(manifest.base_design.get("spef")),
         "parameters": parameters,
     }
 
@@ -411,6 +423,11 @@ def base_design_from_config(cfg, pdk_root: str) -> dict:
         "clock": cfg.design_clock_port,
         "rtl_list": cfg.design_rtl,
         "origin_verilog": cfg.design_rtl[0] if origin_verilog else "",
+        "origin_def": cfg.design_def,
+        "netlist": cfg.design_netlist,
+        "golden_netlist": cfg.design_golden_netlist,
+        "sdc": cfg.design_sdc,
+        "spef": cfg.design_spef,
         "parameters": resolved_base_parameters(cfg),
     }
 
@@ -630,3 +647,87 @@ def write_back_workspace_status(project_dir: str, workspace_id: str, status: str
                 entry["updated_at"] = _now_iso()
 
     return update_manifest(project_dir, mutate)
+
+
+def manifest_range_for_flow(cfg, flow_config: dict | None) -> tuple[str, str]:
+    """Return the GUI manifest range for a workspace's effective target."""
+    if isinstance(flow_config, dict) and flow_config.get("start_step"):
+        from chipcompiler.rtl2gds import normalize_flow_step
+
+        start = normalize_flow_step(flow_config["start_step"])
+        end = normalize_flow_step(flow_config.get("end_step") or start)
+        try:
+            return (_CANONICAL_TO_MANIFEST_STEP[start], _CANONICAL_TO_MANIFEST_STEP[end])
+        except KeyError as exc:
+            raise ManifestError(f"unknown workspace flow step: {exc.args[0]}") from None
+    return PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
+
+
+def pre_register_workspace(
+    project_dir: str,
+    *,
+    cfg,
+    pdk_root: str,
+    workspace_id: str,
+    workspace_path: str,
+    flow_config: dict | None,
+) -> str:
+    """Atomically register a fresh managed workspace before filesystem creation.
+
+    Returns ``registered``, ``existing``, ``conflict``, or ``failed``. A
+    workspace entry intentionally contains no input snapshot: copied files and
+    the workspace config are the reproducibility boundary.
+    """
+    try:
+        start_step, end_step = manifest_range_for_flow(cfg, flow_config)
+    except ManifestError:
+        return "failed"
+    now = _now_iso()
+    manifest_path = os.path.join(project_dir, MANIFEST_FILENAME)
+    if not os.path.lexists(manifest_path):
+        document = build_manifest_document(
+            project_dir,
+            design_name=cfg.design_name,
+            base_design=base_design_from_config(cfg, pdk_root),
+            workspace_id=workspace_id,
+            workspace_path=workspace_path,
+            start_step=start_step,
+            end_step=end_step,
+            status="not_started",
+        )
+        return "registered" if write_manifest_if_absent(project_dir, document) else "failed"
+
+    outcome = "registered"
+
+    def mutate(document: dict) -> None:
+        nonlocal outcome
+        workspaces = document.get("workspaces")
+        if not isinstance(workspaces, list):
+            outcome = "failed"
+            return
+        for entry in workspaces:
+            if not isinstance(entry, dict) or entry.get("workspace_id") != workspace_id:
+                continue
+            if os.path.realpath(str(entry.get("workspace_path", ""))) == os.path.realpath(
+                workspace_path
+            ):
+                outcome = "existing"
+            else:
+                outcome = "conflict"
+            return
+        workspaces.append(
+            manifest_workspace_entry(
+                workspace_id,
+                name=cfg.design_name,
+                workspace_path=workspace_path,
+                start_step=start_step,
+                end_step=end_step,
+                status="not_started",
+                now=now,
+            )
+        )
+        document["updated_at"] = now
+
+    if not update_manifest(project_dir, mutate):
+        return "failed"
+    return outcome

@@ -215,6 +215,38 @@ def test_create_workspace_persists_dynamic_flow_steps(
     assert all(step["peak memory (mb)"] == 0 for step in flow_data["steps"])
 
 
+def test_create_workspace_copies_external_lec_and_sta_inputs(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist = tmp_path / "gcd.v"
+    golden = tmp_path / "gcd_golden.v"
+    spef = tmp_path / "gcd.spef"
+    netlist.write_text("module gcd; endmodule\n")
+    golden.write_text("module gcd; endmodule\n")
+    spef.write_text('*SPEF "IEEE 1481-1998"\n')
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=netlist,
+        golden_verilog=golden,
+        spef=spef,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={"start_step": "lec", "end_step": "lec"},
+    )
+
+    assert workspace is not None
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert flow_data["steps"][0]["info"]["golden_verilog"] == str(
+        workspace_dir / "origin" / "golden_gcd_golden.v"
+    )
+    assert (workspace_dir / "origin" / "gcd.spef").is_file()
+
+
 def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, caplog
 ):

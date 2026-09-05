@@ -21,7 +21,6 @@ from chipcompiler.cli.core.options import (
     JsonOption,
     PlainOption,
     ProjectOption,
-    RunIdOption,
     WorkspaceOption,
 )
 
@@ -70,11 +69,10 @@ def check_cmd(
 def run_cmd(
     *,
     project: ProjectOption = None,
-    run_id: RunIdOption = None,
     overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
     workspace: Annotated[
         str | None,
-        typer.Option("--workspace", help="Reuse an existing workspace in place"),
+        typer.Option("--workspace", help="Create, select, or resume a managed workspace"),
     ] = None,
     resume: Annotated[
         bool,
@@ -83,6 +81,10 @@ def run_cmd(
     from_step: Annotated[
         str | None,
         typer.Option("--from", help="Re-execute a step and its persisted suffix"),
+    ] = None,
+    to_step: Annotated[
+        str | None,
+        typer.Option("--to", help="Inclusive final step when running a bounded range"),
     ] = None,
     only: Annotated[
         str | None,
@@ -112,12 +114,13 @@ def run_cmd(
 ) -> None:
     command_input = RunInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         overwrite=overwrite,
         param_set=tuple(param_set or ()),
         workspace=workspace,
         resume=resume,
         from_step=from_step,
+        to_step=to_step,
         only=only,
         force=force,
         preset=preset,
@@ -131,12 +134,11 @@ def status_cmd(
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
-    run_id: RunIdOption = None,
     workspace: WorkspaceOption = None,
 ) -> None:
     command_input = StatusInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         workspace=workspace,
     )
     execute_command("status", command_input, inspect_handlers.status)
@@ -149,12 +151,11 @@ def log_cmd(
     json_output: JsonOption = False,
     plain: PlainOption = False,
     jsonl: JsonlOption = False,
-    run_id: RunIdOption = None,
     workspace: WorkspaceOption = None,
 ) -> None:
     command_input = LogInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         step=step,
         workspace=workspace,
     )
@@ -187,12 +188,11 @@ def config_cmd(
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
-    run_id: RunIdOption = None,
     workspace: WorkspaceOption = None,
 ) -> None:
     command_input = ConfigInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
-        project=project_options(project, run_id),
+        project=project_options(project),
         step=step,
         workspace=workspace,
     )

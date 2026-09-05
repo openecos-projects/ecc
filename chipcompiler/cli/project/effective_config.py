@@ -95,6 +95,11 @@ def _manifest_only_config(ctx, assembled, entry):
         design_name=assembled["design_name"],
         design_top=assembled["top_module"],
         design_rtl=_source_rtl(assembled),
+        design_netlist=_source_path(assembled, "netlist", ctx.project_dir),
+        design_golden_netlist=_source_path(assembled, "golden_netlist", ctx.project_dir),
+        design_def=_source_origin_def(assembled, ctx.project_dir),
+        design_sdc=_source_path(assembled, "sdc", ctx.project_dir),
+        design_spef=_source_path(assembled, "spef", ctx.project_dir),
         design_clock_port=assembled["clock"],
         design_frequency_mhz=_assembled_frequency(parameters),
         pdk_name=assembled["pdk"],
@@ -131,6 +136,13 @@ def _source_origin_def(assembled: dict, project_dir: str) -> str:
     return os.path.normpath(os.path.join(project_dir, value))
 
 
+def _source_path(assembled: dict, key: str, project_dir: str) -> str:
+    value = assembled.get(key) or ""
+    if not value or os.path.isabs(value):
+        return value
+    return os.path.normpath(os.path.join(project_dir, value))
+
+
 def _assembled_frequency(parameters: dict) -> float:
     """The manifest layer's frequency_max as a float (0.0 when absent/invalid)."""
     try:
@@ -157,6 +169,15 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
         cfg.design_clock_port = assembled["clock"]
     if "design.rtl" not in explicit:
         cfg.design_rtl = _source_rtl(assembled)
+    for dotted, field_name, source_key in (
+        ("design.netlist", "design_netlist", "netlist"),
+        ("design.golden_netlist", "design_golden_netlist", "golden_netlist"),
+        ("design.def", "design_def", "origin_def"),
+        ("design.sdc", "design_sdc", "sdc"),
+        ("design.spef", "design_spef", "spef"),
+    ):
+        if dotted not in explicit:
+            setattr(cfg, field_name, _source_path(assembled, source_key, project_dir))
     if "pdk.name" not in explicit:
         cfg.pdk_name = assembled["pdk"]
     if "pdk.root" not in explicit:
@@ -186,6 +207,10 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
     from chipcompiler.cli.project.config import validate_project_config
 
     errors = validate_project_config(cfg)
+    if fresh:
+        from chipcompiler.cli.project.design_inputs import validate_entry_inputs
+
+        errors.extend(validate_entry_inputs(cfg, _entry_step_for_target(cfg, flow_config)))
     if ctx.project_state == "manifest":
         # The [flow] relaxation covers an ABSENT preset only (the target is
         # derivable elsewhere); an explicitly empty preset stays an error.
@@ -228,6 +253,23 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
                 )
             )
     return errors
+
+
+def _entry_step_for_target(cfg, flow_config) -> str | None:
+    if isinstance(flow_config, dict) and flow_config.get("start_step"):
+        return str(flow_config["start_step"])
+    if not cfg.flow_preset:
+        return None
+    from chipcompiler import rtl2gds as rtl2gds_api
+
+    builder = rtl2gds_api.get_flow_builders().get(cfg.flow_preset)
+    if builder is None:
+        return None
+    steps = builder()
+    if not steps:
+        return None
+    step = steps[0][0]
+    return step.value if hasattr(step, "value") else str(step)
 
 
 def _validate_rtl_source(project_dir: str, entry: str) -> list[str]:

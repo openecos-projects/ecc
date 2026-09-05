@@ -89,10 +89,10 @@ mode.
 Recommended style:
 
 ```text
-run=default status=failed workspace=runs/default inspect_cmd="ecc status" log_cmd="ecc log"
+workspace_id=default status=failed workspace=gcd/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=synthesis tool=yosys status=success runtime=0:00:18 log_cmd="ecc log synthesis"
 step=floorplan tool=ecc status=success runtime=0:00:04 log_cmd="ecc log floorplan"
-config=place_default_config.json scope=step step=placement role=config path=runs/default/config/place_default_config.json inspect="ecc config placement --json"
+config=place_default_config.json scope=step step=placement role=config path=gcd/default/config/place_default_config.json inspect="ecc config placement --json"
 ```
 
 Current implementation note: `--plain` provides this stable key-value output.
@@ -121,7 +121,7 @@ Example:
 
 ```jsonl
 {"step":"synthesis","tool":"yosys","status":"success","runtime":"0:00:18","log_cmd":"ecc log synthesis"}
-{"config":"place_default_config.json","scope":"step","step":"placement","role":"config","path":"runs/default/config/place_default_config.json","inspect":"ecc config placement --json"}
+{"config":"place_default_config.json","scope":"step","step":"placement","role":"config","path":"gcd/default/config/place_default_config.json","inspect":"ecc config placement --json"}
 ```
 
 Text output and JSON output should describe the same objects. The text output is
@@ -153,7 +153,7 @@ Commands should be organized around flow objects instead of internal tools:
 | Object | Description |
 | --- | --- |
 | Project | User design directory and `ecc.toml` |
-| Run | One execution instance with a stable run id or tag |
+| Workspace | One managed execution environment identified by its project-local name |
 | Step | A flow step such as synthesis, placement, CTS, routing |
 | Artifact | DEF, GDS, Verilog, SPEF, reports, logs, scripts |
 | Metric | QoR values such as WNS, TNS, area, HPWL, DRC count |
@@ -257,12 +257,11 @@ implementation detail:
 | `ecc pdk` | `setup`, `set-root`, `show`, `unset` | Project PDK configuration |
 | `ecc param` | `list`, `show`, `set`, `unset`, `diff` | Project parameter overrides |
 
-Commands that consume a run use `--project DIR` (default: current directory)
-and, when a run selection matters, `--run-id ID`. Run-scoped inspection and
-reporting commands (`run`, `status`, `log`, `config`, `report *`, `signoff *`)
-also accept `--workspace PATH` for direct access to an existing workspace
-directory; it is exclusive with `--project` and `--run-id`, which may be used
-together, and the read-only
+Commands that consume a workspace use `--project DIR` (default: current
+directory) and, when selection matters, `--workspace NAME`. The name resolves
+only through the project's `project.json`; it is not a direct filesystem path.
+Run-scoped inspection and reporting commands (`run`, `status`, `log`,
+`config`, `report *`, `signoff *`) may combine the two options, and the read-only
 commands (`status`, `log`, `config`, `report step`) never load or mutate the
 workspace. Record-producing commands use default human text,
 `--plain` for stable key-value records, `--json` for a record envelope, and
@@ -283,9 +282,9 @@ The command graph follows these rules; new commands must follow them too:
   because `report <artifact>` reads as one action.
 - **Naming.** Lowercase single words; multi-word names use kebab-case
   (`set-root`, `layout-image`). Help strings start with an imperative verb.
-- **Selectors.** `--workspace` is mutually exclusive with `--project` and
-  `--run-id`; the latter two may be combined. File-producing commands use
-  `-o/--output`.
+- **Selectors.** `--workspace NAME` selects a declared or newly-created
+  project-local workspace and may be combined with `--project`. File-producing
+  commands use `-o/--output`.
 - **Status vs full evidence.** `ecc status` is the lightweight progress check;
   `ecc report step` is the full per-step evidence report (features, analysis,
   checklist). Both are read-only.
@@ -317,80 +316,47 @@ gcd/
 ├── ecc.toml
 ├── rtl/
 ├── constraints/
-└── runs/
+├── project.json       # written when the first workspace is registered
+└── default/           # the default managed workspace after `ecc run`
 ```
 
 Command-line arguments may override configuration values, but `ecc.toml` should
 be the primary user-facing interface.
 
-Current implementation supports `--project` on project and `param` commands.
+Current implementation supports `--project` on project and `param` commands;
+workspace-consuming commands accept a managed `--workspace NAME` in that
+project.
 When omitted, the current working directory is treated as the project directory.
 
 ### Step-Level Execution
 
-Back-end flow work is iterative. An existing workspace can be resumed or
-re-executed in place through `ecc run --workspace`:
+Back-end flow work is iterative. An existing managed workspace can be resumed
+or re-executed in place:
 
 ```bash
-ecc run --workspace /path/to/workspace
-ecc run --workspace /path/to/workspace --resume
-ecc run --workspace /path/to/workspace --from CTS
-ecc run --workspace /path/to/workspace --only place
-ecc run --workspace /path/to/workspace --only place --force
+ecc run --workspace default
+ecc run --workspace default --resume
+ecc run --workspace default --from CTS --to route
+ecc run --workspace default --only place
+ecc run --workspace default --only place --force
 ```
 
 Step names and order come from the workspace's persisted `home/flow.json`.
 Omitting a selector has resume semantics: execution starts at the first step
 whose state is not `Success` and reuses the successful prefix. `--from <step>`
-re-executes the named step and its persisted suffix. `--only <step>` runs
-exactly that step; an already successful step is a no-op unless `--force` is
-given. Re-executing a step marks downstream steps `Unstart`, replaces the
-executed step's `output/`, and regenerates `workspace/config/*.json` from the
-persisted parameters.
+re-executes the named step and its persisted suffix; with `--to <step>` it
+executes the inclusive range. `--only <step>` runs exactly that step; an
+already successful step is a no-op unless `--force` is given. Re-executing a
+step marks downstream steps `Unstart` while retaining their output files.
 
-`--resume`, `--from`, and `--only` are mutually exclusive, `--force` requires
-`--only`, and workspace mode cannot be combined with `--project`, `--run-id`,
-`--overwrite`, or `--set`. Arbitrary step sequences, step ranges (`--to`,
-`--after`), and run-time parameter overlays remain planned work.
-
-Project mode creates a fresh `runs/<run_id>` workspace and supports:
-
-```bash
-ecc run --overwrite
-ecc run --set place.target_density=0.65
-```
-
-Each run should have a stable run id and may have a user tag:
-
-```bash
-ecc run --tag baseline
-ecc run --tag dense_place
-ecc diff baseline dense_place
-```
-
-The run writer and the inspection commands resolve the run directory through
-the same rule: `--run-id` wins over `[flow] run` in `ecc.toml`, which falls
-back to `runs/default`. Accepted forms are a bare name (`runs/<name>`), a
-project-relative path with a separator, or an absolute path used verbatim:
-
-```bash
-ecc run --run-id exp1
-ecc run --run-id sweeps/sweep_001/run_004 --overwrite
-ecc status --run-id default
-ecc log cts --run-id run_005
-ecc config cts --run-id sweeps/sweep_001/run_004
-```
-
-With `[flow] run = "exp1"` in `ecc.toml`, bare `ecc run`, `ecc status`,
-`ecc log`, and `ecc config` all target `runs/exp1`. A run id that resolves to
-the project directory or the `runs/` container is rejected outright.
-`--overwrite` deletes only a directory ECC recognizes: the target must not
-exist yet, be an empty directory, or contain a real `home/flow.json`, and it
-must resolve canonically where its spelling claims — no symlink component may
-redirect it, even behind `..` segments (the project directory is the trusted
-anchor). Refusals happen before any `chmod` or `rmtree`.
-
-Run tags and `ecc diff` remain planned work.
+`--resume`, `--only`, and a range are mutually exclusive; `--force` requires
+`--only`. A new bounded workspace requires both `--from` and `--to` and cannot
+combine with `--preset`, `--overwrite`, `--resume`, `--only`, or `--force`.
+The builder dynamically slices the canonical RTL-to-GDS flow for that range.
+`--workspace` is a project-local single path segment and can be combined with
+`--project`; no direct workspace paths or run ids are supported. Bare `ecc run`
+creates `default` for a project with no workspace, resumes its sole active
+workspace, and reports `workspace_required` when several are active.
 
 ### Parameter Management
 
@@ -494,9 +460,9 @@ kind=<object-kind> key=value ... disclosure_key="ecc command ..."
 Examples:
 
 ```text
-run=default status=success workspace=runs/default inspect_cmd="ecc status" log_cmd="ecc log"
+workspace_id=default status=success workspace=gcd/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
-config=route_ecc.json scope=step step=routing role=config path=runs/default/config/route_ecc.json inspect="ecc config routing --json"
+config=route_ecc.json scope=step step=routing role=config path=gcd/default/config/route_ecc.json inspect="ecc config routing --json"
 ```
 
 Rules:
@@ -530,7 +496,7 @@ Errors should also follow progressive disclosure. A failing command should print
 a concise summary and actionable disclosure commands:
 
 ```text
-kind=error error=run_exists run=default workspace=runs/default overwrite="ecc run --overwrite"
+kind=error error=run_exists workspace_id=default workspace=gcd/default overwrite="ecc run --overwrite"
 step=routing status=unknown_step inspect="ecc status"
 ```
 
@@ -546,6 +512,12 @@ The CLI should move toward a single project configuration file:
 name = "gcd"
 top = "gcd"
 rtl = ["rtl/gcd.v"]
+# Optional inputs for a non-RTL entry range:
+# netlist = "inputs/gcd.v"
+# golden_netlist = "inputs/gcd-golden.v"
+# def = "inputs/gcd.def"
+# sdc = "constraints/gcd.sdc"
+# spef = "inputs/gcd.spef"
 clock_port = "clk"
 frequency_mhz = 100.0
 
@@ -555,7 +527,6 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
-run = "default"
 
 [params.place]
 target_density = 0.65
@@ -573,13 +544,11 @@ distance_micron = 30.0
 tech = "prtech/techLEF/N551P6M_ecos.lef"
 ```
 
-Current validation supports the `ics55` PDK. `flow.run` selects the run
-directory and accepts the same forms as `--run-id`: a bare name, a
-project-relative path, or an absolute path; `"default"` (or an absent key)
-keeps `runs/default`. Values that cannot name a run directory — empty,
-whitespace-padded, NUL-containing, or non-string — are rejected, and
-inspection commands fail with a config error when `[flow] run` is present but
-invalid. Valid
+Current validation supports the `ics55` PDK. `[flow].run` is rejected with
+`unsupported_flow_run`; workspace selection belongs to `--workspace NAME`.
+The project-level `[design]` declarations are resolved only for fresh creation,
+then copied into that workspace's `origin/`; `project.json` carries source
+declarations but no per-workspace input snapshot. Valid
 flow presets are discovered from the `build_*_flow` defs in
 `chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `syn_sta`, and
 `synthesis_lec`). The `rtl2gds` preset includes synthesis-level LEC immediately
@@ -728,7 +697,7 @@ Success criteria:
 ### Phase 2: Debug And Traceability
 
 - [x] `ecc config`
-- [x] Run selection for inspection commands with `--run-id`
+- [x] Managed workspace selection for inspection commands with `--workspace NAME`
 - [x] Parameter overrides with `ecc param` and `ecc run --set`
 - [x] Private runtime sidecar under `ecc rpc serve --stdio`
 - [ ] Run tags and run comparison basics
