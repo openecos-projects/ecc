@@ -1,9 +1,13 @@
 from chipcompiler.data import Workspace, WorkspaceStep, log_workspace_step
+from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.eda import load_eda_module
 
 from .data import reapply_materialized_candidate_config
 from .data.parameter_runtime_observer import run_with_parameter_observation
+from .plot import AgentECCToolsPlot
 from .runtime_env import isolated_sizer_loader_environment
+
+ecc_runner.ECCToolsPlot = AgentECCToolsPlot
 
 
 def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool:

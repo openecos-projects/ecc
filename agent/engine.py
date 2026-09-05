@@ -12,6 +12,7 @@ from chipcompiler.engine.flow import (
 from chipcompiler.engine.step_execution import get_process_rss_mb, track_current_process_memory
 from chipcompiler.utility.log import redirect_stdio_to_file
 
+from .plot import _is_candidate_workspace
 from .tools import run_step as run_agent_step
 
 
@@ -177,4 +178,5 @@ class AgentEngineFlow(EngineFlow):
                 build_step_metrics(workspace=self.workspace, step=workspace_step)
             except Exception:
                 self.workspace.logger.exception("[QOR] failed to refresh analysis")
-        save_layout_image(workspace=self.workspace, step=workspace_step)
+        if not _is_candidate_workspace(self.workspace):
+            save_layout_image(workspace=self.workspace, step=workspace_step)

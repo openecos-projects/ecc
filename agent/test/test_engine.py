@@ -81,3 +81,25 @@ def test_agent_incomplete_step_normalized_on_resume(tmp_path, monkeypatch):
     assert flow.run_step(flow.workspace_steps[1], rerun=False) == StateEnum.Success
     persisted = json.loads((home / "flow.json").read_text())
     assert persisted["steps"][1]["state"] == StateEnum.Success.value
+
+
+def test_agent_engine_skips_layout_snapshot_for_candidate_workspace(tmp_path, monkeypatch):
+    root = tmp_path / ".agent" / "candidates" / "candidate-1"
+    root.mkdir(parents=True)
+    workspace = Workspace(directory=root, flow=Flow(path=root / "home" / "flow.json"))
+    flow = AgentEngineFlow(workspace)
+    step = EccStep(name="place", directory=root / "place_dreamplace", tool="ecc")
+    calls = []
+    monkeypatch.setattr(flow, "save_step_flow_facts", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        "chipcompiler.tools.build_step_metrics",
+        lambda **_kwargs: calls.append("metrics"),
+    )
+    monkeypatch.setattr(
+        "chipcompiler.tools.save_layout_image",
+        lambda **_kwargs: calls.append("snapshot"),
+    )
+
+    flow._save_agent_step_facts(step, StateEnum.Success, 1.0, 2.0, {})
+
+    assert calls == ["metrics"]

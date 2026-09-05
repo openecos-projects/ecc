@@ -299,6 +299,38 @@ def test_scoped_method_hook_is_restored_after_candidate():
     assert Owner.run is original
 
 
+def test_scoped_callable_hook_preserves_wrapped_operator_methods():
+    class Operation:
+        __name__ = "density_op"
+        __qualname__ = "Operation.density_op"
+        __annotations__ = {}
+
+        def __init__(self):
+            self.reset_calls = 0
+
+        def __call__(self):
+            return "original"
+
+        def reset(self):
+            self.reset_calls += 1
+
+    owner = SimpleNamespace(density_op=Operation())
+    original = owner.density_op
+
+    with ExitStack() as stack:
+        _patch_method(
+            stack,
+            owner,
+            "density_op",
+            lambda wrapped: (wrapped(), "observed"),
+        )
+        assert owner.density_op() == ("original", "observed")
+        owner.density_op.reset()
+
+    assert original.reset_calls == 1
+    assert owner.density_op is original
+
+
 def test_native_model_hook_records_density_updates_and_routability_calls():
     recorder = DreamplaceRecorder(
         patch={"knob_id": "place.density_weight", "value": 0.001},

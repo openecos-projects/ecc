@@ -13,6 +13,7 @@ from agent.workspace_api import (
     _candidate_rerun_result,
     _candidate_rerun_steps,
     _candidate_step_artifact_dirs,
+    _create_candidate_workspace,
     _materialize_candidate_rerun,
     _reject_workspace_symlinks,
     build_agent_flow_for_workspace,
@@ -34,6 +35,58 @@ def test_candidate_artifact_dirs_support_typed_step_outputs(tmp_path):
     )
 
     assert _candidate_step_artifact_dirs(step) == (Path(output_dir), Path(analysis_dir))
+
+
+def test_candidate_clone_skips_step_directories_that_will_be_rerun(tmp_path):
+    flow_data = {
+        "steps": [
+            {"name": "Floorplan", "tool": "ecc"},
+            {"name": "place", "tool": "dreamplace"},
+            {"name": "Timing optimization", "tool": "sizer"},
+            {"name": "Harden", "tool": "ecc"},
+        ]
+    }
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "flow.json").write_text(json.dumps(flow_data), encoding="utf-8")
+    for directory in (
+        "Floorplan_ecc",
+        "place_dreamplace",
+        "timing_optimization_sizer",
+        "Harden_ecc",
+    ):
+        path = tmp_path / directory
+        path.mkdir()
+        (path / "checklist.json").write_text("{}", encoding="utf-8")
+        output = path / "output"
+        output.mkdir()
+        (output / "artifact").write_bytes(b"x" * 1024)
+    workspace = SimpleNamespace(directory=tmp_path)
+
+    candidate, _, _ = _create_candidate_workspace(
+        _EccApi(workspace), workspace, "candidate-1", None, "place"
+    )
+    candidate_root = Path(candidate.directory)
+
+    assert (candidate_root / "Floorplan_ecc" / "output" / "artifact").is_file()
+    for directory in (
+        "place_dreamplace",
+        "timing_optimization_sizer",
+        "Harden_ecc",
+    ):
+        step_root = candidate_root / directory
+        assert (step_root / "checklist.json").is_file()
+        assert not (step_root / "output").exists()
+
+
+def test_candidate_clone_rejects_invalid_flow_state(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "flow.json").write_text("[]", encoding="utf-8")
+    workspace = SimpleNamespace(directory=tmp_path)
+
+    with pytest.raises(RuntimeApiError, match="candidate flow state is invalid"):
+        _create_candidate_workspace(_EccApi(workspace), workspace, "candidate-1", None, "place")
 
 
 @pytest.mark.parametrize(

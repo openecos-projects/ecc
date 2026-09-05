@@ -7,11 +7,27 @@ from types import SimpleNamespace
 from agent import tools as eda
 from agent.data import parameter_runtime_observer as runtime_observer
 from agent.data.candidate_materialization import materialize_candidate_config
+from agent.plot import AgentECCToolsPlot
+from chipcompiler.tools.ecc import runner as ecc_runner
+from chipcompiler.tools.ecc.plot import ECCToolsPlot
 
 
 def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_agent_plotter_skips_all_display_plots_for_candidate_workspaces(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(ECCToolsPlot, "plot", lambda plotter: calls.append(plotter.workspace))
+    candidate = SimpleNamespace(directory=tmp_path / ".agent" / "candidates" / "candidate-1")
+    ordinary = SimpleNamespace(directory=tmp_path / "ordinary")
+
+    assert AgentECCToolsPlot(candidate, SimpleNamespace()).plot() is True
+    AgentECCToolsPlot(ordinary, SimpleNamespace()).plot()
+
+    assert calls == [ordinary]
+    assert ecc_runner.ECCToolsPlot is AgentECCToolsPlot
 
 
 class _Scalar:

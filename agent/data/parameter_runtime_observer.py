@@ -15,6 +15,7 @@ from .candidate_artifacts import (
     sha256_path,
     write_json_atomic,
 )
+from .observed_callable import ObservedCallable
 
 DREAMPLACE_OBSERVER_REVISION = "ecc.agent.dreamplace_parameter_observer.v1"
 RUNTIME_REPORT_REF = "analysis/parameter_runtime_report.v1.json"
@@ -201,7 +202,8 @@ def _patch_method(
         return observer(original, *args, **kwargs)
 
     previous = vars(owner).get(name, _MISSING)
-    setattr(owner, name, observed)
+    replacement = observed if isinstance(owner, type) else ObservedCallable(observed, original)
+    setattr(owner, name, replacement)
     stack.callback(_restore_attribute, owner, name, previous)
 
 

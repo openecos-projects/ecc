@@ -16,6 +16,7 @@ from chipcompiler.runtime.workspace_api import (
 )
 from chipcompiler.utility.path import path_is_within
 
+from .candidate_clone import candidate_clone_ignore
 from .data import (
     FoundationExtractor,
     bind_candidate_input,
@@ -156,6 +157,7 @@ class FlowAgentRuntimeApi:
             session.workspace,
             request.candidate_id,
             request.parent_candidate_root_ref,
+            request.target_step,
         )
         flow = None
         try:
@@ -330,7 +332,11 @@ _CANDIDATE_WORKSPACE_MANIFEST = "candidate_workspace.v1.json"
 
 
 def _create_candidate_workspace(
-    ecc_api, workspace, candidate_id: str, parent_candidate_root_ref: str | None = None
+    ecc_api,
+    workspace,
+    candidate_id: str,
+    parent_candidate_root_ref: str | None = None,
+    target_step: str | None = None,
 ):
     workspace_root = _parent_workspace_root(workspace)
     _reject_workspace_symlinks(_candidate_parent_root(workspace_root, parent_candidate_root_ref))
@@ -347,7 +353,11 @@ def _create_candidate_workspace(
     if candidate_root.exists() or candidate_root.is_symlink():
         raise RuntimeApiError("command_failed", "candidate workspace already exists")
     try:
-        shutil.copytree(source_root, candidate_root, ignore=shutil.ignore_patterns(".agent"))
+        shutil.copytree(
+            source_root,
+            candidate_root,
+            ignore=candidate_clone_ignore(source_root, target_step),
+        )
     except OSError as exc:
         _remove_failed_candidate_workspace(candidate_root)
         raise RuntimeApiError("command_failed", f"candidate workspace clone failed: {exc}") from exc
