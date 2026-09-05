@@ -77,6 +77,7 @@ runs:
         "$SMOKE_DIR/ecc" --version
         "$SMOKE_DIR/ecc" version --json
         test -x "$SMOKE_DIR/ecc-agent-rpc"
+        test "$SMOKE_DIR/ecc" -ef "$SMOKE_DIR/ecc-agent-rpc"
         payload='{"jsonrpc":"2.0","method":"rpc.hello","id":1,"params":{"version":1}}'
         response="$(printf 'Content-Length: %s\r\n\r\n%s' "${#payload}" "$payload" | "$SMOKE_DIR/ecc-agent-rpc")"
         grep -q 'candidate.rerun' <<<"$response"
