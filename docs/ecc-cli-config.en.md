@@ -105,7 +105,7 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/cli/project/params.py](../chip
 
 ### 1.2 Per-step direct-config schemas and PDK paths
 
-`chipcompiler/cli/project/config_params/` keeps a human-reviewed Python schema file for each configuration owner. Every static tool field can be modified via `ecc param`; by default `ecc param list` shows only the legacy parameters and already-overridden fields — use the following commands to inspect the full set of fields, their types, and their JSON targets:
+`chipcompiler/data/config_params/` keeps a human-reviewed Python schema file for each configuration owner. Every static tool field can be modified via `ecc param`; by default `ecc param list` shows only the legacy parameters and already-overridden fields — use the following commands to inspect the full set of fields, their types, and their JSON targets:
 
 ```bash
 ecc param list --step cts

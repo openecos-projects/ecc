@@ -3,7 +3,7 @@ from pathlib import Path
 
 from . import CONFIG_PARAM_SCHEMAS
 
-_PACKAGE_ROOT = Path(__file__).resolve().parents[3]
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = {
     "db": _PACKAGE_ROOT / "tools/ecc/configs/db_ecc.json",
     "CTS": _PACKAGE_ROOT / "tools/ecc/configs/cts_ecc.json",

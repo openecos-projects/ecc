@@ -1,4 +1,4 @@
-"""CLI-managed PDK content paths stored in ``[pdk.overrides]``."""
+"""PDK content paths stored in ``[pdk.overrides]``."""
 
 from .common import ParamSchema
 

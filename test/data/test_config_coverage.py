@@ -1,10 +1,10 @@
 import json
 
-from chipcompiler.cli.project.config_params import (
+from chipcompiler.data.config_params import (
     CONFIG_PARAM_SCHEMAS,
     validate_config_registry,
 )
-from chipcompiler.cli.project.config_params.coverage import (
+from chipcompiler.data.config_params.coverage import (
     TEMPLATES,
     covered_fields,
     template_fields,
