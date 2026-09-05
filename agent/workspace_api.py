@@ -70,6 +70,14 @@ def build_agent_flow_for_workspace(workspace, *, create_step_workspaces: bool = 
     return flow
 
 
+class AgentWorkspaceRuntimeApi(WorkspaceRuntimeApi):
+    def _build_flow_for_session(self, session, *, attach_session_db: bool):
+        flow = build_agent_flow_for_workspace(session.workspace)
+        if attach_session_db:
+            flow.engine_db = session.db_handle
+        return flow
+
+
 class FlowAgentRuntimeApi:
     """Optional Flow Agent RPC handlers over one ECC workspace runtime."""
 

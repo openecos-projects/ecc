@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -41,6 +42,21 @@ def test_agent_runtime_server_prepares_agent_environment(monkeypatch):
     AgentRuntimeServer()
 
     assert calls == [True]
+
+
+def test_agent_runtime_server_builds_full_flows_with_agent_engine(monkeypatch):
+    flow = SimpleNamespace(engine_db=None)
+    monkeypatch.setattr(
+        "agent.workspace_api.build_agent_flow_for_workspace",
+        lambda _workspace: flow,
+    )
+    server = AgentRuntimeServer()
+    session = SimpleNamespace(workspace=SimpleNamespace(), db_handle=object())
+
+    result = server.api._build_flow_for_session(session, attach_session_db=True)
+
+    assert result is flow
+    assert result.engine_db is session.db_handle
 
 
 def test_agent_request_normalizes_camel_case_fields():

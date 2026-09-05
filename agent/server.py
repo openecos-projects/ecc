@@ -7,7 +7,7 @@ from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntime
 from .methods import AGENT_RUNTIME_METHODS, agent_method_names
 from .requests import parse_agent_request_model
 from .runtime_env import prepare_agent_runtime_environment
-from .workspace_api import FlowAgentRuntimeApi
+from .workspace_api import AgentWorkspaceRuntimeApi, FlowAgentRuntimeApi
 
 
 class AgentRuntimeServer(RuntimeServer):
@@ -18,7 +18,10 @@ class AgentRuntimeServer(RuntimeServer):
         persistent_db_enabled: bool = False,
     ):
         prepare_agent_runtime_environment()
-        super().__init__(api=api, persistent_db_enabled=persistent_db_enabled)
+        super().__init__(
+            api=api or AgentWorkspaceRuntimeApi(persistent_db_enabled=persistent_db_enabled),
+            persistent_db_enabled=persistent_db_enabled,
+        )
         self.agent_api = FlowAgentRuntimeApi(self.api)
         self._register_agent_methods()
 
